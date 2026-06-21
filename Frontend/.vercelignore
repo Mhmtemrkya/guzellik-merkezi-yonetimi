@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+coverage
+dist
+build
+.cache
+.turbo
+*.log
+.env
+.env.*
+.vercel/output

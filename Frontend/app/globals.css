@@ -1,0 +1,785 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Design tokens - Bellora/pudra dashboard revizyonu
+   Powder-pink SaaS surfaces, soft rose accent, clean sans UI.
+   ============================================================ */
+@layer base {
+  :root {
+    --background: 330 100% 99%;
+    --foreground: 330 24% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 330 24% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 330 24% 18%;
+    --primary: 342 72% 64%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 342 100% 94%;
+    --secondary-foreground: 335 42% 34%;
+    --muted: 340 55% 96%;
+    --muted-foreground: 330 16% 48%;
+    --accent: 342 100% 92%;
+    --accent-foreground: 337 46% 36%;
+    --destructive: 352 74% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 337 52% 86%;
+    --input: 337 52% 88%;
+    --ring: 342 72% 64%;
+    --radius: 1.1rem;
+
+    /* brand */
+    --arm-bg:        #fff7fa;
+    --arm-bg-soft:   #fff0f5;
+    --arm-bg-lift:   #ffffff;
+    --arm-cream:     #352432;
+    --arm-gold:      #ef6f94;
+    --arm-rose:      #ffdce8;
+    --arm-copper:    #c7768f;
+    --arm-deep:      #8e3f5b;
+
+    /* type */
+    --font-display:  'Manrope', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-sans:     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono:     'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+}
+
+/* ============================================================
+   Base resets
+   ============================================================ */
+* {
+  border-color: hsl(var(--border));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: auto;
+  background: var(--arm-bg);
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(900px 520px at 14% -12%, rgba(255, 220, 232, 0.74), transparent 66%),
+    radial-gradient(760px 480px at 92% 8%, rgba(255, 239, 244, 0.96), transparent 58%),
+    linear-gradient(180deg, #fffafb 0%, #fff4f8 48%, #fdf0f4 100%);
+  color: var(--arm-cream);
+  overflow-x: hidden;
+  font-feature-settings: 'ss01', 'cv11', 'liga';
+  letter-spacing: -0.005em;
+}
+
+/* ============================================================
+   Typography utilities — luxury display + clean sans
+   ============================================================ */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+}
+
+.font-mono {
+  font-family: var(--font-sans);
+  letter-spacing: 0.015em;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: 10px;
+  color: rgba(93, 70, 82, 0.66);
+}
+
+.serif-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ============================================================
+   Brand gradients & effects
+   ============================================================ */
+.armonessa-text-gradient {
+  background: linear-gradient(100deg, #6f4153 0%, #d65f83 45%, #ef8cad 74%, #8e3f5b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.armonessa-glow {
+  position: relative;
+}
+.armonessa-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(240, 170, 194, 0.55), rgba(255, 211, 223, 0.36), transparent 60%);
+  opacity: 0.8;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  padding: 1px;
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+}
+
+.text-stroke {
+  -webkit-text-stroke: 1px rgba(240, 170, 194, 0.55);
+  color: transparent;
+}
+
+.text-stroke-thin {
+  -webkit-text-stroke: 1px rgba(255, 211, 223, 0.24);
+  color: transparent;
+}
+
+.hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(240, 170, 194, 0.45), rgba(255, 211, 223, 0.38), transparent);
+}
+
+/* ============================================================
+   Aurora mesh — luminous, Northern-Lights inspired
+   Used as a low-cost backdrop on hero / cta / login.
+   ============================================================ */
+.aurora {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(80px) saturate(1.2);
+  opacity: 0.65;
+  background:
+    radial-gradient(40% 35% at 20% 30%, rgba(240, 170, 194, 0.55), transparent 60%),
+    radial-gradient(30% 30% at 80% 20%, rgba(255, 211, 223, 0.45), transparent 60%),
+    radial-gradient(35% 30% at 60% 80%, rgba(212, 138, 167, 0.5), transparent 60%),
+    radial-gradient(25% 25% at 15% 80%, rgba(255, 244, 248, 0.4), transparent 60%);
+  animation: aurora-drift 22s ease-in-out infinite alternate;
+}
+.aurora::after {
+  filter: blur(120px) saturate(1.4);
+  opacity: 0.45;
+  mix-blend-mode: screen;
+  animation-duration: 18s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes aurora-drift {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50%  { transform: translate3d(2%, -3%, 0) rotate(8deg) scale(1.05); }
+  100% { transform: translate3d(-3%, 2%, 0) rotate(-6deg) scale(1.02); }
+}
+
+.aurora-soft {
+  background:
+    radial-gradient(60% 40% at 15% 12%, rgba(240, 170, 194, 0.16), transparent 60%),
+    radial-gradient(50% 40% at 90% 70%, rgba(255, 211, 223, 0.12), transparent 60%),
+    radial-gradient(45% 35% at 55% 50%, rgba(212, 138, 167, 0.10), transparent 60%);
+}
+
+/* Faint grid overlay */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(142, 63, 91, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 63, 91, 0.18) 1px, transparent 1px);
+  background-size: 80px 80px;
+  opacity: 0.08;
+}
+
+/* ============================================================
+   Animations (kept legacy keys — used across panels)
+   ============================================================ */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes marquee-reverse {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+.animate-marquee         { animation: marquee 35s linear infinite; }
+.animate-marquee-reverse { animation: marquee-reverse 35s linear infinite; }
+.animate-marquee-fast    { animation: marquee 18s linear infinite; }
+
+@keyframes sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-sweep { animation: sweep 2s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+
+@keyframes blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.animate-blink { animation: blink 1s steps(2) infinite; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+.animate-pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.animate-float { animation: float-y 6s ease-in-out infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, transparent, rgba(255, 244, 248, 0.8), transparent);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+/* ============================================================
+   Cursor — hide native on desktop only, keep on tablet/mobile
+   ============================================================ */
+body.cursor-hidden { cursor: none; }
+
+@media (max-width: 1024px) {
+  body.cursor-hidden { cursor: auto; }
+  .cursor-dot, .cursor-ring { display: none !important; }
+}
+
+/* ============================================================
+   Scrollbar — slim rose-gold gradient
+   ============================================================ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--arm-bg); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--arm-gold), var(--arm-rose));
+  border-radius: 999px;
+  border: 2px solid var(--arm-bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--arm-rose); }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Selection */
+::selection { background: var(--arm-gold); color: var(--arm-bg); }
+
+/* Focus rings — subtle but consistent */
+:focus-visible {
+  outline: 1.5px solid var(--arm-gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ============================================================
+   Glass surfaces — reusable for panels and landing cards
+   ============================================================ */
+.glass {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(226, 177, 194, 0.34);
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+}
+.glass-strong {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 177, 194, 0.42);
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+}
+
+/* ============================================================
+   Grain overlay (kept for panels)
+   ============================================================ */
+.grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: overlay;
+}
+
+/* ============================================================
+   Cursor classes (target hint), link underline
+   ============================================================ */
+.cursor-target { cursor: none; }
+
+.link-underline {
+  position: relative;
+  display: inline-block;
+}
+.link-underline::after {
+  content: '';
+  position: absolute;
+  left: 0; bottom: -2px;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.link-underline:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.no-select { user-select: none; -webkit-user-select: none; }
+
+/* ============================================================
+   BELLORA UTILITIES - premium powder dashboard surfaces
+   ============================================================ */
+
+.armo-card {
+  position: relative;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 250, 252, 0.94) 76%),
+    radial-gradient(80% 80% at 100% 0%, rgba(255, 220, 232, 0.32), transparent 62%);
+  border: 1px solid rgba(219, 184, 197, 0.62);
+  border-radius: 18px;
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  overflow: hidden;
+  isolation: isolate;
+}
+.armo-card-luxury {
+  border-color: rgba(218, 174, 190, 0.72);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 22px 55px -34px rgba(150, 78, 104, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+.armo-card-luxury::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 220, 232, 0.32) 28%, transparent 62%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  padding: 1px;
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  opacity: 0.95;
+  z-index: 0;
+}
+.armo-card-luxury::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(30% 28% at 100% 0%, rgba(239, 111, 148, 0.16), transparent 74%),
+    radial-gradient(32% 28% at 0% 100%, rgba(255, 220, 232, 0.28), transparent 72%);
+  z-index: 0;
+}
+.armo-card > * { position: relative; z-index: 1; }
+
+.armo-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(218, 174, 190, 0.72);
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 82% at -10% 0%, rgba(255, 220, 232, 0.55), transparent 58%),
+    radial-gradient(80% 62% at 110% 100%, rgba(239, 111, 148, 0.18), transparent 64%),
+    linear-gradient(170deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 251, 0.96));
+  box-shadow:
+    0 24px 65px -34px rgba(150, 78, 104, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.76);
+}
+.armo-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(239, 111, 148, 0.52) 24%, rgba(255, 220, 232, 0.95) 54%, transparent 82%);
+}
+
+.armo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.34rem 0.78rem;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  background: rgba(255, 238, 244, 0.86);
+  border: 1px solid rgba(239, 111, 148, 0.24);
+  color: rgba(142, 63, 91, 0.92);
+  border-radius: 999px;
+}
+.armo-pill-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: radial-gradient(circle, #ef6f94 0%, #ffdce8 76%, transparent 100%);
+  box-shadow: 0 0 8px rgba(239, 111, 148, 0.58);
+}
+
+.armo-cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.72rem 1.15rem;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  background: linear-gradient(110deg, #f2789c 0%, #ef6f94 48%, #d65f83 100%);
+  border: 1px solid rgba(214, 95, 131, 0.42);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 14px 28px -16px rgba(214, 95, 131, 0.75), 0 1px 0 rgba(255, 255, 255, 0.38) inset;
+}
+.armo-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 42px -18px rgba(214, 95, 131, 0.86), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+
+@keyframes armo-shimmer-glide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.armo-shimmer {
+  background: linear-gradient(110deg,
+    rgba(53, 36, 50, 0.96) 0%,
+    rgba(142, 63, 91, 0.9) 24%,
+    rgba(214, 95, 131, 0.92) 50%,
+    rgba(142, 63, 91, 0.9) 74%,
+    rgba(53, 36, 50, 0.96) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: armo-shimmer-glide 10s linear infinite;
+}
+
+.armo-heading {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.03;
+}
+
+.armo-stat-value {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  background: linear-gradient(120deg, #33232f 0%, #8e3f5b 56%, #d65f83 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.armo-divider {
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(90deg, transparent, rgba(218, 174, 190, 0.62) 20%, rgba(239, 111, 148, 0.34) 50%, rgba(218, 174, 190, 0.62) 80%, transparent);
+  opacity: 0.85;
+}
+
+.armo-lift {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.armo-lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(239, 111, 148, 0.42);
+  box-shadow: 0 26px 62px -30px rgba(214, 95, 131, 0.42), 0 0 0 1px rgba(239, 111, 148, 0.14);
+}
+
+.armo-page-glow {
+  position: relative;
+  isolation: isolate;
+}
+.armo-page-glow::before {
+  content: '';
+  position: absolute;
+  inset: -10% -10% auto -10%;
+  height: 60vh;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(50% 60% at 20% 0%, rgba(255, 220, 232, 0.42), transparent 65%),
+    radial-gradient(45% 55% at 85% 10%, rgba(239, 111, 148, 0.18), transparent 60%);
+  filter: blur(60px);
+  opacity: 0.9;
+}
+
+/* ============================================================
+   THEME - Bellora powder light surface
+   ============================================================ */
+.theme-surface {
+  min-height: 100vh;
+  background:
+    radial-gradient(840px 520px at 8% -10%, rgba(255, 220, 232, 0.68), transparent 68%),
+    radial-gradient(760px 520px at 94% 10%, rgba(255, 241, 246, 0.95), transparent 60%),
+    linear-gradient(180deg, #fffafb 0%, #fff5f8 50%, #fdf0f5 100%);
+  color: #352432;
+  transition: background-color 0.45s ease, color 0.35s ease;
+}
+
+html.theme-light { background: #fff7fa; }
+
+html.theme-light body,
+html.theme-light .theme-surface {
+  background:
+    radial-gradient(840px 520px at 8% -10%, rgba(255, 220, 232, 0.68), transparent 68%),
+    radial-gradient(760px 520px at 94% 10%, rgba(255, 241, 246, 0.95), transparent 60%),
+    linear-gradient(180deg, #fffafb 0%, #fff5f8 50%, #fdf0f5 100%);
+  color: #352432;
+}
+
+html.theme-light ::selection { background: #ffdce8; color: #6f4153; }
+
+html.theme-light .theme-surface .bg-\[\#160b12\],
+html.theme-light .theme-surface .bg-\[\#160b12\]\/40,
+html.theme-light .theme-surface .bg-\[\#160b12\]\/55,
+html.theme-light .theme-surface .bg-\[\#160b12\]\/78,
+html.theme-light .theme-surface .bg-\[\#1f0d16\],
+html.theme-light .theme-surface .bg-\[\#2a1320\],
+html.theme-light .theme-surface .bg-\[\#2f1724\],
+html.theme-light .theme-surface .bg-\[\#2f1724\]\/70,
+html.theme-light .theme-surface .bg-\[\#2f1724\]\/72,
+html.theme-light .theme-surface .bg-\[\#2f1724\]\/85,
+html.theme-light .theme-surface .bg-\[\#2f1724\]\/90,
+html.theme-light .theme-surface .bg-\[\#2f1724\]\/95,
+html.theme-light .theme-surface .bg-\[\#3a1a2a\],
+html.theme-light .theme-surface .bg-\[\#3a1a2a\]\/55,
+html.theme-light .theme-surface .bg-\[\#452438\],
+html.theme-light .theme-surface .bg-\[\#452438\]\/70,
+html.theme-light .theme-surface .bg-\[\#452438\]\/90,
+html.theme-light .theme-surface .hover\:bg-\[\#0b0b0b\]:hover,
+html.theme-light .theme-surface .hover\:bg-\[\#452438\]\/80:hover {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+html.theme-light .theme-surface .from-\[\#160b12\],
+html.theme-light .theme-surface .from-\[\#1f0d16\],
+html.theme-light .theme-surface .from-\[\#2a1320\],
+html.theme-light .theme-surface .from-\[\#2f1724\],
+html.theme-light .theme-surface .from-\[\#3a1a2a\] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.96) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+html.theme-light .theme-surface .via-\[\#160b12\],
+html.theme-light .theme-surface .via-\[\#1f0d16\],
+html.theme-light .theme-surface .via-\[\#2a1320\],
+html.theme-light .theme-surface .via-\[\#2f1724\],
+html.theme-light .theme-surface .via-\[\#3a1a2a\] {
+  --tw-gradient-to: rgba(255, 247, 250, 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), rgba(255, 247, 250, 0.94) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html.theme-light .theme-surface .to-\[\#160b12\],
+html.theme-light .theme-surface .to-\[\#1f0d16\],
+html.theme-light .theme-surface .to-\[\#2a1320\],
+html.theme-light .theme-surface .to-\[\#2f1724\],
+html.theme-light .theme-surface .to-\[\#3a1a2a\] {
+  --tw-gradient-to: rgba(255, 240, 245, 0.92) var(--tw-gradient-to-position) !important;
+}
+
+html.theme-light .theme-surface .bg-\[\#fff4f8\] {
+  background-color: #ffe8f0 !important;
+}
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/\[0\.02\],
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/\[0\.03\],
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/\[0\.035\],
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/\[0\.04\],
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/\[0\.045\],
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/5,
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/8,
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/10,
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/12,
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/14,
+html.theme-light .theme-surface .bg-\[\#fff4f8\]\/16 {
+  background-color: rgba(255, 232, 240, 0.58) !important;
+}
+
+html.theme-light .theme-surface .text-\[\#fff4f8\],
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/92,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/85,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/80,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/75,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/72,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/70,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/68,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/65,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/60 {
+  color: #352432 !important;
+}
+
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/58,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/55,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/50,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/45,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/40,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/35,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/30,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/25,
+html.theme-light .theme-surface .text-\[\#fff4f8\]\/20 {
+  color: rgba(75, 53, 67, 0.62) !important;
+}
+
+html.theme-light .theme-surface .text-\[\#2f1724\] { color: #8e3f5b !important; }
+html.theme-light .theme-surface .text-\[\#ffd3df\],
+html.theme-light .theme-surface .text-\[\#ffd3df\]\/95,
+html.theme-light .theme-surface .text-\[\#ffd3df\]\/85,
+html.theme-light .theme-surface .text-\[\#ffd3df\]\/80,
+html.theme-light .theme-surface .text-\[\#ffd3df\]\/75,
+html.theme-light .theme-surface .text-\[\#ffd3df\]\/65,
+html.theme-light .theme-surface .text-\[\#f0aac2\],
+html.theme-light .theme-surface .text-\[\#f0aac2\]\/80 {
+  color: #c85776 !important;
+}
+
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/30,
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/25,
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/20,
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/15,
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/12,
+html.theme-light .theme-surface .border-\[\#fff4f8\]\/10,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/55,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/50,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/45,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/40,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/35,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/32,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/30,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/25,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/22,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/18,
+html.theme-light .theme-surface .border-\[\#f0aac2\]\/15,
+html.theme-light .theme-surface .border-\[\#ffd3df\]\/35,
+html.theme-light .theme-surface .border-\[\#ffd3df\]\/30,
+html.theme-light .theme-surface .border-\[\#d48aa7\]\/35 {
+  border-color: rgba(218, 174, 190, 0.58) !important;
+}
+
+html.theme-light .theme-surface .divide-\[\#fff4f8\]\/10 > :not([hidden]) ~ :not([hidden]),
+html.theme-light .theme-surface .divide-\[\#fff4f8\]\/8 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(218, 174, 190, 0.34) !important;
+}
+
+html.theme-light .theme-surface .shadow-black\/55,
+html.theme-light .theme-surface .shadow-2xl {
+  --tw-shadow-color: rgba(150, 78, 104, 0.18) !important;
+  --tw-shadow: var(--tw-shadow-colored) !important;
+}
+
+/* ============================================================
+   OKUNABİLİRLİK (READABILITY) — net, resmi, italiksiz metin
+   Sorun: ikincil metinler çok düşük opaklıkla (#352432 @ %25–65)
+   ve silik rose/gri tonlarda → açık pembe zeminde WCAG 4.5:1'in
+   altında kalıyordu ("silik, okunmuyor"). Çözüm: tüm silik muted
+   tonları okunur, tutarlı iki tona sabitliyoruz (renk düzeyinde,
+   merkezi). Hiyerarşi korunur: birincil #352432 (~13:1) >
+   yarı-muted #4a3a44 (~9.7:1) > muted #705a66 (~5.9:1).
+   ============================================================ */
+
+/* Muted (ikincil) metin — okunur tek ton (~5.9:1) */
+html.theme-light .theme-surface .text-\[\#352432\]\/25,
+html.theme-light .theme-surface .text-\[\#352432\]\/30,
+html.theme-light .theme-surface .text-\[\#352432\]\/35,
+html.theme-light .theme-surface .text-\[\#352432\]\/40,
+html.theme-light .theme-surface .text-\[\#352432\]\/45,
+html.theme-light .theme-surface .text-\[\#352432\]\/50,
+html.theme-light .theme-surface .text-\[\#352432\]\/55,
+html.theme-light .theme-surface .text-\[\#352432\]\/60,
+html.theme-light .theme-surface .text-\[\#352432\]\/65,
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.25\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.30\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.35\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.40\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.45\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.50\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.55\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.60\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.6\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.65\],
+html.theme-light .theme-surface .text-\[\#9d7386\],
+html.theme-light .theme-surface .text-\[\#8a7480\],
+html.theme-light .theme-surface .text-\[\#b08aa0\],
+html.theme-light .theme-surface .text-\[\#9a8590\],
+html.theme-light .theme-surface .text-\[\#7d6a72\],
+html.theme-light .theme-surface .text-\[\#a5909c\],
+html.theme-light .theme-surface .text-\[\#b09ca5\],
+html.theme-light .theme-surface .text-\[\#c2adb6\],
+html.theme-light .theme-surface .text-\[\#aa959f\],
+html.theme-light .theme-surface .text-\[\#a08b95\],
+html.theme-light .theme-surface .text-\[\#ad98a2\] {
+  color: #705a66 !important;
+}
+
+/* Yarı-muted (vurgulu ikincil) — daha koyu okunur ton (~9.7:1) */
+html.theme-light .theme-surface .text-\[\#352432\]\/70,
+html.theme-light .theme-surface .text-\[\#352432\]\/72,
+html.theme-light .theme-surface .text-\[\#352432\]\/75,
+html.theme-light .theme-surface .text-\[\#352432\]\/80,
+html.theme-light .theme-surface .text-\[\#352432\]\/85,
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.70\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.72\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.75\],
+html.theme-light .theme-surface .text-\[\#352432\]\/\[0\.85\],
+html.theme-light .theme-surface .text-\[\#77616b\] {
+  color: #4a3a44 !important;
+}
+
+/* En küçük puntolar için okunur taban (min ~10px) + rahat satır yüksekliği */
+html.theme-light .theme-surface .text-\[8px\],
+html.theme-light .theme-surface .text-\[8\.5px\],
+html.theme-light .theme-surface .text-\[9px\],
+html.theme-light .theme-surface .text-\[9\.5px\] {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* Net metin render'ı */
+html.theme-light .theme-surface { text-rendering: optimizeLegibility; }
+
+@media (prefers-reduced-motion: reduce) {
+  .armo-shimmer,
+  .shimmer-text,
+  .animate-marquee,
+  .animate-marquee-reverse,
+  .animate-marquee-fast,
+  .animate-float,
+  .animate-sweep,
+  .animate-pulse-dot {
+    animation: none !important;
+  }
+}

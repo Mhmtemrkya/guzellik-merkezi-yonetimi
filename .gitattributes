@@ -1,0 +1,12 @@
+# Normalize text files
+* text=auto
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.pdf binary
+*.xlsx binary
+*.mp4 binary

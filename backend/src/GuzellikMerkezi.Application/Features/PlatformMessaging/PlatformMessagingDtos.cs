@@ -1,0 +1,39 @@
+namespace GuzellikMerkezi.Application.Features.PlatformMessaging;
+
+public sealed record PlatformIntegrationSettingsDto(
+    bool SmsEnabled,
+    string SmsProvider,
+    bool HasSmsApiKey,
+    bool HasSmsApiSecret,
+    string? SmsSender,
+    string? SmsApiUrl,
+    bool SmsConfigured,
+    bool EmailEnabled,
+    string? EmailFromAddress,
+    string? EmailFromName,
+    string? SmtpHost,
+    int SmtpPort,
+    string? SmtpUsername,
+    bool HasSmtpPassword,
+    bool SmtpUseSsl,
+    bool EmailConfigured);
+
+public sealed record SavePlatformMessagingRequest(
+    bool SmsEnabled,
+    string? SmsProvider,
+    string? SmsApiKey,
+    string? SmsApiSecret,
+    string? SmsSender,
+    string? SmsApiUrl,
+    bool EmailEnabled,
+    string? EmailFromAddress,
+    string? EmailFromName,
+    string? SmtpHost,
+    int SmtpPort,
+    string? SmtpUsername,
+    string? SmtpPassword,
+    bool SmtpUseSsl);
+
+public sealed record MessagingTestRequest(string Target);
+
+public sealed record MessagingTestResult(bool Success, bool Simulated, string? ProviderMessageId, string? Error);

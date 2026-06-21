@@ -1,0 +1,90 @@
+# Root ignore for Güzellik Merkezi Yönetimi
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+.yarn/install-state.gz
+
+# Frontend / Next.js
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+.next/cache/
+.vercel/
+
+# .NET / backend
+**/bin/
+**/obj/
+backend/.verify-build/
+TestResults/
+*.trx
+
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.cache/
+.pytest_cache/
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.mcp.json
+*.pem
+*.key
+*.pfx
+*.p12
+*token.json*
+*credentials.json*
+
+# ASP.NET local app settings with secrets
+backend/src/GuzellikMerkezi.Api/appsettings.json
+backend/src/GuzellikMerkezi.Api/appsettings.*.json
+!backend/src/GuzellikMerkezi.Api/appsettings.example.json
+!backend/src/GuzellikMerkezi.Api/appsettings.Development.example.json
+
+# Logs, runtime files, local DBs
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.tmp
+dump.rdb
+
+# Local AI/tool state
+.claude/
+.codegraph/
+generated-images/
+Frontend/memory/test_credentials.md
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.vs/
+*.user
+*.suo
+
+# Archives / packages
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.pack
+*.deb
+*.dylib
+
+# Duplicate root media copy; canonical sample video lives in Frontend/public/media/ornek.mp4
+Örnek.mp4

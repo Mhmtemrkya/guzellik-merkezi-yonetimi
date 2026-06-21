@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GuzellikMerkezi.Api/GuzellikMerkezi.Api.csproj" />
+    <Project Path="src/GuzellikMerkezi.Application/GuzellikMerkezi.Application.csproj" />
+    <Project Path="src/GuzellikMerkezi.Domain/GuzellikMerkezi.Domain.csproj" />
+    <Project Path="src/GuzellikMerkezi.Infrastructure/GuzellikMerkezi.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GuzellikMerkezi.Tests/GuzellikMerkezi.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,6 @@
+@GuzellikMerkezi.Api_HostAddress = http://localhost:5019
+
+GET {{GuzellikMerkezi.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

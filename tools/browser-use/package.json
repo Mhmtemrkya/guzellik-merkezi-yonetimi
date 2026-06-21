@@ -1,0 +1,17 @@
+{
+  "name": "armonessa-browser-use",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser Use Cloud (AI browser automation) — Armonessa için ayrı araç klasörü",
+  "scripts": {
+    "verify": "node verify.mjs",
+    "live": "node live.mjs",
+    "stop": "node stop.mjs",
+    "task": "node run.mjs"
+  },
+  "dependencies": {
+    "browser-use-sdk": "latest",
+    "dotenv": "^16.4.5"
+  }
+}
