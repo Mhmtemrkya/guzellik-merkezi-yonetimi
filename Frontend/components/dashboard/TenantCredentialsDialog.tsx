@@ -33,6 +33,8 @@ export default function TenantCredentialsDialog({
 }: TenantCredentialsDialogProps) {
   const [copiedField, setCopiedField] = useState<'email' | 'pwd' | null>(null)
   const open = Boolean(credentials)
+  // PDF yalnızca hem e-posta hem geçici şifre varken üretilebilir; eksikse boş/bozuk PDF üretmeyiz.
+  const hasCredentialValues = Boolean(credentials?.email && credentials?.initialPassword)
 
   const copyToClipboard = async (text: string, field: 'email' | 'pwd'): Promise<void> => {
     try {
@@ -45,7 +47,7 @@ export default function TenantCredentialsDialog({
   }
 
   const handleDownloadPdf = (): void => {
-    if (!credentials) return
+    if (!credentials || !hasCredentialValues) return
     generateCredentialsPdf({
       heading: pdfHeading,
       subjectLabel: pdfSubjectLabel,
@@ -156,10 +158,17 @@ export default function TenantCredentialsDialog({
               </span>
             </div>
 
+            {!hasCredentialValues && (
+              <div className="mt-4 flex items-start gap-2 rounded-[16px] border border-rose-200/[0.90] bg-rose-50/[0.80] px-3 py-2 text-[11px] leading-relaxed text-rose-700">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>Giriş bilgileri eksik geldiği için PDF oluşturulamıyor. Lütfen sayfayı yenileyip tekrar deneyin.</span>
+              </div>
+            )}
             <button
               type="button"
               onClick={handleDownloadPdf}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-opacity hover:opacity-90"
+              disabled={!hasCredentialValues}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" />
               Giriş bilgileri PDF'ini indir

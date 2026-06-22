@@ -153,8 +153,8 @@ export default function StaffFormDialog({
     branchId: values.branchId,
     fullName: values.fullName.trim(),
     title: values.title.trim(),
-    phone: values.phone || null,
-    specialties: values.specialties || null,
+    phone: values.phone.trim() || null,
+    specialties: values.specialties.trim() || null,
     commissionRate: Number(values.commissionRate || 0),
     isActive: values.isActive,
     email: values.email && values.email.trim().length > 0 ? values.email.trim() : null,
@@ -205,7 +205,7 @@ export default function StaffFormDialog({
   }
 
   const handleDownloadPdf = (): void => {
-    if (!credentials) return
+    if (!credentials || !credentials.email || !credentials.initialPassword) return
     const permMeta = visiblePermissions.filter((p) => values.permissions.includes(p.key))
     generateStaffCredentialsPdf({
       staffName: credentials.fullName || values.fullName,
@@ -229,6 +229,8 @@ export default function StaffFormDialog({
   }
 
   const isEdit = mode === 'edit'
+  // PDF yalnızca hem e-posta hem geçici şifre varken üretilebilir; eksikse boş/bozuk PDF üretmeyiz.
+  const hasStaffCredentialValues = Boolean(credentials?.email && credentials?.initialPassword)
 
   return (
     <Dialog
@@ -341,14 +343,22 @@ export default function StaffFormDialog({
                     </div>
                   </div>
                   {canPdfCredentials && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadPdf}
-                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-colors"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Giriş bilgileri PDF'i indir
-                    </button>
+                    <>
+                      {!hasStaffCredentialValues && (
+                        <div className="mt-3 text-[11px] leading-relaxed text-rose-700">
+                          Giriş bilgileri eksik geldiği için PDF oluşturulamıyor. Sayfayı yenileyip tekrar deneyin.
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleDownloadPdf}
+                        disabled={!hasStaffCredentialValues}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Giriş bilgileri PDF'i indir
+                      </button>
+                    </>
                   )}
                 </motion.div>
               )}
@@ -391,6 +401,7 @@ export default function StaffFormDialog({
                   type="text"
                   placeholder="+90 5__ ___ __ __"
                   value={values.phone}
+                  maxLength={32}
                   onChange={(e) => setValues((v) => ({ ...v, phone: e.target.value }))}
                   className={`mt-2 ${fieldStyle}`}
                   disabled={Boolean(credentials)}

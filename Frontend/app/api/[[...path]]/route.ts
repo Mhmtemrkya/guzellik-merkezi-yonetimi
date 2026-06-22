@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+
+// SADECE geliştirme fallback'i — production'da localhost'a düşmek backend'i yanlış adrese yönlendirir.
 const DEFAULT_BACKEND_API_BASE_URL = 'http://localhost:5019'
 
 interface RouteParams {
@@ -35,16 +38,32 @@ function detectWslGatewayBackendUrl(): string | null {
   }
 }
 
+// Backend adres çözümü:
+//  - Production: YALNIZCA açıkça verilen env (BACKEND_API_BASE_URL / NEXT_PUBLIC_BACKEND_API_BASE_URL).
+//    localhost varsayılanı veya WSL gateway tahmini YAPILMAZ → iç adresler dışarı sızmaz, yanlış hedefe gidilmez.
+//  - Development: yukarıdakiler + localhost varsayılanı + WSL gateway fallback (yerel kolaylık).
 const BACKEND_API_BASE_URLS: string[] = Array.from(
   new Set(
-    [
-      normalizeBaseUrl(process.env.BACKEND_API_BASE_URL),
-      normalizeBaseUrl(process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL),
-      normalizeBaseUrl(DEFAULT_BACKEND_API_BASE_URL),
-      normalizeBaseUrl(detectWslGatewayBackendUrl()),
-    ].filter((value): value is string => Boolean(value)),
+    (IS_PRODUCTION
+      ? [
+          normalizeBaseUrl(process.env.BACKEND_API_BASE_URL),
+          normalizeBaseUrl(process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL),
+        ]
+      : [
+          normalizeBaseUrl(process.env.BACKEND_API_BASE_URL),
+          normalizeBaseUrl(process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL),
+          normalizeBaseUrl(DEFAULT_BACKEND_API_BASE_URL),
+          normalizeBaseUrl(detectWslGatewayBackendUrl()),
+        ]
+    ).filter((value): value is string => Boolean(value)),
   ),
 )
+
+// İzinli origin listesi — credential'lı CORS'ta '*' KULLANILMAZ; yalnızca listedeki origin yansıtılır.
+const ALLOWED_ORIGINS: string[] = (process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim().replace(/\/$/, ''))
+  .filter(Boolean)
 
 const hopByHopHeaders = new Set<string>([
   'connection',
@@ -59,11 +78,29 @@ const hopByHopHeaders = new Set<string>([
   'upgrade',
 ])
 
-function withCors(response: NextResponse): NextResponse {
-  response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
+/** İstek origin'i izinliyse onu döndürür; değilse null (CORS header'ı set edilmez). */
+function resolveAllowedOrigin(request: NextRequest): string | null {
+  const origin = request.headers.get('origin')
+  if (!origin) return null
+  const normalized = origin.replace(/\/$/, '')
+  if (ALLOWED_ORIGINS.includes(normalized)) return origin
+  // Geliştirmede allowlist hiç tanımlı değilse yerel kolaylık için origin yansıtılır (production'da ASLA).
+  if (!IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) return origin
+  return null
+}
+
+function withCors(response: NextResponse, request: NextRequest): NextResponse {
+  // Yanıt origin'e göre değiştiğinden cache zehirlenmesini önlemek için Vary: Origin.
+  response.headers.set('Vary', 'Origin')
+
+  const allowOrigin = resolveAllowedOrigin(request)
+  if (allowOrigin) {
+    // '*' + credentials kombinasyonu yerine tek, doğrulanmış origin yansıtılır.
+    response.headers.set('Access-Control-Allow-Origin', allowOrigin)
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
+  }
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Tenant-Id, X-Branch-Id')
-  response.headers.set('Access-Control-Allow-Credentials', 'true')
   return response
 }
 
@@ -100,8 +137,23 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
   const method = request.method.toUpperCase()
   const body = method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer()
   const headers = copyRequestHeaders(request)
-  const errors: string[] = []
 
+  if (BACKEND_API_BASE_URLS.length === 0) {
+    // Production'da BACKEND_API_BASE_URL set edilmemiş → iç adres tahmini yapmaz, hiçbir adres sızdırmayız.
+    return withCors(
+      NextResponse.json(
+        {
+          success: false,
+          error: { code: 'BackendNotConfigured', message: 'Backend API yapılandırılmamış.' },
+          traceId: null,
+        },
+        { status: 502 },
+      ),
+      request,
+    )
+  }
+
+  const errors: string[] = []
   for (const backendBaseUrl of BACKEND_API_BASE_URLS) {
     const targetUrl = `${backendBaseUrl}${upstreamPath}${sourceUrl.search}`
     try {
@@ -118,26 +170,26 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
         statusText: upstreamResponse.statusText,
         headers: copyResponseHeaders(upstreamResponse),
       })
-      response.headers.set('X-Armonessa-Backend', backendBaseUrl)
-      return withCors(response)
+      // Backend iç adresini SADECE development'ta debug header'ı olarak göster — production'da sızdırma.
+      if (!IS_PRODUCTION) response.headers.set('X-Armonessa-Backend', backendBaseUrl)
+      return withCors(response, request)
     } catch (error) {
       errors.push(`${backendBaseUrl}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
+  // Hata yanıtında backend adres listesi DÖNDÜRÜLMEZ; ayrıntı yalnızca sunucu loglarına yazılır.
+  console.error('[proxy] Backend API erişilemedi:', errors.join(' | '))
   return withCors(
     NextResponse.json(
       {
         success: false,
-        error: {
-          code: 'BackendProxyUnavailable',
-          message: `Backend API erişilemedi. Denenen adresler: ${BACKEND_API_BASE_URLS.join(', ')}`,
-          detail: errors.join(' | '),
-        },
+        error: { code: 'BackendProxyUnavailable', message: 'Backend API’ye şu anda ulaşılamıyor.' },
         traceId: null,
       },
       { status: 502 },
     ),
+    request,
   )
 }
 
@@ -145,15 +197,15 @@ async function handleRoute(request: NextRequest, context: RouteContext): Promise
   const route = await resolvePath(context?.params)
 
   if (request.method === 'OPTIONS') {
-    return withCors(new NextResponse(null, { status: 200 }))
+    return withCors(new NextResponse(null, { status: 204 }), request)
   }
 
   if (route === '/' || route === '/root') {
-    return withCors(NextResponse.json({ message: 'Armonessa API proxy', backends: BACKEND_API_BASE_URLS }))
+    return withCors(NextResponse.json({ message: 'Armonessa API proxy' }), request)
   }
 
   if (route === '/proxy') {
-    return withCors(NextResponse.json({ message: 'Backend proxy hazır', backends: BACKEND_API_BASE_URLS }))
+    return withCors(NextResponse.json({ message: 'Backend proxy hazır' }), request)
   }
 
   if (route.startsWith('/proxy/')) {
@@ -172,6 +224,7 @@ async function handleRoute(request: NextRequest, context: RouteContext): Promise
       },
       { status: 404 },
     ),
+    request,
   )
 }
 

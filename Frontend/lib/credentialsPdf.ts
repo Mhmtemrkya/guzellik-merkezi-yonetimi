@@ -73,6 +73,14 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
   const issuedAt = new Date()
   const content: Content[] = []
 
+  // 0) Dekoratif köşe çemberi — eskiden pageMargins `background: { canvas }` ile çiziliyordu;
+  // pdfmake 0.3.x tarayıcıda bu kullanımı `e.forEach is not a function` ile patlatıyordu.
+  // Aynı çizimi içeriğin içinde `absolutePosition` ile veriyoruz (akışı etkilemez, ilk eleman = en altta).
+  content.push({
+    canvas: [{ type: 'ellipse', x: PAGE_W, y: 842, r1: 150, r2: 150, color: COLORS.creamNote }],
+    absolutePosition: { x: 0, y: 0 },
+  })
+
   // 1) Üst ince rose-gold şerit (full-bleed)
   content.push({ canvas: [{ type: 'rect', x: 0, y: 0, w: PAGE_W, h: 5, color: COLORS.rose }], margin: m(0, 0, 0, 0) })
 
@@ -219,10 +227,8 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
     },
     pageSize: 'A4',
     pageMargins: [0, 0, 0, 40],
-    // Hafif premium doku — sağ alt köşede soluk rose çember.
-    background: {
-      canvas: [{ type: 'ellipse', x: PAGE_W, y: 842, r1: 150, r2: 150, color: COLORS.creamNote }],
-    },
+    // NOT: `background: { canvas }` KULLANMA — pdfmake 0.3.x'te tarayıcıda crash ediyor.
+    // Dekoratif köşe çemberi yukarıda content'in ilk elemanı olarak absolutePosition ile çiziliyor.
     content,
     defaultStyle: { font: 'Roboto', fontSize: 10, color: COLORS.ink },
   }

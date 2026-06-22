@@ -311,10 +311,14 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
 
       const submitValues: CreateTenantFormValues = {
         ...values,
-        name: result.suggestedName || values.name,
+        name: (result.suggestedName || values.name).trim(),
         slug: result.suggestedSlug || values.slug,
         domain: result.suggestedDomain || values.domain,
         ownerEmail: result.suggestedOwnerEmail || values.ownerEmail,
+        // Backend uzunluk limitlerine (telefon 40) takılıp 500 üretmemek için submit öncesi trim.
+        phone: values.phone.trim(),
+        email: values.email.trim(),
+        ownerName: values.ownerName.trim(),
       }
 
       setValues(submitValues)
@@ -469,6 +473,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                     onChange={(value) => updateField('phone', value)}
                     placeholder="+90 312 123 45 67"
                     helper="Kurumun resmi iletişim telefonu (opsiyonel)."
+                    maxLength={40}
                   />
                   <FormInput
                     label="Kurum e-postası"
@@ -606,6 +611,7 @@ function FormInput({
   placeholder,
   helper,
   type = 'text',
+  maxLength,
 }: {
   label: string
   value: string
@@ -613,13 +619,14 @@ function FormInput({
   placeholder?: string
   helper?: string
   type?: string
+  maxLength?: number
 }) {
   return (
     <label className="group min-w-0">
       <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65] transition-colors group-focus-within:text-[#c85776]">
         {label}
       </div>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder || ''} className={inputCls} />
+      <input type={type} value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder || ''} className={inputCls} />
       {helper && <div className="mt-1.5 text-[10px] leading-relaxed text-[#352432]/[0.40]">{helper}</div>}
     </label>
   )

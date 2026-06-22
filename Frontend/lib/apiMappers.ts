@@ -103,6 +103,7 @@ import type {
   Tenant,
   TenantStatusKey,
 } from './types'
+import { parseUtc, localDateKey } from './datetime'
 
 export function formatTL(value: number | string | null | undefined): string {
   const amount = Number(value || 0)
@@ -606,8 +607,8 @@ export function normalizePackage(pkg: ApiServicePackage | null | undefined, inde
     iconKey: pkg?.iconKey || '',
     status: normalizeCatalogStatus(pkg?.status, pkg?.isActive),
     updatedAt: (() => {
-      const d = pkg?.updatedAtUtc ? new Date(pkg.updatedAtUtc) : null
-      if (!d || Number.isNaN(d.getTime())) return ''
+      const d = parseUtc(pkg?.updatedAtUtc)
+      if (!d) return ''
       return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     })(),
     loyaltyPointCost: Math.max(0, Number(pkg?.loyaltyPointCost || 0)),
@@ -887,7 +888,7 @@ export function normalizeCashFlowEntry(entry: ApiCashFlowEntry | null | undefine
   const type: CashFlowEntryTypeKey =
     typeRaw === 'Income' || typeRaw === 0 || String(typeRaw).toLowerCase() === 'income' ? 'income' : 'expense'
   const occurredAt = entry?.occurredAtUtc || ''
-  const d = occurredAt ? new Date(occurredAt) : new Date()
+  const d = parseUtc(occurredAt) ?? new Date()
   const date = isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const time = isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   const method = normalizeCashFlowMethod(entry?.method)
@@ -1015,8 +1016,8 @@ export function normalizeProduct(product: ApiProduct | null | undefined, index =
     pendingInbound: Number(product?.pendingInbound || 0),
     leadTimeDays: Number(product?.leadTimeDays || 0),
     updatedAt: (() => {
-      const d = product?.updatedAtUtc || product?.createdAtUtc ? new Date(product?.updatedAtUtc || product!.createdAtUtc!) : null
-      if (!d || Number.isNaN(d.getTime())) return ''
+      const d = parseUtc(product?.updatedAtUtc || product?.createdAtUtc)
+      if (!d) return ''
       return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     })(),
     status,
@@ -1029,7 +1030,7 @@ export function normalizeProduct(product: ApiProduct | null | undefined, index =
 
 export function normalizeStockMovement(m: ApiStockMovement | null | undefined, index = 0): StockMovement {
   const occurredAt = m?.occurredAtUtc || ''
-  const d = occurredAt ? new Date(occurredAt) : new Date()
+  const d = parseUtc(occurredAt) ?? new Date()
   const date = isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const time = isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   return {
@@ -1128,7 +1129,7 @@ export function normalizePendingOperation(op: ApiPendingOperation | null | undef
     payload = null
   }
   const requestedAt = op?.requestedAtUtc || ''
-  const d = requestedAt ? new Date(requestedAt) : null
+  const d = parseUtc(requestedAt)
   const requestedAtFormatted = d && !isNaN(d.getTime())
     ? new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
     : ''
@@ -1215,9 +1216,9 @@ function normalizeLogStatus(v: unknown): NotificationLogStatusKey {
 }
 
 function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ''
+  // UTC damgasını doğru çöz (cihaz timezone'una göre yerel saat gösterilir).
+  const d = parseUtc(iso)
+  if (!d) return ''
   return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
 }
 
@@ -1364,14 +1365,13 @@ export function statusLabel(statusKey: AppointmentStatusKey): string {
 }
 
 export function isoDate(value: string | Date | null | undefined): string {
-  const d = value ? new Date(value) : new Date()
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10)
+  // Backend UTC string'i ('Z'siz olabilir) doğru çözülür; Date objesi aynen kullanılır.
+  const d = (value ? parseUtc(value) : null) ?? new Date()
   return d.toISOString().slice(0, 10)
 }
 
 export function timeHHMM(value: string | Date | null | undefined): string {
-  const d = value ? new Date(value) : new Date()
-  if (Number.isNaN(d.getTime())) return '--:--'
+  const d = (value ? parseUtc(value) : null) ?? new Date()
   return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 }
 
@@ -1380,10 +1380,10 @@ export function normalizeAppointment(
   lookups: AppointmentLookups = {},
   index = 0,
 ): Appointment {
-  const start = appointment?.startUtc ? new Date(appointment.startUtc) : new Date()
-  const end = appointment?.endUtc ? new Date(appointment.endUtc) : null
+  const start = parseUtc(appointment?.startUtc) ?? new Date()
+  const end = parseUtc(appointment?.endUtc)
   const duration =
-    end && !Number.isNaN(end.getTime()) ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)) : 0
+    end ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)) : 0
   const customer = appointment?.customerId ? lookups.customers?.[appointment.customerId] : undefined
   const staff = appointment?.staffMemberId ? lookups.staff?.[appointment.staffMemberId] : undefined
   const service = appointment?.serviceDefinitionId ? lookups.services?.[appointment.serviceDefinitionId] : undefined
@@ -1395,7 +1395,8 @@ export function normalizeAppointment(
     customerId: appointment?.customerId,
     staffMemberId: appointment?.staffMemberId,
     serviceDefinitionId: appointment?.serviceDefinitionId,
-    date: isoDate(appointment?.startUtc),
+    // Gösterilen yerel saatle aynı güne düşsün diye yerel gün anahtarı (UTC günü değil).
+    date: localDateKey(appointment?.startUtc),
     time: timeHHMM(appointment?.startUtc),
     musteri: appointment?.customerName || customer?.fullName || customer?.name || `Müşteri ${shortId(appointment?.customerId)}`,
     islem: appointment?.serviceName || service?.name || `Hizmet ${shortId(appointment?.serviceDefinitionId)}`,

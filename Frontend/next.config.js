@@ -24,15 +24,15 @@ const nextConfig = {
     pagesBufferLength: 2,
   },
   async headers() {
+    // NOT: CORS header'ları BURADA global olarak verilmez. Tüm route'lara `Access-Control-Allow-*`
+    // basmak (özellikle credential'lı `*`) güvenlik açığıdır. CORS yalnızca /api/proxy route handler'ında
+    // (app/api/[[...path]]/route.ts) izinli origin listesine göre kontrollü yönetilir.
     return [
       {
         source: "/(.*)",
         headers: [
           { key: "X-Frame-Options", value: "ALLOWALL" },
           { key: "Content-Security-Policy", value: "frame-ancestors *;" },
-          { key: "Access-Control-Allow-Origin", value: process.env.CORS_ORIGINS || "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "*" },
         ],
       },
     ];
