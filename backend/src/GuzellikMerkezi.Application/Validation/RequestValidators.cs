@@ -28,8 +28,45 @@ public sealed class CreateTenantRequestValidator : AbstractValidator<CreateTenan
     public CreateTenantRequestValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(160);
-        RuleFor(x => x.Slug).NotEmpty().Matches("^[a-z0-9-]+$");
-        RuleFor(x => x.OwnerEmail).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.OwnerEmail));
+        RuleFor(x => x.Slug).NotEmpty().MaximumLength(120).Matches("^[a-z0-9-]+$");
+        RuleFor(x => x.Plan).NotEmpty().MaximumLength(80);
+        RuleFor(x => x.Domain).MaximumLength(256);
+        RuleFor(x => x.OwnerName).MaximumLength(160);
+        // Telefon DB'de şifrelenip saklanır; çok uzun değer 500 yerine 400 dönmeli (frontend limiti 40).
+        RuleFor(x => x.Phone).MaximumLength(40);
+        RuleFor(x => x.OwnerEmail).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.OwnerEmail));
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.Email));
+    }
+}
+
+public sealed class UpdateTenantRequestValidator : AbstractValidator<UpdateTenantRequest>
+{
+    public UpdateTenantRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(160);
+        RuleFor(x => x.Plan).NotEmpty().MaximumLength(80);
+        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.Domain).MaximumLength(256);
+        RuleFor(x => x.OwnerName).MaximumLength(160);
+        RuleFor(x => x.Phone).MaximumLength(40);
+        RuleFor(x => x.TaxNumber).MaximumLength(64);
+        RuleFor(x => x.LegalName).MaximumLength(256);
+        RuleFor(x => x.TaxOffice).MaximumLength(128);
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.Currency).MaximumLength(6).When(x => !string.IsNullOrWhiteSpace(x.Currency));
+        RuleFor(x => x.MaxInstallments).InclusiveBetween(1, 36).When(x => x.MaxInstallments.HasValue);
+        RuleFor(x => x.OverdueGraceDays).InclusiveBetween(0, 60).When(x => x.OverdueGraceDays.HasValue);
+    }
+}
+
+public sealed class GrantTenantAccessRequestValidator : AbstractValidator<GrantTenantAccessRequest>
+{
+    public GrantTenantAccessRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
+        RuleFor(x => x.FullName).MaximumLength(160);
+        RuleFor(x => x.Role).IsInEnum();
+        RuleFor(x => x.InitialPassword).MinimumLength(6).When(x => !string.IsNullOrWhiteSpace(x.InitialPassword));
     }
 }
 

@@ -39,19 +39,35 @@ public sealed class CustomerService : ICustomerService
 
     public async Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
     {
-        var query = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.FullName).AsQueryable();
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var search = request.Search.Trim();
-            query = query.Where(x => x.FullName.Contains(search) || x.Phone.Contains(search) || (x.Email != null && x.Email.Contains(search)));
-        }
-
-        var total = await query.CountAsync(cancellationToken);
         // Performans: base64 fotoğraf (LONGTEXT) liste sorgusuna DAHİL EDİLMEZ — payload'ı 10-100x küçültür.
         // Fotoğraf yalnızca tekil müşteri (GetAsync) çağrısında döner; liste grid'i baş harf avatarı gösterir.
-        var items = await query.Skip(request.Skip).Take(request.SafePageSize)
-            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
-            .ToArrayAsync(cancellationToken);
+        var projection = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc));
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            // ŞİFRELİ alanlarda (ad/telefon/e-posta) SQL `.Contains()` ÇALIŞMAZ — ciphertext'te arar (kritikbulgular #3).
+            // Tenant'ın müşterileri yüklenip BELLEKTE (çözülmüş değerlerde) filtrelenir + alfabetik sıralanır.
+            // Müşteri sayısı plan limitiyle sınırlıdır.
+            var search = request.Search.Trim();
+            var digits = new string(search.Where(char.IsDigit).ToArray());
+            var all = await projection.ToArrayAsync(cancellationToken);
+            var filtered = all
+                .Where(c => c.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                            || (digits.Length > 0 && (c.Phone ?? string.Empty).Contains(digits))
+                            || (!string.IsNullOrEmpty(c.Email) && c.Email.Contains(search, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(c => c.FullName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var pageItems = filtered.Skip(request.Skip).Take(request.SafePageSize).ToArray();
+            if (IsStaffViewer) pageItems = pageItems.Select(Mask).ToArray();
+            return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(pageItems, filtered.Length, request.SafePage, request.SafePageSize));
+        }
+
+        // Aramasız liste: SQL sayfalama. FullName şifreli olduğundan ORDER BY ciphertext'e göredir (alfabetik
+        // DEĞİL) fakat DETERMİNİSTİKtir → sayfalama tutarlı kalır. (Tam alfabetik sıralama için sort-key kolonu
+        // gerekir; bkz. CANLI_DEPLOY_NOTLARI.md #3.)
+        var total = await projection.CountAsync(cancellationToken);
+        var items = await projection.OrderBy(c => c.FullName).Skip(request.Skip).Take(request.SafePageSize).ToArrayAsync(cancellationToken);
         if (IsStaffViewer) items = items.Select(Mask).ToArray();
         return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));
     }

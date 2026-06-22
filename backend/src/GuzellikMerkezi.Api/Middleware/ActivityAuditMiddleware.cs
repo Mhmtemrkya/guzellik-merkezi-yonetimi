@@ -104,8 +104,11 @@ public sealed class ActivityAuditMiddleware
 
         if (!isAdminPanelApi && !isTenantRatingAction && !isAuditableAuthAction) return false;
 
-        // Log ekranını okumak yeni log üretmesin; fakat DELETE /api/admin/logs/clear ayrıca loglansın.
-        if (method == "GET" && path.StartsWith("/api/admin/logs", StringComparison.OrdinalIgnoreCase)) return false;
+        // Okuma istekleri (GET) audit ÜRETMEZ. Frontend'in periyodik feature/dashboard sorguları yüzünden
+        // sadece sayfayı açık tutmak bile sürekli "View" insert'i üretiyordu → audit tablosu şişiyor ve her
+        // okuma ekstra bir DB yazmasına dönüşüyordu. Yalnızca durum değiştiren işlemler (POST/PUT/PATCH/DELETE)
+        // loglanır. Gerekirse hassas görüntülemeler için ileride açık bir allow-list eklenebilir.
+        if (method == "GET") return false;
 
         return true;
     }

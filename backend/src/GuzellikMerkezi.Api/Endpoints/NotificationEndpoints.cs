@@ -1,7 +1,9 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Notifications;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -9,7 +11,7 @@ public static class NotificationEndpoints
 {
     public static IEndpointRouteBuilder MapNotificationEndpoints(this IEndpointRouteBuilder app)
     {
-        var tpl = app.MapGroup("/api/admin/notification-templates").WithTags("Notifications").RequireAuthorization();
+        var tpl = app.MapGroup("/api/admin/notification-templates").WithTags("Notifications").RequireAuthorization().RequirePermission(Permissions.Notifications);
 
         tpl.MapGet("/", async (Guid? tenantId, int page, int pageSize, ICurrentUser cu, INotificationService svc, HttpContext http, CancellationToken ct) =>
         {
@@ -54,7 +56,7 @@ public static class NotificationEndpoints
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.RunPaymentDueRemindersAsync(t, ct)).ToHttpResult(http);
         });
 
-        var logs = app.MapGroup("/api/admin/notification-logs").WithTags("Notifications").RequireAuthorization();
+        var logs = app.MapGroup("/api/admin/notification-logs").WithTags("Notifications").RequireAuthorization().RequirePermission(Permissions.Notifications);
 
         logs.MapGet("/", async (Guid? tenantId, Guid? templateId, int page, int pageSize, ICurrentUser cu, INotificationService svc, HttpContext http, CancellationToken ct) =>
         {

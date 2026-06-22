@@ -1,6 +1,8 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.Expenses;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -8,7 +10,7 @@ public static class CustomExpenseCategoryEndpoints
 {
     public static IEndpointRouteBuilder MapCustomExpenseCategoryEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/expense-categories").WithTags("CustomExpenseCategories").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/expense-categories").WithTags("CustomExpenseCategories").RequireAuthorization().RequirePermission(Permissions.Accounting);
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, ICustomExpenseCategoryService service, HttpContext http, CancellationToken ct) =>
         {

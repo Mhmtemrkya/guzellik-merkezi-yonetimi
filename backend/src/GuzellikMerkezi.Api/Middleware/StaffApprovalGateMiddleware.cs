@@ -66,12 +66,25 @@ public sealed class StaffApprovalGateMiddleware
         var createReq = new CreatePendingOperationRequest(PendingOperationType.HttpReplay, title, summary, payload);
         var result = await pendingOps.CreateAsync(tenantId, tenantContext.BranchId, currentUser.UserId ?? Guid.Empty, requestedByName, createReq, http.RequestAborted);
 
+        // Onaya alma BAŞARISIZ olduysa "gönderildi" DEME — gerçek hatayı dön; aksi halde işlem sessizce kaybolur
+        // (kullanıcı onaya gittiğini sanır ama kayıt oluşmamıştır).
+        if (!result.IsSuccess)
+        {
+            http.Response.StatusCode = StatusCodes.Status400BadRequest;
+            var errorEnvelope = ApiResponse<object>.Fail(
+                result.Error.Code,
+                $"İşlem onaya alınamadı: {result.Error.Message}",
+                http.TraceIdentifier);
+            await http.Response.WriteAsJsonAsync(errorEnvelope, http.RequestAborted);
+            return;
+        }
+
         http.Response.StatusCode = StatusCodes.Status200OK;
         var envelope = ApiResponse<object>.Ok(new
         {
             pendingApproval = true,
             message = "İşlem onaya gönderildi. Kurum yöneticisi onayladığında geçerli olacak.",
-            pendingOperationId = result.IsSuccess ? result.Value?.Id : (Guid?)null,
+            pendingOperationId = result.Value?.Id,
             title,
         }, http.TraceIdentifier);
         await http.Response.WriteAsJsonAsync(envelope, http.RequestAborted);

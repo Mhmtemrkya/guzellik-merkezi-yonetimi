@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Appointments;
@@ -35,7 +36,7 @@ public static class AppointmentEndpoints
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateAsync(resolvedTenantId, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
-        });
+        }).ValidatesRequest<CreateAppointmentRequest>();
 
         group.MapPatch("/{id:guid}/schedule", async (Guid id, RescheduleAppointmentRequest request, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {

@@ -58,7 +58,7 @@ public sealed class PendingOperationService : IPendingOperationService
             requestedByName,
             request.OperationType,
             request.Title,
-            request.Summary,
+            request.Summary ?? string.Empty,
             request.PayloadJson);
         _db.PendingOperations.Add(op);
         await _db.SaveChangesAsync(cancellationToken);

@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.ServiceCatalog;
@@ -27,13 +28,13 @@ public static class ServiceDefinitionEndpoints
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpsertServiceDefinitionRequest>();
 
         group.MapPut("/{id:guid}", async (Guid id, UpsertServiceDefinitionRequest request, Guid? tenantId, ICurrentUser currentUser, IServiceCatalogService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpsertServiceDefinitionRequest>();
 
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IServiceCatalogService service, HttpContext http, CancellationToken ct) =>
         {

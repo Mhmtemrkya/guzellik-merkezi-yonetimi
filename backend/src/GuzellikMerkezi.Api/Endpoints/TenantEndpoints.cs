@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Tenants;
@@ -21,16 +22,19 @@ public static class TenantEndpoints
             (await service.GetAsync(id, ct)).ToHttpResult(http));
 
         group.MapPost("/", async (CreateTenantRequest request, ITenantService service, HttpContext http, CancellationToken ct) =>
-            (await service.CreateAsync(request, ct)).ToHttpResult(http));
+            (await service.CreateAsync(request, ct)).ToHttpResult(http))
+            .ValidatesRequest<CreateTenantRequest>();
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateTenantRequest request, ITenantService service, HttpContext http, CancellationToken ct) =>
-            (await service.UpdateAsync(id, request, ct)).ToHttpResult(http));
+            (await service.UpdateAsync(id, request, ct)).ToHttpResult(http))
+            .ValidatesRequest<UpdateTenantRequest>();
 
         group.MapDelete("/{id:guid}", async (Guid id, ITenantService service, HttpContext http, CancellationToken ct) =>
             (await service.DeleteAsync(id, ct)).ToHttpResult(http));
 
         group.MapPost("/{id:guid}/access", async (Guid id, GrantTenantAccessRequest request, ITenantService service, HttpContext http, CancellationToken ct) =>
-            (await service.GrantAccessAsync(id, request, ct)).ToHttpResult(http));
+            (await service.GrantAccessAsync(id, request, ct)).ToHttpResult(http))
+            .ValidatesRequest<GrantTenantAccessRequest>();
 
         // Kurum yetkilisinin şifresini sıfırlar — yeni geçici şifre tek seferlik döner.
         group.MapPost("/{id:guid}/reset-owner-password", async (Guid id, ITenantService service, HttpContext http, CancellationToken ct) =>
@@ -49,7 +53,7 @@ public static class TenantEndpoints
         {
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(t, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpdateTenantRequest>();
 
         return app;
     }

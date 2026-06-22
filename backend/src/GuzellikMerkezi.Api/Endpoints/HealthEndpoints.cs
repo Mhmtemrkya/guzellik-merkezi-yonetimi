@@ -8,6 +8,8 @@ public static class HealthEndpoints
 {
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app)
     {
+        // Basit /health (liveness) — dış uptime kontrolleri çoğu zaman /health/live yerine /health'e bakar.
+        app.MapGet("/health", (HttpContext http) => Results.Ok(ApiResponse<object>.Ok(new { status = "ok" }, http.TraceIdentifier))).WithTags("Health");
         app.MapGet("/health/live", (HttpContext http) => Results.Ok(ApiResponse<object>.Ok(new { status = "live" }, http.TraceIdentifier))).WithTags("Health");
         app.MapGet("/health/ready", async (GuzellikDbContext db, HttpContext http, CancellationToken ct) =>
         {

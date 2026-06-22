@@ -28,18 +28,36 @@ public sealed class StaffService : IStaffService
 
     public async Task<Result<PagedResult<StaffDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? tenantUserId = null)
     {
-        var query = _db.StaffMembers.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.FullName).AsQueryable();
+        var baseQuery = _db.StaffMembers.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (tenantUserId.HasValue)
         {
-            query = query.Where(x => x.TenantUserId == tenantUserId.Value);
+            baseQuery = baseQuery.Where(x => x.TenantUserId == tenantUserId.Value);
         }
+
+        int total;
+        List<StaffMember> rows;
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
+            // ŞİFRELİ alanlarda (ad/ünvan/uzmanlık) SQL `.Contains()` çalışmaz (ciphertext) → bellekte filtrele +
+            // alfabetik sırala. Personel sayısı plan limitiyle çok düşük olduğundan maliyetsizdir.
             var search = request.Search.Trim();
-            query = query.Where(x => x.FullName.Contains(search) || x.Title.Contains(search) || (x.Specialties != null && x.Specialties.Contains(search)));
+            var all = await baseQuery.ToListAsync(cancellationToken);
+            var filtered = all
+                .Where(x => x.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                            || x.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+                            || (x.Specialties != null && x.Specialties.Contains(search, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(x => x.FullName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            total = filtered.Count;
+            rows = filtered.Skip(request.Skip).Take(request.SafePageSize).ToList();
         }
-        var total = await query.CountAsync(cancellationToken);
-        var rows = await query.Skip(request.Skip).Take(request.SafePageSize).ToListAsync(cancellationToken);
+        else
+        {
+            // FullName şifreli → SQL ORDER BY deterministik ama alfabetik değil; sayfalama tutarlı kalır.
+            var ordered = baseQuery.OrderBy(x => x.FullName);
+            total = await ordered.CountAsync(cancellationToken);
+            rows = await ordered.Skip(request.Skip).Take(request.SafePageSize).ToListAsync(cancellationToken);
+        }
 
         // TenantUser bilgisini ayrı çek (email + permissions)
         var userIds = rows.Where(r => r.TenantUserId.HasValue).Select(r => r.TenantUserId!.Value).Distinct().ToList();

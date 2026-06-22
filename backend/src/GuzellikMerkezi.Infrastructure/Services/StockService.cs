@@ -67,7 +67,7 @@ public sealed class StockService : IStockService
             tenantId,
             request.BranchId,
             request.Name,
-            request.Sku,
+            sku, // normalize edilmiş (trim + upper, non-null) SKU — duplicate kontrolüyle tutarlı
             request.Category,
             request.Unit,
             request.Cost,

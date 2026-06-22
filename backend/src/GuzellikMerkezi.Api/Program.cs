@@ -41,6 +41,13 @@ if (app.Environment.IsDevelopment())
     // Idempotent — her başlangıçta çalıştırılabilir, zaten şifreli satırları atlar.
     await DatabaseBootstrap.EncryptExistingDataAsync(app.Services, app.Configuration);
 }
+else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var seedReferenceData) && seedReferenceData)
+{
+    // Production'da ŞEMA migration'ları ELLE uygulanır (otomatik DEĞİL). Bu opsiyonel adım yalnızca
+    // GÜVENLİ + idempotent referans verisini (varsayılan abonelik planları) ekler — DDL/şema değişikliği
+    // yapmaz, demo verisi eklemez, mevcut kayıtlara/şifrelere dokunmaz. Opt-in: Database:SeedReferenceData=true.
+    await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
+}
 
 // GÜVENLİK: Varsayılan/zayıf JWT imzalama ve şifreleme anahtarları üretimde KESİNLİKLE reddedilir
 // (kaynak koddaki bu değerlerle token sahteciliği / PII çözme mümkün olurdu). Üretim dışında uyarı verilir.

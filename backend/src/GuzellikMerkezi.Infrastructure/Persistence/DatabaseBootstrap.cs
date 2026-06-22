@@ -132,6 +132,23 @@ public static class DatabaseBootstrap
         await SeedSubscriptionPlansAsync(db, logger);
     }
 
+    /// <summary>
+    /// Yalnızca varsayılan abonelik planlarını ekler (key bazlı, idempotent). Collation/DDL veya demo verisi
+    /// YAPMAZ. Her ortamda güvenle çağrılabilir; production'da opsiyonel (Database:SeedReferenceData=true) olarak
+    /// kullanılır. Şema henüz yoksa hata loglanır ve sessizce geçilir.
+    /// </summary>
+    public static async Task EnsureDefaultSubscriptionPlansAsync(IServiceProvider services, IConfiguration configuration)
+    {
+        var useInMemory = (bool.TryParse(configuration["Database:UseInMemory"], out var inMemoryEnabled) && inMemoryEnabled)
+            || string.Equals(configuration["Database:Provider"], "InMemory", StringComparison.OrdinalIgnoreCase);
+        if (useInMemory) return;
+
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseBootstrap");
+        await SeedSubscriptionPlansAsync(db, logger);
+    }
+
     private static readonly string[] CollationSensitiveTables =
     {
         "customer_package_sessions", "adisyonlar", "adisyon_items",
@@ -156,10 +173,13 @@ public static class DatabaseBootstrap
 
                 try
                 {
-                    // reference/charset bilgisi information_schema'dan gelir (sistem değeri) ve
-                    // IsSafeIdentifier ile doğrulanır — DDL interpolasyonu güvenli.
+                    // reference/charset bilgisi information_schema'dan gelir (sistem değeri) ve IsSafeIdentifier ile
+                    // doğrulanır; tablo adı sabit listeden gelir. DDL'de identifier/charset/collation parametre
+                    // edilemediğinden interpolasyon zorunlu ve güvenlidir → EF1002 bilinçli olarak bastırılıyor.
+#pragma warning disable EF1002
                     await db.Database.ExecuteSqlRawAsync(
                         $"ALTER TABLE `{table}` CONVERT TO CHARACTER SET {charset} COLLATE {reference};");
+#pragma warning restore EF1002
                     logger.LogInformation("Collation hizalandı: {Table} → {Collation}", table, reference);
                 }
                 catch (Exception ex)

@@ -20,6 +20,9 @@ public sealed class HttpCurrentUser : ICurrentUser
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated == true;
     public bool IsPlatformAdmin => Role == UserRole.PlatformAdmin;
     public string? IpAddress => _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+    public IReadOnlyCollection<string> Permissions =>
+        User?.FindAll("permission").Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToArray()
+        ?? Array.Empty<string>();
 
     private Guid? TryReadGuid(string claimType)
     {

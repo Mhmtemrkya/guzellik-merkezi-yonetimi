@@ -3,14 +3,28 @@ using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
 public sealed class FeatureService : IFeatureService
 {
     private readonly GuzellikDbContext _db;
+    private readonly bool _failOpenWhenNoPlan;
 
-    public FeatureService(GuzellikDbContext db) => _db = db;
+    public FeatureService(GuzellikDbContext db, IConfiguration configuration)
+    {
+        _db = db;
+        // Plan ataması olmayan tenant davranışı:
+        //  - Development: fail-OPEN (test kolaylığı).
+        //  - Production: fail-CLOSED (plansız tenant ücretli özellikleri/limitsiz kullanımı ELDE ETMESİN).
+        // Açık override: "Features:FailOpenWhenNoPlan".
+        var env = configuration["ASPNETCORE_ENVIRONMENT"]
+                  ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                  ?? "Production";
+        var isDevelopment = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
+        _failOpenWhenNoPlan = bool.TryParse(configuration["Features:FailOpenWhenNoPlan"], out var f) ? f : isDevelopment;
+    }
 
     public async Task<bool> HasFeatureAsync(Guid tenantId, string featureKey, CancellationToken ct = default)
     {
@@ -31,8 +45,8 @@ public sealed class FeatureService : IFeatureService
             .Where(t => t.Id == tenantId)
             .Select(t => t.SubscriptionPlan)
             .FirstOrDefaultAsync(ct);
-        // Plan yoksa kısıtlama uygulamayız (limit kontrolüyle aynı yaklaşım).
-        return plan is null || plan.Has(featureKey);
+        // Plan yoksa: production'da fail-CLOSED (deny), Development'ta fail-open. Bkz. ctor.
+        return plan is null ? _failOpenWhenNoPlan : plan.Has(featureKey);
     }
 
     public async Task<Result<TenantFeaturesDto>> GetTenantFeaturesAsync(Guid tenantId, CancellationToken ct = default)

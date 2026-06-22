@@ -125,30 +125,60 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     /// </summary>
     private void ApplyEncryptionConverters(ModelBuilder modelBuilder)
     {
-        if (_encryption is null) return;
+        // Şifreli değer "ENC:v1:base64(nonce|cipher|tag)" formatındadır ve düz metinden belirgin biçimde
+        // (yaklaşık +%85) daha uzundur. Bu yüzden şifrelenen kolonlar dar VARCHAR(N)'e map edilemez; aksi halde
+        // production'ın strict SQL modunda "Data too long for column" hatası alınır (kurum/personel/müşteri
+        // oluşturmada telefon/ad alanları). Çözüm:
+        //  - Varsayılan: LONGTEXT (indekslenmeyen kolonlar — sınırsız uzunluk).
+        //  - İndeksli kolonlar: TEXT/LONGTEXT MySQL'de prefix'siz indekslenemez → ciphertext'i taşıyacak kadar
+        //    geniş ama indekslenebilir VARCHAR(512).
+        // ÖNEMLİ: Kolon TİPİNİ genişletmek encryption'dan BAĞIMSIZ yapılır (design-time'da _encryption null olsa
+        // bile migration doğru tipi görsün). Converter yalnızca encryption aktifken bağlanır.
+        const string EncryptedColumnType = "longtext";
+        const string EncryptedIndexedColumnType = "varchar(512)";
 
-        var required = new EncryptedStringConverter(_encryption);
-        var optional = new NullableEncryptedStringConverter(_encryption);
+        var required = _encryption is null ? null : new EncryptedStringConverter(_encryption);
+        var optional = _encryption is null ? null : new NullableEncryptedStringConverter(_encryption);
 
         void Req(Type t, params string[] props)
         {
             var b = modelBuilder.Entity(t);
-            foreach (var p in props) b.Property<string>(p).HasConversion(required);
+            foreach (var p in props)
+            {
+                var pb = b.Property<string>(p).HasColumnType(EncryptedColumnType);
+                if (required is not null) pb.HasConversion(required);
+            }
         }
         void Opt(Type t, params string[] props)
         {
             var b = modelBuilder.Entity(t);
-            foreach (var p in props) b.Property<string?>(p).HasConversion(optional);
+            foreach (var p in props)
+            {
+                var pb = b.Property<string?>(p).HasColumnType(EncryptedColumnType);
+                if (optional is not null) pb.HasConversion(optional);
+            }
+        }
+        // İndekse giren şifreli (required) kolonlar — indekslenebilir geniş VARCHAR.
+        void ReqIndexed(Type t, params string[] props)
+        {
+            var b = modelBuilder.Entity(t);
+            foreach (var p in props)
+            {
+                var pb = b.Property<string>(p).HasColumnType(EncryptedIndexedColumnType);
+                if (required is not null) pb.HasConversion(required);
+            }
         }
 
         Req(typeof(Tenant), nameof(Tenant.Name));
         Opt(typeof(Tenant), nameof(Tenant.OwnerName), nameof(Tenant.Domain), nameof(Tenant.Phone), nameof(Tenant.TaxNumber), nameof(Tenant.LegalName), nameof(Tenant.TaxOffice), nameof(Tenant.Email));
 
-        Req(typeof(Branch), nameof(Branch.Name), nameof(Branch.City));
+        ReqIndexed(typeof(Branch), nameof(Branch.Name)); // indeks: { TenantId, Name }
+        Req(typeof(Branch), nameof(Branch.City));
 
         Opt(typeof(TenantUser), nameof(TenantUser.FullName), nameof(TenantUser.Permissions));
 
-        Req(typeof(Customer), nameof(Customer.FullName), nameof(Customer.Phone));
+        Req(typeof(Customer), nameof(Customer.FullName));
+        ReqIndexed(typeof(Customer), nameof(Customer.Phone)); // indeks: { TenantId, BranchId, Phone }
         Opt(typeof(Customer), nameof(Customer.Email), nameof(Customer.Notes));
 
         Req(typeof(StaffMember), nameof(StaffMember.FullName), nameof(StaffMember.Title));
@@ -157,7 +187,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         Req(typeof(ServiceDefinition), nameof(ServiceDefinition.Name));
         Opt(typeof(ServiceDefinition), nameof(ServiceDefinition.Category));
 
-        Req(typeof(ServicePackage), nameof(ServicePackage.Name));
+        ReqIndexed(typeof(ServicePackage), nameof(ServicePackage.Name)); // indeks: { TenantId, Name }
         Opt(typeof(ServicePackage), nameof(ServicePackage.Description), nameof(ServicePackage.Category));
 
         Opt(typeof(Appointment), nameof(Appointment.Notes), nameof(Appointment.CancellationReason));
@@ -172,8 +202,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
         Opt(typeof(BusinessExpense), nameof(BusinessExpense.Description), nameof(BusinessExpense.Reference), nameof(BusinessExpense.PeriodLabel));
 
-        Req(typeof(CustomExpenseCategory), nameof(CustomExpenseCategory.Name));
-        Req(typeof(CustomServiceCategory), nameof(CustomServiceCategory.Name));
+        ReqIndexed(typeof(CustomExpenseCategory), nameof(CustomExpenseCategory.Name)); // indeks: { TenantId, Name }
+        ReqIndexed(typeof(CustomServiceCategory), nameof(CustomServiceCategory.Name)); // indeks: { TenantId, Name }
 
         Req(typeof(Product), nameof(Product.Name), nameof(Product.Unit));
         Opt(typeof(Product), nameof(Product.Supplier), nameof(Product.Location));

@@ -125,13 +125,19 @@ public sealed class AuthService : IAuthService
         var newHash = _tokenService.HashRefreshToken(newRefreshToken);
         var nowUtc = _clock.UtcNow;
 
-        // 1) Eski token'ı iptal et — direct SQL UPDATE.
-        await _db.RefreshTokens
-            .Where(x => x.Id == token.Id)
+        // 1) Eski token'ı ATOMİK iptal et — yalnızca henüz iptal edilmemişse (RevokedAtUtc == null).
+        //    Aynı token'la eşzamanlı iki refresh (örn. telefon+tablet ya da proaktif+reaktif yenileme aynı anda)
+        //    yarışırsa yalnızca biri 1 satır etkiler; diğeri 0 alır → ikinci geçerli token zinciri oluşmaz.
+        var affected = await _db.RefreshTokens
+            .Where(x => x.Id == token.Id && x.RevokedAtUtc == null)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.RevokedAtUtc, (DateTime?)nowUtc)
                 .SetProperty(x => x.ReplacedByTokenHash, newHash)
                 .SetProperty(x => x.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
+
+        // Yarış kaybedildiyse (0 satır) bu isteği reddet — paralel istek geçerli token'ı zaten almıştır.
+        if (affected == 0)
+            return Result<LoginResponse>.Failure(Error.Unauthorized("Refresh token geçersiz."));
 
         // 2) Yeni token'ı ekle — sadece INSERT.
         _db.RefreshTokens.Add(new RefreshToken(token.TenantUserId, newHash, nowUtc.AddDays(14)));

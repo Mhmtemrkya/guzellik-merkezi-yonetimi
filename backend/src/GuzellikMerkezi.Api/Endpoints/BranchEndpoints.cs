@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.Branches;
 
@@ -26,13 +27,13 @@ public static class BranchEndpoints
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpsertBranchRequest>();
 
         group.MapPut("/{id:guid}", async (Guid id, UpsertBranchRequest request, Guid? tenantId, ICurrentUser currentUser, IBranchService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpsertBranchRequest>();
 
         return app;
     }

@@ -42,8 +42,11 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
         if (p is null || string.IsNullOrWhiteSpace(p.Method) || string.IsNullOrWhiteSpace(p.Path))
             return Result<Guid?>.Failure(Error.Validation("Onay payload'u geçersiz."));
 
-        var baseUrl = (_configuration["Urls"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
-                       ?? "http://localhost:5019").TrimEnd('/');
+        var configuredUrl = _configuration["Urls"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
+                            ?? "http://localhost:5019";
+        // Replay backend'in KENDİNE (loopback) gider. ASPNETCORE_URLS wildcard host'larıyla (+, *, 0.0.0.0, [::])
+        // bağlanmışsa bu host'lar dışa giden istek için geçersizdir → 127.0.0.1'e normalize ederiz (Docker'da kritik).
+        var baseUrl = NormalizeLoopbackUrl(configuredUrl).TrimEnd('/');
 
         using var request = new HttpRequestMessage(new HttpMethod(p.Method), $"{baseUrl}{p.Path}{p.Query}");
         if (!string.IsNullOrEmpty(p.Body))
@@ -72,5 +75,43 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
         var msg = await response.Content.ReadAsStringAsync(cancellationToken);
         if (msg.Length > 300) msg = msg[..300];
         return Result<Guid?>.Failure(Error.Validation($"Onaylanan işlem uygulanamadı ({(int)response.StatusCode}). {msg}"));
+    }
+
+    /// <summary>
+    /// ASPNETCORE_URLS wildcard host'larını (+, *, 0.0.0.0, [::]) loopback (127.0.0.1) ile değiştirir.
+    /// Bu host'lar dinleme için geçerli ama dışa giden HTTP isteği için geçersizdir; replay backend'in
+    /// kendisine gittiğinden 127.0.0.1 her zaman doğrudur. Parse edilemezse URL aynen döner.
+    /// </summary>
+    private static string NormalizeLoopbackUrl(string url)
+    {
+        var schemeSep = url.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSep < 0) return url;
+        var scheme = url[..schemeSep];
+        var rest = url[(schemeSep + 3)..]; // host[:port][/path...]
+        var slash = rest.IndexOf('/');
+        var authority = slash >= 0 ? rest[..slash] : rest;
+        var path = slash >= 0 ? rest[slash..] : string.Empty;
+
+        string host, port;
+        if (authority.StartsWith('['))
+        {
+            var close = authority.IndexOf(']');
+            host = close > 0 ? authority[..(close + 1)] : authority;
+            port = close > 0 && close + 1 < authority.Length && authority[close + 1] == ':'
+                ? authority[(close + 2)..]
+                : string.Empty;
+        }
+        else
+        {
+            var colon = authority.LastIndexOf(':');
+            host = colon >= 0 ? authority[..colon] : authority;
+            port = colon >= 0 ? authority[(colon + 1)..] : string.Empty;
+        }
+
+        var isWildcard = host is "+" or "*" or "0.0.0.0" or "[::]" or "[::0]" or "::";
+        if (!isWildcard) return url;
+
+        var hostPort = string.IsNullOrEmpty(port) ? "127.0.0.1" : $"127.0.0.1:{port}";
+        return $"{scheme}://{hostPort}{path}";
     }
 }

@@ -1,7 +1,9 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.AuditLogs;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -10,7 +12,7 @@ public static class AuditLogEndpoints
 {
     public static IEndpointRouteBuilder MapAuditLogEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/logs").WithTags("Audit Logs").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/logs").WithTags("Audit Logs").RequireAuthorization().RequirePermission(Permissions.Logs);
 
         group.MapGet("/", async (
             Guid? tenantId,

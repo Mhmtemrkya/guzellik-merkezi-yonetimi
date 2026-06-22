@@ -26,7 +26,9 @@ public static class PendingOperationEndpoints
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
-            var filter = new PendingOperationFilter(status, requestedByUserId, operationType);
+            // Personel yalnızca KENDİ gönderdiği bekleyen işlemleri görebilir (başkasınınkini göremez).
+            var effectiveRequestedBy = currentUser.Role == UserRole.Staff ? currentUser.UserId : requestedByUserId;
+            var filter = new PendingOperationFilter(status, effectiveRequestedBy, operationType);
             return (await service.ListAsync(resolvedTenantId, filter, new PageRequest(page, pageSize), ct)).ToHttpResult(http);
         });
 
@@ -47,6 +49,8 @@ public static class PendingOperationEndpoints
 
         group.MapPatch("/{id:guid}/approve", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
         {
+            // GÜVENLİK: onaylama yalnızca yönetici rollerine açık — personel kendi (ya da başkasının) işlemini ONAYLAYAMAZ.
+            if (currentUser.Role == UserRole.Staff) return Results.Forbid();
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
@@ -55,6 +59,8 @@ public static class PendingOperationEndpoints
 
         group.MapPatch("/{id:guid}/reject", async (Guid id, RejectPendingOperationRequest request, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
         {
+            // GÜVENLİK: reddetme yalnızca yönetici rollerine açık.
+            if (currentUser.Role == UserRole.Staff) return Results.Forbid();
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);

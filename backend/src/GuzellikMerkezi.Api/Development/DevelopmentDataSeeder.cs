@@ -25,6 +25,14 @@ public static class DevelopmentDataSeeder
         // Şema EF migration'larıyla kurulur/güncellenir; eski (EnsureCreated/SQL bootstrap) DB'ler baseline alınır.
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseBootstrap");
         await DatabaseBootstrap.MigrateDatabaseAsync(db, logger);
+
+        // Demo operasyonel veri (kurum/personel/müşteri/randevu/ürün...) yalnızca Development'ta veya açıkça
+        // izin verildiğinde (Database:SeedDemoData=true) eklenir — böylece production'a demo veri ASLA sızmaz.
+        var seedDemo = app.Environment.IsDevelopment()
+            || (bool.TryParse(app.Configuration["Database:SeedDemoData"], out var demoFlag) && demoFlag);
+        if (!seedDemo) return;
+
+        // Idempotent: mevcut kurum varsa demo verisi yeniden eklenmez ve mevcut kullanıcı şifrelerine DOKUNULMAZ.
         if (await db.Tenants.IgnoreQueryFilters().AnyAsync()) return;
 
         const string password = "Guzellik123!";

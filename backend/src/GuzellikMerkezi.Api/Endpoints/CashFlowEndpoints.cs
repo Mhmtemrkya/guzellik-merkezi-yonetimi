@@ -1,6 +1,8 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.CashFlow;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -8,7 +10,7 @@ public static class CashFlowEndpoints
 {
     public static IEndpointRouteBuilder MapCashFlowEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/cash-flow").WithTags("CashFlow").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/cash-flow").WithTags("CashFlow").RequireAuthorization().RequirePermission(Permissions.CashRegister);
 
         group.MapGet("/", async (
             Guid? tenantId,

@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Staff;
@@ -29,13 +30,13 @@ public static class StaffEndpoints
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<CreateStaffRequest>();
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateStaffRequest request, Guid? tenantId, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
-        });
+        }).ValidatesRequest<UpdateStaffRequest>();
 
         // Şifre sıfırlama — yalnızca yönetici roller; yeni geçici şifre tek seferlik döner.
         group.MapPost("/{id:guid}/reset-password", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>

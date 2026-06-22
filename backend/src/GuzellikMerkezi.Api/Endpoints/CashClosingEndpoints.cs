@@ -1,6 +1,8 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.CashClosing;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -8,7 +10,7 @@ public static class CashClosingEndpoints
 {
     public static IEndpointRouteBuilder MapCashClosingEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/cash/closing").WithTags("CashClosing").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/cash/closing").WithTags("CashClosing").RequireAuthorization().RequirePermission(Permissions.CashRegister);
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, ICashClosingService service, HttpContext http, CancellationToken ct) =>
         {

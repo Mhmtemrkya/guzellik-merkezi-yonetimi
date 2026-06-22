@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Notifications;
+using GuzellikMerkezi.Application.Features.PlatformMessaging;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
@@ -16,12 +17,14 @@ public sealed class NotificationService : INotificationService
     private readonly GuzellikDbContext _db;
     private readonly IUsageService _usage;
     private readonly IFeatureService _features;
+    private readonly IPlatformMessagingService _messaging;
 
-    public NotificationService(GuzellikDbContext db, IUsageService usage, IFeatureService features)
+    public NotificationService(GuzellikDbContext db, IUsageService usage, IFeatureService features, IPlatformMessagingService messaging)
     {
         _db = db;
         _usage = usage;
         _features = features;
+        _messaging = messaging;
     }
 
     // ---------------- Templates ----------------
@@ -150,10 +153,15 @@ public sealed class NotificationService : INotificationService
         if (template.Status != NotificationTemplateStatus.Active)
             return Result<SendNotificationResultDto>.Failure(Error.Conflict("Sadece aktif şablonlar gönderilebilir."));
 
-        // SMS kanalı için aylık limit kontrolü; WhatsApp/Email şimdilik limit dışı.
+        // Aylık kota kontrolü — gönderim ÖNCESİ. SMS ve E-posta metrelidir (kota dolmuşsa 409 döner).
         if (template.Channel == NotificationChannel.Sms)
         {
             var limit = await _usage.CheckLimitAsync(tenantId, "sms", ct);
+            if (limit.IsFailure) return Result<SendNotificationResultDto>.Failure(limit.Error);
+        }
+        else if (template.Channel == NotificationChannel.Email)
+        {
+            var limit = await _usage.CheckLimitAsync(tenantId, "email", ct);
             if (limit.IsFailure) return Result<SendNotificationResultDto>.Failure(limit.Error);
         }
 
@@ -169,23 +177,48 @@ public sealed class NotificationService : INotificationService
         foreach (var c in customers)
         {
             var recipient = template.Channel == NotificationChannel.Email ? (c.Email ?? string.Empty) : (c.Phone ?? string.Empty);
+            var body = RenderBody(template.Body, c);
             if (string.IsNullOrWhiteSpace(recipient))
             {
                 skipped++;
-                var skipLog = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, "-", RenderBody(template.Body, c),
+                var skipLog = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, "-", body,
                     NotificationLogStatus.Failed, $"{(template.Channel == NotificationChannel.Email ? "E-posta" : "Telefon")} eksik.");
                 _db.NotificationLogs.Add(skipLog);
                 logsCreated.Add(skipLog);
                 continue;
             }
 
-            // MVP: provider yok → doğrudan Sent
-            var body = RenderBody(template.Body, c);
-            var log = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, recipient, body, NotificationLogStatus.Sent);
+            // GERÇEK gönderim: SMS/E-posta platform mesajlaşma servisinden gider (sağlayıcı yapılandırılmamışsa
+            // simülasyon). Durum GERÇEK sonuca göre işaretlenir — başarısız gönderim artık "Sent" gösterilmez,
+            // dolayısıyla kota sayımı da (Status==Sent) doğru olur.
+            bool ok;
+            string? error;
+            switch (template.Channel)
+            {
+                case NotificationChannel.Sms:
+                {
+                    var r = await _messaging.SendSmsAsync(recipient, body, ct);
+                    ok = r.Success; error = r.Error;
+                    break;
+                }
+                case NotificationChannel.Email:
+                {
+                    var r = await _messaging.SendEmailAsync(recipient, template.Name, body, ct);
+                    ok = r.Success; error = r.Error;
+                    break;
+                }
+                default:
+                    // WhatsApp vb. kendi dedike modülünden gönderilir; burada gönderilmiş kabul edilir.
+                    ok = true; error = null;
+                    break;
+            }
+
+            var status = ok ? NotificationLogStatus.Sent : NotificationLogStatus.Failed;
+            var log = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, recipient, body, status, error);
             _db.NotificationLogs.Add(log);
             logsCreated.Add(log);
-            sent++;
-            template.RecordSent(now);
+            if (ok) { sent++; template.RecordSent(now); }
+            else { failed++; }
         }
 
         await _db.SaveChangesAsync(ct);

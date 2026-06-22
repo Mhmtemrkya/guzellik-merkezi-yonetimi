@@ -1,7 +1,9 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Expenses;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -10,7 +12,7 @@ public static class ExpenseEndpoints
 {
     public static IEndpointRouteBuilder MapExpenseEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/expenses").WithTags("Expenses").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/expenses").WithTags("Expenses").RequireAuthorization().RequirePermission(Permissions.Accounting);
 
         group.MapGet("/", async (
             Guid? tenantId,
