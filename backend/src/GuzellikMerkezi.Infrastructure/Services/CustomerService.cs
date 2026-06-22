@@ -41,8 +41,7 @@ public sealed class CustomerService : ICustomerService
     {
         // Performans: base64 fotoğraf (LONGTEXT) liste sorgusuna DAHİL EDİLMEZ — payload'ı 10-100x küçültür.
         // Fotoğraf yalnızca tekil müşteri (GetAsync) çağrısında döner; liste grid'i baş harf avatarı gösterir.
-        var projection = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId)
-            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc));
+        var entityQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
@@ -51,7 +50,9 @@ public sealed class CustomerService : ICustomerService
             // Müşteri sayısı plan limitiyle sınırlıdır.
             var search = request.Search.Trim();
             var digits = new string(search.Where(char.IsDigit).ToArray());
-            var all = await projection.ToArrayAsync(cancellationToken);
+            var all = await entityQuery
+                .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
+                .ToArrayAsync(cancellationToken);
             var filtered = all
                 .Where(c => c.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
                             || (digits.Length > 0 && (c.Phone ?? string.Empty).Contains(digits))
@@ -63,11 +64,15 @@ public sealed class CustomerService : ICustomerService
             return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(pageItems, filtered.Length, request.SafePage, request.SafePageSize));
         }
 
-        // Aramasız liste: SQL sayfalama. FullName şifreli olduğundan ORDER BY ciphertext'e göredir (alfabetik
-        // DEĞİL) fakat DETERMİNİSTİKtir → sayfalama tutarlı kalır. (Tam alfabetik sıralama için sort-key kolonu
-        // gerekir; bkz. CANLI_DEPLOY_NOTLARI.md #3.)
-        var total = await projection.CountAsync(cancellationToken);
-        var items = await projection.OrderBy(c => c.FullName).Skip(request.Skip).Take(request.SafePageSize).ToArrayAsync(cancellationToken);
+        // Aramasız liste: sıralama ENTITY üzerinde (Select'ten ÖNCE) yapılır. Projekte edilmiş DTO üzerinde
+        // OrderBy, EF Core tarafından çevrilemez ve 500 üretir; bu yüzden ORDER BY entity kolonuna uygulanır.
+        // FullName şifreli olduğundan sıralama ciphertext'e göredir (alfabetik değil) ama deterministik → sayfalama tutarlı.
+        var total = await entityQuery.CountAsync(cancellationToken);
+        var items = await entityQuery
+            .OrderBy(x => x.FullName)
+            .Skip(request.Skip).Take(request.SafePageSize)
+            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
+            .ToArrayAsync(cancellationToken);
         if (IsStaffViewer) items = items.Select(Mask).ToArray();
         return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));
     }
