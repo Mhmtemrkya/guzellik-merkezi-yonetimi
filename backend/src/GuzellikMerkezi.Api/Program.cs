@@ -29,28 +29,10 @@ builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    // DB yoksa otomatik oluştur (MySQL için)
-    await DatabaseBootstrap.EnsureDatabaseAsync(app.Services, app.Configuration);
-    // Şema EF migration'larıyla uygulanır + seed (sadece DB boşsa seed eder, dolusa skip eder)
-    await app.SeedDevelopmentDataAsync();
-    // Referans veriler: collation hizalama (eski kurulumlar) + varsayılan abonelik planları
-    await DatabaseBootstrap.EnsureReferenceDataAsync(app.Services, app.Configuration);
-    // At-rest encryption: hassas alanları (ENC:v1: prefix'siz olanları) AES-GCM ile şifrele.
-    // Idempotent — her başlangıçta çalıştırılabilir, zaten şifreli satırları atlar.
-    await DatabaseBootstrap.EncryptExistingDataAsync(app.Services, app.Configuration);
-}
-else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var seedReferenceData) && seedReferenceData)
-{
-    // Production'da ŞEMA migration'ları ELLE uygulanır (otomatik DEĞİL). Bu opsiyonel adım yalnızca
-    // GÜVENLİ + idempotent referans verisini (varsayılan abonelik planları) ekler — DDL/şema değişikliği
-    // yapmaz, demo verisi eklemez, mevcut kayıtlara/şifrelere dokunmaz. Opt-in: Database:SeedReferenceData=true.
-    await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
-}
-
 // GÜVENLİK: Varsayılan/zayıf JWT imzalama ve şifreleme anahtarları üretimde KESİNLİKLE reddedilir
 // (kaynak koddaki bu değerlerle token sahteciliği / PII çözme mümkün olurdu). Üretim dışında uyarı verilir.
+// NOT: Bu kontrol, herhangi bir seed/şifreleme adımından ÖNCE çalışır — böylece production'da zayıf
+// anahtarla demo PII şifrelenip, sonradan gerçek anahtar verilince okunamaz hale gelmez (fail-fast).
 {
     const string defaultJwtKey = "development-only-signing-key-change-me-min-32-bytes";
     const string defaultEncKey = "ZGV2X0FSTU9ORVNTQV9NQVNURVJfS0VZX0FFUzI1Nl9HQ01fOA==";
@@ -70,6 +52,34 @@ else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var 
             "GÜVENLİK UYARISI: Varsayılan JWT/şifreleme anahtarı kullanılıyor. Üretime çıkmadan ÖNCE " +
             "Jwt:SigningKey ve Encryption:MasterKeyBase64 değerlerini güçlü, gizli değerlerle değiştirin.");
     }
+}
+
+// Veritabanı bootstrap + seed. Development'ta HER ZAMAN; başka cihaz/sunucu veya CANLI'da ise
+// AÇIK opt-in ile: Database:SeedDemoData=true  (ör. ortam değişkeni: Database__SeedDemoData=true).
+// Bu yol yeni bir kuruluma tek hamlede: DB oluşturma + EF migration + demo seed sağlar.
+// Seed IDEMPOTENT'tir: kurum zaten varsa hiçbir demo verisi eklemez ve mevcut şifrelere DOKUNMAZ.
+// GÜVENLİK: Demo hesaplar bilinen "Guzellik123!" parolasıyla gelir — canlıda kullandıktan sonra bu
+// parolaları DERHAL değiştirin; bu bayrağı yalnızca ilk kurulum/staging için açık tutmak en güvenlisidir.
+var seedDemoData = bool.TryParse(app.Configuration["Database:SeedDemoData"], out var demoFlag) && demoFlag;
+
+if (app.Environment.IsDevelopment() || seedDemoData)
+{
+    // DB yoksa otomatik oluştur (MySQL için)
+    await DatabaseBootstrap.EnsureDatabaseAsync(app.Services, app.Configuration);
+    // Şema EF migration'larıyla uygulanır + seed (sadece DB boşsa seed eder, dolusa skip eder)
+    await app.SeedDevelopmentDataAsync();
+    // Referans veriler: collation hizalama (eski kurulumlar) + varsayılan abonelik planları
+    await DatabaseBootstrap.EnsureReferenceDataAsync(app.Services, app.Configuration);
+    // At-rest encryption: hassas alanları (ENC:v1: prefix'siz olanları) AES-GCM ile şifrele.
+    // Idempotent — her başlangıçta çalıştırılabilir, zaten şifreli satırları atlar.
+    await DatabaseBootstrap.EncryptExistingDataAsync(app.Services, app.Configuration);
+}
+else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var seedReferenceData) && seedReferenceData)
+{
+    // Production'da ŞEMA migration'ları ELLE uygulanır (otomatik DEĞİL). Bu opsiyonel adım yalnızca
+    // GÜVENLİ + idempotent referans verisini (varsayılan abonelik planları) ekler — DDL/şema değişikliği
+    // yapmaz, demo verisi eklemez, mevcut kayıtlara/şifrelere dokunmaz. Opt-in: Database:SeedReferenceData=true.
+    await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
 }
 
 app.UseResponseCompression();

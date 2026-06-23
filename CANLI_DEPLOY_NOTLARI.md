@@ -29,6 +29,11 @@
     - veya script üret: `dotnet ef migrations script <önceki> WidenEncryptedColumns -i -o widen.sql` → kontrol et → prod'da çalıştır.
   - **Uygulanmadan** kurum/personel/müşteri oluşturma "Data too long for column" (500) vermeye devam eder.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
+- [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
+  - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
+  - **Idempotent:** kurum zaten varsa hiçbir demo verisi eklemez ve mevcut şifrelere dokunmaz → tekrar tekrar açık kalsa da zarar vermez, yine de ilk kurulumdan sonra `false`'a almak en temizi.
+  - ⚠️ **GÜVENLİK:** Demo hesaplar bilinen `Guzellik123!` parolasıyla gelir (platform/admin/personel/lotus `*@armonessa.test`). Canlıda kullandıktan sonra bu hesapların **parolalarını derhal değiştir** ya da gereksizlerini sil. Gerçek/internete açık bir kurulumda demo seed yerine kendi ilk yönetici hesabını oluşturmayı tercih et.
+  - Not: Bu bayrak açıkken şema migration'ları da **otomatik** uygulanır (yukarıdaki "elle migrate" adımının yerine geçer). Zayıf `Jwt:SigningKey`/`Encryption:MasterKeyBase64` ile prod'da seed çalışmaz — anahtar kontrolü seed'den ÖNCE çalışır ve uygulamayı durdurur (önce gerçek anahtarları ver).
 
 ### Backend env / config
 - [ ] `Jwt:SigningKey` = güçlü gizli değer (env).

@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
+import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
 import { motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -1300,6 +1301,8 @@ export default function AdminDashboard() {
       />
 
       <div className="relative space-y-5 px-4 pb-8 pt-4 sm:px-6 lg:px-6 xl:px-7">
+        <SubscriptionCountdown tenantId={tenantId} />
+
         <ApiStateNotice
           loading={loading}
           error={error}

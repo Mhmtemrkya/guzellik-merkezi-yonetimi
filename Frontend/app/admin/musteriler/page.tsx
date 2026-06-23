@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
-import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import CustomerFormDialog from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
@@ -24,9 +24,9 @@ import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import {
-  Cake, ChevronLeft, ChevronRight, CircleUser, CreditCard, FileText, ImagePlus,
-  Mail, Phone, PieChart, Search, ShieldCheck, Sparkles,
-  User, UserPlus, UserRound, Users, Wallet,
+  ChevronLeft, ChevronRight, CreditCard,
+  Mail, Phone, PenLine, PieChart, Search, Sparkles,
+  UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
 import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
 
@@ -346,17 +346,6 @@ function MusterilerPageInner() {
     return out
   }, [page, totalPages])
 
-  const editFields = (c: Enriched) => [
-    { label: 'Profil fotoğrafı', name: 'photoUrl', type: 'image' as const, value: detailPhoto || c.photoUrl, icon: ImagePlus, section: 'Kimlik', fullWidth: true },
-    { label: 'Ad soyad', name: 'fullName', value: c.name, required: true, icon: User, fullWidth: true },
-    { label: 'Telefon', name: 'phone', value: c.phone, required: true, icon: Phone, prefix: '+90' },
-    { label: 'E-posta', name: 'email', type: 'email' as const, value: c.email, icon: Mail },
-    { label: 'Doğum tarihi', name: 'birthDate', type: 'date' as const, value: ageOf(c.joined) !== null ? c.joined : '', icon: Cake, helper: 'Yaş segmenti ve doğum günü kampanyası bu alandan hesaplanır', section: 'Demografi & yasal' },
-    { label: 'Cinsiyet', name: 'gender', type: 'select' as const, value: c.gender || 'Unspecified', options: [{ value: 'Female', label: 'Kadın' }, { value: 'Male', label: 'Erkek' }, { value: 'Other', label: 'Diğer' }, { value: 'Unspecified', label: 'Belirtmek istemiyor' }], icon: CircleUser },
-    { label: 'KVKK onayı', name: 'kvkkConsent', type: 'checkbox' as const, value: c.tier === 'KVKK Onaylı', icon: ShieldCheck },
-    { label: 'Not', name: 'notes', type: 'textarea' as const, value: c.notes, icon: FileText, section: 'Notlar', fullWidth: true },
-  ]
-
   return (
     <>
       <Topbar
@@ -365,27 +354,23 @@ function MusterilerPageInner() {
         breadcrumbs={isStaff ? ['Personel', 'Müşterilerim'] : ['Admin', 'İşletme', 'Müşteriler', TABS.find((t) => t.key === tab)?.label || 'Tüm Müşteriler']}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AdminEditDialog
-              open={newOpen} onOpenChange={setNewOpen}
-              triggerLabel="Yeni müşteri" eyebrow="Customer API · POST" titleIcon={UserPlus} title="Yeni müşteri kaydı"
-              description="Müşteri bilgileri kaydedildikten sonra randevu, paket ve cari hesap akışında kullanılabilir."
+            <CustomerFormDialog
+              mode="create"
+              open={newOpen}
+              onOpenChange={setNewOpen}
               submitLabel={isStaff ? 'Onaya gönder' : 'Müşteri oluştur'}
               onSubmit={async (values) => {
-                const payload = customerPayload(values as CustomerFormValues)
+                const payload = customerPayload(values)
                 const res = await performWrite({ operationType: 'CreateCustomer', title: `Müşteri: ${String(payload.fullName || '—')}`, summary: String(payload.phone || ''), payload, tenantId, directAction: () => adminApi.createCustomer(payload, tenantId) })
                 if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Müşteri ekleme'))
                 await reload()
               }}
-              fields={[
-                { label: 'Profil fotoğrafı', name: 'photoUrl', type: 'image', value: '', icon: ImagePlus, section: 'Kimlik bilgileri', fullWidth: true },
-                { label: 'Ad soyad', name: 'fullName', value: '', required: true, icon: User, placeholder: 'Örn. Ayşe Yılmaz', fullWidth: true },
-                { label: 'Telefon', name: 'phone', value: '', required: true, icon: Phone, prefix: '+90', placeholder: '5__ ___ __ __' },
-                { label: 'E-posta', name: 'email', type: 'email', value: '', icon: Mail, placeholder: 'opsiyonel' },
-                { label: 'Cinsiyet', name: 'gender', type: 'select', value: 'Female', options: [{ value: 'Female', label: 'Kadın' }, { value: 'Male', label: 'Erkek' }, { value: 'Other', label: 'Diğer' }, { value: 'Unspecified', label: 'Belirtmek istemiyor' }], icon: CircleUser, section: 'Demografi' },
-                { label: 'Doğum tarihi', name: 'birthDate', type: 'date', value: '', icon: Cake, helper: 'Doğum günü kampanyası bu alandan tetiklenir' },
-                { label: 'KVKK onayı alındı', name: 'kvkkConsent', type: 'checkbox', value: true, icon: ShieldCheck, section: 'Yasal & notlar', fullWidth: true },
-                { label: 'Müşteri notu', name: 'notes', type: 'textarea', value: '', icon: FileText, placeholder: 'Tercih, cilt tipi, alerji vb.' },
-              ]}
+              trigger={
+                <button type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                  <UserPlus className="h-4 w-4" strokeWidth={2.1} /> Yeni müşteri
+                </button>
+              }
             />
             <ExcelTransferActions<Customer>
               featureKey="excel.customers" moduleName="Müşteriler"
@@ -578,16 +563,32 @@ function MusterilerPageInner() {
             onCreateAppointment={() => setApptOpen(true)}
             onDelete={handleDeleteCustomer}
             editSlot={selected ? (
-              <AdminEditDialog
-                triggerVariant="ghost" triggerLabel="Düzenle" eyebrow="Customer API · PUT" titleIcon={Users} title={selected.name}
+              <CustomerFormDialog
+                mode="edit"
+                title={selected.name}
                 submitLabel={isStaff ? 'Onaya gönder' : 'Müşteriyi güncelle'}
+                initial={{
+                  fullName: selected.name,
+                  phone: selected.phone || '',
+                  email: selected.email || '',
+                  birthDate: ageOf(selected.joined) !== null ? selected.joined : '',
+                  gender: (selected.gender || 'Unspecified') as CustomerGender,
+                  kvkkConsent: selected.tier === 'KVKK Onaylı',
+                  notes: selected.notes || '',
+                  photoUrl: detailPhoto || selected.photoUrl || '',
+                }}
                 onSubmit={async (values) => {
-                  const payload = customerPayload({ ...(values as CustomerFormValues), branchId: selected.branchId || branchId })
+                  const payload = customerPayload({ ...values, branchId: selected.branchId || branchId })
                   const res = await performWrite({ operationType: 'UpdateCustomer', title: `Müşteri güncellemesi: ${selected.name}`, summary: String(payload.phone || ''), payload: { ...payload, customerId: selected.id }, tenantId, directAction: () => adminApi.updateCustomer(selected.id, payload, tenantId) })
                   if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Müşteri güncelleme'))
                   await reload()
                 }}
-                fields={editFields(selected)}
+                trigger={
+                  <button type="button"
+                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3.5 py-2 text-[12px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                    <PenLine className="h-3.5 w-3.5" /> Düzenle
+                  </button>
+                }
               />
             ) : null}
             saleSlot={selected ? (

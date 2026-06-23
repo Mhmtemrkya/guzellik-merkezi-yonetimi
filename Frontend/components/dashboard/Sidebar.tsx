@@ -99,7 +99,7 @@ function NavGroups({
             <button
               type="button"
               onClick={() => toggleGroup(groupName)}
-              className="group flex w-full items-center justify-between px-2 py-1 text-[10px] font-semibold tracking-tight text-[#9d7386] transition-colors hover:text-[#c85776]"
+              className="group flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-wide text-[#9d7386] transition-colors hover:text-[#c85776]"
             >
               <span className="flex items-center gap-2">
                 <motion.span
@@ -149,15 +149,15 @@ function NavGroups({
                             {active && (
                               <motion.span
                                 layoutId="sidebar-active-indicator"
-                                className="pointer-events-none absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-r-full bg-gradient-to-b from-[#f7b6cb] via-[#ef6f94] to-[#d65f83] shadow-[0_0_16px_rgba(239,111,148,0.28)]"
+                                className="pointer-events-none absolute bottom-1.5 left-0 top-1.5 w-1 rounded-r-full bg-gradient-to-b from-[#f7b6cb] via-[#ef6f94] to-[#d65f83] shadow-[0_0_16px_rgba(239,111,148,0.32)]"
                                 transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                               />
                             )}
 
                             <div
-                              className={`group/item relative flex min-h-11 items-center gap-3 overflow-hidden px-3 py-2.5 text-[12px] transition-colors ${
+                              className={`group/item relative flex min-h-11 items-center gap-3 overflow-hidden px-3 py-2.5 text-[13px] transition-colors ${
                                 active
-                                  ? 'rounded-[16px] bg-[#ffe9f1] text-[#9b4c65] shadow-[inset_0_0_0_1px_rgba(239,191,208,0.82)]'
+                                  ? 'rounded-[16px] bg-[#fff1f6] text-[#9b4c65] ring-1 ring-[#efbfd0]/70 shadow-[0_12px_26px_-16px_rgba(214,95,131,0.55)]'
                                   : 'rounded-[16px] text-[#5f4855] hover:bg-[#fff4f8] hover:text-[#9b4c65]'
                               }`}
                             >
@@ -179,7 +179,7 @@ function NavGroups({
                                   transition={{ type: 'spring', stiffness: 420, damping: 18 }}
                                   className="shrink-0"
                                 >
-                                  <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
                                 </motion.span>
                                 <span className="flex-1 truncate">{it.label}</span>
                                 {it.badge !== undefined && (
@@ -242,16 +242,16 @@ function NavGroups({
                                           <Link
                                             href={child.href}
                                             onClick={onNavigate}
-                                            className={`group/child relative flex min-h-9 items-center gap-2.5 px-2.5 py-1.5 text-[11px] transition-colors ${
+                                            className={`group/child relative flex min-h-9 items-center gap-2.5 px-2.5 py-1.5 text-[12px] transition-colors ${
                                               childActive
                                                 ? 'font-semibold text-[#c85776]'
                                                 : 'text-[#7c6170] hover:text-[#c85776]'
                                             }`}
                                           >
                                             <span
-                                              className={`h-1 w-1 shrink-0 rounded-full transition-all ${
+                                              className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all ${
                                                 childActive
-                                                  ? 'bg-[#ef6f94] shadow-[0_0_8px_rgba(239,111,148,0.36)]'
+                                                  ? 'bg-[#ef6f94] shadow-[0_0_8px_rgba(239,111,148,0.45)] ring-2 ring-white'
                                                   : 'bg-[#efbfd0] group-hover/child:bg-[#ef6f94]/70'
                                               }`}
                                             />
@@ -409,7 +409,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
   return (
     <>
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-[#ead8df]/75 bg-white/78 text-[#352432] shadow-[18px_0_54px_-48px_rgba(150,78,104,0.52)] backdrop-blur-2xl lg:sticky lg:top-0 lg:z-30 lg:flex">
+      <aside className="hidden h-screen w-[270px] shrink-0 flex-col border-r border-[#ead8df]/75 bg-white/82 text-[#352432] shadow-[18px_0_54px_-48px_rgba(150,78,104,0.52)] backdrop-blur-2xl lg:sticky lg:top-0 lg:z-30 lg:flex">
         {/* Decorative aurora wash inside sidebar */}
         <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -left-12 top-8 h-40 w-40 rounded-full bg-[#ffdce8]/66 blur-[60px]" />

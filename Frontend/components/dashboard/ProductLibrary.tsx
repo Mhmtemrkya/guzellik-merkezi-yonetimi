@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
-import AdminEditDialog, { type AdminField } from '@/components/dashboard/AdminEditDialog'
+import ProductFormDialog from '@/components/dashboard/ProductFormDialog'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -128,28 +128,6 @@ export default function ProductLibrary({
   const turnover = totalUnits > 0 ? Math.round((sales30 / totalUnits) * 10) / 10 : 0
 
   // ---- formlar
-  const productFields = (p?: Product): AdminField[] => [
-    { label: 'Ürün görseli', name: 'imageUrl', type: 'image', value: p?.imageUrl || '', icon: ImagePlus, section: 'Tanım', fullWidth: true },
-    { label: 'Ürün adı', name: 'name', value: p?.name || '', required: true, icon: Package, fullWidth: true },
-    { label: 'SKU', name: 'sku', value: p?.sku || '', required: true, icon: Hash },
-    { label: 'Barkod', name: 'barcode', value: p?.barcode || '', icon: BarcodeIcon, helper: 'Boş → otomatik EAN-13' },
-    { label: 'Kategori', name: 'category', type: 'select', value: p?.category || 'SkinCare', options: (Object.keys(productCategoryLabels) as ProductCategoryKey[]).map((k) => ({ value: k, label: productCategoryLabels[k] })), icon: Tag },
-    { label: 'Birim', name: 'unit', type: 'select', value: p?.unit || 'adet', options: ['adet', 'kutu', 'paket', 'set', 'gr', 'ml'].map((u) => ({ value: u, label: u })), icon: Ruler },
-    { label: 'Marka', name: 'brand', value: p?.brand || '', icon: Star, section: 'Diğer bilgiler' },
-    { label: 'Tedarikçi', name: 'supplier', value: p?.supplier || '', icon: Truck },
-    { label: 'Raf / Dolap', name: 'location', value: p?.location || '', icon: MapPin },
-    { label: 'Lot numarası', name: 'lotNumber', value: p?.lotNumber || '', icon: Hash },
-    { label: 'Son kullanma', name: 'expiryDate', type: 'date', value: p?.expiryDate || '', icon: Cake },
-    { label: 'Vergi oranı', name: 'taxRatePercent', type: 'number', value: p?.taxRatePercent ?? 20, icon: Banknote, suffix: '%' },
-    { label: 'Tedarik süresi', name: 'leadTimeDays', type: 'number', value: p?.leadTimeDays ?? 0, icon: Timer, suffix: 'gün' },
-    { label: 'Bekleyen giriş', name: 'pendingInbound', type: 'number', value: p?.pendingInbound ?? 0, icon: PackagePlus, helper: 'Sipariş edilen, gelmesi beklenen miktar' },
-    { label: 'Maliyet', name: 'cost', type: 'number', value: p?.cost ?? 100, icon: Wallet, prefix: '₺', section: 'Fiyat & stok' },
-    { label: 'Satış fiyatı', name: 'salePrice', type: 'number', value: p?.salePrice ?? 200, icon: TrendingUp, prefix: '₺' },
-    ...(!p ? [{ label: 'Açılış stoğu', name: 'currentStock', type: 'number', value: 10, icon: Boxes } as AdminField] : []),
-    { label: 'Minimum stok', name: 'minStockLevel', type: 'number', value: p?.minStockLevel ?? 5, icon: AlertTriangle },
-    { label: 'Aktif', name: 'isActive', type: 'checkbox', value: p?.isActive ?? true, icon: ToggleRight, fullWidth: true },
-  ]
-
   type FV = Record<string, unknown>
   const productPayload = (v: FV, p?: Product): Record<string, unknown> => ({
     branchId: p?.branchId || branchId || null,
@@ -205,11 +183,14 @@ export default function ProductLibrary({
         breadcrumbs={['Admin', 'Genel', 'Stok & Ürün', TABS.find((t) => t.key === tab)?.label || 'Tüm Ürünler']}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AdminEditDialog
-              triggerLabel="Ürün Ekle" eyebrow="Product · POST" titleIcon={PackagePlus} size="lg"
-              title="Yeni ürün tanımla" submitLabel="Ürün oluştur"
-              onSubmit={async (v) => { await adminApi.createProduct(productPayload(v as FV), tenantId); await reload() }}
-              fields={productFields()}
+            <ProductFormDialog
+              mode="create"
+              onSubmit={async (v) => { await adminApi.createProduct(productPayload(v as unknown as FV), tenantId); await reload() }}
+              trigger={
+                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                  <PackagePlus className="h-4 w-4" strokeWidth={2.1} /> Ürün Ekle
+                </button>
+              }
             />
             <ExcelTransferActions<Product>
               featureKey="excel.services" moduleName="Stok" context={`${institutionName || 'Kurum'} · ${branchLabel || ''}`}
@@ -381,11 +362,24 @@ export default function ProductLibrary({
                 </Section>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  <AdminEditDialog
-                    triggerVariant="ghost" triggerLabel="Düzenle" eyebrow="Product · PUT" titleIcon={PencilLine} size="lg"
-                    title={`${sel.name} · düzenle`} submitLabel="Güncelle"
-                    onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as FV, sel), tenantId); await reload() }}
-                    fields={productFields(sel)}
+                  <ProductFormDialog
+                    mode="edit"
+                    title={`${sel.name} · düzenle`}
+                    submitLabel="Güncelle"
+                    initial={{
+                      imageUrl: sel.imageUrl || '', name: sel.name, sku: sel.sku, barcode: sel.barcode || '',
+                      category: sel.category, unit: sel.unit || 'adet',
+                      brand: sel.brand || '', supplier: sel.supplier || '', location: sel.location || '',
+                      lotNumber: sel.lotNumber || '', expiryDate: sel.expiryDate || '',
+                      taxRatePercent: sel.taxRatePercent ?? 20, leadTimeDays: sel.leadTimeDays ?? 0, pendingInbound: sel.pendingInbound ?? 0,
+                      cost: sel.cost, salePrice: sel.salePrice, minStockLevel: sel.minStockLevel, isActive: sel.isActive,
+                    }}
+                    onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as unknown as FV, sel), tenantId); await reload() }}
+                    trigger={
+                      <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                        <PencilLine className="h-3.5 w-3.5" /> Düzenle
+                      </button>
+                    }
                   />
                   <button type="button" onClick={() => setMoveDialog({ type: 'Inbound', qty: 1, unitCost: sel.cost, notes: '' })}
                     className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-emerald-300/40 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">

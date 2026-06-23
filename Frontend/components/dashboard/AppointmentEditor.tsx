@@ -18,6 +18,7 @@ import {
   Phone,
   Plane,
   Scissors,
+  Star,
   StickyNote,
   User,
   UserCog,
@@ -79,15 +80,15 @@ const sectionVariants: Variants = {
 }
 
 function fieldStyle(): string {
-  return 'min-h-11 w-full border border-[#ead8df]/[0.70] bg-white/[0.82] px-3 py-2 text-sm text-[#352432] transition-colors hover:border-[#efbfd0]/[0.75] focus:border-[#f0aac2]/[0.65] focus:outline-none'
+  return 'min-h-11 w-full rounded-xl border border-[#efe1e7] bg-white px-4 py-3 text-sm text-[#4a3a44] shadow-sm outline-none transition-all hover:border-[#efbfd0] focus:border-[#e9a6bf] focus:ring-2 focus:ring-[#f0aac2]/50'
 }
 
 function labelStyle(): string {
-  return 'flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#c85776]/[0.70]'
+  return 'flex items-center gap-1.5 text-[13px] font-medium text-[#241923]'
 }
 
 function helperStyle(): string {
-  return 'mt-1 text-[10px] leading-relaxed text-[#352432]/[0.40]'
+  return 'mt-1.5 text-[12px] leading-relaxed text-[#705a66]'
 }
 
 interface FieldShellProps {
@@ -331,15 +332,15 @@ export default function AppointmentEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
-        className="flex h-[94dvh] flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
-        style={{ width: 'min(98vw, 1640px)', maxWidth: 'min(98vw, 1640px)' }}
+        className="flex flex-col overflow-hidden rounded-[28px] border border-[#efe1e7] bg-white p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        style={{ width: 'min(96vw, 1180px)', height: 'min(94dvh, 940px)', maxHeight: '94dvh' }}
       >
         <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
           {/* Üstte altın hairline */}
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-x-8 top-0 z-10 h-px"
-            style={{ background: 'linear-gradient(90deg, transparent, rgba(240,170,194,0.85) 30%, rgba(255,211,223,0.85) 60%, transparent)' }}
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[3px]"
+            style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 20%, #b88938 50%, #ffd3df 80%, transparent)' }}
           />
           {/* Sağ üst gold blob */}
           <span aria-hidden className="pointer-events-none absolute -right-32 -top-32 h-72 w-72 rounded-full bg-[#f0aac2]/[0.12] blur-3xl" />
@@ -737,7 +738,7 @@ export default function AppointmentEditor({
                   type="button"
                   onClick={() => !saving && onOpenChange(false)}
                   disabled={saving}
-                  className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65] transition-colors hover:border-[#efbfd0]/[0.85] hover:bg-[#fff2f6]/[0.90] hover:text-[#352432] disabled:opacity-50"
+                  className="rounded-[14px] border border-[#ead8df] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
                 >
                   Vazgeç
                 </button>
@@ -745,12 +746,11 @@ export default function AppointmentEditor({
                   type="button"
                   onClick={handleSubmit}
                   disabled={saving || saved || submitBlockedByLeave}
-                  whileTap={{ scale: 0.96 }}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_12px_28px_-18px_rgba(200,87,118,0.55)] disabled:opacity-70"
+                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ y: -1 }}
+                  className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-all hover:shadow-[0_22px_44px_-20px_rgba(214,95,131,0.9)] disabled:opacity-70"
                 >
-                  {saving && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {saved && <CheckCircle2 className="h-3 w-3" />}
-                  {!saving && !saved && <PenLine className="h-3 w-3" />}
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <CalendarPlus className="h-4 w-4" />}
                   {saved ? 'Kaydedildi' : submitLabel}
                 </motion.button>
               </div>
@@ -820,20 +820,20 @@ function SessionCard({
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-      className={`group relative overflow-hidden rounded-[20px] border p-4 text-left transition-all duration-300 ${
+      className={`group relative overflow-hidden rounded-[20px] border-2 p-4 text-left transition-all duration-300 ${
         active
-          ? 'border-[#f0aac2]/[0.65] bg-gradient-to-br from-[#f0aac2]/[0.14] via-[#fff7fa] to-[#d48aa7]/[0.10] shadow-[0_18px_42px_-12px_rgba(240,170,194,0.4)]'
-          : 'border-[#ead8df]/[0.80] bg-white/[0.76] hover:border-[#efbfd0]/[0.80] hover:bg-[#fff2f6]/[0.90]'
+          ? 'border-[#c85776] bg-[#fdf4f8] shadow-[0_18px_42px_-14px_rgba(214,95,131,0.45)]'
+          : 'border-[#efe1e7] bg-white hover:border-[#e9a6bf] hover:shadow-[0_10px_24px_-16px_rgba(200,87,118,0.5)]'
       }`}
     >
       {active && (
         <motion.span
-          initial={{ scale: 0, rotate: -45 }}
+          initial={{ scale: 0, rotate: -30 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 360, damping: 22 }}
-          className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-gradient-to-br from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] text-[#2f1724] shadow-[0_4px_12px_rgba(240,170,194,0.5)]"
+          className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#b88938] shadow-sm"
         >
-          <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+          <Star className="h-4 w-4" strokeWidth={1.6} fill="currentColor" />
         </motion.span>
       )}
       <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.22em] text-[#c85776]/[0.70]">

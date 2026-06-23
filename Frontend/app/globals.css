@@ -263,6 +263,74 @@ body {
 }
 
 /* ============================================================
+   Hediye Çeki / Kupon — gerçek hediye-kartı & bilet görselleri
+   (Stitch tasarımından uyarlandı — Armonessa rose-gold paleti)
+   ============================================================ */
+@keyframes gc-metallic-glide {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+/* metalik gül-altın hediye çeki zemini */
+.gc-metallic {
+  background: linear-gradient(115deg, #f3b3c8 0%, #e7a2bb 26%, #ffe3ec 50%, #e7a2bb 74%, #f2afc6 100%);
+  background-size: 220% 220%;
+  animation: gc-metallic-glide 7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gc-metallic { animation: none; }
+}
+/* kart kodu — .font-mono okunabilirlik için sans'a çevrildiğinden gerçek mono burada */
+.gc-code { font-family: var(--font-mono); letter-spacing: 0.14em; }
+
+/* kupon bilet perforasyonu — sol kenarda dikey kesik + yarım daire çentikler */
+.gc-perf-left { border-left: 2px dashed #efd2dd; }
+.gc-perf-left::before,
+.gc-perf-left::after {
+  content: '';
+  position: absolute;
+  left: -10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #fdf1f6;
+  border: 1px solid #efd2dd;
+  z-index: 5;
+}
+.gc-perf-left::before { top: -9px; }
+.gc-perf-left::after  { bottom: -9px; }
+
+/* sabit tutar kuponu — üst/alt kesik bilet kenarı */
+.gc-perf-edges::before,
+.gc-perf-edges::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 0;
+  border-top: 2px dashed rgba(184, 137, 56, 0.30);
+  pointer-events: none;
+}
+.gc-perf-edges::before { top: 0; }
+.gc-perf-edges::after  { bottom: 0; }
+
+/* kasa kapanışı — makbuz/Z-raporu döküm bloğu yan kesikleri (beyaz kart üzerinden "yırtılmış fiş" hissi) */
+.gc-receipt { position: relative; }
+.gc-receipt::before,
+.gc-receipt::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 1px solid #efe1e7;
+  transform: translateY(-50%);
+}
+.gc-receipt::before { left: -11px; }
+.gc-receipt::after  { right: -11px; }
+
+/* ============================================================
    Cursor — hide native on desktop only, keep on tablet/mobile
    ============================================================ */
 body.cursor-hidden { cursor: none; }
