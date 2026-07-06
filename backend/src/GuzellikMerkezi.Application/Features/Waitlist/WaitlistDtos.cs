@@ -12,7 +12,9 @@ public sealed record WaitlistEntryDto(
     DateOnly PreferredDate,
     WaitlistStatus Status,
     string? Note,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    DateTime? PreferredStartUtc,
+    int? DurationMinutes);
 
 public sealed record CreateWaitlistRequest(
     Guid CustomerId,
@@ -20,6 +22,8 @@ public sealed record CreateWaitlistRequest(
     Guid? StaffMemberId,
     DateOnly PreferredDate,
     string? Note,
-    Guid? BranchId);
+    Guid? BranchId,
+    DateTime? PreferredStartUtc = null,
+    int? DurationMinutes = null);
 
 public sealed record UpdateWaitlistStatusRequest(WaitlistStatus Status);

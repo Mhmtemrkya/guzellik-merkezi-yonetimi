@@ -1,7 +1,9 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Adisyonlar;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -9,7 +11,10 @@ public static class AdisyonEndpoints
 {
     public static IEndpointRouteBuilder MapAdisyonEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/adisyonlar").WithTags("Adisyonlar").RequireAuthorization();
+        // Adisyon onay kapısından muaftır (kendi onay akışı var); personelin adisyon AÇMA/kalem ekleme
+        // yetkisi işlem izniyle kısıtlanır — okuma sayfa izniyle serbesttir.
+        var group = app.MapGroup("/api/admin/adisyonlar").WithTags("Adisyonlar").RequireAuthorization()
+            .RequirePermission(Permissions.AccountingAdisyon, writeOnly: true);
 
         group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
         {

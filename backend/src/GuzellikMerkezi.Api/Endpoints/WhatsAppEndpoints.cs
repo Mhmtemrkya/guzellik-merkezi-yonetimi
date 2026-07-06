@@ -50,7 +50,9 @@ public static class WhatsAppEndpoints
         {
             using var reader = new StreamReader(http.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            await service.HandleInboundAsync(body, ct);
+            // GÜVENLİK: imza servis içinde app secret ile doğrulanır; geçersizse gövde işlenmez.
+            var signature = http.Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+            await service.HandleInboundAsync(body, signature, ct);
             return Results.Ok(); // Meta'ya her zaman 200 dönmeli (yoksa yeniden dener)
         }).AllowAnonymous();
 

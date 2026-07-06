@@ -4,6 +4,7 @@ using GuzellikMerkezi.Api.Approval;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.PendingOperations;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Api.Middleware;
@@ -29,9 +30,26 @@ public sealed class StaffApprovalGateMiddleware
 
     public async Task InvokeAsync(HttpContext http, ICurrentUser currentUser, ITenantContext tenantContext, IPendingOperationService pendingOps)
     {
+        // Randevu durum güncelleme kapıdan muaftır (rutin operasyon) ama İŞLEM iznine tabidir.
+        if (IsStaffWrite(http, currentUser) && IsAppointmentStatusPath(http.Request.Path.Value ?? string.Empty)
+            && !Permissions.IsActionAllowed(currentUser.Permissions, Permissions.AppointmentsStatus))
+        {
+            await WriteForbiddenAsync(http, "Randevu durumunu güncelleme yetkiniz yok. Kurum yöneticinizden yetki isteyin.");
+            return;
+        }
+
         if (!ShouldGate(http, currentUser))
         {
             await _next(http);
+            return;
+        }
+
+        // İşlem (aksiyon) izni: yönetici bu personel için ilgili aksiyonu kapattıysa
+        // istek taslağa bile alınmaz — doğrudan 403 döner (sayfayı görmek ≠ işlemi yapmak).
+        var requiredAction = RequiredAction(http.Request.Method, http.Request.Path.Value ?? string.Empty);
+        if (requiredAction is not null && !Permissions.IsActionAllowed(currentUser.Permissions, requiredAction))
+        {
+            await WriteForbiddenAsync(http, "Bu işlem için yetkiniz yok. Kurum yöneticinizden yetki isteyin.");
             return;
         }
 
@@ -90,13 +108,59 @@ public sealed class StaffApprovalGateMiddleware
         await http.Response.WriteAsJsonAsync(envelope, http.RequestAborted);
     }
 
-    private static bool ShouldGate(HttpContext http, ICurrentUser currentUser)
+    private static bool IsStaffWrite(HttpContext http, ICurrentUser currentUser)
     {
         if (!currentUser.IsAuthenticated || currentUser.Role != UserRole.Staff) return false;
-
         var method = http.Request.Method;
-        if (!(HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method)))
-            return false;
+        return HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
+    }
+
+    private static bool IsAppointmentStatusPath(string path) =>
+        path.StartsWith("/api/admin/appointments/", StringComparison.OrdinalIgnoreCase)
+        && path.EndsWith("/status", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task WriteForbiddenAsync(HttpContext http, string message)
+    {
+        http.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await http.Response.WriteAsJsonAsync(
+            ApiResponse<object>.Fail("Forbidden", message, http.TraceIdentifier), http.RequestAborted);
+    }
+
+    /// <summary>
+    /// Yol + method'tan gerekli İŞLEM izni anahtarı (Permissions.*). null → aksiyon izni tanımlı değil,
+    /// yalnız onay kapısı işler. Adisyon uçları muaf listede olduğundan burada görünmez;
+    /// onların izni AdisyonEndpoints'te endpoint filtresiyle uygulanır.
+    /// </summary>
+    private static string? RequiredAction(string method, string path)
+    {
+        bool Is(string prefix) => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        bool Has(string part) => path.Contains(part, StringComparison.OrdinalIgnoreCase);
+
+        if (Is("/api/admin/customers"))
+        {
+            if (Has("/blacklist") || Has("/vip")) return Permissions.CustomersTags;
+            if (HttpMethods.IsDelete(method) && !Has("/treatment-photos")) return Permissions.CustomersDelete;
+            return Permissions.CustomersManage; // müşteri kartı + konsültasyon + tedavi günlüğü
+        }
+        if (Is("/api/admin/appointments")) return Permissions.AppointmentsCreate;
+        if (Is("/api/admin/waitlist")) return Permissions.WaitlistManage;
+        if (Is("/api/admin/services") || Is("/api/admin/packages") || Is("/api/admin/service-categories")
+            || Is("/api/admin/campaigns") || Is("/api/admin/loyalty")) return Permissions.ServicesManage;
+        if (Is("/api/admin/gift-cards")) return Permissions.GiftCardsManage;
+        if (Is("/api/admin/products")) return Permissions.StockManage;
+        if (Is("/api/admin/stock-movements")) return Permissions.StockMovements;
+        if (Is("/api/admin/cash/closing")) return Permissions.CashClosingClose;
+        if (Is("/api/admin/cash-flow")) return Permissions.CashRegisterEntry;
+        if (Is("/api/admin/accounts")) return Has("/payments") ? Permissions.AccountingCollect : Permissions.AccountingAccounts;
+        if (Is("/api/admin/expenses") || Is("/api/admin/expense-categories")) return Permissions.AccountingExpenses;
+        if (Is("/api/admin/notification-templates")) return Permissions.NotificationsTemplates;
+        if (Is("/api/admin/notifications") || Is("/api/admin/whatsapp")) return Permissions.NotificationsSend;
+        return null;
+    }
+
+    private static bool ShouldGate(HttpContext http, ICurrentUser currentUser)
+    {
+        if (!IsStaffWrite(http, currentUser)) return false;
 
         var path = http.Request.Path.Value ?? string.Empty;
         if (!path.StartsWith("/api/admin/", StringComparison.OrdinalIgnoreCase)) return false;
@@ -105,9 +169,8 @@ public sealed class StaffApprovalGateMiddleware
 
         // Randevu durum değişikliği (Tamamlandı/İptal/Gelmedi/Onaylandı) onay kapısından muaf —
         // personel direkt uygular; rutin operasyon, onay yığılması/tamamlanamaz hatası oluşmasın.
-        if (path.StartsWith("/api/admin/appointments/", StringComparison.OrdinalIgnoreCase)
-            && path.EndsWith("/status", StringComparison.OrdinalIgnoreCase))
-            return false;
+        // (İşlem izni kontrolü InvokeAsync başında ayrıca yapılır.)
+        if (IsAppointmentStatusPath(path)) return false;
 
         return true;
     }

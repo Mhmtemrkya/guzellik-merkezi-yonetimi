@@ -51,7 +51,7 @@ public sealed class CustomerService : ICustomerService
             var search = request.Search.Trim();
             var digits = new string(search.Where(char.IsDigit).ToArray());
             var all = await entityQuery
-                .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
+                .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
                 .ToArrayAsync(cancellationToken);
             var filtered = all
                 .Where(c => c.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
@@ -71,7 +71,7 @@ public sealed class CustomerService : ICustomerService
         var items = await entityQuery
             .OrderBy(x => x.FullName)
             .Skip(request.Skip).Take(request.SafePageSize)
-            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
+            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
             .ToArrayAsync(cancellationToken);
         if (IsStaffViewer) items = items.Select(Mask).ToArray();
         return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));
@@ -96,6 +96,7 @@ public sealed class CustomerService : ICustomerService
         var customer = new Customer(tenantId, request.BranchId, request.FullName, request.Phone, request.Email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         customer.SetPhoto(request.PhotoUrl);
+
         _db.Customers.Add(customer);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, customer.BranchId, "Create", "Customer", customer.Id,
@@ -117,6 +118,7 @@ public sealed class CustomerService : ICustomerService
         customer.UpdateContact(request.FullName, phone, request.Email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         if (request.PhotoUrl is not null) customer.SetPhoto(request.PhotoUrl);
+
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, customer.BranchId, "Update", "Customer", customer.Id,
             $"Müşteri güncellendi: {customer.FullName}",
@@ -195,6 +197,32 @@ public sealed class CustomerService : ICustomerService
         return Result<CustomerDto>.Success(Mask(customer.ToDto()));
     }
 
+    public async Task<Result<CustomerDto>> SetVipAsync(Guid tenantId, Guid id, SetVipRequest request, CancellationToken cancellationToken = default)
+    {
+        var customer = await _db.Customers.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (customer is null) return Result<CustomerDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+        customer.SetVip(request.Vip);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, customer.BranchId, request.Vip ? "SetVip" : "RemoveVip", "Customer", customer.Id,
+            request.Vip ? $"VIP etiketi eklendi: {customer.FullName}" : $"VIP etiketi kaldırıldı: {customer.FullName}",
+            null, cancellationToken);
+        return Result<CustomerDto>.Success(Mask(customer.ToDto()));
+    }
+
+    public async Task<Result<PagedResult<CustomerDto>>> GetVipAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
+    {
+        // FullName şifreli olduğundan sıralama deterministik ciphertext sırası — sayfalama tutarlı (bkz. ListAsync notu).
+        var query = _db.Customers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsVip)
+            .OrderBy(x => x.FullName);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.Skip(request.Skip).Take(request.SafePageSize)
+            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
+            .ToArrayAsync(cancellationToken);
+        if (IsStaffViewer) items = items.Select(Mask).ToArray();
+        return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));
+    }
+
     public async Task<Result<PagedResult<CustomerDto>>> GetBlacklistedAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
     {
         var query = _db.Customers.AsNoTracking()
@@ -202,7 +230,7 @@ public sealed class CustomerService : ICustomerService
             .OrderByDescending(x => x.BlacklistedAtUtc);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.Skip(request.Skip).Take(request.SafePageSize)
-            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc))
+            .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
             .ToArrayAsync(cancellationToken);
         if (IsStaffViewer) items = items.Select(Mask).ToArray();
         return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));

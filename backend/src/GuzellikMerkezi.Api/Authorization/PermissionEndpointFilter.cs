@@ -14,16 +14,34 @@ namespace GuzellikMerkezi.Api.Authorization;
 public sealed class PermissionEndpointFilter : IEndpointFilter
 {
     private readonly string _permission;
+    private readonly bool _writeOnly;
 
-    public PermissionEndpointFilter(string permission) => _permission = permission;
+    public PermissionEndpointFilter(string permission, bool writeOnly = false)
+    {
+        _permission = permission;
+        _writeOnly = writeOnly;
+    }
 
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var user = context.HttpContext.RequestServices.GetRequiredService<ICurrentUser>();
 
         // Yönetici roller + platform admin tam erişimli; yalnızca personel izne tabi.
-        if (user.Role != UserRole.Staff || user.HasPermission(_permission))
-            return await next(context);
+        if (user.Role != UserRole.Staff) return await next(context);
+
+        // writeOnly: yalnız yazma metodlarını kısıtla (okuma sayfa izniyle serbest).
+        if (_writeOnly)
+        {
+            var method = context.HttpContext.Request.Method;
+            var isWrite = HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
+            if (!isWrite) return await next(context);
+        }
+
+        // Noktalı anahtar = işlem izni (eski kayıtlar için geriye uyumlu kural), düz anahtar = sayfa izni.
+        var allowed = _permission.Contains('.')
+            ? GuzellikMerkezi.Domain.Permissions.IsActionAllowed(user.Permissions, _permission)
+            : user.HasPermission(_permission);
+        if (allowed) return await next(context);
 
         return Results.Json(
             ApiResponse<object>.Fail("Forbidden", "Bu işlem için yetkiniz yok.", context.HttpContext.TraceIdentifier),
@@ -33,7 +51,7 @@ public sealed class PermissionEndpointFilter : IEndpointFilter
 
 public static class PermissionFilterExtensions
 {
-    /// <summary>Gruptaki tüm endpoint'lere personel sayfa-izni kontrolü ekler.</summary>
-    public static RouteGroupBuilder RequirePermission(this RouteGroupBuilder group, string permission)
-        => group.AddEndpointFilter(new PermissionEndpointFilter(permission));
+    /// <summary>Gruptaki tüm endpoint'lere personel izin kontrolü ekler. writeOnly=true → yalnız POST/PUT/PATCH/DELETE kısıtlanır.</summary>
+    public static RouteGroupBuilder RequirePermission(this RouteGroupBuilder group, string permission, bool writeOnly = false)
+        => group.AddEndpointFilter(new PermissionEndpointFilter(permission, writeOnly));
 }

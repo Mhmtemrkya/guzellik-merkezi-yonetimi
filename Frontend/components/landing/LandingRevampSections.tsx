@@ -511,7 +511,7 @@ function StoryCopy({ chapter, active }: { chapter: StoryChapter; active: boolean
         {isHero ? 'Premium güzellik merkezi yönetimi' : chapter.label}
       </div>
       <TitleTag className="mt-5 max-w-2xl font-display text-[clamp(2.45rem,5vw,5.55rem)] leading-[0.94] tracking-[-0.06em] text-[#251923]">
-        {isHero ? 'Güzellik merkeziniz için zarif, hızlı ve tek panel.' : chapter.title} {!isHero && <span className="armonessa-text-gradient">{chapter.accent}</span>}
+        {isHero ? 'Güzellik merkeziniz için zarif, hızlı ve tek panel.' : chapter.title} {!isHero && <span className="beautyasist-text-gradient">{chapter.accent}</span>}
       </TitleTag>
       <p className="mt-5 max-w-xl text-[16px] leading-8 text-[#6f5968]">
         {isHero ? 'Danışan, randevu, paket, seans, taksit, kasa ve personel akışını frame-scroll ürün hikayesiyle yönetin.' : chapter.body}

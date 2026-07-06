@@ -6,9 +6,10 @@ import { BranchProvider } from '@/components/dashboard/BranchContext'
 import { FeatureProvider } from '@/components/dashboard/FeatureContext'
 import ApprovalToast from '@/components/dashboard/ApprovalToast'
 import SessionExpiredModal from '@/components/dashboard/SessionExpiredModal'
+import DesktopGuard from '@/components/desktop/DesktopGuard'
 
 export const metadata: Metadata = {
-  title: 'Armonessa — Güzellik Merkezleri İçin Yönetim Sistemi',
+  title: 'BeautyAsist — Güzellik Merkezleri İçin Yönetim Sistemi',
   description: "Excel'i unutun. Müşteri, paket, taksit, seans, randevu ve kasa yönetimi tek panelden.",
 }
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <div className="theme-surface">{children}</div>
               <ApprovalToast />
               <SessionExpiredModal />
+              <DesktopGuard />
             </BranchProvider>
           </FeatureProvider>
         </AuthProvider>

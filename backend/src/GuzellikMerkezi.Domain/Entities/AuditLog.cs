@@ -15,7 +15,9 @@ public sealed class AuditLog : Entity
         Guid? entityId,
         string? summary,
         string? dataJson,
-        string? ipAddress)
+        string? ipAddress,
+        string? deviceId = null,
+        string? deviceInfoJson = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -28,6 +30,8 @@ public sealed class AuditLog : Entity
         Summary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
         DataJson = string.IsNullOrWhiteSpace(dataJson) ? null : dataJson;
         IpAddress = string.IsNullOrWhiteSpace(ipAddress) ? null : ipAddress.Trim();
+        DeviceId = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId.Trim();
+        DeviceInfoJson = string.IsNullOrWhiteSpace(deviceInfoJson) ? null : deviceInfoJson;
     }
 
     public Guid? TenantId { get; private set; }
@@ -44,4 +48,8 @@ public sealed class AuditLog : Entity
     public string? Summary { get; private set; }
     public string? DataJson { get; private set; }
     public string? IpAddress { get; private set; }
+    /// <summary>İsteğin geldiği cihazın istemci tarafı kalıcı kimliği (X-Device-Id).</summary>
+    public string? DeviceId { get; private set; }
+    /// <summary>İstemcinin beyan ettiği cihaz/ağ bilgisi (ad, platform, bağlantı türü vb.) JSON.</summary>
+    public string? DeviceInfoJson { get; private set; }
 }

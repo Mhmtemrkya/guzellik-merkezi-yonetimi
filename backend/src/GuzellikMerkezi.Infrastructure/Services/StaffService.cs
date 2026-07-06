@@ -141,6 +141,7 @@ public sealed class StaffService : IStaffService
         var staff = new StaffMember(tenantId, request.BranchId, request.FullName, request.Title, request.Phone);
         staff.UpdateProfile(request.FullName, request.Title, request.Phone, request.Specialties);
         staff.SetCommissionRate(request.CommissionRate);
+        if (!string.IsNullOrWhiteSpace(request.PhotoUrl)) staff.SetPhoto(request.PhotoUrl);
         if (!request.IsActive) staff.Deactivate();
         staff.LinkTenantUser(tenantUser.Id);
 

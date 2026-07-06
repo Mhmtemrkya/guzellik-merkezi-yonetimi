@@ -11,12 +11,13 @@ import type {
   UserRole,
   RoleKey,
 } from './types'
+import { getDeviceId, getDeviceInfo, getDeviceInfoHeader } from './deviceIdentity'
 
 const defaultApiBaseUrl = '/api/proxy'
 export const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_BASE_URL || defaultApiBaseUrl).replace(/\/$/, '')
 
-export const AUTH_STORAGE_KEY = 'armonessa.authSession'
-export const API_SCOPE_STORAGE_KEY = 'armonessa.apiScope'
+export const AUTH_STORAGE_KEY = 'beautyasist.authSession'
+export const API_SCOPE_STORAGE_KEY = 'beautyasist.apiScope'
 
 export class ApiClientError extends Error {
   status: number
@@ -165,7 +166,7 @@ export function getStoredApiScope(): ApiScope | null {
  * false → sessionStorage'da (sekme/tarayıcı kapanınca silinir, oturumluk). Varsayılan true
  * (mevcut davranışla uyumlu). Her iki durumda da token süresi dolunca otomatik yenilenir.
  */
-export const REMEMBER_STORAGE_KEY = 'armonessa.rememberMe'
+export const REMEMBER_STORAGE_KEY = 'beautyasist.rememberMe'
 
 export function getRememberMe(): boolean {
   if (typeof window === 'undefined') return true
@@ -296,6 +297,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     headers.set('Content-Type', 'application/json')
   }
   if (token) headers.set('Authorization', `Bearer ${token}`)
+  // Cihaz güvenliği + log zenginleştirme: her isteğe cihaz kimliği/bilgisi eklenir
+  // (backend, özellik kapalıyken bu header'ları yok sayar).
+  const deviceId = getDeviceId()
+  if (deviceId) {
+    headers.set('X-Device-Id', deviceId)
+    const deviceInfo = getDeviceInfoHeader()
+    if (deviceInfo) headers.set('X-Device-Info', deviceInfo)
+  }
   if (scope !== false) {
     if (scope?.tenantId) headers.set('X-Tenant-Id', scope.tenantId)
     if (scope?.branchId) headers.set('X-Branch-Id', scope.branchId)
@@ -424,7 +433,8 @@ export const authApi = {
   login: ({ email, password, role, tenantId, branchId }: LoginPayload): Promise<ApiLoginResponse> =>
     apiRequest<ApiLoginResponse>('/api/auth/login', {
       method: 'POST',
-      body: { email, password, role, tenantId, branchId },
+      // Cihaz güvenliği: personel girişleri tanımlı cihaz kimliğiyle doğrulanır.
+      body: { email, password, role, tenantId, branchId, deviceId: getDeviceId(), device: getDeviceInfo() },
       token: null,
       scope: false,
     }),
@@ -488,6 +498,29 @@ export const platformApi = {
   platformUsage: <T = unknown>(): Promise<T> =>
     apiRequest<T>('/api/platform/usage'),
 
+  // Sistem ayarları (bölüm bazlı JSON) + kurum faturaları
+  systemSettings: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/system/settings'),
+  saveSystemSection: <T = unknown>(section: string, values: Record<string, unknown>, maintenanceEnabled?: boolean): Promise<T> =>
+    apiRequest<T>('/api/platform/system/settings', {
+      method: 'PUT',
+      body: { section, json: JSON.stringify(values), maintenanceEnabled: maintenanceEnabled ?? null },
+    }),
+  queueStatus: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/system/queue'),
+  requeueJob: <T = unknown>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/system/queue/${id}/requeue`, { method: 'POST' }),
+  invoices: <T = unknown>(query: QueryRecord = {}): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/invoices/', { query }),
+  createInvoice: <T = unknown>(body: PlatformPayload): Promise<T> =>
+    apiRequest<T>('/api/platform/invoices/', { method: 'POST', body }),
+  generateInvoices: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/invoices/generate', { method: 'POST' }),
+  updateInvoiceStatus: <T = unknown>(id: string, status: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/invoices/${id}/status`, { method: 'PUT', body: { status } }),
+  deleteInvoice: <T = unknown>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/invoices/${id}`, { method: 'DELETE' }),
+
   // Feature catalog — projedeki tüm flag'lenebilir özellikler (plan formu için)
   featuresCatalog: <T = unknown>(): Promise<T> =>
     apiRequest<T>('/api/platform/features-catalog'),
@@ -523,6 +556,35 @@ export const adminApi = {
   deleteAllAuditLogs: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/logs/clear', { method: 'DELETE', query: { tenantId } }),
 
+  // Masaüstü güvenlik olayları + personel ekran görüntüsü izni
+  logDesktopEvent: <T = unknown>(eventType: 'FocusLost' | 'AppClosed', detail?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/security/desktop-events', { method: 'POST', body: { eventType, detail } }),
+  screenshotSettings: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/security/screenshots', { query: { tenantId } }),
+  updateScreenshotSettings: <T = unknown>(allowStaffScreenshots: boolean, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/security/screenshots', { method: 'PUT', query: { tenantId }, body: { allowStaffScreenshots } }),
+  staffScreenshotOverrides: <T = unknown>(tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/security/screenshots/staff', { query: { tenantId } }),
+  updateStaffScreenshotOverride: <T = unknown>(userId: string, allow: boolean | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/security/screenshots/staff/${userId}`, { method: 'PUT', query: { tenantId }, body: { allow } }),
+
+  // Cihaz güvenliği — kurum ayarı + personel cihaz listesi/limiti
+  deviceControlSettings: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/devices/settings', { query: { tenantId } }),
+  updateDeviceControlSettings: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/devices/settings', { method: 'PUT', query: { tenantId }, body: { enabled } }),
+  myDevices: <T = unknown>(): Promise<T[]> => apiRequest<T[]>('/api/admin/devices/me'),
+  userDevices: <T = unknown>(userId: string, tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>(`/api/admin/devices/users/${userId}`, { query: { tenantId } }),
+  userDeviceLimit: <T = unknown>(userId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/devices/users/${userId}/limit`, { query: { tenantId } }),
+  setUserDeviceLimit: <T = unknown>(userId: string, maxDeviceCount: number | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/devices/users/${userId}/limit`, { method: 'PUT', query: { tenantId }, body: { maxDeviceCount } }),
+  updateDevice: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/devices/${id}`, { method: 'PUT', query: { tenantId }, body }),
+  deleteDevice: (id: string, tenantId?: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/admin/devices/${id}`, { method: 'DELETE', query: { tenantId } }),
+
   branches: <T = unknown>(tenantId?: string): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/branches/', { query: { tenantId } }),
   createBranch: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
@@ -553,6 +615,11 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/customers/${id}/blacklist`, { method: 'POST', query: { tenantId }, body }),
   blacklistedCustomers: <T = unknown>(tenantId?: string): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/customers/blacklisted', { query: { page: 1, pageSize: 200, tenantId } }),
+  /** VIP etiketi ekle/kaldır. */
+  setCustomerVip: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/customers/${id}/vip`, { method: 'POST', query: { tenantId }, body }),
+  vipCustomers: <T = unknown>(tenantId?: string): Promise<PagedResult<T>> =>
+    apiRequest<PagedResult<T>>('/api/admin/customers/vip', { query: { page: 1, pageSize: 200, tenantId } }),
   /** Pasif müşteriler — eşik (gün) kadar süredir işlemsiz; eşik + liste döner. */
   passiveCustomers: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/customers/passive', { query: { tenantId } }),
@@ -742,6 +809,12 @@ export const adminApi = {
     apiRequest<T>('/api/admin/waitlist/', { method: 'POST', query: { tenantId }, body }),
   setWaitlistStatus: <T = unknown>(id: string, status: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/waitlist/${id}/status`, { method: 'POST', query: { tenantId }, body: { status } }),
+  // Manuel "Yer öner": kaydı Notified yapıp WhatsApp teklif mesajı gönderir.
+  offerWaitlist: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/waitlist/${id}/offer`, { method: 'POST', query: { tenantId } }),
+  // Manuel "Randevuya çevir": teklifi randevuya dönüştürür (yeni randevu id'si döner).
+  bookWaitlist: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/waitlist/${id}/book`, { method: 'POST', query: { tenantId } }),
   deleteWaitlist: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/waitlist/${id}`, { method: 'DELETE', query: { tenantId } }),
 

@@ -18,7 +18,7 @@ import type {
   WaitlistEntry,
   WaitlistStatus,
 } from '@/lib/types'
-import { Bell, Calendar, CalendarCheck, CalendarClock, CheckCircle2, Clock, Hourglass, ListPlus, Lock, Plus, Quote, RotateCcw, Scissors, Sparkles, Trash2, UserRound, XCircle } from 'lucide-react'
+import { Bell, Calendar, CalendarCheck, CalendarClock, CalendarPlus, CheckCircle2, Clock, Hourglass, ListPlus, Lock, Plus, Quote, RotateCcw, Scissors, Send, Sparkles, Trash2, UserRound, XCircle } from 'lucide-react'
 
 interface WaitlistData {
   entries: ApiWaitlistEntry[]
@@ -57,6 +57,14 @@ function formatPreferred(d: string): string {
   return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+/** İstenen slotun saatini (yerel) HH:mm döndürür; yoksa null. */
+function formatSlotTime(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+}
+
 /* ----- Tek bekleme satırı — numaralı kuyruk + durum aksanı ----- */
 function WaitRow({
   entry,
@@ -66,8 +74,9 @@ function WaitRow({
   staff,
   index,
   busy,
-  onNotify,
-  onBook,
+  onOffer,
+  onConvert,
+  onMarkBooked,
   onCancel,
   onRequeue,
   onDelete,
@@ -79,8 +88,9 @@ function WaitRow({
   staff: string | null
   index: number
   busy: boolean
-  onNotify: () => void
-  onBook: () => void
+  onOffer: () => void
+  onConvert: () => void
+  onMarkBooked: () => void
   onCancel: () => void
   onRequeue: () => void
   onDelete: () => void
@@ -89,6 +99,8 @@ function WaitRow({
   const StatusIcon = meta.icon
   const resolved = entry.status === 'Booked' || entry.status === 'Cancelled'
   const wait = waitDuration(entry.createdAt)
+  const slotTime = formatSlotTime(entry.preferredStartUtc)
+  const hasSlot = Boolean(entry.preferredStartUtc)
 
   return (
     <motion.div
@@ -128,6 +140,7 @@ function WaitRow({
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-medium text-[#705a66]">
           <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-[#c85776]" /> {formatPreferred(entry.preferredDate)}</span>
+          {slotTime && <span className="inline-flex items-center gap-1.5 font-semibold text-[#c85776]"><Clock className="h-3.5 w-3.5" /> {slotTime}</span>}
           {service && <span className="inline-flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-[#c85776]" /> {service}</span>}
           {staff && <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-[#c85776]" /> {staff}</span>}
           {wait && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#c85776]" /> {wait}</span>}
@@ -139,26 +152,38 @@ function WaitRow({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         {!resolved ? (
           <>
-            {entry.status === 'Waiting' && (
+            {hasSlot ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onOffer}
+                  title="WhatsApp'tan 'yer açıldı, ister misiniz?' teklifi gönder"
+                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" /> {entry.status === 'Notified' ? 'Tekrar öner' : 'Yer öner'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onConvert}
+                  title="Bu slotta randevu oluştur (müşteri yüz yüze/telefonla teyit ettiyse)"
+                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" /> Randevuya çevir
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 disabled={busy}
-                onClick={onNotify}
-                title="Bilgilendirildi olarak işaretle"
-                className="inline-flex items-center gap-1.5 rounded-[11px] bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50"
+                onClick={onMarkBooked}
+                title="Randevu yapıldı olarak işaretle"
+                className="inline-flex items-center gap-1.5 rounded-[11px] bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
               >
-                <Bell className="h-3.5 w-3.5" /> Bildirildi
+                <CalendarCheck className="h-3.5 w-3.5" /> Randevu yapıldı
               </button>
             )}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onBook}
-              title="Randevu yapıldı"
-              className="inline-flex items-center gap-1.5 rounded-[11px] bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-            >
-              <CalendarCheck className="h-3.5 w-3.5" /> Randevu
-            </button>
             <button
               type="button"
               disabled={busy}
@@ -249,6 +274,7 @@ export default function BeklemeListesiPage() {
   const [serviceId, setServiceId] = useState('')
   const [staffId, setStaffId] = useState('')
   const [preferredDate, setPreferredDate] = useState('')
+  const [preferredTime, setPreferredTime] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -259,6 +285,16 @@ export default function BeklemeListesiPage() {
     setBusy(true)
     setActionError('')
     try {
+      // Saat girildiyse tam slot (UTC) kaydedilir → yer açılınca otomatik teklif/randevu mümkün olur.
+      let preferredStartUtc: string | null = null
+      let durationMinutes: number | null = null
+      if (preferredTime) {
+        const start = new Date(`${preferredDate}T${preferredTime}:00`)
+        if (!Number.isNaN(start.getTime())) {
+          preferredStartUtc = start.toISOString()
+          durationMinutes = 30
+        }
+      }
       await adminApi.addWaitlist(
         {
           customerId,
@@ -267,10 +303,12 @@ export default function BeklemeListesiPage() {
           preferredDate,
           note: note.trim() || null,
           branchId: branchId ?? null,
+          preferredStartUtc,
+          durationMinutes,
         },
         tenantId,
       )
-      setCustomerId(''); setServiceId(''); setStaffId(''); setPreferredDate(''); setNote('')
+      setCustomerId(''); setServiceId(''); setStaffId(''); setPreferredDate(''); setPreferredTime(''); setNote('')
       await reload()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Eklenemedi.')
@@ -381,6 +419,11 @@ export default function BeklemeListesiPage() {
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Tercih edilen tarih *</span>
               <input type="date" value={preferredDate} onChange={(e) => setPreferredDate(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
             </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Saat (ops.)</span>
+              <input type="time" value={preferredTime} onChange={(e) => setPreferredTime(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+              <span className="mt-1 block text-[10px] text-[#9a7d89]">Saat girilirse yer açılınca WhatsApp'tan otomatik teklif gider.</span>
+            </label>
             <label className="block lg:col-span-2">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Not (ops.)</span>
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. öğleden sonrası uygun" className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
@@ -411,8 +454,9 @@ export default function BeklemeListesiPage() {
                 service={w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || 'Hizmet' : null}
                 staff={w.staffMemberId ? staffName[w.staffMemberId] || 'Personel' : null}
                 busy={busy}
-                onNotify={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Notified', tenantId))}
-                onBook={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Booked', tenantId))}
+                onOffer={() => runAction(() => adminApi.offerWaitlist(w.id, tenantId))}
+                onConvert={() => runAction(() => adminApi.bookWaitlist(w.id, tenantId))}
+                onMarkBooked={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Booked', tenantId))}
                 onCancel={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Cancelled', tenantId))}
                 onRequeue={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Waiting', tenantId))}
                 onDelete={() => runAction(() => adminApi.deleteWaitlist(w.id, tenantId))}

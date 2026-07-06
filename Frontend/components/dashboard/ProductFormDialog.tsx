@@ -203,7 +203,7 @@ export default function ProductFormDialog({
               </div>
               <div className="mt-2 font-display text-lg font-bold leading-tight text-[#241923]">{values.name.trim() || 'Ürün adı'}</div>
               <div className="mt-1 font-mono text-[11px] text-[#705a66]">{values.sku.trim() || 'SKU—'}{values.barcode.trim() ? ` · ${values.barcode.trim()}` : ''}</div>
-              <div className="mt-3 font-display text-2xl font-bold tabular-nums armonessa-text-gradient">₺{(Number(values.salePrice) || 0).toLocaleString('tr-TR')}</div>
+              <div className="mt-3 font-display text-2xl font-bold tabular-nums beautyasist-text-gradient">₺{(Number(values.salePrice) || 0).toLocaleString('tr-TR')}</div>
               <div className="mt-0.5 text-[11px] text-[#705a66]">Maliyet ₺{(Number(values.cost) || 0).toLocaleString('tr-TR')} · %{margin} kâr</div>
               <div className="mt-3 flex gap-2 border-t border-[#f3e1e9] pt-3">
                 <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><Boxes className="h-3 w-3 text-[#c85776]" /> {mode === 'create' ? `Açılış ${values.currentStock}` : 'Stok'}</span>

@@ -1,4 +1,4 @@
-// Armonessa — merkezi tip tanımları
+// BeautyAsist — merkezi tip tanımları
 // Backend DTO'ları (Api*) ve UI model katmanı (normalize edilmiş) burada.
 
 // ---------------------------------------------------------------------------
@@ -80,10 +80,17 @@ export interface ApiStaffWithCredentials {
   credentials?: ApiStaffCredentials | null
 }
 
+export interface PermissionActionMeta {
+  key: string
+  label: string
+}
+
 export interface PermissionMeta {
   key: string
   label: string
   description: string
+  /** Sayfa altındaki işlem (aksiyon) izinleri — "görsün ama yapamasın" ayrımı için. */
+  actions?: PermissionActionMeta[]
 }
 
 export interface ApiLoginResponse {
@@ -480,6 +487,8 @@ export type FeatureKey =
   // Kurum & Sistem
   | 'staff.permissions' | 'approval.workflow' | 'multiBranch'
   | 'api.access' | 'ai.insights'
+  // Güvenlik
+  | 'security.devicecontrol'
 
 export type FeatureCategoryKey =
   | 'Excel' | 'Pdf' | 'Reports' | 'Notifications'
@@ -543,6 +552,7 @@ export interface ApiCustomer {
   isBlacklisted?: boolean
   blacklistReason?: string | null
   createdAtUtc?: string
+  isVip?: boolean
 }
 
 export interface ApiPassiveCustomer {
@@ -581,6 +591,7 @@ export interface Customer {
   photoUrl: string
   isBlacklisted: boolean
   blacklistReason?: string | null
+  isVip: boolean
 }
 
 export type GiftCardKind = 'Percentage' | 'FixedAmount' | 'StoredValue'
@@ -630,6 +641,8 @@ export interface ApiWaitlistEntry {
   status?: WaitlistStatus
   note?: string | null
   createdAtUtc?: string
+  preferredStartUtc?: string | null
+  durationMinutes?: number | null
 }
 
 export interface WaitlistEntry {
@@ -641,6 +654,9 @@ export interface WaitlistEntry {
   status: WaitlistStatus
   note: string
   createdAt: string
+  /** İstenen slotun tam başlangıcı (ISO UTC); saatsiz (eski) kayıtlarda null. */
+  preferredStartUtc: string | null
+  durationMinutes: number | null
 }
 
 export interface ApiCashClosing {
@@ -1752,6 +1768,8 @@ export interface ApiAuditLog {
   dataJson?: string | null
   ipAddress?: string | null
   createdAtUtc?: string
+  deviceId?: string | null
+  deviceInfoJson?: string | null
 }
 
 export interface AuditLog {
@@ -1768,6 +1786,8 @@ export interface AuditLog {
   summary: string
   data: Record<string, unknown> | null
   ipAddress: string
+  deviceId: string | null
+  deviceInfo: Record<string, unknown> | null
   createdAt: string
   createdAtFormatted: string
 }
@@ -1798,6 +1818,7 @@ export interface ApiAppointment {
   serviceName?: string | null
   customerConfirmation?: WhatsAppConfirmation
   lastReminderAtUtc?: string | null
+  isOnline?: boolean
 }
 
 export interface AppointmentLookups {
@@ -1825,6 +1846,7 @@ export interface Appointment {
   rawStatus?: string
   customerConfirmation?: WhatsAppConfirmation
   lastReminderAtUtc?: string | null
+  isOnline?: boolean
 }
 
 // ---------------------------------------------------------------------------

@@ -17,9 +17,39 @@ public sealed class HttpCurrentUser : ICurrentUser
     public UserRole? Role => Enum.TryParse<UserRole>(User?.FindFirstValue(ClaimTypes.Role) ?? User?.FindFirstValue("role"), out var role) ? role : null;
     public Guid? TenantId => TryReadGuid("tenant_id");
     public Guid? BranchId => TryReadGuid("branch_id");
+    public Guid? CustomerId => TryReadGuid("customer_id");
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated == true;
     public bool IsPlatformAdmin => Role == UserRole.PlatformAdmin;
     public string? IpAddress => _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+
+    public string? DeviceId
+    {
+        get
+        {
+            var raw = _httpContextAccessor.HttpContext?.Request.Headers["X-Device-Id"].FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            raw = raw.Trim();
+            return raw.Length <= 100 ? raw : raw[..100];
+        }
+    }
+
+    public string? DeviceInfoJson
+    {
+        get
+        {
+            // Header'lar ASCII olmak zorunda; istemci JSON'u base64(UTF-8) olarak gönderir.
+            var raw = _httpContextAccessor.HttpContext?.Request.Headers["X-Device-Info"].FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(raw) || raw.Length > 4096) return null;
+            try
+            {
+                return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(raw));
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+    }
     public IReadOnlyCollection<string> Permissions =>
         User?.FindAll("permission").Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToArray()
         ?? Array.Empty<string>();

@@ -19,7 +19,8 @@ public sealed record AppointmentDto(
     string? StaffName = null,
     string? ServiceName = null,
     WhatsAppConfirmationStatus CustomerConfirmation = WhatsAppConfirmationStatus.None,
-    DateTime? LastReminderAtUtc = null);
+    DateTime? LastReminderAtUtc = null,
+    bool IsOnline = false);
 public sealed record CreateAppointmentRequest(Guid BranchId, Guid CustomerId, Guid StaffMemberId, Guid ServiceDefinitionId, DateTime StartUtc, DateTime EndUtc, decimal Price, string? Notes);
 public sealed record RescheduleAppointmentRequest(DateTime StartUtc, DateTime EndUtc);
 public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, string? Reason);

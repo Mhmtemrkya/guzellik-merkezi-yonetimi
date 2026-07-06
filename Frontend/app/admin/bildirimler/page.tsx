@@ -286,7 +286,7 @@ function BildirimlerPageInner() {
                 {scopeInfo.label} · şablonlar
               </div>
               <div className="font-display text-2xl tracking-tight">
-                <AnimatedNumber value={filteredTemplates.length} className="armonessa-text-gradient" /> kayıt
+                <AnimatedNumber value={filteredTemplates.length} className="beautyasist-text-gradient" /> kayıt
                 {scope !== 'all' && (
                   <span className="ml-2 text-[12px] font-mono uppercase tracking-widest text-[#352432]/45">
                     / {templates.length} toplam
@@ -355,7 +355,7 @@ function BildirimlerPageInner() {
                 <Send className="h-3.5 w-3.5" /> Son gönderimler
               </div>
               <div className="mt-1 font-display text-2xl tracking-tight">
-                <AnimatedNumber value={filteredLogs.length} className="armonessa-text-gradient" /> kayıt
+                <AnimatedNumber value={filteredLogs.length} className="beautyasist-text-gradient" /> kayıt
               </div>
             </div>
             <motion.div variants={listContainer} initial="hidden" animate="visible" className="relative max-h-[640px] overflow-y-auto divide-y divide-[#fff4f8]/8">

@@ -24,6 +24,7 @@ public static class ResultExtensions
             "NotFound" => Results.NotFound(response),
             "Unauthorized" => Results.Json(response, statusCode: StatusCodes.Status401Unauthorized),
             "Conflict" => Results.Conflict(response),
+            "SlotFull" => Results.Conflict(response),
             "Validation" => Results.BadRequest(response),
             _ => Results.BadRequest(response)
         };

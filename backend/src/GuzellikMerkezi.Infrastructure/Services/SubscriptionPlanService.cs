@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.SubscriptionPlans;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -10,8 +11,13 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 public sealed class SubscriptionPlanService : ISubscriptionPlanService
 {
     private readonly GuzellikDbContext _db;
+    private readonly IFeatureService _features;
 
-    public SubscriptionPlanService(GuzellikDbContext db) => _db = db;
+    public SubscriptionPlanService(GuzellikDbContext db, IFeatureService features)
+    {
+        _db = db;
+        _features = features;
+    }
 
     public async Task<Result<IReadOnlyList<SubscriptionPlanDto>>> ListAsync(CancellationToken ct = default)
     {
@@ -84,8 +90,11 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             plan.SetDisplayOrder(req.DisplayOrder);
             if (req.IsActive) plan.Activate(); else plan.Deactivate();
             await _db.SaveChangesAsync(ct);
-            var n = await _db.Tenants.CountAsync(t => t.SubscriptionPlanId == id, ct);
-            return Result<SubscriptionPlanDto>.Success(ToDto(plan, n));
+            // Feature listesi/limitler değişmiş olabilir → bu plandaki tüm tenant'ların feature-set önbelleğini boşalt.
+            var affectedTenantIds = await _db.Tenants.AsNoTracking()
+                .Where(t => t.SubscriptionPlanId == id).Select(t => t.Id).ToListAsync(ct);
+            foreach (var tid in affectedTenantIds) _features.InvalidateTenant(tid);
+            return Result<SubscriptionPlanDto>.Success(ToDto(plan, affectedTenantIds.Count));
         }
         catch (Exception ex)
         {

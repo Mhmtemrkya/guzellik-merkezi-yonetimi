@@ -1,12 +1,12 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AdminEditDialog, { type AdminField } from '@/components/dashboard/AdminEditDialog'
 import PlatformMessagingSettings from '@/components/platform/PlatformMessagingSettings'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { healthApi } from '@/lib/apiClient'
+import { healthApi, platformApi } from '@/lib/apiClient'
 import {
   Activity,
   Database,
@@ -83,6 +83,8 @@ function Stat({
 }
 
 interface SettingsCard {
+  /** Backend bölüm anahtarı (PUT /api/platform/system/settings). */
+  key: string
   title: string
   desc: string
   icon: LucideIcon
@@ -93,10 +95,11 @@ interface SettingsCard {
 
 const settings: SettingsCard[] = [
   {
+    key: 'planLimits',
     title: 'Plan limitleri',
     desc: 'Varsayılan plan, kullanıcı ve müşteri tavanları, depolama ile aşım politikası.',
     icon: SlidersHorizontal,
-    chip: { tone: 'pending', label: 'Model bekliyor' },
+    chip: { tone: 'active', label: 'Canlı' },
     bullets: [
       'Varsayılan plan: Profesyonel · Deneme süresi 14 gün',
       'Kullanıcı tavanı 25 · Müşteri tavanı 5.000',
@@ -129,6 +132,7 @@ const settings: SettingsCard[] = [
     ],
   },
   {
+    key: 'security',
     title: 'Global güvenlik',
     desc: '2FA politikası, oturum süresi, parola kuralları ve IP allowlist.',
     icon: ShieldCheck,
@@ -159,18 +163,19 @@ const settings: SettingsCard[] = [
     ],
   },
   {
+    key: 'integrations',
     title: 'Entegrasyonlar',
     desc: 'SMTP, SMS, WhatsApp, ödeme sağlayıcısı ve webhook politikaları.',
     icon: PlugZap,
     chip: { tone: 'info', label: 'Kısmen aktif' },
     bullets: [
-      'SMTP: noreply@armonessa.app · SPF/DKIM doğrulandı',
+      'SMTP: noreply@beautyasist.app · SPF/DKIM doğrulandı',
       'SMS: NetGSM · WhatsApp template: onay bekliyor',
       'Ödeme: iyzico canlı · Test modu kapalı',
       'Webhook retry: 5 deneme · exponential backoff',
     ],
     fields: [
-      { label: 'SMTP gönderici', type: 'email', value: 'noreply@armonessa.app' },
+      { label: 'SMTP gönderici', type: 'email', value: 'noreply@beautyasist.app' },
       {
         label: 'SMS sağlayıcı',
         type: 'select',
@@ -199,6 +204,7 @@ const settings: SettingsCard[] = [
     ],
   },
   {
+    key: 'maintenance',
     title: 'Bakım modu',
     desc: 'Planlı bakım penceresi, müşteri duyurusu ve admin bypass.',
     icon: Wrench,
@@ -223,6 +229,7 @@ const settings: SettingsCard[] = [
     ],
   },
   {
+    key: 'dataRetention',
     title: 'Veri saklama',
     desc: 'Yedekleme takvimi, log saklama süreleri ve KVKK anonimleştirme.',
     icon: Database,
@@ -263,17 +270,69 @@ const settings: SettingsCard[] = [
 interface HealthData {
   live: { status?: string; Status?: string; [key: string]: unknown }
   ready: { status?: string; Status?: string; [key: string]: unknown }
+  system: ApiSystemSettings | null
+  queue: ApiQueueStatus | null
+}
+
+interface ApiQueueStatus {
+  pending: number
+  processing: number
+  failed: number
+  succeededLast24h: number
+  recentFailures: Array<{ id: string; type: string; attempts: number; lastError?: string | null; completedAtUtc?: string | null }>
+}
+
+interface ApiSystemSettings {
+  planLimits?: string | null
+  security?: string | null
+  integrations?: string | null
+  maintenance?: string | null
+  dataRetention?: string | null
+  maintenanceEnabled?: boolean
+  updatedAtUtc?: string
+}
+
+type SectionValues = Record<string, unknown>
+
+function parseSection(json: string | null | undefined): SectionValues {
+  if (!json) return {}
+  try {
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === 'object' ? (parsed as SectionValues) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Varsayılan alanların üzerine kayıtlı değerleri bindirir (label = form anahtarı). */
+function mergeFields(fields: AdminField[], saved: SectionValues): AdminField[] {
+  return fields.map((f) => {
+    const key = f.name || f.label
+    if (!(key in saved)) return f
+    return { ...f, value: saved[key] as AdminField['value'] }
+  })
 }
 
 export default function PlatformSistemPage() {
+  const [savedTick, setSavedTick] = useState(0)
   const { data, loading, error } = useApiQuery<HealthData>(
     async () => ({
       live: (await healthApi.live()) as HealthData['live'],
       ready: (await healthApi.ready()) as HealthData['ready'],
+      system: await platformApi.systemSettings<ApiSystemSettings>().catch(() => null),
+      queue: await platformApi.queueStatus<ApiQueueStatus>().catch(() => null),
     }),
-    [],
+    [savedTick],
     { initialData: null },
   )
+  const sectionValues: Record<string, SectionValues> = {
+    planLimits: parseSection(data?.system?.planLimits),
+    security: parseSection(data?.system?.security),
+    integrations: parseSection(data?.system?.integrations),
+    maintenance: parseSection(data?.system?.maintenance),
+    dataRetention: parseSection(data?.system?.dataRetention),
+  }
+  const maintenanceOn = data?.system?.maintenanceEnabled === true
   const liveStatus = data?.live?.status || data?.live?.Status
   const readyStatus = data?.ready?.status || data?.ready?.Status
   const systemNotifications: NotificationItem[] = [
@@ -291,30 +350,23 @@ export default function PlatformSistemPage() {
       meta: 'Ready',
       href: '/platform/sistem',
     },
-    {
-      title: 'Settings modeli bekleniyor',
-      description: 'Webhook, bakım modu, yedekleme takvimi ve global ayarlar için backend modeli henüz yok.',
-      meta: 'Model',
-      href: '/platform/sistem',
-    },
   ]
   return (
     <>
       <Topbar
         title="Sistem Ayarları"
-        subtitle="Global plan, güvenlik, entegrasyon ve veri politikaları · gerçek Health API"
+        subtitle="Global plan, güvenlik, entegrasyon ve veri politikaları · canlı ayar kaydı + iş kuyruğu izleme"
         breadcrumbs={['Platform', 'Sistem']}
         pendingCount={systemNotifications.length}
         notifications={systemNotifications}
       />
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
         <ApiStateNotice loading={loading} error={error} empty={false} />
-        <ApiStateNotice missingModule="Global ayarlar, webhook, yedekleme takvimi ve bakım modu için backend Settings modeli henüz yok; Health endpointleri gerçek API’den okunuyor." />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Live" value={liveStatus || '—'} icon={Globe2} sub="Health canlılık endpoint" />
           <Stat label="Ready" value={readyStatus || '—'} icon={Database} sub="Bağımlılıklar hazır mı?" />
-          <Stat label="Webhook" value="Model bekliyor" icon={PlugZap} sub="Retry & DLQ politikası tasarlanıyor" />
-          <Stat label="Bakım modu" value="Kapalı" icon={Server} sub="Sonraki pencere planlanmadı" />
+          <Stat label="Ayar kaydı" value={data?.system ? 'Canlı' : '—'} icon={PlugZap} sub="Platform ayarları veritabanında" />
+          <Stat label="Bakım modu" value={maintenanceOn ? 'AÇIK' : 'Kapalı'} icon={Server} sub={maintenanceOn ? 'Bakım bayrağı aktif' : 'Bakım bayrağı kapalı'} />
         </div>
 
         {/* SMS + E-POSTA ALTYAPISI (platform geneli) */}
@@ -358,31 +410,60 @@ export default function PlatformSistemPage() {
                     triggerLabel="Yönet"
                     title={s.title}
                     description={s.desc}
-                    note="Backend Settings modeli henüz yok; form doğrulanır, kayıt sırasında gerçek endpoint’e bağlanacak."
+                    note="Değişiklikler platform ayarlarına kaydedilir ve audit log'a düşer."
                     submitLabel="Politikayı uygula"
-                    fields={s.fields}
+                    fields={mergeFields(s.fields, sectionValues[s.key] || {})}
+                    onSubmit={async (values) => {
+                      // Bakım modu kartında checkbox hızlı bayrak olarak da saklanır.
+                      const maintenanceFlag = s.key === 'maintenance' ? values['Bakım modu'] === true : undefined
+                      await platformApi.saveSystemSection(s.key, values, maintenanceFlag)
+                      setSavedTick((t) => t + 1)
+                    }}
                   />
                 </div>
               </div>
             )
           })}
         </div>
+        {/* KALICI İŞ KUYRUĞU — canlı sağlık */}
         <div className={`${card} p-5`}>
-          <div className={head}>Sistem olayları</div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className={head}>Arka plan iş kuyruğu</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             {[
-              `Health live: ${liveStatus || 'bilinmiyor'}`,
-              `Health ready: ${readyStatus || 'bilinmiyor'}`,
-              'Sistem olay log modeli bekleniyor',
-            ].map((x, i) => (
-              <div key={x} className="border border-[#fff4f8]/10 p-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4" /> {x}
-                </div>
-                <div className="mt-2 text-xs text-[#fff4f8]/40">0{i + 1}</div>
+              ['Bekleyen', data?.queue?.pending ?? '—'],
+              ['İşleniyor', data?.queue?.processing ?? '—'],
+              ['Başarısız (dead-letter)', data?.queue?.failed ?? '—'],
+              ['Son 24s başarılı', data?.queue?.succeededLast24h ?? '—'],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="border border-[#fff4f8]/10 p-4">
+                <div className="flex items-center gap-2 text-sm"><Activity className="h-4 w-4" /> {label}</div>
+                <div className="mt-2 font-display text-3xl tabular-nums">{value}</div>
               </div>
             ))}
           </div>
+          {(data?.queue?.recentFailures?.length ?? 0) > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className={head}>Son başarısız işler</div>
+              {data!.queue!.recentFailures.map((f) => (
+                <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 border border-rose-300/25 bg-rose-500/5 p-3 text-xs">
+                  <div className="min-w-0">
+                    <span className="font-mono text-rose-200">{f.type}</span>
+                    <span className="ml-2 text-[#fff4f8]/50">{f.attempts} deneme · {f.lastError || 'hata detayı yok'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="border border-[#fff4f8]/20 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#fff4f8]/70 hover:text-[#fff4f8]"
+                    onClick={async () => {
+                      await platformApi.requeueJob(f.id).catch(() => undefined)
+                      setSavedTick((t) => t + 1)
+                    }}
+                  >
+                    Yeniden dene
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>

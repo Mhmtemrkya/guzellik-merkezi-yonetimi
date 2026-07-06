@@ -78,7 +78,7 @@ export default function Cta() {
             className="hero-title max-w-[15ch] text-[clamp(2rem,11vw,3rem)] leading-[0.95] text-[#fff4f8] sm:max-w-none sm:text-[clamp(2.45rem,7vw,4.8rem)] lg:text-[clamp(2.8rem,4.6vw,4.8rem)]"
           >
             Excel’i bırakın. <br />
-            <span className="serif-italic armonessa-text-gradient">
+            <span className="serif-italic beautyasist-text-gradient">
               Panele 30 saniyede girin.
             </span>
           </motion.h2>
@@ -146,7 +146,7 @@ export default function Cta() {
           >
             {trustChips.map((s) => (
               <div key={s.l} className="glass min-w-0 rounded-2xl p-3 sm:p-3.5">
-                <div className="armonessa-text-gradient truncate font-display text-xl leading-none sm:text-2xl">{s.v}</div>
+                <div className="beautyasist-text-gradient truncate font-display text-xl leading-none sm:text-2xl">{s.v}</div>
                 <div className="eyebrow mt-1 text-[8px] leading-snug text-[#fff4f8]/55 sm:text-[9px]">{s.l}</div>
               </div>
             ))}

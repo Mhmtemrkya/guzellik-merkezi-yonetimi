@@ -71,12 +71,16 @@ public static class FeatureCatalog
     public const string MarketingGiftCards  = "marketing.giftcards";
     public const string FinanceCashClosing  = "finance.cashclosing";
     public const string AppointmentsWaitlist = "appointments.waitlist";
+    /// <summary>Müşteri online randevu portalı (web + mobil) — kapalıysa kurum portalda listelenmez ve randevu alınamaz.</summary>
+    public const string AppointmentsOnlineBooking = "appointments.onlinebooking";
 
     // ---------- Kurum & Sistem (5) ----------
     public const string StaffPermissions    = "staff.permissions";
     public const string ApprovalWorkflow    = "approval.workflow";
     public const string MultiBranch         = "multiBranch";
     public const string ApiAccess           = "api.access";
+    /// <summary>Cihaz güvenliği: personel yalnızca tanımlı cihazlarından giriş yapar, loglara cihaz kimliği + ağ bilgisi düşer.</summary>
+    public const string SecurityDeviceControl = "security.devicecontrol";
     public const string AiInsights          = "ai.insights";
 
     public static readonly FeatureItem[] All =
@@ -138,6 +142,7 @@ public static class FeatureCatalog
         // Faz 1 ek özellikler
         new(FinanceCashClosing,    "Gün sonu kasa kapanışı", "Z raporu: sayım, sistem nakdi ve fark mutabakatı", FeatureCategory.Accounting),
         new(AppointmentsWaitlist,  "Bekleme listesi",        "Dolu güne talep toplama, sıradakine teklif",       FeatureCategory.Operations),
+        new(AppointmentsOnlineBooking, "Online randevu portalı", "Müşteriler web/mobil portaldan randevu talebi oluşturur; kapalı kurumlar portalda görünmez", FeatureCategory.Operations),
 
         // Kurum & Sistem
         new(StaffPermissions, "Personel yetkilendirme",   "Personel için 12 sayfa bazlı izin atama",          FeatureCategory.Organization),
@@ -145,6 +150,7 @@ public static class FeatureCatalog
         new(MultiBranch,      "Çoklu şube",               "Birden fazla şube yönetimi",                       FeatureCategory.Organization),
         new(ApiAccess,        "API erişimi",              "Public REST API anahtarı + dokümantasyon",         FeatureCategory.Organization),
         new(AiInsights,       "AI öneriler",              "AI tabanlı müşteri segmentasyonu, randevu öneri",  FeatureCategory.Organization),
+        new(SecurityDeviceControl, "Cihaz güvenliği",     "Personel için cihaz limiti + tanımlı cihaz zorunluluğu; loglarda cihaz kimliği ve ağ bilgisi", FeatureCategory.Organization),
     };
 
     public static bool Exists(string key) =>

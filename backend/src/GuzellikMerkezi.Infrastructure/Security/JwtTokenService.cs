@@ -38,6 +38,7 @@ public sealed class JwtTokenService : ITokenService
         if (!string.IsNullOrWhiteSpace(profile.FullName)) claims.Add(new Claim(ClaimTypes.Name, profile.FullName));
         if (profile.TenantId.HasValue) claims.Add(new Claim("tenant_id", profile.TenantId.Value.ToString()));
         if (profile.BranchId.HasValue) claims.Add(new Claim("branch_id", profile.BranchId.Value.ToString()));
+        if (profile.CustomerId.HasValue) claims.Add(new Claim("customer_id", profile.CustomerId.Value.ToString()));
         foreach (var permission in profile.Permissions) claims.Add(new Claim("permission", permission));
 
         var credentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256);

@@ -54,8 +54,14 @@ public static class StaffEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.TransferBranchAsync(resolvedTenantId, id, request.BranchId, ct)).ToHttpResult(http);
         });
 
-        // Mevcut izin listesi (frontend checkbox grid için)
-        group.MapGet("/permissions", () => Results.Ok(GuzellikMerkezi.Domain.Permissions.All.Select(p => new { p.Key, p.Label, p.Description })));
+        // Mevcut izin listesi (frontend checkbox grid için) — sayfa + altındaki işlem izinleri.
+        group.MapGet("/permissions", () => Results.Ok(GuzellikMerkezi.Domain.Permissions.All.Select(p => new
+        {
+            p.Key,
+            p.Label,
+            p.Description,
+            Actions = p.Actions.Select(a => new { a.Key, a.Label }),
+        })));
 
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>
         {

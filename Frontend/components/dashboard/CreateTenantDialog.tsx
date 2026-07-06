@@ -79,7 +79,7 @@ function isAutoField(key: keyof CreateTenantFormValues): key is AutoField {
 }
 
 // --- Client-side türetme (backend TenantService ile birebir aynı kurallar) ---
-const TENANT_DOMAIN_SUFFIX = 'armonessa.app'
+const TENANT_DOMAIN_SUFFIX = 'beautyasist.app'
 
 function transliterateTurkish(value: string): string {
   return value
@@ -103,7 +103,7 @@ function deriveSlug(name: string): string {
   return out.replace(/-+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-/** Slug'tan domain üretir: "slug.armonessa.app". Slug boşsa boş döner. */
+/** Slug'tan domain üretir: "slug.beautyasist.app". Slug boşsa boş döner. */
 function deriveDomain(slug: string): string {
   const s = slug.trim()
   return s ? `${s}.${TENANT_DOMAIN_SUFFIX}` : ''
@@ -418,14 +418,14 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                     label="Kurum adı"
                     value={values.name}
                     onChange={(value) => updateField('name', value)}
-                    placeholder="Örn. Armonessa Nişantaşı"
+                    placeholder="Örn. BeautyAsist Nişantaşı"
                     helper={availability?.nameAvailable === false ? `Önerilen ad: ${availability.suggestedName}` : 'Slug ve domain bu ada göre hazırlanır.'}
                   />
                   <FormInput
                     label="Slug"
                     value={values.slug}
                     onChange={(value) => updateField('slug', value)}
-                    placeholder="armonessa-nisantasi"
+                    placeholder="beautyasist-nisantasi"
                     helper="Kurum adından anlık üretilir; elle yazarsan sabit kalır, silersen tekrar otomatik olur."
                   />
                   <FormSelect
@@ -449,7 +449,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                     label="Domain"
                     value={values.domain}
                     onChange={(value) => updateField('domain', value)}
-                    placeholder="armonessa-nisantasi.armonessa.app"
+                    placeholder="beautyasist-nisantasi.beautyasist.app"
                     helper="Slug'a göre anlık üretilir; elle değiştirebilirsin."
                   />
                   <FormInput
@@ -464,7 +464,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                     type="email"
                     value={values.ownerEmail}
                     onChange={(value) => updateField('ownerEmail', value)}
-                    placeholder="selin.demir@armonessa-nisantasi.armonessa.app"
+                    placeholder="selin.demir@beautyasist-nisantasi.beautyasist.app"
                   />
                   <FormInput
                     label="Kurum telefonu"

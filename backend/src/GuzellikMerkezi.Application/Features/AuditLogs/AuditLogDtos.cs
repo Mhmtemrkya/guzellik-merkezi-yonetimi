@@ -13,7 +13,9 @@ public sealed record AuditLogDto(
     string? Summary,
     string? DataJson,
     string? IpAddress,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? DeviceId = null,
+    string? DeviceInfoJson = null);
 
 public sealed record AuditLogFilter(
     string? Action,

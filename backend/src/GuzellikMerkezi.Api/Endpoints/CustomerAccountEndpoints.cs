@@ -1,7 +1,9 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.CustomerAccounts;
+using GuzellikMerkezi.Domain;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -9,7 +11,9 @@ public static class CustomerAccountEndpoints
 {
     public static IEndpointRouteBuilder MapCustomerAccountEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/accounts").WithTags("CustomerAccounts").RequireAuthorization();
+        // GÜVENLİK: cari/finansal veriler — personel yalnızca "Ön Muhasebe" (Accounting) SAYFA izniyle okuyabilir.
+        // (Yazma işlemleri ayrıca onay kapısında Accounting.Accounts/Collect aksiyon iznine tabidir.)
+        var group = app.MapGroup("/api/admin/accounts").WithTags("CustomerAccounts").RequireAuthorization().RequirePermission(Permissions.Accounting);
 
         group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {

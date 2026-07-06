@@ -12,10 +12,19 @@ public static class AuthEndpoints
         var group = app.MapGroup("/api/auth").WithTags("Auth");
 
         group.MapPost("/login-scope", async (LoginScopeRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.GetLoginScopeAsync(request, ct)).ToHttpResult(http));
+            (await service.GetLoginScopeAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
 
         group.MapPost("/login", async (LoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.LoginAsync(request, ct)).ToHttpResult(http));
+            (await service.LoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
+
+        // Online portal müşteri girişi: ad soyad + telefon (baştaki 0 ile) + doğum tarihi eşleşmesi.
+        // Şifresiz giriş brute-force'a açık olduğundan IP bazlı hız sınırına tabidir.
+        group.MapPost("/customer/login", async (CustomerLoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
+            (await service.CustomerLoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+
+        // Kuruma bağlı olmayan müşteri kaydı (kayıt ol) — herkese açık, kayıt sonrası otomatik giriş.
+        group.MapPost("/customer/register", async (CustomerRegisterRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
+            (await service.CustomerRegisterAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
 
         group.MapPost("/refresh", async (RefreshTokenRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.RefreshAsync(request, ct)).ToHttpResult(http));

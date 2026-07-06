@@ -19,6 +19,12 @@ public interface IFeatureService
 
     /// <summary>Projedeki tüm feature kataloğu — plan kataloğu UI'ı için.</summary>
     FeatureCatalogDto GetCatalog();
+
+    /// <summary>
+    /// Bir tenant'ın önbelleğe alınmış feature-set'ini geçersiz kılar (plan değişince/plan feature'ı
+    /// düzenlenince çağrılır). TTL zaten kısa; bu, değişikliğin anında yansıması içindir.
+    /// </summary>
+    void InvalidateTenant(Guid tenantId);
 }
 
 public sealed record TenantFeaturesDto(

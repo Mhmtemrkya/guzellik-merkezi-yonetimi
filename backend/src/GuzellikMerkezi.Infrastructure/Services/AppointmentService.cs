@@ -1,11 +1,15 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Appointments;
 using GuzellikMerkezi.Application.Features.Usage;
+using GuzellikMerkezi.Application.Features.Waitlist;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -14,12 +18,28 @@ public sealed class AppointmentService : IAppointmentService
     private readonly GuzellikDbContext _db;
     private readonly IUsageService _usage;
     private readonly IAuditLogger _audit;
+    private readonly IWaitlistService _waitlist;
+    private readonly IDurableJobQueue _jobs;
+    private readonly IAppNotificationService _notifications;
 
-    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit)
+    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications)
     {
         _db = db;
         _usage = usage;
         _audit = audit;
+        _waitlist = waitlist;
+        _jobs = jobs;
+        _notifications = notifications;
+    }
+
+    /// <summary>Bildirim gövdesi için müşteri adı (şifreli kolon okuma anında çözülür). Yoksa "Müşteri".</summary>
+    private async Task<string> CustomerNameAsync(Guid tenantId, Guid customerId, CancellationToken ct)
+    {
+        var name = await _db.Customers.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.Id == customerId)
+            .Select(c => c.FullName)
+            .FirstOrDefaultAsync(ct);
+        return string.IsNullOrWhiteSpace(name) ? "Müşteri" : name;
     }
 
     public async Task<Result<PagedResult<AppointmentDto>>> ListAsync(Guid tenantId, DateTime? fromUtc, DateTime? toUtc, PageRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
@@ -50,7 +70,8 @@ public sealed class AppointmentService : IAppointmentService
                 x.StaffMember != null ? x.StaffMember.FullName : null,
                 x.ServiceDefinition != null ? x.ServiceDefinition.Name : null,
                 x.CustomerConfirmation,
-                x.LastReminderAtUtc))
+                x.LastReminderAtUtc,
+                x.IsOnline))
             .ToArrayAsync(cancellationToken);
         return Result<PagedResult<AppointmentDto>>.Success(new PagedResult<AppointmentDto>(items, total, request.SafePage, request.SafePageSize));
     }
@@ -89,7 +110,8 @@ public sealed class AppointmentService : IAppointmentService
         }
 
         var overlap = await HasOverlapAsync(tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, null, cancellationToken);
-        if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında başka randevusu var."));
+        // SlotFull kodu: frontend bunu "bekleme listesine ekle?" uyarısı için ayırt eder (kara liste 409'undan farklı).
+        if (overlap) return Result<AppointmentDto>.Failure(Error.SlotFull("Bu saatte personelin uygun yeri yok. Bekleme listesine ekleyebilirsiniz."));
 
         var appointment = new Appointment(tenantId, request.BranchId, request.CustomerId, request.StaffMemberId, request.ServiceDefinitionId, request.StartUtc, request.EndUtc, request.Price, request.Notes);
 
@@ -130,7 +152,7 @@ public sealed class AppointmentService : IAppointmentService
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
 
         var overlap = await HasOverlapAsync(tenantId, appointment.StaffMemberId, request.StartUtc, request.EndUtc, appointment.Id, cancellationToken);
-        if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında başka randevusu var."));
+        if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında en fazla 2 randevusu olabilir."));
 
         var prevStart = appointment.StartUtc;
         appointment.Reschedule(request.StartUtc, request.EndUtc);
@@ -172,26 +194,49 @@ public sealed class AppointmentService : IAppointmentService
             session?.TryConsume();
         }
 
-        // İptalde yer açıldı → o güne bekleme listesinde sırada (Waiting) bekleyenleri otomatik
-        // "Bilgilendirildi" (Notified) işaretle; personel sıradakine teklif götürebilir.
-        var notifiedWaitlist = 0;
+        // Durum değişikliğini (+ tamamlanınca seans düşümü) önce kaydet: bekleme listesi offer akışı
+        // overlap'i DB'den okuyacağı için slot boşalması kalıcı olmalı.
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // İptalde yer açıldı → bekleme listesindeki ilk uygun müşteriye WhatsApp'tan "yer açıldı, ister misiniz?"
+        // teklifi götür (offer-first). Best-effort: teklif/gönderim başarısız olsa da iptal geçerli kalır.
+        Guid? offeredWaitlistId = null;
         if (request.Status == AppointmentStatus.Cancelled && prevStatus != AppointmentStatus.Cancelled)
         {
-            var slotDate = DateOnly.FromDateTime(appointment.StartUtc);
-            var waiting = (await _db.WaitlistEntries
-                    .Where(w => w.TenantId == tenantId && w.Status == WaitlistStatus.Waiting)
-                    .ToListAsync(cancellationToken))
-                .Where(w => w.PreferredDate == slotDate
-                         && (appointment.ServiceDefinitionId == Guid.Empty || w.ServiceDefinitionId == null || w.ServiceDefinitionId == appointment.ServiceDefinitionId))
-                .ToList();
-            foreach (var w in waiting) w.SetStatus(WaitlistStatus.Notified);
-            notifiedWaitlist = waiting.Count;
+            var offer = await _waitlist.SelectAndMarkOfferAsync(tenantId, appointment.Id, cancellationToken);
+            if (offer.IsSuccess && offer.Value is { } offeredId)
+            {
+                offeredWaitlistId = offeredId;
+                // WhatsApp teklifini (yavaş Meta HTTP) KALICI kuyruğa yaz → iptal yanıtı beklemez,
+                // restart'ta kaybolmaz, başarısızlıkta otomatik yeniden denenir.
+                await _jobs.EnqueueAsync(Background.DurableJobTypes.WaitlistOffer,
+                    new Background.WaitlistOfferJob(tenantId, offeredId), cancellationToken);
+            }
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "ChangeStatus", "Appointment", appointment.Id,
-            $"Randevu durumu: {prevStatus} → {appointment.Status}{(notifiedWaitlist > 0 ? $" · {notifiedWaitlist} bekleme kaydı bilgilendirildi" : "")}",
-            new { prevStatus, NewStatus = appointment.Status, request.Reason, notifiedWaitlist }, cancellationToken);
+            $"Randevu durumu: {prevStatus} → {appointment.Status}{(offeredWaitlistId is not null ? " · bekleme listesine teklif gönderildi" : "")}",
+            new { prevStatus, NewStatus = appointment.Status, request.Reason, offeredWaitlistId }, cancellationToken);
+
+        // İptal / Gelmedi → kurum/şube yöneticisine bildirim (yeni randevu için slot boşaldı / takip).
+        if ((request.Status == AppointmentStatus.Cancelled || request.Status == AppointmentStatus.NoShow)
+            && prevStatus != request.Status)
+        {
+            var customerName = await CustomerNameAsync(tenantId, appointment.CustomerId, cancellationToken);
+            var isCancel = request.Status == AppointmentStatus.Cancelled;
+            await _notifications.NotifyRolesAsync(
+                tenantId, appointment.BranchId,
+                new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+                isCancel ? AppNotificationType.AppointmentCancelled : AppNotificationType.AppointmentUpdated,
+                AppNotificationSeverity.Warning,
+                isCancel ? "Randevu iptal edildi" : "Müşteri gelmedi",
+                $"{customerName} · {appointment.StartUtc.AddHours(3):dd.MM.yyyy HH:mm}"
+                    + (offeredWaitlistId is not null ? " · bekleme listesine teklif gönderildi" : string.Empty),
+                data: new { route = "/appointments", id = appointment.Id.ToString() },
+                dedupeKey: $"appt-{appointment.Status}:{appointment.Id}",
+                ct: cancellationToken);
+        }
+
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
@@ -206,13 +251,32 @@ public sealed class AppointmentService : IAppointmentService
 
         // Onay anında aktif randevularla çakışma kontrolü (taslak beklerken slot dolmuş olabilir).
         var overlap = await HasOverlapAsync(tenantId, appointment.StaffMemberId, appointment.StartUtc, appointment.EndUtc, appointment.Id, cancellationToken);
-        if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında aktif bir randevusu var; taslak onaylanamadı."));
+        if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında en fazla 2 randevusu olabilir; taslak onaylanamadı."));
 
         appointment.ApproveDraft();
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Approve", "Appointment", appointment.Id,
             $"Taslak randevu onaylandı → aktif ({appointment.StartUtc:dd.MM.yyyy HH:mm})",
             new { appointment.StartUtc, appointment.CustomerId, appointment.StaffMemberId }, cancellationToken);
+
+        // Randevu aktifleşti → atanan personelin kullanıcı hesabına bildirim ("randevunuz onaylandı").
+        var staffUserId = await _db.StaffMembers.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Id == appointment.StaffMemberId)
+            .Select(s => s.TenantUserId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (staffUserId is Guid uid && uid != Guid.Empty)
+        {
+            var customerName = await CustomerNameAsync(tenantId, appointment.CustomerId, cancellationToken);
+            await _notifications.NotifyUserAsync(
+                tenantId, appointment.BranchId, uid,
+                AppNotificationType.AppointmentUpdated, AppNotificationSeverity.Success,
+                "Randevu onaylandı",
+                $"{customerName} · {appointment.StartUtc.AddHours(3):dd.MM.yyyy HH:mm}",
+                data: new { route = "/appointments", id = appointment.Id.ToString() },
+                dedupeKey: $"appt-approve:{appointment.Id}",
+                ct: cancellationToken);
+        }
+
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
@@ -273,13 +337,18 @@ public sealed class AppointmentService : IAppointmentService
         return Result.Success();
     }
 
-    private Task<bool> HasOverlapAsync(Guid tenantId, Guid staffMemberId, DateTime startUtc, DateTime endUtc, Guid? excludingAppointmentId, CancellationToken cancellationToken)
+    /// <summary>Bir personel aynı saat aralığında en fazla bu kadar aktif randevu alabilir.</summary>
+    private const int MaxConcurrentAppointmentsPerStaff = 2;
+
+    private async Task<bool> HasOverlapAsync(Guid tenantId, Guid staffMemberId, DateTime startUtc, DateTime endUtc, Guid? excludingAppointmentId, CancellationToken cancellationToken)
     {
         // Taslak (onay bekleyen) randevular slotu bloke etmez; yalnızca aktif randevular çakışır.
-        return _db.Appointments.AnyAsync(x => x.TenantId == tenantId && x.StaffMemberId == staffMemberId &&
+        // Aynı personel aynı slotta en fazla 2 aktif randevu alabilir; 3.'sü engellenir.
+        var overlapping = await _db.Appointments.CountAsync(x => x.TenantId == tenantId && x.StaffMemberId == staffMemberId &&
             (!excludingAppointmentId.HasValue || x.Id != excludingAppointmentId.Value) &&
             x.Status != AppointmentStatus.Cancelled && x.Status != AppointmentStatus.NoShow && x.Status != AppointmentStatus.Draft &&
             x.StartUtc < endUtc && startUtc < x.EndUtc, cancellationToken);
+        return overlapping >= MaxConcurrentAppointmentsPerStaff;
     }
 
     private IQueryable<Appointment> ApplyStaffScope(IQueryable<Appointment> query, Guid? staffTenantUserId)

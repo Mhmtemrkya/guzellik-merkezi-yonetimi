@@ -7,6 +7,7 @@ import AppointmentEditor, { type AppointmentEditorValues } from '@/components/da
 import ManagerAppointmentInbox from '@/components/dashboard/ManagerAppointmentInbox'
 import AppointmentReminderControl from '@/components/dashboard/AppointmentReminderControl'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
@@ -17,6 +18,7 @@ import RatingQrModal, { type RatingTokenInfo } from '@/components/dashboard/Rati
 import DayScheduleModal from '@/components/dashboard/DayScheduleModal'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
+import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi } from '@/lib/apiClient'
@@ -51,6 +53,7 @@ import {
   Plus,
   StickyNote,
   Trash2,
+  UserPlus,
   Wallet,
   XCircle,
   type LucideIcon,
@@ -486,6 +489,8 @@ function RandevularPageInner() {
   }, [isStaffUser, staffList, user?.email, user?.userId])
   const appointmentStaffList = useMemo(() => (isStaffUser ? (selfStaff ? [selfStaff] : []) : staffList), [isStaffUser, selfStaff, staffList])
   const canCreateAppointment = !isStaffUser || Boolean(selfStaff)
+  // Bekleme listesi özelliği açıksa dolu-slot uyarısında "bekleme listesine ekle" teklifi göster.
+  const waitlistEnabled = useFeature('appointments.waitlist')
 
   // Scope-based pre-filter
   const todayIso = isoDateOnly(today)
@@ -620,6 +625,28 @@ function RandevularPageInner() {
     await reload()
   }
 
+  // Slot dolu (SlotFull) → müşteriyi TAM o slot için bekleme listesine ekle.
+  // Yer açılınca (iptal) müşteriye WhatsApp'tan "yer açıldı, ister misiniz?" teklifi gider.
+  const handleAddToWaitlist = async (values: AppointmentEditorValues): Promise<void> => {
+    const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
+    const duration = values.durationMinutes || service?.duration || 30
+    const { startUtc } = toUtcRange(values.date, values.time, duration)
+    await adminApi.addWaitlist(
+      {
+        customerId: values.customerId,
+        serviceDefinitionId: values.serviceDefinitionId || null,
+        staffMemberId: (isStaffUser ? selfStaff?.id : values.staffMemberId) || null,
+        preferredDate: values.date,
+        preferredStartUtc: startUtc,
+        durationMinutes: duration,
+        branchId: branchId ?? null,
+        note: null,
+      },
+      tenantId,
+    )
+    await reload()
+  }
+
   // Randevu "tamamlandı" işaretlenince müşteri puanlama linki (QR) üret ve modalı aç.
   const maybeIssueRating = async (appointmentId: string, status: string | undefined): Promise<void> => {
     if (status !== 'Completed') return
@@ -704,6 +731,32 @@ function RandevularPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointments, range.days])
 
+  // Hızlı müşteri kaydı — topbar'daki "Yeni Müşteri" ve randevu modalındaki buton aynı akışı kullanır.
+  // Oluşan müşteri döndürülür (randevu modalı otomatik seçer); Staff onaya düştüyse null döner.
+  const quickCreateCustomer = async (values: CustomerFormValues): Promise<Customer | null> => {
+    const payload = {
+      branchId: branchId || null, fullName: values.fullName, phone: values.phone, email: values.email || null,
+      birthDate: values.birthDate || null, gender: values.gender || 'Unspecified',
+      kvkkConsent: Boolean(values.kvkkConsent), notes: values.notes || null,
+      photoUrl: typeof values.photoUrl === 'string' && values.photoUrl ? values.photoUrl : null,
+    }
+    const res = await performWrite({
+      operationType: 'CreateCustomer',
+      title: `Müşteri: ${String(payload.fullName || '—')}`,
+      summary: String(payload.phone || ''),
+      payload,
+      tenantId,
+      directAction: () => adminApi.createCustomer<ApiCustomer>(payload, tenantId),
+    })
+    if (res.submittedToApproval) {
+      setStaffActionMsg(staffApprovalSuccessMessage('Müşteri ekleme'))
+      await reload()
+      return null
+    }
+    await reload()
+    return res.result ? normalizeCustomer(res.result) : null
+  }
+
   // Gün özeti kartı: durum dağılımı, toplam tutar ve yüzdelik segmentler
   const dayCounts: Record<AppointmentStatusKey, number> = {
     tamamlandi: selectedAppointments.filter((r) => r.status === 'tamamlandi').length,
@@ -730,29 +783,19 @@ function RandevularPageInner() {
         breadcrumbs={isStaffUser ? ['Personel', 'Randevularım', scopeInfo.label] : ['Admin', 'İşletme', 'Randevular', scopeInfo.label]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AdminEditDialog
-              triggerVariant="ghost" triggerLabel="Yeni Müşteri" eyebrow="Customer API · POST" titleIcon={Plus} title="Yeni müşteri kaydı"
+            <CustomerFormDialog
+              mode="create"
               description="Müşteriyi buradan kaydedip sayfadan ayrılmadan randevusunu oluşturabilirsin."
               submitLabel={isStaffUser ? 'Onaya gönder' : 'Müşteri oluştur'}
               onSubmit={async (values) => {
-                const fv = values as Record<string, unknown>
-                const payload = {
-                  branchId: branchId || null, fullName: fv.fullName, phone: fv.phone, email: fv.email || null,
-                  birthDate: fv.birthDate || null, gender: fv.gender || 'Unspecified',
-                  kvkkConsent: Boolean(fv.kvkkConsent), notes: fv.notes || null, photoUrl: null,
-                }
-                const res = await performWrite({ operationType: 'CreateCustomer', title: `Müşteri: ${String(payload.fullName || '—')}`, summary: String(payload.phone || ''), payload, tenantId, directAction: () => adminApi.createCustomer(payload, tenantId) })
-                if (res.submittedToApproval) setStaffActionMsg(staffApprovalSuccessMessage('Müşteri ekleme'))
-                await reload()
+                await quickCreateCustomer(values)
               }}
-              fields={[
-                { label: 'Ad soyad', name: 'fullName', value: '', required: true, icon: Users, placeholder: 'Örn. Ayşe Yılmaz', fullWidth: true },
-                { label: 'Telefon', name: 'phone', value: '', required: true, icon: Phone, prefix: '+90', placeholder: '5__ ___ __ __' },
-                { label: 'E-posta', name: 'email', type: 'email', value: '', icon: Mail, placeholder: 'opsiyonel' },
-                { label: 'Doğum tarihi', name: 'birthDate', type: 'date', value: '', icon: CalendarDays },
-                { label: 'KVKK onayı alındı', name: 'kvkkConsent', type: 'checkbox', value: true, icon: ShieldCheck },
-                { label: 'Not', name: 'notes', type: 'textarea', value: '', icon: FileText, fullWidth: true },
-              ]}
+              trigger={
+                <button type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]">
+                  <UserPlus className="h-4 w-4" strokeWidth={2.1} /> Yeni Müşteri
+                </button>
+              }
             />
             <PackageSaleDialog tenantId={tenantId} onDone={reload} />
             {canCreateAppointment && (
@@ -1109,7 +1152,10 @@ function RandevularPageInner() {
                                 <span className="font-mono text-[10px] font-semibold tracking-wide text-[#c85776]/95">{r.time}</span>
                                 <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} />
                               </div>
-                              <div className="mt-1 truncate text-[11px] font-medium">{r.musteri}</div>
+                              <div className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium">
+                                <span className="truncate">{r.musteri}</span>
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                              </div>
                               <div className="flex items-center justify-between gap-2 text-[9px] text-[#352432]/45">
                                 <span className="truncate">{r.islem}</span>
                                 {Number(r.price) > 0 && (
@@ -1362,7 +1408,10 @@ function RandevularPageInner() {
                           <span className="flex items-center gap-3">
                             <AvatarBubble name={r.musteri} />
                             <span className="min-w-0">
-                              <span className="block truncate text-[13px] font-semibold text-[#241923]">{r.musteri}</span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="block truncate text-[13px] font-semibold text-[#241923]">{r.musteri}</span>
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                              </span>
                               {customer?.phone && (
                                 <span className="mt-0.5 block text-[11px] text-[#8a7480]">{customer.phone}</span>
                               )}
@@ -1509,6 +1558,8 @@ function RandevularPageInner() {
         services={servicesList}
         packages={allPackages}
         tenantId={tenantId}
+        onQuickCreateCustomer={quickCreateCustomer}
+        onAddToWaitlist={waitlistEnabled ? handleAddToWaitlist : undefined}
         initialValues={{
           date: createDate || selectedDate,
           ...(createTime ? { time: createTime } : {}),

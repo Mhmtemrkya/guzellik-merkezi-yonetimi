@@ -50,13 +50,13 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
     public async Task<Result<MessagingTestResult>> SendTestSmsAsync(string toPhone, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(toPhone)) return Result<MessagingTestResult>.Failure(Error.Validation("Telefon numarası gerekli."));
-        return Result<MessagingTestResult>.Success(await SendSmsAsync(toPhone, "Armonessa platform test SMS — SMS altyapısı çalışıyor.", ct));
+        return Result<MessagingTestResult>.Success(await SendSmsAsync(toPhone, "BeautyAsist platform test SMS — SMS altyapısı çalışıyor.", ct));
     }
 
     public async Task<Result<MessagingTestResult>> SendTestEmailAsync(string toEmail, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(toEmail)) return Result<MessagingTestResult>.Failure(Error.Validation("E-posta adresi gerekli."));
-        return Result<MessagingTestResult>.Success(await SendEmailAsync(toEmail, "Armonessa test e-postası",
+        return Result<MessagingTestResult>.Success(await SendEmailAsync(toEmail, "BeautyAsist test e-postası",
             "<div style='font-family:sans-serif'><h2>Test e-postası ✅</h2><p>E-posta altyapısı çalışıyor.</p></div>", ct));
     }
 

@@ -49,7 +49,7 @@ export default function LoyaltyCard({ customerId, tenantId }: { customerId?: str
         </div>
         <div className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-[#d99a3a]" />
-          <span className="font-display text-2xl tabular-nums armonessa-text-gradient">{balance}</span>
+          <span className="font-display text-2xl tabular-nums beautyasist-text-gradient">{balance}</span>
           <span className="text-[10px] font-mono text-[#352432]/40">puan</span>
         </div>
       </div>

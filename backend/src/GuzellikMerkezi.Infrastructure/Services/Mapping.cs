@@ -33,7 +33,7 @@ internal static class Mapping
         tenant.SubscriptionEndsAtUtc,
         tenant.SubscriptionPlan?.YearlyPriceTRY ?? 0m);
     public static BranchDto ToDto(this Branch branch) => new(branch.Id, branch.TenantId, branch.Name, branch.City, branch.IsDefault, branch.StaffCount, branch.RoomCount);
-    public static CustomerDto ToDto(this Customer customer) => new(customer.Id, customer.TenantId, customer.BranchId, customer.FullName, customer.Phone, customer.Email, customer.BirthDate, customer.Gender, customer.KvkkConsent, customer.Notes, customer.PhotoUrl, customer.IsBlacklisted, customer.BlacklistReason, customer.CreatedAtUtc);
+    public static CustomerDto ToDto(this Customer customer) => new(customer.Id, customer.TenantId, customer.BranchId, customer.FullName, customer.Phone, customer.Email, customer.BirthDate, customer.Gender, customer.KvkkConsent, customer.Notes, customer.PhotoUrl, customer.IsBlacklisted, customer.BlacklistReason, customer.CreatedAtUtc, customer.IsVip);
     public static StaffDto ToDto(this StaffMember staff, string? email = null, IReadOnlyCollection<string>? permissions = null, decimal? averageRating = null, int ratingCount = 0) =>
         new(staff.Id, staff.TenantId, staff.BranchId, staff.TenantUserId, staff.FullName, staff.Title, staff.Phone, staff.Specialties, staff.CommissionRate, staff.IsActive, email, permissions ?? Array.Empty<string>(), staff.PhotoUrl, averageRating, ratingCount);
     public static ServiceDefinitionDto ToDto(this ServiceDefinition service) => new(service.Id, service.TenantId, service.BranchId, service.Name, service.Category, service.DurationMinutes, service.Price, service.IsActive, service.IconKey, service.Status, service.DefaultSessionCount, service.LoyaltyPointCost);
@@ -103,7 +103,10 @@ internal static class Mapping
         appointment.CancellationReason,
         appointment.Customer?.FullName,
         appointment.StaffMember?.FullName,
-        appointment.ServiceDefinition?.Name);
+        appointment.ServiceDefinition?.Name,
+        appointment.CustomerConfirmation,
+        appointment.LastReminderAtUtc,
+        appointment.IsOnline);
 
     public static CustomExpenseCategoryDto ToDto(this CustomExpenseCategory category) => new(
         category.Id,

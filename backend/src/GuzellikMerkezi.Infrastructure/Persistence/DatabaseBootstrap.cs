@@ -246,6 +246,7 @@ public static class DatabaseBootstrap
             FeatureCatalog.StaffCommission, FeatureCatalog.StaffSchedule,
             FeatureCatalog.MarketingCampaigns, FeatureCatalog.LoyaltyPoints,
             FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
+            FeatureCatalog.AppointmentsOnlineBooking,
             FeatureCatalog.AuditLogs,
             FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
             FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
@@ -272,9 +273,11 @@ public static class DatabaseBootstrap
             FeatureCatalog.StaffCommission, FeatureCatalog.StaffSchedule,
             FeatureCatalog.MarketingCampaigns, FeatureCatalog.LoyaltyPoints,
             FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
+            FeatureCatalog.AppointmentsOnlineBooking,
             FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
             FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
             FeatureCatalog.MultiBranch,
+            FeatureCatalog.SecurityDeviceControl,
         });
 
         var aiKlinik = string.Join(',', new[]
@@ -364,6 +367,7 @@ public static class DatabaseBootstrap
                 FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
                 FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
                 FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
+                FeatureCatalog.SecurityDeviceControl,
             };
             var backfilled = 0;
             foreach (var plan in existingPlans)

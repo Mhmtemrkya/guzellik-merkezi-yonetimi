@@ -164,12 +164,12 @@ const pricingFeatures = [
 
 function BrandMark() {
   return (
-    <a href="#top" className="group flex items-center gap-3" aria-label="Armonessa ana sayfa">
+    <a href="#top" className="group flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
       <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl border border-[#ead8df] bg-white shadow-[0_14px_34px_-24px_rgba(142,63,91,0.65)]">
-        <img src="/logo.png" alt="Armonessa logosu" className="h-full w-full scale-125 object-cover transition duration-500 group-hover:scale-110" />
+        <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover transition duration-500 group-hover:scale-110" />
       </span>
       <span className="leading-none">
-        <span className="block font-display text-[18px] tracking-[-0.04em] text-[#6f4153]">Armonessa</span>
+        <span className="block font-display text-[18px] tracking-[-0.04em] text-[#6f4153]">BeautyAsist</span>
         <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.28em] text-[#b58295]">Güzellik merkezi</span>
       </span>
     </a>
@@ -201,6 +201,14 @@ function Header() {
           ))}
         </nav>
         <div className="flex items-center gap-2">
+          <a
+            data-nav-item
+            href="/randevu/giris"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#efbfd0] bg-white/80 px-4 text-[12px] font-bold text-[#c85776] shadow-[0_14px_32px_-22px_rgba(200,87,118,0.6)] transition hover:-translate-y-0.5 hover:border-[#ef9ab5] hover:bg-white sm:px-5"
+          >
+            <CalendarCheck className="h-3.5 w-3.5" />
+            Randevu Al
+          </a>
           <a
             data-nav-item
             href="/login"
@@ -393,7 +401,7 @@ function DashboardMockup() {
           <aside className="hidden border-r border-[#f0e0e6] bg-gradient-to-b from-[#fff4f8] to-[#fffafd] p-4 lg:block">
             <div className="mb-8 flex items-center gap-3 px-1">
               <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-[#ead8df]">
-                <img src="/logo.png" alt="Armonessa logosu" className="h-full w-full scale-125 object-cover" />
+                <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
               </span>
               <div>
                 <div className="font-display text-[22px] text-[#9b7444]">Bellora</div>
@@ -703,6 +711,7 @@ function Footer() {
           <span>© {year} Özlem Özge Güzellik Merkezi Yönetim Sistemi</span>
           <div className="flex flex-wrap gap-4">
             <a href="#sss" className="hover:text-[#c85776]">SSS</a>
+            <a href="/randevu/giris" className="hover:text-[#c85776]">Randevu Al</a>
             <a href="/login" className="hover:text-[#c85776]">Giriş</a>
           </div>
         </div>

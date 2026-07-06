@@ -29,7 +29,8 @@ public sealed record CreateStaffRequest(
     decimal? CommissionRate,
     bool IsActive,
     string? Email,
-    IReadOnlyCollection<string>? Permissions);
+    IReadOnlyCollection<string>? Permissions,
+    string? PhotoUrl = null);
 
 /// <summary>
 /// Personel güncelleme — email/şifre değişmez, sadece HR alanları ve izinler.

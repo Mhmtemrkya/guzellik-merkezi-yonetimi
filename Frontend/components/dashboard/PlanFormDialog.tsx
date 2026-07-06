@@ -232,7 +232,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
               <Package className="h-3.5 w-3.5" />
               {mode === 'create' ? 'Yeni paket' : 'Paket düzenle'}
             </div>
-            <h2 className="mt-2 font-display text-3xl armonessa-text-gradient">
+            <h2 className="mt-2 font-display text-3xl beautyasist-text-gradient">
               {form.name.trim() || 'İsimsiz paket'}
             </h2>
             {form.planKey && (
@@ -242,7 +242,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
             )}
 
             <div className="mt-5">
-              <div className="font-display text-4xl tabular-nums armonessa-text-gradient">
+              <div className="font-display text-4xl tabular-nums beautyasist-text-gradient">
                 {form.monthlyPriceTRY === 0 ? 'Özel' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(form.monthlyPriceTRY)}
               </div>
               <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">aylık</div>

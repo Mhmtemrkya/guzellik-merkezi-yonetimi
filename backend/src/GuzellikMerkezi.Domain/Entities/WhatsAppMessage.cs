@@ -14,7 +14,8 @@ public sealed class WhatsAppMessage : Entity
         Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId,
         WhatsAppMessageDirection direction, string phone, string body, WhatsAppMessageStatus status,
         string? templateName = null, string? providerMessageId = null,
-        WhatsAppReplyIntent intent = WhatsAppReplyIntent.Unknown, string? error = null)
+        WhatsAppReplyIntent intent = WhatsAppReplyIntent.Unknown, string? error = null,
+        Guid? waitlistEntryId = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -28,11 +29,14 @@ public sealed class WhatsAppMessage : Entity
         ProviderMessageId = providerMessageId;
         Intent = intent;
         ErrorMessage = error;
+        WaitlistEntryId = waitlistEntryId;
     }
 
     public Guid TenantId { get; private set; }
     public Guid? BranchId { get; private set; }
     public Guid? AppointmentId { get; private set; }
+    /// <summary>Bekleme listesi teklifi / teklife gelen yanıt bu kayda bağlanır (Evet→randevu, Hayır→sıradaki).</summary>
+    public Guid? WaitlistEntryId { get; private set; }
     public Guid? CustomerId { get; private set; }
     public WhatsAppMessageDirection Direction { get; private set; }
     public string Phone { get; private set; } = string.Empty;

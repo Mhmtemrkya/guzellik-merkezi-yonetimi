@@ -6,6 +6,7 @@ import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
+import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -188,7 +189,7 @@ export default function AyarlarPage() {
         { label: 'Kurum adı', name: 'name', value: tenant.name, required: true, icon: Building2, section: 'Marka', fullWidth: true },
         { label: 'Yasal işletme adı', name: 'legalName', value: rawTenant?.legalName || '', icon: Landmark, fullWidth: true, helper: 'Ticari unvan — faturalarda görünür' },
         { label: 'Yetkili kişi', name: 'ownerName', value: tenant.ownerName, icon: Users },
-        { label: 'Domain', name: 'domain', value: tenant.domain.replace(/\.armonessa\.app$/, ''), icon: Tag },
+        { label: 'Domain', name: 'domain', value: tenant.domain.replace(/\.beautyasist\.app$/, ''), icon: Tag },
         { label: 'Vergi numarası', name: 'taxNumber', value: tenant.taxNumber, icon: Receipt, section: 'Fatura & iletişim' },
         { label: 'Vergi dairesi', name: 'taxOffice', value: rawTenant?.taxOffice || '', icon: Landmark },
         { label: 'İletişim telefonu', name: 'phone', value: tenant.phone, icon: PhoneIcon, placeholder: '+90 312 123 45 67' },
@@ -285,7 +286,7 @@ export default function AyarlarPage() {
                     { label: 'Kurum adı', name: 'name', value: tenant.name, required: true, icon: Building2, section: 'Marka', fullWidth: true },
                     { label: 'Yasal işletme adı', name: 'legalName', value: rawTenant?.legalName || '', icon: Landmark, fullWidth: true },
                     { label: 'Yetkili kişi', name: 'ownerName', value: tenant.ownerName, icon: Users },
-                    { label: 'Domain', name: 'domain', value: tenant.domain.replace(/\.armonessa\.app$/, ''), icon: Tag },
+                    { label: 'Domain', name: 'domain', value: tenant.domain.replace(/\.beautyasist\.app$/, ''), icon: Tag },
                     { label: 'Vergi numarası', name: 'taxNumber', value: tenant.taxNumber, icon: Receipt, section: 'Fatura & iletişim' },
                     { label: 'Vergi dairesi', name: 'taxOffice', value: rawTenant?.taxOffice || '', icon: Landmark },
                     { label: 'İletişim telefonu', name: 'phone', value: tenant.phone, icon: PhoneIcon },
@@ -348,6 +349,11 @@ export default function AyarlarPage() {
         {/* WHATSAPP HATIRLATMA ENTEGRASYONU */}
         <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           <WhatsAppSettingsCard tenantId={tenantId} />
+        </section>
+
+        {/* GÜVENLİK — personel ekran görüntüsü izni */}
+        <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
+          <SecuritySettingsCard tenantId={tenantId} />
         </section>
 
         {/* SATIR 2: GELİR BİLGİLERİ + GELİR KALEMLERİ */}
@@ -475,7 +481,7 @@ export default function AyarlarPage() {
               <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/75"><Package className="h-4 w-4" /> Mevcut Paket</div>
               <h3 className="mt-3 font-display text-3xl tracking-tight">{usage.planName || 'Atanmamış'}</h3>
               {currentPlan?.description && <p className="mt-1 line-clamp-2 text-[12px] text-[#352432]/55">{currentPlan.description}</p>}
-              <div className="mt-4 font-display text-4xl tabular-nums armonessa-text-gradient">{usage.planMonthlyPriceTRY === 0 ? 'Özel' : formatTL(usage.planMonthlyPriceTRY)}</div>
+              <div className="mt-4 font-display text-4xl tabular-nums beautyasist-text-gradient">{usage.planMonthlyPriceTRY === 0 ? 'Özel' : formatTL(usage.planMonthlyPriceTRY)}</div>
               <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">aylık</div>
               {(usage.hasOverflow || usage.hasWarning) && (
                 <div className={`mt-5 flex items-start gap-2 rounded-[12px] border px-3 py-2.5 text-[11px] ${usage.hasOverflow ? 'border-rose-300/30 bg-rose-50 text-rose-700' : 'border-amber-300/30 bg-amber-50 text-amber-700'}`}>

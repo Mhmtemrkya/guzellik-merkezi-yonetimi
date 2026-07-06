@@ -132,7 +132,7 @@ export default function FeatureBento() {
           </div>
           <h2 className="hero-title text-[clamp(2.4rem,5.2vw,5.6rem)] leading-[0.9] tracking-[-0.045em] text-[#fff4f8]">
             Bir güzellik merkezi neye ihtiyaç duyarsa, <br />
-            <span className="armonessa-text-gradient">hepsi tek panelde.</span>
+            <span className="beautyasist-text-gradient">hepsi tek panelde.</span>
           </h2>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-[#fff4f8]/72 sm:text-lg">
             Müşteri kartından kasaya, paketten randevuya. 9 modül; aynı veriyi paylaşır, aynı akışı konuşur.

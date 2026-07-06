@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Notifications;
 using GuzellikMerkezi.Domain;
@@ -47,6 +48,7 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
         var features = scope.ServiceProvider.GetRequiredService<IFeatureService>();
+        var appNotifications = scope.ServiceProvider.GetRequiredService<IAppNotificationService>();
 
         var now = DateTime.UtcNow;
         var today = DateOnly.FromDateTime(now);
@@ -61,6 +63,27 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
         var totalSent = 0;
         foreach (var tenantId in activeTenants)
         {
+            // Uygulama-içi bildirim (kurum yöneticisine): vadesi gelen/geçen ödemeler — paket bağımsız çekirdek özellik,
+            // günde bir kez (dedupe). Müşteriye giden SMS/WhatsApp kanalından ayrıdır.
+            try
+            {
+                var due = await notifications.GetPaymentDueTargetsAsync(tenantId, today, ct);
+                if (due.Count > 0)
+                {
+                    await appNotifications.NotifyRolesAsync(
+                        tenantId, null,
+                        new[] { UserRole.InstitutionOwner },
+                        AppNotificationType.PaymentDue, AppNotificationSeverity.Warning,
+                        "Vadesi gelen ödemeler",
+                        $"{due.Count} müşterinin vadesi gelen/geçen ödemesi var.",
+                        data: new { route = "/accounts" },
+                        dedupeKey: $"paydue:{tenantId}:{today:yyyy-MM-dd}",
+                        branchScoped: false,
+                        ct: ct);
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Ödeme hatırlatma bildirimi üretilemedi ({TenantId}).", tenantId); }
+
             // Otomatik gönderim yalnızca pakette varsa (kanal kapıları ayrıca SendAsync içinde uygulanır).
             if (!await features.HasFeatureAsync(tenantId, FeatureCatalog.NotificationsAutomation, ct)) continue;
 

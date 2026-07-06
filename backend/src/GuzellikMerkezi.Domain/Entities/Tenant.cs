@@ -46,6 +46,31 @@ public sealed class Tenant : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Cihaz güvenliği (kısıtlama) kurum tarafından açık mı? Paket security.devicecontrol
+    /// içeriyorsa yönetici bu anahtarla akışı devreye alır: personel yalnızca tanımlı
+    /// cihazlarından giriş yapabilir, loglara cihaz kimliği/ağ bilgisi düşer.
+    /// </summary>
+    public bool DeviceControlEnabled { get; private set; }
+
+    public void SetDeviceControl(bool enabled)
+    {
+        DeviceControlEnabled = enabled;
+        Touch();
+    }
+
+    /// <summary>
+    /// Personel mobil uygulamada ekran görüntüsü alabilir mi? Kapalıyken (varsayılan)
+    /// personel cihazlarında FLAG_SECURE uygulanır; kurum yöneticisi izin verirse açılır.
+    /// </summary>
+    public bool AllowStaffScreenshots { get; private set; }
+
+    public void SetAllowStaffScreenshots(bool allowed)
+    {
+        AllowStaffScreenshots = allowed;
+        Touch();
+    }
+
     /// <summary>Aktif abonelik paketinin Id'si. Null ise plan henüz atanmamış demektir.</summary>
     public Guid? SubscriptionPlanId { get; private set; }
     public SubscriptionPlan? SubscriptionPlan { get; private set; }

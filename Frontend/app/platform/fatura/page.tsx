@@ -46,13 +46,63 @@ function Stat({ label, value, icon: Icon }: { label: string; value: string | num
   )
 }
 
+interface ApiInvoice {
+  id: string
+  tenantId: string
+  tenantName: string
+  number: string
+  periodStartUtc: string
+  periodEndUtc: string
+  amountTRY: number
+  status: string
+  issuedAtUtc: string
+  dueDateUtc: string
+  paidAtUtc?: string | null
+  notes?: string | null
+}
+
+const invoiceStatusTr: Record<string, string> = {
+  Draft: 'Taslak',
+  Sent: 'Gönderildi',
+  Paid: 'Ödendi',
+  Overdue: 'Gecikmiş',
+  Cancelled: 'İptal',
+}
+
+interface FaturaData {
+  tenants: PagedResult<ApiTenant>
+  invoices: ApiInvoice[]
+}
+
 export default function PlatformFaturaPage() {
-  const { data, loading, error, reload } = useApiQuery<PagedResult<ApiTenant>>(
-    () => platformApi.tenants<ApiTenant>({ page: 1, pageSize: 100 }),
+  const [busy, setBusy] = useState('')
+  const [actionError, setActionError] = useState('')
+  const { data, loading, error, reload } = useApiQuery<FaturaData>(
+    async () => {
+      const [tenantsRes, invoices] = await Promise.all([
+        platformApi.tenants<ApiTenant>({ page: 1, pageSize: 100 }),
+        platformApi.invoices<ApiInvoice>().catch(() => [] as ApiInvoice[]),
+      ])
+      return { tenants: tenantsRes, invoices: Array.isArray(invoices) ? invoices : [] }
+    },
     [],
-    { initialData: { items: [] } },
+    { initialData: null },
   )
-  const tenants = apiItems(data).map((tenant, index) => normalizeTenant(tenant, index))
+  const tenants = apiItems(data?.tenants).map((tenant, index) => normalizeTenant(tenant, index))
+  const invoices = data?.invoices ?? []
+
+  const runAction = async (key: string, fn: () => Promise<unknown>): Promise<void> => {
+    setBusy(key)
+    setActionError('')
+    try {
+      await fn()
+      await reload()
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'İşlem başarısız.')
+    } finally {
+      setBusy('')
+    }
+  }
   const [confirmTarget, setConfirmTarget] = useState<Tenant | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string>('')
@@ -129,7 +179,9 @@ export default function PlatformFaturaPage() {
           empty={!loading && !error && tenants.length === 0}
           emptyMessage="Tenant API döndü ama faturalandırılacak kurum yok."
         />
-        <ApiStateNotice missingModule="Fatura/ödeme tahsilatı için backend Invoice modeli henüz yok; bu ekran şimdilik gerçek tenant abonelik tutarlarından hesap yapıyor." />
+        {actionError && (
+          <div className="border border-rose-300/30 bg-rose-500/10 p-3 text-[11px] leading-5 text-rose-100">{actionError}</div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Aylık abonelik" value={formatTL(total)} icon={Receipt} />
           <Stat label="Riskli bakiye" value={formatTL(open)} icon={CreditCard} />
@@ -146,7 +198,8 @@ export default function PlatformFaturaPage() {
               <AdminEditDialog
                 triggerLabel="Fatura taslağı"
                 title="Yeni fatura taslağı"
-                note="Invoice modeli backend’e eklendiğinde submit endpoint’e bağlanacak."
+                note="Fatura kaydı oluşturulur; durumunu aşağıdaki listeden yönetirsiniz."
+                submitLabel="Taslağı oluştur"
                 fields={[
                   {
                     label: 'Kurum',
@@ -154,12 +207,28 @@ export default function PlatformFaturaPage() {
                     value: tenants[0]?.name,
                     options: tenants.map((t) => t.name),
                   },
-                  { label: 'Dönem', value: 'Mayıs 2026' },
                   { label: 'Tutar', type: 'number', value: tenants[0]?.mrr || 0 },
-                  { label: 'Son ödeme', type: 'date', value: '2026-05-25' },
-                  { label: 'Kalemler', type: 'textarea', value: 'Aylık abonelik' },
+                  { label: 'Not', type: 'textarea', value: 'Aylık abonelik' },
                 ]}
+                onSubmit={async (values) => {
+                  const tenant = tenants.find((t) => t.name === values['Kurum'])
+                  if (!tenant) throw new Error('Kurum seçilmedi.')
+                  await platformApi.createInvoice({
+                    tenantId: tenant.id,
+                    amountTRY: Number(values['Tutar'] ?? 0),
+                    notes: String(values['Not'] ?? ''),
+                  })
+                  await reload()
+                }}
               />
+              <button
+                type="button"
+                disabled={busy === 'generate'}
+                onClick={() => void runAction('generate', () => platformApi.generateInvoices())}
+                className={mini}
+              >
+                {busy === 'generate' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />} Dönem faturaları üret
+              </button>
               <button type="button" onClick={downloadCsv} className={mini}>
                 <Download className="h-3 w-3" /> Dışa aktar
               </button>
@@ -211,6 +280,72 @@ export default function PlatformFaturaPage() {
               )
             })}
           </div>
+        </div>
+
+        {/* GERÇEK FATURA KAYITLARI */}
+        <div className={card}>
+          <div className="border-b border-[#fff4f8]/10 px-5 py-4">
+            <div className={head}>Fatura kayıtları</div>
+            <div className="font-display text-2xl">Kesilen faturalar</div>
+          </div>
+          {invoices.length === 0 ? (
+            <div className="px-5 py-8 text-sm text-[#fff4f8]/50">
+              Henüz fatura kaydı yok. &quot;Dönem faturaları üret&quot; ile aktif abonelikler için bu ayın taslaklarını oluşturabilirsiniz.
+            </div>
+          ) : (
+            <div className="divide-y divide-[#fff4f8]/10">
+              {invoices.map((inv) => {
+                const period = new Date(inv.periodStartUtc).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+                return (
+                  <div key={inv.id} className="grid items-center gap-4 px-5 py-4 text-xs md:grid-cols-12">
+                    <div className="md:col-span-2 font-mono text-[10px] text-[#fff4f8]/70">{inv.number}</div>
+                    <div className="md:col-span-3">
+                      <div className="font-medium">{inv.tenantName}</div>
+                      <div className="text-[9px] text-[#fff4f8]/40">{period}</div>
+                    </div>
+                    <div className="md:col-span-2 font-display">{formatTL(inv.amountTRY)}</div>
+                    <div className="md:col-span-2">
+                      <span
+                        className={`inline-block border px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest ${
+                          inv.status === 'Paid'
+                            ? 'border-emerald-300/40 text-emerald-200'
+                            : inv.status === 'Overdue' || inv.status === 'Cancelled'
+                              ? 'border-rose-300/40 text-rose-200'
+                              : 'border-[#fff4f8]/25 text-[#fff4f8]/70'
+                        }`}
+                      >
+                        {invoiceStatusTr[inv.status] || inv.status}
+                      </span>
+                    </div>
+                    <div className="md:col-span-3 flex flex-wrap justify-end gap-2">
+                      {inv.status === 'Draft' && (
+                        <button type="button" className={mini} disabled={busy === inv.id}
+                          onClick={() => void runAction(inv.id, () => platformApi.updateInvoiceStatus(inv.id, 'Sent'))}>
+                          Gönderildi işaretle
+                        </button>
+                      )}
+                      {inv.status !== 'Paid' && inv.status !== 'Cancelled' && (
+                        <button type="button" className={mini} disabled={busy === inv.id}
+                          onClick={() => void runAction(inv.id, () => platformApi.updateInvoiceStatus(inv.id, 'Paid'))}>
+                          Ödendi
+                        </button>
+                      )}
+                      {inv.status !== 'Cancelled' && inv.status !== 'Paid' && (
+                        <button type="button" className={mini} disabled={busy === inv.id}
+                          onClick={() => void runAction(inv.id, () => platformApi.updateInvoiceStatus(inv.id, 'Cancelled'))}>
+                          İptal
+                        </button>
+                      )}
+                      <button type="button" className={mini} disabled={busy === inv.id}
+                        onClick={() => void runAction(inv.id, () => platformApi.deleteInvoice(inv.id))}>
+                        <Trash2 className="h-3 w-3" /> Sil
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <Dialog

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Tenants;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -14,17 +15,19 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 
 public sealed class TenantService : ITenantService
 {
-    private const string DefaultTenantDomainSuffix = "armonessa.app";
+    private const string DefaultTenantDomainSuffix = "beautyasist.app";
     private static readonly Regex MultiDashRegex = new("-+", RegexOptions.Compiled);
     private static readonly Regex MultiDotRegex = new("\\.+", RegexOptions.Compiled);
 
     private readonly GuzellikDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IFeatureService _features;
 
-    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher)
+    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher, IFeatureService features)
     {
         _db = db;
         _passwordHasher = passwordHasher;
+        _features = features;
     }
 
     public async Task<Result<PagedResult<TenantDto>>> ListAsync(PageRequest request, CancellationToken cancellationToken = default)
@@ -255,6 +258,7 @@ public sealed class TenantService : ITenantService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        _features.InvalidateTenant(tenant.Id); // plan/durum değişti → feature-set önbelleği tazelensin
         return Result<TenantDto>.Success(tenant.ToDto());
     }
 

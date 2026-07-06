@@ -181,7 +181,7 @@ export default function Navbar() {
                   </span>
                   <h2 className="mt-4 max-w-sm font-display text-[clamp(2rem,9vw,3.6rem)] leading-[0.95] tracking-[-0.04em] text-[#fff4f8]">
                     Güzellik merkeziniz için
-                    <span className="block armonessa-text-gradient">tek akış.</span>
+                    <span className="block beautyasist-text-gradient">tek akış.</span>
                   </h2>
                   <p className="mt-4 max-w-md text-[15px] leading-relaxed text-[#fff4f8]/72">
                     Paket, randevu, seans ve tahsilat yönetimine hızlı ulaşın. Menü tam ekran, okunaklı ve dokunmatik kullanıma uygun.

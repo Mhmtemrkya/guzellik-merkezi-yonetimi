@@ -32,6 +32,20 @@ public static class CustomerEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetCustomerIdsWithBookableSessionsAsync(resolvedTenantId, ct)).ToHttpResult(http);
         });
 
+        // VIP müşteriler — şube-kapsamlı.
+        group.MapGet("/vip", async (Guid? tenantId, int page, int pageSize, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetVipAsync(resolvedTenantId, new PageRequest(page, pageSize, null), ct)).ToHttpResult(http);
+        });
+
+        // VIP etiketi ekle/kaldır.
+        group.MapPost("/{id:guid}/vip", async (Guid id, SetVipRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetVipAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
+        });
+
         // Kara liste (randevu verilemeyen müşteriler) — şube-kapsamlı.
         group.MapGet("/blacklisted", async (Guid? tenantId, int page, int pageSize, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {

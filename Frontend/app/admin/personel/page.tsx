@@ -9,6 +9,8 @@ import StaffFormDialog from '@/components/dashboard/StaffFormDialog'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import TenantCredentialsDialog from '@/components/dashboard/TenantCredentialsDialog'
 import CommissionPanel from '@/components/dashboard/CommissionPanel'
+import StaffDeviceDialog from '@/components/dashboard/StaffDeviceDialog'
+import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
@@ -17,7 +19,7 @@ import { downscaleImage } from '@/lib/imageUtils'
 import { motion } from 'framer-motion'
 import {
   ArrowLeftRight, Boxes, Calendar, CreditCard, FileBarChart, ImagePlus, KeyRound, Layers3, Search, ShieldCheck, Star,
-  UserCheck, UserCog, UserPlus, UserX, Users, Wallet, Zap, type LucideIcon,
+  MonitorSmartphone, UserCheck, UserCog, UserPlus, UserX, Users, Wallet, Zap, type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import type { ApiAppointment, ApiStaff, ApiStaffCredentials, ApiTenantCredentials, PagedResult, Staff } from '@/lib/types'
@@ -67,6 +69,8 @@ function PersonelPageInner() {
   const [resetCredentials, setResetCredentials] = useState<ApiTenantCredentials | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferBranchId, setTransferBranchId] = useState('')
+  const [deviceDialogOpen, setDeviceDialogOpen] = useState(false)
+  const deviceControlFeature = useFeature('security.devicecontrol')
   const { selectedInstitutionId, selectedBranch, selectedInstitution, branches: tenantBranches } = useBranch()
   const tenantId = guidOrUndefined(selectedInstitutionId)
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
@@ -478,6 +482,7 @@ function PersonelPageInner() {
                           fullName: selected.name, title: selected.role || '', phone: selected.phone || '',
                           specialties: selected.dept || '', commissionRate: selected.commissionRate ?? 0,
                           isActive: selected.active, permissions: selected.permissions || [],
+                          photoUrl: selected.photoUrl || '',
                         }}
                         onSubmitted={async () => { await reload() }}
                         trigger={
@@ -493,6 +498,15 @@ function PersonelPageInner() {
                           className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11px] font-medium text-[#352432]/80 transition-colors hover:border-[#efbfd0] hover:text-[#352432]"
                         >
                           <ArrowLeftRight className="h-3.5 w-3.5" /> Şube Aktar
+                        </button>
+                      )}
+                      {deviceControlFeature && selected.tenantUserId && (
+                        <button
+                          type="button"
+                          onClick={() => setDeviceDialogOpen(true)}
+                          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11px] font-medium text-[#352432]/80 transition-colors hover:border-[#efbfd0] hover:text-[#352432]"
+                        >
+                          <MonitorSmartphone className="h-3.5 w-3.5" /> Cihazlar
                         </button>
                       )}
                       <ConfirmDialog
@@ -538,6 +552,16 @@ function PersonelPageInner() {
           </div>
         )}
       </div>
+
+      {selected?.tenantUserId && (
+        <StaffDeviceDialog
+          open={deviceDialogOpen}
+          onClose={() => setDeviceDialogOpen(false)}
+          staffName={selected.name}
+          tenantUserId={selected.tenantUserId}
+          tenantId={tenantId}
+        />
+      )}
 
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent

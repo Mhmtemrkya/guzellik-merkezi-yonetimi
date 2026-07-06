@@ -9,10 +9,18 @@ public interface ICurrentUser
     UserRole? Role { get; }
     Guid? TenantId { get; }
     Guid? BranchId { get; }
+    /// <summary>Online portal müşterisi ise müşteri kimliği (JWT "customer_id" claim'i); aksi halde null.</summary>
+    Guid? CustomerId { get; }
     bool IsAuthenticated { get; }
     bool IsPlatformAdmin { get; }
     /// <summary>İsteğin geldiği IP adresi (audit log için).</summary>
     string? IpAddress { get; }
+
+    /// <summary>İstemcinin kalıcı cihaz kimliği (X-Device-Id header). Cihaz güvenliği + log zenginleştirme için.</summary>
+    string? DeviceId { get; }
+
+    /// <summary>İstemcinin beyan ettiği cihaz/ağ bilgisi JSON'u (X-Device-Info header, base64 UTF-8 JSON).</summary>
+    string? DeviceInfoJson { get; }
 
     /// <summary>Personelin sayfa izinleri (JWT "permission" claim'lerinden). Yönetici rollerde anlamsızdır (tam erişim).</summary>
     IReadOnlyCollection<string> Permissions { get; }

@@ -14,6 +14,11 @@ public interface ICustomerService
     /// <summary>Kalan (tükenmemiş) paket seansı olan müşteri Id'leri — yeni randevu modalı bunları listeler.</summary>
     Task<Result<IReadOnlyCollection<Guid>>> GetCustomerIdsWithBookableSessionsAsync(Guid tenantId, CancellationToken cancellationToken = default);
 
+    /// <summary>Müşteriye VIP etiketi ekle / kaldır.</summary>
+    Task<Result<CustomerDto>> SetVipAsync(Guid tenantId, Guid id, SetVipRequest request, CancellationToken cancellationToken = default);
+    /// <summary>VIP müşteriler (şube-kapsamlı).</summary>
+    Task<Result<PagedResult<CustomerDto>>> GetVipAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Müşteriyi kara listeye al / çıkar (kara listedekiye randevu verilemez).</summary>
     Task<Result<CustomerDto>> SetBlacklistAsync(Guid tenantId, Guid id, SetBlacklistRequest request, CancellationToken cancellationToken = default);
     /// <summary>Kara listedeki müşteriler (şube-kapsamlı).</summary>

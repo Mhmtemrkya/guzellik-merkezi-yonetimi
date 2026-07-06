@@ -143,7 +143,7 @@ export default function Pricing() {
           </div>
           <h2 className="hero-title text-[clamp(2.4rem,5vw,5.4rem)] leading-[0.9] tracking-[-0.045em] text-[#fff4f8]">
             Hangi büyüklükte olursanız olun, <br />
-            <span className="armonessa-text-gradient">bir paket size uyar.</span>
+            <span className="beautyasist-text-gradient">bir paket size uyar.</span>
           </h2>
 
           <div className="mt-7 inline-flex items-center gap-1 rounded-full border border-[#fff4f8]/14 bg-[#160b12]/55 p-1 backdrop-blur-xl">
@@ -207,7 +207,7 @@ export default function Pricing() {
                     </div>
 
                     <div className="mb-1 flex items-baseline gap-2">
-                      <span className="armonessa-text-gradient font-display text-5xl leading-none">
+                      <span className="beautyasist-text-gradient font-display text-5xl leading-none">
                         <AnimatedCounter key={`${plan.name}-${yearly}`} to={price} duration={1.4} />
                       </span>
                       <span className="text-sm text-[#fff4f8]/55">{suffix}</span>

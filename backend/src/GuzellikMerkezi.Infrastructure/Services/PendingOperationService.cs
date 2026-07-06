@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.PendingOperations;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -14,13 +15,15 @@ public sealed class PendingOperationService : IPendingOperationService
     private readonly IApprovalDispatcher _dispatcher;
     private readonly IApprovalReplayer _replayer;
     private readonly IAuditLogger _audit;
+    private readonly IAppNotificationService _notifications;
 
-    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit)
+    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit, IAppNotificationService notifications)
     {
         _db = db;
         _dispatcher = dispatcher;
         _replayer = replayer;
         _audit = audit;
+        _notifications = notifications;
     }
 
     public async Task<Result<PagedResult<PendingOperationDto>>> ListAsync(Guid tenantId, PendingOperationFilter filter, PageRequest pageRequest, CancellationToken cancellationToken = default)
@@ -65,6 +68,18 @@ public sealed class PendingOperationService : IPendingOperationService
         await _audit.LogAsync(tenantId, branchId, "Submit", "PendingOperation", op.Id,
             $"Onaya gönderildi: {op.Title} ({op.OperationType})",
             new { op.OperationType, op.Title, op.Summary }, cancellationToken);
+
+        // Kurum yöneticisi + şube yöneticisine "onay bekliyor" bildirimi (rol bazlı).
+        await _notifications.NotifyRolesAsync(
+            tenantId, branchId,
+            new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+            AppNotificationType.ApprovalPending, AppNotificationSeverity.Warning,
+            "Onay bekleyen işlem",
+            $"{requestedByName}: {op.Title}",
+            data: new { route = "/approvals", id = op.Id.ToString() },
+            dedupeKey: $"pending:{op.Id}",
+            ct: cancellationToken);
+
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 

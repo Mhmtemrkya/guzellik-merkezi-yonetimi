@@ -174,7 +174,7 @@ export function normalizeTenant(tenant: ApiTenant | null | undefined, index = 0)
     mrr: tenant?.mrr ?? planPrice[plan] ?? 0,
     joined: tenant?.createdAt || tenant?.joined || 'API',
     owner,
-    domain: tenant?.domain || `${String(tenant?.slug || name).toLowerCase().replaceAll(' ', '')}.armonessa.app`,
+    domain: tenant?.domain || `${String(tenant?.slug || name).toLowerCase().replaceAll(' ', '')}.beautyasist.app`,
     phone: tenant?.phone || '',
     taxNumber: tenant?.taxNumber || '',
     email: tenant?.email || '',
@@ -300,6 +300,12 @@ export const auditActionLabels: Record<string, string> = {
   Upgrade: 'Yükseltme',
   Login: 'Giriş',
   Logout: 'Çıkış',
+  'Security.UnauthorizedDevice': 'Farklı Cihaz Girişimi',
+  'Security.DeviceRegistered': 'Cihaz Tanımlandı',
+  'Security.DeviceRemoved': 'Cihaz Silindi',
+  'Security.DeviceLimitChanged': 'Cihaz Limiti',
+  'Security.DeviceControlEnabled': 'Cihaz Güvenliği Açıldı',
+  'Security.DeviceControlDisabled': 'Cihaz Güvenliği Kapatıldı',
 }
 
 export const auditEntityLabels: Record<string, string> = {
@@ -340,6 +346,7 @@ export const auditEntityLabels: Record<string, string> = {
   Rating: 'Müşteri puanlama',
   WhatsApp: 'WhatsApp',
   SubscriptionPlan: 'Abonelik planı',
+  Security: 'Güvenlik',
 }
 
 export const auditRoleLabels: Record<string, string> = {
@@ -356,6 +363,22 @@ function sanitizeAuditSummary(summary: string): string {
     .replace(/\/api\/\S+/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
+}
+
+/** Cihaz güvenliği: X-Device-Info JSON'unu güvenle çözer (bozuksa null). */
+function parseDeviceInfo(json: string | null | undefined): Record<string, unknown> | null {
+  if (!json) return null
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>
+    // İç içe networkInfoJson stringi de açılır (okunur detay için).
+    if (typeof parsed.networkInfoJson === 'string') {
+      try { parsed.network = JSON.parse(parsed.networkInfoJson) } catch { /* olduğu gibi bırak */ }
+      delete parsed.networkInfoJson
+    }
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 export function normalizeAuditLog(log: ApiAuditLog | null | undefined, index = 0): AuditLog {
@@ -383,6 +406,8 @@ export function normalizeAuditLog(log: ApiAuditLog | null | undefined, index = 0
     summary: sanitizeAuditSummary(log?.summary || ''),
     data,
     ipAddress: log?.ipAddress || '',
+    deviceId: log?.deviceId ?? null,
+    deviceInfo: parseDeviceInfo(log?.deviceInfoJson),
     createdAt: log?.createdAtUtc || '',
     createdAtFormatted: formatDateTime(log?.createdAtUtc),
   }
@@ -426,6 +451,7 @@ export function normalizeCustomer(customer: ApiCustomer | null | undefined, inde
     photoUrl: customer?.photoUrl || '',
     isBlacklisted: Boolean(customer?.isBlacklisted),
     blacklistReason: customer?.blacklistReason ?? null,
+    isVip: Boolean(customer?.isVip),
   }
 }
 
@@ -502,6 +528,8 @@ export function normalizeWaitlistEntry(w: ApiWaitlistEntry | null | undefined, i
     status: (w?.status ?? 'Waiting') as WaitlistStatus,
     note: w?.note || '',
     createdAt: w?.createdAtUtc || '',
+    preferredStartUtc: w?.preferredStartUtc ?? null,
+    durationMinutes: w?.durationMinutes ?? null,
   }
 }
 
@@ -1408,6 +1436,7 @@ export function normalizeAppointment(
     rawStatus: appointment?.status,
     customerConfirmation: appointment?.customerConfirmation,
     lastReminderAtUtc: appointment?.lastReminderAtUtc,
+    isOnline: Boolean(appointment?.isOnline),
   }
 }
 

@@ -21,4 +21,21 @@ public static class PhoneMask
 
     /// <summary>Değer maskeli mi (kalıcılaştırılmamalı, mevcut numara korunmalı)?</summary>
     public static bool IsMasked(string? phone) => !string.IsNullOrEmpty(phone) && phone.Contains(MaskChar);
+
+    /// <summary>Yalnızca rakamlar (boşluk/parantez/+ temizlenir).</summary>
+    public static string DigitsOnly(string? phone) =>
+        new((phone ?? string.Empty).Where(char.IsDigit).ToArray());
+
+    /// <summary>
+    /// Online giriş eşleştirmesi için kanonik anahtar: ham numaranın rakamları,
+    /// ülke kodu (90) ve baştaki 0 normalize edilerek son 10 hane. Boşluklu kayıtlar
+    /// ("0555 123 45 67") ile kullanıcı girişi ("05551234567") aynı anahtara iner.
+    /// </summary>
+    public static string LoginKey(string? phone)
+    {
+        var digits = DigitsOnly(phone);
+        if (digits.Length > 10 && digits.StartsWith("90")) digits = digits[2..];
+        if (digits.Length > 10 && digits.StartsWith("0")) digits = digits[1..];
+        return digits.Length >= 10 ? digits[^10..] : digits;
+    }
 }

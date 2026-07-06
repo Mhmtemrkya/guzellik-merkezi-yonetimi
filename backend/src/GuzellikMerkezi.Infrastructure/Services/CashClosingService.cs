@@ -1,10 +1,12 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.CashClosing;
 using GuzellikMerkezi.Application.Features.CashFlow;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,13 +18,15 @@ public sealed class CashClosingService : ICashClosingService
     private readonly ICashFlowService _cashFlow;
     private readonly IAuditLogger _audit;
     private readonly IFeatureService _features;
+    private readonly IAppNotificationService _notifications;
 
-    public CashClosingService(GuzellikDbContext db, ICashFlowService cashFlow, IAuditLogger audit, IFeatureService features)
+    public CashClosingService(GuzellikDbContext db, ICashFlowService cashFlow, IAuditLogger audit, IFeatureService features, IAppNotificationService notifications)
     {
         _db = db;
         _cashFlow = cashFlow;
         _audit = audit;
         _features = features;
+        _notifications = notifications;
     }
 
     private const string FeatureDeniedMessage = "Gün sonu kasa kapanışı özelliği paketinizde yok. Üst pakete geçerek kullanabilirsiniz.";
@@ -83,6 +87,20 @@ public sealed class CashClosingService : ICashClosingService
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, closing.BranchId, existing is null ? "Create" : "Update", "CashRegisterClosing", closing.Id,
             $"Gün sonu kasa kapanışı {closing.BusinessDate:yyyy-MM-dd} · fark {closing.Difference:0.##}", null, cancellationToken);
+
+        // İlk kapanışta kurum/şube yöneticisine bildirim (yeniden say güncellemelerinde tekrar etmez → dedupe).
+        var severity = closing.Difference == 0 ? AppNotificationSeverity.Success : AppNotificationSeverity.Warning;
+        var farkText = closing.Difference == 0 ? "kasa tuttu" : $"fark {closing.Difference:0.##}₺";
+        await _notifications.NotifyRolesAsync(
+            tenantId, closing.BranchId,
+            new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+            AppNotificationType.CashClosing, severity,
+            "Gün sonu kasa kapanışı",
+            $"{closing.BusinessDate:dd.MM.yyyy} · Sayılan {closing.CountedCash:0.##}₺ · {farkText}",
+            data: new { route = "/cash-closing", id = closing.Id.ToString() },
+            dedupeKey: $"cashclosing:{closing.Id}",
+            ct: cancellationToken);
+
         return Result<CashClosingDto>.Success(ToDto(closing));
     }
 

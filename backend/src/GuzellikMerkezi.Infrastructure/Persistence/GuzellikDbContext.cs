@@ -41,6 +41,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         v => v.HasValue ? v.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : (DateTime?)null,
         v => v.HasValue ? DateOnly.FromDateTime(v.Value) : (DateOnly?)null);
 
+    private static readonly ValueConverter<TimeOnly, TimeSpan> TimeOnlyConverter = new(
+        v => v.ToTimeSpan(),
+        v => TimeOnly.FromTimeSpan(v));
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
@@ -61,6 +65,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<WhatsAppSettings> WhatsAppSettings => Set<WhatsAppSettings>();
     public DbSet<WhatsAppMessage> WhatsAppMessages => Set<WhatsAppMessage>();
     public DbSet<PlatformIntegrationSettings> PlatformIntegrationSettings => Set<PlatformIntegrationSettings>();
+    public DbSet<PlatformSystemSettings> PlatformSystemSettings => Set<PlatformSystemSettings>();
+    public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
+    public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -81,6 +88,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<StaffDevice> StaffDevices => Set<StaffDevice>();
+    public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
+    public DbSet<DeviceNotificationToken> DeviceNotificationTokens => Set<DeviceNotificationToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -116,6 +126,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         ConfigureSubscriptionPlan(modelBuilder);
         ConfigureRefreshToken(modelBuilder);
         ConfigureAuditLog(modelBuilder);
+        ConfigureStaffDevice(modelBuilder);
+        ConfigureAppNotification(modelBuilder);
+        ConfigurePlatformOps(modelBuilder);
         ApplyEncryptionConverters(modelBuilder);
     }
 
@@ -229,6 +242,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
         // Audit log şifrelemesi — kullanıcı adı + özet + payload PII içerebilir.
         Opt(typeof(AuditLog), nameof(AuditLog.ActorName), nameof(AuditLog.Summary), nameof(AuditLog.DataJson));
+
+        // Uygulama-içi bildirim: başlık/gövde müşteri adı vb. PII içerebilir → şifreli.
+        // DedupeKey ŞİFRELENMEZ (AES-GCM rastgele nonce → eşitlikle sorgulanamaz; dedupe düz metin ister).
+        Req(typeof(AppNotification), nameof(AppNotification.Title), nameof(AppNotification.Body));
+        Opt(typeof(AppNotification), nameof(AppNotification.DataJson));
     }
 
     private void ConfigureSubscriptionPlan(ModelBuilder modelBuilder)
@@ -274,6 +292,33 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         log.HasOne(x => x.Template).WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
         log.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.SetNull);
         log.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+    }
+
+    private void ConfigureAppNotification(ModelBuilder modelBuilder)
+    {
+        var n = modelBuilder.Entity<AppNotification>();
+        n.ToTable("app_notifications");
+        n.HasKey(x => x.Id);
+        n.Property(x => x.Type).HasConversion<string>().HasMaxLength(40).IsRequired();
+        n.Property(x => x.Severity).HasConversion<string>().HasMaxLength(20).IsRequired();
+        n.Property(x => x.DedupeKey).HasMaxLength(200); // düz metin — dedupe eşitlik sorgusu için
+        // Feed sorgusu: (TenantId, RecipientUserId, CreatedAtUtc DESC). Dedupe: DedupeKey.
+        n.HasIndex(x => new { x.TenantId, x.RecipientUserId, x.CreatedAtUtc });
+        n.HasIndex(x => new { x.TenantId, x.DedupeKey });
+        n.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+        n.HasOne(x => x.Recipient).WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
+        n.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var d = modelBuilder.Entity<DeviceNotificationToken>();
+        d.ToTable("device_notification_tokens");
+        d.HasKey(x => x.Id);
+        d.Property(x => x.DeviceId).HasMaxLength(64).IsRequired();
+        d.Property(x => x.Token).HasMaxLength(512).IsRequired(); // FCM token ~163 char, opak, şifresiz
+        d.Property(x => x.Platform).HasMaxLength(16).IsRequired();
+        d.HasIndex(x => new { x.TenantUserId, x.DeviceId }).IsUnique();
+        d.HasIndex(x => x.TenantId);
+        d.HasOne(x => x.TenantUser).WithMany().HasForeignKey(x => x.TenantUserId).OnDelete(DeleteBehavior.Cascade);
+        d.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -334,6 +379,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Name).HasMaxLength(140).IsRequired();
         builder.Property(x => x.City).HasMaxLength(80).IsRequired();
+        builder.Property(x => x.OpenTime).HasConversion(TimeOnlyConverter).HasColumnType("time");
+        builder.Property(x => x.CloseTime).HasConversion(TimeOnlyConverter).HasColumnType("time");
         builder.HasIndex(x => new { x.TenantId, x.Name });
         builder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
@@ -367,6 +414,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.BlacklistReason).HasMaxLength(500);
         builder.Property(x => x.BirthDate).HasConversion(DateOnlyNullableConverter).HasColumnType("date");
         builder.HasIndex(x => new { x.TenantId, x.BranchId, x.Phone });
+        // Online portal girişi doğum tarihi + telefon + ad eşleşmesiyle yapılır; doğum tarihi ön-filtresi için index.
+        builder.HasIndex(x => x.BirthDate);
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         builder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == BranchFilterId));
     }
@@ -445,6 +494,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.Property(x => x.Notes).HasMaxLength(1000);
         builder.Property(x => x.CancellationReason).HasMaxLength(500);
+        builder.Property(x => x.IsOnline).HasDefaultValue(false);
         builder.HasIndex(x => new { x.TenantId, x.BranchId, x.StartUtc });
         builder.HasIndex(x => new { x.TenantId, x.StaffMemberId, x.StartUtc, x.EndUtc });
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
@@ -550,6 +600,43 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         p.Property(x => x.SmtpUsername).HasMaxLength(256);
         p.Property(x => x.SmtpPasswordEncrypted).HasColumnType("TEXT");
         // Platform geneli (tenant'sız) — query filter yok.
+    }
+
+    private void ConfigurePlatformOps(ModelBuilder modelBuilder)
+    {
+        var s = modelBuilder.Entity<PlatformSystemSettings>();
+        s.ToTable("platform_system_settings");
+        s.HasKey(x => x.Id);
+        s.Property(x => x.PlanLimitsJson).HasColumnType("LONGTEXT");
+        s.Property(x => x.SecurityJson).HasColumnType("LONGTEXT");
+        s.Property(x => x.IntegrationsJson).HasColumnType("LONGTEXT");
+        s.Property(x => x.MaintenanceJson).HasColumnType("LONGTEXT");
+        s.Property(x => x.DataRetentionJson).HasColumnType("LONGTEXT");
+        // Platform geneli (tenant'sız) singleton — query filter yok.
+
+        var i = modelBuilder.Entity<TenantInvoice>();
+        i.ToTable("tenant_invoices");
+        i.HasKey(x => x.Id);
+        i.Property(x => x.Number).HasMaxLength(32).IsRequired();
+        i.Property(x => x.Status).HasMaxLength(16).IsRequired();
+        i.Property(x => x.AmountTRY).HasPrecision(18, 2);
+        i.Property(x => x.Notes).HasMaxLength(512);
+        i.HasIndex(x => x.Number).IsUnique();
+        i.HasIndex(x => new { x.TenantId, x.PeriodStartUtc });
+        i.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        // Platform faturası tenant kapsam filtresine girmez; yalnızca soft-delete süzülür.
+        i.HasQueryFilter(x => !x.IsDeleted);
+
+        var j = modelBuilder.Entity<BackgroundJob>();
+        j.ToTable("background_jobs");
+        j.HasKey(x => x.Id);
+        j.Property(x => x.Type).HasMaxLength(100).IsRequired();
+        j.Property(x => x.Status).HasMaxLength(16).IsRequired();
+        j.Property(x => x.PayloadJson).HasColumnType("LONGTEXT");
+        j.Property(x => x.LastError).HasMaxLength(1024);
+        // Worker poll sorgusu bu üçlüyü tarar.
+        j.HasIndex(x => new { x.Status, x.NextAttemptUtc });
+        j.HasQueryFilter(x => !x.IsDeleted);
     }
 
     private void ConfigureWhatsApp(ModelBuilder modelBuilder)
@@ -840,6 +927,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.ReplacedByTokenHash).HasMaxLength(128);
         builder.HasIndex(x => x.TokenHash).IsUnique();
         builder.HasOne(x => x.TenantUser).WithMany(x => x.RefreshTokens).HasForeignKey(x => x.TenantUserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
     }
 
     private void ConfigureAuditLog(ModelBuilder modelBuilder)
@@ -855,9 +943,29 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.ActorName).HasMaxLength(200);
         builder.Property(x => x.ActorRole).HasMaxLength(40);
         builder.Property(x => x.IpAddress).HasMaxLength(64);
+        builder.Property(x => x.DeviceId).HasMaxLength(100);
+        builder.Property(x => x.DeviceInfoJson).HasColumnType("longtext");
+        builder.HasIndex(x => new { x.TenantId, x.Action });
         builder.HasIndex(x => new { x.TenantId, x.EntityName, x.EntityId });
         builder.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         builder.HasIndex(x => new { x.TenantId, x.ActorUserId });
         builder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == null || x.TenantId == TenantFilterId));
+    }
+
+    private void ConfigureStaffDevice(ModelBuilder modelBuilder)
+    {
+        var builder = modelBuilder.Entity<StaffDevice>();
+        builder.ToTable("staff_devices");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.DeviceId).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.DeviceType).HasMaxLength(40);
+        builder.Property(x => x.UserAgent).HasMaxLength(512);
+        builder.Property(x => x.NetworkInfoJson).HasColumnType("longtext");
+        builder.Property(x => x.LastIpAddress).HasMaxLength(64);
+        builder.HasIndex(x => new { x.TenantUserId, x.DeviceId }).IsUnique();
+        builder.HasIndex(x => x.TenantId);
+        builder.HasOne(x => x.TenantUser).WithMany().HasForeignKey(x => x.TenantUserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 }

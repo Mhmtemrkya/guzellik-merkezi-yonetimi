@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  Hourglass,
   Layers,
+  ListPlus,
   Loader2,
   Package,
   PenLine,
@@ -22,12 +24,15 @@ import {
   StickyNote,
   User,
   UserCog,
+  UserPlus,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { adminApi } from '@/lib/apiClient'
 import { formatTL } from '@/lib/apiMappers'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
+import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
+import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import type { ApiCustomerPackageSession, ApiStaffTimeOff, Customer, Service, ServicePackage, Staff } from '@/lib/types'
 
 export type AppointmentEditorMode = 'create' | 'edit'
@@ -72,6 +77,16 @@ export interface AppointmentEditorProps {
   onSubmit: (values: AppointmentEditorValues) => Promise<void>
   /** Notları "sadece not düzenle" modunda göster */
   noteOnly?: boolean
+  /**
+   * Create modunda müşteri seçiminin yanında "Yeni müşteri" hızlı kaydı açar.
+   * Oluşan müşteri döndürülürse modal içinde otomatik seçilir; Staff onaya düştüyse null döner.
+   */
+  onQuickCreateCustomer?: (values: CustomerFormValues) => Promise<Customer | null>
+  /**
+   * Create modunda slot dolu (backend `SlotFull`) olduğunda "Bekleme listesine ekle?" akışını açar.
+   * Verilmezse dolu-slot hatası normal hata olarak gösterilir.
+   */
+  onAddToWaitlist?: (values: AppointmentEditorValues) => Promise<void>
 }
 
 const sectionVariants: Variants = {
@@ -145,6 +160,8 @@ export default function AppointmentEditor({
   onSubmit,
   noteOnly = false,
   tenantId,
+  onQuickCreateCustomer,
+  onAddToWaitlist,
 }: AppointmentEditorProps) {
   const todayIso = new Date().toISOString().slice(0, 10)
   // Create modunda hizmet, müşterinin satın aldığı seanslardan seçilir (katalogdan değil) — boş başlar.
@@ -166,20 +183,35 @@ export default function AppointmentEditor({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  // Slot dolu → bekleme listesi teklifi (SlotFull hatasında dolar)
+  const [waitlistPrompt, setWaitlistPrompt] = useState('')
+  const [waitlistBusy, setWaitlistBusy] = useState(false)
+  const [waitlistDone, setWaitlistDone] = useState(false)
   const initialSignature = JSON.stringify(mergedInitial)
+
+  // Modal içinden hızlı kaydedilen müşteriler — dışarıdan gelen (seans filtreli) listede
+  // olmasalar da seçilebilsinler diye yerel olarak eklenir.
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+  const [extraCustomers, setExtraCustomers] = useState<Customer[]>([])
+  const allCustomers = useMemo(() => {
+    const known = new Set(customers.map((c) => c.id))
+    return [...customers, ...extraCustomers.filter((c) => !known.has(c.id))]
+  }, [customers, extraCustomers])
 
   useEffect(() => {
     if (open) {
       setValues(mergedInitial)
       setSaved(false)
       setError('')
+      setWaitlistPrompt('')
+      setWaitlistDone(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialSignature])
 
   const selectedCustomer = useMemo(
-    () => customers.find((c) => c.id === values.customerId),
-    [customers, values.customerId],
+    () => allCustomers.find((c) => c.id === values.customerId),
+    [allCustomers, values.customerId],
   )
   const selectedService = useMemo(
     () => services.find((s) => s.id === values.serviceDefinitionId),
@@ -193,6 +225,8 @@ export default function AppointmentEditor({
   // Create modu: seçili müşterinin satın aldığı paket/hizmet seans bakiyeleri.
   const [custSessions, setCustSessions] = useState<ApiCustomerPackageSession[]>([])
   const [sessLoading, setSessLoading] = useState(false)
+  // Modal içinden satış yapılınca seans bakiyelerini yeniden çekmek için sayaç.
+  const [sessRefreshKey, setSessRefreshKey] = useState(0)
   useEffect(() => {
     if (!open || mode !== 'create' || !values.customerId) {
       setCustSessions([])
@@ -214,7 +248,7 @@ export default function AppointmentEditor({
     return () => {
       cancelled = true
     }
-  }, [open, mode, values.customerId, tenantId])
+  }, [open, mode, values.customerId, tenantId, sessRefreshKey])
 
   // Hizmet bazında grupla (aynı hizmet birden çok pakette olabilir) — kalan seansları topla.
   const bookableByService = useMemo(() => {
@@ -290,6 +324,7 @@ export default function AppointmentEditor({
   const handleSubmit = async (): Promise<void> => {
     setSaving(true)
     setError('')
+    setWaitlistPrompt('')
     setSaved(false)
     try {
       if (!noteOnly) {
@@ -312,10 +347,32 @@ export default function AppointmentEditor({
       setSaved(true)
       setTimeout(() => onOpenChange(false), 1000)
     } catch (e: unknown) {
+      const code = (e as { code?: string })?.code
       const msg = e instanceof Error ? e.message : 'İşlem tamamlanamadı.'
-      setError(msg)
+      // Slot dolu (SlotFull) + waitlist akışı mevcutsa: hata yerine "bekleme listesine ekle?" teklifi göster.
+      if (code === 'SlotFull' && onAddToWaitlist && mode === 'create' && !noteOnly) {
+        setWaitlistPrompt(msg)
+      } else {
+        setError(msg)
+      }
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleAddToWaitlist = async (): Promise<void> => {
+    if (!onAddToWaitlist) return
+    setWaitlistBusy(true)
+    setError('')
+    try {
+      await onAddToWaitlist(values)
+      setWaitlistDone(true)
+      setTimeout(() => onOpenChange(false), 1300)
+    } catch (e: unknown) {
+      setWaitlistPrompt('')
+      setError(e instanceof Error ? e.message : 'Bekleme listesine eklenemedi.')
+    } finally {
+      setWaitlistBusy(false)
     }
   }
 
@@ -502,9 +559,21 @@ export default function AppointmentEditor({
                   {/* CREATE — müşteriye satılan paket/hizmet seçimi (katalog değil) */}
                   {mode === 'create' && (
                     <section className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/[0.65]">
-                        <Layers className="h-3 w-3" /> Satın alınan paket / hizmet
-                        <span className="normal-case tracking-normal text-[#352432]/[0.40]">· randevu bu seanslardan birine açılır, tamamlanınca düşer</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/[0.65]">
+                          <Layers className="h-3 w-3" /> Satın alınan paket / hizmet
+                          <span className="normal-case tracking-normal text-[#352432]/[0.40]">· randevu bu seanslardan birine açılır, tamamlanınca düşer</span>
+                        </div>
+                        {selectedCustomer && (
+                          <PackageSaleDialog
+                            tenantId={tenantId}
+                            stayOnPage
+                            presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
+                            onDone={() => setSessRefreshKey((k) => k + 1)}
+                            triggerLabel="Paket satışı yap"
+                            triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#ffe9f0]"
+                          />
+                        )}
                       </div>
                       {!values.customerId ? (
                         <div className="rounded-[22px] border border-dashed border-[#ead8df]/[0.80] bg-white/[0.70] p-8 text-center text-[12px] text-[#352432]/[0.55]">
@@ -519,7 +588,7 @@ export default function AppointmentEditor({
                         <div className="rounded-[22px] border border-amber-200/[0.70] bg-amber-50/[0.55] p-6 text-center">
                           <Package className="mx-auto h-7 w-7 text-amber-500/[0.70]" strokeWidth={1.4} />
                           <div className="mt-3 text-[12px] font-medium text-amber-800">Bu müşterinin randevuya uygun (kalan seanslı) paket/hizmeti yok.</div>
-                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Önce paket/hizmet satışı yapılıp kurum yöneticisi onaylamalı; sonra randevu açılabilir.</div>
+                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Yukarıdaki &quot;Paket satışı yap&quot; ile buradan satış yapabilirsin; kurum yöneticisi adisyonu onayladığında seanslar burada listelenir.</div>
                         </div>
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -586,27 +655,39 @@ export default function AppointmentEditor({
                         </motion.div>
                       )}
 
-                      <FieldShell label="Müşteri" icon={User} required fullWidth helper={mode === 'edit' ? 'Randevu oluşturulduktan sonra müşteri değiştirilemez.' : "Listede yoksa önce 'Yeni müşteri' oluştur"}>
-                        <select
-                          className={`${fieldStyle()} ${mode === 'edit' ? 'cursor-not-allowed opacity-60' : ''}`}
-                          value={values.customerId}
-                          disabled={mode === 'edit'}
-                          onChange={(e) =>
-                            setValues((v) => ({
-                              ...v,
-                              customerId: e.target.value,
-                              // Müşteri değişince create modunda seçili seans geçersiz olur — sıfırla.
-                              ...(mode === 'create' ? { serviceDefinitionId: '', durationMinutes: 30 } : {}),
-                            }))
-                          }
-                        >
-                          <option value="">— Müşteri seç —</option>
-                          {customers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} · {c.phone}
-                            </option>
-                          ))}
-                        </select>
+                      <FieldShell label="Müşteri" icon={User} required fullWidth helper={mode === 'edit' ? 'Randevu oluşturulduktan sonra müşteri değiştirilemez.' : onQuickCreateCustomer ? "Listede yoksa yandaki 'Yeni müşteri' ile buradan kaydet" : "Listede yoksa önce 'Yeni müşteri' oluştur"}>
+                        <div className="flex items-stretch gap-2">
+                          <select
+                            className={`${fieldStyle()} ${mode === 'edit' ? 'cursor-not-allowed opacity-60' : ''}`}
+                            value={values.customerId}
+                            disabled={mode === 'edit'}
+                            onChange={(e) =>
+                              setValues((v) => ({
+                                ...v,
+                                customerId: e.target.value,
+                                // Müşteri değişince create modunda seçili seans geçersiz olur — sıfırla.
+                                ...(mode === 'create' ? { serviceDefinitionId: '', durationMinutes: 30 } : {}),
+                              }))
+                            }
+                          >
+                            <option value="">— Müşteri seç —</option>
+                            {allCustomers.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} · {c.phone}
+                              </option>
+                            ))}
+                          </select>
+                          {mode === 'create' && onQuickCreateCustomer && (
+                            <button
+                              type="button"
+                              onClick={() => setQuickCustomerOpen(true)}
+                              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 text-[12px] font-semibold text-[#c85776] transition-colors hover:bg-[#ffe9f0]"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" strokeWidth={2} />
+                              Yeni müşteri
+                            </button>
+                          )}
+                        </div>
                       </FieldShell>
 
                       <FieldShell
@@ -729,6 +810,46 @@ export default function AppointmentEditor({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Slot dolu → bekleme listesine ekle teklifi */}
+            <AnimatePresence mode="wait">
+              {waitlistPrompt && !waitlistDone && (
+                <motion.div
+                  key="wl-prompt"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-3 flex flex-col gap-2.5 rounded-[16px] border border-amber-200/80 bg-amber-50/90 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-start gap-2 text-[12px] leading-snug text-amber-800">
+                    <Hourglass className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" strokeWidth={1.7} />
+                    <span>
+                      {waitlistPrompt}{' '}
+                      <strong>{selectedCustomer?.name ? `${selectedCustomer.name} bu slot için bekleme listesine eklensin mi?` : 'Bu slot için bekleme listesine eklensin mi?'}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddToWaitlist}
+                    disabled={waitlistBusy}
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[12px] bg-amber-500 px-3.5 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-60"
+                  >
+                    {waitlistBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ListPlus className="h-3.5 w-3.5" strokeWidth={2.2} />}
+                    Bekleme listesine ekle
+                  </button>
+                </motion.div>
+              )}
+              {waitlistDone && (
+                <motion.div
+                  key="wl-done"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="mb-3 flex items-center gap-2 rounded-[16px] border border-emerald-200/80 bg-emerald-50/90 px-3.5 py-2.5 text-[12px] font-medium text-emerald-700"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Bekleme listesine eklendi. Yer açılınca müşteriye WhatsApp&apos;tan teklif gidecek.
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="flex items-center justify-between gap-3">
               <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
                 {noteOnly ? 'Sadece not güncellenir' : mode === 'create' ? 'Yeni kayıt oluşturulur' : 'Mevcut kayıt güncellenir'}
@@ -758,6 +879,23 @@ export default function AppointmentEditor({
           </footer>
         </div>
       </DialogContent>
+
+      {/* Hızlı müşteri kaydı — müşteriler sayfasındaki formun aynısı, randevudan ayrılmadan */}
+      {mode === 'create' && onQuickCreateCustomer && (
+        <CustomerFormDialog
+          mode="create"
+          open={quickCustomerOpen}
+          onOpenChange={setQuickCustomerOpen}
+          description="Müşteriyi kaydet; randevu modalında otomatik seçilir."
+          onSubmit={async (formValues) => {
+            const created = await onQuickCreateCustomer(formValues)
+            if (created) {
+              setExtraCustomers((prev) => [...prev, created])
+              setValues((v) => ({ ...v, customerId: created.id, serviceDefinitionId: '', durationMinutes: 30 }))
+            }
+          }}
+        />
+      )}
     </Dialog>
   )
 }

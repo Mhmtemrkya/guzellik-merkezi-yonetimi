@@ -9,6 +9,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <!-- GÜVENLİK: AspNetCore.OpenApi'nin transitive olarak getirdiği Microsoft.OpenApi 2.0.0'da bilinen
+         yüksek önem dereceli açık var (NU1903 / GHSA-v5pm-xwqc-g5wc). Aynı major içinde yamalı sürüme
+         sabitleyip transitive referansı geçersiz kılıyoruz. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

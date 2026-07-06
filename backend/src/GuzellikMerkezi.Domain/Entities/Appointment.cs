@@ -7,7 +7,7 @@ public sealed class Appointment : Entity
 {
     private Appointment() { }
 
-    public Appointment(Guid tenantId, Guid branchId, Guid customerId, Guid staffMemberId, Guid serviceDefinitionId, DateTime startUtc, DateTime endUtc, decimal price, string? notes = null)
+    public Appointment(Guid tenantId, Guid branchId, Guid customerId, Guid staffMemberId, Guid serviceDefinitionId, DateTime startUtc, DateTime endUtc, decimal price, string? notes = null, bool isOnline = false)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -16,6 +16,7 @@ public sealed class Appointment : Entity
         ServiceDefinitionId = serviceDefinitionId;
         Price = price < 0 ? throw new DomainException("Randevu fiyatı negatif olamaz.") : price;
         Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        IsOnline = isOnline;
         Reschedule(startUtc, endUtc);
     }
 
@@ -34,6 +35,8 @@ public sealed class Appointment : Entity
     public decimal Price { get; private set; }
     public string? Notes { get; private set; }
     public string? CancellationReason { get; private set; }
+    /// <summary>Müşteri tarafından mobil/online portaldan alınan randevu mu? (Takvimde "Online" rozeti.)</summary>
+    public bool IsOnline { get; private set; }
 
     // WhatsApp hatırlatma / müşteri onayı (iş akışı Status'tan bağımsız bilgi alanları)
     public WhatsAppConfirmationStatus CustomerConfirmation { get; private set; } = WhatsAppConfirmationStatus.None;

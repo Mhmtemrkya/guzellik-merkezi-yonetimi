@@ -6,17 +6,25 @@ using GuzellikMerkezi.Api.Middleware;
 using GuzellikMerkezi.Application;
 using GuzellikMerkezi.Infrastructure;
 using GuzellikMerkezi.Infrastructure.Persistence;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Scalar.AspNetCore;
+using System.Threading.RateLimiting;
 
 // Launch profili kullanılmadığında (ör. `dotnet run --no-launch-profile`) ASPNETCORE_ENVIRONMENT
-// gelmez ve ASP.NET varsayılan olarak Production'a düşer. Bu da yanlış appsettings (change-me şifresi)
-// + atlanan DB bootstrap/seed demektir → "boş/saçma DB". Bu proje yerelde her zaman Development
-// çalışmalı: ortam açıkça verilmediyse Development'a sabitle.
+// gelmez. YEREL GELİŞTİRME (yalnız DEBUG build) için Development'a sabitleriz — böylece doğru appsettings
+// + DB bootstrap/seed çalışır.
+// GÜVENLİK: ÜRETİM (Release build) için bu zorlama YAPILMAZ. Ortam açıkça verilmezse ASP.NET'in güvenli
+// varsayılanı (Production) devreye girer → zayıf JWT/şifreleme anahtarı fail-fast guard'ı AKTİF kalır,
+// demo seed + Swagger/Scalar KAPALI olur. Böylece canlı sunucuda env unutulsa bile yanlışlıkla
+// Development'a (bilinen anahtar + demo parola) düşme riski ortadan kalkar.
+#if DEBUG
 Environment.SetEnvironmentVariable(
     "ASPNETCORE_ENVIRONMENT",
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
         ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
         ?? "Development");
+#endif
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +34,40 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApiServices(builder.Configuration);
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
+builder.Services.AddHostedService<MonthlyReportBackgroundService>();
+// Arka plan iş kuyruğu tüketicisi (WhatsApp/SMS/FCM gönderimlerini request-path dışında yürütür).
+builder.Services.AddHostedService<QueuedHostedService>();
+// Kalıcı (DB-outbox) iş kuyruğu tüketicisi — restart'ta kaybolmaması gereken işler.
+builder.Services.AddHostedService<DurableJobHostedService>();
+// RabbitMQ açıksa iş sinyali tüketicisi de çalışır (anında işleme; poller güvenlik ağı olarak kalır).
+if (builder.Configuration.GetValue<bool>("RabbitMq:Enabled"))
+    builder.Services.AddHostedService<RabbitMqJobConsumerHostedService>();
+
+// GÜVENLİK: Herkese açık müşteri uçları için IP bazlı hız sınırı.
+// Şifresiz müşteri girişi (ad+telefon+doğum tarihi) brute-force denemesine ve
+// seri sahte kayıt/randevu spam'ine karşı ilk savunma hattıdır.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json; charset=utf-8";
+        await context.HttpContext.Response.WriteAsync(
+            """{"success":false,"data":null,"error":{"code":"TooManyRequests","message":"Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip tekrar deneyin."}}""", ct);
+    };
+    static string ClientIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // Müşteri giriş/kayıt: 5 dakikada en fazla 10 deneme (IP başına).
+    options.AddPolicy("customer-auth", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
+    // Müşteri randevu oluşturma: saatte en fazla 15 istek (IP başına).
+    options.AddPolicy("customer-portal-write", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
+    // GÜVENLİK: Personel/kurum/platform girişi + kapsam sorgusu (parolalı). IP başına 5 dakikada 15 deneme.
+    // Parola brute-force / spraying ve e-posta enumerasyonunu frenler. Gerçek istemci IP'si için reverse
+    // proxy arkasında ForwardedHeaders etkin olmalı (Program pipeline'ının başında yapılandırıldı).
+    options.AddPolicy("auth-login", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
+});
 
 var app = builder.Build();
 
@@ -82,12 +124,39 @@ else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var 
     await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
 }
 
+// GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
+// rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
+// Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:
+//   ForwardedHeaders__TrustAll=true              (LB dış XFF'i ezmeli/eklemeli — aksi halde spoof riski)
+//   ForwardedHeaders__KnownProxies__0=<lb-ip>    (güvenilen proxy IP'lerini tek tek listele)
+{
+    var fh = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = int.TryParse(app.Configuration["ForwardedHeaders:ForwardLimit"], out var fl) && fl > 0 ? fl : 1,
+    };
+    if (bool.TryParse(app.Configuration["ForwardedHeaders:TrustAll"], out var trustAll) && trustAll)
+    {
+        fh.KnownProxies.Clear();
+        fh.KnownIPNetworks.Clear();
+    }
+    else
+    {
+        foreach (var ip in app.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+            if (System.Net.IPAddress.TryParse(ip, out var proxy)) fh.KnownProxies.Add(proxy);
+    }
+    app.UseForwardedHeaders(fh);
+}
+
 app.UseResponseCompression();
+app.UseRateLimiter();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors(ApiServiceCollectionExtensions.FrontendCorsPolicyName);
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
+// Müşteri rolünü /api/customer (+/api/auth) ile sınırla; diğer rolleri portaldan uzak tut.
+app.UseMiddleware<CustomerScopeMiddleware>();
 app.UseMiddleware<TrialAccessMiddleware>();
 // Aktivite audit'i onay kapısını dıştan sarmalıdır. Böylece Staff isteği endpoint'e
 // ulaşmadan PendingOperation olarak kısa devre edilse bile işlem audit kapsamındadır.
@@ -121,6 +190,7 @@ app.MapAuthEndpoints();
 app.MapTenantEndpoints();
 app.MapBranchEndpoints();
 app.MapCustomerEndpoints();
+app.MapCustomerPortalEndpoints();
 app.MapTreatmentPhotoEndpoints();
 app.MapConsultationEndpoints();
 app.MapStaffEndpoints();
@@ -145,10 +215,14 @@ app.MapCashFlowEndpoints();
 app.MapStockEndpoints();
 app.MapPendingOperationEndpoints();
 app.MapNotificationEndpoints();
+app.MapAppNotificationEndpoints();
 app.MapSubscriptionPlanEndpoints();
 app.MapAuditLogEndpoints();
+app.MapDeviceEndpoints();
+app.MapSecurityEndpoints();
 app.MapFeatureEndpoints();
 app.MapPlatformMessagingEndpoints();
+app.MapPlatformOpsEndpoints();
 
 app.Run();
 

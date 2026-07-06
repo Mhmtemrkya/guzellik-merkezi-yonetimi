@@ -21,6 +21,12 @@ public sealed class Branch : Entity
     public int StaffCount { get; private set; }
     public int RoomCount { get; private set; }
 
+    // --- Online randevu çalışma saatleri (slot üretiminde kullanılır) ---
+    public TimeOnly OpenTime { get; private set; } = new(9, 0);
+    public TimeOnly CloseTime { get; private set; } = new(20, 0);
+    /// <summary>Online randevu slot adım uzunluğu (dakika). Vars. 30.</summary>
+    public int SlotMinutes { get; private set; } = 30;
+
     public void Rename(string name, string city)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Şube adı boş olamaz.");
@@ -42,6 +48,16 @@ public sealed class Branch : Entity
     public void MarkDefault(bool value = true)
     {
         IsDefault = value;
+        Touch();
+    }
+
+    public void SetWorkingHours(TimeOnly openTime, TimeOnly closeTime, int slotMinutes)
+    {
+        if (closeTime <= openTime) throw new DomainException("Kapanış saati açılıştan sonra olmalı.");
+        if (slotMinutes is < 5 or > 240) throw new DomainException("Slot adımı 5-240 dakika aralığında olmalı.");
+        OpenTime = openTime;
+        CloseTime = closeTime;
+        SlotMinutes = slotMinutes;
         Touch();
     }
 }

@@ -259,10 +259,10 @@ export default function LoginPage() {
           <div>
             <motion.a variants={itemVariants} href="/" className="group inline-flex items-center gap-4">
               <span className="relative h-14 w-14 overflow-hidden rounded-2xl border border-[#ead8df] bg-white shadow-[0_16px_40px_-24px_rgba(200,87,118,0.55)]">
-                <img src="/logo.png" alt="Armonessa logosu" className="h-full w-full scale-125 object-cover" />
+                <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
               </span>
               <span>
-                <span className="block font-display text-2xl tracking-[0.14em] text-[#3a1f2c]">ARMONESSA</span>
+                <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>
                 <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/80">
                   Beauty &amp; Wellness Technology
                 </span>
@@ -282,11 +282,11 @@ export default function LoginPage() {
             >
               Tek giriş,
               <br />
-              <span className="armonessa-text-gradient italic">tüm paneller.</span>
+              <span className="beautyasist-text-gradient italic">tüm paneller.</span>
             </motion.h1>
 
             <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
-              Armonessa ile kurumunuzun tüm süreçlerini tek platformda yönetin. Güvenli, hızlı ve role özel deneyimle
+              BeautyAsist ile kurumunuzun tüm süreçlerini tek platformda yönetin. Güvenli, hızlı ve role özel deneyimle
               fark yaratın.
             </motion.p>
 
@@ -338,7 +338,7 @@ export default function LoginPage() {
             variants={itemVariants}
             className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.40]"
           >
-            <span>© 2026 Armonessa</span>
+            <span>© 2026 BeautyAsist</span>
             <span className="flex items-center gap-2">
               <motion.span
                 aria-hidden
@@ -710,7 +710,7 @@ export default function LoginPage() {
                   <Building2 className="h-3.5 w-3.5" /> Kurum yöneticisiysen
                 </div>
                 <p className="mt-1.5 text-[#352432]/[0.70]">
-                  Armonessa destek ekibine ulaş — Platform Admin şifreni sıfırlayıp yeni geçici şifreni iletir.
+                  BeautyAsist destek ekibine ulaş — Platform Admin şifreni sıfırlayıp yeni geçici şifreni iletir.
                 </p>
               </div>
               <div className="flex items-start gap-2 rounded-2xl border border-amber-200/[0.90] bg-amber-50/[0.86] px-3.5 py-3 text-[11.5px] text-amber-800">

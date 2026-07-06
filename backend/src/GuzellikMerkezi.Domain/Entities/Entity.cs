@@ -28,4 +28,15 @@ public abstract class Entity
         DeletedAtUtc = utcNow ?? DateTime.UtcNow;
         Touch(DeletedAtUtc, userId);
     }
+
+    /// <summary>
+    /// Soft-delete'i geri alır. Unique index'in soft-deleted satırları da kapsadığı yerlerde
+    /// (ör. StaffTimeOff) yeniden ekleme yerine mevcut satırı canlandırmak için kullanılır.
+    /// </summary>
+    public void Restore(DateTime? utcNow = null, Guid? userId = null)
+    {
+        IsDeleted = false;
+        DeletedAtUtc = null;
+        Touch(utcNow, userId);
+    }
 }

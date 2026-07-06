@@ -119,7 +119,11 @@ public sealed class AuditLogger : IAuditLogger
                 entityId,
                 summary,
                 dataJson,
-                ipAddress);
+                ipAddress,
+                // Cihaz bilgisi her zaman istek bağlamından okunur; UI, cihaz güvenliği
+                // özelliği kapalıyken bu kolonları göstermez.
+                _currentUser.DeviceId,
+                _currentUser.DeviceInfoJson);
 
             _db.AuditLogs.Add(log);
             // Çağıran servisin asıl SaveChanges'ı zaten yapılmış olur (iş mantığı save'inden sonra log atılır).

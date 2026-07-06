@@ -75,5 +75,6 @@ public sealed class AuditLogService : IAuditLogService
 
     private static AuditLogDto ToDto(AuditLog x) => new(
         x.Id, x.TenantId, x.BranchId, x.ActorUserId, x.ActorName, x.ActorRole,
-        x.Action, x.EntityName, x.EntityId, x.Summary, x.DataJson, x.IpAddress, x.CreatedAtUtc);
+        x.Action, x.EntityName, x.EntityId, x.Summary, x.DataJson, x.IpAddress, x.CreatedAtUtc,
+        x.DeviceId, x.DeviceInfoJson);
 }

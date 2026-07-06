@@ -35,9 +35,9 @@ interface CustomerFormValues {
   gender?: CustomerGender; kvkkConsent?: boolean; notes?: string; branchId?: string; photoUrl?: string
 }
 
-type TabKey = 'all' | 'kvkk' | 'kvkk-pending' | 'debt' | 'recent' | 'blacklist' | 'passive'
+type TabKey = 'all' | 'vip' | 'kvkk' | 'kvkk-pending' | 'debt' | 'recent' | 'blacklist' | 'passive'
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'all', label: 'Tümü' }, { key: 'kvkk', label: 'KVKK Onaylı' }, { key: 'kvkk-pending', label: 'KVKK Bekleyen' },
+  { key: 'all', label: 'Tümü' }, { key: 'vip', label: 'VIP' }, { key: 'kvkk', label: 'KVKK Onaylı' }, { key: 'kvkk-pending', label: 'KVKK Bekleyen' },
   { key: 'debt', label: 'Borçlu' }, { key: 'recent', label: 'Yeni Eklenen' },
   { key: 'blacklist', label: 'Kara Liste' }, { key: 'passive', label: 'Pasif' },
 ]
@@ -190,7 +190,7 @@ function MusterilerPageInner() {
       const last = ap?.list[0]
       const spent = acct?.spent ?? 0
       const tags: string[] = []
-      if (spent >= 5000) tags.push('VIP')
+      if (c.isVip) tags.push('VIP')
       if (last?.islem) tags.push(last.islem)
       return {
         ...c, debt: acct?.debt ?? 0, spent, apptCount: ap?.count ?? 0,
@@ -205,7 +205,8 @@ function MusterilerPageInner() {
 
   const filtered = useMemo(() => {
     let list = enriched
-    if (tab === 'kvkk') list = list.filter((c) => c.tier === 'KVKK Onaylı')
+    if (tab === 'vip') list = list.filter((c) => c.isVip)
+    else if (tab === 'kvkk') list = list.filter((c) => c.tier === 'KVKK Onaylı')
     else if (tab === 'kvkk-pending') list = list.filter((c) => c.tier !== 'KVKK Onaylı')
     else if (tab === 'debt') list = list.filter((c) => c.debt > 0)
     else if (tab === 'recent') list = list.filter((c) => within(c.lastDate, 30) || c.apptCount === 0)

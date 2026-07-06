@@ -26,10 +26,9 @@ public static class DevelopmentDataSeeder
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseBootstrap");
         await DatabaseBootstrap.MigrateDatabaseAsync(db, logger);
 
-        // Demo operasyonel veri (kurum/personel/müşteri/randevu/ürün...) yalnızca Development'ta veya açıkça
-        // izin verildiğinde (Database:SeedDemoData=true) eklenir — böylece production'a demo veri ASLA sızmaz.
-        var seedDemo = app.Environment.IsDevelopment()
-            || (bool.TryParse(app.Configuration["Database:SeedDemoData"], out var demoFlag) && demoFlag);
+        // Demo operasyonel veri (kurum/personel/müşteri/randevu/ürün...) ASLA otomatik eklenmez.
+        // Canlı veri ile çalışma kuralı: yalnızca açıkça Database:SeedDemoData=true verilirse devreye girer.
+        var seedDemo = bool.TryParse(app.Configuration["Database:SeedDemoData"], out var demoFlag) && demoFlag;
         if (!seedDemo) return;
 
         // Idempotent: mevcut kurum varsa demo verisi yeniden eklenmez ve mevcut kullanıcı şifrelerine DOKUNULMAZ.
@@ -37,25 +36,25 @@ public static class DevelopmentDataSeeder
 
         const string password = "Guzellik123!";
 
-        var tenant = new Tenant("Armonessa Demo Güzellik Merkezi", "armonessa-demo", "Premium", TenantStatus.Active);
-        tenant.SetProfile("demo.armonessa.app", "Deniz Kaya");
+        var tenant = new Tenant("BeautyAsist Demo Güzellik Merkezi", "beautyasist-demo", "Premium", TenantStatus.Active);
+        tenant.SetProfile("demo.beautyasist.app", "Deniz Kaya");
         var nisantasi = tenant.AddBranch("Nişantaşı", "İstanbul", true);
         nisantasi.UpdateCapacity(staffCount: 6, roomCount: 5);
         var kadikoy = tenant.AddBranch("Kadıköy", "İstanbul", false);
         kadikoy.UpdateCapacity(staffCount: 4, roomCount: 3);
 
-        var platformAdmin = tenant.GrantAccess("platform@armonessa.test", UserRole.PlatformAdmin, null, "Platform Admin");
+        var platformAdmin = tenant.GrantAccess("platform@beautyasist.test", UserRole.PlatformAdmin, null, "Platform Admin");
         platformAdmin.SetPasswordHash(passwordHasher.Hash(password));
-        var owner = tenant.GrantAccess("admin@armonessa.test", UserRole.InstitutionOwner, null, "Deniz Kaya");
+        var owner = tenant.GrantAccess("admin@beautyasist.test", UserRole.InstitutionOwner, null, "Deniz Kaya");
         owner.SetPasswordHash(passwordHasher.Hash(password));
-        var staffUser = tenant.GrantAccess("personel@armonessa.test", UserRole.Staff, nisantasi.Id, "Elif Aydın");
+        var staffUser = tenant.GrantAccess("personel@beautyasist.test", UserRole.Staff, nisantasi.Id, "Elif Aydın");
         staffUser.SetPasswordHash(passwordHasher.Hash(password));
 
         var secondTenant = new Tenant("Lotus Klinik", "lotus-klinik", "Başlangıç", TenantStatus.Trial);
-        secondTenant.SetProfile("lotus.armonessa.app", "Selin Demir");
+        secondTenant.SetProfile("lotus.beautyasist.app", "Selin Demir");
         var lotusBranch = secondTenant.AddBranch("Merkez", "Ankara", true);
         lotusBranch.UpdateCapacity(staffCount: 2, roomCount: 2);
-        var secondOwner = secondTenant.GrantAccess("lotus@armonessa.test", UserRole.InstitutionOwner, null, "Selin Demir");
+        var secondOwner = secondTenant.GrantAccess("lotus@beautyasist.test", UserRole.InstitutionOwner, null, "Selin Demir");
         secondOwner.SetPasswordHash(passwordHasher.Hash(password));
 
         var laser = new ServiceDefinition(tenant.Id, nisantasi.Id, "Buz Lazer Epilasyon", 45, 1250, "Epilasyon");
@@ -75,6 +74,7 @@ public static class DevelopmentDataSeeder
 
         var müşteri1 = new Customer(tenant.Id, nisantasi.Id, "Merve Yılmaz", "+90 555 111 22 33", "merve@example.com");
         müşteri1.UpdateProfile(new DateOnly(1993, 4, 12), Gender.Female, true, "şehir: İstanbul\nHassas cilt; pudra tonlarını seviyor.");
+        // Online portal demo girişi: ad "Merve Yılmaz" + telefon 0555 111 22 33 + doğum 12.04.1993 ile giriş yapılır.
         var müşteri2 = new Customer(tenant.Id, nisantasi.Id, "İpek Şahin", "+90 555 222 33 44", "ipek@example.com");
         müşteri2.UpdateProfile(new DateOnly(1988, 9, 3), Gender.Female, true, "şehir: İstanbul\nLazer paket görüşmesi yapıldı.");
         var müşteri3 = new Customer(tenant.Id, kadikoy.Id, "Derya Aksoy", "+90 555 333 44 55", null);

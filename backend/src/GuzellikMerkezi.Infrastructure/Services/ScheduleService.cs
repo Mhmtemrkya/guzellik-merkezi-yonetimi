@@ -42,11 +42,27 @@ public sealed class ScheduleService : IScheduleService
         var staff = await _db.StaffMembers.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == request.StaffMemberId, cancellationToken);
         if (staff is null) return Result<StaffTimeOffDto>.Failure(Error.NotFound("Personel bulunamadı."));
 
-        var exists = await _db.StaffTimeOffs.AnyAsync(t => t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == request.Date, cancellationToken);
-        if (exists) return Result<StaffTimeOffDto>.Failure(Error.Conflict("Bu gün için zaten izin tanımlı."));
+        // (StaffMemberId, Date) UNIQUE index'i soft-deleted satırları da kapsar. Query filter'ı yok sayıp
+        // fiziksel satırı ara: soft-deleted varsa canlandır (yeniden INSERT = unique çakışması = 500 önlenir),
+        // aktif satır varsa çakışma döndür, hiç yoksa yeni ekle. (izin ver → iptal → tekrar ver toggle'ı için.)
+        var existing = await _db.StaffTimeOffs
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == request.Date, cancellationToken);
 
-        var timeOff = new StaffTimeOff(tenantId, request.StaffMemberId, request.Date, request.Reason);
-        _db.StaffTimeOffs.Add(timeOff);
+        StaffTimeOff timeOff;
+        if (existing is not null)
+        {
+            if (!existing.IsDeleted) return Result<StaffTimeOffDto>.Failure(Error.Conflict("Bu gün için zaten izin tanımlı."));
+            existing.Restore();
+            existing.SetReason(request.Reason);
+            timeOff = existing;
+        }
+        else
+        {
+            timeOff = new StaffTimeOff(tenantId, request.StaffMemberId, request.Date, request.Reason);
+            _db.StaffTimeOffs.Add(timeOff);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, staff.BranchId, "Create", "StaffTimeOff", timeOff.Id,
             $"İzin: {staff.FullName} · {request.Date}", new { request.StaffMemberId, request.Date, request.Reason }, cancellationToken);
@@ -57,7 +73,8 @@ public sealed class ScheduleService : IScheduleService
     public async Task<Result> RemoveTimeOffAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {
         var timeOff = await _db.StaffTimeOffs.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, cancellationToken);
-        if (timeOff is null) return Result.Failure(Error.NotFound("İzin kaydı bulunamadı."));
+        // Zaten silinmişse idempotent davran: toggle'da hızlı çift-iptal 404/hata üretmesin (hedef durum = izin yok).
+        if (timeOff is null) return Result.Success();
         timeOff.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         return Result.Success();

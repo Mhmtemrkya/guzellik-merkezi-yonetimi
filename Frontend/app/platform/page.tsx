@@ -191,7 +191,7 @@ export default function PlatformDashboard() {
                     <Sparkles className="h-3.5 w-3.5" /> Plan dağılımı
                   </div>
                   <div className="mt-1.5 font-display text-2xl tracking-tight text-[#3b2330]">
-                    <AnimatedNumber value={summary.planBreakdown.length} className="armonessa-text-gradient" /> aktif paket
+                    <AnimatedNumber value={summary.planBreakdown.length} className="beautyasist-text-gradient" /> aktif paket
                   </div>
                 </div>
                 <Link

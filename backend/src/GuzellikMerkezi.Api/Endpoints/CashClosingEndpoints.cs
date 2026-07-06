@@ -10,7 +10,8 @@ public static class CashClosingEndpoints
 {
     public static IEndpointRouteBuilder MapCashClosingEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/cash/closing").WithTags("CashClosing").RequireAuthorization().RequirePermission(Permissions.CashRegister);
+        // Kasa kapanışı artık kendi izin anahtarına tabi (Günlük Kasa'dan ayrıştırıldı).
+        var group = app.MapGroup("/api/admin/cash/closing").WithTags("CashClosing").RequireAuthorization().RequirePermission(Permissions.CashClosing);
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, ICashClosingService service, HttpContext http, CancellationToken ct) =>
         {

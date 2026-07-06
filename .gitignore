@@ -55,6 +55,8 @@ backend/src/GuzellikMerkezi.Api/appsettings.*.json
 # Logs, runtime files, local DBs
 *.log
 logs/
+# Mobil kaynak klasörü (logs/ kuralının yanlışlıkla yakaladığı gerçek kod) — geri dahil et.
+!mobile/lib/features/logs/
 *.db
 *.sqlite
 *.sqlite3
@@ -62,9 +64,25 @@ logs/
 *.tmp
 dump.rdb
 
+# Tauri masaüstü (Rust build çıktıları + üretilen şemalar)
+desktop-app/src-tauri/target/
+desktop-app/src-tauri/gen/
+
+# Flutter mobil build/tooling
+.dart_tool/
+.gradle/
+mobile/android/local.properties
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/ios/Pods/
+
 # Local AI/tool state
 .claude/
 .codegraph/
+.serena/
+.codex/
+.agents/
+Frontend/.stitch/
 generated-images/
 Frontend/memory/test_credentials.md
 

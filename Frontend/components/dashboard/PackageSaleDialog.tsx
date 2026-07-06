@@ -31,6 +31,7 @@ export default function PackageSaleDialog({
   onDone,
   triggerLabel,
   triggerClassName,
+  stayOnPage,
 }: {
   tenantId?: string
   /** Müşteri kartından açılırsa müşteri sabitlenir. */
@@ -46,6 +47,8 @@ export default function PackageSaleDialog({
   onDone?: () => unknown
   triggerLabel?: string
   triggerClassName?: string
+  /** true ise satış sonrası müşteri kartına yönlendirme yapılmaz (ör. randevu modalı içinden satış). */
+  stayOnPage?: boolean
 }) {
   const canAdisyon = useFeature('billing.adisyon')
   const canProducts = useFeature('stock.products')
@@ -261,8 +264,9 @@ export default function PackageSaleDialog({
       if (onDone) await onDone()
       // Satıştan sonra DOĞRUDAN müşteri kartına git (önmuhasebeye uğramadan): adisyon/işlem
       // defteri, taksit/cari durumu orada görünür ve yönetici onayı da oradan yapılır.
+      // stayOnPage: randevu modalı gibi akış içinden satışta yönlendirme yapılmaz.
       setOpen(false)
-      router.push(`/admin/musteriler?customer=${cid}&sale=1`)
+      if (!stayOnPage) router.push(`/admin/musteriler?customer=${cid}&sale=1`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Satış kaydedilemedi')
     } finally {

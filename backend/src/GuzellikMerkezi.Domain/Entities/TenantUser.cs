@@ -39,6 +39,31 @@ public sealed class TenantUser : Entity
     /// </summary>
     public string? Permissions { get; private set; }
 
+    /// <summary>
+    /// Cihaz güvenliği açıkken bu kullanıcının tanımlayabileceği maksimum cihaz sayısı.
+    /// Null = bu kullanıcı için cihaz kısıtı yok (serbest). Yalnızca Staff girişlerinde uygulanır.
+    /// </summary>
+    public int? MaxDeviceCount { get; private set; }
+
+    public void SetMaxDeviceCount(int? count)
+    {
+        if (count is < 1 or > 10) throw new DomainException("Cihaz limiti 1-10 arasında olmalı (boş = sınırsız).");
+        MaxDeviceCount = count;
+        Touch();
+    }
+
+    /// <summary>
+    /// Personel bazlı ekran görüntüsü izni istisnası. Null = kurum varsayılanı
+    /// (Tenant.AllowStaffScreenshots) geçerli; true/false bu kullanıcı için ezer.
+    /// </summary>
+    public bool? AllowScreenshots { get; private set; }
+
+    public void SetAllowScreenshots(bool? allowed)
+    {
+        AllowScreenshots = allowed;
+        Touch();
+    }
+
     public ICollection<RefreshToken> RefreshTokens { get; private set; } = new List<RefreshToken>();
 
     public void ChangeScope(UserRole role, Guid? branchId)

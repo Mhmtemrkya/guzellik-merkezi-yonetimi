@@ -145,9 +145,9 @@ function PlanCatalogCard({
         <div className="mt-3 font-display text-lg tracking-tight text-[#3b2330]">{plan.name}</div>
         <div className="mt-1">
           {isCustom ? (
-            <span className="font-display text-xl armonessa-text-gradient">Özel fiyatlandırma</span>
+            <span className="font-display text-xl beautyasist-text-gradient">Özel fiyatlandırma</span>
           ) : (
-            <span className="font-display text-2xl tabular-nums armonessa-text-gradient">
+            <span className="font-display text-2xl tabular-nums beautyasist-text-gradient">
               {formatTL(plan.monthlyPriceTRY)} <span className="text-[11px] font-mono text-[#9d7386]">/ay</span>
             </span>
           )}
@@ -267,7 +267,7 @@ function FinansPageInner() {
                   <Package className="h-3.5 w-3.5" /> Plan başına gelir
                 </div>
                 <div className="mt-1 font-display text-2xl tracking-tight text-[#3b2330]">
-                  <AnimatedNumber value={breakdown.length} className="armonessa-text-gradient" /> paket aktif
+                  <AnimatedNumber value={breakdown.length} className="beautyasist-text-gradient" /> paket aktif
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -313,7 +313,7 @@ function FinansPageInner() {
                         </div>
                         <div className="flex items-center justify-between md:col-span-3 md:justify-end md:gap-3">
                           <div className="text-right">
-                            <div className="font-display text-base tabular-nums armonessa-text-gradient">{formatTL(Math.round(b.monthlyRevenueTRY))}</div>
+                            <div className="font-display text-base tabular-nums beautyasist-text-gradient">{formatTL(Math.round(b.monthlyRevenueTRY))}</div>
                             <div className="text-[9px] font-mono uppercase tracking-widest text-[#9d7386]">%{share} MRR payı</div>
                           </div>
                           <ChevronRight className="h-4 w-4 shrink-0 text-[#c89bac] transition-transform group-hover:translate-x-0.5 group-hover:text-[#c85776]" strokeWidth={1.7} />

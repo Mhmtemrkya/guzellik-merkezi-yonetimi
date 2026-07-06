@@ -88,7 +88,7 @@ const items: SidebarNavItem[] = [
     label: 'Hediye Çeki',
     href: '/admin/hediye-cek',
     icon: Gift,
-    permissionKey: 'Services',
+    permissionKey: 'GiftCards',
     featureKeys: ['marketing.giftcards'],
     children: [
       { label: 'Tümü', href: '/admin/hediye-cek?scope=all' },
@@ -129,7 +129,7 @@ const items: SidebarNavItem[] = [
     label: 'Bekleme Listesi',
     href: '/admin/bekleme-listesi',
     icon: CalendarClock,
-    permissionKey: 'Appointments',
+    permissionKey: 'Waitlist',
     featureKeys: ['appointments.waitlist'],
   },
   {
@@ -149,7 +149,7 @@ const items: SidebarNavItem[] = [
     label: 'Kasa Kapanışı',
     href: '/admin/kasa-kapanis',
     icon: CalendarCheck,
-    permissionKey: 'CashRegister',
+    permissionKey: 'CashClosing',
     featureKeys: ['finance.cashclosing'],
   },
   {

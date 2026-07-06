@@ -32,6 +32,18 @@ public sealed class Customer : Entity
     public string? BlacklistReason { get; private set; }
     public DateTime? BlacklistedAtUtc { get; private set; }
 
+    /// <summary>VIP müşteri etiketi — listede rozet ve VIP filtresi için.</summary>
+    public bool IsVip { get; private set; }
+
+    /// <summary>Online portal son giriş zamanı (ad+soyad+telefon+doğum tarihi eşleşmesi ile giriş).</summary>
+    public DateTime? LastLoginUtc { get; private set; }
+
+    public void SetVip(bool isVip)
+    {
+        IsVip = isVip;
+        Touch();
+    }
+
     public void Blacklist(string? reason)
     {
         IsBlacklisted = true;
@@ -78,5 +90,11 @@ public sealed class Customer : Entity
         if (branchId == Guid.Empty) throw new DomainException("Şube seçimi zorunlu.");
         BranchId = branchId;
         Touch();
+    }
+
+    public void RecordLogin(DateTime utcNow)
+    {
+        LastLoginUtc = utcNow;
+        Touch(utcNow);
     }
 }

@@ -10,9 +10,20 @@ public interface IWhatsAppService
     Task<Result<ReminderResultDto>> SendReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyCollection<WhatsAppMessageDto>>> RecentMessagesAsync(Guid tenantId, Guid? appointmentId, CancellationToken cancellationToken = default);
 
+    /// <summary>Bekleme listesindeki müşteriye boşalan slot için "yer açıldı, ister misiniz? EVET/HAYIR" teklifi gönderir. Best-effort (feature/kota kapalıysa sessizce atlar).</summary>
+    Task SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default);
+
+    /// <summary>Bekleme teklifi kabul edilip randevu açılınca "randevunuz aktifleşti" mesajı gönderir. Best-effort.</summary>
+    Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
+
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);
 
-    /// <summary>Meta webhook gelen mesaj gövdesi (POST) — tenant phone_number_id ile çözülür, yanıt yorumlanır.</summary>
-    Task HandleInboundAsync(string payloadJson, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Meta webhook gelen mesaj gövdesi (POST) — tenant phone_number_id ile çözülür, yanıt yorumlanır.
+    /// GÜVENLİK: gövde işlenmeden ÖNCE Meta imzası (X-Hub-Signature-256) app secret ile doğrulanır;
+    /// geçersiz/eksik imza sessizce yok sayılır (forge edilmiş randevu iptali/onayı engellenir).
+    /// </summary>
+    /// <param name="signatureHeader">İstekteki <c>X-Hub-Signature-256</c> başlığı (ör. "sha256=abc...").</param>
+    Task HandleInboundAsync(string payloadJson, string? signatureHeader, CancellationToken cancellationToken = default);
 }

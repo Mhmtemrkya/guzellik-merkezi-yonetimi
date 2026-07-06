@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Ban, CalendarPlus, Clock, CreditCard, FileText, Mail, Phone, PieChart,
+  Ban, CalendarPlus, Clock, CreditCard, Crown, FileText, Mail, Phone, PieChart,
   ReceiptText, Scissors, Sparkles, Trash2, TrendingUp, User, Wallet, X,
 } from 'lucide-react'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
@@ -12,6 +12,7 @@ import CustomerOperationsJournal from '@/components/dashboard/CustomerOperations
 import TreatmentJournal from '@/components/dashboard/TreatmentJournal'
 import ConsultationForm from '@/components/dashboard/ConsultationForm'
 import CustomerBlacklistCard from '@/components/dashboard/CustomerBlacklistCard'
+import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import { formatTL } from '@/lib/apiMappers'
 import type { Appointment, CustomerAccount } from '@/lib/types'
 
@@ -32,6 +33,7 @@ export interface CustomerModalData {
   lastDate: string
   isBlacklisted?: boolean
   blacklistReason?: string | null
+  isVip?: boolean
   branchId?: string | null
 }
 
@@ -401,6 +403,11 @@ export default function CustomerDetailModal({
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${active90 ? 'border-emerald-200/70 bg-emerald-50 text-emerald-700' : 'border-[#ead8df] bg-white text-[#352432]/45'}`}>
                         {active90 ? 'Aktif Müşteri' : 'Pasif'}
                       </span>
+                      {customer.isVip && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#e5c46a]/70 bg-[#fdf6e3] px-2 py-0.5 text-[10px] font-semibold text-[#9a7420]">
+                          <Crown className="h-3 w-3 fill-[#e5c46a] text-[#c9a13c]" /> VIP
+                        </span>
+                      )}
                       {customer.isBlacklisted && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600"><Ban className="h-3 w-3" /> Kara liste</span>
                       )}
@@ -476,6 +483,7 @@ export default function CustomerDetailModal({
                           <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#c85776]" /> Not Ekle</span>
                           <span className="text-[#352432]/30">→</span>
                         </button>
+                        <CustomerVipToggle variant="row" customerId={customer.id} tenantId={tenantId} isVip={Boolean(customer.isVip)} onChanged={onReload} />
                         <button
                           type="button"
                           onClick={onDelete}

@@ -6,6 +6,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
+import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, auditActionLabels, auditEntityLabels, guidOrUndefined, normalizeAuditLog, normalizeStaff } from '@/lib/apiMappers'
@@ -26,6 +27,13 @@ import {
   Plus,
   RefreshCcw,
   ShieldCheck,
+  ShieldAlert,
+  MonitorSmartphone,
+  Smartphone,
+  Globe,
+  Copy,
+  Check,
+  Wifi,
   Search,
   Star,
   Trash2,
@@ -50,6 +58,12 @@ const actionIcon: Record<string, LucideIcon> = {
   Create: Plus, Update: PencilLine, Delete: Trash2, ChangeStatus: RefreshCcw, Reschedule: Calendar,
   ChangeNotes: PencilLine, RegisterPayment: Wallet, StockMovement: Package, Submit: ClipboardList,
   Approve: ShieldCheck, Reject: AlertCircle, Cancel: X, View: Eye,
+  'Security.UnauthorizedDevice': ShieldAlert,
+  'Security.DeviceRegistered': MonitorSmartphone,
+  'Security.DeviceRemoved': MonitorSmartphone,
+  'Security.DeviceLimitChanged': MonitorSmartphone,
+  'Security.DeviceControlEnabled': ShieldCheck,
+  'Security.DeviceControlDisabled': ShieldCheck,
 }
 const actionTone: Record<string, string> = {
   Create: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
@@ -65,8 +79,23 @@ const actionTone: Record<string, string> = {
   Reject: 'border-rose-300/40 bg-rose-50 text-rose-700',
   Cancel: 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/65',
   View: 'border-sky-300/40 bg-sky-50 text-sky-700',
+  'Security.UnauthorizedDevice': 'border-rose-300/50 bg-rose-50 text-rose-700',
+  'Security.DeviceRegistered': 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
+  'Security.DeviceRemoved': 'border-amber-300/40 bg-amber-50 text-amber-700',
+  'Security.DeviceLimitChanged': 'border-violet-300/40 bg-violet-50 text-violet-700',
+  'Security.DeviceControlEnabled': 'border-indigo-300/40 bg-indigo-50 text-indigo-700',
+  'Security.DeviceControlDisabled': 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/65',
 }
 const moduleTone = 'border-[#e7c7d4]/70 bg-[#fff1f6]/70 text-[#b14d6c]'
+
+function deviceTypeLabel(type: string | undefined): string {
+  switch ((type || '').toLowerCase()) {
+    case 'mobile': return 'Cep Telefonu'
+    case 'tablet': return 'Tablet'
+    case 'pc': case 'desktop': return 'Bilgisayar'
+    default: return 'Cihaz'
+  }
+}
 
 const AVATAR_COLORS = [
   'from-[#f3a3bf] to-[#ffd9e6]', 'from-[#9c70bb] to-[#e3cdf2]', 'from-[#5aa9e6] to-[#cfe7fb]',
@@ -138,6 +167,7 @@ function LoglarPageInner() {
   const { user } = useAuth()
   const isStaffUser = user?.role === 'Staff'
   const tenantId = guidOrUndefined(selectedInstitutionId)
+  const deviceControlFeature = useFeature('security.devicecontrol')
 
   const [rangeKey, setRangeKey] = useState<RangeKey>(initialRange)
   const [search, setSearch] = useState('')
@@ -236,7 +266,7 @@ function LoglarPageInner() {
       if (!Number.isNaN(d.getTime())) byHour[d.getHours()]++
       byModule.set(l.entityLabel || l.entityName, (byModule.get(l.entityLabel || l.entityName) ?? 0) + 1)
       users.add(l.actorUserId || l.actorName)
-      if (['Reject', 'Cancel'].includes(l.action)) warnings++
+      if (['Reject', 'Cancel', 'Security.UnauthorizedDevice'].includes(l.action)) warnings++
     }
     let topHour = 0
     for (let h = 1; h < 24; h++) if (byHour[h] > byHour[topHour]) topHour = h
@@ -331,6 +361,18 @@ function LoglarPageInner() {
                 {r === 'all' ? 'Tüm geçmiş' : RANGE_LABELS[r]}
               </button>
             ))}
+            {/* Cihaz güvenliği aktifken: tanımsız cihaz giriş denemelerini tek tıkla süz */}
+            {deviceControlFeature && !isStaffUser && (
+              <button type="button"
+                onClick={() => { setActionFilter(actionFilter === 'Security.UnauthorizedDevice' ? '' : 'Security.UnauthorizedDevice'); setPage(1) }}
+                className={`inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${
+                  actionFilter === 'Security.UnauthorizedDevice'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-rose-600/80 hover:bg-white'
+                }`}>
+                <ShieldAlert className="h-3.5 w-3.5" /> Cihaz Uyarıları
+              </button>
+            )}
           </div>
           {hasFilters && (
             <button type="button" onClick={clearFilters}
@@ -409,7 +451,7 @@ function LoglarPageInner() {
             <div>
               <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{RANGE_LABELS[rangeKey]} · Aktivite Akışı</div>
               <div className="mt-0.5 font-display text-2xl tracking-tight">
-                <span className="armonessa-text-gradient">{total.toLocaleString('tr-TR')}</span> kayıt
+                <span className="beautyasist-text-gradient">{total.toLocaleString('tr-TR')}</span> kayıt
               </div>
             </div>
           </div>
@@ -440,6 +482,35 @@ function LoglarPageInner() {
                           {log.actorRole && <span className="text-[#c85776]/55">· {log.actorRole}</span>}
                           <span className="text-[#352432]/30">· ⊕ #{shortRef(log.id)}</span>
                         </div>
+                        {/* IP + cihaz kimliği + ağ bilgisi — belirgin rozetler */}
+                        {(log.ipAddress || (deviceControlFeature && (log.deviceId || log.deviceInfo))) && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {log.ipAddress && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/45 bg-sky-50 px-2.5 py-1 text-[10.5px] font-mono font-medium text-sky-700">
+                                <Globe className="h-3.5 w-3.5" /> {log.ipAddress}
+                              </span>
+                            )}
+                            {deviceControlFeature && log.deviceId && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0]/70 bg-[#fff1f6] px-2.5 py-1 text-[10.5px] font-mono font-medium text-[#b14d6c]"
+                                title={log.deviceId}>
+                                {String((log.deviceInfo?.deviceType as string) || '').toLowerCase() === 'mobile'
+                                  ? <Smartphone className="h-3.5 w-3.5" />
+                                  : <MonitorSmartphone className="h-3.5 w-3.5" />}
+                                {deviceTypeLabel(log.deviceInfo?.deviceType as string | undefined)} · {log.deviceId.slice(0, 8).toUpperCase()}
+                              </span>
+                            )}
+                            {deviceControlFeature && (() => {
+                              const net = (log.deviceInfo?.network ?? null) as Record<string, unknown> | null
+                              if (!net) return null
+                              const parts = [net.effectiveType, net.connectionType, net.downlinkMbps ? `${net.downlinkMbps} Mbps` : null].filter(Boolean)
+                              return parts.length ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/45 bg-emerald-50 px-2.5 py-1 text-[10.5px] font-mono font-medium text-emerald-700">
+                                  <Wifi className="h-3.5 w-3.5" /> {parts.join(' · ')}
+                                </span>
+                              ) : null
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {/* Kullanıcı */}
@@ -471,7 +542,7 @@ function LoglarPageInner() {
                     <div className="text-[10.5px] font-mono text-[#352432]/50">{log.createdAtFormatted}</div>
                     {/* Detay */}
                     <div className="flex lg:justify-end">
-                      <button type="button" disabled={!log.data}
+                      <button type="button" disabled={!log.data && !log.deviceId && !log.ipAddress}
                         onClick={() => setExpandedId(isExpanded ? null : log.id)}
                         className="inline-flex items-center gap-1 rounded-md border border-[#ead8df]/70 bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35">
                         {isExpanded ? 'Gizle' : 'Detay'}
@@ -480,8 +551,50 @@ function LoglarPageInner() {
                   </div>
 
                   <AnimatePresence initial={false}>
-                    {isExpanded && log.data && (
+                    {isExpanded && (log.data || log.deviceId || log.ipAddress) && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
+                        {/* CİHAZ & BAĞLANTI — IP ve cihaz kimliği büyük, okunur kart */}
+                        {(log.ipAddress || (deviceControlFeature && (log.deviceId || log.deviceInfo))) && (
+                          <div className="mt-3 rounded-[14px] border border-[#ead8df]/70 bg-gradient-to-br from-[#fffafc] to-[#fff1f6]/60 p-4">
+                            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+                              <MonitorSmartphone className="h-3.5 w-3.5" /> Cihaz &amp; Bağlantı
+                            </div>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                              {log.ipAddress && (
+                                <DeviceFact icon={Globe} tone="text-sky-600 bg-sky-50 border-sky-200/70" label="IP Adresi" value={log.ipAddress} mono />
+                              )}
+                              {deviceControlFeature && log.deviceId && (
+                                <DeviceFact
+                                  icon={String((log.deviceInfo?.deviceType as string) || '').toLowerCase() === 'mobile' ? Smartphone : MonitorSmartphone}
+                                  tone="text-[#b14d6c] bg-[#fff1f6] border-[#efbfd0]/70"
+                                  label="Cihaz Kimliği" value={log.deviceId} mono copyable
+                                  sub={deviceTypeLabel(log.deviceInfo?.deviceType as string | undefined)}
+                                />
+                              )}
+                              {deviceControlFeature && log.deviceInfo?.platform != null && (
+                                <DeviceFact icon={ClipboardList} tone="text-violet-600 bg-violet-50 border-violet-200/70" label="Platform"
+                                  value={String(log.deviceInfo.platform)} />
+                              )}
+                              {deviceControlFeature && (() => {
+                                const net = (log.deviceInfo?.network ?? null) as Record<string, unknown> | null
+                                if (!net) return null
+                                const parts = [
+                                  net.effectiveType ? `Hız sınıfı: ${net.effectiveType}` : null,
+                                  net.connectionType ? `Bağlantı: ${net.connectionType}` : null,
+                                  net.downlinkMbps ? `${net.downlinkMbps} Mbps` : null,
+                                  net.rttMs ? `${net.rttMs} ms gecikme` : null,
+                                ].filter(Boolean)
+                                return (
+                                  <DeviceFact icon={Wifi} tone="text-emerald-600 bg-emerald-50 border-emerald-200/70" label="Ağ / WiFi"
+                                    value={parts.length ? parts.join(' · ') : 'Bilgi yok'}
+                                    sub={[net.screen ? `Ekran ${net.screen}` : null, net.timeZone].filter(Boolean).join(' · ') || undefined}
+                                  />
+                                )
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                        {log.data && (
                         <div className="mt-3 grid gap-1.5 border-t border-[#ead8df]/60 pt-3 sm:grid-cols-2 lg:grid-cols-3">
                           {Object.entries(log.data).slice(0, 12).map(([k, v]) => (
                             <div key={k} className="rounded-[8px] border border-[#ead8df]/60 bg-[#fffafc] px-2.5 py-1.5">
@@ -492,6 +605,7 @@ function LoglarPageInner() {
                             </div>
                           ))}
                         </div>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -613,6 +727,34 @@ function Select({ value, onChange, options, disabled }: { value: string; onChang
       className="w-full rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-2 text-[12px] text-[#352432] outline-none focus:border-[#c85776] disabled:opacity-50">
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+  )
+}
+
+/** Cihaz & Bağlantı kartındaki tek bilgi kutusu — büyük değer + opsiyonel kopyalama. */
+function DeviceFact({ icon: Icon, tone, label, value, sub, mono, copyable }: {
+  icon: LucideIcon; tone: string; label: string; value: string; sub?: string; mono?: boolean; copyable?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex items-start gap-3 rounded-[12px] border border-[#ead8df]/60 bg-white px-3.5 py-3">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[10px] border ${tone}`}>
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
+        <div className={`mt-0.5 break-all text-[13px] font-semibold leading-snug text-[#352432] ${mono ? 'font-mono tracking-tight' : ''}`}>
+          {value}
+        </div>
+        {sub && <div className="mt-0.5 truncate text-[10px] text-[#352432]/50">{sub}</div>}
+      </div>
+      {copyable && (
+        <button type="button" title="Kopyala"
+          onClick={() => { void navigator.clipboard?.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] border border-[#ead8df]/70 text-[#352432]/50 transition-colors hover:bg-[#fff4f8]/60">
+          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </div>
   )
 }
 

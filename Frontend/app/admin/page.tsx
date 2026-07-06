@@ -253,6 +253,39 @@ function buildPeriodBuckets(period: RangePeriod, base: Date): { startKey: string
   return buckets
 }
 
+// Randevu görünümü için TAM takvim dönemi (mobil seçiciyle aynı semantik): bu hafta (Pzt–Paz),
+// bu ay, bu yıl — gelecekteki randevuları da kapsar (gelir penceresinden farkı budur).
+function appointmentRange(period: RangePeriod, base: Date): { from: Date; to: Date; label: string } {
+  const today = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  if (period === 'weekly') {
+    const mondayOffset = (today.getDay() + 6) % 7
+    const start = new Date(today)
+    start.setDate(today.getDate() - mondayOffset)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 7)
+    const last = new Date(end)
+    last.setDate(end.getDate() - 1)
+    const label =
+      start.getMonth() === last.getMonth()
+        ? `${start.getDate()}–${last.getDate()} ${MONTHS_TR_SHORT[last.getMonth()]}`
+        : `${start.getDate()} ${MONTHS_TR_SHORT[start.getMonth()]} – ${last.getDate()} ${MONTHS_TR_SHORT[last.getMonth()]}`
+    return { from: start, to: end, label }
+  }
+  if (period === 'monthly') {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1)
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    return { from: start, to: end, label: `${MONTHS_TR_LONG[today.getMonth()]} ${today.getFullYear()}` }
+  }
+  if (period === 'yearly') {
+    const start = new Date(today.getFullYear(), 0, 1)
+    const end = new Date(today.getFullYear() + 1, 0, 1)
+    return { from: start, to: end, label: `${today.getFullYear()}` }
+  }
+  const end = new Date(today)
+  end.setDate(today.getDate() + 1)
+  return { from: today, to: end, label: `Bugün · ${today.getDate()} ${MONTHS_TR_SHORT[today.getMonth()]}` }
+}
+
 const FULL_PERIOD_OPTIONS: { key: RangePeriod; label: string }[] = [
   { key: 'daily', label: 'Gün' },
   { key: 'weekly', label: 'Hafta' },
@@ -1022,6 +1055,8 @@ export default function AdminDashboard() {
   const [chartRange, setChartRange] = useState<RangePeriod>('weekly')
   // Paket Raporu KPI kartları dönem filtresi (günlük/aylık/yıllık) — varsayılan aylık.
   const [packagePeriod, setPackagePeriod] = useState<RangePeriod>('monthly')
+  // Global randevu dönemi (üst seçici): randevu kartı + akış tablosunu sürükler. Diğer kartlar kendi sekmesini korur.
+  const [globalPeriod, setGlobalPeriod] = useState<RangePeriod>('daily')
 
   const dayStart = new Date()
   dayStart.setHours(0, 0, 0, 0)
@@ -1035,6 +1070,10 @@ export default function AdminDashboard() {
   const dayEndIso = dayEnd.toISOString()
   const weekStartIso = weekStart.toISOString()
   const yearStartIso = yearStart.toISOString()
+  // Üst seçicinin sürüklediği randevu penceresi (tam takvim dönemi).
+  const apptRange = appointmentRange(globalPeriod, dayStart)
+  const apptFromIso = apptRange.from.toISOString()
+  const apptToIso = apptRange.to.toISOString()
 
   const { data, loading, error } = useApiQuery<DashboardData>(
     async () => {
@@ -1053,10 +1092,10 @@ export default function AdminDashboard() {
       ] = await Promise.all([
         adminApi.appointments<ApiAppointment>({
           tenantId,
-          fromUtc: dayStartIso,
-          toUtc: dayEndIso,
+          fromUtc: apptFromIso,
+          toUtc: apptToIso,
           page: 1,
-          pageSize: 100,
+          pageSize: 200,
         }),
         adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 100 }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }),
@@ -1083,7 +1122,7 @@ export default function AdminDashboard() {
         reportResult,
       }
     },
-    [tenantId, dayStartIso, dayEndIso, yearStartIso],
+    [tenantId, apptFromIso, apptToIso, dayStartIso, dayEndIso, yearStartIso],
     { initialData: null },
   )
 
@@ -1118,6 +1157,7 @@ export default function AdminDashboard() {
     services: Object.fromEntries(apiItems(data?.servicesResult).map((s) => [s.id ?? '', s])),
   }
   const appointments = apiItems(data?.appointmentsResult).map((a, i) => normalizeAppointment(a, lookups, i))
+  const appointmentsTotal = data?.appointmentsResult?.total ?? appointments.length
   const completed = appointments.filter((r) => r.status === 'tamamlandi').length
   const waiting = appointments.filter((r) => r.status === 'bekliyor').length
   const activeStaff = staff.filter((p) => p.active).length
@@ -1310,11 +1350,24 @@ export default function AdminDashboard() {
           emptyMessage="Backend bağlantısı çalıştı fakat bu tenant için henüz kayıt yok."
         />
 
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#efe1e7] bg-white/85 px-4 py-3 shadow-[0_14px_40px_-32px_rgba(120,71,88,0.5)]">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-9 w-9 place-items-center rounded-full border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+              <Calendar className="h-[18px] w-[18px]" strokeWidth={1.7} />
+            </span>
+            <div>
+              <div className="text-[12.5px] font-semibold leading-4 text-[#2b1e29]">Randevu Dönemi</div>
+              <div className="text-[11px] text-[#8a7480]">{apptRange.label}</div>
+            </div>
+          </div>
+          <PeriodTabs value={globalPeriod} onChange={setGlobalPeriod} options={FULL_PERIOD_OPTIONS} />
+        </div>
+
         <motion.div variants={listContainer} initial="hidden" animate="visible" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             icon={Calendar}
-            title="Bugünkü Randevular"
-            value={<AnimatedNumber value={appointments.length} />}
+            title={globalPeriod === 'daily' ? 'Bugünkü Randevular' : 'Randevular'}
+            value={<AnimatedNumber value={appointmentsTotal} />}
             detail={<><b className="font-semibold text-[#2f2430]">{completed}</b> Tamamlandı</>}
             subDetail={<>{waiting} Beklemede</>}
             visual={<MiniSparkline values={appointmentSparkline} />}
@@ -1357,11 +1410,17 @@ export default function AdminDashboard() {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.68fr)_minmax(320px,0.92fr)]">
           <div className="space-y-5">
             <SectionCard
-              title="Bugünkü Randevu Akışı"
+              title={globalPeriod === 'daily' ? 'Bugünkü Randevu Akışı' : 'Randevu Akışı'}
               action={
-                <Link href="/admin/randevular" className="hidden items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62] sm:flex">
-                  Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
+                <div className="flex items-center gap-2">
+                  <span className="hidden items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2.5 py-1 text-[10px] font-semibold text-[#9a8590] sm:inline-flex">
+                    <Calendar className="h-3 w-3" strokeWidth={1.8} />
+                    {apptRange.label}
+                  </span>
+                  <Link href="/admin/randevular" className="hidden items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62] sm:flex">
+                    Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               }
             >
               <motion.div variants={listContainer} initial="hidden" animate="visible" className="overflow-x-auto px-4 pb-4">
@@ -1409,7 +1468,7 @@ export default function AdminDashboard() {
                     {!appointments.length && (
                       <tr>
                         <td colSpan={6} className="px-5 py-8 text-center text-[12px] text-[#9d7386]">
-                          Bugün için randevu kaydı yok.
+                          {globalPeriod === 'daily' ? 'Bugün için randevu kaydı yok.' : 'Seçili dönemde randevu kaydı yok.'}
                         </td>
                       </tr>
                     )}
