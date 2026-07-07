@@ -2,17 +2,32 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { adminApi, clearSession, getStoredSession } from '@/lib/apiClient'
+import { useAuth } from '@/components/dashboard/AuthContext'
 
 // Masaüstü (Tauri) kabuğu kendini user agent ile tanıtır.
-function isDesktopApp(): boolean {
+export function isDesktopApp(): boolean {
   return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAsistDesktop')
 }
 
-function closeDesktopWindow(): void {
-  const tauri = (window as unknown as { __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } } }).__TAURI__
-  const current = tauri?.window?.getCurrentWindow?.()
-  if (current) {
-    void current.close()
+/** Rust tarafındaki uygulama komutunu çağırır (withGlobalTauri). */
+function tauriInvoke(command: string, args: Record<string, unknown> = {}): void {
+  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__
+  tauri?.core?.invoke?.(command, args)?.catch(() => undefined)
+}
+
+/**
+ * ✕ butonu: uygulama kapanmaz, tepsiye küçülür — gizli pencerede bildirim yoklaması sürer,
+ * oturum ("beni hatırla") korunur. Rust tarafı bu sıradaki odak kaybını yok sayar.
+ * Eski Tauri kabuğu (hide_to_tray komutu olmayan build) için pencere kapatma yedeği kalır.
+ */
+function hideToTray(): void {
+  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } }; }).__TAURI__
+  const invoke = tauri?.core?.invoke
+  if (invoke) {
+    invoke('hide_to_tray', {}).catch(() => {
+      const t = (window as unknown as { __TAURI__?: { window?: { getCurrentWindow?: () => { close: () => Promise<void> } } } }).__TAURI__
+      void t?.window?.getCurrentWindow?.()?.close()
+    })
   } else {
     window.close()
   }
@@ -26,10 +41,46 @@ function closeDesktopWindow(): void {
 export default function DesktopGuard() {
   const [desktop, setDesktop] = useState(false)
   const [locked, setLocked] = useState(false)
+  const { session } = useAuth()
 
   useEffect(() => {
     setDesktop(isDesktopApp())
   }, [])
+
+  // Çevrimdışı app-shell: yalnızca masaüstü kabuğunda service worker kaydedilir; internet
+  // yokken panel beyaz ekran yerine son önbellekten açılır (veri katmanı apiClient'ta).
+  useEffect(() => {
+    if (!desktop || !('serviceWorker' in navigator)) return
+    navigator.serviceWorker.register('/desktop-sw.js').catch(() => undefined)
+  }, [desktop])
+
+  // Ekran görüntüsü izni (web ayarlar + mobil FLAG_SECURE ile aynı model): pencere varsayılan
+  // korumalı açılır; girişten sonra efektif izne göre gevşetilir. Staff için backend kişisel
+  // istisna uygulanmış tek efektif değeri döner; yönetici rollerinde koruma kaldırılır.
+  useEffect(() => {
+    if (!desktop) return
+    if (!session?.accessToken) {
+      tauriInvoke('set_screenshot_protection', { block: true })
+      return
+    }
+    if (session.user?.role !== 'Staff') {
+      tauriInvoke('set_screenshot_protection', { block: false })
+      return
+    }
+    let cancelled = false
+    adminApi
+      .screenshotSettings<{ allowStaffScreenshots?: boolean }>()
+      .then((s) => {
+        if (!cancelled) tauriInvoke('set_screenshot_protection', { block: !s?.allowStaffScreenshots })
+      })
+      .catch(() => {
+        // Ayar okunamazsa güvenli tarafta kal: koruma açık.
+        if (!cancelled) tauriInvoke('set_screenshot_protection', { block: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [desktop, session?.accessToken, session?.user?.role])
 
   const handleFocusLost = useCallback(() => {
     const session = getStoredSession()
@@ -54,11 +105,11 @@ export default function DesktopGuard() {
   const handleClose = useCallback(() => {
     const session = getStoredSession()
     if (session?.accessToken) {
-      // Log gitmese bile kapanış engellenmez (kiosk kilitli kalmasın).
-      adminApi.logDesktopEvent('AppClosed').catch(() => undefined).finally(closeDesktopWindow)
-      window.setTimeout(closeDesktopWindow, 1500)
+      // Log gitmese bile küçülme engellenmez (kiosk kilitli kalmasın).
+      adminApi.logDesktopEvent('AppClosed', 'Tepsiye küçültüldü').catch(() => undefined).finally(hideToTray)
+      window.setTimeout(hideToTray, 1500)
     } else {
-      closeDesktopWindow()
+      hideToTray()
     }
   }, [])
 
@@ -69,8 +120,8 @@ export default function DesktopGuard() {
       <button
         type="button"
         onClick={handleClose}
-        title="Uygulamayı kapat"
-        aria-label="Uygulamayı kapat"
+        title="Tepsiye küçült — bildirimler arka planda gelmeye devam eder"
+        aria-label="Tepsiye küçült"
         style={{
           position: 'fixed',
           top: 10,

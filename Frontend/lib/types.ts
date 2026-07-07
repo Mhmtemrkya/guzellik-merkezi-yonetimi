@@ -40,6 +40,8 @@ export interface ApiRequestOptions {
   noCache?: boolean
   /** İç kullanım: 401 sonrası token yenilenip istek bir kez tekrar denendiğinde işaretlenir (sonsuz döngü koruması). */
   _retry?: boolean
+  /** İç kullanım: çevrimdışı kuyruk tekrar oynatması — ağ hatasında yeniden kuyruklama YAPILMAZ. */
+  _outboxBypass?: boolean
 }
 
 export interface ApiScope {

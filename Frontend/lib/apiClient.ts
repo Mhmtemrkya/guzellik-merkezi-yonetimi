@@ -276,6 +276,53 @@ export function clearApiCache(): void {
   apiGetCache.clear()
 }
 
+// --- Çevrimdışı okuma desteği (yalnızca masaüstü kabuğu) -------------------------------
+// Başarılı GET'ler IndexedDB'ye yansıtılır; ağ hatasında son bilinen veri oradan sunulur ve
+// UI'nin "çevrimdışı — son bilinen veriler" şeridi gösterebilmesi için olay yayınlanır.
+export const OFFLINE_DATA_EVENT = 'beautyasist-offline-data'
+
+function isDesktopShell(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAsistDesktop')
+}
+
+function notifyOfflineData(ts: number): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(OFFLINE_DATA_EVENT, { detail: { ts } }))
+}
+
+// Çevrimdışı yazma kuyruğu (outbox): yalnızca bu KRİTİK akışlar kuyruğa alınır; geri kalan
+// yazmalar çevrimdışıyken hata döner (salt-okunur). Kuyruk OutboxSync ile sunucuya oynatılır.
+export const OUTBOX_EVENT = 'beautyasist-outbox-changed'
+
+export interface QueuedOfflineResult {
+  queuedOffline: true
+  id: string
+}
+
+/** Yanıt çevrimdışı kuyruğa alınmış "sanal başarı" mı? Sayfalar bununla ayırt edebilir. */
+export function isQueuedOffline(value: unknown): value is QueuedOfflineResult {
+  return Boolean(value && typeof value === 'object' && (value as QueuedOfflineResult).queuedOffline === true)
+}
+
+const OUTBOX_RULES: ReadonlyArray<{ method: string; pattern: RegExp; label: string }> = [
+  { method: 'POST', pattern: /^\/api\/admin\/appointments\/?$/, label: 'Yeni randevu' },
+  { method: 'PATCH', pattern: /^\/api\/admin\/appointments\/[^/]+\/(schedule|status|notes)$/, label: 'Randevu güncelleme' },
+  { method: 'POST', pattern: /^\/api\/admin\/customers\/?$/, label: 'Yeni müşteri' },
+  { method: 'POST', pattern: /^\/api\/admin\/adisyonlar\/?$/, label: 'Yeni adisyon' },
+  { method: 'PUT', pattern: /^\/api\/admin\/adisyonlar\/[^/]+$/, label: 'Adisyon güncelleme' },
+  { method: 'POST', pattern: /^\/api\/admin\/adisyonlar\/[^/]+\/items$/, label: 'Adisyon kalemi ekleme' },
+  { method: 'DELETE', pattern: /^\/api\/admin\/adisyonlar\/[^/]+\/items\/[^/]+$/, label: 'Adisyon kalemi silme' },
+]
+
+function outboxRuleFor(method: string, path: string): { label: string } | null {
+  return OUTBOX_RULES.find((r) => r.method === method && r.pattern.test(path)) ?? null
+}
+
+export function notifyOutboxChanged(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(OUTBOX_EVENT))
+}
+
 export function unwrapApiResponse<T>(payload: unknown, status = 200): T {
   if (!payload || typeof payload !== 'object') return payload as T
   const envelope = payload as Partial<ApiEnvelope<T>>
@@ -325,17 +372,64 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     if (hit && Date.now() - hit.ts < GET_CACHE_TTL_MS) return hit.data as T
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}${query}`, {
-    method: options.method || 'GET',
-    headers,
-    body:
-      options.body === undefined
-        ? undefined
-        : options.body instanceof FormData
-          ? options.body
-          : JSON.stringify(options.body),
-    cache: options.cache || 'no-store',
-  })
+  // Çevrimdışı anahtar: bellek önbelleğiyle aynı bileşim (yol + sorgu + tenant/şube kapsamı).
+  const offlineKey = `${path}${query}|t=${cacheScope?.tenantId ?? ''}|b=${cacheScope?.branchId ?? ''}`
+  const offlineEligible =
+    method === 'GET' && Boolean(token) && options.noCache !== true && path.startsWith('/api/') && isDesktopShell()
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}${query}`, {
+      method: options.method || 'GET',
+      headers,
+      body:
+        options.body === undefined
+          ? undefined
+          : options.body instanceof FormData
+            ? options.body
+            : JSON.stringify(options.body),
+      cache: options.cache || 'no-store',
+    })
+  } catch (err) {
+    // Ağ hatası (sunucuya ulaşılamadı). Masaüstünde GET ise son bilinen veriyi sun.
+    if (offlineEligible) {
+      const { offlineGet } = await import('./offlineStore')
+      const hit = await offlineGet<T>(offlineKey)
+      if (hit) {
+        notifyOfflineData(hit.ts)
+        return hit.data
+      }
+    }
+    // Kritik yazma akışları masaüstünde çevrimdışı kuyruğa düşer; bağlantı gelince oynatılır.
+    const outboxRule =
+      !options._outboxBypass && method !== 'GET' && isDesktopShell() && !(options.body instanceof FormData)
+        ? outboxRuleFor(method, path)
+        : null
+    if (outboxRule) {
+      const { outboxAdd } = await import('./offlineStore')
+      const id = crypto.randomUUID()
+      await outboxAdd({
+        id,
+        seq: Date.now(),
+        path: `${path}${query}`,
+        method,
+        body: options.body ?? null,
+        tenantId: cacheScope?.tenantId ?? null,
+        branchId: cacheScope?.branchId ?? null,
+        label: outboxRule.label,
+        queuedAt: Date.now(),
+      })
+      notifyOutboxChanged()
+      notifyOfflineData(Date.now())
+      return { queuedOffline: true, id } as T
+    }
+    throw new ApiClientError(
+      'Sunucuya ulaşılamıyor — internet bağlantınızı kontrol edin.',
+      0,
+      'NetworkOffline',
+      null,
+    )
+  }
 
   const text = await response.text()
   let payload: unknown = null
@@ -371,6 +465,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   // Başarılı GET'i önbelleğe al; başarılı yazma sonrası tüm önbelleği temizle (taze veri için).
   if (cacheable) apiGetCache.set(cacheKey, { data: result, ts: Date.now() })
   else if (method !== 'GET') clearApiCache()
+  // Masaüstü çevrimdışı deposuna yansıt (arka planda, akışı bekletmez).
+  if (offlineEligible) {
+    void import('./offlineStore').then((m) => m.offlinePut(offlineKey, result)).catch(() => undefined)
+  }
   return result
 }
 
@@ -555,6 +653,11 @@ export const adminApi = {
     apiRequest<PagedResult<T>>('/api/admin/logs/all', { query }),
   deleteAllAuditLogs: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/logs/clear', { method: 'DELETE', query: { tenantId } }),
+
+  // Uygulama-içi bildirim feed'i (/api/notifications — onay kapısı dışı). Masaüstü native
+  // bildirim yoklaması kullanır; since=önceki yanıtın serverTimeUtc'si (saat kayması güvenli).
+  notificationFeed: <T = unknown>(since?: string | null, take = 30): Promise<T> =>
+    apiRequest<T>('/api/notifications/feed', { query: { since: since || undefined, take }, noCache: true }),
 
   // Masaüstü güvenlik olayları + personel ekran görüntüsü izni
   logDesktopEvent: <T = unknown>(eventType: 'FocusLost' | 'AppClosed', detail?: string): Promise<T> =>

@@ -68,6 +68,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<PlatformSystemSettings> PlatformSystemSettings => Set<PlatformSystemSettings>();
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
+    public DbSet<ProcessedClientRequest> ProcessedClientRequests => Set<ProcessedClientRequest>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -637,6 +638,19 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Worker poll sorgusu bu üçlüyü tarar.
         j.HasIndex(x => new { x.Status, x.NextAttemptUtc });
         j.HasQueryFilter(x => !x.IsDeleted);
+
+        // Idempotent istek kayıtları — masaüstü çevrimdışı kuyruğunun tekrar oynatma güvencesi.
+        var pcr = modelBuilder.Entity<ProcessedClientRequest>();
+        pcr.ToTable("processed_client_requests");
+        pcr.HasKey(x => x.Id);
+        pcr.Property(x => x.IdempotencyKey).HasMaxLength(64).IsRequired();
+        pcr.Property(x => x.Method).HasMaxLength(8).IsRequired();
+        pcr.Property(x => x.Path).HasMaxLength(512).IsRequired();
+        pcr.Property(x => x.ContentType).HasMaxLength(128);
+        pcr.Property(x => x.ResponseBody).HasColumnType("LONGTEXT");
+        // Aynı kullanıcı + anahtar bir kez işlenir; yarış durumunda ikinci insert unique'e takılır.
+        pcr.HasIndex(x => new { x.TenantId, x.UserId, x.IdempotencyKey }).IsUnique();
+        pcr.HasQueryFilter(x => !x.IsDeleted);
     }
 
     private void ConfigureWhatsApp(ModelBuilder modelBuilder)

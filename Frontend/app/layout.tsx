@@ -7,6 +7,9 @@ import { FeatureProvider } from '@/components/dashboard/FeatureContext'
 import ApprovalToast from '@/components/dashboard/ApprovalToast'
 import SessionExpiredModal from '@/components/dashboard/SessionExpiredModal'
 import DesktopGuard from '@/components/desktop/DesktopGuard'
+import DesktopNotifier from '@/components/desktop/DesktopNotifier'
+import OfflineBanner from '@/components/desktop/OfflineBanner'
+import OutboxSync from '@/components/desktop/OutboxSync'
 
 export const metadata: Metadata = {
   title: 'BeautyAsist — Güzellik Merkezleri İçin Yönetim Sistemi',
@@ -24,6 +27,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <ApprovalToast />
               <SessionExpiredModal />
               <DesktopGuard />
+              <DesktopNotifier />
+              <OfflineBanner />
+              <OutboxSync />
             </BranchProvider>
           </FeatureProvider>
         </AuthProvider>

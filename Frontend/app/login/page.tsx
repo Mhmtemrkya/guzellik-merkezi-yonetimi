@@ -133,7 +133,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string>('')
   const [scope, setScope] = useState<ScopeState | null>(null)
   const { selectedInstitutionId, selectedBranchId, setScope: setBranchScope } = useBranch()
-  const { loginScope, login } = useAuth()
+  const { loginScope, login, hydrated, session, isAuthenticated } = useAuth()
   const [institutionId, setInstitutionId] = useState<string | null>(selectedInstitutionId)
   const [branchId, setBranchId] = useState<string | null>(selectedBranchId)
   const router = useRouter()
@@ -152,6 +152,19 @@ export default function LoginPage() {
     availableBranches.find((b) => b.id === branchId || b.branchId === branchId) ||
     availableBranches.find((b) => b.isDefault) ||
     availableBranches[0]
+
+  // Masaüstü (Tauri) kabuğu her açılışta /login yükler; "beni hatırla" ile saklanan geçerli
+  // oturum varsa formu göstermeden doğrudan role uygun panele geç. Web'de davranış değişmez.
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated) return
+    if (typeof navigator === 'undefined' || !navigator.userAgent.includes('BeautyAsistDesktop')) return
+    if (session?.user?.mustChangePassword) {
+      router.replace('/change-password')
+      return
+    }
+    const meta = roleMetaFor(session?.user?.role)
+    if (meta) router.replace(meta.href)
+  }, [hydrated, isAuthenticated, session, router])
 
   // E-posta yazıldıkça rol + kurum kapsamı otomatik tespit edilir (rol gönderilmez, backend bulur).
   useEffect(() => {

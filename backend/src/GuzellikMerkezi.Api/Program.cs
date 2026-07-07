@@ -158,6 +158,9 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 // Müşteri rolünü /api/customer (+/api/auth) ile sınırla; diğer rolleri portaldan uzak tut.
 app.UseMiddleware<CustomerScopeMiddleware>();
 app.UseMiddleware<TrialAccessMiddleware>();
+// Idempotent yazma: Idempotency-Key taşıyan isteklerin tekrarı ilk yanıtı döndürür (çevrimdışı
+// kuyruk tekrar oynatması). Audit + onay kapısını dıştan sarar ki tekrar mükerrer iz üretmesin.
+app.UseMiddleware<IdempotencyMiddleware>();
 // Aktivite audit'i onay kapısını dıştan sarmalıdır. Böylece Staff isteği endpoint'e
 // ulaşmadan PendingOperation olarak kısa devre edilse bile işlem audit kapsamındadır.
 app.UseMiddleware<ActivityAuditMiddleware>();
