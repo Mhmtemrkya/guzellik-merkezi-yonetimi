@@ -4,9 +4,19 @@
 <dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- Yerel/LAN salon sunucusuna HTTP; internet üzerindeki canlı backend için HTTPS zorunlu kalır. -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- App Store yükleme: standart HTTPS/TLS dışında şifreleme kullanmıyoruz → export-compliance sorusu atlanır. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Uzaktan push (FCM): uygulama arka plandayken sessiz/veri push işlenebilsin. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

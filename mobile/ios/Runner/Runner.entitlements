@@ -6,5 +6,9 @@
 	<array>
 		<string>$(AppIdentifierPrefix)$(CFBundleIdentifier)</string>
 	</array>
+	<!-- Uzaktan push (APNs/FCM). Archive/dağıtımda "production", Xcode debug'da otomatik "development".
+	     Push kullanmayacaksanız bu anahtarı ve Info.plist UIBackgroundModes'u kaldırabilirsiniz. -->
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>

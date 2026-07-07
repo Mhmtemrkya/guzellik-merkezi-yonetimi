@@ -45,6 +45,10 @@ venv/
 *.p12
 *token.json*
 *credentials.json*
+# Firebase/FCM backend servis-hesabı (gizli anahtar)
+backend/secrets/
+*firebase-adminsdk*.json
+*fcm-service-account*.json
 
 # ASP.NET local app settings with secrets
 backend/src/GuzellikMerkezi.Api/appsettings.json

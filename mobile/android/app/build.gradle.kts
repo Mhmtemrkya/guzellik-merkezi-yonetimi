@@ -1,8 +1,21 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release imzalama: key.properties (gitignore'da) varsa gerçek keystore ile imzalanır.
+// Dosya yoksa release yine debug anahtarıyla imzalanır (yerel `flutter run --release` çalışsın diye);
+// ama Play'e yükleme için key.properties ŞART — bkz. STORE_YAYIN_REHBERI.md.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 // FCM: google-services.json bırakılırsa Firebase yapılandırması derlemeye enjekte edilir.
@@ -30,8 +43,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.beautyasist.beautyasist_mobile"
+        // Firebase/Play uygulama kimliği (FCM google-services.json'daki package_name ile birebir eşleşmeli).
+        // Not: Kotlin namespace ayrı kalabilir; FCM ve Play yalnızca applicationId'yi baz alır.
+        applicationId = "com.beautyasist.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -40,11 +54,33 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = keystoreProperties["storeFile"]?.let { rootProject.file(it) }
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // key.properties varsa gerçek keystore, yoksa debug (yalnızca yerel test için).
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+
+            // R8/kod küçültme + kaynak temizleme — store için daha küçük ve zorlaştırılmış APK/AAB.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

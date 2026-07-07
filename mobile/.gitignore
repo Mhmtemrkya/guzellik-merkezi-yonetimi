@@ -39,6 +39,11 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# Firebase / FCM yapılandırması (repoya girmesin)
+**/google-services.json
+**/GoogleService-Info.plist
+**/*fcm*service-account*.json
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
