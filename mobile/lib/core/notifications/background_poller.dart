@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -177,5 +178,7 @@ int _asInt(dynamic v) =>
 String get _baseUrl {
   const configured = String.fromEnvironment('API_BASE_URL');
   if (configured.isNotEmpty) return configured;
+  // Release (mağaza) derlemeleri üretim API'sine gider; debug/profile yerelde kalır.
+  if (kReleaseMode) return 'https://api.courseintellect.xyz';
   return Platform.isAndroid ? 'http://10.0.2.2:5019' : 'http://127.0.0.1:5019';
 }

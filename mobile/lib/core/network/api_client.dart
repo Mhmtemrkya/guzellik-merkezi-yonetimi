@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../auth/auth_controller.dart';
 import '../storage/session_storage.dart';
@@ -78,6 +79,9 @@ class ApiClient {
   static String get _baseUrl {
     const configured = String.fromEnvironment('API_BASE_URL');
     if (configured.isNotEmpty) return configured;
+    // Release (mağaza) derlemeleri üretim API'sine gider; debug/profile yerelde kalır.
+    // --dart-define=API_BASE_URL=... her ikisini de ezer.
+    if (kReleaseMode) return 'https://api.courseintellect.xyz';
     return Platform.isAndroid
         ? 'http://10.0.2.2:5019'
         : 'http://127.0.0.1:5019';
