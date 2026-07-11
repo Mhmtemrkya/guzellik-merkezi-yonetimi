@@ -351,7 +351,7 @@ export default function PlatformKurumlarPage() {
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]">Tenant listesi</div>
                 <div className="mt-1 font-display text-2xl tracking-tight text-[#3b2330]">
-                  <AnimatedNumber value={tenants.length} className="beautyasist-text-gradient" /> kurum yönetimi
+                  <AnimatedNumber value={tenants.length} className="beautyassist-text-gradient" /> kurum yönetimi
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

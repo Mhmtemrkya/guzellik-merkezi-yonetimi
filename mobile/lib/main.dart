@@ -20,5 +20,5 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   }
 
-  runApp(const BeautyAsistApp());
+  runApp(const BeautyAssistApp());
 }

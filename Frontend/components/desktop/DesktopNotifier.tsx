@@ -6,7 +6,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import { isDesktopApp } from '@/components/desktop/DesktopGuard'
 
 // Bir sonraki yoklamanın "since" imleci — yeniden açılışta eski bildirimler tekrar düşmesin.
-const CURSOR_KEY = 'beautyasist.desktop.notifSince'
+const CURSOR_KEY = 'beautyassist.desktop.notifSince'
 const POLL_MS = 45_000
 // Tek yoklamada en fazla bu kadar ayrı bildirim göster; fazlası tek özet bildirime katlanır.
 const MAX_TOASTS_PER_POLL = 4
@@ -87,9 +87,9 @@ export default function DesktopNotifier() {
         if (cursor) {
           const fresh = (feed.items || []).filter((n) => !n.isRead)
           if (fresh.length > 0 && (await ensurePermission()) && !disposed) {
-            fresh.slice(0, MAX_TOASTS_PER_POLL).forEach((n) => sendNative(n.title || 'BeautyAsist', n.body || ''))
+            fresh.slice(0, MAX_TOASTS_PER_POLL).forEach((n) => sendNative(n.title || 'BeautyAssist', n.body || ''))
             if (fresh.length > MAX_TOASTS_PER_POLL) {
-              sendNative('BeautyAsist', `+${fresh.length - MAX_TOASTS_PER_POLL} yeni bildirim daha var.`)
+              sendNative('BeautyAssist', `+${fresh.length - MAX_TOASTS_PER_POLL} yeni bildirim daha var.`)
             }
           }
         }

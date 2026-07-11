@@ -1,4 +1,4 @@
-# BeautyAsist Frontend → Backend Entegrasyon TODO
+# BeautyAssist Frontend → Backend Entegrasyon TODO
 
 Çalışma dizinleri:
 - Frontend: `/home/kaya/projects/guzellik-frontend`

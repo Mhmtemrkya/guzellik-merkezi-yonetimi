@@ -26,7 +26,7 @@ if (project.file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "com.beautyasist.beautyasist_mobile"
+    namespace = "com.beautyassist.beautyassist_mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -45,7 +45,7 @@ android {
     defaultConfig {
         // Firebase/Play uygulama kimliği (FCM google-services.json'daki package_name ile birebir eşleşmeli).
         // Not: Kotlin namespace ayrı kalabilir; FCM ve Play yalnızca applicationId'yi baz alır.
-        applicationId = "com.beautyasist.app"
+        applicationId = "com.beautyassist.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

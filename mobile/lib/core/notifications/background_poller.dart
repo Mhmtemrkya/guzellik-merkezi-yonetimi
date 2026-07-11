@@ -20,7 +20,7 @@ import 'notification_service.dart';
 class BackgroundPoller {
   BackgroundPoller._();
 
-  static const _serviceChannelId = 'beautyasist_service';
+  static const _serviceChannelId = 'beautyassist_service';
   static const _serviceNotificationId = 8891;
   static const _pollInterval = Duration(seconds: 30);
 
@@ -43,7 +43,7 @@ class BackgroundPoller {
         autoStart: false,
         isForegroundMode: true,
         notificationChannelId: _serviceChannelId,
-        initialNotificationTitle: 'BeautyAsist',
+        initialNotificationTitle: 'BeautyAssist',
         initialNotificationContent: 'Bildirimler dinleniyor',
         foregroundServiceNotificationId: _serviceNotificationId,
         foregroundServiceTypes: const [AndroidForegroundType.dataSync],
@@ -103,7 +103,7 @@ void _onStart(ServiceInstance service) async {
 Future<DateTime?> _pollOnce({DateTime? sinceUtc}) async {
   try {
     const storage = FlutterSecureStorage();
-    final raw = await storage.read(key: 'beautyasist.session');
+    final raw = await storage.read(key: 'beautyassist.session');
     if (raw == null || raw.isEmpty) return null;
 
     final session = jsonDecode(raw) as Map<String, dynamic>;

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.beautyasist" "\0"
-            VALUE "FileDescription", "beautyasist_mobile" "\0"
+            VALUE "CompanyName", "com.beautyassist" "\0"
+            VALUE "FileDescription", "beautyassist_mobile" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "beautyasist_mobile" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.beautyasist. All rights reserved." "\0"
-            VALUE "OriginalFilename", "beautyasist_mobile.exe" "\0"
-            VALUE "ProductName", "beautyasist_mobile" "\0"
+            VALUE "InternalName", "beautyassist_mobile" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.beautyassist. All rights reserved." "\0"
+            VALUE "OriginalFilename", "beautyassist_mobile.exe" "\0"
+            VALUE "ProductName", "beautyassist_mobile" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

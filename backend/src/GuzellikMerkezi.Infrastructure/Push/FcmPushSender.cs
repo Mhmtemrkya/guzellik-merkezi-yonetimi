@@ -137,7 +137,7 @@ public sealed class FcmPushSender : IPushSender, IDisposable
                 android = new
                 {
                     priority = "high",
-                    notification = new { channel_id = "beautyasist_default", default_sound = true },
+                    notification = new { channel_id = "beautyassist_default", default_sound = true },
                 },
             },
         };

@@ -1,4 +1,4 @@
-# BeautyAsist Flutter Mobil Uygulama Briefi
+# BeautyAssist Flutter Mobil Uygulama Briefi
 
 Bu PDF web uygulaması dosyaları incelenerek hazırlanmıştır. Kaynak: `/home/kaya/projects/guzellik-frontend`.
 
@@ -62,7 +62,7 @@ Bu PDF web uygulaması dosyaları incelenerek hazırlanmıştır. Kaynak: `/home
 
 ## Platform
 
-- **Platform Overview** `/platform`: BeautyAsist tenant yönetimi. Toplam kurum, MRR, toplam kullanıcı, uptime, kurum tablosu, durum etiketleri.
+- **Platform Overview** `/platform`: BeautyAssist tenant yönetimi. Toplam kurum, MRR, toplam kullanıcı, uptime, kurum tablosu, durum etiketleri.
 
 - **Tüm Kurumlar** `/platform/kurumlar`: Platform genelinde kurum listesi. Şu an ComingSoon; mobilde kurum kartları, plan, durum, kullanıcı sayısı planlanmalı.
 

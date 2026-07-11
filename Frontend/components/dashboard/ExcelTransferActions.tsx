@@ -185,7 +185,7 @@ function ModalShell({ open, onOpenChange, trigger, eyebrow, title, description, 
 }
 
 function defaultFilename(label: string): string {
-  return `BeautyAsist-${slugify(label)}-${new Date().toISOString().slice(0, 10)}`
+  return `BeautyAssist-${slugify(label)}-${new Date().toISOString().slice(0, 10)}`
 }
 
 export default function ExcelTransferActions<TRow>({
@@ -717,7 +717,7 @@ export default function ExcelTransferActions<TRow>({
               <FileText className="h-3 w-3" /> Çıktı önizleme
             </div>
             <div className="mt-2 text-[11px] text-[#352432]/[0.65]">
-              <strong className="text-[#c85776]">✦ BeautyAsist — {activeSource.label.toUpperCase()}</strong>
+              <strong className="text-[#c85776]">✦ BeautyAssist — {activeSource.label.toUpperCase()}</strong>
               <div className="mt-1 text-[10px] text-[#352432]/[0.40]">
                 {context || 'Kurum · Şube · Dönem'} · {selectedKeys.length} kolon · {activeSource.rows.length} satır
                 {includeTotals && ' · Toplam satırı'}

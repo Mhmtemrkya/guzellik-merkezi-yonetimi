@@ -1,7 +1,7 @@
 # Buraya `google-services.json` koyun (Android push)
 
 Firebase Console → Proje ayarları → "Uygulamalarınız" → Android uygulaması ekle
-(paket adı: **`com.beautyasist.app`**) → `google-services.json` indir →
+(paket adı: **`com.beautyassist.app`**) → `google-services.json` indir →
 **bu klasöre** (`mobile/android/app/`) bırakın.
 
 - Dosya varlığında `build.gradle.kts` otomatik `com.google.gms.google-services` eklentisini uygular.

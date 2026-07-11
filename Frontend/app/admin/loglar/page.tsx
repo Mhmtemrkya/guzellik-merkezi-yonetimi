@@ -451,7 +451,7 @@ function LoglarPageInner() {
             <div>
               <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{RANGE_LABELS[rangeKey]} · Aktivite Akışı</div>
               <div className="mt-0.5 font-display text-2xl tracking-tight">
-                <span className="beautyasist-text-gradient">{total.toLocaleString('tr-TR')}</span> kayıt
+                <span className="beautyassist-text-gradient">{total.toLocaleString('tr-TR')}</span> kayıt
               </div>
             </div>
           </div>

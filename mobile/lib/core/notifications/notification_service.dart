@@ -177,13 +177,13 @@ class NotificationChannels {
   final String name;
   final String description;
 
-  static const defaultId = 'beautyasist_default';
-  static const appointmentsId = 'beautyasist_appointments';
-  static const approvalsId = 'beautyasist_approvals';
-  static const securityId = 'beautyasist_security';
-  static const cashId = 'beautyasist_cash';
-  static const reportsId = 'beautyasist_reports';
-  static const remindersId = 'beautyasist_reminders';
+  static const defaultId = 'beautyassist_default';
+  static const appointmentsId = 'beautyassist_appointments';
+  static const approvalsId = 'beautyassist_approvals';
+  static const securityId = 'beautyassist_security';
+  static const cashId = 'beautyassist_cash';
+  static const reportsId = 'beautyassist_reports';
+  static const remindersId = 'beautyassist_reminders';
 
   static const all = <NotificationChannels>[
     NotificationChannels(defaultId, 'Genel', 'Genel bildirimler'),

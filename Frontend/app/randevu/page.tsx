@@ -241,12 +241,12 @@ export default function CustomerPortalPage() {
       <header className="sticky top-0 z-40 border-b border-[#e7bfd0]/80 bg-[#fbe7ef]/85 backdrop-blur-2xl">
         <span aria-hidden className="block h-[3px] w-full bg-gradient-to-r from-[#df6688] via-[#f5abc0] to-[#ee789a]" />
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <a href="/" className="flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
+          <a href="/" className="flex items-center gap-3" aria-label="BeautyAssist ana sayfa">
             <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl border border-[#ead8df] bg-white">
-              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
+              <img src="/logo.png" alt="BeautyAssist logosu" className="h-full w-full scale-125 object-cover" />
             </span>
             <span className="leading-none">
-              <span className="block font-display text-[17px] tracking-[-0.04em] text-[#6f4153]">BeautyAsist</span>
+              <span className="block font-display text-[17px] tracking-[-0.04em] text-[#6f4153]">BeautyAssist</span>
               <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.26em] text-[#b58295]">
                 Online Randevu
               </span>

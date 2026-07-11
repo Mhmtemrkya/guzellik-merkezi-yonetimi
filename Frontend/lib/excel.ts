@@ -29,14 +29,14 @@ export interface ExcelSheetSpec<T> {
 }
 
 export interface ExportOptions {
-  /** Dosya kök ad (dönem otomatik eklenir): "Musteriler" → "BeautyAsist-Musteriler-2026-05-31.xlsx" */
+  /** Dosya kök ad (dönem otomatik eklenir): "Musteriler" → "BeautyAssist-Musteriler-2026-05-31.xlsx" */
   filenameBase: string
   /** Sayfa başlığı / kapak için */
   title: string
   /** Alt başlık (kurum + tarih) */
   context?: string
   /**
-   * Verilirse dosya adı bu değerle birebir indirilir; "BeautyAsist-" öneki ve tarih eklenmez.
+   * Verilirse dosya adı bu değerle birebir indirilir; "BeautyAssist-" öneki ve tarih eklenmez.
    * Geçersiz dosya karakterleri temizlenir, sonuna .xlsx eklenir.
    */
   exactFilename?: string
@@ -51,7 +51,7 @@ function sanitizeFilename(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Brand renkleri (BeautyAsist)
+// Brand renkleri (BeautyAssist)
 // ---------------------------------------------------------------------------
 
 const BRAND = {
@@ -141,13 +141,13 @@ function applyTypeFormat(cell: ExcelJS.Cell, type: ExcelColumnType | undefined, 
 
 export async function exportToExcel<T>(sheets: ExcelSheetSpec<T>[], options: ExportOptions): Promise<void> {
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'BeautyAsist Güzellik Merkezi Yönetimi'
+  wb.creator = 'BeautyAssist Güzellik Merkezi Yönetimi'
   wb.created = new Date()
   wb.modified = new Date()
-  wb.lastModifiedBy = 'BeautyAsist Panel'
+  wb.lastModifiedBy = 'BeautyAssist Panel'
   wb.title = options.title
   wb.subject = options.context || ''
-  wb.company = 'BeautyAsist'
+  wb.company = 'BeautyAssist'
 
   const logo = await fetchLogoBuffer()
   const white = 'FFFFFFFF'
@@ -178,7 +178,7 @@ export async function exportToExcel<T>(sheets: ExcelSheetSpec<T>[], options: Exp
     const brandCell = ws.getCell('A1')
     brandCell.value = {
       richText: [
-        { text: '        BeautyAsist', font: { name: 'Calibri', size: 18, bold: true, color: { argb: LOG_INK } } },
+        { text: '        BeautyAssist', font: { name: 'Calibri', size: 18, bold: true, color: { argb: LOG_INK } } },
         { text: `      ${options.title}`, font: { name: 'Calibri', size: 14, bold: true, color: { argb: LOG_INK } } },
       ],
     }
@@ -407,7 +407,7 @@ export async function exportToExcel<T>(sheets: ExcelSheetSpec<T>[], options: Exp
 
   const buffer = await wb.xlsx.writeBuffer()
   const exact = options.exactFilename ? sanitizeFilename(options.exactFilename) : ''
-  const baseName = exact || `BeautyAsist-${options.filenameBase}-${todayIso()}`
+  const baseName = exact || `BeautyAssist-${options.filenameBase}-${todayIso()}`
   const filename = `${baseName.replace(/\.xlsx$/i, '')}.xlsx`
   saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename)
 }
@@ -456,10 +456,10 @@ async function fetchLogoBuffer(): Promise<ArrayBuffer | null> {
 
 export async function exportApprovalsToExcel(rows: ApprovalExportRow[], options: { context?: string } = {}): Promise<void> {
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'BeautyAsist Güzellik Merkezi Yönetimi'
+  wb.creator = 'BeautyAssist Güzellik Merkezi Yönetimi'
   wb.created = new Date()
   wb.title = 'Onay Bekleyenler Dışa Aktarım'
-  wb.company = 'BeautyAsist'
+  wb.company = 'BeautyAssist'
 
   const ws = wb.addWorksheet('Onay Bekleyenler', {
     properties: { defaultRowHeight: 18, tabColor: { argb: BRAND.roseGold } },
@@ -483,7 +483,7 @@ export async function exportApprovalsToExcel(rows: ApprovalExportRow[], options:
   ws.getRow(1).height = 42
   ws.mergeCells('A1:B1')
   const brandCell = ws.getCell('A1')
-  brandCell.value = '        BeautyAsist'
+  brandCell.value = '        BeautyAssist'
   brandCell.font = { name: 'Calibri', size: 18, bold: true, color: { argb: ink } }
   brandCell.alignment = { vertical: 'middle', horizontal: 'left' }
   brandCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: white } }
@@ -614,7 +614,7 @@ export async function exportApprovalsToExcel(rows: ApprovalExportRow[], options:
   const buffer = await wb.xlsx.writeBuffer()
   saveAs(
     new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    `BeautyAsist-Onay-Bekleyenler-${todayIso()}.xlsx`,
+    `BeautyAssist-Onay-Bekleyenler-${todayIso()}.xlsx`,
   )
 }
 
@@ -680,7 +680,7 @@ function addLogBrandHeader(
   ws.getRow(1).height = 42
   ws.mergeCells('A1:B1')
   const brandCell = ws.getCell('A1')
-  brandCell.value = '        BeautyAsist'
+  brandCell.value = '        BeautyAssist'
   brandCell.font = { name: 'Calibri', size: 18, bold: true, color: { argb: LOG_INK } }
   brandCell.alignment = { vertical: 'middle', horizontal: 'left' }
   brandCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: white } }
@@ -888,10 +888,10 @@ function addPeriodSheet(
 
 export async function exportAuditLogsToExcel(rows: AuditLogExportRow[], options: { context?: string } = {}): Promise<void> {
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'BeautyAsist Güzellik Merkezi Yönetimi'
+  wb.creator = 'BeautyAssist Güzellik Merkezi Yönetimi'
   wb.created = new Date()
   wb.title = 'Log Kayıtları Dışa Aktarım'
-  wb.company = 'BeautyAsist'
+  wb.company = 'BeautyAssist'
 
   const logo = await fetchLogoBuffer()
   const headers = ['Tarih', 'Kullanıcı', 'Rol', 'Eylem', 'Modül', 'Özet', 'IP'] as const
@@ -956,7 +956,7 @@ export async function exportAuditLogsToExcel(rows: AuditLogExportRow[], options:
   const buffer = await wb.xlsx.writeBuffer()
   saveAs(
     new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    `BeautyAsist-Log-Kayitlari-${todayIso()}.xlsx`,
+    `BeautyAssist-Log-Kayitlari-${todayIso()}.xlsx`,
   )
 }
 

@@ -16,8 +16,8 @@ import { getDeviceId, getDeviceInfo, getDeviceInfoHeader } from './deviceIdentit
 const defaultApiBaseUrl = '/api/proxy'
 export const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_BASE_URL || defaultApiBaseUrl).replace(/\/$/, '')
 
-export const AUTH_STORAGE_KEY = 'beautyasist.authSession'
-export const API_SCOPE_STORAGE_KEY = 'beautyasist.apiScope'
+export const AUTH_STORAGE_KEY = 'beautyassist.authSession'
+export const API_SCOPE_STORAGE_KEY = 'beautyassist.apiScope'
 
 export class ApiClientError extends Error {
   status: number
@@ -166,7 +166,7 @@ export function getStoredApiScope(): ApiScope | null {
  * false → sessionStorage'da (sekme/tarayıcı kapanınca silinir, oturumluk). Varsayılan true
  * (mevcut davranışla uyumlu). Her iki durumda da token süresi dolunca otomatik yenilenir.
  */
-export const REMEMBER_STORAGE_KEY = 'beautyasist.rememberMe'
+export const REMEMBER_STORAGE_KEY = 'beautyassist.rememberMe'
 
 export function getRememberMe(): boolean {
   if (typeof window === 'undefined') return true
@@ -279,10 +279,10 @@ export function clearApiCache(): void {
 // --- Çevrimdışı okuma desteği (yalnızca masaüstü kabuğu) -------------------------------
 // Başarılı GET'ler IndexedDB'ye yansıtılır; ağ hatasında son bilinen veri oradan sunulur ve
 // UI'nin "çevrimdışı — son bilinen veriler" şeridi gösterebilmesi için olay yayınlanır.
-export const OFFLINE_DATA_EVENT = 'beautyasist-offline-data'
+export const OFFLINE_DATA_EVENT = 'beautyassist-offline-data'
 
 function isDesktopShell(): boolean {
-  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAsistDesktop')
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAssistDesktop')
 }
 
 function notifyOfflineData(ts: number): void {
@@ -292,7 +292,7 @@ function notifyOfflineData(ts: number): void {
 
 // Çevrimdışı yazma kuyruğu (outbox): yalnızca bu KRİTİK akışlar kuyruğa alınır; geri kalan
 // yazmalar çevrimdışıyken hata döner (salt-okunur). Kuyruk OutboxSync ile sunucuya oynatılır.
-export const OUTBOX_EVENT = 'beautyasist-outbox-changed'
+export const OUTBOX_EVENT = 'beautyassist-outbox-changed'
 
 export interface QueuedOfflineResult {
   queuedOffline: true

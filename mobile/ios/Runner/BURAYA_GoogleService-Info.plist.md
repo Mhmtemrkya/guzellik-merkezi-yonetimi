@@ -1,7 +1,7 @@
 # Buraya `GoogleService-Info.plist` koyun (iOS push)
 
 Firebase Console → Proje ayarları → iOS uygulaması ekle
-(bundle ID: **`com.beautyasist.app`**) → `GoogleService-Info.plist` indir →
+(bundle ID: **`com.beautyassist.app`**) → `GoogleService-Info.plist` indir →
 Xcode'da **Runner** hedefine ekleyin (sürükle-bırak, "Copy items if needed" + Runner target işaretli).
 
 Ek olarak iOS push için (bkz. `STORE_YAYIN_REHBERI.md`):

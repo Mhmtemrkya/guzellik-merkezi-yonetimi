@@ -9,14 +9,14 @@ import '../core/storage/session_storage.dart';
 import '../core/theme/app_theme.dart';
 import 'router.dart';
 
-class BeautyAsistApp extends StatefulWidget {
-  const BeautyAsistApp({super.key});
+class BeautyAssistApp extends StatefulWidget {
+  const BeautyAssistApp({super.key});
 
   @override
-  State<BeautyAsistApp> createState() => _BeautyAsistAppState();
+  State<BeautyAssistApp> createState() => _BeautyAssistAppState();
 }
 
-class _BeautyAsistAppState extends State<BeautyAsistApp> with WidgetsBindingObserver {
+class _BeautyAssistAppState extends State<BeautyAssistApp> with WidgetsBindingObserver {
   late final SessionStorage storage;
   late final ApiClient api;
   late final AuthController auth;
@@ -109,7 +109,7 @@ class _BeautyAsistAppState extends State<BeautyAsistApp> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'BeautyAsist',
+      title: 'BeautyAssist',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       locale: const Locale('tr', 'TR'),

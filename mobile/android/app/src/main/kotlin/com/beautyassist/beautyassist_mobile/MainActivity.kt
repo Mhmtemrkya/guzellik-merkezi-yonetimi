@@ -1,4 +1,4 @@
-package com.beautyasist.beautyasist_mobile
+package com.beautyassist.beautyassist_mobile
 
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -9,7 +9,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Personel ekran görüntüsü izni (FLAG_SECURE) Dart tarafından yönetilir.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "beautyasist/screen_security")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "beautyassist/screen_security")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "setSecure" -> {

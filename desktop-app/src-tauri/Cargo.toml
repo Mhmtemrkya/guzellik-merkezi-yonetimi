@@ -1,8 +1,8 @@
 [package]
 name = "desktop-app"
 version = "1.0.0"
-description = "BeautyAsist güzellik merkezi yönetim masaüstü uygulaması"
-authors = ["BeautyAsist"]
+description = "BeautyAssist güzellik merkezi yönetim masaüstü uygulaması"
+authors = ["BeautyAssist"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

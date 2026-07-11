@@ -79,8 +79,8 @@ const STAFF_CATALOG: QuickAction[] = [
 ]
 const STAFF_DEFAULT_IDS = ['randevu-yeni', 'musteri-yeni', 'randevular', 'seanslar', 'kasa']
 const MAX_ITEMS = 7
-const STORAGE_KEY = 'beautyasist.quickmenu.v1'
-const STAFF_STORAGE_KEY = 'beautyasist.quickmenu.staff.v1'
+const STORAGE_KEY = 'beautyassist.quickmenu.v1'
+const STAFF_STORAGE_KEY = 'beautyassist.quickmenu.staff.v1'
 
 /** Kurum yöneticisi hızlı menüsü kuruma özeldir: anahtar tenantId ile etiketlenir. */
 function quickMenuKey(institutionId?: string | null): string {

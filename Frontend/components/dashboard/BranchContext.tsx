@@ -5,8 +5,8 @@ import { adminApi, pagedItems, setApiScope } from '@/lib/apiClient'
 import { useAuth } from './AuthContext'
 import type { ApiBranch, Branch, Institution } from '@/lib/types'
 
-const BRANCH_KEY = 'beautyasist.selectedBranchId'
-const INSTITUTION_KEY = 'beautyasist.selectedInstitutionId'
+const BRANCH_KEY = 'beautyassist.selectedBranchId'
+const INSTITUTION_KEY = 'beautyassist.selectedInstitutionId'
 
 interface BranchContextValue {
   institutions: Institution[]

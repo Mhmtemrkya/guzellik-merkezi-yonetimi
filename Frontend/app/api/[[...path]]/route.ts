@@ -171,7 +171,7 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
         headers: copyResponseHeaders(upstreamResponse),
       })
       // Backend iç adresini SADECE development'ta debug header'ı olarak göster — production'da sızdırma.
-      if (!IS_PRODUCTION) response.headers.set('X-BeautyAsist-Backend', backendBaseUrl)
+      if (!IS_PRODUCTION) response.headers.set('X-BeautyAssist-Backend', backendBaseUrl)
       return withCors(response, request)
     } catch (error) {
       errors.push(`${backendBaseUrl}: ${error instanceof Error ? error.message : String(error)}`)
@@ -201,7 +201,7 @@ async function handleRoute(request: NextRequest, context: RouteContext): Promise
   }
 
   if (route === '/' || route === '/root') {
-    return withCors(NextResponse.json({ message: 'BeautyAsist API proxy' }), request)
+    return withCors(NextResponse.json({ message: 'BeautyAssist API proxy' }), request)
   }
 
   if (route === '/proxy') {

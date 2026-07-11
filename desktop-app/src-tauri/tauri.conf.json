@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "BeautyAsist",
+  "productName": "BeautyAssist",
   "version": "1.0.0",
-  "identifier": "com.beautyasist.desktop",
+  "identifier": "com.beautyassist.desktop",
   "build": {
     "frontendDist": "../src"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "splash",
-        "title": "BeautyAsist",
+        "title": "BeautyAssist",
         "url": "splashscreen.html",
         "width": 460,
         "height": 340,
@@ -24,7 +24,7 @@
       },
       {
         "label": "main",
-        "title": "BeautyAsist",
+        "title": "BeautyAssist",
         "url": "http://localhost:3000/login",
         "fullscreen": true,
         "decorations": false,
@@ -32,7 +32,7 @@
         "resizable": false,
         "minimizable": false,
         "visible": false,
-        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) BeautyAsistDesktop/1.0"
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) BeautyAssistDesktop/1.0"
       }
     ],
     "security": {
@@ -42,11 +42,11 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "dmg", "app"],
-    "publisher": "BeautyAsist",
-    "copyright": "© 2026 BeautyAsist. Tüm hakları saklıdır.",
+    "publisher": "BeautyAssist",
+    "copyright": "© 2026 BeautyAssist. Tüm hakları saklıdır.",
     "category": "Business",
     "shortDescription": "Güzellik merkezi yönetim uygulaması",
-    "longDescription": "BeautyAsist — randevu, müşteri, kasa, personel ve raporlama modülleriyle güzellik/estetik merkezleri için masaüstü yönetim uygulaması.",
+    "longDescription": "BeautyAssist — randevu, müşteri, kasa, personel ve raporlama modülleriyle güzellik/estetik merkezleri için masaüstü yönetim uygulaması.",
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",

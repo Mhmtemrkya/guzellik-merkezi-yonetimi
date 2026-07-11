@@ -227,7 +227,7 @@ class MoreScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 22, 18, 110),
             children: [
               const PageHeader(
-                eyebrow: 'BeautyAsist',
+                eyebrow: 'BeautyAssist',
                 title: 'Tüm modüller',
                 subtitle: 'Yetkinize açık yönetim araçları.',
               ),

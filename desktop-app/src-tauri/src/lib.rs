@@ -106,9 +106,9 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "Paneli Aç", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Çıkış", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
-            TrayIconBuilder::with_id("beautyasist-tray")
+            TrayIconBuilder::with_id("beautyassist-tray")
                 .icon(app.default_window_icon().expect("pencere ikonu yok").clone())
-                .tooltip("BeautyAsist")
+                .tooltip("BeautyAssist")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {

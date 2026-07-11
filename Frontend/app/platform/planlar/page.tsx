@@ -295,9 +295,9 @@ function PlanCard({
         {/* Fiyat */}
         <div className="mt-4">
           {isCustom ? (
-            <span className="font-display text-2xl beautyasist-text-gradient">Özel fiyatlandırma</span>
+            <span className="font-display text-2xl beautyassist-text-gradient">Özel fiyatlandırma</span>
           ) : (
-            <span className="font-display text-[34px] tabular-nums beautyasist-text-gradient">
+            <span className="font-display text-[34px] tabular-nums beautyassist-text-gradient">
               {formatTL(plan.monthlyPriceTRY)}
               <span className="ml-1 text-[11px] font-mono uppercase tracking-widest text-[#9d7386]">/ay</span>
             </span>

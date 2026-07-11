@@ -106,7 +106,7 @@ export default function Faq() {
             <HelpCircle className="h-3.5 w-3.5" /> Sık sorulanlar
           </div>
           <h2 className="hero-title text-[clamp(2.2rem,4.4vw,4.4rem)] leading-[0.92] tracking-[-0.04em] text-[#fff4f8]">
-            Aklınızdaki sorulara <span className="beautyasist-text-gradient">net cevaplar.</span>
+            Aklınızdaki sorulara <span className="beautyassist-text-gradient">net cevaplar.</span>
           </h2>
         </motion.div>
 

@@ -1,4 +1,4 @@
-# BeautyAsist Mobile
+# BeautyAssist Mobile
 
 Flutter ile geliştirilen iOS ve Android yönetim uygulamasıdır. Web panelindeki
 rol, tenant, şube, yetki ve backend sözleşmelerini kullanır.

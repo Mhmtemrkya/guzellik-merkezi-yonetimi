@@ -1,14 +1,14 @@
-# BeautyAsist Android release imzalama anahtarı yapılandırması.
+# BeautyAssist Android release imzalama anahtarı yapılandırması.
 # BU DOSYAYI KOPYALAYIP "key.properties" olarak kaydedin ve gerçek değerleri girin.
 # key.properties GİT'E GİRMEZ (.gitignore'da). Şifreleri asla paylaşmayın.
 #
 # Keystore üretimi (bir kez):
-#   keytool -genkey -v -keystore ~/beautyasist-release.jks \
-#     -keyalg RSA -keysize 2048 -validity 10000 -alias beautyasist
+#   keytool -genkey -v -keystore ~/beautyassist-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias beautyassist
 #
 # storeFile: android/ klasörüne göreli ya da mutlak yol olabilir.
 
 storePassword=DEGISTIR_keystore_sifresi
 keyPassword=DEGISTIR_anahtar_sifresi
-keyAlias=beautyasist
-storeFile=beautyasist-release.jks
+keyAlias=beautyassist
+storeFile=beautyassist-release.jks

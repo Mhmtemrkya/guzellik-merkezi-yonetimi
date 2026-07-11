@@ -12,7 +12,7 @@ import OfflineBanner from '@/components/desktop/OfflineBanner'
 import OutboxSync from '@/components/desktop/OutboxSync'
 
 export const metadata: Metadata = {
-  title: 'BeautyAsist — Güzellik Merkezleri İçin Yönetim Sistemi',
+  title: 'BeautyAssist — Güzellik Merkezleri İçin Yönetim Sistemi',
   description: "Excel'i unutun. Müşteri, paket, taksit, seans, randevu ve kasa yönetimi tek panelden.",
 }
 

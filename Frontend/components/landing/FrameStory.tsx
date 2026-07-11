@@ -442,7 +442,7 @@ function HeroChapter({ chapter, isActive }: ChapterRenderProps) {
           initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ delay: 0.55, duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-          className="serif-italic block beautyasist-text-gradient"
+          className="serif-italic block beautyassist-text-gradient"
         >
           {chapter.accent}
         </motion.span>
@@ -495,7 +495,7 @@ function HeroChapter({ chapter, isActive }: ChapterRenderProps) {
             transition={{ delay: 1.4 + i * 0.06, duration: 0.55 }}
             className="glass rounded-2xl p-4 text-left"
           >
-            <div className="beautyasist-text-gradient font-display text-3xl leading-none">{s.v}</div>
+            <div className="beautyassist-text-gradient font-display text-3xl leading-none">{s.v}</div>
             <div className="eyebrow mt-1 text-[#fff4f8]/52">{s.l}</div>
             <div className="text-[11px] text-[#fff4f8]/72">{s.s}</div>
           </motion.div>
@@ -531,7 +531,7 @@ function StoryBlock({ chapter, isActive }: ChapterRenderProps) {
 
       <h2 className="hero-title text-[clamp(2rem,3.4vw,3.6rem)] text-[#fff4f8]" aria-label={`${chapter.title} ${chapter.accent}`}>
         <span>{chapter.title}</span>{' '}
-        <span className="serif-italic beautyasist-text-gradient">{chapter.accent}</span>
+        <span className="serif-italic beautyassist-text-gradient">{chapter.accent}</span>
       </h2>
 
       <p className="mt-5 max-w-md text-[14px] leading-relaxed text-[#fff4f8]/76 sm:text-[15px]">{chapter.body}</p>
@@ -542,7 +542,7 @@ function StoryBlock({ chapter, isActive }: ChapterRenderProps) {
         transition={{ duration: 0.5, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
         className="mt-6 inline-flex w-fit flex-col rounded-2xl border border-[#f0aac2]/22 bg-[#160b12]/55 p-4 shadow-[0_22px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl"
       >
-        <span className="beautyasist-text-gradient font-display text-3xl leading-none">{chapter.metric}</span>
+        <span className="beautyassist-text-gradient font-display text-3xl leading-none">{chapter.metric}</span>
         <span className="eyebrow mt-1 text-[9px] tracking-[0.2em] text-[#fff4f8]/55">{chapter.metricLabel}</span>
       </motion.div>
     </motion.div>
@@ -637,7 +637,7 @@ function HeroChapterMobile({ chapter }: { chapter: Chapter }) {
         >
           {chapter.title}
           <br />
-          <span className="serif-italic beautyasist-text-gradient">{chapter.accent}</span>
+          <span className="serif-italic beautyassist-text-gradient">{chapter.accent}</span>
         </motion.h1>
 
         <motion.p
@@ -682,7 +682,7 @@ function HeroChapterMobile({ chapter }: { chapter: Chapter }) {
         >
           {chapter.stats?.map((s: ChapterStat) => (
             <div key={s.l} className="glass rounded-2xl p-4 text-left">
-              <div className="beautyasist-text-gradient font-display text-2xl leading-none">{s.v}</div>
+              <div className="beautyassist-text-gradient font-display text-2xl leading-none">{s.v}</div>
               <div className="eyebrow mt-1 text-[#fff4f8]/52">{s.l}</div>
               <div className="text-[11px] text-[#fff4f8]/72">{s.s}</div>
             </div>
@@ -725,14 +725,14 @@ function ChapterCardMobile({ chapter, index }: { chapter: Chapter; index: number
       <div className="p-5 sm:p-6">
         <h3 className="hero-title text-[clamp(1.5rem,6vw,2.1rem)] text-[#fff4f8]">
           {chapter.title}{' '}
-          <span className="serif-italic beautyasist-text-gradient">{chapter.accent}</span>
+          <span className="serif-italic beautyassist-text-gradient">{chapter.accent}</span>
         </h3>
 
         <p className="mt-3 text-[15px] leading-relaxed text-[#fff4f8]/78">{chapter.body}</p>
 
         {chapter.metric && (
           <div className="mt-5 inline-flex w-fit flex-col rounded-2xl border border-[#f0aac2]/22 bg-[#160b12]/55 px-4 py-3">
-            <span className="beautyasist-text-gradient font-display text-[26px] leading-none">{chapter.metric}</span>
+            <span className="beautyassist-text-gradient font-display text-[26px] leading-none">{chapter.metric}</span>
             <span className="eyebrow mt-1 text-[9px] tracking-[0.2em] text-[#fff4f8]/55">{chapter.metricLabel}</span>
           </div>
         )}
