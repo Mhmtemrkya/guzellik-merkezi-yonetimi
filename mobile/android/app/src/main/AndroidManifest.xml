@@ -19,7 +19,7 @@
     <application
         android:label="BeautyAsist"
         android:name="${applicationName}"
-        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher">
 
         <!-- API 34+/36'da ön plan servis tipi zorunlu — flutter_background_service'in servisine dataSync tipini birleştir.
@@ -66,9 +66,9 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Müşteriyi Ara butonu: tel: intent görünürlüğü (Android 11+) -->
         <intent>
             <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
         </intent>
     </queries>
 </manifest>

@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
@@ -10,7 +12,7 @@ public static class ServiceDefinitionEndpoints
 {
     public static IEndpointRouteBuilder MapServiceDefinitionEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/services").WithTags("Services").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/services").WithTags("Services").RequireAuthorization().RequirePermission(Permissions.Services, writeOnly: true);
 
         group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, IServiceCatalogService service, HttpContext http, CancellationToken ct) =>
         {

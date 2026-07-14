@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.GiftCards;
@@ -8,7 +10,7 @@ public static class GiftCardEndpoints
 {
     public static IEndpointRouteBuilder MapGiftCardEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/gift-cards").WithTags("GiftCards").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/gift-cards").WithTags("GiftCards").RequireAuthorization().RequirePermission(Permissions.GiftCards, writeOnly: true);
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
         {

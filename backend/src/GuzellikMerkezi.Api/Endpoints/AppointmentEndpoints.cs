@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
@@ -11,7 +13,7 @@ public static class AppointmentEndpoints
 {
     public static IEndpointRouteBuilder MapAppointmentEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/appointments").WithTags("Appointments").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/appointments").WithTags("Appointments").RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         group.MapGet("/", async (Guid? tenantId, DateTime? fromUtc, DateTime? toUtc, int page, int pageSize, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {

@@ -42,6 +42,39 @@ public sealed class AppointmentService : IAppointmentService
         return string.IsNullOrWhiteSpace(name) ? "Müşteri" : name;
     }
 
+    /// <summary>Randevunun atandığı personelin TenantUser kimliği (hesabı yoksa null).</summary>
+    private async Task<Guid?> AssignedStaffUserIdAsync(Guid tenantId, Guid staffMemberId, CancellationToken ct)
+    {
+        var uid = await _db.StaffMembers.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Id == staffMemberId)
+            .Select(s => s.TenantUserId)
+            .FirstOrDefaultAsync(ct);
+        return uid == Guid.Empty ? null : uid;
+    }
+
+    /// <summary>
+    /// Atanmış personele randevu bildirimi. Personel panelindeki bildirimler yönetici panelinden
+    /// AYRIŞIR: personel yalnızca KENDİ randevu olaylarını görür (yönetim olayları rol hedeflidir).
+    /// Olayı personelin kendisi tetiklediyse (actorStaffUserId) kendi kendine bildirim üretilmez.
+    /// </summary>
+    private async Task NotifyAssignedStaffAsync(
+        Appointment appointment, Guid? actorStaffUserId,
+        AppNotificationType type, AppNotificationSeverity severity,
+        string title, string dedupePrefix, CancellationToken ct)
+    {
+        var uid = await AssignedStaffUserIdAsync(appointment.TenantId, appointment.StaffMemberId, ct);
+        if (uid is null || uid == actorStaffUserId) return;
+        var customerName = await CustomerNameAsync(appointment.TenantId, appointment.CustomerId, ct);
+        await _notifications.NotifyUserAsync(
+            appointment.TenantId, appointment.BranchId, uid.Value,
+            type, severity,
+            title,
+            $"{customerName} · {appointment.StartUtc.AddHours(3):dd.MM.yyyy HH:mm}",
+            data: new { route = "/appointments", id = appointment.Id.ToString() },
+            dedupeKey: $"{dedupePrefix}:{appointment.Id}",
+            ct: ct);
+    }
+
     public async Task<Result<PagedResult<AppointmentDto>>> ListAsync(Guid tenantId, DateTime? fromUtc, DateTime? toUtc, PageRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
         var query = ApplyStaffScope(_db.Appointments.AsNoTracking().Where(x => x.TenantId == tenantId), staffTenantUserId)
@@ -126,6 +159,14 @@ public sealed class AppointmentService : IAppointmentService
                 ? $"Taslak randevu onaya gönderildi ({appointment.StartUtc:dd.MM.yyyy HH:mm})"
                 : $"Randevu oluşturuldu ({appointment.StartUtc:dd.MM.yyyy HH:mm})",
             new { appointment.StartUtc, appointment.EndUtc, appointment.CustomerId, appointment.StaffMemberId, appointment.Price, appointment.Status }, cancellationToken);
+
+        // Yönetici oluşturduysa atanmış personele "yeni randevu" bildirimi (personel paneli farkı).
+        if (!isStaffRequest)
+        {
+            await NotifyAssignedStaffAsync(appointment, staffTenantUserId,
+                AppNotificationType.AppointmentCreated, AppNotificationSeverity.Info,
+                "Sana yeni randevu atandı", "appt-assigned", cancellationToken);
+        }
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
@@ -160,6 +201,11 @@ public sealed class AppointmentService : IAppointmentService
         await _audit.LogAsync(tenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,
             $"Randevu yeniden planlandı: {prevStart:dd.MM HH:mm} → {appointment.StartUtc:dd.MM HH:mm}",
             new { prevStart, NewStart = appointment.StartUtc, NewEnd = appointment.EndUtc }, cancellationToken);
+
+        // Saat değişikliğini atanmış personel de görsün (kendisi değiştirmediyse).
+        await NotifyAssignedStaffAsync(appointment, staffTenantUserId,
+            AppNotificationType.AppointmentUpdated, AppNotificationSeverity.Info,
+            "Randevun yeniden planlandı", $"appt-resched:{appointment.StartUtc:yyyyMMddHHmm}", cancellationToken);
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
@@ -243,6 +289,13 @@ public sealed class AppointmentService : IAppointmentService
                 data: new { route = "/appointments", id = appointment.Id.ToString() },
                 dedupeKey: $"appt-{appointment.Status}:{appointment.Id}",
                 ct: cancellationToken);
+
+            // Atanmış personel de kendi randevusunun iptalini/gelmediğini görür.
+            await NotifyAssignedStaffAsync(appointment, staffTenantUserId,
+                isCancel ? AppNotificationType.AppointmentCancelled : AppNotificationType.AppointmentUpdated,
+                AppNotificationSeverity.Warning,
+                isCancel ? "Randevun iptal edildi" : "Müşterin gelmedi",
+                $"appt-staff-{appointment.Status}", cancellationToken);
         }
 
         return Result<AppointmentDto>.Success(appointment.ToDto());

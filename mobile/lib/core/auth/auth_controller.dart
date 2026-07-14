@@ -48,6 +48,12 @@ class AuthController extends ChangeNotifier {
       }
       status = AuthStatus.signedIn;
       notifyListeners();
+      // Token süresi dolmamış olsa da açılışta oturumu tazele (best-effort):
+      // kurum yöneticisinin değiştirdiği rol/sayfa izinleri yeniden giriş
+      // beklemeden uygulanır (refresh yanıtı izinleri DB'den taze döndürür).
+      if (!needsRefresh) {
+        unawaited(refreshProfile());
+      }
       // Personel ekran görüntüsü kilidi kurum ayarına göre uygulanır (bloklamadan).
       unawaited(ScreenSecurity.apply(api, session?.user));
     } catch (_) {
@@ -147,6 +153,14 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Oturumu sessizce tazeler (izin değişikliklerini almak için).
+  /// Başarısız olsa da mevcut oturuma dokunmaz.
+  Future<void> refreshProfile() async {
+    try {
+      await refresh().timeout(const Duration(seconds: 8), onTimeout: () => false);
+    } catch (_) {}
   }
 
   Future<void> signOut({bool localOnly = false}) async {

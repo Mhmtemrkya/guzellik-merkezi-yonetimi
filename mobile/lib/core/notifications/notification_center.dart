@@ -135,6 +135,8 @@ class NotificationCenter extends ChangeNotifier {
   /// Uygulama ön plana döndüğünde çağrılır: rozeti/inbox'ı hemen tazele + hatırlatmaları güncelle.
   Future<void> onResume() async {
     if (!_started) return;
+    // İzin değişiklikleri yeniden giriş beklemeden uygulansın diye oturumu da tazele.
+    unawaited(auth.refreshProfile());
     await poll();
     unawaited(AppointmentReminderScheduler(api).sync());
   }

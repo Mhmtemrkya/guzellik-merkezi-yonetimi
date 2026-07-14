@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/auth/auth_controller.dart';
+import '../core/auth/permissions.dart';
 import '../core/network/api_client.dart';
 import '../core/notifications/notification_center.dart';
 import '../features/accounting/on_muhasebe_screen.dart';
@@ -23,6 +24,7 @@ import '../features/customers/treatment_journal_screen.dart';
 import '../features/expense_categories/expense_categories_screen.dart';
 import '../features/expenses/expenses_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/dashboard/staff_dashboard_screen.dart';
 import '../features/gift_cards/gift_cards_screen.dart';
 import '../features/live/live_list_screen.dart';
 import '../features/logs/logs_screen.dart';
@@ -72,6 +74,14 @@ class AppRouter {
         if (location.startsWith('/customer/')) return '/home';
         if (location == '/login' || location == '/splash' || location == '/') {
           return '/home';
+        }
+        // Web ROUTE_PERMISSION_GUARDS paritesi: personel, sayfa izni olmayan rotaya gidemez.
+        final user = auth.user;
+        if (user != null && user.isStaff) {
+          final requiredPage = routePagePermissions[location];
+          if (requiredPage != null && !user.hasPage(requiredPage)) {
+            return '/home';
+          }
         }
         return null;
       },
@@ -135,8 +145,13 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/home',
-                  builder: (_, _) =>
-                      DashboardScreen(api: api, auth: auth, notifications: notifications),
+                  // Personel rolü web /personel dashboard'ının karşılığını görür;
+                  // işletme geneli ciro/kasa içeren panel yönetici içindir.
+                  builder: (_, _) => auth.user?.isStaff == true
+                      ? StaffDashboardScreen(
+                          api: api, auth: auth, notifications: notifications)
+                      : DashboardScreen(
+                          api: api, auth: auth, notifications: notifications),
                 ),
               ],
             ),

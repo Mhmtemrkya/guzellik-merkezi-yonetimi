@@ -33,7 +33,7 @@ public sealed class CustomerService : ICustomerService
     private bool IsStaffViewer => _currentUser.Role == UserRole.Staff;
 
     private CustomerDto Mask(CustomerDto dto) =>
-        IsStaffViewer ? dto with { Phone = MaskPhone(dto.Phone) } : dto;
+        IsStaffViewer ? dto with { Phone = MaskPhone(dto.Phone), Email = EmailMask.Mask(dto.Email) } : dto;
 
     private static string MaskPhone(string? phone) => PhoneMask.Mask(phone);
 
@@ -132,7 +132,8 @@ public sealed class CustomerService : ICustomerService
         // gerçek numara korunur — maskeli değer asla kalıcılaştırılmaz. Personel tam yeni bir numara
         // yazarsa (maske yok) normal güncellenir.
         var phone = PhoneMask.IsMasked(request.Phone) ? customer.Phone : request.Phone;
-        customer.UpdateContact(request.FullName, phone, request.Email);
+        var email = EmailMask.IsMasked(request.Email) ? customer.Email : request.Email;
+        customer.UpdateContact(request.FullName, phone, email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         if (request.PhotoUrl is not null) customer.SetPhoto(request.PhotoUrl);
 
@@ -283,7 +284,8 @@ public sealed class CustomerService : ICustomerService
             .Where(r => r.last <= cutoff)
             .OrderBy(r => r.last)
             .Select(r => new PassiveCustomerDto(r.Id, r.BranchId, r.FullName,
-                IsStaffViewer ? MaskPhone(r.Phone) : r.Phone, r.Email,
+                IsStaffViewer ? MaskPhone(r.Phone) : r.Phone,
+                IsStaffViewer ? EmailMask.Mask(r.Email) : r.Email,
                 r.last, (int)Math.Floor((now - r.last).TotalDays)))
             .ToArray();
         return Result<PassiveCustomerListDto>.Success(new PassiveCustomerListDto(thresholdDays, items));

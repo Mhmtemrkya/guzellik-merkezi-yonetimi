@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
@@ -131,7 +132,12 @@ class CustomersScreen extends StatelessWidget {
         statusKeys: const ['status'],
       );
     }
+    final me = auth.user;
     return CrudListScreen(
+      // Web işlem izni paritesi: Customers.Manage / .Delete / .Tags
+      canCreate: me?.canAction(Perm.customersManage) ?? true,
+      canUpdate: me?.canAction(Perm.customersManage) ?? true,
+      canDelete: me?.canAction(Perm.customersDelete) ?? true,
       eyebrow: 'İşletme',
       title: 'Müşteriler',
       subtitle: 'Müşteri kartları, iletişim ve KVKK durumu.',
@@ -241,18 +247,21 @@ class CustomersScreen extends StatelessWidget {
             return false;
           },
         ),
-        CrudRowAction(
-          label: 'VIP durumu',
-          icon: Icons.workspace_premium_rounded,
-          color: Color(0xFFB8860B),
-          run: _vip,
-        ),
-        CrudRowAction(
-          label: 'Kara liste durumu',
-          icon: Icons.block_rounded,
-          color: Colors.red,
-          run: _blacklist,
-        ),
+        // VIP & kara liste etiketi ayrı işlem izni ister (Customers.Tags).
+        if (me?.canAction(Perm.customersTags) ?? true) ...[
+          CrudRowAction(
+            label: 'VIP durumu',
+            icon: Icons.workspace_premium_rounded,
+            color: const Color(0xFFB8860B),
+            run: _vip,
+          ),
+          CrudRowAction(
+            label: 'Kara liste durumu',
+            icon: Icons.block_rounded,
+            color: Colors.red,
+            run: _blacklist,
+          ),
+        ],
       ],
     );
   }

@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
@@ -10,7 +12,7 @@ public static class StockEndpoints
 {
     public static IEndpointRouteBuilder MapStockEndpoints(this IEndpointRouteBuilder app)
     {
-        var products = app.MapGroup("/api/admin/products").WithTags("Stock").RequireAuthorization();
+        var products = app.MapGroup("/api/admin/products").WithTags("Stock").RequireAuthorization().RequirePermission(Permissions.Stock, writeOnly: true);
 
         products.MapGet("/", async (
             Guid? tenantId,
@@ -69,7 +71,7 @@ public static class StockEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.AddMovementAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
-        var movements = app.MapGroup("/api/admin/stock-movements").WithTags("Stock").RequireAuthorization();
+        var movements = app.MapGroup("/api/admin/stock-movements").WithTags("Stock").RequireAuthorization().RequirePermission(Permissions.Stock);
 
         movements.MapGet("/", async (
             Guid? tenantId,

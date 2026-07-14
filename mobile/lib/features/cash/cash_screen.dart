@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
@@ -201,7 +202,9 @@ class _CashScreenState extends State<CashScreen> {
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        floatingActionButton: Column(
+        floatingActionButton: !(widget.api.auth?.user?.canAction(Perm.cashRegisterEntry) ?? true)
+            ? null
+            : Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [

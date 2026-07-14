@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/responsive.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/permissions.dart';
 import '../../core/notifications/notification_center.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/app_background.dart';
@@ -44,19 +45,19 @@ class MoreScreen extends StatelessWidget {
               'Hizmetler',
               Icons.spa_rounded,
               '/services',
-              permission: 'Service',
+              permission: 'Services',
             ),
             const _Module(
               'Paketler',
               Icons.workspaces_rounded,
               '/packages',
-              permission: 'Service',
+              permission: 'Services',
             ),
             const _Module(
               'Satış (Paket & Hizmet)',
               Icons.point_of_sale_rounded,
               '/sales',
-              permission: 'Cash',
+              permission: 'Accounting',
             ),
             if (!user.isStaff)
               const _Module(
@@ -80,51 +81,51 @@ class MoreScreen extends StatelessWidget {
               'Müşteri Bilgi ve Onay Formu',
               Icons.assignment_rounded,
               '/consultation',
-              permission: 'Customer',
+              permission: 'Customers',
             ),
             const _Module(
               'Tedavi Günlüğü',
               Icons.photo_library_rounded,
               '/treatment-journal',
-              permission: 'Customer',
+              permission: 'Customers',
             ),
             if (user.isStaff)
               const _Module(
                 'Seanslarım',
                 Icons.content_cut_rounded,
                 '/sessions',
-                permission: 'Service',
+                permission: 'Services',
               ),
             const _Module(
               'Günlük Kasa',
               Icons.account_balance_wallet_rounded,
               '/cash',
-              permission: 'Cash',
+              permission: 'CashRegister',
             ),
             if (!user.isStaff)
               const _Module(
                 'Kasa Kapanışı',
                 Icons.fact_check_rounded,
                 '/cash-closing',
-                permission: 'Cash',
+                permission: 'CashClosing',
               ),
             const _Module(
               'Ön Muhasebe',
               Icons.account_balance_rounded,
               '/accounting',
-              permission: 'Cash',
+              permission: 'Accounting',
             ),
             const _Module(
               'Giderler',
               Icons.receipt_long_rounded,
               '/expenses',
-              permission: 'Cash',
+              permission: 'Accounting',
             ),
             const _Module(
               'Gider Kategorileri',
               Icons.folder_special_rounded,
               '/expense-categories',
-              permission: 'Cash',
+              permission: 'Accounting',
             ),
             // Primler: personel kendi prim/hakedişini görür — ayrı izin gerekmez.
             const _Module(
@@ -162,31 +163,31 @@ class MoreScreen extends StatelessWidget {
               'Kampanyalar',
               Icons.campaign_rounded,
               '/campaigns',
-              permission: 'Service',
+              permission: 'Services',
             ),
             const _Module(
               'Bildirimler',
               Icons.notifications_active_rounded,
               '/notifications',
-              permission: 'Notification',
+              permission: 'Notifications',
             ),
             const _Module(
               'Bildirim Logları',
               Icons.mark_email_read_rounded,
               '/notification-logs',
-              permission: 'Notification',
+              permission: 'Notifications',
             ),
             const _Module(
               'WhatsApp',
               Icons.chat_rounded,
               '/whatsapp',
-              permission: 'Notification',
+              permission: 'Notifications',
             ),
             const _Module(
               'WhatsApp Mesajları',
               Icons.forum_rounded,
               '/whatsapp-messages',
-              permission: 'Notification',
+              permission: 'Notifications',
             ),
             const _Module(
               'Raporlar',
@@ -214,9 +215,7 @@ class MoreScreen extends StatelessWidget {
           (module) =>
               module.permission == null ||
               !user.isStaff ||
-              user.permissions.any(
-                (permission) => permission.startsWith(module.permission!),
-              ),
+              user.hasPage(module.permission!),
         )
         .toList();
     return AppBackground(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/widgets/async_list_page.dart';
 import 'package_form.dart';
@@ -45,11 +46,13 @@ class _PackagesScreenState extends State<PackagesScreen> {
       trailingKeys: const ['totalPrice'],
       statusKeys: const ['status', 'isActive'],
       onItemTap: _openForm,
-      floatingAction: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Paket ekle'),
-      ),
+      floatingAction: (widget.api.auth?.user?.canAction(Perm.servicesManage) ?? true)
+          ? FloatingActionButton.extended(
+              onPressed: () => _openForm(),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Paket ekle'),
+            )
+          : null,
     );
   }
 }

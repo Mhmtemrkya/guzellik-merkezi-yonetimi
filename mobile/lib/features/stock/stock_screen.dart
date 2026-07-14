@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/responsive.dart';
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
@@ -236,7 +237,9 @@ class _StockScreenState extends State<StockScreen> {
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        floatingActionButton: FloatingActionButton.extended(
+        floatingActionButton: !(widget.api.auth?.user?.canAction(Perm.stockManage) ?? true)
+            ? null
+            : FloatingActionButton.extended(
           onPressed: _createProduct,
           icon: const Icon(Icons.add_rounded),
           label: const Text('Ürün ekle'),

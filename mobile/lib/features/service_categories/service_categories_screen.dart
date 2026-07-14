@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 
@@ -9,7 +10,11 @@ class ServiceCategoriesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final me = api.auth?.user;
     return CrudListScreen(
+      canCreate: me?.canAction(Perm.servicesManage) ?? true,
+      canUpdate: me?.canAction(Perm.servicesManage) ?? true,
+      canDelete: me?.canAction(Perm.servicesManage) ?? true,
       eyebrow: 'İşletme',
       title: 'Hizmet Kategorileri',
       subtitle: 'Özel hizmet kategori yönetimi.',

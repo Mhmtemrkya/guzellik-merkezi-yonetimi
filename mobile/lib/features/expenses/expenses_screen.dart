@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_options.dart';
 import '../../shared/crud/crud_screen.dart';
@@ -33,7 +34,11 @@ class ExpensesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final options = CrudOptions(api);
+    final me = api.auth?.user;
     return CrudListScreen(
+      canCreate: me?.canAction(Perm.accountingExpenses) ?? true,
+      canUpdate: me?.canAction(Perm.accountingExpenses) ?? true,
+      canDelete: me?.canAction(Perm.accountingExpenses) ?? true,
       eyebrow: 'Ön Muhasebe',
       title: 'Giderler',
       subtitle: 'Gider kayıtları, kategori ve ödeme yöntemleri.',

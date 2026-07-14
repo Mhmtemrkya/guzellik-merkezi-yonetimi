@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/widgets/async_list_page.dart';
@@ -83,7 +84,12 @@ class NotificationsScreen extends StatelessWidget {
         statusKeys: const ['status'],
       );
     }
+    final me = auth.user;
     return CrudListScreen(
+      // Şablon oluşturma/düzenleme ayrı işlem izni (Notifications.Templates).
+      canCreate: me?.canAction(Perm.notificationsTemplates) ?? true,
+      canUpdate: me?.canAction(Perm.notificationsTemplates) ?? true,
+      canDelete: me?.canAction(Perm.notificationsTemplates) ?? true,
       eyebrow: 'İletişim',
       title: 'Bildirimler',
       subtitle: 'SMS, WhatsApp ve e-posta şablonları.',

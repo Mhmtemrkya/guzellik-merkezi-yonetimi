@@ -39,3 +39,29 @@ public static class PhoneMask
         return digits.Length >= 10 ? digits[^10..] : digits;
     }
 }
+
+/// <summary>
+/// Müşteri e-postasını personel rolüne maskeler (telefon maskesiyle aynı ilke):
+/// yerel kısmın yalnızca ilk 2 karakteri açık kalır, alan adı görünür
+/// (ör. ayseyilmaz@gmail.com → ay••••••••@gmail.com). Yazma tarafında
+/// <see cref="IsMasked"/> ile maskeli değerin kalıcılaşması engellenir.
+/// </summary>
+public static class EmailMask
+{
+    public const char MaskChar = PhoneMask.MaskChar;
+
+    public static string? Mask(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return email;
+        var at = email.IndexOf('@');
+        if (at <= 0) return new string(MaskChar, email.Length);
+        var local = email[..at];
+        var domain = email[at..];
+        var visible = Math.Min(2, local.Length - 1);
+        if (visible < 1) return $"{new string(MaskChar, local.Length)}{domain}";
+        return $"{local[..visible]}{new string(MaskChar, local.Length - visible)}{domain}";
+    }
+
+    /// <summary>Değer maskeli mi (kalıcılaştırılmamalı, mevcut e-posta korunmalı)?</summary>
+    public static bool IsMasked(string? email) => !string.IsNullOrEmpty(email) && email.Contains(MaskChar);
+}

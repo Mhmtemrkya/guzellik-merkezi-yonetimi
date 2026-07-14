@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Features.ServiceCatalog;
@@ -8,7 +10,7 @@ public static class CustomServiceCategoryEndpoints
 {
     public static IEndpointRouteBuilder MapCustomServiceCategoryEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/service-categories").WithTags("CustomServiceCategories").RequireAuthorization();
+        var group = app.MapGroup("/api/admin/service-categories").WithTags("CustomServiceCategories").RequireAuthorization().RequirePermission(Permissions.Services, writeOnly: true);
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, ICustomServiceCategoryService service, HttpContext http, CancellationToken ct) =>
         {

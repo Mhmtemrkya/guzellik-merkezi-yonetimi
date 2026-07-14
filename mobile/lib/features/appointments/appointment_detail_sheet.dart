@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../../shared/customer_call.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/customer_call.dart';
 import 'calendar_theme.dart';
 
 /// Appointment detail bottom sheet with edit / cancel / customer profile.
@@ -321,17 +321,12 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Maskeli görünse bile arama gerçek numarayla başlar.
-                          _ChatButton(
-                            icon: Icons.call_rounded,
-                            onTap: () => callCustomer(
-                              context,
-                              widget.api,
-                              appt['customerId'],
-                            ),
+                          _CallButton(
+                            onTap: () => callCustomer(context, widget.api, appt['customerId']),
                           ),
                           const SizedBox(width: 8),
                           _ChatButton(
+                            icon: Icons.copy_rounded,
                             onTap: () {
                               Clipboard.setData(ClipboardData(text: phone));
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -527,6 +522,41 @@ class _ContactRow extends StatelessWidget {
   );
 }
 
+class _CallButton extends StatelessWidget {
+  const _CallButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.primary,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: const SizedBox(
+        height: 50,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.call_rounded, size: 18, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
+                'Ara',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _ChatButton extends StatelessWidget {
   const _ChatButton({
     required this.onTap,
@@ -673,8 +703,25 @@ class _EditSheetState extends State<_EditSheet> {
           'reason': null,
         });
       }
-      // Not: puanlama linki artık ekranda gösterilmez — backend, randevu Tamamlandı
-      // olunca 24 saat geçerli linki müşteriye WhatsApp'tan otomatik gönderir.
+      // Web ile aynı: randevu "Tamamlandı"ya geçince müşteri puanlama linki üret.
+      if (status == 'Completed' && prevStatus != 'Completed') {
+        try {
+          final r = await widget.api.post('/api/ratings/issue', {'appointmentId': id});
+          final token = r is Map ? r['token'] : null;
+          if (mounted && token != null) {
+            await showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Puanlama linki oluşturuldu'),
+                content: SelectableText('Müşteriye iletin:\n/rate/$token'),
+                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
+              ),
+            );
+          }
+        } catch (_) {
+          /* puanlama linki üretilemese de randevu akışı bozulmasın */
+        }
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {

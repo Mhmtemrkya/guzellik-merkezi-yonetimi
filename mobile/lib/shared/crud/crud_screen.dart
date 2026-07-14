@@ -129,6 +129,9 @@ class CrudListScreen extends StatefulWidget {
     this.headerExtra,
     this.onItemTap,
     this.emptyText = 'Henüz kayıt bulunmuyor.',
+    this.canCreate = true,
+    this.canUpdate = true,
+    this.canDelete = true,
     super.key,
   });
 
@@ -165,6 +168,12 @@ class CrudListScreen extends StatefulWidget {
   /// Verilirse satıra dokununca düzenleme sheet'i yerine bu çağrılır
   /// (ör. zengin müşteri detay ekranına push). Oluşturma FAB'ı korunur.
   final void Function(Map<String, dynamic> item)? onItemTap;
+
+  /// Personel işlem izinleri (web Sayfa.Aksiyon paritesi): false ise ilgili
+  /// yazma butonu hiç gösterilmez (backend zaten 403 ile ayrıca korur).
+  final bool canCreate;
+  final bool canUpdate;
+  final bool canDelete;
 
   @override
   State<CrudListScreen> createState() => _CrudListScreenState();
@@ -206,13 +215,13 @@ class _CrudListScreenState extends State<CrudListScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => CrudFormSheet(
-        title: widget.onUpdate == null ? 'İşlemler' : 'Düzenle',
-        fields: widget.onUpdate == null
+        title: widget.onUpdate == null || !widget.canUpdate ? 'İşlemler' : 'Düzenle',
+        fields: widget.onUpdate == null || !widget.canUpdate
             ? const []
             : widget.fields.where((f) => f.showOnEdit).toList(),
         icon: widget.icon,
         initial: item,
-        canDelete: widget.onDelete != null,
+        canDelete: widget.onDelete != null && widget.canDelete,
         deleteLabel: widget.deleteLabel,
         rowActions: widget.rowActions,
       ),
@@ -228,7 +237,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
       _refresh();
       return;
     }
-    if (result.body != null && widget.onUpdate != null) {
+    if (result.body != null && widget.onUpdate != null && widget.canUpdate) {
       widget.decorateUpdate?.call(result.body!, item);
       await _guard(
         () => widget.onUpdate!(item, result.body!),
@@ -289,7 +298,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
       emptyText: widget.emptyText,
       headerExtra: widget.headerExtra,
       onItemTap: widget.onItemTap ?? (_canOpenSheet ? _openEdit : null),
-      floatingAction: widget.onCreate == null
+      floatingAction: widget.onCreate == null || !widget.canCreate
           ? null
           : FloatingActionButton.extended(
               onPressed: _openCreate,

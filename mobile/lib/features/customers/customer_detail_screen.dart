@@ -4,9 +4,9 @@ import 'package:intl/intl.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../../shared/customer_call.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/customer_call.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
@@ -595,32 +595,7 @@ class _OverviewTab extends StatelessWidget {
           child: Column(
             children: [
               _infoRow('Ad Soyad', state._name),
-              _infoRowWidget(
-                'Telefon',
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      valueOf(c, const ['phone']),
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.ink),
-                    ),
-                    const SizedBox(width: 6),
-                    // Maskeli görünse bile arama gerçek numarayla başlar.
-                    InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () => callCustomer(context, state._api, c['id']),
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(Icons.call_rounded,
-                            size: 18, color: AppColors.primary),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _phoneRow(context, state.widget.api, '${c['id']}', valueOf(c, const ['phone'])),
               _infoRow('E-posta', valueOf(c, const ['email'])),
               _infoRow('Doğum Tarihi', _fmtDate(c['birthDate'])),
               _infoRow('Cinsiyet', _genders['${c['gender']}'] ?? 'Belirtilmemiş'),
@@ -646,8 +621,6 @@ class _OverviewTab extends StatelessWidget {
           icon: Icons.bolt_rounded,
           child: Column(
             children: [
-              _quickAction(Icons.call_rounded, 'Müşteriyi Ara',
-                  () => callCustomer(context, state._api, c['id'])),
               _quickAction(Icons.calendar_month_rounded, 'Randevu Oluştur',
                   state._createAppointment),
               _quickAction(Icons.point_of_sale_rounded, 'Adisyon / Satış',
@@ -1933,6 +1906,47 @@ class _Section extends StatelessWidget {
     );
   }
 }
+
+Widget _phoneRow(BuildContext context, ApiClient api, String customerId, String phone) => _infoRowWidget(
+      'Telefon',
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(phone,
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+          if (phone.isNotEmpty && phone != '—') ...[
+            const SizedBox(width: 8),
+            Material(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => callCustomer(context, api, customerId),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.call_rounded, size: 14, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Ara',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
 
 Widget _infoRow(String label, String value) => _infoRowWidget(
       label,
