@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/customer_call.dart';
 import '../../shared/json_helpers.dart';
 import 'calendar_theme.dart';
 
@@ -317,15 +318,30 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                 text: phone.isEmpty ? 'Yükleniyor...' : phone,
                 trailing: phone.isEmpty
                     ? null
-                    : _ChatButton(
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: phone));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Telefon kopyalandı.'),
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Maskeli görünse bile arama gerçek numarayla başlar.
+                          _ChatButton(
+                            icon: Icons.call_rounded,
+                            onTap: () => callCustomer(
+                              context,
+                              widget.api,
+                              appt['customerId'],
                             ),
-                          );
-                        },
+                          ),
+                          const SizedBox(width: 8),
+                          _ChatButton(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: phone));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Telefon kopyalandı.'),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
               ),
               const SizedBox(height: 10),
@@ -512,8 +528,12 @@ class _ContactRow extends StatelessWidget {
 }
 
 class _ChatButton extends StatelessWidget {
-  const _ChatButton({required this.onTap});
+  const _ChatButton({
+    required this.onTap,
+    this.icon = Icons.chat_bubble_outline_rounded,
+  });
   final VoidCallback onTap;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -525,10 +545,10 @@ class _ChatButton extends StatelessWidget {
     child: InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
-      child: const SizedBox(
+      child: SizedBox(
         width: 50,
         height: 50,
-        child: Icon(Icons.chat_bubble_outline_rounded, color: AppColors.primary),
+        child: Icon(icon, color: AppColors.primary),
       ),
     ),
   );
@@ -653,25 +673,8 @@ class _EditSheetState extends State<_EditSheet> {
           'reason': null,
         });
       }
-      // Web ile aynı: randevu "Tamamlandı"ya geçince müşteri puanlama linki üret.
-      if (status == 'Completed' && prevStatus != 'Completed') {
-        try {
-          final r = await widget.api.post('/api/ratings/issue', {'appointmentId': id});
-          final token = r is Map ? r['token'] : null;
-          if (mounted && token != null) {
-            await showDialog<void>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Puanlama linki oluşturuldu'),
-                content: SelectableText('Müşteriye iletin:\n/rate/$token'),
-                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
-              ),
-            );
-          }
-        } catch (_) {
-          /* puanlama linki üretilemese de randevu akışı bozulmasın */
-        }
-      }
+      // Not: puanlama linki artık ekranda gösterilmez — backend, randevu Tamamlandı
+      // olunca 24 saat geçerli linki müşteriye WhatsApp'tan otomatik gönderir.
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {

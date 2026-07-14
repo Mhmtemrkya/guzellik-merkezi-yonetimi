@@ -92,6 +92,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<StaffDevice> StaffDevices => Set<StaffDevice>();
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
     public DbSet<DeviceNotificationToken> DeviceNotificationTokens => Set<DeviceNotificationToken>();
+    public DbSet<TenantPublicProfile> TenantPublicProfiles => Set<TenantPublicProfile>();
+    public DbSet<TenantGalleryPhoto> TenantGalleryPhotos => Set<TenantGalleryPhoto>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -130,6 +132,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         ConfigureStaffDevice(modelBuilder);
         ConfigureAppNotification(modelBuilder);
         ConfigurePlatformOps(modelBuilder);
+        ConfigureTenantPublicProfile(modelBuilder);
         ApplyEncryptionConverters(modelBuilder);
     }
 
@@ -583,6 +586,38 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         b.HasOne(x => x.ServiceDefinition).WithMany().HasForeignKey(x => x.ServiceDefinitionId).OnDelete(DeleteBehavior.SetNull);
         // Kuruma + şubeye özel: BranchId müşterinin şubesinden gelir; diğer operasyonel tablolarla aynı null-safe desen.
         b.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+    }
+
+    private void ConfigureTenantPublicProfile(ModelBuilder modelBuilder)
+    {
+        var p = modelBuilder.Entity<TenantPublicProfile>();
+        p.ToTable("tenant_public_profiles");
+        p.HasKey(x => x.Id);
+        p.Property(x => x.Description).HasMaxLength(2000);
+        p.Property(x => x.Address).HasMaxLength(500);
+        p.Property(x => x.City).HasMaxLength(100);
+        p.Property(x => x.Instagram).HasMaxLength(100);
+        p.Property(x => x.PublicEmail).HasMaxLength(200);
+        p.Property(x => x.PublicPhone).HasMaxLength(40);
+        p.Property(x => x.WorkingHoursText).HasMaxLength(200);
+        p.Property(x => x.MapUrl).HasMaxLength(1000);
+        // base64 logo — proje görsel deseni
+        p.Property(x => x.LogoData).HasColumnType("LONGTEXT");
+        p.HasIndex(x => x.TenantId).IsUnique();
+        p.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        // Public vitrin: tenant filtresine takılmadan slug üzerinden okunur (IgnoreQueryFilters gerekmesin diye yalnızca soft-delete filtresi).
+        p.HasQueryFilter(x => !x.IsDeleted);
+
+        var g = modelBuilder.Entity<TenantGalleryPhoto>();
+        g.ToTable("tenant_gallery_photos");
+        g.HasKey(x => x.Id);
+        g.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16).IsRequired();
+        // base64 data-URL — uzun metin (proje görsel deseni)
+        g.Property(x => x.ImageData).HasColumnType("LONGTEXT").IsRequired();
+        g.Property(x => x.Caption).HasMaxLength(300);
+        g.HasIndex(x => new { x.TenantId, x.Kind, x.SortOrder });
+        g.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        g.HasQueryFilter(x => !x.IsDeleted);
     }
 
     private void ConfigurePlatformIntegrationSettings(ModelBuilder modelBuilder)

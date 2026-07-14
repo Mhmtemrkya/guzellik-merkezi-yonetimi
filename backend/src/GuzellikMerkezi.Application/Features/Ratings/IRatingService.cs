@@ -4,8 +4,8 @@ namespace GuzellikMerkezi.Application.Features.Ratings;
 
 public interface IRatingService
 {
-    /// <summary>Randevu tamamlanınca çağrılır; 15 dk geçerli puanlama linki üretir (idempotent).</summary>
-    Task<Result<RatingTokenDto>> IssueAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
+    /// <summary>Randevu tamamlanınca çağrılır; puanlama linki üretir (idempotent). Süre verilmezse QR için 15 dk.</summary>
+    Task<Result<RatingTokenDto>> IssueAsync(Guid tenantId, Guid appointmentId, int? lifetimeMinutes = null, CancellationToken cancellationToken = default);
 
     /// <summary>Public sayfa için link durumunu döner (anonim, token üzerinden).</summary>
     Task<Result<PublicRatingDto>> GetPublicAsync(Guid token, CancellationToken cancellationToken = default);

@@ -6,7 +6,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 
 // Masaüstü (Tauri) kabuğu kendini user agent ile tanıtır.
 export function isDesktopApp(): boolean {
-  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAssistDesktop')
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAsistDesktop')
 }
 
 /** Rust tarafındaki uygulama komutunu çağırır (withGlobalTauri). */

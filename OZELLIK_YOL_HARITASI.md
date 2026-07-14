@@ -1,4 +1,4 @@
-# BeautyAssist — Özellik Yol Haritası ve Derin Analiz
+# BeautyAsist — Özellik Yol Haritası ve Derin Analiz
 
 > Bu belge, mevcut sisteme eklenebilecek özelliklerin **fazlara bölünmüş, derin analizli** planıdır.
 > Her özellik için: değer, mevcut altyapı bağı, veri modeli, API uçları, frontend, efor, bağımlılık ve

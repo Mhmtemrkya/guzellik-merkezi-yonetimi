@@ -174,7 +174,7 @@ export function normalizeTenant(tenant: ApiTenant | null | undefined, index = 0)
     mrr: tenant?.mrr ?? planPrice[plan] ?? 0,
     joined: tenant?.createdAt || tenant?.joined || 'API',
     owner,
-    domain: tenant?.domain || `${String(tenant?.slug || name).toLowerCase().replaceAll(' ', '')}.beautyassist.app`,
+    domain: tenant?.domain || `${String(tenant?.slug || name).toLowerCase().replaceAll(' ', '')}.beautyasist.app`,
     phone: tenant?.phone || '',
     taxNumber: tenant?.taxNumber || '',
     email: tenant?.email || '',

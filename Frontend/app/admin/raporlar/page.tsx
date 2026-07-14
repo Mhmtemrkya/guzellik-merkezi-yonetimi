@@ -1150,7 +1150,7 @@ function RaporlarPageInner() {
                         <div className="md:col-span-2 text-right tabular-nums text-[#352432]/65">
                           {s.service.duration} dk · {formatTL(s.service.price)}
                         </div>
-                        <div className="md:col-span-1 text-right font-display tabular-nums beautyassist-text-gradient">{formatTL(s.revenue)}</div>
+                        <div className="md:col-span-1 text-right font-display tabular-nums beautyasist-text-gradient">{formatTL(s.revenue)}</div>
                       </motion.div>
                     )
                   })}
@@ -1309,7 +1309,7 @@ function RevenueAreaChart({ data, maxValue, rangeLabel, headerRight }: RevenueAr
           <div className="grid grid-cols-3 gap-3 text-right">
             <div>
               <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/45">Maks</div>
-              <div className="font-display text-sm tabular-nums beautyassist-text-gradient">{formatTL(Math.round(maxValue))}</div>
+              <div className="font-display text-sm tabular-nums beautyasist-text-gradient">{formatTL(Math.round(maxValue))}</div>
             </div>
             <div>
               <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/45">Ortalama</div>

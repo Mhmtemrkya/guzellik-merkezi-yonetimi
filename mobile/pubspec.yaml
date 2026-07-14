@@ -1,5 +1,5 @@
-name: beautyassist_mobile
-description: "BeautyAssist güzellik merkezi yönetim mobil uygulaması."
+name: beautyasist_mobile
+description: "BeautyAsist güzellik merkezi yönetim mobil uygulaması."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -41,6 +41,7 @@ dependencies:
   google_fonts: ^8.0.2
   intl: ^0.20.2
   image_picker: ^1.1.2
+  url_launcher: ^6.3.1
 
   # Canlı bildirim altyapısı:
   #  - flutter_local_notifications + timezone: yerel + zamanlanmış bildirim (internetsiz/kapalıyken çalışır)

@@ -24,7 +24,7 @@ public sealed class RabbitMqOptions
     public int Port { get; set; } = 5672;
     public string User { get; set; } = "guest";
     public string Pass { get; set; } = "guest";
-    public string Queue { get; set; } = "beautyassist.jobs";
+    public string Queue { get; set; } = "beautyasist.jobs";
 }
 
 /// <summary>RabbitMQ kapalıyken kayıtlı no-op — DurableJobQueue koşulsuz publish çağırabilsin.</summary>

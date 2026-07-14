@@ -27,6 +27,7 @@ import {
 import { usePathname, useRouter } from 'next/navigation'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import BranchSwitcher from './BranchSwitcher'
+import PageGuide from './PageGuide'
 import { useAuth } from './AuthContext'
 import { useManagerInbox } from '@/hooks/useManagerInbox'
 import type { NotificationItem } from '@/lib/types'
@@ -382,6 +383,9 @@ export default function Topbar({
             )}
 
             {!compact && scope !== 'personel' && <BranchSwitcher />}
+
+            {/* SAYFA KILAVUZU */}
+            <PageGuide />
 
             {/* BELL + TRAY */}
             <div className="relative">

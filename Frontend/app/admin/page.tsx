@@ -650,7 +650,7 @@ function RevenueChart({
         </span>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <div data-guide="dash-insights" className="mt-3 grid gap-3 sm:grid-cols-3">
         <InsightTile title={`En yoğun ${granularity}`} value={hasData ? peak.label : 'Veri bekleniyor'} sub={formatTL(Math.round(peak.value))} />
         <InsightTile title="En çok çalışan personel" value="Performans API" sub="Randevu bazlı" medal />
         <InsightTile title="Toplam gelir" value={formatTL(Math.round(total))} sub={periodLabel} pie />
@@ -864,7 +864,7 @@ function InstallmentCalendar({ months }: { months: AccountMonthlyInstallment[] }
         : `${visible[0].label} ${visible[0].year} – ${visible[visible.length - 1].label} ${visible[visible.length - 1].year}`
 
   return (
-    <div className="relative overflow-hidden rounded-[22px] border border-[#eadde3] bg-[linear-gradient(145deg,#ffffff_0%,#fff9fb_54%,#fffdf9_100%)] p-4 shadow-[0_22px_55px_-42px_rgba(105,55,75,0.65)] sm:p-5">
+    <div data-guide="dash-taksit" className="relative overflow-hidden rounded-[22px] border border-[#eadde3] bg-[linear-gradient(145deg,#ffffff_0%,#fff9fb_54%,#fffdf9_100%)] p-4 shadow-[0_22px_55px_-42px_rgba(105,55,75,0.65)] sm:p-5">
       <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-[#f9dbe6]/35 blur-3xl" />
       <div className="relative flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0">
@@ -1341,7 +1341,7 @@ export default function AdminDashboard() {
       />
 
       <div className="relative space-y-5 px-4 pb-8 pt-4 sm:px-6 lg:px-6 xl:px-7">
-        <SubscriptionCountdown tenantId={tenantId} />
+        <div data-guide="dash-abonelik"><SubscriptionCountdown tenantId={tenantId} /></div>
 
         <ApiStateNotice
           loading={loading}
@@ -1350,7 +1350,7 @@ export default function AdminDashboard() {
           emptyMessage="Backend bağlantısı çalıştı fakat bu tenant için henüz kayıt yok."
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#efe1e7] bg-white/85 px-4 py-3 shadow-[0_14px_40px_-32px_rgba(120,71,88,0.5)]">
+        <div data-guide="dash-donem" className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#efe1e7] bg-white/85 px-4 py-3 shadow-[0_14px_40px_-32px_rgba(120,71,88,0.5)]">
           <div className="flex items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-full border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
               <Calendar className="h-[18px] w-[18px]" strokeWidth={1.7} />
@@ -1516,7 +1516,7 @@ export default function AdminDashboard() {
                 title="Gelir Analizi"
                 action={<PeriodTabs value={chartRange} onChange={setChartRange} options={CHART_PERIOD_OPTIONS} />}
               >
-                <RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} />
+                <div data-guide="dash-gelir"><RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} /></div>
               </SectionCard>
 
               <SectionCard

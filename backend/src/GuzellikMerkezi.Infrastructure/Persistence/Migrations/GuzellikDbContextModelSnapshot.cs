@@ -409,6 +409,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int?>("SalonStars")
+                        .HasColumnType("int");
+
                     b.Property<string>("ServiceName")
                         .HasColumnType("longtext");
 
@@ -2958,6 +2961,56 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantGalleryPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ImageData")
+                        .IsRequired()
+                        .HasColumnType("LONGTEXT");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Kind", "SortOrder");
+
+                    b.ToTable("tenant_gallery_photos", (string)null);
+                });
+
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantInvoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3026,6 +3079,82 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "PeriodStartUtc");
 
                     b.ToTable("tenant_invoices", (string)null);
+                });
+
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantPublicProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<string>("Instagram")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsFeatured")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LogoData")
+                        .HasColumnType("LONGTEXT");
+
+                    b.Property<string>("MapUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("PublicEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("PublicPhone")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("WorkingHoursText")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("tenant_public_profiles", (string)null);
                 });
 
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantUser", b =>
@@ -3757,6 +3886,15 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Navigation("SubscriptionPlan");
                 });
 
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantGalleryPhoto", b =>
+                {
+                    b.HasOne("GuzellikMerkezi.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantInvoice", b =>
                 {
                     b.HasOne("GuzellikMerkezi.Domain.Entities.Tenant", "Tenant")
@@ -3766,6 +3904,15 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantPublicProfile", b =>
+                {
+                    b.HasOne("GuzellikMerkezi.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantUser", b =>

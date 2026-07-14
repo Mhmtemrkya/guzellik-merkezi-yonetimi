@@ -16,8 +16,8 @@ import { getDeviceId, getDeviceInfo, getDeviceInfoHeader } from './deviceIdentit
 const defaultApiBaseUrl = '/api/proxy'
 export const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_BASE_URL || defaultApiBaseUrl).replace(/\/$/, '')
 
-export const AUTH_STORAGE_KEY = 'beautyassist.authSession'
-export const API_SCOPE_STORAGE_KEY = 'beautyassist.apiScope'
+export const AUTH_STORAGE_KEY = 'beautyasist.authSession'
+export const API_SCOPE_STORAGE_KEY = 'beautyasist.apiScope'
 
 export class ApiClientError extends Error {
   status: number
@@ -166,7 +166,7 @@ export function getStoredApiScope(): ApiScope | null {
  * false → sessionStorage'da (sekme/tarayıcı kapanınca silinir, oturumluk). Varsayılan true
  * (mevcut davranışla uyumlu). Her iki durumda da token süresi dolunca otomatik yenilenir.
  */
-export const REMEMBER_STORAGE_KEY = 'beautyassist.rememberMe'
+export const REMEMBER_STORAGE_KEY = 'beautyasist.rememberMe'
 
 export function getRememberMe(): boolean {
   if (typeof window === 'undefined') return true
@@ -279,10 +279,10 @@ export function clearApiCache(): void {
 // --- Çevrimdışı okuma desteği (yalnızca masaüstü kabuğu) -------------------------------
 // Başarılı GET'ler IndexedDB'ye yansıtılır; ağ hatasında son bilinen veri oradan sunulur ve
 // UI'nin "çevrimdışı — son bilinen veriler" şeridi gösterebilmesi için olay yayınlanır.
-export const OFFLINE_DATA_EVENT = 'beautyassist-offline-data'
+export const OFFLINE_DATA_EVENT = 'beautyasist-offline-data'
 
 function isDesktopShell(): boolean {
-  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAssistDesktop')
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('BeautyAsistDesktop')
 }
 
 function notifyOfflineData(ts: number): void {
@@ -292,7 +292,7 @@ function notifyOfflineData(ts: number): void {
 
 // Çevrimdışı yazma kuyruğu (outbox): yalnızca bu KRİTİK akışlar kuyruğa alınır; geri kalan
 // yazmalar çevrimdışıyken hata döner (salt-okunur). Kuyruk OutboxSync ile sunucuya oynatılır.
-export const OUTBOX_EVENT = 'beautyassist-outbox-changed'
+export const OUTBOX_EVENT = 'beautyasist-outbox-changed'
 
 export interface QueuedOfflineResult {
   queuedOffline: true
@@ -565,6 +565,22 @@ export const platformApi = {
     apiRequest<T>(`/api/platform/tenants/${id}`, { method: 'PUT', body }),
   deleteTenant: (id: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/platform/tenants/${id}`, { method: 'DELETE' }),
+  tenantPublicProfile: <T = unknown>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/public-profile`),
+  saveTenantPublicProfile: <T = unknown>(id: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/public-profile`, { method: 'PUT', body }),
+  tenantFeatured: <T = { isFeatured: boolean }>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/featured`),
+  setTenantFeatured: <T = { isFeatured: boolean }>(id: string, isFeatured: boolean): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/featured`, { method: 'PUT', body: { isFeatured } }),
+  setTenantLogo: <T = unknown>(id: string, imageData: string | null): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/public-profile/logo`, { method: 'PUT', body: { imageData } }),
+  tenantGallery: <T = unknown>(id: string, kind?: string): Promise<T[]> =>
+    apiRequest<T[]>(`/api/platform/tenants/${id}/gallery${kind ? `?kind=${kind}` : ''}`),
+  addTenantGalleryPhoto: <T = unknown>(id: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${id}/gallery`, { method: 'POST', body }),
+  deleteTenantGalleryPhoto: (id: string, photoId: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/platform/tenants/${id}/gallery/${photoId}`, { method: 'DELETE' }),
   resetTenantOwnerPassword: <T = unknown>(id: string): Promise<T> =>
     apiRequest<T>(`/api/platform/tenants/${id}/reset-owner-password`, { method: 'POST' }),
   grantAccess: <T = unknown>(id: string, body: PlatformPayload): Promise<T> =>
@@ -781,7 +797,20 @@ export const adminApi = {
   publicRating: <T = unknown>(token: string): Promise<T> =>
     apiRequest<T>(`/api/public/ratings/${token}`, { token: null, scope: false, noCache: true }),
   /** Public yıldız gönderimi — anonim (telefon + yıldız). */
-  submitRating: <T = unknown>(token: string, body: { phone: string; stars: number; comment?: string | null }): Promise<T> =>
+  // Salon vitrini (public profil + galeri) — kurum yöneticisi
+  publicProfile: <T = unknown>(): Promise<T> => apiRequest<T>('/api/admin/tenant/public-profile'),
+  savePublicProfile: <T = unknown>(body: Record<string, unknown>): Promise<T> =>
+    apiRequest<T>('/api/admin/tenant/public-profile', { method: 'PUT', body }),
+  setSalonLogo: <T = unknown>(imageData: string | null): Promise<T> =>
+    apiRequest<T>('/api/admin/tenant/public-profile/logo', { method: 'PUT', body: { imageData } }),
+  galleryPhotos: <T = unknown>(kind?: string): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/tenant/gallery', { query: kind ? { kind } : {} }),
+  addGalleryPhoto: <T = unknown>(body: { kind: string; imageData: string; caption?: string | null }): Promise<T> =>
+    apiRequest<T>('/api/admin/tenant/gallery', { method: 'POST', body }),
+  deleteGalleryPhoto: (photoId: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/admin/tenant/gallery/${photoId}`, { method: 'DELETE' }),
+
+  submitRating: <T = unknown>(token: string, body: { phone: string; stars: number; salonStars?: number; comment?: string | null }): Promise<T> =>
     apiRequest<T>(`/api/public/ratings/${token}`, { method: 'POST', token: null, scope: false, body }),
 
   services: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>

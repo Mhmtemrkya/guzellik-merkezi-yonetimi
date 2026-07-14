@@ -23,6 +23,7 @@ import {
   Landmark,
   Boxes,
   Gift,
+  Store,
 } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeatureContext } from '@/components/dashboard/FeatureContext'
@@ -209,6 +210,14 @@ const items: SidebarNavItem[] = [
       { label: 'SMS şablonları', href: '/admin/bildirimler?scope=sms' },
       { label: 'WhatsApp', href: '/admin/bildirimler?scope=whatsapp' },
     ],
+  },
+  {
+    group: 'Yönetim',
+    label: 'Salon Vitrini',
+    href: '/admin/salon-profili',
+    icon: Store,
+    permissionKey: 'Settings',
+    featureKeys: ['appointments.onlinebooking'],
   },
   { group: 'Yönetim', label: 'Ayarlar', href: '/admin/ayarlar', icon: Settings, permissionKey: 'Settings' },
 ]

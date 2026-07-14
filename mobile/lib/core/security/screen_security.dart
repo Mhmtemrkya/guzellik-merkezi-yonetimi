@@ -9,7 +9,7 @@ import '../network/api_client.dart';
 /// iznini yönetir. İzin kapalıyken personel cihazında ekran görüntüsü ve
 /// ekran kaydı engellenir; yönetici/platform kullanıcıları etkilenmez.
 class ScreenSecurity {
-  static const _channel = MethodChannel('beautyassist/screen_security');
+  static const _channel = MethodChannel('beautyasist/screen_security');
 
   static Future<void> apply(ApiClient api, SessionUser? user) async {
     var secure = false;

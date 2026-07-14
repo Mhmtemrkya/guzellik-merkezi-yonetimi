@@ -27,7 +27,7 @@ class StaffRoleSheet extends StatefulWidget {
   State<StaffRoleSheet> createState() => _StaffRoleSheetState();
 }
 
-// BeautyAssist rose-gold light token'ları (Stitch tasarımıyla birebir).
+// BeautyAsist rose-gold light token'ları (Stitch tasarımıyla birebir).
 const _cream = Color(0xFFF7ECF1);
 const _cardBorder = Color(0xFFEFE1E7);
 const _rose = Color(0xFFC85776);

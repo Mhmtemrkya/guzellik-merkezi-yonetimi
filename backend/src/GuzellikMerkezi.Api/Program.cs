@@ -67,6 +67,9 @@ builder.Services.AddRateLimiter(options =>
     // proxy arkasında ForwardedHeaders etkin olmalı (Program pipeline'ının başında yapılandırıldı).
     options.AddPolicy("auth-login", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
+    // Herkese açık salon vitrini (anonim gezinme): IP başına dakikada 60 istek.
+    options.AddPolicy("public-browse", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
 var app = builder.Build();
@@ -202,6 +205,7 @@ app.MapServicePackageEndpoints();
 app.MapCustomServiceCategoryEndpoints();
 app.MapAppointmentEndpoints();
 app.MapRatingEndpoints();
+app.MapPublicSalonEndpoints();
 app.MapWhatsAppEndpoints();
 app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();

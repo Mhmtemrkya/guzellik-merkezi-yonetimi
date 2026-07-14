@@ -51,6 +51,12 @@ public static class CustomerPortalEndpoints
                 ? (await service.ListMyAppointmentsAsync(id, ct)).ToHttpResult(http)
                 : Forbidden(http));
 
+        // Salon sayfasından manuel yorum: yalnızca o salonda tamamlanmış randevusu olan gerçek müşteri.
+        group.MapPost("/salons/{slug}/review", async (string slug, Application.Features.PublicSalons.SubmitSalonReviewRequest request, ICurrentUser currentUser, Application.Features.PublicSalons.IPublicSalonService salons, HttpContext http, CancellationToken ct) =>
+            RequireCustomer(currentUser, http, out var id)
+                ? (await salons.SubmitReviewAsync(id, slug, request, ct)).ToHttpResult(http)
+                : Forbidden(http)).RequireRateLimiting("customer-portal-write");
+
         return app;
     }
 

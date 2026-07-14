@@ -124,8 +124,11 @@ public static class DependencyInjection
         services.AddScoped<IDurableJobHandler, Background.WaitlistOfferJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.WaitlistActivatedJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.PushSendJobHandler>();
+        services.AddScoped<IDurableJobHandler, Background.RatingLinkJobHandler>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IRatingService, RatingService>();
+        services.AddScoped<Application.Features.PublicSalons.IPublicSalonService, PublicSalonService>();
+        services.AddScoped<Application.Features.PublicSalons.ITenantProfileService, TenantProfileService>();
         services.AddScoped<ITreatmentPhotoService, TreatmentPhotoService>();
         services.AddScoped<IConsultationService, ConsultationService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();

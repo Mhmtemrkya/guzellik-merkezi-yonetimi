@@ -15,7 +15,7 @@ interface PdfMakeRuntime {
 const pdfMake = pdfMakeOrig as unknown as PdfMakeRuntime
 pdfMake.vfs = vfs
 
-// Güncel BeautyAssist paleti: bordo + rose-gold + krem.
+// Güncel BeautyAsist paleti: bordo + rose-gold + krem.
 const COLORS = {
   burgundy: '#2F1724',
   burgundyDeep: '#1E0E17',
@@ -91,7 +91,7 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
       body: [[
         {
           stack: [
-            { text: 'BeautyAssist', fontSize: 12, bold: true, color: COLORS.roseGold, characterSpacing: 6 },
+            { text: 'BeautyAsist', fontSize: 12, bold: true, color: COLORS.roseGold, characterSpacing: 6 },
             { text: 'BEAUTY & WELLNESS TECHNOLOGY', fontSize: 6.5, color: COLORS.roseSoft, characterSpacing: 2.4, margin: m(0, 3, 0, 0) },
             { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 64, y2: 0, lineWidth: 1, lineColor: COLORS.roseGold }], margin: m(0, 13, 0, 13) },
             { text: data.heading, fontSize: 22, bold: true, color: COLORS.cream, characterSpacing: 0.4 },
@@ -213,7 +213,7 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
   content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: BODY_W, y2: 0, lineWidth: 0.8, lineColor: COLORS.line }], margin: m(SIDE, 4, SIDE, 8) })
   content.push({
     columns: [
-      { text: 'BeautyAssist', fontSize: 8, bold: true, color: COLORS.roseGold, characterSpacing: 2 },
+      { text: 'BeautyAsist', fontSize: 8, bold: true, color: COLORS.roseGold, characterSpacing: 2 },
       { text: 'Güzellik Merkezi Yönetim Sistemi', fontSize: 8, color: COLORS.inkSoft, alignment: 'right' },
     ],
     margin: m(SIDE, 0, SIDE, 0),
@@ -222,7 +222,7 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
   const docDefinition: TDocumentDefinitions = {
     info: {
       title: `${data.personName} - Giriş Bilgileri`,
-      author: 'BeautyAssist',
+      author: 'BeautyAsist',
       subject: data.tenantName,
     },
     pageSize: 'A4',
@@ -234,6 +234,6 @@ export function generateCredentialsPdf(data: CredentialsPdfData): void {
   }
 
   const base = data.filenameBase || data.personName
-  const filename = `BeautyAssist-${slugFilename(base)}-giris-bilgileri.pdf`
+  const filename = `BeautyAsist-${slugFilename(base)}-giris-bilgileri.pdf`
   pdfMake.createPdf(docDefinition).download(filename)
 }

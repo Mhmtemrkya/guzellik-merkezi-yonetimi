@@ -115,17 +115,17 @@ body {
 /* ============================================================
    Brand gradients & effects
    ============================================================ */
-.beautyassist-text-gradient {
+.beautyasist-text-gradient {
   background: linear-gradient(100deg, #6f4153 0%, #d65f83 45%, #ef8cad 74%, #8e3f5b 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.beautyassist-glow {
+.beautyasist-glow {
   position: relative;
 }
-.beautyassist-glow::before {
+.beautyasist-glow::before {
   content: '';
   position: absolute;
   inset: -1px;
@@ -264,7 +264,7 @@ body {
 
 /* ============================================================
    Hediye Çeki / Kupon — gerçek hediye-kartı & bilet görselleri
-   (Stitch tasarımından uyarlandı — BeautyAssist rose-gold paleti)
+   (Stitch tasarımından uyarlandı — BeautyAsist rose-gold paleti)
    ============================================================ */
 @keyframes gc-metallic-glide {
   0%   { background-position: 0% 50%; }

@@ -15,3 +15,9 @@ public sealed record PassiveCustomerListDto(int ThresholdDays, IReadOnlyCollecti
 
 public sealed record SetPassiveThresholdRequest(int Days);
 public sealed record PassiveThresholdDto(int Days);
+
+/// <summary>
+/// Arama (tel:) başlatmak için ham telefon. Personel numarayı ekranda maskeli görür ama
+/// cihazdan arayabilsin diye bu uç ham numarayı döner; her çağrı audit log'a yazılır.
+/// </summary>
+public sealed record CustomerDialDto(Guid Id, string FullName, string Phone);

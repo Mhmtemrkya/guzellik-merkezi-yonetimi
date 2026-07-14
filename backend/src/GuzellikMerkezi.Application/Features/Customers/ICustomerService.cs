@@ -28,4 +28,6 @@ public interface ICustomerService
     /// <summary>Pasif müşteri eşiğini (gün) getirir/günceller — kurum geneli ayar.</summary>
     Task<Result<PassiveThresholdDto>> GetPassiveThresholdAsync(Guid tenantId, CancellationToken cancellationToken = default);
     Task<Result<PassiveThresholdDto>> SetPassiveThresholdAsync(Guid tenantId, SetPassiveThresholdRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Arama başlatmak için ham telefon — personelde bile maskesiz döner, her erişim audit log'a yazılır.</summary>
+    Task<Result<CustomerDialDto>> GetDialPhoneAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
 }

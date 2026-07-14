@@ -1,4 +1,4 @@
-# BeautyAssist — Store Yayın Rehberi
+# BeautyAsist — Store Yayın Rehberi
 
 Bu döküman, uygulamayı **Google Play**, **App Store** ve **masaüstü imzalı installer**
 olarak yayınlamak için gereken adımları toplar. Kod tarafındaki eksikler bu commit'te giderildi;
@@ -25,8 +25,8 @@ Her yeni yüklemede build numarasını artır: mobilde `1.0.0+2`, `1.0.1+3` …
 
 ### 1.1 İmzalama anahtarı (ZORUNLU — bir kez)
 ```bash
-keytool -genkey -v -keystore ~/beautyassist-release.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias beautyassist
+keytool -genkey -v -keystore ~/beautyasist-release.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias beautyasist
 ```
 Sonra `mobile/android/key.properties.example` → `mobile/android/key.properties` olarak kopyala,
 değerleri gir. `storeFile` ya mutlak yol ya da `android/` klasörüne göreli olabilir.
@@ -68,7 +68,7 @@ Kod tarafı hazır: `ITSAppUsesNonExemptEncryption=false`, push `UIBackgroundMod
 ### 2.1 Hesap-tarafı
 - **Apple Developer Program** ($99/yıl).
 - Xcode → Runner target → Signing & Capabilities → Team seç (otomatik imzalama).
-- App Store Connect'te uygulama kaydı; bundle ID: **`com.beautyassist.app`**.
+- App Store Connect'te uygulama kaydı; bundle ID: **`com.beautyasist.app`**.
 - Gizlilik politikası + App Privacy ("Nutrition label"): kamera, fotoğraf, cihaz kimliği, (push için) token.
 - Kullanım açıklamaları zaten Info.plist'te (kamera/galeri).
 
@@ -114,14 +114,14 @@ npm run tauri build
 ## 4. Uzaktan Push'u (FCM) aktifleştirme — ortak
 
 1. [Firebase Console](https://console.firebase.google.com) → yeni proje.
-2. **Android app** ekle (paket: `com.beautyassist.app`) → `google-services.json` indir →
+2. **Android app** ekle (paket: `com.beautyasist.app`) → `google-services.json` indir →
    `mobile/android/app/` içine bırak (bkz. oradaki `BURAYA_google-services.json.md`).
-3. **iOS app** ekle (bundle: `com.beautyassist.app`) → `GoogleService-Info.plist` indir →
+3. **iOS app** ekle (bundle: `com.beautyasist.app`) → `GoogleService-Info.plist` indir →
    Xcode'da Runner target'ına ekle (bkz. `mobile/ios/Runner/BURAYA_GoogleService-Info.plist.md`) + §2.3 APNs.
 4. **Backend:** Firebase Console → Proje ayarları → Servis hesapları → "Yeni özel anahtar oluştur" → inen JSON'u
    sunucuda güvenli bir yola koy, env ver:
    ```
-   Push__Fcm__ServiceAccountPath=/etc/beautyassist/fcm-service-account.json
+   Push__Fcm__ServiceAccountPath=/etc/beautyasist/fcm-service-account.json
    ```
    (veya `GOOGLE_APPLICATION_CREDENTIALS`). Bkz. `appsettings.example.json` → `Push:Fcm`.
 5. Yeniden derle/deploy. Loglarda `[FCM-SIM]` yerine gerçek gönderim görürsen aktif demektir.

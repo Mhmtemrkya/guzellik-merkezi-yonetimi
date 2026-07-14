@@ -169,13 +169,13 @@ const settings: SettingsCard[] = [
     icon: PlugZap,
     chip: { tone: 'info', label: 'Kısmen aktif' },
     bullets: [
-      'SMTP: noreply@beautyassist.app · SPF/DKIM doğrulandı',
+      'SMTP: noreply@beautyasist.app · SPF/DKIM doğrulandı',
       'SMS: NetGSM · WhatsApp template: onay bekliyor',
       'Ödeme: iyzico canlı · Test modu kapalı',
       'Webhook retry: 5 deneme · exponential backoff',
     ],
     fields: [
-      { label: 'SMTP gönderici', type: 'email', value: 'noreply@beautyassist.app' },
+      { label: 'SMTP gönderici', type: 'email', value: 'noreply@beautyasist.app' },
       {
         label: 'SMS sağlayıcı',
         type: 'select',

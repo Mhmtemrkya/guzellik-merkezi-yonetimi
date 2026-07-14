@@ -64,7 +64,7 @@ class SessionUser {
   factory SessionUser.fromJson(Map<String, dynamic> json) => SessionUser(
     id: '${json['userId'] ?? json['id'] ?? ''}',
     email: '${json['email'] ?? ''}',
-    fullName: '${json['fullName'] ?? json['email'] ?? 'BeautyAssist'}',
+    fullName: '${json['fullName'] ?? json['email'] ?? 'BeautyAsist'}',
     role: '${json['role'] ?? 'Staff'}',
     tenantId: json['tenantId']?.toString(),
     branchId: json['branchId']?.toString(),

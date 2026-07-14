@@ -16,6 +16,9 @@ public interface IWhatsAppService
     /// <summary>Bekleme teklifi kabul edilip randevu açılınca "randevunuz aktifleşti" mesajı gönderir. Best-effort.</summary>
     Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
 
+    /// <summary>Randevu tamamlanınca müşteriye değerlendirme (personel + salon yıldızı) linkini gönderir. Best-effort.</summary>
+    Task SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken cancellationToken = default);
+
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);
 

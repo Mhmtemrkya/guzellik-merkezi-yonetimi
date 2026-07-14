@@ -8,6 +8,8 @@ import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import CreateTenantDialog, { type CreateTenantFormValues, type CreateTenantPlanOption } from '@/components/dashboard/CreateTenantDialog'
 import TenantCredentialsDialog from '@/components/dashboard/TenantCredentialsDialog'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
+import TenantGalleryDialog from '@/components/platform/TenantGalleryDialog'
+import TenantFeaturedToggle from '@/components/platform/TenantFeaturedToggle'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import Sparkline, { type SparkTone } from '@/components/dashboard/Sparkline'
@@ -351,7 +353,7 @@ export default function PlatformKurumlarPage() {
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]">Tenant listesi</div>
                 <div className="mt-1 font-display text-2xl tracking-tight text-[#3b2330]">
-                  <AnimatedNumber value={tenants.length} className="beautyassist-text-gradient" /> kurum yönetimi
+                  <AnimatedNumber value={tenants.length} className="beautyasist-text-gradient" /> kurum yönetimi
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -604,6 +606,8 @@ export default function PlatformKurumlarPage() {
                                 },
                               ]}
                             />
+                            <TenantGalleryDialog tenantId={t.id} tenantName={t.name} />
+                            <TenantFeaturedToggle tenantId={t.id} />
                             <ConfirmDialog
                               icon={KeyRound}
                               title={`${t.name} · yetkili şifresi sıfırlansın mı?`}

@@ -79,6 +79,13 @@ public static class CustomerEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetBlacklistAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
+        // Arama (tel:) için ham numara — personel ekranda maskeli görse de arayabilsin; erişim audit'e düşer.
+        group.MapGet("/{id:guid}/dial", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetDialPhoneAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+        });
+
         group.MapGet("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

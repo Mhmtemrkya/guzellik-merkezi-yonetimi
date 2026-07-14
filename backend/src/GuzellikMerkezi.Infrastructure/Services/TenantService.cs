@@ -15,7 +15,7 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 
 public sealed class TenantService : ITenantService
 {
-    private const string DefaultTenantDomainSuffix = "beautyassist.app";
+    private const string DefaultTenantDomainSuffix = "beautyasist.app";
     private static readonly Regex MultiDashRegex = new("-+", RegexOptions.Compiled);
     private static readonly Regex MultiDotRegex = new("\\.+", RegexOptions.Compiled);
 

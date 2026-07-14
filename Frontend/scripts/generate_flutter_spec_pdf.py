@@ -10,8 +10,8 @@ from reportlab.lib.colors import HexColor
 from datetime import datetime
 from pathlib import Path
 
-OUT = Path('/home/kaya/projects/guzellik-frontend/BeautyAssist-Flutter-Mobil-Uygulama-Brief.pdf')
-MD = Path('/home/kaya/projects/guzellik-frontend/BeautyAssist-Flutter-Mobil-Uygulama-Brief.md')
+OUT = Path('/home/kaya/projects/guzellik-frontend/BeautyAsist-Flutter-Mobil-Uygulama-Brief.pdf')
+MD = Path('/home/kaya/projects/guzellik-frontend/BeautyAsist-Flutter-Mobil-Uygulama-Brief.md')
 
 pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
 pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
@@ -82,7 +82,7 @@ personel_pages = [
 ]
 
 platform_pages = [
-('Platform Overview','/platform','BeautyAssist tenant yönetimi.','Toplam kurum, MRR, toplam kullanıcı, uptime, kurum tablosu, durum etiketleri.'),
+('Platform Overview','/platform','BeautyAsist tenant yönetimi.','Toplam kurum, MRR, toplam kullanıcı, uptime, kurum tablosu, durum etiketleri.'),
 ('Tüm Kurumlar','/platform/kurumlar','Platform genelinde kurum listesi.','Şu an ComingSoon; mobilde kurum kartları, plan, durum, kullanıcı sayısı planlanmalı.'),
 ('Sağlık Uyarıları','/platform/uyarilar','Kritik kurum/sistem uyarıları.','Şu an ComingSoon; mobilde kritik uyarı listesi ve filtreler planlanmalı.'),
 ('MRR & Abonelik','/platform/finans','Gelir, churn ve abonelik metrikleri.','Şu an ComingSoon; mobilde finans KPI ve trend grafikleri planlanmalı.'),
@@ -91,13 +91,13 @@ platform_pages = [
 ]
 
 landing_pages = [
-('Landing / Ana Sayfa','/','BeautyAssist pazarlama sayfası: hero, problem akışı, çözüm, modüller, müşteri demo, süreç, fiyatlandırma, SSS, footer.'),
+('Landing / Ana Sayfa','/','BeautyAsist pazarlama sayfası: hero, problem akışı, çözüm, modüller, müşteri demo, süreç, fiyatlandırma, SSS, footer.'),
 ('Login','/login','Rol seçerek giriş: Kurum Yöneticisi -> /admin, Personel -> /personel, Platform Admin -> /platform. Mobilde aynı rol seçimi korunmalı.'),
 ]
 
 story=[]
 story.append(Spacer(1, 2.2*cm))
-story.append(P('BeautyAssist', 'CoverTitle'))
+story.append(P('BeautyAsist', 'CoverTitle'))
 story.append(P('Flutter Mobil Uygulama Geliştirme Brief’i', 'CoverTitle'))
 story.append(P('Web uygulamasındaki paneller, sayfalar, özellikler, görsel kimlik ve mobil uygulama gereksinimleri.', 'Bodyx'))
 story.append(Spacer(1, 0.5*cm))
@@ -107,7 +107,7 @@ story.append(PageBreak())
 
 story.append(h1('1. Ürün Özeti'))
 for b in [
-    'BeautyAssist; güzellik merkezleri için müşteri, paket/hizmet, taksit, seans, randevu, kasa, ön muhasebe, bildirim, stok ve raporlama yönetimidir.',
+    'BeautyAsist; güzellik merkezleri için müşteri, paket/hizmet, taksit, seans, randevu, kasa, ön muhasebe, bildirim, stok ve raporlama yönetimidir.',
     'Mobil uygulama Flutter ile hazırlanırken üç ana rol korunmalıdır: Kurum Yöneticisi, Personel, Platform Admin.',
     'Kurum içi veriler tenant/kurum bazlı ayrılmalıdır. Mobil taraf cache/local storage kullanırsa anahtarlar kurum/tenant ID ile ayrılmalıdır.',
     'Personel mobil deneyiminde hızlı işlem, randevu/seans/tahsilat akışı önceliklidir; yönetici mobilde tüm kurum operasyonunu görmelidir.',
@@ -145,7 +145,7 @@ story.append(PageBreak())
 story.append(h1('4. Landing ve Login'))
 story.append(table([['Sayfa','Route','Mobil karşılığı']] + landing_pages, [4*cm,3*cm,9*cm]))
 story.append(h2('Login rol seçenekleri'))
-for b in ['Kurum Yöneticisi: güzellik merkezi sahibi/yönetici; /admin paneline gider.', 'Personel: estetisyen/resepsiyon/muhasebe; /personel paneline gider.', 'Platform Admin: BeautyAssist ekibi; /platform paneline gider.', 'Mobilde gerçek auth gelene kadar rol seçimi + demo login korunabilir.']:
+for b in ['Kurum Yöneticisi: güzellik merkezi sahibi/yönetici; /admin paneline gider.', 'Personel: estetisyen/resepsiyon/muhasebe; /personel paneline gider.', 'Platform Admin: BeautyAsist ekibi; /platform paneline gider.', 'Mobilde gerçek auth gelene kadar rol seçimi + demo login korunabilir.']:
     story.append(bullet(b))
 
 story.append(PageBreak())
@@ -198,7 +198,7 @@ for b in [
 
 # markdown copy
 md = []
-md.append('# BeautyAssist Flutter Mobil Uygulama Briefi\n')
+md.append('# BeautyAsist Flutter Mobil Uygulama Briefi\n')
 md.append('Bu PDF web uygulaması dosyaları incelenerek hazırlanmıştır. Kaynak: `/home/kaya/projects/guzellik-frontend`.\n')
 md.append('## Renkler\n- #160f13 ana arka plan\n- #24171d kart/hover yüzeyi\n- #fff2df krem yazı\n- #d7a373 altın vurgu\n- #f2b6c8 pudra vurgu\n- #a96b45 bakır\n')
 for title, pages in [('Admin', admin_pages), ('Personel', personel_pages), ('Platform', platform_pages)]:
@@ -212,7 +212,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont('DejaVu', 7)
     canvas.setFillColor(HexColor('#6f5960'))
-    canvas.drawString(1.4*cm, 1.0*cm, 'BeautyAssist Flutter Mobil Brief')
+    canvas.drawString(1.4*cm, 1.0*cm, 'BeautyAsist Flutter Mobil Brief')
     canvas.drawRightString(A4[0]-1.4*cm, 1.0*cm, str(doc.page))
     canvas.restoreState()
 

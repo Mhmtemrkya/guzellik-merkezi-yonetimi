@@ -12,6 +12,8 @@ namespace GuzellikMerkezi.Domain.Entities;
 public sealed class AppointmentRating : Entity
 {
     public const int LinkLifetimeMinutes = 15;
+    /// <summary>WhatsApp ile gönderilen otomatik değerlendirme linkinin ömrü (müşteri evde de puanlayabilsin).</summary>
+    public const int WhatsAppLinkLifetimeMinutes = 24 * 60;
 
     private AppointmentRating() { }
 
@@ -25,8 +27,10 @@ public sealed class AppointmentRating : Entity
         string staffName,
         string? serviceName,
         string? businessName,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        int lifetimeMinutes = LinkLifetimeMinutes)
     {
+        if (lifetimeMinutes < 1) throw new DomainException("Bağlantı süresi geçersiz.");
         if (nowUtc.Kind != DateTimeKind.Utc) throw new DomainException("Zaman UTC olmalı.");
         TenantId = tenantId;
         BranchId = branchId;
@@ -39,7 +43,7 @@ public sealed class AppointmentRating : Entity
         BusinessName = string.IsNullOrWhiteSpace(businessName) ? null : businessName.Trim();
         Token = Guid.NewGuid();
         Status = RatingStatus.Pending;
-        ExpiresAtUtc = nowUtc.AddMinutes(LinkLifetimeMinutes);
+        ExpiresAtUtc = nowUtc.AddMinutes(lifetimeMinutes);
     }
 
     public Guid TenantId { get; private set; }
@@ -58,6 +62,8 @@ public sealed class AppointmentRating : Entity
     public string? BusinessName { get; private set; }
 
     public int Stars { get; private set; }
+    /// <summary>Kurum (salon) yıldızı — eski kayıtlarda yoktur (null).</summary>
+    public int? SalonStars { get; private set; }
     public string? Comment { get; private set; }
     public RatingStatus Status { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
@@ -72,7 +78,7 @@ public sealed class AppointmentRating : Entity
     }
 
     /// <summary>Telefon eşleşmesi doğrulandıktan sonra yıldızı kaydeder.</summary>
-    public void Submit(int stars, string? comment, DateTime nowUtc)
+    public void Submit(int stars, int? salonStars, string? comment, DateTime nowUtc)
     {
         if (Status == RatingStatus.Submitted) throw new BusinessRuleException("Bu randevu için zaten puan verilmiş.");
         if (nowUtc > ExpiresAtUtc)
@@ -81,7 +87,9 @@ public sealed class AppointmentRating : Entity
             throw new BusinessRuleException("Puanlama bağlantısının süresi dolmuştur.");
         }
         if (stars is < 1 or > 5) throw new DomainException("Yıldız 1-5 aralığında olmalı.");
+        if (salonStars is < 1 or > 5) throw new DomainException("Salon yıldızı 1-5 aralığında olmalı.");
         Stars = stars;
+        SalonStars = salonStars;
         Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
         Status = RatingStatus.Submitted;
         SubmittedAtUtc = nowUtc;

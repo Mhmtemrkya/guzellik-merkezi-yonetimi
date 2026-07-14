@@ -83,6 +83,23 @@ public sealed class CustomerService : ICustomerService
         return customer is null ? Result<CustomerDto>.Failure(Error.NotFound("Müşteri bulunamadı.")) : Result<CustomerDto>.Success(Mask(customer.ToDto()));
     }
 
+    public async Task<Result<CustomerDialDto>> GetDialPhoneAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    {
+        var customer = await _db.Customers.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (customer is null) return Result<CustomerDialDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+
+        var digits = PhoneMask.DigitsOnly(customer.Phone);
+        if (digits.Length == 0) return Result<CustomerDialDto>.Failure(Error.Validation("Müşterinin kayıtlı telefon numarası yok."));
+
+        // Ham numara personele maskesiz döndüğü için her erişim iz bırakır.
+        await _audit.LogAsync(tenantId, customer.BranchId, "PhoneDial", "Customer", customer.Id,
+            $"Müşteri arama başlatıldı: {customer.FullName}",
+            new { customer.FullName, MaskedPhone = MaskPhone(customer.Phone) }, cancellationToken);
+
+        return Result<CustomerDialDto>.Success(new CustomerDialDto(customer.Id, customer.FullName, digits));
+    }
+
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "customers", cancellationToken);

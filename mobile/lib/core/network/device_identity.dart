@@ -12,7 +12,7 @@ class DeviceIdentity {
   DeviceIdentity._();
 
   static const _storage = FlutterSecureStorage();
-  static const _idKey = 'beautyassist.deviceId';
+  static const _idKey = 'beautyasist.deviceId';
   static String? _cachedId;
   static String? _cachedInfoHeader;
 
@@ -49,7 +49,7 @@ class DeviceIdentity {
       'name': null,
       'deviceType': deviceType,
       'platform': '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
-      'userAgent': 'BeautyAssistMobile/1.0 (${Platform.operatingSystem})',
+      'userAgent': 'BeautyAsistMobile/1.0 (${Platform.operatingSystem})',
       'networkInfoJson': jsonEncode({
         'connectionType': null,
         'effectiveType': null,

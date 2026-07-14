@@ -17,10 +17,11 @@ public sealed record PublicRatingDto(
     string? BusinessName,
     string MaskedPhone,
     DateTime ExpiresAtUtc,
-    int? Stars);
+    int? Stars,
+    int? SalonStars);
 
 /// <summary>Müşterinin yıldız gönderimi — telefon eşleşmesiyle doğrulanır.</summary>
-public sealed record SubmitRatingRequest(string Phone, int Stars, string? Comment);
+public sealed record SubmitRatingRequest(string Phone, int Stars, string? Comment, int? SalonStars = null);
 
 /// <summary>Personel panelinde randevu için puanlama linki üretme isteği.</summary>
 public sealed record IssueRatingRequest(Guid AppointmentId);

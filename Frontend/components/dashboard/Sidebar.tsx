@@ -423,7 +423,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             <div className="relative h-10 w-10 overflow-hidden rounded-2xl border border-[#efbfd0] bg-[#fff7fa] shadow-[0_10px_28px_-22px_rgba(190,91,125,0.75)] transition-shadow duration-500 group-hover:shadow-[0_14px_34px_-20px_rgba(190,91,125,0.8)]">
               <img
                 src="/logo.png"
-                alt="BeautyAssist logosu"
+                alt="BeautyAsist logosu"
                 className="h-full w-full object-cover scale-125 transition-transform duration-500 group-hover:scale-110"
               />
               <motion.span
@@ -434,8 +434,8 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
               />
             </div>
             <div className="min-w-0">
-              <div className="font-display text-[17px] tracking-[0.08em] leading-none beautyassist-text-gradient">
-                BeautyAssist
+              <div className="font-display text-[17px] tracking-[0.08em] leading-none beautyasist-text-gradient">
+                BeautyAsist
               </div>
               <div className="mt-1 truncate text-[10px] text-[#9d7386]">
                 v.{version} · {role}
@@ -468,7 +468,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             <Menu className="h-4 w-4" /> Menü
           </motion.button>
           <Link href={activeItem?.href || '/admin'} className="min-w-0 text-center">
-            <div className="font-display text-[17px] leading-none beautyassist-text-gradient">BeautyAssist</div>
+            <div className="font-display text-[17px] leading-none beautyasist-text-gradient">BeautyAsist</div>
             <div className="mt-1 truncate text-[10px] text-[#9d7386]">
               {role} · {activeItem?.label}
             </div>
@@ -502,7 +502,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             >
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#ead8df]/75 bg-white/95 px-4 py-4 backdrop-blur-xl">
                 <div>
-                  <div className="font-display text-xl beautyassist-text-gradient">BeautyAssist</div>
+                  <div className="font-display text-xl beautyasist-text-gradient">BeautyAsist</div>
                   <div className="mt-1 text-[10px] text-[#9d7386]">
                     {role}
                   </div>

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/customer_call.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
@@ -594,7 +595,32 @@ class _OverviewTab extends StatelessWidget {
           child: Column(
             children: [
               _infoRow('Ad Soyad', state._name),
-              _infoRow('Telefon', valueOf(c, const ['phone'])),
+              _infoRowWidget(
+                'Telefon',
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      valueOf(c, const ['phone']),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink),
+                    ),
+                    const SizedBox(width: 6),
+                    // Maskeli görünse bile arama gerçek numarayla başlar.
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => callCustomer(context, state._api, c['id']),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.call_rounded,
+                            size: 18, color: AppColors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               _infoRow('E-posta', valueOf(c, const ['email'])),
               _infoRow('Doğum Tarihi', _fmtDate(c['birthDate'])),
               _infoRow('Cinsiyet', _genders['${c['gender']}'] ?? 'Belirtilmemiş'),
@@ -620,6 +646,8 @@ class _OverviewTab extends StatelessWidget {
           icon: Icons.bolt_rounded,
           child: Column(
             children: [
+              _quickAction(Icons.call_rounded, 'Müşteriyi Ara',
+                  () => callCustomer(context, state._api, c['id'])),
               _quickAction(Icons.calendar_month_rounded, 'Randevu Oluştur',
                   state._createAppointment),
               _quickAction(Icons.point_of_sale_rounded, 'Adisyon / Satış',

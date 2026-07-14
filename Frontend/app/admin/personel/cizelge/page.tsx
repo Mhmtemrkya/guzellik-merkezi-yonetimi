@@ -726,7 +726,7 @@ function MonthGrid({
                 <>
                   <div className="mt-2 flex items-center gap-1 text-[11px]">
                     <CalendarDays className="h-3 w-3 text-[#c85776]" />
-                    <AnimatedNumber value={count} className="font-display tabular-nums beautyassist-text-gradient" />
+                    <AnimatedNumber value={count} className="font-display tabular-nums beautyasist-text-gradient" />
                     <span className="text-[9px] text-[#352432]/40">randevu</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]">

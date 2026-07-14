@@ -67,7 +67,7 @@ export default function FlowDemo() {
               50.000 TL paket.{' '}
               <span className="serif-italic text-[#fff4f8]/55">Düzensiz ödeme.</span>{' '}
               <br className="hidden md:block" />
-              <span className="beautyassist-text-gradient">Sistem dengeyi koruyor.</span>
+              <span className="beautyasist-text-gradient">Sistem dengeyi koruyor.</span>
             </h2>
 
             <p className="mt-3 max-w-md text-[13px] leading-relaxed text-[#fff4f8]/68">
@@ -146,7 +146,7 @@ export default function FlowDemo() {
               <div className="mt-4 grid grid-cols-3 gap-2.5">
                 <div className="rounded-xl border border-[#fff4f8]/10 bg-[#fff4f8]/[0.04] p-3">
                   <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#fff4f8]/50">Paket</div>
-                  <div className="beautyassist-text-gradient mt-1 font-display text-xl leading-none">
+                  <div className="beautyasist-text-gradient mt-1 font-display text-xl leading-none">
                     ₺<AnimatedCounter to={50000} duration={1.2} />
                   </div>
                 </div>
@@ -268,7 +268,7 @@ function FlowDemoMobile() {
             50.000 TL paket.{' '}
             <span className="serif-italic text-[#fff4f8]/55">Düzensiz ödeme.</span>{' '}
             <br />
-            <span className="beautyassist-text-gradient">Sistem dengeyi koruyor.</span>
+            <span className="beautyasist-text-gradient">Sistem dengeyi koruyor.</span>
           </motion.h2>
 
           <motion.p
@@ -338,7 +338,7 @@ function FlowDemoMobile() {
           <div className="mt-4 grid grid-cols-3 gap-2.5">
             <div className="rounded-xl border border-[#fff4f8]/10 bg-[#fff4f8]/[0.04] p-3">
               <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#fff4f8]/50">Paket</div>
-              <div className="beautyassist-text-gradient mt-1 font-display text-lg leading-none">₺50.000</div>
+              <div className="beautyasist-text-gradient mt-1 font-display text-lg leading-none">₺50.000</div>
             </div>
             <div className="rounded-xl border border-[#fff4f8]/10 bg-[#fff4f8]/[0.04] p-3">
               <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#fff4f8]/50">Ödenen</div>

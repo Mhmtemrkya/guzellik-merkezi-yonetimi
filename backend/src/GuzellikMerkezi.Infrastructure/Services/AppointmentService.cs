@@ -198,6 +198,14 @@ public sealed class AppointmentService : IAppointmentService
         // overlap'i DB'den okuyacağı için slot boşalması kalıcı olmalı.
         await _db.SaveChangesAsync(cancellationToken);
 
+        // Tamamlanınca müşteriye WhatsApp'tan değerlendirme linki (personel + salon yıldızı) gönder.
+        // Kalıcı kuyruğa yazılır (best-effort): link üretimi + Meta HTTP çağrısı istek yolunu bekletmez.
+        if (request.Status == AppointmentStatus.Completed && prevStatus != AppointmentStatus.Completed)
+        {
+            await _jobs.EnqueueAsync(Background.DurableJobTypes.RatingLink,
+                new Background.RatingLinkJob(tenantId, appointment.Id), cancellationToken);
+        }
+
         // İptalde yer açıldı → bekleme listesindeki ilk uygun müşteriye WhatsApp'tan "yer açıldı, ister misiniz?"
         // teklifi götür (offer-first). Best-effort: teklif/gönderim başarısız olsa da iptal geçerli kalır.
         Guid? offeredWaitlistId = null;

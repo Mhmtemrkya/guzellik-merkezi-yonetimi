@@ -14,7 +14,6 @@ import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
-import RatingQrModal, { type RatingTokenInfo } from '@/components/dashboard/RatingQrModal'
 import DayScheduleModal from '@/components/dashboard/DayScheduleModal'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
@@ -343,7 +342,6 @@ function RandevularPageInner() {
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
   const { performWrite } = useStaffApproval()
   const [staffActionMsg, setStaffActionMsg] = useState<string>('')
-  const [ratingQr, setRatingQr] = useState<RatingTokenInfo | null>(null)
   const range = monthRange(monthDate)
   const rangeStartIso = range.start.toISOString()
   const rangeEndIso = range.end.toISOString()
@@ -647,16 +645,8 @@ function RandevularPageInner() {
     await reload()
   }
 
-  // Randevu "tamamlandı" işaretlenince müşteri puanlama linki (QR) üret ve modalı aç.
-  const maybeIssueRating = async (appointmentId: string, status: string | undefined): Promise<void> => {
-    if (status !== 'Completed') return
-    try {
-      const token = await adminApi.issueRating<RatingTokenInfo>(appointmentId, tenantId)
-      if (token?.token) setRatingQr(token)
-    } catch {
-      /* puanlama linki üretilemese de randevu akışı bozulmasın */
-    }
-  }
+  // Not: Puanlama linki artık ekranda QR olarak gösterilmez — randevu Tamamlandı olunca
+  // backend 24 saat geçerli linki üretip müşteriye WhatsApp'tan otomatik gönderir.
 
   const handleEditAppointment = async (appointmentId: string, values: AppointmentEditorValues): Promise<void> => {
     const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
@@ -665,7 +655,6 @@ function RandevularPageInner() {
     await adminApi.rescheduleAppointment(appointmentId, utcRange, tenantId)
     await adminApi.changeAppointmentStatus(appointmentId, { status: values.status, reason: null }, tenantId)
     await adminApi.changeAppointmentNotes(appointmentId, { notes: values.notes || null }, tenantId)
-    await maybeIssueRating(appointmentId, values.status)
     await reload()
   }
 
@@ -676,7 +665,6 @@ function RandevularPageInner() {
       { status: values.status || 'Confirmed', reason: values.reason || null },
       tenantId,
     )
-    await maybeIssueRating(appointmentId, values.status)
     setStaffActionMsg('Randevu durumu güncellendi. Sadece kendi randevu kaydın üzerinde işlem yapıldı.')
     await reload()
   }
@@ -1658,7 +1646,6 @@ function RandevularPageInner() {
         }
       />
 
-      <RatingQrModal info={ratingQr} onClose={() => setRatingQr(null)} />
     </>
   )
 }

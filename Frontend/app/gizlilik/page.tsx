@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Gizlilik Politikası — BeautyAssist',
+  title: 'Gizlilik Politikası — BeautyAsist',
   description:
-    'BeautyAssist güzellik merkezi yönetim uygulamasının kişisel verileri işleme, saklama ve koruma esaslarını açıklayan gizlilik politikası.',
+    'BeautyAsist güzellik merkezi yönetim uygulamasının kişisel verileri işleme, saklama ve koruma esaslarını açıklayan gizlilik politikası.',
 }
 
 const SON_GUNCELLEME = '8 Temmuz 2026'
@@ -23,14 +23,14 @@ export default function GizlilikPage() {
   return (
     <main className="mx-auto min-h-screen max-w-3xl bg-white px-5 py-12 text-neutral-800 sm:px-8">
       <header className="border-b border-neutral-200 pb-6">
-        <p className="text-sm font-medium text-neutral-500">BeautyAssist</p>
+        <p className="text-sm font-medium text-neutral-500">BeautyAsist</p>
         <h1 className="mt-1 text-2xl font-bold text-neutral-900 sm:text-3xl">Gizlilik Politikası</h1>
         <p className="mt-2 text-sm text-neutral-500">Son güncelleme: {SON_GUNCELLEME}</p>
       </header>
 
       <div className="mt-6">
         <p className="text-[15px] leading-relaxed text-neutral-700">
-          Bu gizlilik politikası, <strong>BeautyAssist</strong> mobil ve masaüstü uygulaması ile web panelinin
+          Bu gizlilik politikası, <strong>BeautyAsist</strong> mobil ve masaüstü uygulaması ile web panelinin
           (“Uygulama”) kişisel verileri nasıl topladığını, kullandığını, sakladığını ve koruduğunu açıklar.
           Uygulama, güzellik merkezleri ve klinikler için randevu, müşteri, stok, paket satış ve finans yönetimi
           amacıyla işletme çalışanları tarafından kullanılır.
@@ -145,7 +145,7 @@ export default function GizlilikPage() {
       </Bolum>
 
       <footer className="mt-12 border-t border-neutral-200 pt-6 text-sm text-neutral-400">
-        © {new Date().getFullYear()} {SIRKET} — BeautyAssist
+        © {new Date().getFullYear()} {SIRKET} — BeautyAsist
       </footer>
     </main>
   )

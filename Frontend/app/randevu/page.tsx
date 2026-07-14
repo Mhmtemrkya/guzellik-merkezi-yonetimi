@@ -105,11 +105,14 @@ export default function CustomerPortalPage() {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<PortalAppointment | null>(null)
+  // Salon sayfasından gelen ön-seçim (?branch=..&service=..) — şubeler/hizmetler yüklenince uygulanır.
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
 
   const handleAuthError = useCallback(
     (err: unknown): string => {
       if (err instanceof PortalApiError && err.status === 401) {
-        router.replace('/randevu/giris')
+        const next = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/randevu'
+        router.replace(`/randevu/giris?next=${encodeURIComponent(next)}`)
         return ''
       }
       return err instanceof Error ? err.message : 'Bir hata oluştu. Lütfen tekrar deneyin.'
@@ -120,7 +123,8 @@ export default function CustomerPortalPage() {
   // Oturum kontrolü + başlangıç verileri
   useEffect(() => {
     if (!getCustomerSession()) {
-      router.replace('/randevu/giris')
+      const next = `${window.location.pathname}${window.location.search}`
+      router.replace(`/randevu/giris?next=${encodeURIComponent(next)}`)
       return
     }
     void (async () => {
@@ -133,7 +137,17 @@ export default function CustomerPortalPage() {
         setProfile(me)
         setBranches(branchList)
         setAppointments(myAppointments)
-        if (branchList.length === 1) setBranch(branchList[0])
+        // Salon sayfasından gelen ön-seçim: ?branch=<id>[&service=<id>]
+        const params = new URLSearchParams(window.location.search)
+        const wantedBranch = params.get('branch')
+        const preselected = wantedBranch ? branchList.find((b) => b.id === wantedBranch) : undefined
+        if (preselected) {
+          setBranch(preselected)
+          setPendingServiceId(params.get('service'))
+          setStep(2)
+        } else if (branchList.length === 1) {
+          setBranch(branchList[0])
+        }
         setReady(true)
       } catch (err) {
         const message = handleAuthError(err)
@@ -150,7 +164,20 @@ export default function CustomerPortalPage() {
     if (!branch) return
     setServices([])
     void listPortalServices(branch.id)
-      .then(setServices)
+      .then((list) => {
+        setServices(list)
+        // Salon sayfasındaki "Randevu Al" ile gelen hizmet ön-seçimi.
+        setPendingServiceId((pending) => {
+          if (pending) {
+            const match = list.find((sv) => sv.id === pending)
+            if (match) {
+              setService(match)
+              setStep(3)
+            }
+          }
+          return null
+        })
+      })
       .catch((err) => setError(handleAuthError(err)))
   }, [branch, handleAuthError])
 
@@ -241,12 +268,12 @@ export default function CustomerPortalPage() {
       <header className="sticky top-0 z-40 border-b border-[#e7bfd0]/80 bg-[#fbe7ef]/85 backdrop-blur-2xl">
         <span aria-hidden className="block h-[3px] w-full bg-gradient-to-r from-[#df6688] via-[#f5abc0] to-[#ee789a]" />
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <a href="/" className="flex items-center gap-3" aria-label="BeautyAssist ana sayfa">
+          <a href="/" className="flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
             <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl border border-[#ead8df] bg-white">
-              <img src="/logo.png" alt="BeautyAssist logosu" className="h-full w-full scale-125 object-cover" />
+              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
             </span>
             <span className="leading-none">
-              <span className="block font-display text-[17px] tracking-[-0.04em] text-[#6f4153]">BeautyAssist</span>
+              <span className="block font-display text-[17px] tracking-[-0.04em] text-[#6f4153]">BeautyAsist</span>
               <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.26em] text-[#b58295]">
                 Online Randevu
               </span>

@@ -121,7 +121,7 @@ export default function PlatformMessagingSettings() {
             </div>
             <div>
               <label className={labelCls}>Gönderen başlık / numara</label>
-              <input value={sms.sender} onChange={(e) => setSms((s) => ({ ...s, sender: e.target.value }))} placeholder={sms.provider === 'Twilio' ? '+1xxx' : 'BeautyAssist'} className={inputCls} />
+              <input value={sms.sender} onChange={(e) => setSms((s) => ({ ...s, sender: e.target.value }))} placeholder={sms.provider === 'Twilio' ? '+1xxx' : 'BeautyAsist'} className={inputCls} />
             </div>
             <div className="border-t border-[#fff4f8]/10 pt-3">
               <label className={labelCls}>Test SMS</label>
@@ -154,15 +154,15 @@ export default function PlatformMessagingSettings() {
           <>
             <Toggle on={email.enabled} onClick={() => setEmail((e) => ({ ...e, enabled: !e.enabled }))} label="E-posta gönderimini etkinleştir" />
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={labelCls}>Gönderen adres</label><input value={email.fromAddress} onChange={(e) => setEmail((s) => ({ ...s, fromAddress: e.target.value }))} placeholder="bilgi@beautyassist.com" className={inputCls} /></div>
-              <div><label className={labelCls}>Gönderen adı</label><input value={email.fromName} onChange={(e) => setEmail((s) => ({ ...s, fromName: e.target.value }))} placeholder="BeautyAssist" className={inputCls} /></div>
+              <div><label className={labelCls}>Gönderen adres</label><input value={email.fromAddress} onChange={(e) => setEmail((s) => ({ ...s, fromAddress: e.target.value }))} placeholder="bilgi@beautyasist.com" className={inputCls} /></div>
+              <div><label className={labelCls}>Gönderen adı</label><input value={email.fromName} onChange={(e) => setEmail((s) => ({ ...s, fromName: e.target.value }))} placeholder="BeautyAsist" className={inputCls} /></div>
             </div>
             <div className="grid grid-cols-[1fr_88px] gap-3">
               <div><label className={labelCls}>SMTP sunucu</label><input value={email.host} onChange={(e) => setEmail((s) => ({ ...s, host: e.target.value }))} placeholder="smtp.gmail.com" className={inputCls} /></div>
               <div><label className={labelCls}>Port</label><input type="number" value={email.port} onChange={(e) => setEmail((s) => ({ ...s, port: Number(e.target.value) }))} className={inputCls} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={labelCls}>Kullanıcı</label><input value={email.username} onChange={(e) => setEmail((s) => ({ ...s, username: e.target.value }))} placeholder="bilgi@beautyassist.com" className={inputCls} /></div>
+              <div><label className={labelCls}>Kullanıcı</label><input value={email.username} onChange={(e) => setEmail((s) => ({ ...s, username: e.target.value }))} placeholder="bilgi@beautyasist.com" className={inputCls} /></div>
               <div><label className={labelCls}>Parola {data?.hasSmtpPassword && <span className="text-emerald-300/80">· kayıtlı</span>}</label><input type="password" value={email.password} onChange={(e) => setEmail((s) => ({ ...s, password: e.target.value }))} placeholder={data?.hasSmtpPassword ? 'değiştirmek için yaz' : 'SMTP parolası'} className={inputCls} /></div>
             </div>
             <Toggle on={email.useSsl} onClick={() => setEmail((e) => ({ ...e, useSsl: !e.useSsl }))} label="SSL/TLS kullan" />

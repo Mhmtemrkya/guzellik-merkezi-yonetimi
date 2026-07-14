@@ -1,4 +1,4 @@
-# BeautyAssist — release R8/ProGuard kuralları.
+# BeautyAsist — release R8/ProGuard kuralları.
 # Flutter engine kuralları Flutter Gradle plugin tarafından otomatik gelir; buradakiler
 # eklenti-özel keep'ler (minify açıkken reflection/JNI kaynaklı çökmeleri önler).
 

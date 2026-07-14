@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageCircle, Loader2, Check, Copy, Webhook, Clock3, Info } from 'lucide-react'
+import { MessageCircle, Loader2, Check, ChevronDown, Copy, Webhook, Clock3, Info, LifeBuoy } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import type { ApiWhatsAppSettings } from '@/lib/types'
@@ -26,6 +26,7 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
   const [saved, setSaved] = useState(false)
   const [pending, setPending] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [howToOpen, setHowToOpen] = useState(false)
 
   useEffect(() => {
     if (!data) return
@@ -100,6 +101,66 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
               Kimlik bilgisi (telefon no. ID + erişim token) girilmeden mesajlar <b>simülasyon</b> olur: gönderilmez ama akış (kayıt, onay durumu) çalışır. Meta bilgilerini girince otomatik canlıya geçer.
             </div>
           )}
+
+          {/* NASIL BAĞLANIR? — adım adım kullanıcı rehberi */}
+          <div className="overflow-hidden rounded-xl border border-[#cfe8d8] bg-[#f4fbf6]">
+            <button
+              type="button"
+              onClick={() => setHowToOpen((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+            >
+              <span className="flex items-center gap-2 text-[12px] font-semibold text-[#1f7a45]">
+                <LifeBuoy className="h-4 w-4" /> Nasıl bağlanır? (adım adım)
+              </span>
+              <ChevronDown className={`h-4 w-4 text-[#1f7a45] transition-transform ${howToOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {howToOpen && (
+              <div className="space-y-2.5 border-t border-[#cfe8d8] px-3 py-3 text-[11.5px] leading-relaxed text-[#2f5b41]">
+                <p className="rounded-lg bg-white/70 px-2.5 py-2">
+                  Bu sistem telefonunuzdaki WhatsApp'a QR ile bağlanmaz; Meta'nın <b>resmî WhatsApp Business API</b>'sini
+                  kullanır. Tek seferlik kurulumdan sonra tüm hatırlatma ve bildirimler otomatik gider.
+                </p>
+                <ol className="list-decimal space-y-2 pl-4">
+                  <li>
+                    <b>developers.facebook.com</b>'a işletme Facebook hesabınızla girin →
+                    "My Apps → Create App" ile <b>Business</b> türünde bir uygulama oluşturun.
+                  </li>
+                  <li>
+                    Uygulamaya <b>WhatsApp</b> ürününü ekleyin ("Add Product → WhatsApp → Set up").
+                    Meta size ücretsiz bir test numarası verir; kendi salon numaranızı kullanmak için
+                    "Add phone number" ile numaranızı ekleyip SMS koduyla doğrulayın.
+                    <span className="mt-0.5 block text-[10.5px] text-[#4f7a61]">
+                      Önemli: Bu numara telefonunuzdaki normal WhatsApp'tan çıkarılmış olmalı (API'ye taşınan numara
+                      uygulamada aynı anda kullanılamaz).
+                    </span>
+                  </li>
+                  <li>
+                    WhatsApp → "API Setup" ekranındaki <b>Phone number ID</b>'yi kopyalayıp aşağıdaki
+                    "Telefon Numarası ID" kutusuna yapıştırın. <i>(Dikkat: telefon numaranız değil, 15 haneli ID.)</i>
+                  </li>
+                  <li>
+                    <b>Kalıcı erişim token</b> alın: Meta Business Ayarları → "System Users" bölümünde bir sistem
+                    kullanıcısı oluşturup uygulamanıza <code>whatsapp_business_messaging</code> izniyle süresiz token
+                    üretin ve "Kalıcı Erişim Token" kutusuna yapıştırın. (API Setup'taki 24 saatlik geçici token yalnızca denemelik.)
+                  </li>
+                  <li>
+                    <b>Kaydet</b>'e basın → sağ üstteki rozet <b>"Canlı"</b> olur ve giden mesajlar
+                    (randevu hatırlatma, bekleme listesi teklifi, değerlendirme linki) gerçek olarak gönderilmeye başlar.
+                  </li>
+                  <li>
+                    Müşterinin <b>EVET / HAYIR / ERTELE</b> yanıtlarının sisteme düşmesi için:
+                    "Webhook Verify Token" kutusuna kendi belirlediğiniz gizli bir kelime yazın →
+                    Meta'da WhatsApp → "Configuration → Webhook" bölümüne aşağıdaki <b>Webhook URL</b>'yi ve aynı
+                    verify token'ı girin → "messages" alanına abone olun.
+                  </li>
+                </ol>
+                <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[10.5px]">
+                  Not: Paketinizde WhatsApp özelliği açık olmalı ve aylık mesaj kotanız dolmamış olmalı.
+                  Bilgileri girmeden anahtarı açarsanız sistem "Simülasyon" modunda kalır — mesajlar kaydedilir ama gönderilmez.
+                </p>
+              </div>
+            )}
+          </div>
 
           <Field label="Telefon Numarası ID (Meta)" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="örn. 123456789012345" />
           <div>

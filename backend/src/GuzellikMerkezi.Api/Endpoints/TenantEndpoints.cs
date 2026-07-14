@@ -2,6 +2,7 @@ using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.PublicSalons;
 using GuzellikMerkezi.Application.Features.Tenants;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -54,6 +55,62 @@ public static class TenantEndpoints
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(t, request, ct)).ToHttpResult(http);
         }).ValidatesRequest<UpdateTenantRequest>();
+
+        // --- Salon vitrini (public profil + galeri) — kurum yöneticisi kendi kurumunu yönetir. ---
+        adminGroup.MapGet("/public-profile", async (Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetProfileAsync(t, ct)).ToHttpResult(http);
+        });
+
+        adminGroup.MapPut("/public-profile", async (UpdateTenantPublicProfileRequest request, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateProfileAsync(t, request, ct)).ToHttpResult(http);
+        });
+
+        adminGroup.MapPut("/public-profile/logo", async (SetTenantLogoRequest request, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetLogoAsync(t, request, ct)).ToHttpResult(http);
+        });
+
+        adminGroup.MapGet("/gallery", async (string? kind, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListGalleryAsync(t, kind, ct)).ToHttpResult(http);
+        });
+
+        adminGroup.MapPost("/gallery", async (AddTenantGalleryPhotoRequest request, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.AddGalleryPhotoAsync(t, request, ct)).ToHttpResult(http);
+        });
+
+        adminGroup.MapDelete("/gallery/{photoId:guid}", async (Guid photoId, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteGalleryPhotoAsync(t, photoId, ct)).ToHttpResult(http);
+        });
+
+        // --- Platform admin: kurum eklerken/düzenlerken vitrin görselleri ve profili yönetir. ---
+        group.MapGet("/{id:guid}/public-profile", async (Guid id, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.GetProfileAsync(id, ct)).ToHttpResult(http));
+        group.MapPut("/{id:guid}/public-profile", async (Guid id, UpdateTenantPublicProfileRequest request, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.UpdateProfileAsync(id, request, ct)).ToHttpResult(http));
+        // Premium / Öne Çıkan etiketi — yalnızca platform admin.
+        group.MapGet("/{id:guid}/featured", async (Guid id, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.GetFeaturedAsync(id, ct)).ToHttpResult(http));
+        group.MapPut("/{id:guid}/featured", async (Guid id, SetTenantFeaturedRequest request, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.SetFeaturedAsync(id, request, ct)).ToHttpResult(http));
+        group.MapPut("/{id:guid}/public-profile/logo", async (Guid id, SetTenantLogoRequest request, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.SetLogoAsync(id, request, ct)).ToHttpResult(http));
+        group.MapGet("/{id:guid}/gallery", async (Guid id, string? kind, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.ListGalleryAsync(id, kind, ct)).ToHttpResult(http));
+        group.MapPost("/{id:guid}/gallery", async (Guid id, AddTenantGalleryPhotoRequest request, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.AddGalleryPhotoAsync(id, request, ct)).ToHttpResult(http));
+        group.MapDelete("/{id:guid}/gallery/{photoId:guid}", async (Guid id, Guid photoId, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+            (await service.DeleteGalleryPhotoAsync(id, photoId, ct)).ToHttpResult(http));
 
         return app;
     }

@@ -71,9 +71,16 @@ export default function CustomerLoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Girişten sonra dönülecek hedef (?next=/randevu?branch=..) — yalnızca site içi yollar kabul edilir.
+  const nextTarget = (): string => {
+    const raw = new URLSearchParams(window.location.search).get('next') || '/randevu'
+    return raw.startsWith('/randevu') || raw.startsWith('/salon') ? raw : '/randevu'
+  }
+
   // Zaten müşteri oturumu varsa doğrudan portala geç.
   useEffect(() => {
-    if (getCustomerSession()) router.replace('/randevu')
+    if (getCustomerSession()) router.replace(nextTarget())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -107,7 +114,7 @@ export default function CustomerLoginPage() {
           email: email.trim() || null,
         })
       }
-      router.push('/randevu')
+      router.push(nextTarget())
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : ''
       setError(
@@ -149,10 +156,10 @@ export default function CustomerLoginPage() {
           <div>
             <motion.a variants={itemVariants} href="/" className="group inline-flex items-center gap-4">
               <span className="relative h-14 w-14 overflow-hidden rounded-2xl border border-[#ead8df] bg-white shadow-[0_16px_40px_-24px_rgba(200,87,118,0.55)]">
-                <img src="/logo.png" alt="BeautyAssist logosu" className="h-full w-full scale-125 object-cover" />
+                <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
               </span>
               <span>
-                <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAssist</span>
+                <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>
                 <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/80">
                   Online Randevu
                 </span>
@@ -172,7 +179,7 @@ export default function CustomerLoginPage() {
             >
               Randevunuz,
               <br />
-              <span className="beautyassist-text-gradient italic">bir dakikada.</span>
+              <span className="beautyasist-text-gradient italic">bir dakikada.</span>
             </motion.h1>
 
             <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
@@ -203,7 +210,7 @@ export default function CustomerLoginPage() {
             variants={itemVariants}
             className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.40]"
           >
-            <span>© 2026 BeautyAssist</span>
+            <span>© 2026 BeautyAsist</span>
             <span className="flex items-center gap-2">
               <motion.span
                 aria-hidden

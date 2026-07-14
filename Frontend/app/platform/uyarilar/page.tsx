@@ -204,7 +204,7 @@ function UyarilarPageInner() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `beautyassist-uyarilar-${scope}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `beautyasist-uyarilar-${scope}-${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -236,7 +236,7 @@ function UyarilarPageInner() {
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]">{scopeInfo.label} · uyarılar</div>
                 <div className="mt-1 font-display text-2xl tracking-tight text-[#3b2330]">
-                  <AnimatedNumber value={filteredTenants.length} className="beautyassist-text-gradient" /> kurum
+                  <AnimatedNumber value={filteredTenants.length} className="beautyasist-text-gradient" /> kurum
                 </div>
               </div>
               <button

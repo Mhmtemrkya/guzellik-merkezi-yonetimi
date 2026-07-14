@@ -1,17 +1,17 @@
-import 'package:beautyassist_mobile/core/theme/app_theme.dart';
+import 'package:beautyasist_mobile/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('BeautyAssist tema ve temel içerik yüklenir', (tester) async {
+  testWidgets('BeautyAsist tema ve temel içerik yüklenir', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light,
-        home: const Scaffold(body: Center(child: Text('BeautyAssist'))),
+        home: const Scaffold(body: Center(child: Text('BeautyAsist'))),
       ),
     );
 
-    expect(find.text('BeautyAssist'), findsOneWidget);
+    expect(find.text('BeautyAsist'), findsOneWidget);
     expect(find.byType(Scaffold), findsOneWidget);
   });
 }

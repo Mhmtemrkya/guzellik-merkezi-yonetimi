@@ -433,7 +433,7 @@ class _LoginScreenState extends State<LoginScreen> {
           },
           decoration: InputDecoration(
             labelText: 'E-posta',
-            hintText: 'ornek@beautyassist.com',
+            hintText: 'ornek@beautyasist.com',
             prefixIcon: const Icon(Icons.mail_outline_rounded),
             suffixIcon: scopeLoading
                 ? const Padding(

@@ -4,7 +4,7 @@ import type { ApiEnvelope } from './types'
 // kendi token deposu olan hafif istemci. Backend uçları: /api/auth/customer/* + /api/customer/*.
 const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_BASE_URL || '/api/proxy').replace(/\/$/, '')
 
-export const CUSTOMER_SESSION_KEY = 'beautyassist.customerSession'
+export const CUSTOMER_SESSION_KEY = 'beautyasist.customerSession'
 
 // ---- Tipler (backend DTO karşılıkları; enum'lar JSON'da integer gelir) ----
 

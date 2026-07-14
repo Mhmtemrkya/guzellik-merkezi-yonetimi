@@ -9,7 +9,7 @@ class SessionStorage {
   const SessionStorage();
 
   static const _storage = FlutterSecureStorage();
-  static const _sessionKey = 'beautyassist.session';
+  static const _sessionKey = 'beautyasist.session';
 
   Future<AuthSession?> read() async {
     try {

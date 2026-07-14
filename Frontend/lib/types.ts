@@ -1,4 +1,4 @@
-// BeautyAssist — merkezi tip tanımları
+// BeautyAsist — merkezi tip tanımları
 // Backend DTO'ları (Api*) ve UI model katmanı (normalize edilmiş) burada.
 
 // ---------------------------------------------------------------------------

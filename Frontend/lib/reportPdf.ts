@@ -154,7 +154,7 @@ export function generateReportPdf(options: PdfReportOptions): void {
         [
           {
             stack: [
-              { text: 'BeautyAssist', style: 'brandTag', margin: m(0, 8, 0, 4) },
+              { text: 'BeautyAsist', style: 'brandTag', margin: m(0, 8, 0, 4) },
               { text: options.title.toUpperCase(), style: 'reportTitle' },
               { text: options.context, style: 'contextLine', margin: m(0, 6, 0, 4) },
             ],
@@ -379,9 +379,9 @@ export function generateReportPdf(options: PdfReportOptions): void {
   const docDefinition: TDocumentDefinitions = {
     info: {
       title: options.title,
-      author: 'BeautyAssist',
+      author: 'BeautyAsist',
       subject: options.context,
-      creator: 'BeautyAssist Güzellik Merkezi Yönetimi',
+      creator: 'BeautyAsist Güzellik Merkezi Yönetimi',
     },
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 50] as [number, number, number, number],
@@ -394,13 +394,13 @@ export function generateReportPdf(options: PdfReportOptions): void {
     },
     footer: (currentPage: number, pageCount: number) => ({
       columns: [
-        { text: `BeautyAssist - ${options.context}`, fontSize: 7.5, color: COLORS.inkSoft, italics: true, margin: m(40, 0, 0, 0) },
+        { text: `BeautyAsist - ${options.context}`, fontSize: 7.5, color: COLORS.inkSoft, italics: true, margin: m(40, 0, 0, 0) },
         { text: `Sayfa ${currentPage}/${pageCount}`, fontSize: 7.5, color: COLORS.inkSoft, alignment: 'right', margin: m(0, 0, 40, 0) },
       ],
       margin: m(0, 16, 0, 0),
     }),
   }
 
-  const filename = `BeautyAssist-${options.filenameBase}-${todayIso()}.pdf`
+  const filename = `BeautyAsist-${options.filenameBase}-${todayIso()}.pdf`
   pdfMake.createPdf(docDefinition).download(filename)
 }

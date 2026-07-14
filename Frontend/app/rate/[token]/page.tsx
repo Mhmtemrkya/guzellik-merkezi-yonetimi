@@ -20,23 +20,27 @@ interface PublicRating {
   maskedPhone: string
   expiresAtUtc: string
   stars?: number | null
+  salonStars?: number | null
 }
 
 const STAR_LABELS = ['', 'Kötü', 'İdare eder', 'İyi', 'Çok iyi', 'Mükemmel']
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#fbe4ec] px-4 py-10 text-[#4a2f3c]">
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#fbf4f0] px-4 py-10 text-[#4a2f3c]">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(900px_520px_at_15%_-12%,rgba(255,226,237,0.95),transparent_60%),radial-gradient(820px_560px_at_88%_115%,rgba(248,206,221,0.85),transparent_58%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(900px_520px_at_15%_-12%,rgba(249,227,236,0.95),transparent_60%),radial-gradient(820px_560px_at_88%_115%,rgba(238,207,185,0.55),transparent_58%)]" />
       </div>
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.99 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-[420px] rounded-[28px] border border-[#f6e2e9] bg-white/95 p-7 shadow-[0_44px_120px_-50px_rgba(180,110,140,0.5)]"
+        className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-[28px] border border-[#eddce3] bg-white/97 shadow-[0_44px_120px_-50px_rgba(122,58,84,0.55)]"
       >
-        {children}
+        {/* Bordo→gül marka bandı + altın hairline */}
+        <div aria-hidden className="h-2 w-full bg-gradient-to-r from-[#7a3a54] via-[#c85776] to-[#ef9ab5]" />
+        <span aria-hidden className="block h-px w-full bg-gradient-to-r from-transparent via-[#c9a468] to-transparent" />
+        <div className="p-7">{children}</div>
       </motion.div>
     </main>
   )
@@ -51,6 +55,8 @@ export default function RatePage() {
   const [loadError, setLoadError] = useState('')
   const [stars, setStars] = useState(0)
   const [hover, setHover] = useState(0)
+  const [salonStars, setSalonStars] = useState(0)
+  const [salonHover, setSalonHover] = useState(0)
   const [phone, setPhone] = useState('')
   const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -88,7 +94,10 @@ export default function RatePage() {
       }
       const m = Math.floor(ms / 60000)
       const s = Math.floor((ms % 60000) / 1000)
-      setRemaining(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`)
+      // WhatsApp linkleri 24 saat geçerli — uzun sürelerde saat:dakika göster.
+      setRemaining(m >= 60
+        ? `${Math.floor(m / 60)} sa ${String(m % 60).padStart(2, '0')} dk`
+        : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`)
     }
     tick()
     const id = setInterval(tick, 1000)
@@ -97,11 +106,12 @@ export default function RatePage() {
 
   const submit = async (): Promise<void> => {
     setSubmitError('')
-    if (stars < 1) { setSubmitError('Lütfen 1-5 arasında yıldız seçin.'); return }
+    if (stars < 1) { setSubmitError('Lütfen personel için 1-5 arasında yıldız seçin.'); return }
+    if (salonStars < 1) { setSubmitError('Lütfen salon için de 1-5 arasında yıldız seçin.'); return }
     if (phone.replace(/\D/g, '').length < 10) { setSubmitError('Telefon numaranızı eksiksiz girin.'); return }
     setSubmitting(true)
     try {
-      const data = await adminApi.submitRating<PublicRating>(token, { phone, stars, comment: comment || null })
+      const data = await adminApi.submitRating<PublicRating>(token, { phone, stars, salonStars, comment: comment || null })
       setDone(data.stars ?? stars)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Puan gönderilemedi.'
@@ -169,7 +179,7 @@ export default function RatePage() {
           <span className="grid h-14 w-14 place-items-center rounded-full bg-rose-50 text-rose-500"><Clock className="h-6 w-6" /></span>
           <h1 className="font-display text-xl tracking-tight text-[#4a2f3c]">Süreniz doldu</h1>
           <p className="max-w-xs text-[13px] leading-relaxed text-[#9a8791]">
-            Bu puanlama bağlantısının süresi dolmuştur. Puanlama, işlem bittikten sonra yalnızca 15 dakika geçerlidir.
+            Bu puanlama bağlantısının süresi dolmuştur. Lütfen salondan yeni bir bağlantı isteyin.
           </p>
         </div>
       </Shell>
@@ -178,6 +188,7 @@ export default function RatePage() {
 
   // ---- Puanlama formu (Pending) ----
   const shown = hover || stars
+  const shownSalon = salonHover || salonStars
   return (
     <Shell>
       <div className="text-center">
@@ -191,20 +202,23 @@ export default function RatePage() {
         {info.serviceName && <div className="mt-1 text-[12.5px] text-[#9a8791]">{info.serviceName}</div>}
       </div>
 
-      {/* Yıldızlar */}
+      {/* Yıldızlar — personel */}
       <div className="mt-6 flex flex-col items-center gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a4909a]">
+          Personel değerlendirmesi
+        </div>
         <div className="flex items-center gap-2" onMouseLeave={() => setHover(0)}>
           {[1, 2, 3, 4, 5].map((i) => (
             <button
               key={i}
               type="button"
-              aria-label={`${i} yıldız`}
+              aria-label={`Personel ${i} yıldız`}
               onMouseEnter={() => setHover(i)}
               onClick={() => setStars(i)}
               className="transition-transform hover:scale-110"
             >
               <Star
-                className="h-10 w-10"
+                className="h-9 w-9"
                 strokeWidth={1.5}
                 style={{ fill: i <= shown ? '#f4b73e' : 'transparent', color: i <= shown ? '#f4b73e' : '#e3cdd6' }}
               />
@@ -212,6 +226,32 @@ export default function RatePage() {
           ))}
         </div>
         <div className="h-4 text-[12px] font-medium text-[#c85776]">{shown ? STAR_LABELS[shown] : ''}</div>
+      </div>
+
+      {/* Yıldızlar — salon */}
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a4909a]">
+          Salon değerlendirmesi{info.businessName ? ` — ${info.businessName}` : ''}
+        </div>
+        <div className="flex items-center gap-2" onMouseLeave={() => setSalonHover(0)}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Salon ${i} yıldız`}
+              onMouseEnter={() => setSalonHover(i)}
+              onClick={() => setSalonStars(i)}
+              className="transition-transform hover:scale-110"
+            >
+              <Star
+                className="h-9 w-9"
+                strokeWidth={1.5}
+                style={{ fill: i <= shownSalon ? '#f4b73e' : 'transparent', color: i <= shownSalon ? '#f4b73e' : '#e3cdd6' }}
+              />
+            </button>
+          ))}
+        </div>
+        <div className="h-4 text-[12px] font-medium text-[#c85776]">{shownSalon ? STAR_LABELS[shownSalon] : ''}</div>
       </div>
 
       {/* Telefon doğrulama */}
@@ -260,7 +300,7 @@ export default function RatePage() {
       </button>
 
       <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-[#9a8791]">
-        <Clock className="h-3 w-3 text-[#c85776]/70" /> Kalan süre: <span className="font-mono font-medium text-[#c85776]">{remaining || '15:00'}</span>
+        <Clock className="h-3 w-3 text-[#c85776]/70" /> Kalan süre: <span className="font-mono font-medium text-[#c85776]">{remaining || '—'}</span>
       </div>
     </Shell>
   )

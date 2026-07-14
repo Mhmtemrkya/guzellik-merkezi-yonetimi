@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  BeautyAssist ağ güvenliği (hibrit: public HTTPS + yerel/LAN HTTP).
+  BeautyAsist ağ güvenliği (hibrit: public HTTPS + yerel/LAN HTTP).
 
   base-config: cleartext KAPALI → internet üzerindeki canlı backend'e yalnızca HTTPS ile bağlanılır
   (Play güvenlik uyarısını önler, MITM'e kapalı).

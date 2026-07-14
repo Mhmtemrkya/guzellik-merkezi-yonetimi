@@ -4,7 +4,7 @@
  * Tüm işlemler sessizce başarısız olabilir — çevrimiçi akışı asla bloklamaz.
  */
 
-const DB_NAME = 'beautyassist-offline'
+const DB_NAME = 'beautyasist-offline'
 const STORE = 'get-cache'
 const OUTBOX_STORE = 'outbox'
 const DB_VERSION = 2

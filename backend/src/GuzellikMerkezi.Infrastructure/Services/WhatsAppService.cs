@@ -30,6 +30,9 @@ public sealed class WhatsAppService : IWhatsAppService
         "vazgeçmek için HAYIR yazın. — {salon}";
     private const string WaitlistActivatedTemplate =
         "Merhaba {ad}, {tarih} {saat} {hizmet} randevunuz aktifleşti. Sizi bekliyoruz! — {salon}";
+    private const string RatingLinkTemplate =
+        "Merhaba {ad}! {salon} ziyaretiniz için teşekkür ederiz 💐 Deneyiminizi 1 dakikada değerlendirir misiniz? " +
+        "Hem personelimizi hem salonumuzu puanlayabilirsiniz: {link} (Bağlantı 24 saat geçerlidir.)";
 
     private readonly GuzellikDbContext _db;
     private readonly IEncryptionService _encryption;
@@ -170,6 +173,38 @@ public sealed class WhatsAppService : IWhatsAppService
             _logger.LogWarning(ex, "Bekleme teklifi gönderilemedi: {Entry}", waitlistEntryId);
         }
     }
+
+    public async Task SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken ct = default)
+    {
+        try
+        {
+            var appt = await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
+                .Include(a => a.Customer)
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == appointmentId, ct);
+            if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return;
+
+            var salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+                .Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
+
+            var link = $"{FrontendBaseUrl()}/rate/{ratingToken}";
+            var body = RatingLinkTemplate
+                .Replace("{ad}", FirstName(appt.Customer.FullName))
+                .Replace("{salon}", salonName)
+                .Replace("{link}", link);
+            await TrySendAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Değerlendirme linki gönderilemedi: {Appointment}", appointmentId);
+        }
+    }
+
+    /// <summary>Rate sayfasının (Next.js) tabanı — API tabanından farklı olabilir.</summary>
+    private string FrontendBaseUrl() =>
+        (_config["Frontend:PublicBaseUrl"] ?? _config["WhatsApp:PublicBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+
+    private static string FirstName(string? fullName) =>
+        string.IsNullOrWhiteSpace(fullName) ? "Değerli müşterimiz" : fullName.Trim().Split(' ')[0];
 
     public async Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
     {

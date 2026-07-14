@@ -16,7 +16,7 @@ public static class RatingEndpoints
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty
                 ? EndpointHelpers.MissingTenant(http)
-                : (await service.IssueAsync(resolvedTenantId, request.AppointmentId, ct)).ToHttpResult(http);
+                : (await service.IssueAsync(resolvedTenantId, request.AppointmentId, null, ct)).ToHttpResult(http);
         });
 
         // Public (anonim): müşteri QR ile gelir; link durumunu okur ve yıldız gönderir.

@@ -36,25 +36,25 @@ public static class DevelopmentDataSeeder
 
         const string password = "Guzellik123!";
 
-        var tenant = new Tenant("BeautyAssist Demo Güzellik Merkezi", "beautyassist-demo", "Premium", TenantStatus.Active);
-        tenant.SetProfile("demo.beautyassist.app", "Deniz Kaya");
+        var tenant = new Tenant("BeautyAsist Demo Güzellik Merkezi", "beautyasist-demo", "Premium", TenantStatus.Active);
+        tenant.SetProfile("demo.beautyasist.app", "Deniz Kaya");
         var nisantasi = tenant.AddBranch("Nişantaşı", "İstanbul", true);
         nisantasi.UpdateCapacity(staffCount: 6, roomCount: 5);
         var kadikoy = tenant.AddBranch("Kadıköy", "İstanbul", false);
         kadikoy.UpdateCapacity(staffCount: 4, roomCount: 3);
 
-        var platformAdmin = tenant.GrantAccess("platform@beautyassist.test", UserRole.PlatformAdmin, null, "Platform Admin");
+        var platformAdmin = tenant.GrantAccess("platform@beautyasist.test", UserRole.PlatformAdmin, null, "Platform Admin");
         platformAdmin.SetPasswordHash(passwordHasher.Hash(password));
-        var owner = tenant.GrantAccess("admin@beautyassist.test", UserRole.InstitutionOwner, null, "Deniz Kaya");
+        var owner = tenant.GrantAccess("admin@beautyasist.test", UserRole.InstitutionOwner, null, "Deniz Kaya");
         owner.SetPasswordHash(passwordHasher.Hash(password));
-        var staffUser = tenant.GrantAccess("personel@beautyassist.test", UserRole.Staff, nisantasi.Id, "Elif Aydın");
+        var staffUser = tenant.GrantAccess("personel@beautyasist.test", UserRole.Staff, nisantasi.Id, "Elif Aydın");
         staffUser.SetPasswordHash(passwordHasher.Hash(password));
 
         var secondTenant = new Tenant("Lotus Klinik", "lotus-klinik", "Başlangıç", TenantStatus.Trial);
-        secondTenant.SetProfile("lotus.beautyassist.app", "Selin Demir");
+        secondTenant.SetProfile("lotus.beautyasist.app", "Selin Demir");
         var lotusBranch = secondTenant.AddBranch("Merkez", "Ankara", true);
         lotusBranch.UpdateCapacity(staffCount: 2, roomCount: 2);
-        var secondOwner = secondTenant.GrantAccess("lotus@beautyassist.test", UserRole.InstitutionOwner, null, "Selin Demir");
+        var secondOwner = secondTenant.GrantAccess("lotus@beautyasist.test", UserRole.InstitutionOwner, null, "Selin Demir");
         secondOwner.SetPasswordHash(passwordHasher.Hash(password));
 
         var laser = new ServiceDefinition(tenant.Id, nisantasi.Id, "Buz Lazer Epilasyon", 45, 1250, "Epilasyon");

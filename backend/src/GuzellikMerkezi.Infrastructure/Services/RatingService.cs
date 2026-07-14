@@ -19,7 +19,7 @@ public sealed class RatingService : IRatingService
 
     public RatingService(GuzellikDbContext db) => _db = db;
 
-    public async Task<Result<RatingTokenDto>> IssueAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default)
+    public async Task<Result<RatingTokenDto>> IssueAsync(Guid tenantId, Guid appointmentId, int? lifetimeMinutes = null, CancellationToken cancellationToken = default)
     {
         var appt = await _db.Appointments.AsNoTracking()
             .Include(a => a.Customer)
@@ -55,7 +55,8 @@ public sealed class RatingService : IRatingService
             appt.StaffMember?.FullName ?? "Personel",
             appt.ServiceDefinition?.Name,
             businessName,
-            now);
+            now,
+            lifetimeMinutes ?? AppointmentRating.WhatsAppLinkLifetimeMinutes);
         _db.AppointmentRatings.Add(rating);
         await _db.SaveChangesAsync(cancellationToken);
         return Result<RatingTokenDto>.Success(ToTokenDto(rating));
@@ -95,12 +96,15 @@ public sealed class RatingService : IRatingService
         if (request.Stars is < 1 or > 5)
             return Result<PublicRatingDto>.Failure(Error.Validation("Lütfen 1-5 arasında yıldız verin."));
 
+        if (request.SalonStars is null or < 1 or > 5)
+            return Result<PublicRatingDto>.Failure(Error.Validation("Lütfen salonu da 1-5 arasında puanlayın."));
+
         if (!rating.PhoneMatches(request.Phone))
             return Result<PublicRatingDto>.Failure(Error.Validation("Telefon numarası eşleşmedi. Lütfen randevuda kullandığınız numarayı girin."));
 
         try
         {
-            rating.Submit(request.Stars, request.Comment, now);
+            rating.Submit(request.Stars, request.SalonStars, request.Comment, now);
         }
         catch (Exception ex) when (ex is DomainException or BusinessRuleException)
         {
@@ -119,5 +123,6 @@ public sealed class RatingService : IRatingService
 
     private static PublicRatingDto ToPublicDto(AppointmentRating r) =>
         new(r.Status.ToString(), r.StaffName, r.ServiceName, r.BusinessName, r.MaskedPhone(), AsUtc(r.ExpiresAtUtc),
-            r.Status == RatingStatus.Submitted ? r.Stars : null);
+            r.Status == RatingStatus.Submitted ? r.Stars : null,
+            r.Status == RatingStatus.Submitted ? r.SalonStars : null);
 }
