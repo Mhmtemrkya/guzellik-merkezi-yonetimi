@@ -155,25 +155,36 @@ public sealed class TenantService : ITenantService
         // gelen aktif paket atanır, kurum Aktif olur ve bitiş tarihi (oluşturma + 1 ay/yıl) hesaplanır.
         // "Trial" (veya boş) ise 14 günlük deneme akışı işler (sayaç owner ilk girişinde başlar).
         var period = ParseBillingPeriod(request.BillingPeriod);
+        var planName = request.Plan.Trim();
+        var plan = await _db.SubscriptionPlans
+            .FirstOrDefaultAsync(p => p.IsActive && p.Name == planName, cancellationToken);
+        if (plan is null)
+        {
+            return Result<TenantWithCredentialsDto>.Failure(
+                Error.Validation($"'{request.Plan}' adlı aktif paket bulunamadı. Geçerli bir paket seçin."));
+        }
+
         if (period.HasValue)
         {
-            var planName = request.Plan.Trim();
-            var plan = await _db.SubscriptionPlans
-                .FirstOrDefaultAsync(p => p.IsActive && p.Name == planName, cancellationToken);
-            if (plan is null)
-            {
-                return Result<TenantWithCredentialsDto>.Failure(
-                    Error.Validation($"'{request.Plan}' adlı aktif paket bulunamadı. Ücretli dönem için geçerli bir paket seçin."));
-            }
-
             tenant.StartSubscription(plan, period.Value, DateTime.UtcNow);
+        }
+        else
+        {
+            // Deneme: abonelik başlatılmaz ama seçilen paket yine de bağlanır; aksi halde
+            // kurum plansız kalır (feature gating kapalı, listede "paket atanmamış",
+            // plan değiştir diyaloğu ilk paketi — Başlangıç — gösterir).
+            tenant.AssignSubscriptionPlan(plan);
         }
 
         // Yetkili girişi: şifre girilmediyse geçici şifre üretilir + ilk giriş zorunlu değişim.
         // Şifre girildiyse o şifre kalıcı set edilir ve credentials döndürülmez.
+        var branchNameForCredentials = string.IsNullOrWhiteSpace(request.DefaultBranchName) ? null : request.DefaultBranchName;
+        var allCredentials = new List<TenantCredentialsDto>();
+        var usedEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         TenantCredentialsDto? credentials = null;
         if (!string.IsNullOrWhiteSpace(request.OwnerEmail))
         {
+            usedEmails.Add(request.OwnerEmail!);
             var owner = tenant.GrantAccess(request.OwnerEmail, UserRole.InstitutionOwner, null, request.OwnerName);
             var passwordProvided = !string.IsNullOrWhiteSpace(request.InitialPassword);
 
@@ -191,15 +202,56 @@ public sealed class TenantService : ITenantService
                     request.OwnerEmail!,
                     tempPassword,
                     request.Name,
-                    string.IsNullOrWhiteSpace(request.DefaultBranchName) ? null : request.DefaultBranchName,
+                    branchNameForCredentials,
                     true,
                     DateTime.UtcNow);
+                allCredentials.Add(credentials);
             }
+        }
+
+        // Ek kurum yöneticileri: her biri InstitutionOwner rolüyle açılır, her birine ayrı
+        // geçici şifre üretilir. E-posta boşsa ad + kurum domaininden türetilir; hem form
+        // içinde hem mevcut kullanıcılara karşı benzersizlik denetlenir (çakışma → 409).
+        foreach (var extra in request.AdditionalOwners ?? Array.Empty<TenantAdditionalOwnerInput>())
+        {
+            var extraName = NormalizeText(extra.Name);
+            var extraEmail = NormalizeEmailCandidate(extra.Email);
+            if (string.IsNullOrWhiteSpace(extraEmail))
+            {
+                if (string.IsNullOrWhiteSpace(extraName)) continue; // tamamen boş satır → yok say
+                extraEmail = BuildOwnerEmail(extraName, request.Domain ?? string.Empty);
+            }
+
+            if (!usedEmails.Add(extraEmail))
+            {
+                return Result<TenantWithCredentialsDto>.Failure(Error.Conflict($"'{extraEmail}' e-postası formda birden fazla yöneticiye yazılmış. Her yöneticinin e-postası farklı olmalı."));
+            }
+
+            if (await _db.TenantUsers.AnyAsync(x => x.IsActive && x.Email == extraEmail, cancellationToken))
+            {
+                return Result<TenantWithCredentialsDto>.Failure(Error.Conflict($"'{extraEmail}' e-postası daha önce kullanılmış. Ek yönetici için farklı bir e-posta girin."));
+            }
+
+            var extraOwner = tenant.GrantAccess(extraEmail, UserRole.InstitutionOwner, null, string.IsNullOrWhiteSpace(extraName) ? null : extraName);
+            var extraPassword = GenerateTempPassword();
+            extraOwner.SetTemporaryPassword(_passwordHasher.Hash(extraPassword)); // MustChangePassword=true
+            allCredentials.Add(new TenantCredentialsDto(
+                tenant.Id,
+                string.IsNullOrWhiteSpace(extraName) ? extraEmail : extraName,
+                extraEmail,
+                extraPassword,
+                request.Name,
+                branchNameForCredentials,
+                true,
+                DateTime.UtcNow));
         }
 
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(cancellationToken);
-        return Result<TenantWithCredentialsDto>.Success(new TenantWithCredentialsDto(tenant.ToDto(), credentials));
+        return Result<TenantWithCredentialsDto>.Success(new TenantWithCredentialsDto(
+            tenant.ToDto(),
+            credentials ?? (allCredentials.Count > 0 ? allCredentials[0] : null),
+            allCredentials.Count > 0 ? allCredentials : null));
     }
 
     public async Task<Result<TenantDto>> UpdateAsync(Guid id, UpdateTenantRequest request, CancellationToken cancellationToken = default)
@@ -249,8 +301,12 @@ public sealed class TenantService : ITenantService
         }
         else
         {
-            // Deneme/dönemsiz: plan adı korunur, durum uygulanır. Açıkça "Deneme" seçildiyse trial'a alınır.
-            tenant.ChangePlan(request.Plan);
+            // Deneme/dönemsiz: seçilen paket isimden bulunup bağlanır (yoksa yalnızca ad değişir),
+            // durum uygulanır. Açıkça "Deneme" seçildiyse trial'a alınır.
+            var trialPlan = await _db.SubscriptionPlans
+                .FirstOrDefaultAsync(p => p.IsActive && p.Name == request.Plan.Trim(), cancellationToken);
+            if (trialPlan is not null) tenant.AssignSubscriptionPlan(trialPlan);
+            else tenant.ChangePlan(request.Plan);
             if (request.Status == TenantStatus.Suspended) tenant.Suspend();
             else if (request.Status == TenantStatus.Cancelled) tenant.Cancel();
             else if (tenant.Status != TenantStatus.Trial) tenant.ResetTrialForNextOwnerLogin();

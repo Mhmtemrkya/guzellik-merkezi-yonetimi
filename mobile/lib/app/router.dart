@@ -8,6 +8,7 @@ import '../core/notifications/notification_center.dart';
 import '../features/accounting/on_muhasebe_screen.dart';
 import '../features/appointments/appointments_screen.dart';
 import '../features/approvals/approvals_screen.dart';
+import '../features/auth/change_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/branches/branches_screen.dart';
@@ -72,6 +73,12 @@ class AppRouter {
         }
         // Personel/yönetici müşteri portalına giremez (ama /customers personel sayfasıdır, engelleme).
         if (location.startsWith('/customer/')) return '/home';
+        // Geçici şifreyle girildi → önce zorunlu şifre değiştirme ekranı
+        // (web /change-password paritesi; "Daha Sonra" ile atlanabilir).
+        if (auth.passwordChangePending) {
+          return location == '/change-password' ? null : '/change-password';
+        }
+        if (location == '/change-password') return null;
         if (location == '/login' || location == '/splash' || location == '/') {
           return '/home';
         }
@@ -95,6 +102,10 @@ class AppRouter {
         GoRoute(
           path: '/register',
           builder: (_, _) => RegisterScreen(auth: auth),
+        ),
+        GoRoute(
+          path: '/change-password',
+          builder: (_, _) => ChangePasswordScreen(auth: auth),
         ),
         // ---- Online randevu müşteri portalı ----
         GoRoute(

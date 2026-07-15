@@ -25,6 +25,11 @@ class AuthController extends ChangeNotifier {
   bool _remember = true;
   bool get remember => _remember;
 
+  /// Geçici şifreyle girildi ve henüz değiştirilmedi → router zorunlu şifre
+  /// değiştirme ekranına yönlendirir. "Daha Sonra" ile bu oturum için atlanabilir
+  /// (web ile aynı davranış); bir sonraki girişte tekrar çıkar.
+  bool passwordChangePending = false;
+
   SessionUser? get user => session?.user;
 
   Future<void> restore() async {
@@ -47,6 +52,7 @@ class AuthController extends ChangeNotifier {
         return;
       }
       status = AuthStatus.signedIn;
+      passwordChangePending = session?.user.mustChangePassword == true;
       notifyListeners();
       // Token süresi dolmamış olsa da açılışta oturumu tazele (best-effort):
       // kurum yöneticisinin değiştirdiği rol/sayfa izinleri yeniden giriş
@@ -92,8 +98,32 @@ class AuthController extends ChangeNotifier {
     _remember = remember;
     await _persistSession();
     status = AuthStatus.signedIn;
+    passwordChangePending = session?.user.mustChangePassword == true;
     notifyListeners();
     unawaited(ScreenSecurity.apply(api, session?.user));
+  }
+
+  /// Geçici/mevcut şifreyi yenisiyle değiştirir (web /change-password paritesi).
+  /// Başarılıysa zorunlu değiştirme bayrağı kapanır ve oturum tazelenir.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await api.post('/api/auth/change-password', {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+    passwordChangePending = false;
+    notifyListeners();
+    // mustChangePassword bayrağını DB'den taze almak için oturumu sessizce yenile.
+    unawaited(refreshProfile());
+  }
+
+  /// "Daha Sonra": bu oturum için zorunlu ekranı atlar; bayrak sunucuda kaldığı
+  /// için bir sonraki girişte tekrar sorulur.
+  void skipPasswordChange() {
+    passwordChangePending = false;
+    notifyListeners();
   }
 
   /// Online portal müşteri girişi: ad soyad + telefon (baştaki 0 ile) + doğum tarihi (YYYY-MM-DD).

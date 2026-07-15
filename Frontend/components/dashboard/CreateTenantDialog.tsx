@@ -10,7 +10,13 @@ import {
 } from '@/components/ui/dialog'
 import { platformApi } from '@/lib/apiClient'
 import type { ApiTenantAvailability, ApiTenantCredentials, ApiTenantWithCredentials } from '@/lib/types'
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Plus, Sparkles } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Plus, Sparkles, Trash2, UserPlus } from 'lucide-react'
+
+/** Opsiyonel ek kurum yöneticisi satırı. E-posta boşsa backend ad + domainden üretir. */
+export interface AdditionalOwnerInput {
+  name: string
+  email: string
+}
 
 export interface CreateTenantFormValues {
   name: string
@@ -26,6 +32,8 @@ export interface CreateTenantFormValues {
   defaultBranchCity: string
   phone: string
   email: string
+  /** Opsiyonel ek kurum yöneticileri — her biri ayrı InstitutionOwner hesabı + geçici şifre alır. */
+  additionalOwners: AdditionalOwnerInput[]
 }
 
 /** Plan seçeneği — dönem bazlı tutar gösterimi için aylık/yıllık fiyatları taşır. */
@@ -49,8 +57,8 @@ interface CreateTenantDialogProps {
   plans: CreateTenantPlanOption[]
   /** Kurum oluşturur; şifre boş bırakıldıysa backend credentials döndürür. */
   onCreate: (values: CreateTenantFormValues) => Promise<ApiTenantWithCredentials | void>
-  /** Otomatik şifre üretildiyse ayrı credentials modalını açmak için. */
-  onCredentials?: (credentials: ApiTenantCredentials) => void
+  /** Otomatik şifre üretildiyse ayrı credentials modalını açmak için (birincil + ek yöneticiler). */
+  onCredentials?: (credentials: ApiTenantCredentials[]) => void
 }
 
 type AutoField = 'slug' | 'domain' | 'ownerEmail'
@@ -71,6 +79,7 @@ function initialValues(plan: string): CreateTenantFormValues {
     defaultBranchCity: 'İstanbul',
     phone: '',
     email: '',
+    additionalOwners: [],
   }
 }
 
@@ -129,13 +138,31 @@ function deriveEmail(ownerName: string, domain: string): string {
  * Auto alanları (slug/domain/ownerEmail) kaynaklarından canlı türetir.
  * `dirty` olan (kullanıcının elle değiştirdiği) alanlara dokunulmaz.
  */
-function deriveAuto(values: CreateTenantFormValues, dirty: Record<AutoField, boolean>): CreateTenantFormValues {
+function deriveAuto(
+  values: CreateTenantFormValues,
+  dirty: Record<AutoField, boolean>,
+  ownersDirty: boolean[],
+): CreateTenantFormValues {
   const slug = dirty.slug ? values.slug : deriveSlug(values.name)
   const domain = dirty.domain ? values.domain : deriveDomain(slug)
   const ownerEmail = dirty.ownerEmail ? values.ownerEmail : deriveEmail(values.ownerName, domain)
-  if (slug === values.slug && domain === values.domain && ownerEmail === values.ownerEmail) return values
-  return { ...values, slug, domain, ownerEmail }
+
+  // Ek yönetici e-postaları: elle yazılmadıysa ad + domainden canlı türetilir.
+  let ownersChanged = false
+  const additionalOwners = values.additionalOwners.map((owner, index) => {
+    if (ownersDirty[index]) return owner
+    const email = deriveEmail(owner.name, domain)
+    if (email === owner.email) return owner
+    ownersChanged = true
+    return { ...owner, email }
+  })
+
+  if (!ownersChanged && slug === values.slug && domain === values.domain && ownerEmail === values.ownerEmail) return values
+  return { ...values, slug, domain, ownerEmail, additionalOwners: ownersChanged ? additionalOwners : values.additionalOwners }
 }
+
+/** Ek yönetici e-postasının canlı denetim durumu. */
+type OwnerCheck = { status: 'idle' | 'checking' | 'ok' | 'taken' | 'dup'; suggestion?: string }
 
 function fieldLabel(field: string): string {
   if (field === 'name') return 'Kurum adı'
@@ -162,9 +189,15 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
   const [submitError, setSubmitError] = useState('')
   const [availabilityNotice, setAvailabilityNotice] = useState('')
 
+  // Ek yönetici e-postalarının canlı benzersizlik denetimi (index'e göre).
+  const [ownerChecks, setOwnerChecks] = useState<OwnerCheck[]>([])
+
   // Hangi auto alanlar kullanıcı tarafından elle değiştirildi (dirty) → türetme dokunmaz.
   const dirtyRef = useRef<Record<AutoField, boolean>>({ slug: false, domain: false, ownerEmail: false })
+  // Ek yönetici e-postası elle mi yazıldı (satır bazlı dirty).
+  const ownersDirtyRef = useRef<boolean[]>([])
   const requestSeq = useRef(0)
+  const ownersSeq = useRef(0)
 
   useEffect(() => {
     if (!open) {
@@ -174,7 +207,9 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
       setSubmitError('')
       setSaved(false)
       setChecking(false)
+      setOwnerChecks([])
       dirtyRef.current = { slug: false, domain: false, ownerEmail: false }
+      ownersDirtyRef.current = []
     }
   }, [defaults, open])
 
@@ -212,8 +247,77 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
       // Elle yazıldıysa dirty; tamamen silindiyse tekrar auto moda döner.
       dirtyRef.current = { ...dirtyRef.current, [key]: String(value || '').trim() !== '' }
     }
-    setValues((current) => deriveAuto({ ...current, [key]: value }, dirtyRef.current))
+    setValues((current) => deriveAuto({ ...current, [key]: value }, dirtyRef.current, ownersDirtyRef.current))
   }
+
+  // --- Ek kurum yöneticisi satırları ---
+  const addOwnerRow = (): void => {
+    setSubmitError('')
+    setSaved(false)
+    ownersDirtyRef.current = [...ownersDirtyRef.current, false]
+    setValues((current) => ({ ...current, additionalOwners: [...current.additionalOwners, { name: '', email: '' }] }))
+  }
+
+  const removeOwnerRow = (index: number): void => {
+    setSubmitError('')
+    ownersDirtyRef.current = ownersDirtyRef.current.filter((_, i) => i !== index)
+    setValues((current) => ({ ...current, additionalOwners: current.additionalOwners.filter((_, i) => i !== index) }))
+  }
+
+  const updateOwnerRow = (index: number, key: keyof AdditionalOwnerInput, value: string): void => {
+    setSubmitError('')
+    setSaved(false)
+    if (key === 'email') {
+      // Elle yazıldıysa dirty; tamamen silindiyse tekrar auto (ad + domain) moda döner.
+      const next = [...ownersDirtyRef.current]
+      next[index] = value.trim() !== ''
+      ownersDirtyRef.current = next
+    }
+    setValues((current) => {
+      const additionalOwners = current.additionalOwners.map((owner, i) => (i === index ? { ...owner, [key]: value } : owner))
+      return deriveAuto({ ...current, additionalOwners }, dirtyRef.current, ownersDirtyRef.current)
+    })
+  }
+
+  // Ek yönetici e-postalarının canlı benzersizlik denetimi: form içi çift kontrol anında,
+  // "daha önce kullanılmış mı" kontrolü debounce ile backend'den yapılır.
+  useEffect(() => {
+    if (!open) return
+    const emails = values.additionalOwners.map((owner) => owner.email.trim().toLowerCase())
+    if (!emails.length) {
+      setOwnerChecks([])
+      return
+    }
+
+    const primary = values.ownerEmail.trim().toLowerCase()
+    const base: OwnerCheck[] = emails.map((email, index) => {
+      if (!email) return { status: 'idle' }
+      const dup = email === primary || emails.some((other, j) => j !== index && other === email)
+      return dup ? { status: 'dup' } : { status: 'checking' }
+    })
+    setOwnerChecks(base)
+
+    if (!base.some((check) => check.status === 'checking')) return
+
+    const seq = ownersSeq.current + 1
+    ownersSeq.current = seq
+    const timer = window.setTimeout(async () => {
+      const results = await Promise.all(
+        emails.map(async (email, index): Promise<OwnerCheck> => {
+          if (base[index].status !== 'checking') return base[index]
+          try {
+            const result = await platformApi.tenantAvailability<ApiTenantAvailability>({ ownerEmail: email })
+            return result.ownerEmailAvailable ? { status: 'ok' } : { status: 'taken', suggestion: result.suggestedOwnerEmail }
+          } catch {
+            return { status: 'idle' }
+          }
+        }),
+      )
+      if (ownersSeq.current === seq) setOwnerChecks(results)
+    }, 450)
+
+    return () => window.clearTimeout(timer)
+  }, [open, values.additionalOwners, values.ownerEmail])
 
   useEffect(() => {
     if (!open) return
@@ -309,8 +413,42 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
         return
       }
 
+      // Ek yöneticiler: boş satırlar atılır; e-postalar hem form içinde hem backend'de
+      // benzersizlik açısından son kez denetlenir (canlı kontrol yalnızca kolaylıktır).
+      const ownerRows = values.additionalOwners
+        .map((owner) => ({ name: owner.name.trim(), email: owner.email.trim().toLowerCase() }))
+        .filter((owner) => owner.name || owner.email)
+      const seenEmails = new Set(values.ownerEmail.trim() ? [values.ownerEmail.trim().toLowerCase()] : [])
+      for (const owner of ownerRows) {
+        if (!owner.email) continue
+        if (seenEmails.has(owner.email)) {
+          setSubmitError(`'${owner.email}' e-postası formda birden fazla yöneticiye yazılmış. Her yöneticinin e-postası farklı olmalı.`)
+          return
+        }
+        seenEmails.add(owner.email)
+      }
+
+      const ownerResults = await Promise.all(
+        ownerRows
+          .filter((owner) => owner.email)
+          .map(async (owner) => ({
+            owner,
+            check: await platformApi.tenantAvailability<ApiTenantAvailability>({ ownerEmail: owner.email }),
+          })),
+      )
+      const takenOwners = ownerResults.filter((r) => !r.check.ownerEmailAvailable)
+      if (takenOwners.length) {
+        setSubmitError(
+          `Şu ek yönetici e-postaları daha önce kullanılmış: ${takenOwners
+            .map((r) => `${r.owner.email} (öneri: ${r.check.suggestedOwnerEmail})`)
+            .join(' · ')}`,
+        )
+        return
+      }
+
       const submitValues: CreateTenantFormValues = {
         ...values,
+        additionalOwners: ownerRows,
         name: (result.suggestedName || values.name).trim(),
         slug: result.suggestedSlug || values.slug,
         domain: result.suggestedDomain || values.domain,
@@ -326,11 +464,16 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
       setSaved(true)
 
       // Şifre boş bırakıldıysa backend otomatik geçici şifre üretip credentials döner.
-      // Bu durumda create modalı kapanır ve AYRI credentials modalı açılır.
-      const creds = created && (created as ApiTenantWithCredentials).credentials
-      if (creds) {
+      // Bu durumda create modalı kapanır ve AYRI credentials modalı açılır (yönetici sayısı kadar kart/PDF).
+      const withCreds = created as ApiTenantWithCredentials | void
+      const credsList: ApiTenantCredentials[] = withCreds?.allCredentials?.length
+        ? withCreds.allCredentials
+        : withCreds?.credentials
+          ? [withCreds.credentials]
+          : []
+      if (credsList.length) {
         setOpen(false)
-        window.setTimeout(() => onCredentials?.(creds), 280)
+        window.setTimeout(() => onCredentials?.(credsList), 280)
       } else {
         window.setTimeout(() => setOpen(false), 900)
       }
@@ -503,6 +646,99 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                   />
                 </div>
 
+                {/* Ek kurum yöneticileri (opsiyonel) */}
+                <div className="border border-[#ead8df]/[0.70] bg-white/[0.62] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65]">
+                        Ek kurum yöneticileri <span className="text-[#352432]/[0.35]">(opsiyonel)</span>
+                      </div>
+                      <div className="mt-1 text-[10px] leading-relaxed text-[#352432]/[0.40]">
+                        Her ek yönetici için ayrı hesap + geçici şifre oluşturulur; giriş bilgileri modalda yönetici sayısı kadar PDF ile gösterilir.
+                        E-postayı boş bırakırsan ada göre otomatik üretilir; elle yazarsan benzersizliği anlık denetlenir.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addOwnerRow}
+                      className="inline-flex shrink-0 items-center gap-1.5 border border-[#efbfd0]/[0.75] bg-[#fff4f8] px-3 py-2 text-[9.5px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#ffd3df]/[0.45]"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" /> Yönetici ekle
+                    </button>
+                  </div>
+
+                  {values.additionalOwners.length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {values.additionalOwners.map((owner, index) => {
+                        const check = ownerChecks[index]
+                        return (
+                          <div key={index} className="border border-[#ead8df]/[0.60] bg-white/[0.72] p-3">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.2fr_auto]">
+                              <FormInput
+                                label={`${index + 2}. yönetici adı`}
+                                value={owner.name}
+                                onChange={(value) => updateOwnerRow(index, 'name', value)}
+                                placeholder="Örn. Ayşe Kaya"
+                              />
+                              <FormInput
+                                label="Giriş e-postası"
+                                type="email"
+                                value={owner.email}
+                                onChange={(value) => updateOwnerRow(index, 'email', value)}
+                                placeholder="Boşsa ada göre otomatik üretilir"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeOwnerRow(index)}
+                                className="mt-6 grid h-11 w-11 shrink-0 place-items-center self-start border border-[#ead8df]/[0.70] bg-white/[0.72] text-[#7e5f6e] transition-colors hover:border-rose-300/[0.60] hover:text-rose-600"
+                                aria-label="Yöneticiyi kaldır"
+                                title="Yöneticiyi kaldır"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {check && check.status !== 'idle' && (
+                              <div
+                                className={`mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed ${
+                                  check.status === 'ok'
+                                    ? 'text-emerald-700'
+                                    : check.status === 'checking'
+                                      ? 'text-[#352432]/[0.45]'
+                                      : 'text-rose-600'
+                                }`}
+                              >
+                                {check.status === 'checking' && <Loader2 className="h-3 w-3 animate-spin" />}
+                                {check.status === 'ok' && <CheckCircle2 className="h-3 w-3" />}
+                                {(check.status === 'taken' || check.status === 'dup') && <AlertTriangle className="h-3 w-3" />}
+                                {check.status === 'checking' && 'E-posta benzersizliği kontrol ediliyor...'}
+                                {check.status === 'ok' && 'Bu e-posta kullanılabilir.'}
+                                {check.status === 'taken' && (
+                                  <span>
+                                    Bu e-posta daha önce kullanılmış.
+                                    {check.suggestion && (
+                                      <>
+                                        {' '}Öneri:{' '}
+                                        <button
+                                          type="button"
+                                          onClick={() => updateOwnerRow(index, 'email', check.suggestion!)}
+                                          className="underline decoration-dotted underline-offset-2 hover:text-rose-700"
+                                        >
+                                          {check.suggestion}
+                                        </button>
+                                      </>
+                                    )}
+                                  </span>
+                                )}
+                                {check.status === 'dup' && 'Bu e-posta formda başka bir yöneticide zaten yazılı.'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {(availabilityNotice || hasConflict || allAvailable || checking) && (
                   <div
                     className={`border p-3 text-[11px] leading-5 ${
@@ -570,6 +806,14 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                   <SummaryRow label="Domain" value={values.domain || 'Otomatik bekleniyor'} />
                   <SummaryRow label="Yetkili" value={values.ownerName || 'Opsiyonel'} />
                   <SummaryRow label="E-posta" value={values.ownerEmail || 'Yetkili adıyla dolar'} />
+                  <SummaryRow
+                    label="Ek yönetici"
+                    value={
+                      values.additionalOwners.filter((o) => o.name.trim() || o.email.trim()).length
+                        ? `${values.additionalOwners.filter((o) => o.name.trim() || o.email.trim()).length} kişi`
+                        : 'Yok'
+                    }
+                  />
                 </div>
               </aside>
             </div>

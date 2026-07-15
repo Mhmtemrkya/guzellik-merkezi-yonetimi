@@ -212,7 +212,7 @@ export default function PlatformKurumlarPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => normalizeScope(searchParams?.get('scope')))
   const [filterOpen, setFilterOpen] = useState<boolean>(false)
   const [page, setPage] = useState<number>(1)
-  const [ownerCredentials, setOwnerCredentials] = useState<ApiTenantCredentials | null>(null)
+  const [ownerCredentials, setOwnerCredentials] = useState<ApiTenantCredentials[] | null>(null)
   const [resetCredentials, setResetCredentials] = useState<ApiTenantCredentials | null>(null)
 
   // Sidebar alt linkleri (?scope=active/trial/paused) filtreyi senkronlar
@@ -300,6 +300,9 @@ export default function PlatformKurumlarPage() {
     defaultBranchCity: values.defaultBranchCity || null,
     phone: values.phone || null,
     email: values.email || null,
+    additionalOwners: values.additionalOwners.length
+      ? values.additionalOwners.map((o) => ({ name: o.name || null, email: o.email || null }))
+      : null,
   })
   const updateTenantPayload = (values: UpdateTenantFormValues): Record<string, unknown> => ({
     name: values.name,

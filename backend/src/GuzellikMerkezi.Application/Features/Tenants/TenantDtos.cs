@@ -33,7 +33,13 @@ public sealed record TenantDto(
 /// "Monthly"/"Yearly" seçilirse <see cref="Plan"/> adına karşılık gelen aktif paketle ücretli abonelik
 /// hemen başlatılır (durum Aktif, süre = oluşturma + 1 ay/yıl); "Trial" ise 14 günlük deneme akışı işler.
 /// </summary>
-public sealed record CreateTenantRequest(string Name, string Slug, string Plan, string? Domain, string? OwnerName, string? OwnerEmail, string? InitialPassword, string? DefaultBranchName, string? DefaultBranchCity, string? Phone = null, string? Email = null, string? BillingPeriod = null);
+public sealed record CreateTenantRequest(string Name, string Slug, string Plan, string? Domain, string? OwnerName, string? OwnerEmail, string? InitialPassword, string? DefaultBranchName, string? DefaultBranchCity, string? Phone = null, string? Email = null, string? BillingPeriod = null, IReadOnlyList<TenantAdditionalOwnerInput>? AdditionalOwners = null);
+
+/// <summary>
+/// Kurum oluşturulurken eklenen ek kurum yöneticisi. E-posta boş bırakılırsa
+/// ad + kurum domaininden otomatik üretilir; her yönetici için geçici şifre oluşturulur.
+/// </summary>
+public sealed record TenantAdditionalOwnerInput(string? Name, string? Email);
 
 /// <summary>
 /// Kurum oluşturulurken şifre girilmediyse otomatik üretilen yetkili giriş bilgileri.
@@ -49,7 +55,11 @@ public sealed record TenantCredentialsDto(
     bool MustChangePassword,
     DateTime CreatedAtUtc);
 
-public sealed record TenantWithCredentialsDto(TenantDto Tenant, TenantCredentialsDto? Credentials);
+/// <summary>
+/// <see cref="Credentials"/> geriye uyumluluk için ilk yöneticinin bilgilerini taşır;
+/// <see cref="AllCredentials"/> otomatik şifre üretilen TÜM yöneticileri (birincil + ek) içerir.
+/// </summary>
+public sealed record TenantWithCredentialsDto(TenantDto Tenant, TenantCredentialsDto? Credentials, IReadOnlyList<TenantCredentialsDto>? AllCredentials = null);
 
 public sealed record TenantAvailabilityDto(
     string? Name,

@@ -250,7 +250,10 @@ export interface ApiTenantCredentials {
 
 export interface ApiTenantWithCredentials {
   tenant?: ApiTenant
+  /** Geriye uyumluluk: ilk (birincil) yöneticinin bilgileri. */
   credentials?: ApiTenantCredentials | null
+  /** Otomatik şifre üretilen TÜM kurum yöneticileri (birincil + ek). */
+  allCredentials?: ApiTenantCredentials[] | null
 }
 
 export type TenantStatusKey = 'active' | 'trial' | 'paused'

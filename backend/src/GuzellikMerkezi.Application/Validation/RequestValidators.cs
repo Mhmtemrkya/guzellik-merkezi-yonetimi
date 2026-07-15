@@ -36,6 +36,11 @@ public sealed class CreateTenantRequestValidator : AbstractValidator<CreateTenan
         RuleFor(x => x.Phone).MaximumLength(40);
         RuleFor(x => x.OwnerEmail).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.OwnerEmail));
         RuleFor(x => x.Email).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleForEach(x => x.AdditionalOwners).ChildRules(owner =>
+        {
+            owner.RuleFor(o => o.Name).MaximumLength(160);
+            owner.RuleFor(o => o.Email).EmailAddress().MaximumLength(256).When(o => !string.IsNullOrWhiteSpace(o.Email));
+        }).When(x => x.AdditionalOwners is not null);
     }
 }
 

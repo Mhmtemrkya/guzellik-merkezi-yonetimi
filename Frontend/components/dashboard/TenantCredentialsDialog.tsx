@@ -8,7 +8,8 @@ import { generateCredentialsPdf } from '@/lib/credentialsPdf'
 import type { ApiTenantCredentials } from '@/lib/types'
 
 interface TenantCredentialsDialogProps {
-  credentials: ApiTenantCredentials | null
+  /** Tek yönetici veya (çoklu yönetici oluşturulduysa) yönetici listesi. */
+  credentials: ApiTenantCredentials | ApiTenantCredentials[] | null
   onClose: () => void
   /** Üst küçük etiket — varsayılan "Kurum oluşturuldu"; şifre sıfırlamada "Şifre sıfırlandı" gibi. */
   kicker?: string
@@ -31,12 +32,13 @@ export default function TenantCredentialsDialog({
   pdfHeading = 'KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ',
   pdfSubjectLabel = 'YÖNETİCİ',
 }: TenantCredentialsDialogProps) {
-  const [copiedField, setCopiedField] = useState<'email' | 'pwd' | null>(null)
-  const open = Boolean(credentials)
-  // PDF yalnızca hem e-posta hem geçici şifre varken üretilebilir; eksikse boş/bozuk PDF üretmeyiz.
-  const hasCredentialValues = Boolean(credentials?.email && credentials?.initialPassword)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const credentialsList: ApiTenantCredentials[] = Array.isArray(credentials) ? credentials : credentials ? [credentials] : []
+  const open = credentialsList.length > 0
+  const multi = credentialsList.length > 1
+  const first = credentialsList[0]
 
-  const copyToClipboard = async (text: string, field: 'email' | 'pwd'): Promise<void> => {
+  const copyToClipboard = async (text: string, field: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedField(field)
@@ -46,18 +48,29 @@ export default function TenantCredentialsDialog({
     }
   }
 
-  const handleDownloadPdf = (): void => {
-    if (!credentials || !hasCredentialValues) return
+  // PDF yalnızca hem e-posta hem geçici şifre varken üretilebilir; eksikse boş/bozuk PDF üretmeyiz.
+  const canPdf = (cred: ApiTenantCredentials): boolean => Boolean(cred.email && cred.initialPassword)
+  const anyPdf = credentialsList.some(canPdf)
+
+  const downloadPdfFor = (cred: ApiTenantCredentials, index: number): void => {
+    if (!canPdf(cred)) return
     generateCredentialsPdf({
       heading: pdfHeading,
       subjectLabel: pdfSubjectLabel,
-      personName: credentials.ownerName || credentials.email || 'Kurum Yöneticisi',
-      email: credentials.email || '',
-      initialPassword: credentials.initialPassword || '',
-      tenantName: credentials.tenantName || 'Kurum',
-      branchName: credentials.branchName || null,
-      filenameBase: credentials.tenantName || credentials.ownerName || 'kurum-yoneticisi',
+      personName: cred.ownerName || cred.email || 'Kurum Yöneticisi',
+      email: cred.email || '',
+      initialPassword: cred.initialPassword || '',
+      tenantName: cred.tenantName || 'Kurum',
+      branchName: cred.branchName || null,
+      // Çoklu yöneticide dosya adı kişiye göre ayrışsın ki PDF'ler üst üste binmesin.
+      filenameBase: multi
+        ? `${cred.tenantName || 'kurum'}-${cred.ownerName || cred.email || `yonetici-${index + 1}`}`
+        : cred.tenantName || cred.ownerName || 'kurum-yoneticisi',
     })
+  }
+
+  const handleDownloadAll = (): void => {
+    credentialsList.forEach((cred, index) => downloadPdfFor(cred, index))
   }
 
   return (
@@ -89,7 +102,8 @@ export default function TenantCredentialsDialog({
                   <span className="armo-shimmer">{title}</span>
                 </DialogTitle>
                 <DialogDescription className="mt-1.5 text-[12px] leading-relaxed text-[#352432]/[0.60]">
-                  {credentials?.tenantName ? `${credentials.tenantName} · ` : ''}
+                  {first?.tenantName ? `${first.tenantName} · ` : ''}
+                  {multi ? `${credentialsList.length} kurum yöneticisi oluşturuldu. ` : ''}
                   {description}
                 </DialogDescription>
               </div>
@@ -106,59 +120,82 @@ export default function TenantCredentialsDialog({
 
           {/* BODY */}
           <div className="relative min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[18px] border border-emerald-200/[0.80] bg-white/[0.86] p-3 shadow-[0_14px_34px_-28px_rgba(16,185,129,0.35)]">
-                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.70]">
-                  <Mail className="h-3 w-3" /> E-posta (kullanıcı adı)
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-2">
-                  <code className="truncate text-[13px] font-mono text-[#352432]">{credentials?.email}</code>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(credentials?.email || '', 'email')}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.78] text-[#7e5f6e] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
-                    title="Kopyala"
-                  >
-                    {copiedField === 'email' ? <CheckCircle2 className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
-                  </button>
-                </div>
-              </div>
-              <div className="rounded-[18px] border border-emerald-200/[0.80] bg-white/[0.86] p-3 shadow-[0_14px_34px_-28px_rgba(16,185,129,0.35)]">
-                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.70]">
-                  <KeyRound className="h-3 w-3" /> Geçici şifre
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-2">
-                  <code className="text-[15px] font-mono font-bold tracking-wide text-[#c85776]">{credentials?.initialPassword}</code>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(credentials?.initialPassword || '', 'pwd')}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.78] text-[#7e5f6e] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
-                    title="Kopyala"
-                  >
-                    {copiedField === 'pwd' ? <CheckCircle2 className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <div className="space-y-4">
+              {credentialsList.map((cred, index) => (
+                <div key={`${cred.email || index}`} className={multi ? 'rounded-[20px] border border-[#ead8df]/[0.85] bg-white/[0.55] p-3' : ''}>
+                  {multi && (
+                    <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
+                      <div className="flex items-center gap-2 text-[11px] text-[#352432]/[0.75]">
+                        <Sparkles className="h-3.5 w-3.5 text-[#c85776]" />
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-[#c85776]/[0.75]">{index + 1}. yönetici</span>
+                        <span className="font-semibold">{cred.ownerName || cred.email}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => downloadPdfFor(cred, index)}
+                        disabled={!canPdf(cred)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0]/[0.80] bg-white/[0.85] px-3 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#fff1f6] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Download className="h-3 w-3" /> PDF
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[18px] border border-emerald-200/[0.80] bg-white/[0.86] p-3 shadow-[0_14px_34px_-28px_rgba(16,185,129,0.35)]">
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.70]">
+                        <Mail className="h-3 w-3" /> E-posta (kullanıcı adı)
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
+                        <code className="truncate text-[13px] font-mono text-[#352432]">{cred.email}</code>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(cred.email || '', `email-${index}`)}
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.78] text-[#7e5f6e] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
+                          title="Kopyala"
+                        >
+                          {copiedField === `email-${index}` ? <CheckCircle2 className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="rounded-[18px] border border-emerald-200/[0.80] bg-white/[0.86] p-3 shadow-[0_14px_34px_-28px_rgba(16,185,129,0.35)]">
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.70]">
+                        <KeyRound className="h-3 w-3" /> Geçici şifre
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
+                        <code className="text-[15px] font-mono font-bold tracking-wide text-[#c85776]">{cred.initialPassword}</code>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(cred.initialPassword || '', `pwd-${index}`)}
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.78] text-[#7e5f6e] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
+                          title="Kopyala"
+                        >
+                          {copiedField === `pwd-${index}` ? <CheckCircle2 className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Yetkili adı */}
-            {credentials?.ownerName && (
-              <div className="mt-3 flex items-center gap-2 rounded-[16px] border border-[#ead8df]/[0.80] bg-white/[0.78] px-3 py-2 text-[12px] text-[#352432]/[0.75]">
-                <Sparkles className="h-3.5 w-3.5 text-[#c85776]" />
-                <span className="text-[#352432]/[0.45]">Yetkili:</span> {credentials.ownerName}
-              </div>
-            )}
+                  {/* Yetkili adı (tek yönetici görünümünde) */}
+                  {!multi && cred.ownerName && (
+                    <div className="mt-3 flex items-center gap-2 rounded-[16px] border border-[#ead8df]/[0.80] bg-white/[0.78] px-3 py-2 text-[12px] text-[#352432]/[0.75]">
+                      <Sparkles className="h-3.5 w-3.5 text-[#c85776]" />
+                      <span className="text-[#352432]/[0.45]">Yetkili:</span> {cred.ownerName}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
             {/* İlk giriş uyarısı */}
             <div className="mt-3 flex items-start gap-2 rounded-[18px] border border-amber-200/[0.90] bg-amber-50/[0.86] px-3 py-2.5 text-[11px] leading-relaxed text-amber-800 shadow-[0_14px_34px_-28px_rgba(245,158,11,0.35)]">
               <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
-                Yetkili ilk girişte şifresini <strong>zorunlu olarak</strong> değiştirecek. Bu belgeyi yetkiliye güvenli
-                bir kanaldan iletin; başkasıyla paylaşmayın.
+                {multi ? 'Yöneticiler' : 'Yetkili'} ilk girişte şifresini <strong>zorunlu olarak</strong> değiştirecek. Bu belgeleri
+                ilgili kişilere güvenli bir kanaldan iletin; başkasıyla paylaşmayın.
               </span>
             </div>
 
-            {!hasCredentialValues && (
+            {!anyPdf && (
               <div className="mt-4 flex items-start gap-2 rounded-[16px] border border-rose-200/[0.90] bg-rose-50/[0.80] px-3 py-2 text-[11px] leading-relaxed text-rose-700">
                 <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>Giriş bilgileri eksik geldiği için PDF oluşturulamıyor. Lütfen sayfayı yenileyip tekrar deneyin.</span>
@@ -166,12 +203,12 @@ export default function TenantCredentialsDialog({
             )}
             <button
               type="button"
-              onClick={handleDownloadPdf}
-              disabled={!hasCredentialValues}
+              onClick={handleDownloadAll}
+              disabled={!anyPdf}
               className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" />
-              Giriş bilgileri PDF'ini indir
+              {multi ? `Tüm giriş bilgisi PDF'lerini indir (${credentialsList.length})` : "Giriş bilgileri PDF'ini indir"}
             </button>
           </div>
 
