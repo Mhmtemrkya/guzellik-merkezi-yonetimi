@@ -420,7 +420,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
         {/* LOGO */}
         <div className="relative border-b border-[#ead8df]/75 px-5 pb-6 pt-5">
           <Link href="/" className="group flex items-center gap-3">
-            <div className="relative h-10 w-10 overflow-hidden">
+            <div className="relative h-14 w-14 overflow-hidden">
               <img
                 src="/logo.png"
                 alt="BeautyAsist logosu"

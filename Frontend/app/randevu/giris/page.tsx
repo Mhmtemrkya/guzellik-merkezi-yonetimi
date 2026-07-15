@@ -155,7 +155,7 @@ export default function CustomerLoginPage() {
         >
           <div>
             <motion.a variants={itemVariants} href="/" className="group inline-flex items-center gap-4">
-              <span className="relative h-14 w-14">
+              <span className="relative h-20 w-20">
                 <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
               </span>
               <span>

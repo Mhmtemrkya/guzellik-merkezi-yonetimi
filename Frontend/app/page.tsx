@@ -165,7 +165,7 @@ const pricingFeatures = [
 function BrandMark() {
   return (
     <a href="/" className="group flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
-      <span className="grid h-11 w-11 place-items-center">
+      <span className="grid h-16 w-16 place-items-center">
         <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain transition duration-500 group-hover:scale-105" />
       </span>
       <span className="leading-none">
@@ -400,7 +400,7 @@ function DashboardMockup() {
         <div className="grid lg:grid-cols-[214px_1fr]">
           <aside className="hidden border-r border-[#f0e0e6] bg-gradient-to-b from-[#fff4f8] to-[#fffafd] p-4 lg:block">
             <div className="mb-8 flex items-center gap-3 px-1">
-              <span className="grid h-12 w-12 place-items-center">
+              <span className="grid h-16 w-16 place-items-center">
                 <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
               </span>
               <div>
