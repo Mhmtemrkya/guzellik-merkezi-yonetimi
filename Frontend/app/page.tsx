@@ -164,7 +164,7 @@ const pricingFeatures = [
 
 function BrandMark() {
   return (
-    <a href="#top" className="group flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
+    <a href="/" className="group flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
       <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl border border-[#ead8df] bg-white shadow-[0_14px_34px_-24px_rgba(142,63,91,0.65)]">
         <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover transition duration-500 group-hover:scale-110" />
       </span>
