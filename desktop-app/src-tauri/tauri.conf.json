@@ -55,12 +55,10 @@
         "languages": ["Turkish"],
         "displayLanguageSelector": false
       },
-      "_comment_signing": "Kod imzası için: certificateThumbprint (yüklü EV/OV sertifikasının parmak izi) + digestAlgorithm + timestampUrl ekleyin. Bkz. STORE_YAYIN_REHBERI.md.",
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com"
     },
     "macOS": {
-      "_comment_signing": "Mac imza/notarization için signingIdentity ('Developer ID Application: ...') doldurun; notarization CI/CLI ile ayrıca yapılır. Bkz. STORE_YAYIN_REHBERI.md.",
       "minimumSystemVersion": "10.15"
     },
     "icon": [
