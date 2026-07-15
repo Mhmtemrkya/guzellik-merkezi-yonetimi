@@ -269,8 +269,8 @@ export default function CustomerPortalPage() {
         <span aria-hidden className="block h-[3px] w-full bg-gradient-to-r from-[#df6688] via-[#f5abc0] to-[#ee789a]" />
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <a href="/" className="flex items-center gap-3" aria-label="BeautyAsist ana sayfa">
-            <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl border border-[#ead8df] bg-white">
-              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
+            <span className="grid h-10 w-10 place-items-center">
+              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
             </span>
             <span className="leading-none">
               <span className="block font-display text-[17px] tracking-[-0.04em] text-[#6f4153]">BeautyAsist</span>

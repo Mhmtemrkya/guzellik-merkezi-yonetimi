@@ -90,8 +90,8 @@ export default function PublicNavbar({ variant = 'list' }: { variant?: 'list' | 
         <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-[#fdeef3]">
-              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-110 object-contain" />
+            <span className="grid h-9 w-9 place-items-center">
+              <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
             </span>
             <span className="font-display text-[21px] leading-none tracking-[0.01em] text-[#b2334f]">BeautyAsist</span>
           </Link>

@@ -271,8 +271,8 @@ export default function LoginPage() {
         >
           <div>
             <motion.a variants={itemVariants} href="/" className="group inline-flex items-center gap-4">
-              <span className="relative h-14 w-14 overflow-hidden rounded-2xl border border-[#ead8df] bg-white shadow-[0_16px_40px_-24px_rgba(200,87,118,0.55)]">
-                <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full scale-125 object-cover" />
+              <span className="relative h-14 w-14">
+                <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
               </span>
               <span>
                 <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>

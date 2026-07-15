@@ -420,11 +420,11 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
         {/* LOGO */}
         <div className="relative border-b border-[#ead8df]/75 px-5 pb-6 pt-5">
           <Link href="/" className="group flex items-center gap-3">
-            <div className="relative h-10 w-10 overflow-hidden rounded-2xl border border-[#efbfd0] bg-[#fff7fa] shadow-[0_10px_28px_-22px_rgba(190,91,125,0.75)] transition-shadow duration-500 group-hover:shadow-[0_14px_34px_-20px_rgba(190,91,125,0.8)]">
+            <div className="relative h-10 w-10 overflow-hidden">
               <img
                 src="/logo.png"
                 alt="BeautyAsist logosu"
-                className="h-full w-full object-cover scale-125 transition-transform duration-500 group-hover:scale-110"
+                className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               />
               <motion.span
                 aria-hidden
