@@ -24,12 +24,12 @@ export default function BranchSwitcher() {
   if (!selectedBranch || pathname?.startsWith('/platform') || pathname?.startsWith('/login')) return null
 
   return (
-    <div className="relative w-full sm:w-auto">
+    <div className="relative w-full min-w-0 sm:w-auto">
       <motion.button
         whileTap={{ scale: 0.97 }}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="group relative flex min-h-12 w-full items-center gap-3 overflow-hidden rounded-[18px] border border-[#ead8df]/90 bg-white/78 px-3 py-2 text-left shadow-[0_14px_34px_-30px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] sm:min-w-[250px]"
+        className="group relative flex min-h-12 w-full items-center gap-3 overflow-hidden rounded-[18px] border border-[#ead8df]/90 bg-white/78 px-3 py-2 text-left shadow-[0_14px_34px_-30px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] sm:min-w-[190px] sm:max-w-[250px] xl:min-w-[250px]"
       >
         <span
           aria-hidden
