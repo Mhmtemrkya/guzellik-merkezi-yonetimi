@@ -10,6 +10,7 @@ import {
   Clock3,
   CornerDownLeft,
   FileClock,
+  FileUp,
   Search,
   Sparkles,
   UserX,
@@ -27,6 +28,7 @@ import {
 import { usePathname, useRouter } from 'next/navigation'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import BranchSwitcher from './BranchSwitcher'
+import ImportDialog from './ImportDialog'
 import PageGuide from './PageGuide'
 import { useAuth } from './AuthContext'
 import { useManagerInbox } from '@/hooks/useManagerInbox'
@@ -133,6 +135,7 @@ export default function Topbar({
   const [query, setQuery] = useState<string>('')
   const [paletteOpen, setPaletteOpen] = useState<boolean>(false)
   const [noticeOpen, setNoticeOpen] = useState<boolean>(false)
+  const [importOpen, setImportOpen] = useState<boolean>(false)
   const [activeIndex, setActiveIndex] = useState<number>(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const pathname = usePathname()
@@ -301,10 +304,10 @@ export default function Topbar({
           className="pointer-events-none absolute inset-x-12 bottom-[-3px] h-px bg-white/80"
         />
 
-        <div className={`relative flex items-stretch justify-between gap-3 px-4 py-3.5 sm:px-6 ${compact ? 'lg:items-center lg:gap-3 lg:px-6' : 'flex-col sm:py-4 lg:flex-row lg:items-center lg:gap-5 lg:px-8'}`}>
+        <div className={`relative flex items-stretch justify-between gap-3 px-4 py-3.5 sm:px-6 ${compact ? 'lg:items-center lg:gap-3 lg:px-6' : 'flex-col sm:py-4 lg:flex-row lg:items-center lg:gap-4 lg:px-6 xl:gap-5 xl:px-8'}`}>
           {/* Title block */}
           {!compact && (
-            <div className="min-w-0 flex-1 lg:min-w-[260px]">
+            <div className="min-w-0 flex-1 lg:min-w-[180px] xl:min-w-[240px]">
               <div className="no-scrollbar flex items-center gap-2 overflow-x-auto text-[10px] font-semibold tracking-tight text-[#7c6170]/58">
                 {breadcrumbs.map((b, i) => (
                   <span key={`${b}-${i}`} className="flex shrink-0 items-center gap-2">
@@ -323,7 +326,7 @@ export default function Topbar({
                   animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -4, filter: 'blur(4px)' }}
                   transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                  className="armo-heading mt-1.5 whitespace-nowrap text-[1.55rem] leading-tight sm:text-2xl lg:text-[28px]"
+                  className="armo-heading mt-1.5 truncate text-[1.55rem] leading-tight sm:text-2xl xl:text-[28px]"
                 >
                   <span className="armo-shimmer">{title}</span>
                 </motion.h1>
@@ -337,7 +340,7 @@ export default function Topbar({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.35, delay: 0.06 }}
-                    className="mt-1.5 truncate whitespace-nowrap text-[12px] leading-relaxed text-[#7c6170]/70"
+                    className="mt-1.5 truncate text-[12px] leading-relaxed text-[#7c6170]/70"
                   >
                     {subtitle}
                   </motion.div>
@@ -347,12 +350,12 @@ export default function Topbar({
           )}
 
           {/* Right controls */}
-          <div className={`flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 lg:flex-nowrap ${compact ? 'w-full lg:justify-end' : 'lg:justify-end'}`}>
+          <div className={`flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 2xl:flex-nowrap ${compact ? 'w-full lg:justify-end' : 'lg:justify-end'}`}>
             {/* SEARCH TRIGGER (opens palette) */}
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => setPaletteOpen(true)}
-              className={`group relative items-center gap-2 overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] ${compact ? 'flex min-h-11 min-w-[240px] flex-1 lg:max-w-[640px]' : 'hidden w-[300px] md:flex'}`}
+              className={`group relative items-center gap-2 overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] ${compact ? 'flex min-h-11 min-w-[240px] flex-1 lg:max-w-[640px]' : 'hidden w-[220px] min-w-0 shrink md:flex xl:w-[300px]'}`}
             >
               <span
                 aria-hidden
@@ -369,7 +372,7 @@ export default function Topbar({
 
             {/* TIME — tarih çipi */}
             {!compact && (
-              <span className="hidden min-h-10 items-center gap-2 rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3 text-[11px] font-semibold tracking-tight text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] lg:flex">
+              <span className="hidden min-h-10 items-center gap-2 rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3 text-[11px] font-semibold tracking-tight text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] xl:flex">
                 <motion.span
                   aria-hidden
                   animate={{ opacity: [0.55, 1, 0.55] }}
@@ -383,6 +386,25 @@ export default function Topbar({
             )}
 
             {!compact && scope !== 'personel' && <BranchSwitcher />}
+
+            {/* GENEL EXCEL İÇERİ AKTAR — kurum yöneticisi paneli */}
+            {scope === 'admin' && (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.94 }}
+                onClick={() => setImportOpen(true)}
+                aria-label="Excel içeri aktar"
+                title="Excel içeri aktar"
+                className="group relative flex min-h-10 items-center gap-2 overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3 text-[11px] font-semibold text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+              >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#ffdce8]/65 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+                <FileUp className="relative z-10 h-3.5 w-3.5" strokeWidth={1.7} />
+                <span className="relative z-10 hidden xl:inline">İçeri Aktar</span>
+              </motion.button>
+            )}
 
             {/* SAYFA KILAVUZU */}
             <PageGuide />
@@ -572,7 +594,11 @@ export default function Topbar({
               </motion.button>
             )}
 
-            {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+            {actions && (
+              <div className={`flex min-w-0 flex-wrap items-center justify-end gap-2 ${compact ? 'shrink-0' : 'shrink-0 basis-full 2xl:shrink 2xl:basis-auto'}`}>
+                {actions}
+              </div>
+            )}
 
             {compact && (
               <div className="hidden shrink-0 items-center gap-2.5 pl-1 md:flex">
@@ -592,6 +618,8 @@ export default function Topbar({
           </div>
         </div>
       </header>
+
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       {/* COMMAND PALETTE OVERLAY */}
       <AnimatePresence>

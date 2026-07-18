@@ -10,6 +10,7 @@ using GuzellikMerkezi.Application.Features.CashFlow;
 using GuzellikMerkezi.Application.Features.Commissions;
 using GuzellikMerkezi.Application.Features.Consultations;
 using GuzellikMerkezi.Application.Features.Customers;
+using GuzellikMerkezi.Application.Features.DataImport;
 using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Application.Features.CustomerPortal;
 using GuzellikMerkezi.Application.Features.Expenses;
@@ -85,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<IBranchService, BranchService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IDataImportService, DataImportService>();
         services.AddScoped<ICustomerPortalService, CustomerPortalService>();
         services.AddScoped<IStaffService, StaffService>();
         services.AddScoped<IServiceCatalogService, ServiceCatalogService>();

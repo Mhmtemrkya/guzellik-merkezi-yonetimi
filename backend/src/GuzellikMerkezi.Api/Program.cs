@@ -196,6 +196,7 @@ app.MapAuthEndpoints();
 app.MapTenantEndpoints();
 app.MapBranchEndpoints();
 app.MapCustomerEndpoints();
+app.MapImportEndpoints();
 app.MapCustomerPortalEndpoints();
 app.MapTreatmentPhotoEndpoints();
 app.MapConsultationEndpoints();

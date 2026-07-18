@@ -711,6 +711,10 @@ export const adminApi = {
   updateBranch: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/branches/${id}`, { method: 'PUT', query: { tenantId }, body }),
 
+  /** Genel Excel içeri aktarma — analiz edilmiş satırlar (customers/services/packages) toplu kaydedilir. */
+  bulkImport: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/import/', { method: 'POST', query: { tenantId }, body }),
+
   customers: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/customers/', { query: { page: 1, pageSize: 100, ...query } }),
   customer: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
