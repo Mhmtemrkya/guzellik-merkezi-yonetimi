@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import Sidebar, { type SidebarNavItem, type SidebarUser } from '@/components/dashboard/Sidebar'
 import RouteGuard from '@/components/dashboard/RouteGuard'
 import PanelBackdrop from '@/components/dashboard/PanelBackdrop'
-import { LayoutGrid, Building2, BarChart3, Receipt, AlertTriangle, Settings2, Package } from 'lucide-react'
+import { LayoutGrid, Building2, BarChart3, Receipt, AlertTriangle, Settings2, Package, FileUp } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 
 const items: SidebarNavItem[] = [
@@ -43,6 +43,7 @@ const items: SidebarNavItem[] = [
   },
   { group: 'Finans', label: 'Plan Kataloğu', href: '/platform/planlar', icon: Package },
   { group: 'Finans', label: 'Faturalama', href: '/platform/fatura', icon: Receipt },
+  { group: 'Sistem', label: 'Veri Aktarımı', href: '/platform/aktarim', icon: FileUp },
   { group: 'Sistem', label: 'Sistem Ayarları', href: '/platform/sistem', icon: Settings2 },
 ]
 

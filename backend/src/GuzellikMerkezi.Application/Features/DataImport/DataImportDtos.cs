@@ -16,7 +16,7 @@ public sealed record ImportPackageRow(string Name, string? Description, string? 
 /// varlık tipine göre ilgili listeyi doldurur (tek istekte birden çok tip de olabilir).
 /// </summary>
 public sealed record BulkImportRequest(
-    Guid BranchId,
+    Guid BranchId = default, // boş = kurumun ilk şubesi (platform admin aktarımı)
     IReadOnlyCollection<ImportCustomerRow>? Customers = null,
     IReadOnlyCollection<ImportServiceRow>? Services = null,
     IReadOnlyCollection<ImportPackageRow>? Packages = null);

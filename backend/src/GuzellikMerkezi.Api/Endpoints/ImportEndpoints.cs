@@ -19,6 +19,13 @@ public static class ImportEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ImportAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
         });
 
+        // Platform admin: seçilen kuruma veri aktarımı (tenantId zorunlu query parametresi).
+        var platform = app.MapGroup("/api/platform/import").WithTags("DataImport").RequireAuthorization("PlatformAdmin");
+        platform.MapPost("/", async (BulkImportRequest request, Guid tenantId, IDataImportService service, HttpContext http, CancellationToken ct) =>
+        {
+            return tenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ImportAsync(tenantId, request, ct)).ToHttpResult(http);
+        });
+
         return app;
     }
 }

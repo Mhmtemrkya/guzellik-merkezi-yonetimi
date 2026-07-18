@@ -23,7 +23,15 @@ public sealed class DataImportService : IDataImportService
 
     public async Task<Result<BulkImportResultDto>> ImportAsync(Guid tenantId, BulkImportRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await _db.Branches.AnyAsync(x => x.TenantId == tenantId && x.Id == request.BranchId, cancellationToken))
+        // Platform admin aktarımında şube bilinmez — BranchId boş gelirse kurumun ilk şubesi kullanılır.
+        if (request.BranchId == Guid.Empty)
+        {
+            var defaultBranchId = await _db.Branches.Where(x => x.TenantId == tenantId)
+                .OrderBy(x => x.CreatedAtUtc).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+            if (defaultBranchId is null) return Result<BulkImportResultDto>.Failure(Error.NotFound("Kurumun şubesi bulunamadı."));
+            request = request with { BranchId = defaultBranchId.Value };
+        }
+        else if (!await _db.Branches.AnyAsync(x => x.TenantId == tenantId && x.Id == request.BranchId, cancellationToken))
         {
             return Result<BulkImportResultDto>.Failure(Error.NotFound("Şube bulunamadı."));
         }

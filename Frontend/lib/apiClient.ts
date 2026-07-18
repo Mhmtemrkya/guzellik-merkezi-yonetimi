@@ -556,6 +556,9 @@ type PlatformPayload = Record<string, unknown>
 export const platformApi = {
   tenants: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/platform/tenants/', { query: { page: 1, pageSize: 100, ...query } }),
+  /** Platform admin: seçilen kuruma Excel'den analiz edilmiş veriyi toplu aktarır. */
+  bulkImport: <T = unknown>(tenantId: string, body: AdminPayload): Promise<T> =>
+    apiRequest<T>('/api/platform/import/', { method: 'POST', query: { tenantId }, body }),
   tenantAvailability: <T = ApiTenantAvailability>(query: QueryRecord = {}): Promise<T> =>
     apiRequest<T>('/api/platform/tenants/availability', { query }),
   tenant: <T = unknown>(id: string): Promise<T> => apiRequest<T>(`/api/platform/tenants/${id}`),
