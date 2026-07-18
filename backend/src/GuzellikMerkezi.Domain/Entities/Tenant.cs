@@ -71,6 +71,18 @@ public sealed class Tenant : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Kullanım kılavuzu sıfırlama zamanı. Platform admin sıfırlayınca güncellenir;
+    /// panel bu tarihten önce "görüldü" işaretlenmiş kılavuzları yeniden gösterir.
+    /// </summary>
+    public DateTime? GuideResetAtUtc { get; private set; }
+
+    public void ResetGuide()
+    {
+        GuideResetAtUtc = DateTime.UtcNow;
+        Touch();
+    }
+
     /// <summary>Aktif abonelik paketinin Id'si. Null ise plan henüz atanmamış demektir.</summary>
     public Guid? SubscriptionPlanId { get; private set; }
     public SubscriptionPlan? SubscriptionPlan { get; private set; }

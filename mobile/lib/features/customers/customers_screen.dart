@@ -143,7 +143,7 @@ class CustomersScreen extends StatelessWidget {
       subtitle: 'Müşteri kartları, iletişim ve KVKK durumu.',
       icon: Icons.person_rounded,
       loader: () =>
-          api.get('/api/admin/customers/', query: {'page': 1, 'pageSize': 200}),
+          api.getAllPaged('/api/admin/customers/'),
       titleKeys: const ['fullName', 'name'],
       subtitleKeys: const ['phone', 'email'],
       statusKeys: const ['isBlacklisted', 'kvkkConsent'],

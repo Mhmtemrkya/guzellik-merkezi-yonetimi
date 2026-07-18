@@ -37,6 +37,10 @@ public static class TenantEndpoints
             (await service.GrantAccessAsync(id, request, ct)).ToHttpResult(http))
             .ValidatesRequest<GrantTenantAccessRequest>();
 
+        // Kullanım kılavuzunu sıfırla — kurumun tüm kullanıcı/cihazlarında kılavuz yeniden gösterilir.
+        group.MapPost("/{id:guid}/reset-guide", async (Guid id, ITenantService service, HttpContext http, CancellationToken ct) =>
+            (await service.ResetGuideAsync(id, ct)).ToHttpResult(http));
+
         // Kurum yetkilisinin şifresini sıfırlar — yeni geçici şifre tek seferlik döner.
         group.MapPost("/{id:guid}/reset-owner-password", async (Guid id, ITenantService service, HttpContext http, CancellationToken ct) =>
             (await service.ResetOwnerPasswordAsync(id, ct)).ToHttpResult(http));
@@ -48,6 +52,13 @@ public static class TenantEndpoints
         {
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetAsync(t, ct)).ToHttpResult(http);
+        });
+
+        // Kılavuz sıfırlama zamanı — panel yerel "görüldü" kayıtlarıyla karşılaştırıp kılavuzu yeniden açar.
+        adminGroup.MapGet("/guide-reset", async (Guid? tenantId, ICurrentUser cu, ITenantService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetGuideResetAsync(t, ct)).ToHttpResult(http);
         });
 
         adminGroup.MapPut("/", async (UpdateTenantRequest request, Guid? tenantId, ICurrentUser cu, ITenantService service, HttpContext http, CancellationToken ct) =>

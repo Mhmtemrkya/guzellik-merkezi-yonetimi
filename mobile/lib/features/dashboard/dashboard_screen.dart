@@ -91,10 +91,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'toUtc': to.toIso8601String(),
         },
       ),
-      widget.api.get(
-        '/api/admin/customers/',
-        query: {'page': 1, 'pageSize': 200},
-      ),
+      // Yeni danışan sayacı tüm kayıtlar üzerinden hesaplanmalı — tek sayfa yetmez.
+      widget.api.getAllPaged('/api/admin/customers/'),
       widget.api.get(
         '/api/admin/cash-flow/summary',
         query: {

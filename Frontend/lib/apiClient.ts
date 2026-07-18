@@ -556,6 +556,10 @@ type PlatformPayload = Record<string, unknown>
 export const platformApi = {
   tenants: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/platform/tenants/', { query: { page: 1, pageSize: 100, ...query } }),
+  /** Kurumun kullanım kılavuzunu sıfırlar — tüm kullanıcı/cihazlarda kılavuz yeniden gösterilir. */
+  resetTenantGuide: <T = unknown>(tenantId: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/tenants/${tenantId}/reset-guide`, { method: 'POST' }),
+
   /** Platform admin: seçilen kuruma Excel'den analiz edilmiş veriyi toplu aktarır. */
   bulkImport: <T = unknown>(tenantId: string, body: AdminPayload): Promise<T> =>
     apiRequest<T>('/api/platform/import/', { method: 'POST', query: { tenantId }, body }),
@@ -713,6 +717,10 @@ export const adminApi = {
     apiRequest<T>('/api/admin/branches/', { method: 'POST', query: { tenantId }, body }),
   updateBranch: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/branches/${id}`, { method: 'PUT', query: { tenantId }, body }),
+
+  /** Kullanım kılavuzu sıfırlama zamanı — PageGuide yerel "görüldü" kayıtlarıyla karşılaştırır. */
+  tenantGuideReset: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/tenant/guide-reset', { query: { tenantId } }),
 
   /** Genel Excel içeri aktarma — analiz edilmiş satırlar (customers/services/packages) toplu kaydedilir. */
   bulkImport: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>

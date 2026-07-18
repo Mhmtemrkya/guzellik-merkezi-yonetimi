@@ -22,12 +22,14 @@ public sealed class TenantService : ITenantService
     private readonly GuzellikDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IFeatureService _features;
+    private readonly IAuditLogger _audit;
 
-    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher, IFeatureService features)
+    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher, IFeatureService features, IAuditLogger audit)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _features = features;
+        _audit = audit;
     }
 
     public async Task<Result<PagedResult<TenantDto>>> ListAsync(PageRequest request, CancellationToken cancellationToken = default)
@@ -339,6 +341,27 @@ public sealed class TenantService : ITenantService
         _db.TenantUsers.Add(user);
         await _db.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    public async Task<Result<GuideResetDto>> ResetGuideAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(x => x.Id == tenantId, cancellationToken);
+        if (tenant is null) return Result<GuideResetDto>.Failure(Error.NotFound("Kurum bulunamadı."));
+
+        tenant.ResetGuide();
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, null, "ResetGuide", "Tenant", tenant.Id,
+            $"Kullanım kılavuzu sıfırlandı: {tenant.Name}", null, cancellationToken);
+        return Result<GuideResetDto>.Success(new GuideResetDto(tenant.GuideResetAtUtc));
+    }
+
+    public async Task<Result<GuideResetDto>> GetGuideResetAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var resetAt = await _db.Tenants.AsNoTracking()
+            .Where(x => x.Id == tenantId)
+            .Select(x => x.GuideResetAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        return Result<GuideResetDto>.Success(new GuideResetDto(resetAt));
     }
 
     public async Task<Result<TenantCredentialsDto>> ResetOwnerPasswordAsync(Guid tenantId, CancellationToken cancellationToken = default)

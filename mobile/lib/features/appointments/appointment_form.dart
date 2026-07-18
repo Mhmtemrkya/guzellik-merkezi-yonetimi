@@ -67,7 +67,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
 
   Future<void> loadLookups() async {
     final values = await Future.wait([
-      widget.api.get('/api/admin/customers/', query: {'page': 1, 'pageSize': 200}),
+      widget.api.getAllPaged('/api/admin/customers/'),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 200}),
     ]);

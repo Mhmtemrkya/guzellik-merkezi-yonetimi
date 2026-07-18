@@ -7,7 +7,7 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, guidOrUndefined, normalizeWaitlistEntry } from '@/lib/apiMappers'
 import type {
   ApiCustomer,
@@ -229,11 +229,11 @@ export default function BeklemeListesiPage() {
       if (!tenantId) return { entries: [], customers: { items: [] }, services: { items: [] }, staff: { items: [] } }
       const [entries, customers, services, staff] = await Promise.all([
         adminApi.waitlist<ApiWaitlistEntry>(tenantId).catch(() => []),
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 500 }),
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }),
       ])
-      return { entries: Array.isArray(entries) ? entries : [], customers, services, staff }
+      return { entries: Array.isArray(entries) ? entries : [], customers: { items: customers }, services, staff }
     },
     [tenantId],
     { initialData: null },

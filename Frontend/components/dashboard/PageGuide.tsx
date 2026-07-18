@@ -6,13 +6,20 @@ import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, BookOpenText, Check, HelpCircle, X } from 'lucide-react'
 import { resolveGuide } from '@/lib/guideContent'
+import { adminApi } from '@/lib/apiClient'
+import { useAuth } from './AuthContext'
 
-const SEEN_KEY = 'beautyasist.guide.seen.v1'
-const SKIP_ALL_KEY = 'beautyasist.guide.skipAll.v1'
+// "Görüldü" kayıtları KULLANICI bazlıdır (v2): aynı tarayıcıdan başka bir hesap
+// girince kılavuz ona baştan gösterilir. Ayrıca platform admin kurum için
+// "kılavuzu sıfırla" dediğinde sunucudaki resetAt değişir; yereldeki onaydan
+// (ack) farklıysa tüm görüldü kayıtları temizlenir → kılavuz yeniden açılır.
+const seenKey = (uid: string): string => `beautyasist.guide.seen.v2.${uid}`
+const skipAllKey = (uid: string): string => `beautyasist.guide.skipAll.v2.${uid}`
+const resetAckKey = (uid: string): string => `beautyasist.guide.resetAck.v2.${uid}`
 
-function readSeen(): string[] {
+function readSeen(uid: string): string[] {
   try {
-    const raw = window.localStorage.getItem(SEEN_KEY)
+    const raw = window.localStorage.getItem(seenKey(uid))
     const parsed = raw ? (JSON.parse(raw) as unknown) : []
     return Array.isArray(parsed) ? (parsed as string[]) : []
   } catch {
@@ -20,22 +27,35 @@ function readSeen(): string[] {
   }
 }
 
-function markSeen(key: string): void {
+function markSeen(uid: string, key: string): void {
   try {
-    const seen = readSeen()
+    const seen = readSeen(uid)
     if (!seen.includes(key)) {
-      window.localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, key]))
+      window.localStorage.setItem(seenKey(uid), JSON.stringify([...seen, key]))
     }
   } catch {
     /* storage kapalıysa sessizce geç */
   }
 }
 
-function isSkipAll(): boolean {
+function isSkipAll(uid: string): boolean {
   try {
-    return window.localStorage.getItem(SKIP_ALL_KEY) === '1'
+    return window.localStorage.getItem(skipAllKey(uid)) === '1'
   } catch {
     return false
+  }
+}
+
+/** Sunucudaki sıfırlama yereldekinden yeniyse tüm görüldü kayıtlarını temizler. */
+function applyServerReset(uid: string, resetAtUtc: string | null | undefined): void {
+  if (!resetAtUtc) return
+  try {
+    if (window.localStorage.getItem(resetAckKey(uid)) === resetAtUtc) return
+    window.localStorage.removeItem(seenKey(uid))
+    window.localStorage.removeItem(skipAllKey(uid))
+    window.localStorage.setItem(resetAckKey(uid), resetAtUtc)
+  } catch {
+    /* yut */
   }
 }
 
@@ -101,42 +121,69 @@ interface Rect {
  */
 export default function PageGuide() {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const uid = user?.userId || user?.email || 'anon'
   const resolved = useMemo(() => resolveGuide(pathname), [pathname])
   const [open, setOpen] = useState<boolean>(false)
   const [step, setStep] = useState<number>(0)
   const [spot, setSpot] = useState<Rect | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [resetChecked, setResetChecked] = useState(false)
   const anchorRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => setMounted(true), [])
 
-  // Sayfaya ilk girişte otomatik aç
+  // Sunucu taraflı kılavuz sıfırlaması: platform admin kurum için sıfırladıysa
+  // yerel görüldü kayıtları temizlenir (yalnız tenant kullanıcılarında sorulur).
   useEffect(() => {
-    if (!resolved) return
-    if (isSkipAll()) return
-    if (readSeen().includes(resolved.key)) return
+    let alive = true
+    const isTenantUser = Boolean(user) && user?.role !== 'PlatformAdmin'
+    if (!isTenantUser) {
+      setResetChecked(true)
+      return
+    }
+    adminApi
+      .tenantGuideReset<{ resetAtUtc?: string | null }>()
+      .then((res) => {
+        if (!alive) return
+        applyServerReset(uid, res?.resetAtUtc)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setResetChecked(true)
+      })
+    return () => {
+      alive = false
+    }
+  }, [uid, user])
+
+  // Sayfaya ilk girişte otomatik aç (sıfırlama kontrolü bittikten sonra)
+  useEffect(() => {
+    if (!resolved || !resetChecked) return
+    if (isSkipAll(uid)) return
+    if (readSeen(uid).includes(resolved.key)) return
     const t = setTimeout(() => {
       setStep(0)
       setOpen(true)
     }, 800)
     return () => clearTimeout(t)
-  }, [resolved])
+  }, [resolved, resetChecked, uid])
 
   const close = useCallback(
     (skipAll = false) => {
       setOpen(false)
       setSpot(null)
       anchorRef.current = null
-      if (resolved) markSeen(resolved.key)
+      if (resolved) markSeen(uid, resolved.key)
       if (skipAll) {
         try {
-          window.localStorage.setItem(SKIP_ALL_KEY, '1')
+          window.localStorage.setItem(skipAllKey(uid), '1')
         } catch {
           /* yut */
         }
       }
     },
-    [resolved],
+    [resolved, uid],
   )
 
   // Adım değişince ilgili bölümü bul, kaydır ve spot ışığını konumlandır.

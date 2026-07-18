@@ -77,8 +77,8 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
           .get('/api/admin/waitlist/', query: {'activeOnly': false})
           .catchError((_) => const <dynamic>[]),
       widget.api
-          .get('/api/admin/customers/', query: {'page': 1, 'pageSize': 500})
-          .catchError((_) => const <dynamic>[]),
+          .getAllPaged('/api/admin/customers/')
+          .catchError((_) => const <String, dynamic>{'items': <dynamic>[]}),
       widget.api
           .get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
           .catchError((_) => const <dynamic>[]),

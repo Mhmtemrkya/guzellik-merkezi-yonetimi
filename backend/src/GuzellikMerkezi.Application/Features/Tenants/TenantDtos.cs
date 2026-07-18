@@ -61,6 +61,9 @@ public sealed record TenantCredentialsDto(
 /// </summary>
 public sealed record TenantWithCredentialsDto(TenantDto Tenant, TenantCredentialsDto? Credentials, IReadOnlyList<TenantCredentialsDto>? AllCredentials = null);
 
+/// <summary>Kullanım kılavuzu sıfırlama zamanı — null ise hiç sıfırlanmamış.</summary>
+public sealed record GuideResetDto(DateTime? ResetAtUtc);
+
 public sealed record TenantAvailabilityDto(
     string? Name,
     string SuggestedName,

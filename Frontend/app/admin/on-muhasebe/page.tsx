@@ -15,7 +15,7 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, normalizeAccount, normalizeAdisyon,
   normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeStaff,
@@ -106,14 +106,14 @@ function OnMuhasebePageInner() {
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).catch(() => []),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
       ])
       return {
         accounts: apiItems(accounts), expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
-        appts: apiItems(appts), customers: apiItems(customers), packages: apiItems(packages),
+        appts: apiItems(appts), customers, packages: apiItems(packages),
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
       }
     },

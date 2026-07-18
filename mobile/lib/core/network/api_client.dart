@@ -92,6 +92,31 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _request('GET', path, query: query);
 
+  /// Sayfalı bir listeyi totalCount'a ulaşana kadar 1000'lik sayfalarla çekip
+  /// TÜM kayıtları döndürür ({'items': [...], 'totalCount': n} — apiItems uyumlu).
+  /// Büyük listelerde (12 bin+ müşteri) tek sayfa tavanına takılmamak için.
+  Future<Map<String, dynamic>> getAllPaged(
+    String path, {
+    Map<String, dynamic>? query,
+    int pageSize = 1000,
+  }) async {
+    final items = <dynamic>[];
+    var page = 1;
+    var total = 0;
+    while (page <= 100) {
+      final res = await get(
+        path,
+        query: {...?query, 'page': page, 'pageSize': pageSize},
+      );
+      final batch = res is Map ? (res['items'] as List? ?? const []) : const [];
+      total = res is Map ? (res['totalCount'] as num? ?? 0).toInt() : 0;
+      items.addAll(batch);
+      if (batch.isEmpty || items.length >= total) break;
+      page++;
+    }
+    return {'items': items, 'totalCount': total > 0 ? total : items.length};
+  }
+
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) =>
       _request('POST', path, body: body);
 

@@ -11,7 +11,7 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature, useFeatureContext } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import {
   apiItems,
   cashFlowMethodLabel,
@@ -257,7 +257,7 @@ function RaporlarPageInner() {
             pageSize: 1000,
           })
           .catch<PagedResult<ApiAppointment>>(() => ({ items: [] })),
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 1000 }),
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }),
         adminApi

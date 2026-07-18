@@ -69,8 +69,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               query: {'page': 1, 'pageSize': 1000, 'fromUtc': from, 'toUtc': to})
           .catchError((_) => const <dynamic>[]),
       widget.api
-          .get('/api/admin/customers/', query: {'page': 1, 'pageSize': 1000})
-          .catchError((_) => const <dynamic>[]),
+          .getAllPaged('/api/admin/customers/')
+          .catchError((_) => const <String, dynamic>{'items': <dynamic>[]}),
       widget.api
           .get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200})
           .catchError((_) => const <dynamic>[]),

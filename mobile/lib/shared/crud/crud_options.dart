@@ -8,10 +8,7 @@ class CrudOptions {
   final ApiClient api;
 
   Future<List<CrudOption>> customers() async {
-    final data = await api.get(
-      '/api/admin/customers/',
-      query: {'page': 1, 'pageSize': 200},
-    );
+    final data = await api.getAllPaged('/api/admin/customers/');
     return apiItems(data)
         .map(
           (c) => CrudOption(

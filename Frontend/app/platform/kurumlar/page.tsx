@@ -21,6 +21,7 @@ import {
   Activity,
   AlarmClock,
   ArrowLeftRight,
+  BookOpenText,
   Building2,
   CalendarClock,
   Check,
@@ -214,6 +215,7 @@ export default function PlatformKurumlarPage() {
   const [page, setPage] = useState<number>(1)
   const [ownerCredentials, setOwnerCredentials] = useState<ApiTenantCredentials[] | null>(null)
   const [resetCredentials, setResetCredentials] = useState<ApiTenantCredentials | null>(null)
+  const [guideResetMsg, setGuideResetMsg] = useState<string | null>(null)
 
   // Sidebar alt linkleri (?scope=active/trial/paused) filtreyi senkronlar
   useEffect(() => {
@@ -631,6 +633,26 @@ export default function PlatformKurumlarPage() {
                               }
                             />
                             <ConfirmDialog
+                              icon={BookOpenText}
+                              title={`${t.name} · kullanım kılavuzu sıfırlansın mı?`}
+                              description="Kurumun tüm kullanıcılarında ve tüm cihazlarda sayfa kullanım kılavuzları ilk girişteki gibi baştan gösterilir ('bir daha gösterme' seçimleri dahil sıfırlanır)."
+                              confirmLabel="Kılavuzu sıfırla"
+                              cancelLabel="Vazgeç"
+                              onConfirm={async () => {
+                                await platformApi.resetTenantGuide(t.id)
+                                setGuideResetMsg(`${t.name} için kullanım kılavuzu sıfırlandı — kullanıcılar bir sonraki girişte kılavuzu yeniden görecek.`)
+                                setTimeout(() => setGuideResetMsg(null), 6000)
+                              }}
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white/70 px-2 py-2 text-[9px] font-mono tracking-widest text-[#7c6170] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6] hover:text-[#3b2330]"
+                                >
+                                  <BookOpenText className="h-3 w-3" /> KILAVUZU SIFIRLA
+                                </button>
+                              }
+                            />
+                            <ConfirmDialog
                               destructive
                               icon={Trash2}
                               title={`${t.name} silinsin mi?`}
@@ -699,6 +721,12 @@ export default function PlatformKurumlarPage() {
           </div>
         </motion.div>
       </div>
+
+      {guideResetMsg && (
+        <div className="fixed bottom-5 left-1/2 z-[300] -translate-x-1/2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[12px] font-semibold text-emerald-800 shadow-lg">
+          {guideResetMsg}
+        </div>
+      )}
 
       <TenantCredentialsDialog credentials={ownerCredentials} onClose={() => setOwnerCredentials(null)} />
 

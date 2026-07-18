@@ -13,4 +13,9 @@ public interface ITenantService
     Task<Result> GrantAccessAsync(Guid tenantId, GrantTenantAccessRequest request, CancellationToken cancellationToken = default);
     /// <summary>Kurum yetkilisinin şifresini sıfırlar: yeni geçici şifre üretilir, ilk girişte değişim zorunlu olur, aktif oturumları düşer.</summary>
     Task<Result<TenantCredentialsDto>> ResetOwnerPasswordAsync(Guid tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>Kullanım kılavuzunu sıfırlar — kurumun tüm kullanıcı/cihazlarında kılavuz baştan gösterilir (platform admin).</summary>
+    Task<Result<GuideResetDto>> ResetGuideAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    /// <summary>Kılavuz sıfırlama zamanını döner — panel yerel "görüldü" kayıtlarıyla karşılaştırır.</summary>
+    Task<Result<GuideResetDto>> GetGuideResetAsync(Guid tenantId, CancellationToken cancellationToken = default);
 }

@@ -20,7 +20,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import {
   apiItems,
   dayTitle,
@@ -362,7 +362,7 @@ function RandevularPageInner() {
       if (isStaffUser) {
         const [appointmentsResult, customersResult, staffResult, servicesResult, eligibleCustomerIds] = await Promise.all([
           appointmentsPromise,
-          adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 300 }),
+          fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
           adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 10 }),
           adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
           eligiblePromise,
@@ -379,7 +379,7 @@ function RandevularPageInner() {
 
       const [appointmentsResult, customersResult, staffResult, servicesResult, packagesResult, eligibleCustomerIds] = await Promise.all([
         appointmentsPromise,
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 300 }),
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch<PagedResult<ApiServicePackage>>(() => ({ items: [] })),

@@ -71,7 +71,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       if (widget.customerId == null)
         widget.api
-            .get('/api/admin/customers/', query: {'page': 1, 'pageSize': 500}),
+            .getAllPaged('/api/admin/customers/'),
     ]);
     final catalog = apiItems(values[0])
         .where((p) => p['isActive'] != false)

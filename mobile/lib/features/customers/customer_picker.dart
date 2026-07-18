@@ -41,10 +41,7 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
-    final res = await widget.api.get(
-      '/api/admin/customers/',
-      query: {'page': 1, 'pageSize': 500},
-    );
+    final res = await widget.api.getAllPaged('/api/admin/customers/');
     return apiItems(res);
   }
 

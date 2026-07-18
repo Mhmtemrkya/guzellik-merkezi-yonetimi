@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeCustomer, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
 
@@ -94,8 +94,8 @@ export default function PackageSaleDialog({
       if (!open) return { customers: [], packages: [], services: [], products: [], staff: [] }
       const [customers, packages, services, products, staff] = await Promise.all([
         presetCustomer
-          ? Promise.resolve({ items: [] })
-          : adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+          ? Promise.resolve<ApiCustomer[]>([])
+          : fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).catch<ApiCustomer[]>(() => []),
         isServiceSale || isProductSale
           ? Promise.resolve({ items: [] })
           : adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -108,7 +108,7 @@ export default function PackageSaleDialog({
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
       return {
-        customers: apiItems(customers),
+        customers,
         packages: apiItems(packages),
         services: apiItems(services),
         products: apiItems(products),

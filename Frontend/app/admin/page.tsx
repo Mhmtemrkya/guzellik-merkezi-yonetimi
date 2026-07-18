@@ -47,7 +47,7 @@ import {
 } from 'lucide-react'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import {
   apiItems,
   formatTL,
@@ -1097,7 +1097,8 @@ export default function AdminDashboard() {
           page: 1,
           pageSize: 200,
         }),
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 100 }),
+        // Yeni danışan sayacı tüm kayıtlar üzerinden hesaplanır — tek sayfa (100) yetmez.
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 100 }),
         adminApi.products<ApiProduct>({ tenantId, page: 1, pageSize: 100 }),
