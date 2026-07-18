@@ -387,8 +387,9 @@ export default function Topbar({
 
             {!compact && scope !== 'personel' && <BranchSwitcher />}
 
-            {/* GENEL EXCEL İÇERİ AKTAR — kurum yöneticisi paneli */}
-            {scope === 'admin' && (
+            {/* GENEL EXCEL İÇERİ AKTAR — yalnızca dashboard'da; diğer sayfaların aksiyon
+                dolu navbar'ını sıkıştırmasın */}
+            {scope === 'admin' && pathname === '/admin' && (
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.94 }}
@@ -402,7 +403,7 @@ export default function Topbar({
                   className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#ffdce8]/65 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                 />
                 <FileUp className="relative z-10 h-3.5 w-3.5" strokeWidth={1.7} />
-                <span className="relative z-10 hidden xl:inline">İçeri Aktar</span>
+                <span className="relative z-10 hidden lg:inline">İçeri Aktar</span>
               </motion.button>
             )}
 

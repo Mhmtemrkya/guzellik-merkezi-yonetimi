@@ -1056,3 +1056,26 @@ export function pagedItems<T>(result: PagedResult<T> | T[] | null | undefined): 
   if (Array.isArray(result)) return result
   return result?.items || []
 }
+
+/**
+ * Sayfalı bir ucu total'e ulaşana kadar sayfa sayfa çekip TÜM kayıtları döndürür.
+ * Büyük listelerde (ör. 12 bin müşteri) tek istekte tavana takılmamak için 1000'lik
+ * sayfalarla ilerler; emniyet için en fazla 100 sayfa (100 bin kayıt) dener.
+ */
+export async function fetchAllPaged<T>(
+  loader: (page: number, pageSize: number) => Promise<PagedResult<T>>,
+  pageSize = 1000,
+): Promise<T[]> {
+  const first = await loader(1, pageSize)
+  const items = [...pagedItems(first)]
+  const total = first?.total ?? first?.totalCount ?? items.length
+  let page = 2
+  while (items.length < total && page <= 100) {
+    const next = await loader(page, pageSize)
+    const batch = pagedItems(next)
+    if (!batch.length) break
+    items.push(...batch)
+    page++
+  }
+  return items
+}

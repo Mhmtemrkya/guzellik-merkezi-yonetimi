@@ -20,7 +20,7 @@ import AppointmentEditor, { type AppointmentEditorValues } from '@/components/da
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import {
@@ -136,15 +136,17 @@ function MusterilerPageInner() {
   const { data, loading, error, reload } = useApiQuery<{ customers: ApiCustomer[]; accounts: ApiCustomerAccount[]; appts: ApiAppointment[]; staff: ApiStaff[]; services: ApiService[]; packages: ApiServicePackage[] }>(
     async () => {
       if (!tenantId) return { customers: [], accounts: [], appts: [], staff: [], services: [], packages: [] }
+      // Müşteri/cari/randevu listeleri TÜM kayıtlar gelene kadar sayfa sayfa çekilir
+      // (12 bin+ müşteri içeri aktarımı sonrası tek sayfa yetmiyor).
       const [customers, accounts, appts, staff, services, packages] = await Promise.all([
-        adminApi.customers<ApiCustomer>({ tenantId, page: 1, pageSize: 500 }),
-        adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
-        adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })),
+        fetchAllPaged<ApiCustomerAccount>((page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, page, pageSize })).catch(() => []),
+        fetchAllPaged<ApiAppointment>((page, pageSize) => adminApi.appointments<ApiAppointment>({ tenantId, page, pageSize })).catch(() => []),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
-      return { customers: apiItems(customers), accounts: apiItems(accounts), appts: apiItems(appts), staff: apiItems(staff), services: apiItems(services), packages: apiItems(packages) }
+      return { customers, accounts, appts, staff: apiItems(staff), services: apiItems(services), packages: apiItems(packages) }
     },
     [tenantId],
     { initialData: { customers: [], accounts: [], appts: [], staff: [], services: [], packages: [] } },
