@@ -736,6 +736,9 @@ export const adminApi = {
   /** Kâr raporu: aylık gelir-gider-net + hizmet kârlılığı (prim düşülmüş). */
   profitReport: <T = unknown>(tenantId?: string, months = 6): Promise<T> =>
     apiRequest<T>('/api/admin/cash-flow/profit-report', { query: { tenantId, months } }),
+  /** Personel ICS takvim aboneliği linki (Google/Apple/Outlook "URL ile abone ol"). */
+  staffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}`, { query: { tenantId } }),
   workingHoursEnforcement: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { query: { tenantId } }),
   setWorkingHoursEnforcement: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>

@@ -212,6 +212,7 @@ app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();
 app.MapCommissionEndpoints();
 app.MapScheduleEndpoints();
+app.MapCalendarFeedEndpoints();
 app.MapCampaignEndpoints();
 app.MapGiftCardEndpoints();
 app.MapWaitlistEndpoints();

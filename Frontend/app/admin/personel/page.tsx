@@ -11,6 +11,7 @@ import TenantCredentialsDialog from '@/components/dashboard/TenantCredentialsDia
 import CommissionPanel from '@/components/dashboard/CommissionPanel'
 import StaffDeviceDialog from '@/components/dashboard/StaffDeviceDialog'
 import StaffWorkingHoursDialog from '@/components/dashboard/StaffWorkingHoursDialog'
+import StaffCalendarLinkButton from '@/components/dashboard/StaffCalendarLinkButton'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -502,6 +503,7 @@ function PersonelPageInner() {
                           </button>
                         }
                       />
+                      <StaffCalendarLinkButton staffId={selected.id} staffName={selected.name} tenantId={tenantId} />
                       {branchOptions.length > 1 && (
                         <button
                           type="button"

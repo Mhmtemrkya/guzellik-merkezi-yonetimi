@@ -669,6 +669,53 @@ class _StaffDetailSheetState extends State<_StaffDetailSheet> {
     );
   }
 
+  /// ICS takvim aboneliği linki — Google/Apple takvim "URL ile abone ol".
+  Future<void> _calendarLink() async {
+    try {
+      final res = await widget.api
+          .get('/api/admin/schedule/calendar-link/${s['id']}');
+      final url = res is Map ? '${res['url'] ?? ''}' : '';
+      if (url.isEmpty || !mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Takvim Aboneliği'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Bu linki Google Takvim (Ayarlar → URL ile ekle) veya iPhone '
+                '(Ayarlar → Takvim → Takvim Aboneliği) ile ekleyin; personelin '
+                'randevuları telefonun takviminde canlı görünür.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 10),
+              SelectableText(url, style: const TextStyle(fontSize: 11)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  _toast('Takvim linki kopyalandı.');
+                }
+              },
+              child: const Text('Kopyala'),
+            ),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Kapat')),
+          ],
+        ),
+      );
+    } catch (e) {
+      _toast('$e');
+    }
+  }
+
   /// Avatara dokununca kamera/galeri ile fotoğraf çek/seç ve ANINDA kaydet
   /// (web personel sayfasındaki uploadStaffPhoto akışının mobil karşılığı).
   Future<void> _changePhoto() async {
@@ -952,13 +999,24 @@ class _StaffDetailSheetState extends State<_StaffDetailSheet> {
                 ],
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _workingHours,
-                  icon: const Icon(Icons.schedule_rounded, size: 18),
-                  label: const Text('Çalışma Saatleri'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _workingHours,
+                      icon: const Icon(Icons.schedule_rounded, size: 18),
+                      label: const Text('Çalışma Saatleri'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _calendarLink,
+                      icon: const Icon(Icons.event_available_rounded, size: 18),
+                      label: const Text('Takvim Aboneliği'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               SizedBox(
