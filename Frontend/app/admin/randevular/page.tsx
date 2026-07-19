@@ -775,7 +775,12 @@ function RandevularPageInner() {
                 </button>
               }
             />
-            <PackageSaleDialog tenantId={tenantId} onDone={reload} />
+            <PackageSaleDialog
+              tenantId={tenantId}
+              onDone={reload}
+              triggerLabel="Paket Satışı"
+              triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            />
             {canCreateAppointment && (
               <button
                 type="button"
@@ -790,6 +795,7 @@ function RandevularPageInner() {
               </button>
             )}
             <ExcelTransferActions<Appointment>
+              compact
               featureKey="excel.appointments"
               moduleName="Randevular"
               context={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeInfo.label}`}

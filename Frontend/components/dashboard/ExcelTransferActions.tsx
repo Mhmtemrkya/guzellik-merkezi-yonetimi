@@ -85,7 +85,15 @@ export interface ExcelTransferActionsProps<TRow> {
    * Belirtilmezse her zaman gösterilir (geriye dönük uyumluluk).
    */
   featureKey?: FeatureKey
+  /**
+   * Kalabalık topbar'lar için yalnız-ikon tetikleyiciler (yuvarlak buton + tooltip).
+   * Modallar aynı kalır; sadece tetikleyici görünümü küçülür.
+   */
+  compact?: boolean
 }
+
+const compactBtn =
+  'inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[#ead8df] bg-white text-[#8c6e7c] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-60'
 
 const ghostBtn =
   'group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#ead8df]/[0.70] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.72] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-60'
@@ -200,6 +208,7 @@ export default function ExcelTransferActions<TRow>({
   exportDatasets,
   importTargets,
   featureKey,
+  compact = false,
 }: ExcelTransferActionsProps<TRow>) {
   const featureCtx = useFeatureContext()
   const isFeatureAllowed = featureKey ? featureCtx.has(featureKey) : true
@@ -374,7 +383,7 @@ export default function ExcelTransferActions<TRow>({
   if (!isFeatureAllowed) return null
 
   return (
-    <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+    <div className={compact ? 'flex items-center gap-2' : 'grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center'}>
       {/* IMPORT MODAL */}
       <ModalShell
         open={importOpen}
@@ -395,15 +404,27 @@ export default function ExcelTransferActions<TRow>({
         description="Excel şablonundan toplu kayıt ekle. Önce ne aktaracağını seç, dosyayı yükle, satırları gözden geçir, sonra onayla."
         icon={UploadCloud}
         trigger={
-          <button
-            type="button"
-            disabled={!canImport}
-            title={canImport ? 'Excel\'den içeri al' : 'Bu modülde içeri aktarım henüz desteklenmiyor'}
-            className={`${ghostBtn} ${triggerClassName}`}
-          >
-            <Upload className="h-3.5 w-3.5" strokeWidth={1.6} />
-            <span>Excel&apos;e içeriden al</span>
-          </button>
+          compact ? (
+            <button
+              type="button"
+              disabled={!canImport}
+              title={canImport ? "Excel'den içeri aktar" : 'Bu modülde içeri aktarım henüz desteklenmiyor'}
+              aria-label="Excel'den içeri aktar"
+              className={compactBtn}
+            >
+              <Upload className="h-4 w-4" strokeWidth={1.7} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canImport}
+              title={canImport ? 'Excel\'den içeri al' : 'Bu modülde içeri aktarım henüz desteklenmiyor'}
+              className={`${ghostBtn} ${triggerClassName}`}
+            >
+              <Upload className="h-3.5 w-3.5" strokeWidth={1.6} />
+              <span>Excel&apos;e içeriden al</span>
+            </button>
+          )
         }
         footer={
           <div className="flex items-center justify-between gap-3">
@@ -553,11 +574,22 @@ export default function ExcelTransferActions<TRow>({
         description="Marka renklerinde Excel raporu indir. İndirilen dosya yazıcıya hazır, kolonları otomatik genişler, başlık çubuğu sabit kalır."
         icon={Download}
         trigger={
-          <button type="button" className={`${goldBtn} ${triggerClassName}`}>
-            <Download className="h-3.5 w-3.5" strokeWidth={1.6} />
-            <span>Excel&apos;e dışarı aktar</span>
-            <FileSpreadsheet className="h-3 w-3 opacity-65" strokeWidth={1.6} />
-          </button>
+          compact ? (
+            <button
+              type="button"
+              title="Excel'e dışarı aktar"
+              aria-label="Excel'e dışarı aktar"
+              className={compactBtn}
+            >
+              <Download className="h-4 w-4" strokeWidth={1.7} />
+            </button>
+          ) : (
+            <button type="button" className={`${goldBtn} ${triggerClassName}`}>
+              <Download className="h-3.5 w-3.5" strokeWidth={1.6} />
+              <span>Excel&apos;e dışarı aktar</span>
+              <FileSpreadsheet className="h-3 w-3 opacity-65" strokeWidth={1.6} />
+            </button>
+          )
         }
         footer={
           <div className="flex items-center justify-between gap-3">
