@@ -10,6 +10,7 @@ import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import TenantCredentialsDialog from '@/components/dashboard/TenantCredentialsDialog'
 import CommissionPanel from '@/components/dashboard/CommissionPanel'
 import StaffDeviceDialog from '@/components/dashboard/StaffDeviceDialog'
+import StaffWorkingHoursDialog from '@/components/dashboard/StaffWorkingHoursDialog'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -18,7 +19,7 @@ import { apiItems, guidOrUndefined, initialsFromName, normalizeAppointment, norm
 import { downscaleImage } from '@/lib/imageUtils'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeftRight, Boxes, Calendar, CreditCard, FileBarChart, ImagePlus, KeyRound, Layers3, Search, ShieldCheck, Star,
+  ArrowLeftRight, Boxes, Calendar, CalendarClock, CreditCard, FileBarChart, ImagePlus, KeyRound, Layers3, Search, ShieldCheck, Star,
   MonitorSmartphone, UserCheck, UserCog, UserPlus, UserX, Users, Wallet, Zap, type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -488,6 +489,16 @@ function PersonelPageInner() {
                         trigger={
                           <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90">
                             <UserCog className="h-3.5 w-3.5" /> Rol Düzenle
+                          </button>
+                        }
+                      />
+                      <StaffWorkingHoursDialog
+                        staffId={selected.id}
+                        staffName={selected.name}
+                        tenantId={tenantId}
+                        trigger={
+                          <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11px] font-medium text-[#352432]/80 transition-colors hover:border-[#efbfd0] hover:text-[#352432]">
+                            <CalendarClock className="h-3.5 w-3.5" /> Çalışma Saatleri
                           </button>
                         }
                       />

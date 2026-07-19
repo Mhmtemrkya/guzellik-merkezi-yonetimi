@@ -168,6 +168,10 @@ public sealed class AppointmentService : IAppointmentService
         var skillCheck = await CheckStaffSkillAsync(tenantId, request.StaffMemberId, request.ServiceDefinitionId, cancellationToken);
         if (skillCheck is not null) return Result<AppointmentDto>.Failure(skillCheck);
 
+        // Çalışma saatleri: personelin haftalık mesai penceresi dışına randevu alınamaz.
+        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, cancellationToken);
+        if (hoursBlock is not null) return Result<AppointmentDto>.Failure(Error.Validation(hoursBlock));
+
         var overlap = await HasOverlapAsync(tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, null, cancellationToken);
         // SlotFull kodu: frontend bunu "bekleme listesine ekle?" uyarısı için ayırt eder (kara liste 409'undan farklı).
         if (overlap) return Result<AppointmentDto>.Failure(Error.SlotFull("Bu saatte personelin uygun yeri yok. Bekleme listesine ekleyebilirsiniz."));

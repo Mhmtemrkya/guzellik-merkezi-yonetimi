@@ -3,6 +3,7 @@ using System;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GuzellikDbContext))]
-    partial class GuzellikDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719175612_AddStaffWorkingHours")]
+    partial class AddStaffWorkingHours
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2933,9 +2936,6 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Email")
                         .HasColumnType("longtext");
-
-                    b.Property<bool>("EnforceWorkingHours")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime?>("GuideResetAtUtc")
                         .HasColumnType("datetime(6)");

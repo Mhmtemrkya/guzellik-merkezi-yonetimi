@@ -278,6 +278,11 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (skillBlock is not null)
             return Result<PortalAppointmentDto>.Failure(Error.Validation("Seçilen uzman bu hizmeti vermiyor. Lütfen farklı bir uzman seçin."));
 
+        // Çalışma saatleri: uzmanın mesai penceresi dışındaki saat online da seçilemez.
+        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, request.StaffMemberId, startUtc, endUtc, cancellationToken);
+        if (hoursBlock is not null)
+            return Result<PortalAppointmentDto>.Failure(Error.Validation("Seçilen uzman bu saatte çalışmıyor. Lütfen farklı bir saat seçin."));
+
         var appointment = new Appointment(tenantId, request.BranchId, bookingCustomerId, request.StaffMemberId, request.ServiceDefinitionId,
             startUtc, endUtc, service.Price, request.Notes, isOnline: true);
         // Online randevu doğrudan takvime düşmez: kurum yöneticisi onayına (Draft) gönderilir.

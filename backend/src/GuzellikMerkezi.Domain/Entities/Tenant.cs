@@ -47,6 +47,18 @@ public sealed class Tenant : Entity
     }
 
     /// <summary>
+    /// Çalışma saatleri (mesai penceresi) kısıtı kurum genelinde uygulanır mı?
+    /// Kapalıysa personel şablonları saklanır ama randevu alırken denetlenmez.
+    /// </summary>
+    public bool EnforceWorkingHours { get; private set; } = true;
+
+    public void SetEnforceWorkingHours(bool enabled)
+    {
+        EnforceWorkingHours = enabled;
+        Touch();
+    }
+
+    /// <summary>
     /// Cihaz güvenliği (kısıtlama) kurum tarafından açık mı? Paket security.devicecontrol
     /// içeriyorsa yönetici bu anahtarla akışı devreye alır: personel yalnızca tanımlı
     /// cihazlarından giriş yapabilir, loglara cihaz kimliği/ağ bilgisi düşer.

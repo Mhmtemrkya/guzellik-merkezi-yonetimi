@@ -172,6 +172,10 @@ public sealed class WaitlistService : IWaitlistService
         var skillBlock = await StaffSkill.BlockReasonAsync(_db, tenantId, staffId, serviceId, cancellationToken);
         if (skillBlock is not null) return Result<Guid?>.Failure(Error.Validation(skillBlock));
 
+        // Çalışma saatleri: mesai dışına düşen slot için randevu açılmaz.
+        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, staffId, startUtc, endUtc, cancellationToken);
+        if (hoursBlock is not null) return Result<Guid?>.Failure(Error.Validation(hoursBlock));
+
         var appointment = new Appointment(tenantId, branchId.Value, entry.CustomerId, staffId, serviceId,
             startUtc, endUtc, 0m, "Bekleme listesinden aktifleşti");
         _db.Appointments.Add(appointment);

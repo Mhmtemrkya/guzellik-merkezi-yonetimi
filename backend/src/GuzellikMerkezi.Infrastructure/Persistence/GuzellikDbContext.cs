@@ -73,6 +73,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
     public DbSet<StaffTimeOff> StaffTimeOffs => Set<StaffTimeOff>();
+    public DbSet<StaffWorkingHour> StaffWorkingHours => Set<StaffWorkingHour>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<GiftCard> GiftCards => Set<GiftCard>();
     public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
@@ -448,6 +449,14 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         timeOff.HasIndex(x => new { x.StaffMemberId, x.Date }).IsUnique();
         timeOff.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Cascade);
         timeOff.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var workingHour = modelBuilder.Entity<StaffWorkingHour>();
+        workingHour.ToTable("staff_working_hours");
+        workingHour.HasKey(x => x.Id);
+        workingHour.HasIndex(x => new { x.StaffMemberId, x.DayOfWeek }).IsUnique();
+        workingHour.HasIndex(x => x.TenantId);
+        workingHour.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Cascade);
+        workingHour.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
     private void ConfigureServiceDefinition(ModelBuilder modelBuilder)

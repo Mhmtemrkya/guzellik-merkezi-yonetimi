@@ -12,6 +12,7 @@ import '../../shared/widgets/page_header.dart';
 import 'package:go_router/go_router.dart';
 
 import 'staff_role_sheet.dart';
+import 'staff_working_hours_sheet.dart';
 
 /// Personel & Roller — web `personel` sayfasının mobil karşılığı.
 ///
@@ -654,6 +655,20 @@ class _StaffDetailSheetState extends State<_StaffDetailSheet> {
     }
   }
 
+  /// Haftalık çalışma saatleri (mesai penceresi) — dışına randevu alınamaz.
+  Future<void> _workingHours() async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => StaffWorkingHoursSheet(
+        api: widget.api,
+        staffId: '${s['id']}',
+        staffName: valueOf(s, const ['fullName', 'name'], fallback: 'Personel'),
+      ),
+    );
+  }
+
   /// Avatara dokununca kamera/galeri ile fotoğraf çek/seç ve ANINDA kaydet
   /// (web personel sayfasındaki uploadStaffPhoto akışının mobil karşılığı).
   Future<void> _changePhoto() async {
@@ -935,6 +950,15 @@ class _StaffDetailSheetState extends State<_StaffDetailSheet> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _workingHours,
+                  icon: const Icon(Icons.schedule_rounded, size: 18),
+                  label: const Text('Çalışma Saatleri'),
+                ),
               ),
               const SizedBox(height: 10),
               SizedBox(

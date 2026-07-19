@@ -728,6 +728,16 @@ export const adminApi = {
 
   customers: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/customers/', { query: { page: 1, pageSize: 100, ...query } }),
+  /** Personel haftalık çalışma şablonu (0=Pzt … 6=Paz; dakika cinsinden). */
+  staffWorkingHours: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { query: { tenantId } }),
+  setStaffWorkingHours: <T = unknown>(staffId: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { method: 'PUT', query: { tenantId }, body }),
+  workingHoursEnforcement: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { query: { tenantId } }),
+  setWorkingHoursEnforcement: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { method: 'PUT', query: { tenantId }, body: { enabled } }),
+
   /** Dashboard müşteri istatistikleri — tüm listeyi çekmeden sayaç + gün-bazlı yeni müşteri trendi. */
   customersStats: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/customers/stats', { query: { tenantId } }),

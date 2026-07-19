@@ -28,6 +28,32 @@ public static class ScheduleEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RemoveTimeOffAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
         });
 
+        // Personel haftalık çalışma şablonu — satırı olmayan gün kısıtsızdır.
+        group.MapGet("/working-hours/{staffId:guid}", async (Guid staffId, Guid? tenantId, ICurrentUser currentUser, IScheduleService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetWorkingHoursAsync(resolvedTenantId, staffId, ct)).ToHttpResult(http);
+        });
+
+        group.MapPut("/working-hours/{staffId:guid}", async (Guid staffId, SetWorkingHoursRequest request, Guid? tenantId, ICurrentUser currentUser, IScheduleService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetWorkingHoursAsync(resolvedTenantId, staffId, request, ct)).ToHttpResult(http);
+        });
+
+        // Kurum genelinde çalışma saatleri kısıtı — yönetici isterse kapatır.
+        group.MapGet("/working-hours-enforcement", async (Guid? tenantId, ICurrentUser currentUser, IScheduleService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetWorkingHoursEnforcementAsync(resolvedTenantId, ct)).ToHttpResult(http);
+        });
+
+        group.MapPut("/working-hours-enforcement", async (WorkingHoursEnforcementDto request, Guid? tenantId, ICurrentUser currentUser, IScheduleService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetWorkingHoursEnforcementAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
+        });
+
         return app;
     }
 }
