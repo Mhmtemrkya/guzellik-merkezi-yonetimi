@@ -535,6 +535,18 @@ export function normalizeWaitlistEntry(w: ApiWaitlistEntry | null | undefined, i
   }
 }
 
+/**
+ * Personel bu hizmeti yapabilir mi? Uzmanlık listesi (virgüllü) boşsa kısıt yok;
+ * doluysa hizmetin kategorisi VEYA adı listede olmalı (eski kayıtlar hizmet adı saklar).
+ */
+export function staffCanPerform(specialties: string | null | undefined, serviceCategory?: string | null, serviceName?: string | null): boolean {
+  const list = (specialties || '').split(',').map((s) => s.trim().toLocaleLowerCase('tr')).filter(Boolean)
+  if (list.length === 0) return true
+  const cat = (serviceCategory || '').trim().toLocaleLowerCase('tr')
+  const name = (serviceName || '').trim().toLocaleLowerCase('tr')
+  return (cat !== '' && list.includes(cat)) || (name !== '' && list.includes(name))
+}
+
 export function normalizeStaff(staff: ApiStaff | null | undefined, index = 0): Staff {
   const fullName = staff?.fullName || staff?.name || `Personel ${index + 1}`
   return {
@@ -545,6 +557,7 @@ export function normalizeStaff(staff: ApiStaff | null | undefined, index = 0): S
     name: fullName,
     role: staff?.title || staff?.role || 'Personel',
     dept: staff?.specialties || staff?.dept || staff?.title || 'Genel',
+    specialties: staff?.specialties || '',
     phone: staff?.phone || '',
     email: staff?.email ?? null,
     active: staff?.isActive ?? staff?.active ?? true,

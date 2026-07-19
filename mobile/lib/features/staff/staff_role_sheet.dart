@@ -80,6 +80,10 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
   // Yeni personelde şube seçimi (düzenlemede şube bu ekrandan değişmez).
   List<Map<String, dynamic>> _branches = const [];
   String? _branchId;
+  // Yapabildiği işlem kategorileri — boş küme = kısıt yok (tüm kategoriler).
+  late final Set<String> _specialties;
+  List<String> _categoryOptions = const [];
+  bool _categoriesLoading = true;
 
   @override
   void initState() {
@@ -99,8 +103,44 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
     _granted = raw is Iterable
         ? raw.map((e) => '$e').where((e) => e.isNotEmpty).toSet()
         : <String>{};
+    _specialties = '${s['specialties'] ?? ''}'
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty && e != 'null')
+        .toSet();
     _catalog = _loadCatalog();
+    _loadCategories();
     if (widget.isCreate) _loadBranches();
+  }
+
+  /// Kategori havuzu: özel kategoriler + hizmetlerde kullanılan kategori adları
+  /// (web StaffFormDialog ile aynı kaynak).
+  Future<void> _loadCategories() async {
+    try {
+      final results = await Future.wait([
+        widget.api.get('/api/admin/service-categories/').catchError((_) => const <dynamic>[]),
+        widget.api
+            .get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
+            .catchError((_) => const <dynamic>[]),
+      ]);
+      final names = <String>{};
+      for (final c in apiItems(results[0])) {
+        final n = '${c['name'] ?? ''}'.trim();
+        if (n.isNotEmpty) names.add(n);
+      }
+      for (final s in apiItems(results[1])) {
+        final n = '${s['category'] ?? ''}'.trim();
+        if (n.isNotEmpty) names.add(n);
+      }
+      if (mounted) {
+        setState(() {
+          _categoryOptions = names.toList()..sort((a, b) => a.compareTo(b));
+          _categoriesLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _categoriesLoading = false);
+    }
   }
 
   Future<void> _loadBranches() async {
@@ -191,7 +231,6 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
   void _selectNone() => setState(_granted.clear);
 
   void _save() {
-    final s = widget.staff;
     if (_fullName.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ad soyad boş olamaz.')));
@@ -209,8 +248,8 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
       'fullName': _fullName.text.trim(),
       'title': _title.text.trim(),
       'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-      // Uzmanlık bu ekranda düzenlenmez — mevcut değer korunur.
-      'specialties': s['specialties'],
+      // Yapabildiği işlem kategorileri (boş = kısıt yok).
+      'specialties': _specialties.isEmpty ? null : _specialties.join(', '),
       'commissionRate':
           double.tryParse(_commission.text.trim().replaceAll(',', '.')) ?? 0,
       'isActive': _isActive,
@@ -265,6 +304,8 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
                     _personCard(),
                     const SizedBox(height: 14),
                     _identityFields(),
+                    const SizedBox(height: 18),
+                    _specialtySection(),
                     const SizedBox(height: 18),
                     _permissionSection(),
                   ],
@@ -508,6 +549,94 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
           borderSide: const BorderSide(color: _rose, width: 1.4),
         ),
       ),
+    );
+  }
+
+  // --- Yapabildiği işlem kategorileri ---
+  Widget _specialtySection() {
+    // Kategori havuzunda olmayan eski seçimler de (hizmet adı saklayan kayıtlar)
+    // kaldırılabilsin diye çip olarak gösterilir.
+    final options = [
+      ..._categoryOptions,
+      ..._specialties.where((s) => !_categoryOptions.contains(s)),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.category_rounded, size: 16, color: _rose),
+            SizedBox(width: 6),
+            Text('Yapabildiği İşlem Kategorileri',
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w800, color: _ink)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Personel yalnızca seçili kategorilerdeki hizmetlere randevu alabilir. Hiçbiri seçilmezse tümünde çalışabilir.',
+          style: TextStyle(fontSize: 10.5, color: _muted),
+        ),
+        const SizedBox(height: 10),
+        if (_categoriesLoading)
+          const Center(
+              child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: CircularProgressIndicator(color: _rose),
+          ))
+        else if (options.isEmpty)
+          const Text('Kategori bulunamadı — önce hizmetlere kategori atayın.',
+              style: TextStyle(fontSize: 11.5, color: _muted))
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final name in options)
+                InkWell(
+                  borderRadius: BorderRadius.circular(9),
+                  onTap: () => setState(() {
+                    if (!_specialties.remove(name)) _specialties.add(name);
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _specialties.contains(name)
+                          ? _rose.withValues(alpha: .10)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                          color: _specialties.contains(name)
+                              ? _rose.withValues(alpha: .45)
+                              : _cardBorder),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                            _specialties.contains(name)
+                                ? Icons.check_circle_rounded
+                                : Icons.add_circle_outline_rounded,
+                            size: 13,
+                            color: _specialties.contains(name)
+                                ? _rose
+                                : _muted.withValues(alpha: .6)),
+                        const SizedBox(width: 5),
+                        Text(name,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: _specialties.contains(name)
+                                    ? _rose
+                                    : _body)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 

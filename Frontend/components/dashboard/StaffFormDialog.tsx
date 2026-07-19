@@ -41,7 +41,7 @@ import { apiItems } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import { generateStaffCredentialsPdf } from '@/lib/staffCredentialsPdf'
 import { useFeature } from '@/components/dashboard/FeatureContext'
-import type { ApiService, ApiStaffWithCredentials, ApiStaffCredentials, PermissionMeta } from '@/lib/types'
+import type { ApiCustomServiceCategory, ApiService, ApiStaffWithCredentials, ApiStaffCredentials, PermissionMeta } from '@/lib/types'
 
 export interface StaffFormValues {
   fullName: string
@@ -159,14 +159,24 @@ export default function StaffFormDialog({
       .finally(() => {
         if (!cancelled) setPermLoading(false)
       })
-    adminApi
-      .services<ApiService>({ tenantId, page: 1, pageSize: 300 })
-      .then((res) => {
+    // Uzmanlık = hizmet KATEGORİLERİ (Kategoriler sayfasıyla aynı havuz): özel kategoriler +
+    // hizmetlerde kullanılan kategori adları. Seçilmeyen kategorideki hizmete randevu verilemez.
+    Promise.all([
+      adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
+      adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
+    ])
+      .then(([servicesRes, catsRes]) => {
         if (cancelled) return
-        const names = Array.from(
-          new Set(apiItems(res).map((service) => service.name?.trim()).filter(Boolean) as string[]),
-        )
-        setServiceOptions(names)
+        const names = new Set<string>()
+        for (const c of Array.isArray(catsRes) ? catsRes : []) {
+          const n = (c.name || '').trim()
+          if (n) names.add(n)
+        }
+        for (const s of apiItems(servicesRes)) {
+          const n = (s.category || '').trim()
+          if (n) names.add(n)
+        }
+        setServiceOptions(Array.from(names).sort((a, b) => a.localeCompare(b, 'tr')))
       })
       .catch(() => {
         if (!cancelled) setServiceOptions([])
@@ -661,14 +671,14 @@ export default function StaffFormDialog({
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className={`${labelStyle} mb-2`}>Uzmanlık Alanları</label>
+                    <label className={`${labelStyle} mb-2`}>Yapabildiği İşlem Kategorileri</label>
                     {servicesLoading ? (
                       <div className="flex items-center gap-2 text-sm text-[#705a66]">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Hizmetler yükleniyor...
+                        <Loader2 className="h-4 w-4 animate-spin" /> Kategoriler yükleniyor...
                       </div>
-                    ) : serviceOptions.length ? (
+                    ) : serviceOptions.length || selectedSpecialties.length ? (
                       <div className="flex flex-wrap gap-2">
-                        {serviceOptions.map((name) => {
+                        {[...serviceOptions, ...selectedSpecialties.filter((s) => !serviceOptions.includes(s))].map((name) => {
                           const active = selectedSpecialties.includes(name)
                           return (
                             <button
@@ -689,9 +699,11 @@ export default function StaffFormDialog({
                         })}
                       </div>
                     ) : (
-                      <div className="text-sm text-[#705a66]">Mevcut hizmet bulunamadı. Önce hizmet ekleyin.</div>
+                      <div className="text-sm text-[#705a66]">Kategori bulunamadı. Önce hizmetlere kategori atayın ya da Kategoriler sayfasından ekleyin.</div>
                     )}
-                    <div className="mt-1.5 text-xs text-[#705a66]/[0.75]">Birden fazla hizmet seçilebilir; seçimler personelin uzmanlık alanı olarak kaydedilir.</div>
+                    <div className="mt-1.5 text-xs text-[#705a66]/[0.75]">
+                      Personel yalnızca seçili kategorilerdeki hizmetlere randevu alabilir. <strong>Hiçbiri seçilmezse tüm kategorilerde çalışabilir.</strong>
+                    </div>
                   </div>
                 </div>
               </section>

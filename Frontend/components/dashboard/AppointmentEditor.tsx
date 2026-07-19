@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { adminApi } from '@/lib/apiClient'
-import { formatTL } from '@/lib/apiMappers'
+import { formatTL, staffCanPerform } from '@/lib/apiMappers'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
@@ -330,6 +330,14 @@ export default function AppointmentEditor({
     }
   }, [open, noteOnly, values.date, tenantId])
 
+  // Kategori yetkisi: personelin uzmanlık listesi doluysa yalnızca o kategorideki
+  // (veya adı listede olan) hizmetlere randevu alabilir.
+  const staffAllowedForService = (s: Staff): boolean =>
+    !selectedService || staffCanPerform(s.specialties, selectedService.group, selectedService.name)
+  const selectedStaffSkillBlocked = Boolean(
+    mode === 'create' && selectedStaff && selectedService && !staffAllowedForService(selectedStaff),
+  )
+
   const selectedStaffOnLeave = Boolean(values.staffMemberId && leaveStaffIds.has(values.staffMemberId))
   // İzinli personele randevu engellenir; mevcut randevu yalnızca iptal/gelmedi ile çözülebilir.
   const submitBlockedByLeave =
@@ -357,6 +365,10 @@ export default function AppointmentEditor({
         }
         if (submitBlockedByLeave) {
           setError(`${selectedStaff?.name || 'Seçili personel'} ${leaveDateLabel} tarihinde izinli. Bu güne randevu verilemez — farklı personel ya da tarih seç.`)
+          return
+        }
+        if (selectedStaffSkillBlocked) {
+          setError(`${selectedStaff?.name || 'Seçili personel'} "${selectedService?.name || 'bu hizmet'}" kategorisinde yetkili değil. Farklı bir personel seç ya da personel kartından kategori yetkisi ver.`)
           return
         }
       }
@@ -657,6 +669,18 @@ export default function AppointmentEditor({
                       animate="visible"
                       className="grid grid-cols-1 gap-4 sm:grid-cols-2"
                     >
+                      {selectedStaffSkillBlocked && (
+                        <motion.div variants={sectionVariants} className="sm:col-span-2">
+                          <div className="flex items-start gap-2.5 rounded-[16px] border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-[12px] leading-snug text-amber-800">
+                            <UserCog className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" strokeWidth={1.7} />
+                            <span>
+                              <strong>{selectedStaff?.name}</strong>, <strong>{selectedService?.name}</strong> hizmetinin kategorisinde yetkili değil.
+                              Farklı bir personel seç ya da personel kartındaki &quot;Yapabildiği İşlem Kategorileri&quot;nden yetki ver.
+                            </span>
+                          </div>
+                        </motion.div>
+                      )}
+
                       {selectedStaffOnLeave && (
                         <motion.div variants={sectionVariants} className="sm:col-span-2">
                           <div className="flex items-start gap-2.5 rounded-[16px] border border-rose-200/80 bg-rose-50/90 px-4 py-3 text-[12px] leading-snug text-rose-700">
@@ -717,10 +741,11 @@ export default function AppointmentEditor({
                           <option value="">— Personel seç —</option>
                           {staff.map((s) => {
                             const onLeave = leaveStaffIds.has(s.id)
+                            const skillBlocked = mode === 'create' && !staffAllowedForService(s)
                             return (
-                              <option key={s.id} value={s.id} disabled={onLeave && s.id !== values.staffMemberId}>
+                              <option key={s.id} value={s.id} disabled={(onLeave || skillBlocked) && s.id !== values.staffMemberId}>
                                 {s.name} · {s.dept}
-                                {onLeave ? ' · İzinli' : ''}
+                                {onLeave ? ' · İzinli' : skillBlocked ? ' · Bu kategoride yetkisiz' : ''}
                               </option>
                             )
                           })}

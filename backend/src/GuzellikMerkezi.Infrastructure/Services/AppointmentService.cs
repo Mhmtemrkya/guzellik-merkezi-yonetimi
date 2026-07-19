@@ -129,6 +129,36 @@ public sealed class AppointmentService : IAppointmentService
         return appointment is null ? Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı.")) : Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
+    /// <summary>
+    /// Personel yalnızca yetkili olduğu kategorilerdeki hizmetlere randevu alabilir.
+    /// Specialties boşsa kısıt yok; doluysa hizmetin kategorisi ya da adı listede olmalı
+    /// (eski kayıtlar hizmet adı sakladığı için ad da kabul edilir). Hata yoksa null döner.
+    /// </summary>
+    private async Task<Error?> CheckStaffSkillAsync(Guid tenantId, Guid staffMemberId, Guid serviceDefinitionId, CancellationToken ct)
+    {
+        var staff = await _db.StaffMembers.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Id == staffMemberId)
+            .Select(s => new { s.FullName, s.Specialties })
+            .FirstOrDefaultAsync(ct);
+        if (staff is null || string.IsNullOrWhiteSpace(staff.Specialties)) return null;
+
+        var service = await _db.ServiceDefinitions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Id == serviceDefinitionId)
+            .Select(s => new { s.Name, s.Category })
+            .FirstOrDefaultAsync(ct);
+        if (service is null) return null;
+
+        var allowed = staff.Specialties
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => x.ToLowerInvariant())
+            .ToHashSet();
+        var category = (service.Category ?? string.Empty).Trim().ToLowerInvariant();
+        var name = (service.Name ?? string.Empty).Trim().ToLowerInvariant();
+        if ((category.Length > 0 && allowed.Contains(category)) || (name.Length > 0 && allowed.Contains(name))) return null;
+
+        return Error.Validation($"{staff.FullName}, \"{service.Name}\" hizmetinin kategorisinde yetkili değil. Personel kartından kategori yetkisi verin ya da farklı personel seçin.");
+    }
+
     public async Task<Result<AppointmentDto>> CreateAsync(Guid tenantId, CreateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);
@@ -151,6 +181,11 @@ public sealed class AppointmentService : IAppointmentService
             return Result<AppointmentDto>.Failure(Error.Validation(
                 "Randevu oluşturmak için müşterinin kurum sahibi tarafından onaylanmış bir paket veya hizmet satışı olmalı."));
         }
+
+        // Kategori yetkisi: personelin uzmanlık listesi (Specialties, virgüllü) doluysa
+        // hizmetin kategorisi VEYA adı listede olmalı. Boş liste = kısıt yok.
+        var skillCheck = await CheckStaffSkillAsync(tenantId, request.StaffMemberId, request.ServiceDefinitionId, cancellationToken);
+        if (skillCheck is not null) return Result<AppointmentDto>.Failure(skillCheck);
 
         var overlap = await HasOverlapAsync(tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, null, cancellationToken);
         // SlotFull kodu: frontend bunu "bekleme listesine ekle?" uyarısı için ayırt eder (kara liste 409'undan farklı).

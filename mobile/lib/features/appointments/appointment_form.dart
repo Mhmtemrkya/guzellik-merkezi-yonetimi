@@ -231,6 +231,34 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
   }
 
+  /// Personel bu hizmeti yapabilir mi? Uzmanlık listesi boşsa kısıt yok; doluysa
+  /// hizmetin kategorisi VEYA adı listede olmalı (eski kayıtlar hizmet adı saklar).
+  static bool _staffCanPerform(Map<String, dynamic> s, Map<String, dynamic>? service) {
+    if (service == null) return true;
+    final raw = '${s['specialties'] ?? ''}';
+    final list = raw
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty && e != 'null')
+        .toList();
+    if (list.isEmpty) return true;
+    final category = '${service['category'] ?? ''}'.trim().toLowerCase();
+    final name = '${service['name'] ?? ''}'.trim().toLowerCase();
+    return (category.isNotEmpty && list.contains(category)) ||
+        (name.isNotEmpty && list.contains(name));
+  }
+
+  Map<String, dynamic>? get _selectedService {
+    for (final s in services) {
+      if ('${s['id']}' == serviceId) return s;
+    }
+    return null;
+  }
+
+  /// Seçili hizmete göre yetkili personeller — hizmet seçilmemişse tümü.
+  List<Map<String, dynamic>> get _eligibleStaff =>
+      staff.where((s) => _staffCanPerform(s, _selectedService)).toList();
+
   Future<void> pickDate() async {
     final date = await showDatePicker(
       context: context,
@@ -265,6 +293,17 @@ class _AppointmentFormState extends State<AppointmentForm> {
   Future<void> save() async {
     if (customerId == null || staffId == null || serviceId == null) return;
     final service = services.firstWhere((e) => '${e['id']}' == serviceId);
+    // Kategori yetkisi (backend de doğrular; burada erken uyarı).
+    final chosenStaff = staff.firstWhere(
+      (s) => '${s['id']}' == staffId,
+      orElse: () => const {},
+    );
+    if (chosenStaff.isNotEmpty && !_staffCanPerform(chosenStaff, service)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Seçili personel bu hizmetin kategorisinde yetkili değil. Farklı personel seçin.')));
+      return;
+    }
     final duration = (service['durationMinutes'] as num?)?.toInt() ?? 60;
     final end = start.add(Duration(minutes: duration));
     // Client-side ön kontrol: personelin bu slotta zaten 2 aktif randevusu varsa doğrudan
@@ -407,16 +446,33 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   value: serviceId,
                   items: services,
                   titleKeys: const ['name'],
-                  onChanged: (value) => setState(() => serviceId = value),
+                  onChanged: (value) => setState(() {
+                    serviceId = value;
+                    // Hizmet değişince kategori-yetkisiz personel seçili kalmasın.
+                    if (staffId != null &&
+                        !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
+                      staffId = null;
+                    }
+                  }),
                 ),
                 const SizedBox(height: 12),
                 _select(
                   label: 'Personel',
                   value: staffId,
-                  items: staff,
+                  items: _eligibleStaff,
                   titleKeys: const ['fullName'],
                   onChanged: (value) => setState(() => staffId = value),
                 ),
+                if (_selectedService != null &&
+                    _eligibleStaff.length < staff.length)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Bu hizmetin kategorisinde yetkili olmayan ${staff.length - _eligibleStaff.length} personel listelenmiyor.',
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 ListTile(
                   shape: RoundedRectangleBorder(

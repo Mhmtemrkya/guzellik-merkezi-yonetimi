@@ -736,6 +736,8 @@ export interface Staff {
   name: string
   role: string
   dept: string
+  /** Ham uzmanlık listesi (virgüllü kategori/hizmet adları) — boşsa kısıt yok. */
+  specialties: string
   phone: string
   email?: string | null
   active: boolean
