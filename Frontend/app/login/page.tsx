@@ -379,10 +379,10 @@ export default function LoginPage() {
             <span aria-hidden className="pointer-events-none absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-[#ffd3df]/[0.20] blur-3xl" />
 
             <div className="relative text-center">
-              <div className="text-[13px] font-medium text-[#c85776]">Hoş geldin</div>
+              <div className="text-[13px] font-medium text-[#c85776]">Hoş geldiniz</div>
               <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[#2f1724] sm:text-[42px]">
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
-                Hangi panelde devam edeceksin?
+                Hangi panelde devam edeceksiniz?
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
               </h2>
               <p className="mt-2 text-[12px] text-[#352432]/[0.50]">Tek oturum ile rol bazlı erişim</p>
