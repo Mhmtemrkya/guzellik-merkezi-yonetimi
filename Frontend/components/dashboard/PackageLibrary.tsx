@@ -394,6 +394,21 @@ export default function PackageLibrary({
                   <option value="">Fiyat</option><option value="asc">Artan</option><option value="desc">Azalan</option>
                 </select>
               </div>
+              {/* Kategori çipleri — Kategoriler sayfasındaki gruplamanın hızlı filtresi */}
+              {categorySettings.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setCatFilter('')}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${!catFilter ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
+                    Tümü <span className={`ml-1 tabular-nums ${!catFilter ? 'text-white/75' : 'text-[#352432]/40'}`}>{packages.length}</span>
+                  </button>
+                  {categorySettings.map((c) => (
+                    <button key={c.name} type="button" onClick={() => setCatFilter(catFilter === c.name ? '' : c.name)}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${catFilter === c.name ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
+                      {c.name} <span className={`ml-1 tabular-nums ${catFilter === c.name ? 'text-white/75' : 'text-[#352432]/40'}`}>{c.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="hidden grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">

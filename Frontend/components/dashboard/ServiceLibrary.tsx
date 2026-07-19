@@ -289,6 +289,21 @@ export default function ServiceLibrary({
                   <option value="">Süre</option><option value="0-30">≤30 dk</option><option value="31-60">31–60 dk</option><option value="61-999">60+ dk</option>
                 </select>
               </div>
+              {/* Kategori çipleri — Kategoriler sayfasındaki gruplamanın hızlı filtresi */}
+              {categories.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => { setCatFilter(''); setPage(1) }}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${!catFilter ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
+                    Tümü <span className={`ml-1 tabular-nums ${!catFilter ? 'text-white/75' : 'text-[#352432]/40'}`}>{services.length}</span>
+                  </button>
+                  {categories.map((c) => (
+                    <button key={c.name} type="button" onClick={() => { setCatFilter(catFilter === c.name ? '' : c.name); setPage(1) }}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${catFilter === c.name ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
+                      {c.name} <span className={`ml-1 tabular-nums ${catFilter === c.name ? 'text-white/75' : 'text-[#352432]/40'}`}>{c.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="hidden grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
