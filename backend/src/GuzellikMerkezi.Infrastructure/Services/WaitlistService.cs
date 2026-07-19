@@ -17,14 +17,19 @@ public sealed class WaitlistService : IWaitlistService
     private readonly IAuditLogger _audit;
     private readonly IFeatureService _features;
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
+    private readonly ICurrentUser _currentUser;
 
-    public WaitlistService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications)
+    public WaitlistService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications, ICurrentUser currentUser)
     {
         _db = db;
         _audit = audit;
         _features = features;
         _notifications = notifications;
+        _currentUser = currentUser;
     }
+
+    // Personel müşteri telefonunu yalnızca maskeli görür (PhoneMask kuralı).
+    private bool IsStaffViewer => _currentUser.Role == UserRole.Staff;
 
     private const string FeatureDeniedMessage = "Bekleme listesi özelliği paketinizde yok. Üst pakete geçerek kullanabilirsiniz.";
 
@@ -44,7 +49,27 @@ public sealed class WaitlistService : IWaitlistService
             .OrderBy(w => w.PreferredDate)
             .ThenBy(w => w.CreatedAtUtc)
             .ToListAsync(cancellationToken);
-        return Result<IReadOnlyCollection<WaitlistEntryDto>>.Success(rows.Select(ToDto).ToArray());
+
+        // Satırlarda ad/telefon göstermek için müşteri bilgisi — istemcinin tüm müşteri
+        // listesini çekmesine gerek kalmasın. Bekleme listesi küçük olduğundan id başına
+        // tekil sorgu yeterli (Guid listesi .Contains MySQL'de çevrilemiyor).
+        var customerInfo = new Dictionary<Guid, (string Name, string? Phone)>();
+        foreach (var cid in rows.Select(w => w.CustomerId).Distinct())
+        {
+            var c = await _db.Customers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id == cid)
+                .Select(x => new { x.FullName, x.Phone })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (c is not null) customerInfo[cid] = (c.FullName, c.Phone);
+        }
+
+        var dtos = rows.Select(w =>
+        {
+            var info = customerInfo.TryGetValue(w.CustomerId, out var i) ? i : default;
+            var phone = IsStaffViewer ? PhoneMask.Mask(info.Phone) : info.Phone;
+            return ToDto(w) with { CustomerName = info.Name, CustomerPhone = phone };
+        }).ToArray();
+        return Result<IReadOnlyCollection<WaitlistEntryDto>>.Success(dtos);
     }
 
     public async Task<Result<WaitlistEntryDto>> CreateAsync(Guid tenantId, CreateWaitlistRequest request, CancellationToken cancellationToken = default)

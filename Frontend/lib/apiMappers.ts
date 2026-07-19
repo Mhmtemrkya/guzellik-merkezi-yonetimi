@@ -530,6 +530,8 @@ export function normalizeWaitlistEntry(w: ApiWaitlistEntry | null | undefined, i
     createdAt: w?.createdAtUtc || '',
     preferredStartUtc: w?.preferredStartUtc ?? null,
     durationMinutes: w?.durationMinutes ?? null,
+    customerName: w?.customerName || undefined,
+    customerPhone: w?.customerPhone || undefined,
   }
 }
 
@@ -1437,6 +1439,7 @@ export function normalizeAppointment(
     customerConfirmation: appointment?.customerConfirmation,
     lastReminderAtUtc: appointment?.lastReminderAtUtc,
     isOnline: Boolean(appointment?.isOnline),
+    customerPhone: appointment?.customerPhone || customer?.phone || undefined,
   }
 }
 

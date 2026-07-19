@@ -486,7 +486,7 @@ export default function DayScheduleModal({
                                 const top = ((startMin - startHour * 60) / 60) * PX_PER_HOUR
                                 const height = Math.max(26, (dur / 60) * PX_PER_HOUR)
                                 const widthPct = 100 / lanes
-                                const customer = appt.customerId ? customers?.[appt.customerId] : undefined
+                                const customerPhone = appt.customerPhone || (appt.customerId ? customers?.[appt.customerId]?.phone : undefined)
                                 const compact = height < 46
                                 return (
                                   <motion.button
@@ -525,8 +525,8 @@ export default function DayScheduleModal({
                                         <span className="truncate">{appt.islem}</span>
                                       </div>
                                     )}
-                                    {!compact && customer?.phone && customer.phone !== 'Telefon yok' && (
-                                      <div className="truncate pl-1 text-[9px] text-[#8a7480]">{customer.phone}</div>
+                                    {!compact && customerPhone && customerPhone !== 'Telefon yok' && (
+                                      <div className="truncate pl-1 text-[9px] text-[#8a7480]">{customerPhone}</div>
                                     )}
                                   </motion.button>
                                 )

@@ -21,3 +21,17 @@ public sealed record PassiveThresholdDto(int Days);
 /// cihazdan arayabilsin diye bu uç ham numarayı döner; her çağrı audit log'a yazılır.
 /// </summary>
 public sealed record CustomerDialDto(Guid Id, string FullName, string Phone);
+
+/// <summary>Gün bazında yeni müşteri sayısı (dashboard "Yeni Danışanlar" trendleri).</summary>
+public sealed record CustomerDailyCountDto(string Date, int Count);
+
+/// <summary>
+/// Dashboard müşteri istatistikleri — tüm müşteri listesini istemciye çekmeden
+/// (sınırsız ölçek) sayaç ve trend verir.
+/// </summary>
+public sealed record CustomerStatsDto(
+    int Total,
+    int BirthdayThisMonth,
+    int KvkkPending,
+    int Blacklisted,
+    IReadOnlyCollection<CustomerDailyCountDto> NewByDay);

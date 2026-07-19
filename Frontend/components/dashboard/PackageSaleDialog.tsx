@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
-import CustomerPicker from '@/components/dashboard/CustomerPicker'
+import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeCustomer, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
@@ -93,10 +93,8 @@ export default function PackageSaleDialog({
   const { data } = useApiQuery<{ customers: ApiCustomer[]; packages: ApiServicePackage[]; services: ApiService[]; products: ApiProduct[]; staff: ApiStaff[] }>(
     async () => {
       if (!open) return { customers: [], packages: [], services: [], products: [], staff: [] }
-      const [customers, packages, services, products, staff] = await Promise.all([
-        presetCustomer
-          ? Promise.resolve<ApiCustomer[]>([])
-          : fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).catch<ApiCustomer[]>(() => []),
+      // Sınırsız müşteri ölçeği: müşteri listesi çekilmez — seçim sunucu aramasıyla yapılır.
+      const [packages, services, products, staff] = await Promise.all([
         isServiceSale || isProductSale
           ? Promise.resolve({ items: [] })
           : adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -109,7 +107,7 @@ export default function PackageSaleDialog({
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
       return {
-        customers,
+        customers: [],
         packages: apiItems(packages),
         services: apiItems(services),
         products: apiItems(products),
@@ -120,7 +118,7 @@ export default function PackageSaleDialog({
     { initialData: { customers: [], packages: [], services: [], products: [], staff: [] } },
   )
 
-  const customers = useMemo(() => (data?.customers || []).map((c, i) => normalizeCustomer(c, i)), [data])
+  const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const packages = useMemo(
     () => (data?.packages || []).map((p, i) => normalizePackage(p, i)).filter((p) => p.isActive || p.id === presetPackageId),
     [data, presetPackageId],
@@ -402,7 +400,8 @@ export default function PackageSaleDialog({
                 <label className={labelCls}>
                   Müşteri
                   <CustomerPicker
-                    items={customers.map((c) => ({ id: c.id || '', name: c.name || 'Müşteri', phone: c.phone || undefined }))}
+                    items={[]}
+                    onSearch={customerSearch}
                     value={customerId}
                     onChange={setCustomerId}
                     className={inputCls}

@@ -81,9 +81,17 @@ import type {
   Product,
 } from '@/lib/types'
 
+interface ApiCustomerStats {
+  total?: number
+  birthdayThisMonth?: number
+  kvkkPending?: number
+  blacklisted?: number
+  newByDay?: Array<{ date?: string; count?: number }>
+}
+
 interface DashboardData {
   appointmentsResult: PagedResult<ApiAppointment>
-  customersResult: PagedResult<ApiCustomer>
+  customersStats: ApiCustomerStats
   staffResult: PagedResult<ApiStaff>
   servicesResult: PagedResult<ApiService>
   productsResult: PagedResult<ApiProduct>
@@ -1079,7 +1087,7 @@ export default function AdminDashboard() {
     async () => {
       const [
         appointmentsResult,
-        customersResult,
+        customersStats,
         staffResult,
         servicesResult,
         productsResult,
@@ -1097,8 +1105,8 @@ export default function AdminDashboard() {
           page: 1,
           pageSize: 200,
         }),
-        // Yeni danışan sayacı tüm kayıtlar üzerinden hesaplanır — tek sayfa (100) yetmez.
-        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
+        // Sınırsız müşteri ölçeği: liste yerine sunucuda hesaplanan istatistik.
+        adminApi.customersStats<ApiCustomerStats>(tenantId).catch<ApiCustomerStats>(() => ({})),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 100 }),
         adminApi.products<ApiProduct>({ tenantId, page: 1, pageSize: 100 }),
@@ -1111,7 +1119,7 @@ export default function AdminDashboard() {
       ])
       return {
         appointmentsResult,
-        customersResult,
+        customersStats,
         staffResult,
         servicesResult,
         productsResult,
@@ -1148,12 +1156,19 @@ export default function AdminDashboard() {
     { initialData: null },
   )
 
-  const customers = apiItems(data?.customersResult).map((c, i) => normalizeCustomer(c, i))
+  const customerStats = data?.customersStats || {}
+  // Gün → yeni müşteri sayısı (sunucudan gruplu gelir; liste çekilmez).
+  const newCustomersByDay = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const row of data?.customersStats?.newByDay || []) {
+      if (row.date) map[row.date] = row.count || 0
+    }
+    return map
+  }, [data])
   const staff = apiItems(data?.staffResult).map((s, i) => normalizeStaff(s, i))
   const services = apiItems(data?.servicesResult).map((s, i) => normalizeService(s, i))
   const products = apiItems(data?.productsResult).map((p, i) => normalizeProduct(p, i))
   const lookups: AppointmentLookups = {
-    customers: Object.fromEntries(apiItems(data?.customersResult).map((c) => [c.id ?? '', c])),
     staff: Object.fromEntries(apiItems(data?.staffResult).map((s) => [s.id ?? '', s])),
     services: Object.fromEntries(apiItems(data?.servicesResult).map((s) => [s.id ?? '', s])),
   }
@@ -1176,12 +1191,11 @@ export default function AdminDashboard() {
       .filter((entry: CashFlowEntry) => entry.type === 'income' && entry.date >= startKey && entry.date < endKey)
       .reduce((sum, entry) => sum + entry.amount, 0)
 
-  // [startKey, endKey) içinde kaydı oluşturulan (yeni) danışan sayısı.
+  // [startKey, endKey) içinde kaydı oluşturulan (yeni) danışan sayısı — sunucu gruplu veriden.
   const countNewCustomersBetween = (startKey: string, endKey: string): number =>
-    customers.filter((customer) => {
-      const key = (customer.createdAt || '').slice(0, 10)
-      return key !== '' && key >= startKey && key < endKey
-    }).length
+    Object.entries(newCustomersByDay)
+      .filter(([key]) => key >= startKey && key < endKey)
+      .reduce((sum, [, count]) => sum + count, 0)
 
   const revenueWindow = periodWindow(revenuePeriod, dayStart)
   const customerWindow = periodWindow(customerPeriod, dayStart)
@@ -1277,14 +1291,9 @@ export default function AdminDashboard() {
 
   const passiveCustomers = data?.passiveResult?.items ?? []
   const passiveThresholdDays = data?.passiveResult?.thresholdDays ?? 0
-  const currentMonth = new Date().getMonth()
-  const birthdayThisMonth = customers.filter((customer) => {
-    if (!customer.joined || customer.joined === 'API') return false
-    const date = new Date(customer.joined)
-    return !Number.isNaN(date.getTime()) && date.getMonth() === currentMonth
-  }).length
-  const kvkkPending = customers.filter((customer) => customer.tier !== 'KVKK Onaylı').length
-  const blacklisted = customers.filter((customer) => customer.isBlacklisted).length
+  const birthdayThisMonth = customerStats.birthdayThisMonth ?? 0
+  const kvkkPending = customerStats.kvkkPending ?? 0
+  const blacklisted = customerStats.blacklisted ?? 0
 
   const followUps = [
     {
@@ -1347,7 +1356,7 @@ export default function AdminDashboard() {
         <ApiStateNotice
           loading={loading}
           error={error}
-          empty={!loading && !error && !appointments.length && !customers.length && !staff.length && !services.length}
+          empty={!loading && !error && !appointments.length && !(customerStats.total ?? 0) && !staff.length && !services.length}
           emptyMessage="Backend bağlantısı çalıştı fakat bu tenant için henüz kayıt yok."
         />
 

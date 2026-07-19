@@ -7,9 +7,25 @@ class CrudOptions {
   const CrudOptions(this.api);
   final ApiClient api;
 
+  /// Sunucu-taraflı müşteri araması — CrudField.searchLoader ile kullanılır
+  /// (sınırsız ölçek; tüm liste çekilmez).
+  Future<List<CrudOption>> Function(String query) get customerSearch =>
+      (String query) async {
+        final data = await api.get('/api/admin/customers/', query: {
+          'page': 1,
+          'pageSize': 50,
+          if (query.isNotEmpty) 'search': query,
+        });
+        return _toCustomerOptions(apiItems(data));
+      };
+
   Future<List<CrudOption>> customers() async {
     final data = await api.getAllPaged('/api/admin/customers/');
-    return apiItems(data)
+    return _toCustomerOptions(apiItems(data));
+  }
+
+  List<CrudOption> _toCustomerOptions(List<Map<String, dynamic>> items) {
+    return items
         .map(
           // Aynı isimli müşterileri ayırt etmek için telefon da etikette görünür.
           (c) => CrudOption(

@@ -70,6 +70,8 @@ export interface AdminField {
   options?: AdminOptionInput[]
   /** Select alanını aramalı seçiciye çevirir (binlerce kayıtlık listeler için). */
   searchable?: boolean
+  /** Aramalı seçici için sunucu-taraflı arama (options yerine; sınırsız ölçek). */
+  search?: (q: string) => Promise<Array<{ id: string; name: string; phone?: string }>>
   accept?: string
   emptyLabel?: string
   rowLabel?: string
@@ -703,10 +705,11 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
   }
 
   if (field.type === 'select') {
-    if (field.searchable) {
+    if (field.searchable || field.search) {
       return (
         <CustomerPicker
           items={(field.options || []).map((o) => ({ id: optionValue(o), name: optionLabel(o) }))}
+          onSearch={field.search}
           value={asString(value)}
           onChange={(next) => setField(key, next)}
           className={commonInputCls}

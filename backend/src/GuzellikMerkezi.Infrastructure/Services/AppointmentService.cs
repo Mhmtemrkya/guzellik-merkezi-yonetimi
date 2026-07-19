@@ -21,8 +21,9 @@ public sealed class AppointmentService : IAppointmentService
     private readonly IWaitlistService _waitlist;
     private readonly IDurableJobQueue _jobs;
     private readonly IAppNotificationService _notifications;
+    private readonly ICurrentUser _currentUser;
 
-    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications)
+    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications, ICurrentUser currentUser)
     {
         _db = db;
         _usage = usage;
@@ -30,7 +31,11 @@ public sealed class AppointmentService : IAppointmentService
         _waitlist = waitlist;
         _jobs = jobs;
         _notifications = notifications;
+        _currentUser = currentUser;
     }
+
+    // Personel müşteri telefonunu yalnızca maskeli görür (PhoneMask kuralı).
+    private bool IsStaffViewer => _currentUser.Role == UserRole.Staff;
 
     /// <summary>Bildirim gövdesi için müşteri adı (şifreli kolon okuma anında çözülür). Yoksa "Müşteri".</summary>
     private async Task<string> CustomerNameAsync(Guid tenantId, Guid customerId, CancellationToken ct)
@@ -104,8 +109,13 @@ public sealed class AppointmentService : IAppointmentService
                 x.ServiceDefinition != null ? x.ServiceDefinition.Name : null,
                 x.CustomerConfirmation,
                 x.LastReminderAtUtc,
-                x.IsOnline))
+                x.IsOnline,
+                x.Customer != null ? x.Customer.Phone : null))
             .ToArrayAsync(cancellationToken);
+        if (IsStaffViewer)
+        {
+            items = items.Select(a => a with { CustomerPhone = PhoneMask.Mask(a.CustomerPhone) }).ToArray();
+        }
         return Result<PagedResult<AppointmentDto>>.Success(new PagedResult<AppointmentDto>(items, total, request.SafePage, request.SafePageSize));
     }
 

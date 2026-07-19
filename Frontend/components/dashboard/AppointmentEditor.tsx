@@ -30,7 +30,7 @@ import {
 import { adminApi } from '@/lib/apiClient'
 import { formatTL } from '@/lib/apiMappers'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
-import CustomerPicker from '@/components/dashboard/CustomerPicker'
+import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import type { ApiCustomerPackageSession, ApiStaffTimeOff, Customer, Service, ServicePackage, Staff } from '@/lib/types'
@@ -69,6 +69,11 @@ export interface AppointmentEditorProps {
   packages: ServicePackage[]
   /** Create modunda seçili müşterinin satın aldığı seans bakiyelerini çekmek için. */
   tenantId?: string
+  /**
+   * true ise müşteri seçici tüm listeyi beklemez; sunucu-taraflı arama kullanır
+   * (sınırsız müşteri ölçeği). `customers` prop'u yalnızca ilk görüntü/lookup içindir.
+   */
+  serverCustomerSearch?: boolean
   initialValues?: Partial<AppointmentEditorValues>
   customerLabel?: string
   serviceLabel?: string
@@ -160,6 +165,7 @@ export default function AppointmentEditor({
   onSubmit,
   noteOnly = false,
   tenantId,
+  serverCustomerSearch = false,
   onQuickCreateCustomer,
   onAddToWaitlist,
 }: AppointmentEditorProps) {
@@ -210,10 +216,20 @@ export default function AppointmentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialSignature])
 
-  const selectedCustomer = useMemo(
-    () => allCustomers.find((c) => c.id === values.customerId),
-    [allCustomers, values.customerId],
+  // Sunucu aramasıyla seçilen müşteri `customers` listesinde olmayabilir — seçimden gelen kaydı tut.
+  const [pickedCustomer, setPickedCustomer] = useState<CustomerPickerItem | null>(null)
+  const searchCustomersFn = useMemo(
+    () => (serverCustomerSearch ? customerSearchProvider(tenantId) : undefined),
+    [serverCustomerSearch, tenantId],
   )
+  const selectedCustomer = useMemo(() => {
+    const found = allCustomers.find((c) => c.id === values.customerId)
+    if (found) return found
+    if (pickedCustomer && pickedCustomer.id === values.customerId) {
+      return { id: pickedCustomer.id, name: pickedCustomer.name, phone: pickedCustomer.phone || '', branchId: null } as unknown as Customer
+    }
+    return undefined
+  }, [allCustomers, pickedCustomer, values.customerId])
   const selectedService = useMemo(
     () => services.find((s) => s.id === values.serviceDefinitionId),
     [services, values.serviceDefinitionId],
@@ -662,6 +678,8 @@ export default function AppointmentEditor({
                             items={allCustomers}
                             value={values.customerId}
                             disabled={mode === 'edit'}
+                            onSearch={searchCustomersFn}
+                            onSelectItem={setPickedCustomer}
                             onChange={(customerId) =>
                               setValues((v) => ({
                                 ...v,

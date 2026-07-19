@@ -69,20 +69,27 @@ class _AppointmentFormState extends State<AppointmentForm> {
   }
 
   Future<void> loadLookups() async {
+    // Sınırsız müşteri ölçeği: müşteri listesi ÇEKİLMEZ — seçim aramalı alt sayfadan,
+    // preset müşteri tekil uçtan gelir. `customers` yalnızca preset + hızlı kayıt tutar.
+    final preset = widget.presetCustomerId;
     final values = await Future.wait([
-      widget.api.getAllPaged('/api/admin/customers/'),
+      preset != null
+          ? widget.api
+              .get('/api/admin/customers/$preset')
+              .catchError((_) => const <String, dynamic>{})
+          : Future.value(const <String, dynamic>{}),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 200}),
     ]);
-    customers = apiItems(values[0]);
+    final presetCustomer =
+        values[0] is Map ? (values[0] as Map).cast<String, dynamic>() : null;
+    customers = presetCustomer != null && presetCustomer['id'] != null
+        ? [presetCustomer]
+        : [];
     staff = apiItems(values[1]);
     services = apiItems(values[2]);
-    // Binlerce müşteride ilk kaydı otomatik seçmek yanıltıcı — preset yoksa boş
-    // başlar, aramalı seçiciyle seçilir.
-    final preset = widget.presetCustomerId;
-    customerId = (preset != null && customers.any((c) => '${c['id']}' == preset))
-        ? preset
-        : null;
+    customerId =
+        (preset != null && customers.isNotEmpty) ? preset : null;
     staffId = widget.presetStaffId ??
         (staff.isEmpty ? null : '${staff.first['id']}');
     serviceId = services.isEmpty ? null : '${services.first['id']}';
@@ -204,6 +211,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
       (c) => '${c['id']}' == id,
       orElse: () => const {},
     );
+    final name = customer.isNotEmpty
+        ? valueOf(customer, const ['fullName', 'name'])
+        : (customerName ?? 'Müşteri');
     final sold = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -211,7 +221,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
       builder: (_) => PackageSaleSheet(
         api: widget.api,
         customerId: id,
-        customerName: valueOf(customer, const ['fullName', 'name']),
+        customerName: name,
       ),
     );
     if (sold == true && mounted) {

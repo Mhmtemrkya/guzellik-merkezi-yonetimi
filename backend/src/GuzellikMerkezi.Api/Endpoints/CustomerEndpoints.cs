@@ -34,6 +34,13 @@ public static class CustomerEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetCustomerIdsWithBookableSessionsAsync(resolvedTenantId, ct)).ToHttpResult(http);
         });
 
+        // Dashboard sayaç/trendleri — sınırsız ölçek: liste yerine sunucuda hesaplanan istatistik.
+        group.MapGet("/stats", async (Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetStatsAsync(resolvedTenantId, ct)).ToHttpResult(http);
+        });
+
         // VIP müşteriler — şube-kapsamlı.
         group.MapGet("/vip", async (Guid? tenantId, int page, int pageSize, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {

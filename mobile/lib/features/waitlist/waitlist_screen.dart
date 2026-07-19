@@ -78,20 +78,19 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
           .get('/api/admin/waitlist/', query: {'activeOnly': false})
           .catchError((_) => const <dynamic>[]),
       widget.api
-          .getAllPaged('/api/admin/customers/')
-          .catchError((_) => const <String, dynamic>{'items': <dynamic>[]}),
-      widget.api
           .get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
           .catchError((_) => const <dynamic>[]),
       widget.api
           .get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200})
           .catchError((_) => const <dynamic>[]),
     ]);
+    // Sınırsız müşteri ölçeği: müşteri listesi çekilmez — satır adları DTO'dan
+    // (customerName), seçim CustomerSelectField sunucu aramasıyla.
     return _WlData(
       entries: apiItems(results[0]),
-      customers: apiItems(results[1]),
-      services: apiItems(results[2]),
-      staff: apiItems(results[3]),
+      customers: const [],
+      services: apiItems(results[1]),
+      staff: apiItems(results[2]),
     );
   }
 
@@ -567,7 +566,9 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
     final status = '${e['status']}';
     final meta = _meta(status);
     final resolved = status == 'Booked' || status == 'Cancelled';
-    final name = data.customerName('${e['customerId']}');
+    final name = '${e['customerName'] ?? ''}'.isNotEmpty
+        ? '${e['customerName']}'
+        : data.customerName('${e['customerId']}');
     final service = e['serviceDefinitionId'] == null
         ? null
         : data.serviceName('${e['serviceDefinitionId']}');

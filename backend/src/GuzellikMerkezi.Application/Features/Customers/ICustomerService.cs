@@ -30,4 +30,6 @@ public interface ICustomerService
     Task<Result<PassiveThresholdDto>> SetPassiveThresholdAsync(Guid tenantId, SetPassiveThresholdRequest request, CancellationToken cancellationToken = default);
     /// <summary>Arama başlatmak için ham telefon — personelde bile maskesiz döner, her erişim audit log'a yazılır.</summary>
     Task<Result<CustomerDialDto>> GetDialPhoneAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+    /// <summary>Dashboard sayaç/trendleri — tüm listeyi çekmeden sunucuda hesaplanır (sınırsız ölçek).</summary>
+    Task<Result<CustomerStatsDto>> GetStatsAsync(Guid tenantId, CancellationToken cancellationToken = default);
 }

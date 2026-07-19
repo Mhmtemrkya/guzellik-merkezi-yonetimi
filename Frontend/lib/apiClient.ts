@@ -728,6 +728,9 @@ export const adminApi = {
 
   customers: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/customers/', { query: { page: 1, pageSize: 100, ...query } }),
+  /** Dashboard müşteri istatistikleri — tüm listeyi çekmeden sayaç + gün-bazlı yeni müşteri trendi. */
+  customersStats: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/customers/stats', { query: { tenantId } }),
   customer: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/customers/${id}`, { query: { tenantId } }),
   createCustomer: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>

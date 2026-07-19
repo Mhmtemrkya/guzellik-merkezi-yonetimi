@@ -91,8 +91,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'toUtc': to.toIso8601String(),
         },
       ),
-      // Yeni danışan sayacı tüm kayıtlar üzerinden hesaplanmalı — tek sayfa yetmez.
-      widget.api.getAllPaged('/api/admin/customers/'),
+      // Sınırsız müşteri ölçeği: liste yerine sunucuda hesaplanan istatistik.
+      widget.api
+          .get('/api/admin/customers/stats')
+          .catchError((_) => const <String, dynamic>{}),
       widget.api.get(
         '/api/admin/cash-flow/summary',
         query: {
@@ -127,14 +129,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           })
           .catchError((_) => const <dynamic>[]),
     ]);
-    final customersPayload = values[1];
+    final statsPayload = values[1];
+    final customerStats = statsPayload is Map
+        ? statsPayload.cast<String, dynamic>()
+        : const <String, dynamic>{};
     return _DashboardData(
       primary: apiItems(values[0]),
       secondary: apiItems(values[3]),
-      customers: apiItems(values[1]),
-      customersTotal: customersPayload is Map && customersPayload['total'] is num
-          ? (customersPayload['total'] as num).toInt()
-          : apiItems(values[1]).length,
+      customerStats: customerStats,
+      customersTotal: (customerStats['total'] as num?)?.toInt() ?? 0,
       staff: apiItems(values[4]),
       products: apiItems(values[5]),
       report: values[6] is Map
@@ -145,7 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : const <String, dynamic>{},
       cashEntries: apiItems(values[8]),
       summary: {
-        'customers': apiItems(values[1]).length,
+        'customers': (customerStats['total'] as num?)?.toInt() ?? 0,
         ...(values[2] is Map
             ? (values[2] as Map).cast<String, dynamic>()
             : const <String, dynamic>{}),
@@ -326,7 +329,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _StockAlertsCard(products: data.products),
                       const SizedBox(height: 22),
                       _FollowUpsCard(
-                        customers: data.customers,
+                        customerStats: data.customerStats,
                         passive: data.passive,
                       ),
                     ],
@@ -428,13 +431,17 @@ class _MetricGrid extends StatelessWidget {
         }
       }
       final range = period.localRange();
+      // Sunucudan gün-bazlı gruplu gelir (newByDay) — tüm liste çekilmez.
       var newCustomers = 0;
-      for (final c in data.customers) {
-        final created = parseUtcToLocal(c['createdAtUtc']);
-        if (created != null &&
-            !created.isBefore(range.start) &&
-            created.isBefore(range.end)) {
-          newCustomers++;
+      String dayKey(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final startKey = dayKey(range.start);
+      final endKey = dayKey(range.end);
+      for (final row in (data.customerStats['newByDay'] as List? ?? const [])) {
+        if (row is! Map) continue;
+        final date = '${row['date'] ?? ''}';
+        if (date.compareTo(startKey) >= 0 && date.compareTo(endKey) < 0) {
+          newCustomers += (row['count'] as num?)?.toInt() ?? 0;
         }
       }
       final collected = numberOf(data.report, const ['totalCollected']);
@@ -638,7 +645,7 @@ class _DashboardData {
     required this.secondary,
     required this.summary,
     this.tenant,
-    this.customers = const <Map<String, dynamic>>[],
+    this.customerStats = const <String, dynamic>{},
     this.customersTotal = 0,
     this.staff = const <Map<String, dynamic>>[],
     this.products = const <Map<String, dynamic>>[],
@@ -651,7 +658,8 @@ class _DashboardData {
   final Map<String, dynamic> summary;
   /// Kurum yöneticisi için kendi tenant'ı (deneme/abonelik bilgisi). Diğer rollerde null.
   final Map<String, dynamic>? tenant;
-  final List<Map<String, dynamic>> customers;
+  /// /customers/stats çıktısı — total, birthdayThisMonth, kvkkPending, blacklisted, newByDay.
+  final Map<String, dynamic> customerStats;
   final int customersTotal;
   final List<Map<String, dynamic>> staff;
   final List<Map<String, dynamic>> products;
@@ -1082,24 +1090,18 @@ class _StockAlertsCard extends StatelessWidget {
 
 /// Takip gerektiren danışan grupları (web 'Takip Edilmesi Gereken Danışanlar').
 class _FollowUpsCard extends StatelessWidget {
-  const _FollowUpsCard({required this.customers, required this.passive});
-  final List<Map<String, dynamic>> customers;
+  const _FollowUpsCard({required this.customerStats, required this.passive});
+  final Map<String, dynamic> customerStats;
   final Map<String, dynamic> passive;
 
   @override
   Widget build(BuildContext context) {
     final passiveItems = apiItems(passive);
     final thresholdDays = numberOf(passive, const ['thresholdDays']).toInt();
-    final month = DateTime.now().month;
-    var birthday = 0;
-    var kvkk = 0;
-    var blacklist = 0;
-    for (final c in customers) {
-      final bd = DateTime.tryParse('${c['birthDate']}');
-      if (bd != null && bd.month == month) birthday++;
-      if (c['kvkkConsent'] == false) kvkk++;
-      if (c['isBlacklisted'] == true) blacklist++;
-    }
+    // Sayaçlar sunucuda hesaplanır (/customers/stats) — liste çekilmez.
+    final birthday = (customerStats['birthdayThisMonth'] as num?)?.toInt() ?? 0;
+    final kvkk = (customerStats['kvkkPending'] as num?)?.toInt() ?? 0;
+    final blacklist = (customerStats['blacklisted'] as num?)?.toInt() ?? 0;
     final rows = <(String, int, IconData)>[
       (
         thresholdDays > 0

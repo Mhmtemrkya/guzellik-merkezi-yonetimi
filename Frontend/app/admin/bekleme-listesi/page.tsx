@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
-import CustomerPicker from '@/components/dashboard/CustomerPicker'
+import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
@@ -228,13 +228,14 @@ export default function BeklemeListesiPage() {
   const { data, loading, error, reload } = useApiQuery<WaitlistData>(
     async () => {
       if (!tenantId) return { entries: [], customers: { items: [] }, services: { items: [] }, staff: { items: [] } }
-      const [entries, customers, services, staff] = await Promise.all([
+      // Sınırsız müşteri ölçeği: tüm müşteri listesi çekilmez — satır adları DTO'dan,
+      // seçim sunucu aramasıyla yapılır.
+      const [entries, services, staff] = await Promise.all([
         adminApi.waitlist<ApiWaitlistEntry>(tenantId).catch(() => []),
-        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }),
       ])
-      return { entries: Array.isArray(entries) ? entries : [], customers: { items: customers }, services, staff }
+      return { entries: Array.isArray(entries) ? entries : [], customers: { items: [] }, services, staff }
     },
     [tenantId],
     { initialData: null },
@@ -257,7 +258,7 @@ export default function BeklemeListesiPage() {
     return map
   }, [data])
 
-  const customerOptions = useMemo(() => apiItems(data?.customers).map((c) => ({ id: c.id || '', name: c.fullName || c.name || 'Müşteri', phone: c.phone || undefined })).filter((c) => c.id), [data])
+  const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const serviceOptions = useMemo(() => apiItems(data?.services).map((s) => ({ id: s.id || '', name: s.name || 'Hizmet' })).filter((s) => s.id), [data])
   const staffOptions = useMemo(() => apiItems(data?.staff).map((s) => ({ id: s.id || '', name: s.fullName || s.name || 'Personel' })).filter((s) => s.id), [data])
 
@@ -398,7 +399,8 @@ export default function BeklemeListesiPage() {
             <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Müşteri *</span>
               <CustomerPicker
-                items={customerOptions}
+                items={[]}
+                onSearch={customerSearch}
                 value={customerId}
                 onChange={setCustomerId}
                 className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
@@ -453,7 +455,7 @@ export default function BeklemeListesiPage() {
                 entry={w}
                 queueNo={queueNo}
                 index={i}
-                name={customerName[w.customerId] || 'Müşteri'}
+                name={w.customerName || customerName[w.customerId] || 'Müşteri'}
                 service={w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || 'Hizmet' : null}
                 staff={w.staffMemberId ? staffName[w.staffMemberId] || 'Personel' : null}
                 busy={busy}

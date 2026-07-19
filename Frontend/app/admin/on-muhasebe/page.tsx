@@ -16,6 +16,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, normalizeAccount, normalizeAdisyon,
   normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeStaff,
@@ -106,7 +107,8 @@ function OnMuhasebePageInner() {
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
-        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).catch(() => []),
+        // Sınırsız müşteri ölçeği: liste çekilmez, seçim sunucu aramasıyla.
+        Promise.resolve<ApiCustomer[]>([]),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
@@ -126,6 +128,7 @@ function OnMuhasebePageInner() {
   const adisyonlar = useMemo(() => (data?.adisyonlar || []).map((a) => normalizeAdisyon(a)), [data])
   const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
   const customers = useMemo(() => (data?.customers || []).map((c, i) => normalizeCustomer(c, i)), [data])
+  const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
   const staff = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
   const customExpenseCats = useMemo<CustomExpenseCategory[]>(() => (data?.expenseCats || []).map((c, i) => normalizeCustomCategory(c, i)), [data])
@@ -295,7 +298,7 @@ function OnMuhasebePageInner() {
           description="Müşteri için açık hesap fişi açılır. Kalemler eklendikçe toplanır; onaylanınca cariye + kasaya işlenir."
           submitLabel="Adisyonu aç"
           onSubmit={async (v) => { const cid = String((v as Record<string, unknown>).customerId || ''); if (!cid) throw new Error('Müşteri seç.'); await createAdisyonFor(cid) }}
-          fields={[{ label: 'Müşteri', name: 'customerId', type: 'select', searchable: true, value: '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, fullWidth: true }]}
+          fields={[{ label: 'Müşteri', name: 'customerId', type: 'select', search: customerSearch, value: '', required: true, icon: User, fullWidth: true }]}
         />
       )
     }
@@ -350,7 +353,7 @@ function OnMuhasebePageInner() {
           await reload()
         }}
         fields={[
-          { label: 'Müşteri', name: 'customerId', type: 'select', searchable: true, value: '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, section: 'Müşteri & paket', fullWidth: true },
+          { label: 'Müşteri', name: 'customerId', type: 'select', search: customerSearch, value: '', required: true, icon: User, section: 'Müşteri & paket', fullWidth: true },
           { label: 'Paket (opsiyonel)', name: 'servicePackageId', type: 'select', value: '', options: [{ value: '', label: '— Paketsiz —' }, ...packages.map((p) => ({ value: p.id, label: `${p.name} · ${formatTL(p.totalPrice)}` }))], icon: ClipboardList, fullWidth: true, helper: 'Paket seçilirse hizmet seans bakiyeleri otomatik açılır' },
           { label: 'Cari adı', name: 'name', value: 'Paket satışı', required: true, icon: FileText, section: 'Tutar & plan' },
           { label: 'Toplam tutar', name: 'totalAmount', type: 'number', value: 2500, required: true, icon: Wallet, prefix: '₺' },

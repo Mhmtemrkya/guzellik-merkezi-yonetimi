@@ -70,9 +70,6 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
           : widget.api
               .get('/api/admin/packages/', query: {'page': 1, 'pageSize': 200}),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
-      if (widget.customerId == null)
-        widget.api
-            .getAllPaged('/api/admin/customers/'),
     ]);
     final catalog = apiItems(values[0])
         .where((p) => p['isActive'] != false)
@@ -85,9 +82,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       packageId = packages.isEmpty ? null : '${packages.first['id']}';
     }
     staff = apiItems(values[1]);
-    if (widget.customerId == null && values.length > 2) {
-      customers = apiItems(values[2]);
-    }
+    // Sınırsız müşteri ölçeği: liste çekilmez; seçim CustomerSelectField'dan gelir
+    // ve `customers` yalnızca seçilen kaydı tutar.
   }
 
   @override
@@ -288,8 +284,12 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                 if (widget.customerId == null) ...[
                   CustomerSelectField(
                     api: widget.api,
-                    onSelected: (picked) =>
-                        setState(() => customerId = picked.id),
+                    onSelected: (picked) => setState(() {
+                      customerId = picked.id;
+                      customers = [
+                        {'id': picked.id, 'fullName': picked.name, 'phone': picked.phone},
+                      ];
+                    }),
                   ),
                   const SizedBox(height: 12),
                 ],

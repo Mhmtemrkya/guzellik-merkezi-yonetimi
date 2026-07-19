@@ -356,36 +356,31 @@ function RandevularPageInner() {
         pageSize: 300,
       })
 
-      // Yeni randevu yalnızca KALAN paket seansı olan müşteriye verilir; seansı biten/hiç olmayan gelmez.
-      const eligiblePromise = adminApi.customersWithBookableSessions(tenantId).catch<string[]>(() => [])
-
+      // Sınırsız müşteri ölçeği: tüm müşteri listesi ÇEKİLMEZ. Satır adları/telefonları
+      // randevu DTO'sundan gelir; seçiciler sunucu aramasıyla çalışır.
       if (isStaffUser) {
-        const [appointmentsResult, customersResult, staffResult, servicesResult, eligibleCustomerIds] = await Promise.all([
+        const [appointmentsResult, staffResult, servicesResult] = await Promise.all([
           appointmentsPromise,
-          fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
           adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 10 }),
           adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
-          eligiblePromise,
         ])
         return {
           appointmentsResult,
-          customersResult,
+          customersResult: { items: [] },
           staffResult,
           servicesResult,
           packagesResult: { items: [] },
-          eligibleCustomerIds,
+          eligibleCustomerIds: [],
         }
       }
 
-      const [appointmentsResult, customersResult, staffResult, servicesResult, packagesResult, eligibleCustomerIds] = await Promise.all([
+      const [appointmentsResult, staffResult, servicesResult, packagesResult] = await Promise.all([
         appointmentsPromise,
-        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })).then((items) => ({ items })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch<PagedResult<ApiServicePackage>>(() => ({ items: [] })),
-        eligiblePromise,
       ])
-      return { appointmentsResult, customersResult, staffResult, servicesResult, packagesResult, eligibleCustomerIds }
+      return { appointmentsResult, customersResult: { items: [] }, staffResult, servicesResult, packagesResult, eligibleCustomerIds: [] }
     },
     [tenantId, rangeStartIso, rangeEndIso, isStaffUser],
     { initialData: null },
@@ -473,16 +468,6 @@ function RandevularPageInner() {
   )
 
   const customersList: Customer[] = useMemo(() => Object.values(normalizedLookups.customers), [normalizedLookups])
-  // Yeni randevu modalında kalan seansı olan müşteriler öne alınır; diğerleri de seçilebilir
-  // (seansı yoksa modal içindeki "Paket satışı yap" akışı devreye girer).
-  const createModalCustomers: Customer[] = useMemo(() => {
-    const ids = new Set((data?.eligibleCustomerIds || []).map((id) => String(id).toLowerCase()))
-    if (ids.size === 0) return customersList
-    const eligible: Customer[] = []
-    const rest: Customer[] = []
-    for (const c of customersList) (ids.has(String(c.id).toLowerCase()) ? eligible : rest).push(c)
-    return [...eligible, ...rest]
-  }, [customersList, data?.eligibleCustomerIds])
   const staffList: Staff[] = useMemo(() => Object.values(normalizedLookups.staff), [normalizedLookups])
   const servicesList: Service[] = useMemo(() => Object.values(normalizedLookups.services), [normalizedLookups])
   const selfStaff = useMemo(() => {
@@ -1382,7 +1367,6 @@ function RandevularPageInner() {
                 >
                   {selectedAppointments.map((r) => {
                     const tone = statusTone[r.status] || statusTone.bekliyor
-                    const customer = r.customerId ? normalizedLookups.customers[r.customerId] : undefined
                     const hasNote = Boolean(r.notes && r.notes.trim())
                     return (
                       <motion.tr
@@ -1405,8 +1389,8 @@ function RandevularPageInner() {
                                 <span className="block truncate text-[13px] font-semibold text-[#241923]">{r.musteri}</span>
                                 {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
                               </span>
-                              {customer?.phone && (
-                                <span className="mt-0.5 block text-[11px] text-[#8a7480]">{customer.phone}</span>
+                              {r.customerPhone && (
+                                <span className="mt-0.5 block text-[11px] text-[#8a7480]">{r.customerPhone}</span>
                               )}
                             </span>
                           </span>
@@ -1546,7 +1530,8 @@ function RandevularPageInner() {
             setCreateStaffId('')
           }
         }}
-        customers={createModalCustomers}
+        customers={[]}
+        serverCustomerSearch
         staff={staffList}
         services={servicesList}
         packages={allPackages}
@@ -1567,7 +1552,7 @@ function RandevularPageInner() {
           mode="edit"
           open={Boolean(editingId)}
           onOpenChange={(next) => !next && setEditingId(null)}
-          customers={customersList}
+          customers={editingAppointment.customerId ? [{ id: editingAppointment.customerId, name: editingAppointment.musteri, phone: editingAppointment.customerPhone || '' } as Customer] : []}
           staff={staffList}
           services={servicesList}
           packages={allPackages}
@@ -1598,7 +1583,7 @@ function RandevularPageInner() {
           noteOnly
           open={Boolean(noteEditingId)}
           onOpenChange={(next) => !next && setNoteEditingId(null)}
-          customers={customersList}
+          customers={noteEditingAppointment.customerId ? [{ id: noteEditingAppointment.customerId, name: noteEditingAppointment.musteri, phone: noteEditingAppointment.customerPhone || '' } as Customer] : []}
           staff={staffList}
           services={servicesList}
           packages={allPackages}

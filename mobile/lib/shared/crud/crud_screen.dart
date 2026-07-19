@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -43,6 +45,7 @@ class CrudField {
     this.maxLength,
     this.exactLength = false,
     this.searchable = false,
+    this.searchLoader,
   });
 
   final String key;
@@ -73,6 +76,10 @@ class CrudField {
   /// For [CrudFieldType.select]: binlerce seçenekli listelerde (müşteriler)
   /// dropdown yerine aramalı bir alt sayfa açılır.
   final bool searchable;
+
+  /// Aramalı seçimde sunucu-taraflı arama — verilirse options/optionsLoader yerine
+  /// her sorgu sunucudan ilk sayfayı getirir (sınırsız ölçek).
+  final Future<List<CrudOption>> Function(String query)? searchLoader;
 
   /// For [CrudFieldType.multiSelect]. If true, selected values are joined as
   /// a string instead of being sent as an array. Useful for backend fields like
@@ -460,7 +467,11 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
         .toList();
   }
 
+  /// Aramalı seçimde sunucudan gelen kaydın etiketi (options'ta olmayabilir).
+  final Map<String, String> _searchPickedLabels = {};
+
   /// Aramalı select — seçenekleri filtrelenebilir bir alt sayfada listeler.
+  /// `searchLoader` verilmişse her sorgu (debounce'lu) sunucudan getirilir.
   Future<CrudOption?> _pickSearchableOption(
     CrudField field,
     List<CrudOption> options,
@@ -475,13 +486,42 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
       ),
       builder: (ctx) {
         var q = '';
+        var remote = <CrudOption>[];
+        var remoteLoading = field.searchLoader != null;
+        var seq = 0;
+        Timer? debounce;
+        var initialLoaded = false;
         return StatefulBuilder(
           builder: (ctx, setSheet) {
-            final list = q.isEmpty
-                ? options
-                : options
-                    .where((o) => o.label.toLowerCase().contains(q))
-                    .toList();
+            final loader = field.searchLoader;
+            if (loader != null && !initialLoaded) {
+              initialLoaded = true;
+              final mySeq = ++seq;
+              loader('').then((rows) {
+                if (mySeq == seq) setSheet(() { remote = rows; remoteLoading = false; });
+              }).catchError((_) {
+                if (mySeq == seq) setSheet(() { remote = const []; remoteLoading = false; });
+              });
+            }
+            void runRemote(String query) {
+              debounce?.cancel();
+              debounce = Timer(const Duration(milliseconds: 250), () {
+                final mySeq = ++seq;
+                setSheet(() => remoteLoading = true);
+                loader!(query).then((rows) {
+                  if (mySeq == seq) setSheet(() { remote = rows; remoteLoading = false; });
+                }).catchError((_) {
+                  if (mySeq == seq) setSheet(() { remote = const []; remoteLoading = false; });
+                });
+              });
+            }
+            final list = loader != null
+                ? remote
+                : q.isEmpty
+                    ? options
+                    : options
+                        .where((o) => o.label.toLowerCase().contains(q))
+                        .toList();
             return Padding(
               padding:
                   EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -505,8 +545,14 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                       child: TextField(
                         autofocus: true,
-                        onChanged: (v) =>
-                            setSheet(() => q = v.trim().toLowerCase()),
+                        onChanged: (v) {
+                          q = v.trim().toLowerCase();
+                          if (loader != null) {
+                            runRemote(v.trim());
+                          } else {
+                            setSheet(() {});
+                          }
+                        },
                         decoration: InputDecoration(
                           isDense: true,
                           hintText: 'Ara…',
@@ -518,7 +564,9 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
                       ),
                     ),
                     Expanded(
-                      child: list.isEmpty
+                      child: remoteLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : list.isEmpty
                           ? const Center(
                               child: Text('Sonuç bulunamadı.',
                                   style: TextStyle(color: Colors.black54)))
@@ -762,11 +810,13 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
         final current = options.any((o) => o.value == _values[field.key])
             ? _values[field.key]
             : null;
-        if (field.searchable) {
-          final selected =
-              options.where((o) => o.value == current).firstOrNull;
+        if (field.searchable || field.searchLoader != null) {
+          final currentValue = _values[field.key];
+          final selectedLabel =
+              options.where((o) => o.value == currentValue).firstOrNull?.label ??
+                  (currentValue == null ? null : _searchPickedLabels[field.key]);
           return FormField<dynamic>(
-            validator: (_) => field.required && current == null
+            validator: (_) => field.required && currentValue == null
                 ? '${field.label} zorunlu.'
                 : null,
             builder: (state) => InkWell(
@@ -774,7 +824,10 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
               onTap: () async {
                 final picked = await _pickSearchableOption(field, options);
                 if (picked != null) {
-                  setState(() => _values[field.key] = picked.value);
+                  setState(() {
+                    _values[field.key] = picked.value;
+                    _searchPickedLabels[field.key] = picked.label;
+                  });
                 }
               },
               child: InputDecorator(
@@ -783,11 +836,11 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
                   suffixIcon: const Icon(Icons.search_rounded, size: 20),
                   errorText: state.errorText,
                 ),
-                isEmpty: selected == null,
-                child: selected == null
+                isEmpty: selectedLabel == null,
+                child: selectedLabel == null
                     ? const Text('Ara ve seç…',
                         style: TextStyle(color: Colors.black38))
-                    : Text(selected.label,
+                    : Text(selectedLabel,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600)),
               ),

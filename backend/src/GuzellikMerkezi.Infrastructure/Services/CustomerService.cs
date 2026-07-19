@@ -100,6 +100,42 @@ public sealed class CustomerService : ICustomerService
         return Result<CustomerDialDto>.Success(new CustomerDialDto(customer.Id, customer.FullName, digits));
     }
 
+    public async Task<Result<CustomerStatsDto>> GetStatsAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var baseQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
+
+        var total = await baseQuery.CountAsync(cancellationToken);
+        var blacklisted = await baseQuery.CountAsync(x => x.IsBlacklisted, cancellationToken);
+        var kvkkPending = await baseQuery.CountAsync(x => !x.KvkkConsent, cancellationToken);
+
+        // Doğum günü ayı: MONTH() çevirisine güvenmemek için tarihe göre grupla, ayı bellekte topla.
+        var thisMonth = DateTime.UtcNow.Month;
+        var birthDates = await baseQuery
+            .Where(x => x.BirthDate != null)
+            .GroupBy(x => x.BirthDate)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        var birthdayThisMonth = birthDates
+            .Where(x => x.Date.HasValue && x.Date.Value.Month == thisMonth)
+            .Sum(x => x.Count);
+
+        // Gün bazında yeni müşteri sayıları — 100 bin müşteri de olsa gruplu sonuç küçüktür.
+        var newByDay = await baseQuery
+            .GroupBy(x => x.CreatedAtUtc.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        return Result<CustomerStatsDto>.Success(new CustomerStatsDto(
+            total,
+            birthdayThisMonth,
+            kvkkPending,
+            blacklisted,
+            newByDay
+                .OrderBy(x => x.Date)
+                .Select(x => new CustomerDailyCountDto(x.Date.ToString("yyyy-MM-dd"), x.Count))
+                .ToArray()));
+    }
+
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "customers", cancellationToken);

@@ -648,6 +648,8 @@ export interface ApiWaitlistEntry {
   createdAtUtc?: string
   preferredStartUtc?: string | null
   durationMinutes?: number | null
+  customerName?: string | null
+  customerPhone?: string | null
 }
 
 export interface WaitlistEntry {
@@ -662,6 +664,8 @@ export interface WaitlistEntry {
   /** İstenen slotun tam başlangıcı (ISO UTC); saatsiz (eski) kayıtlarda null. */
   preferredStartUtc: string | null
   durationMinutes: number | null
+  customerName?: string
+  customerPhone?: string
 }
 
 export interface ApiCashClosing {
@@ -1824,6 +1828,7 @@ export interface ApiAppointment {
   customerConfirmation?: WhatsAppConfirmation
   lastReminderAtUtc?: string | null
   isOnline?: boolean
+  customerPhone?: string | null
 }
 
 export interface AppointmentLookups {
@@ -1852,6 +1857,7 @@ export interface Appointment {
   customerConfirmation?: WhatsAppConfirmation
   lastReminderAtUtc?: string | null
   isOnline?: boolean
+  customerPhone?: string
 }
 
 // ---------------------------------------------------------------------------

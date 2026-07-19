@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
@@ -93,18 +95,54 @@ class _CustomerPickerSheet extends StatefulWidget {
 }
 
 class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
-  late Future<List<Map<String, dynamic>>> _future;
+  // Sınırsız müşteri ölçeği: tüm liste çekilmez — sunucu araması (ilk 50 eşleşme).
+  List<Map<String, dynamic>> _rows = const [];
+  bool _loading = true;
   String _q = '';
+  Timer? _debounce;
+  int _seq = 0;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _search('');
   }
 
-  Future<List<Map<String, dynamic>>> _load() async {
-    final res = await widget.api.getAllPaged('/api/admin/customers/');
-    return apiItems(res);
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String value) {
+    _q = value.trim();
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () => _search(_q));
+  }
+
+  Future<void> _search(String q) async {
+    final seq = ++_seq;
+    setState(() => _loading = true);
+    try {
+      final res = await widget.api.get('/api/admin/customers/', query: {
+        'page': 1,
+        'pageSize': 50,
+        if (q.isNotEmpty) 'search': q,
+      });
+      if (mounted && seq == _seq) {
+        setState(() {
+          _rows = apiItems(res);
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted && seq == _seq) {
+        setState(() {
+          _rows = const [];
+          _loading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -138,7 +176,8 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
-                onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+                autofocus: true,
+                onChanged: _onQueryChanged,
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: 'Ad veya telefon ara…',
@@ -151,25 +190,12 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
             ),
             const SizedBox(height: 6),
             Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _future,
-                builder: (context, snap) {
-                  if (!snap.hasData && !snap.hasError) {
+              child: Builder(
+                builder: (context) {
+                  if (_loading) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  if (snap.hasError) {
-                    return Center(child: Text('${snap.error}'));
-                  }
-                  final all = snap.data!;
-                  final list = _q.isEmpty
-                      ? all
-                      : all.where((c) {
-                          final name = valueOf(c, const ['fullName', 'name'],
-                                  fallback: '')
-                              .toLowerCase();
-                          final phone = '${c['phone'] ?? ''}';
-                          return name.contains(_q) || phone.contains(_q);
-                        }).toList();
+                  final list = _rows;
                   if (list.isEmpty) {
                     return const Center(
                       child: Text('Müşteri bulunamadı.',

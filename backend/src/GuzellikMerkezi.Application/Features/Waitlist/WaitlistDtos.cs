@@ -14,7 +14,9 @@ public sealed record WaitlistEntryDto(
     string? Note,
     DateTime CreatedAtUtc,
     DateTime? PreferredStartUtc,
-    int? DurationMinutes);
+    int? DurationMinutes,
+    string? CustomerName = null,
+    string? CustomerPhone = null);
 
 public sealed record CreateWaitlistRequest(
     Guid CustomerId,
