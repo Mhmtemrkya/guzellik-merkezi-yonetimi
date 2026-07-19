@@ -120,8 +120,10 @@ public sealed class CustomerService : ICustomerService
             .Sum(x => x.Count);
 
         // Gün bazında yeni müşteri sayıları — 100 bin müşteri de olsa gruplu sonuç küçüktür.
+        // Paneller yerel (TR, UTC+3) güne göre sayar; UTC gününe göre gruplarsak 21:00 sonrası
+        // kayıtlar ertesi güne düşer ve "bugün/bu hafta" sayaçları tutmaz.
         var newByDay = await baseQuery
-            .GroupBy(x => x.CreatedAtUtc.Date)
+            .GroupBy(x => x.CreatedAtUtc.AddHours(3).Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
