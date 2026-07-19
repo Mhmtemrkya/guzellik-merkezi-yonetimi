@@ -5,12 +5,13 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 
 /// Müşteri seçtiren alt sayfa — menüden bağlamsız açılan müşteri-özel ekranlar
-/// (Konsültasyon, Tedavi Günlüğü) için. Seçilen müşterinin (id, ad) kaydını döndürür; iptalde null.
-Future<({String id, String name})?> pickCustomer(
+/// (Konsültasyon, Tedavi Günlüğü) ve form içi aramalı seçim için.
+/// Seçilen müşterinin (id, ad, telefon) kaydını döndürür; iptalde null.
+Future<({String id, String name, String phone})?> pickCustomer(
   BuildContext context,
   ApiClient api,
 ) {
-  return showModalBottomSheet<({String id, String name})>(
+  return showModalBottomSheet<({String id, String name, String phone})>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -20,6 +21,67 @@ Future<({String id, String name})?> pickCustomer(
     ),
     builder: (_) => _CustomerPickerSheet(api: api),
   );
+}
+
+/// Form içi aramalı müşteri alanı — binlerce kayıtta dropdown yerine
+/// [pickCustomer] alt sayfasını açar; seçili adın yanında telefon görünür.
+class CustomerSelectField extends StatefulWidget {
+  const CustomerSelectField({
+    required this.api,
+    required this.onSelected,
+    this.label = 'Müşteri',
+    super.key,
+  });
+  final ApiClient api;
+  final String label;
+  final void Function(({String id, String name, String phone}) picked)
+      onSelected;
+
+  @override
+  State<CustomerSelectField> createState() => _CustomerSelectFieldState();
+}
+
+class _CustomerSelectFieldState extends State<CustomerSelectField> {
+  ({String id, String name, String phone})? _picked;
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () async {
+        final result = await pickCustomer(context, widget.api);
+        if (result != null) {
+          setState(() => _picked = result);
+          widget.onSelected(result);
+        }
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: widget.label,
+          suffixIcon: const Icon(Icons.search_rounded, size: 20),
+        ),
+        isEmpty: picked == null,
+        child: picked == null
+            ? const Text('Ara ve seç…', style: TextStyle(color: Colors.black38))
+            : Row(
+                children: [
+                  Flexible(
+                    child: Text(picked.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  if (picked.phone.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(picked.phone,
+                        style: const TextStyle(
+                            fontSize: 12.5, color: Colors.black54)),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
 }
 
 class _CustomerPickerSheet extends StatefulWidget {
@@ -140,8 +202,8 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                               style:
                                   const TextStyle(fontWeight: FontWeight.w700)),
                           subtitle: Text('${c['phone'] ?? ''}'),
-                          onTap: () =>
-                              Navigator.pop(context, (id: id, name: name)),
+                          onTap: () => Navigator.pop(context,
+                              (id: id, name: name, phone: '${c['phone'] ?? ''}')),
                         ),
                       );
                     },

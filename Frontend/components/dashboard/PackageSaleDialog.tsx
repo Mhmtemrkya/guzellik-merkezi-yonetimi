@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
+import CustomerPicker from '@/components/dashboard/CustomerPicker'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeCustomer, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
@@ -400,12 +401,12 @@ export default function PackageSaleDialog({
               ) : (
                 <label className={labelCls}>
                   Müşteri
-                  <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={inputCls}>
-                    <option value="">Müşteri seç…</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
-                    ))}
-                  </select>
+                  <CustomerPicker
+                    items={customers.map((c) => ({ id: c.id || '', name: c.name || 'Müşteri', phone: c.phone || undefined }))}
+                    value={customerId}
+                    onChange={setCustomerId}
+                    className={inputCls}
+                  />
                 </label>
               )}
 

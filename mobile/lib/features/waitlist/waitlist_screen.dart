@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
+import '../customers/customer_picker.dart';
 
 /// Bekleme Listesi — web `bekleme-listesi` sayfasının mobil karşılığı.
 ///
@@ -399,13 +400,10 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
         children: [
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 14),
-          _dropdown(
+          CustomerSelectField(
+            api: widget.api,
             label: 'Müşteri *',
-            value: _customerId,
-            hint: 'Seçin…',
-            items: data.customers,
-            nameKeys: const ['fullName', 'name'],
-            onChanged: (v) => setState(() => _customerId = v),
+            onSelected: (picked) => setState(() => _customerId = picked.id),
           ),
           const SizedBox(height: 12),
           _dropdown(

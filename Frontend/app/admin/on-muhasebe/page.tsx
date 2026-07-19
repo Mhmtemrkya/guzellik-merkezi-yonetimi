@@ -295,7 +295,7 @@ function OnMuhasebePageInner() {
           description="Müşteri için açık hesap fişi açılır. Kalemler eklendikçe toplanır; onaylanınca cariye + kasaya işlenir."
           submitLabel="Adisyonu aç"
           onSubmit={async (v) => { const cid = String((v as Record<string, unknown>).customerId || ''); if (!cid) throw new Error('Müşteri seç.'); await createAdisyonFor(cid) }}
-          fields={[{ label: 'Müşteri', name: 'customerId', type: 'select', value: customers[0]?.id || '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, fullWidth: true }]}
+          fields={[{ label: 'Müşteri', name: 'customerId', type: 'select', searchable: true, value: '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, fullWidth: true }]}
         />
       )
     }
@@ -350,7 +350,7 @@ function OnMuhasebePageInner() {
           await reload()
         }}
         fields={[
-          { label: 'Müşteri', name: 'customerId', type: 'select', value: customers[0]?.id || '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, section: 'Müşteri & paket', fullWidth: true },
+          { label: 'Müşteri', name: 'customerId', type: 'select', searchable: true, value: '', options: customers.map((c) => ({ value: c.id, label: `${c.name} · ${c.phone}` })), required: true, icon: User, section: 'Müşteri & paket', fullWidth: true },
           { label: 'Paket (opsiyonel)', name: 'servicePackageId', type: 'select', value: '', options: [{ value: '', label: '— Paketsiz —' }, ...packages.map((p) => ({ value: p.id, label: `${p.name} · ${formatTL(p.totalPrice)}` }))], icon: ClipboardList, fullWidth: true, helper: 'Paket seçilirse hizmet seans bakiyeleri otomatik açılır' },
           { label: 'Cari adı', name: 'name', value: 'Paket satışı', required: true, icon: FileText, section: 'Tutar & plan' },
           { label: 'Toplam tutar', name: 'totalAmount', type: 'number', value: 2500, required: true, icon: Wallet, prefix: '₺' },

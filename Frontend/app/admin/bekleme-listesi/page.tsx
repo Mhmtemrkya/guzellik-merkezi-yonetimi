@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
+import CustomerPicker from '@/components/dashboard/CustomerPicker'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
@@ -256,7 +257,7 @@ export default function BeklemeListesiPage() {
     return map
   }, [data])
 
-  const customerOptions = useMemo(() => apiItems(data?.customers).map((c) => ({ id: c.id || '', name: c.fullName || c.name || 'Müşteri' })).filter((c) => c.id), [data])
+  const customerOptions = useMemo(() => apiItems(data?.customers).map((c) => ({ id: c.id || '', name: c.fullName || c.name || 'Müşteri', phone: c.phone || undefined })).filter((c) => c.id), [data])
   const serviceOptions = useMemo(() => apiItems(data?.services).map((s) => ({ id: s.id || '', name: s.name || 'Hizmet' })).filter((s) => s.id), [data])
   const staffOptions = useMemo(() => apiItems(data?.staff).map((s) => ({ id: s.id || '', name: s.fullName || s.name || 'Personel' })).filter((s) => s.id), [data])
 
@@ -396,10 +397,12 @@ export default function BeklemeListesiPage() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Müşteri *</span>
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40">
-                <option value="">Seçin…</option>
-                {customerOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CustomerPicker
+                items={customerOptions}
+                value={customerId}
+                onChange={setCustomerId}
+                className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+              />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Hizmet (ops.)</span>

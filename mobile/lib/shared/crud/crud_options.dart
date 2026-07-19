@@ -11,9 +11,12 @@ class CrudOptions {
     final data = await api.getAllPaged('/api/admin/customers/');
     return apiItems(data)
         .map(
+          // Aynı isimli müşterileri ayırt etmek için telefon da etikette görünür.
           (c) => CrudOption(
             c['id'],
-            valueOf(c, const ['fullName', 'name', 'phone']),
+            '${c['phone'] ?? ''}'.isEmpty
+                ? valueOf(c, const ['fullName', 'name'])
+                : '${valueOf(c, const ['fullName', 'name'])} · ${c['phone']}',
           ),
         )
         .toList();

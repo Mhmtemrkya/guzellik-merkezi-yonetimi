@@ -42,6 +42,7 @@ class CrudField {
     this.digitsOnly = false,
     this.maxLength,
     this.exactLength = false,
+    this.searchable = false,
   });
 
   final String key;
@@ -68,6 +69,10 @@ class CrudField {
   /// For [CrudFieldType.select]: load dropdown options asynchronously
   /// (e.g. customers, staff, services).
   final Future<List<CrudOption>> Function()? optionsLoader;
+
+  /// For [CrudFieldType.select]: binlerce seçenekli listelerde (müşteriler)
+  /// dropdown yerine aramalı bir alt sayfa açılır.
+  final bool searchable;
 
   /// For [CrudFieldType.multiSelect]. If true, selected values are joined as
   /// a string instead of being sent as an array. Useful for backend fields like
@@ -369,10 +374,13 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
               : (field.defaultValue as bool? ?? false);
           break;
         case CrudFieldType.select:
+          // Aramalı seçimde ilk kaydı otomatik seçme — kullanıcı arayıp seçer.
           _values[field.key] =
               existing ??
               field.defaultValue ??
-              (field.options.isEmpty ? null : field.options.first.value);
+              (field.searchable || field.options.isEmpty
+                  ? null
+                  : field.options.first.value);
           break;
         case CrudFieldType.multiSelect:
           _values[field.key] = _parseMultiValue(existing);
@@ -450,6 +458,88 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
+  }
+
+  /// Aramalı select — seçenekleri filtrelenebilir bir alt sayfada listeler.
+  Future<CrudOption?> _pickSearchableOption(
+    CrudField field,
+    List<CrudOption> options,
+  ) {
+    return showModalBottomSheet<CrudOption>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        var q = '';
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final list = q.isEmpty
+                ? options
+                : options
+                    .where((o) => o.label.toLowerCase().contains(q))
+                    .toList();
+            return Padding(
+              padding:
+                  EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+              child: SizedBox(
+                height: MediaQuery.sizeOf(ctx).height * 0.75,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          field.label,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                      child: TextField(
+                        autofocus: true,
+                        onChanged: (v) =>
+                            setSheet(() => q = v.trim().toLowerCase()),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Ara…',
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: list.isEmpty
+                          ? const Center(
+                              child: Text('Sonuç bulunamadı.',
+                                  style: TextStyle(color: Colors.black54)))
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(8, 4, 8, 16),
+                              itemCount: list.length,
+                              itemBuilder: (_, i) => ListTile(
+                                title: Text(list[i].label),
+                                onTap: () => Navigator.pop(ctx, list[i]),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _loadAsyncOptions() async {
@@ -672,6 +762,38 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
         final current = options.any((o) => o.value == _values[field.key])
             ? _values[field.key]
             : null;
+        if (field.searchable) {
+          final selected =
+              options.where((o) => o.value == current).firstOrNull;
+          return FormField<dynamic>(
+            validator: (_) => field.required && current == null
+                ? '${field.label} zorunlu.'
+                : null,
+            builder: (state) => InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () async {
+                final picked = await _pickSearchableOption(field, options);
+                if (picked != null) {
+                  setState(() => _values[field.key] = picked.value);
+                }
+              },
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: field.label,
+                  suffixIcon: const Icon(Icons.search_rounded, size: 20),
+                  errorText: state.errorText,
+                ),
+                isEmpty: selected == null,
+                child: selected == null
+                    ? const Text('Ara ve seç…',
+                        style: TextStyle(color: Colors.black38))
+                    : Text(selected.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+          );
+        }
         return DropdownButtonFormField<dynamic>(
           initialValue: current,
           isExpanded: true,

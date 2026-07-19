@@ -389,6 +389,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
             label: 'Müşteri',
             type: CrudFieldType.select,
             required: true,
+            searchable: true,
             optionsLoader: CrudOptions(widget.api).customers,
           ),
           const CrudField(
@@ -465,6 +466,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
             label: 'Müşteri',
             type: CrudFieldType.select,
             required: true,
+            searchable: true,
             optionsLoader: CrudOptions(widget.api).customers,
           ),
           const CrudField(key: 'name', label: 'Hesap/Paket adı', required: true),

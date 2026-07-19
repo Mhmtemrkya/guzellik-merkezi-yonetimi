@@ -473,10 +473,15 @@ function RandevularPageInner() {
   )
 
   const customersList: Customer[] = useMemo(() => Object.values(normalizedLookups.customers), [normalizedLookups])
-  // Yeni randevu modalına yalnızca KALAN paket seansı olan müşteriler verilir.
-  const eligibleCustomersList: Customer[] = useMemo(() => {
+  // Yeni randevu modalında kalan seansı olan müşteriler öne alınır; diğerleri de seçilebilir
+  // (seansı yoksa modal içindeki "Paket satışı yap" akışı devreye girer).
+  const createModalCustomers: Customer[] = useMemo(() => {
     const ids = new Set((data?.eligibleCustomerIds || []).map((id) => String(id).toLowerCase()))
-    return customersList.filter((c) => ids.has(String(c.id).toLowerCase()))
+    if (ids.size === 0) return customersList
+    const eligible: Customer[] = []
+    const rest: Customer[] = []
+    for (const c of customersList) (ids.has(String(c.id).toLowerCase()) ? eligible : rest).push(c)
+    return [...eligible, ...rest]
   }, [customersList, data?.eligibleCustomerIds])
   const staffList: Staff[] = useMemo(() => Object.values(normalizedLookups.staff), [normalizedLookups])
   const servicesList: Service[] = useMemo(() => Object.values(normalizedLookups.services), [normalizedLookups])
@@ -1541,7 +1546,7 @@ function RandevularPageInner() {
             setCreateStaffId('')
           }
         }}
-        customers={eligibleCustomersList}
+        customers={createModalCustomers}
         staff={staffList}
         services={servicesList}
         packages={allPackages}

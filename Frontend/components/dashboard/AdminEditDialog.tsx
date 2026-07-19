@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { downscaleImage } from '@/lib/imageUtils'
 import { IconPicker } from '@/components/dashboard/ServiceIcons'
+import CustomerPicker from '@/components/dashboard/CustomerPicker'
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -67,6 +68,8 @@ export interface AdminField {
   value?: AdminFieldValue
   required?: boolean
   options?: AdminOptionInput[]
+  /** Select alanını aramalı seçiciye çevirir (binlerce kayıtlık listeler için). */
+  searchable?: boolean
   accept?: string
   emptyLabel?: string
   rowLabel?: string
@@ -700,6 +703,16 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
   }
 
   if (field.type === 'select') {
+    if (field.searchable) {
+      return (
+        <CustomerPicker
+          items={(field.options || []).map((o) => ({ id: optionValue(o), name: optionLabel(o) }))}
+          value={asString(value)}
+          onChange={(next) => setField(key, next)}
+          className={commonInputCls}
+        />
+      )
+    }
     return (
       <div className="relative">
         <select

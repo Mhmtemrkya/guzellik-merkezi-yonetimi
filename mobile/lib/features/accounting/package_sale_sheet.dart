@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
 import '../../shared/json_helpers.dart';
+import '../customers/customer_picker.dart';
 
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
@@ -285,22 +286,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                 ),
                 const SizedBox(height: 18),
                 if (widget.customerId == null) ...[
-                  DropdownButtonFormField<String>(
-                    initialValue: customerId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Müşteri'),
-                    items: customers
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: '${c['id']}',
-                            child: Text(
-                              valueOf(c, const ['fullName', 'name']),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(() => customerId = value),
+                  CustomerSelectField(
+                    api: widget.api,
+                    onSelected: (picked) =>
+                        setState(() => customerId = picked.id),
                   ),
                   const SizedBox(height: 12),
                 ],

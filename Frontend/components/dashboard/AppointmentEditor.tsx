@@ -7,7 +7,6 @@ import {
   Calendar,
   CalendarClock,
   CalendarPlus,
-  Check,
   CheckCircle2,
   Clock,
   FileText,
@@ -31,6 +30,7 @@ import {
 import { adminApi } from '@/lib/apiClient'
 import { formatTL } from '@/lib/apiMappers'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
+import CustomerPicker from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import type { ApiCustomerPackageSession, ApiStaffTimeOff, Customer, Service, ServicePackage, Staff } from '@/lib/types'
@@ -166,7 +166,8 @@ export default function AppointmentEditor({
   const todayIso = new Date().toISOString().slice(0, 10)
   // Create modunda hizmet, müşterinin satın aldığı seanslardan seçilir (katalogdan değil) — boş başlar.
   const baseDefaults: AppointmentEditorValues = {
-    customerId: customers[0]?.id || '',
+    // 12 bin+ müşteri listesinde ilk kaydı otomatik seçmek yanıltıcı — create'te boş başlar, aramayla seçilir.
+    customerId: mode === 'create' ? '' : customers[0]?.id || '',
     serviceDefinitionId: mode === 'create' ? '' : services[0]?.id || '',
     staffMemberId: staff[0]?.id || '',
     packageId: null,
@@ -657,26 +658,19 @@ export default function AppointmentEditor({
 
                       <FieldShell label="Müşteri" icon={User} required fullWidth helper={mode === 'edit' ? 'Randevu oluşturulduktan sonra müşteri değiştirilemez.' : onQuickCreateCustomer ? "Listede yoksa yandaki 'Yeni müşteri' ile buradan kaydet" : "Listede yoksa önce 'Yeni müşteri' oluştur"}>
                         <div className="flex items-stretch gap-2">
-                          <select
-                            className={`${fieldStyle()} ${mode === 'edit' ? 'cursor-not-allowed opacity-60' : ''}`}
+                          <CustomerPicker
+                            items={allCustomers}
                             value={values.customerId}
                             disabled={mode === 'edit'}
-                            onChange={(e) =>
+                            onChange={(customerId) =>
                               setValues((v) => ({
                                 ...v,
-                                customerId: e.target.value,
+                                customerId,
                                 // Müşteri değişince create modunda seçili seans geçersiz olur — sıfırla.
                                 ...(mode === 'create' ? { serviceDefinitionId: '', durationMinutes: 30 } : {}),
                               }))
                             }
-                          >
-                            <option value="">— Müşteri seç —</option>
-                            {allCustomers.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} · {c.phone}
-                              </option>
-                            ))}
-                          </select>
+                          />
                           {mode === 'create' && onQuickCreateCustomer && (
                             <button
                               type="button"

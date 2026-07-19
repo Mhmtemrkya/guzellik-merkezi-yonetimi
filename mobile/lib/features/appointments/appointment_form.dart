@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../accounting/package_sale_sheet.dart';
+import '../customers/customer_picker.dart';
 import 'calendar_theme.dart';
 
 const _genderOptions = [
@@ -46,6 +47,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
   List<Map<String, dynamic>> staff = [];
   List<Map<String, dynamic>> services = [];
   String? customerId;
+  // Seçici alt sayfasından dönen ad — customers listesinde bulunamazsa yedek.
+  String? customerName;
   String? staffId;
   String? serviceId;
   late DateTime start;
@@ -74,10 +77,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
     customers = apiItems(values[0]);
     staff = apiItems(values[1]);
     services = apiItems(values[2]);
+    // Binlerce müşteride ilk kaydı otomatik seçmek yanıltıcı — preset yoksa boş
+    // başlar, aramalı seçiciyle seçilir.
     final preset = widget.presetCustomerId;
     customerId = (preset != null && customers.any((c) => '${c['id']}' == preset))
         ? preset
-        : (customers.isEmpty ? null : '${customers.first['id']}');
+        : null;
     staffId = widget.presetStaffId ??
         (staff.isEmpty ? null : '${staff.first['id']}');
     serviceId = services.isEmpty ? null : '${services.first['id']}';
@@ -369,16 +374,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: _select(
-                        label: 'Müşteri',
-                        value: customerId,
-                        items: customers,
-                        titleKeys: const ['fullName'],
-                        onChanged: (value) =>
-                            setState(() => customerId = value),
-                      ),
-                    ),
+                    Expanded(child: _customerSelector()),
                     const SizedBox(width: 8),
                     IconButton.filledTonal(
                       tooltip: 'Yeni müşteri kaydet',
@@ -439,6 +435,60 @@ class _AppointmentFormState extends State<AppointmentForm> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Aramalı müşteri seçimi — binlerce kayıtta dropdown yerine pickCustomer
+  /// alt sayfası açılır (isim/telefon araması, satırda telefon görünür).
+  Widget _customerSelector() {
+    final selected = customerId == null
+        ? null
+        : customers.firstWhere(
+            (c) => '${c['id']}' == customerId,
+            orElse: () => const {},
+          );
+    final name = selected == null
+        ? null
+        : selected.isEmpty
+            ? customerName
+            : valueOf(selected, const ['fullName', 'name']);
+    final phone = selected == null ? '' : '${selected['phone'] ?? ''}';
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () async {
+        final picked = await pickCustomer(context, widget.api);
+        if (picked != null) {
+          setState(() {
+            customerId = picked.id;
+            customerName = picked.name;
+          });
+        }
+      },
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Müşteri',
+          suffixIcon: Icon(Icons.search_rounded, size: 20),
+        ),
+        isEmpty: name == null,
+        child: name == null
+            ? const Text('Ara ve seç…',
+                style: TextStyle(color: Colors.black38))
+            : Row(
+                children: [
+                  Flexible(
+                    child: Text(name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  if (phone.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(phone,
+                        style: const TextStyle(
+                            fontSize: 12.5, color: Colors.black54)),
+                  ],
+                ],
+              ),
       ),
     );
   }
