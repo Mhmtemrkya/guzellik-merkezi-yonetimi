@@ -10,6 +10,176 @@ import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../appointments/calendar_theme.dart';
 
+/// Kâr raporu — aylık gelir/gider/net + hizmet kârlılığı (prim düşülmüş).
+/// Web ProfitReportCard'ın mobil karşılığı; veri sunucuda hesaplanır.
+class _ProfitSection extends StatefulWidget {
+  const _ProfitSection({required this.api});
+  final ApiClient api;
+
+  @override
+  State<_ProfitSection> createState() => _ProfitSectionState();
+}
+
+class _ProfitSectionState extends State<_ProfitSection> {
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.api
+        .get('/api/admin/cash-flow/profit-report', query: {'months': 6})
+        .then((res) {
+      if (mounted) {
+        setState(() {
+          _data = res is Map ? res.cast<String, dynamic>() : null;
+          _loading = false;
+        });
+      }
+    }).catchError((_) {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(
+          height: 90, child: Center(child: CircularProgressIndicator()));
+    }
+    final d = _data;
+    if (d == null) {
+      return const Text('Kâr raporu yüklenemedi.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted));
+    }
+    final months = (d['months'] as List? ?? const []).whereType<Map>().toList();
+    final services =
+        (d['services'] as List? ?? const []).whereType<Map>().take(6).toList();
+    final money = NumberFormat.compactCurrency(
+        locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
+    double maxAbs = 1;
+    for (final m in months) {
+      final inc = (m['income'] as num?)?.toDouble().abs() ?? 0;
+      final exp = (m['expense'] as num?)?.toDouble().abs() ?? 0;
+      if (inc > maxAbs) maxAbs = inc;
+      if (exp > maxAbs) maxAbs = exp;
+    }
+    String label(String key) {
+      final p = key.split('-');
+      if (p.length != 2) return key;
+      const names = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+      final mi = (int.tryParse(p[1]) ?? 1) - 1;
+      return '${names[mi.clamp(0, 11)]} ${p[0].substring(2)}';
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                    child: Text('Net: ${money.format((d['totalNet'] as num?) ?? 0)}',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: ((d['totalNet'] as num?) ?? 0) >= 0
+                                ? AppColors.success
+                                : AppColors.danger))),
+                Text(
+                    'Gelir ${money.format((d['totalIncome'] as num?) ?? 0)} · Gider ${money.format((d['totalExpense'] as num?) ?? 0)}',
+                    style: const TextStyle(
+                        fontSize: 10.5, color: AppColors.muted)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final m in months)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                        width: 52,
+                        child: Text(label('${m['month'] ?? ''}'),
+                            style: const TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w700))),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _bar(((m['income'] as num?)?.toDouble() ?? 0) / maxAbs,
+                              AppColors.success),
+                          const SizedBox(height: 3),
+                          _bar(((m['expense'] as num?)?.toDouble() ?? 0) / maxAbs,
+                              AppColors.danger),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 74,
+                      child: Text(money.format((m['net'] as num?) ?? 0),
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: ((m['net'] as num?) ?? 0) >= 0
+                                  ? AppColors.success
+                                  : AppColors.danger)),
+                    ),
+                  ],
+                ),
+              ),
+            if (services.isNotEmpty) ...[
+              const Divider(height: 20),
+              const Text('Hizmet Kârlılığı (prim düşülmüş)',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.muted)),
+              const SizedBox(height: 8),
+              for (final s in services)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                          child: Text('${s['serviceName'] ?? ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600))),
+                      Text('${s['completedCount'] ?? 0} seans · ',
+                          style: const TextStyle(
+                              fontSize: 10.5, color: AppColors.muted)),
+                      Text(money.format((s['net'] as num?) ?? 0),
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w800,
+                              color: AppColors.success)),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bar(double pct, Color color) => ClipRRect(
+        borderRadius: BorderRadius.circular(99),
+        child: SizedBox(
+          height: 5,
+          child: LinearProgressIndicator(
+            value: pct.clamp(0, 1),
+            backgroundColor: color.withValues(alpha: .10),
+            valueColor: AlwaysStoppedAnimation(color.withValues(alpha: .75)),
+          ),
+        ),
+      );
+}
+
 /// Raporlar — web `raporlar` sayfasının mobil karşılığı.
 ///
 /// 4 rapor türü (scope): Finans Özet · Müşteri Analitiği · Personel Performansı
@@ -236,6 +406,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SizedBox(height: 10),
         _wideKpi('Müşteri Başına Ciro', _money(perCustomer), Icons.groups_rounded,
             AppColors.primary, '$distinctActive aktif müşteri'),
+        const SizedBox(height: 20),
+        _sectionTitle('Kâr Raporu (Son 6 Ay)'),
+        const SizedBox(height: 10),
+        _ProfitSection(api: widget.api),
         const SizedBox(height: 20),
         _sectionTitle('Ödeme Yöntemi Dağılımı'),
         const SizedBox(height: 10),

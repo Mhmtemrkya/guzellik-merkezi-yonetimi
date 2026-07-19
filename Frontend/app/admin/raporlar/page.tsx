@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
+import ProfitReportCard from '@/components/dashboard/ProfitReportCard'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import StatCard, { statGridContainer } from '@/components/dashboard/StatCard'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -950,6 +951,9 @@ function RaporlarPageInner() {
           <motion.div key={`${scope}-${period}-${offset}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             {scope === 'finance' ? (
               <>
+                {/* ===== KÂR RAPORU — aylık gelir/gider/net + hizmet kârlılığı ===== */}
+                <ProfitReportCard tenantId={tenantId} />
+
                 {/* ===== KPI KARTLARI (5) ===== */}
                 <motion.section variants={statGridContainer} initial="hidden" animate="visible" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <FinanceKpiCard index={0} label="Toplam Gelir" value={revenue} prev={prevRevenue} icon={TrendingUp} accent="rose" series={cashSeries.income} format={(n) => formatTL(Math.round(n))} hint={`${cashFlowSummary.incomeCount} tahsilat`} />

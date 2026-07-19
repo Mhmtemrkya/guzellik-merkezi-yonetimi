@@ -733,6 +733,9 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { query: { tenantId } }),
   setStaffWorkingHours: <T = unknown>(staffId: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { method: 'PUT', query: { tenantId }, body }),
+  /** Kâr raporu: aylık gelir-gider-net + hizmet kârlılığı (prim düşülmüş). */
+  profitReport: <T = unknown>(tenantId?: string, months = 6): Promise<T> =>
+    apiRequest<T>('/api/admin/cash-flow/profit-report', { query: { tenantId, months } }),
   workingHoursEnforcement: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { query: { tenantId } }),
   setWorkingHoursEnforcement: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>

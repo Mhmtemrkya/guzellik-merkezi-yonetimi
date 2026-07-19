@@ -40,6 +40,20 @@ public static class CashFlowEndpoints
             return (await service.SummaryAsync(resolvedTenantId, new CashFlowFilter(fromUtc, toUtc), ct)).ToHttpResult(http);
         });
 
+        // Kâr raporu: aylık gelir-gider-net + hizmet kârlılığı (prim düşülmüş).
+        group.MapGet("/profit-report", async (
+            Guid? tenantId,
+            int? months,
+            ICurrentUser currentUser,
+            ICashFlowService service,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            return (await service.ProfitReportAsync(resolvedTenantId, months ?? 6, ct)).ToHttpResult(http);
+        });
+
         return app;
     }
 }
