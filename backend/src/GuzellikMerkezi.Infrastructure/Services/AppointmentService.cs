@@ -136,27 +136,8 @@ public sealed class AppointmentService : IAppointmentService
     /// </summary>
     private async Task<Error?> CheckStaffSkillAsync(Guid tenantId, Guid staffMemberId, Guid serviceDefinitionId, CancellationToken ct)
     {
-        var staff = await _db.StaffMembers.AsNoTracking()
-            .Where(s => s.TenantId == tenantId && s.Id == staffMemberId)
-            .Select(s => new { s.FullName, s.Specialties })
-            .FirstOrDefaultAsync(ct);
-        if (staff is null || string.IsNullOrWhiteSpace(staff.Specialties)) return null;
-
-        var service = await _db.ServiceDefinitions.AsNoTracking()
-            .Where(s => s.TenantId == tenantId && s.Id == serviceDefinitionId)
-            .Select(s => new { s.Name, s.Category })
-            .FirstOrDefaultAsync(ct);
-        if (service is null) return null;
-
-        var allowed = staff.Specialties
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(x => x.ToLowerInvariant())
-            .ToHashSet();
-        var category = (service.Category ?? string.Empty).Trim().ToLowerInvariant();
-        var name = (service.Name ?? string.Empty).Trim().ToLowerInvariant();
-        if ((category.Length > 0 && allowed.Contains(category)) || (name.Length > 0 && allowed.Contains(name))) return null;
-
-        return Error.Validation($"{staff.FullName}, \"{service.Name}\" hizmetinin kategorisinde yetkili değil. Personel kartından kategori yetkisi verin ya da farklı personel seçin.");
+        var reason = await StaffSkill.BlockReasonAsync(_db, tenantId, staffMemberId, serviceDefinitionId, ct);
+        return reason is null ? null : Error.Validation(reason);
     }
 
     public async Task<Result<AppointmentDto>> CreateAsync(Guid tenantId, CreateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)

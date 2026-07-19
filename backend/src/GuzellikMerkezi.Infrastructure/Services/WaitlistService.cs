@@ -168,6 +168,10 @@ public sealed class WaitlistService : IWaitlistService
         var branchId = entry.BranchId ?? await ResolveBranchAsync(tenantId, cancellationToken);
         if (branchId is null) return Result<Guid?>.Failure(Error.Validation("Randevu için şube bulunamadı."));
 
+        // Kategori yetkisi: bekleme kaydından açılan randevu da personel yetki kuralına uyar.
+        var skillBlock = await StaffSkill.BlockReasonAsync(_db, tenantId, staffId, serviceId, cancellationToken);
+        if (skillBlock is not null) return Result<Guid?>.Failure(Error.Validation(skillBlock));
+
         var appointment = new Appointment(tenantId, branchId.Value, entry.CustomerId, staffId, serviceId,
             startUtc, endUtc, 0m, "Bekleme listesinden aktifleşti");
         _db.Appointments.Add(appointment);

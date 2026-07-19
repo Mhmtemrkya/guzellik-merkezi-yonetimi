@@ -273,6 +273,11 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (noShows >= NoShowBlockThreshold)
             return Result<PortalAppointmentDto>.Failure(Error.Conflict("Gelinmeyen randevularınız nedeniyle online randevu geçici olarak kapalı. Lütfen salonla iletişime geçin."));
 
+        // Kategori yetkisi: uzman yalnızca yetkili olduğu kategorideki hizmete online randevu alabilir.
+        var skillBlock = await StaffSkill.BlockReasonAsync(_db, tenantId, request.StaffMemberId, request.ServiceDefinitionId, cancellationToken);
+        if (skillBlock is not null)
+            return Result<PortalAppointmentDto>.Failure(Error.Validation("Seçilen uzman bu hizmeti vermiyor. Lütfen farklı bir uzman seçin."));
+
         var appointment = new Appointment(tenantId, request.BranchId, bookingCustomerId, request.StaffMemberId, request.ServiceDefinitionId,
             startUtc, endUtc, service.Price, request.Notes, isOnline: true);
         // Online randevu doğrudan takvime düşmez: kurum yöneticisi onayına (Draft) gönderilir.
