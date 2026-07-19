@@ -92,7 +92,8 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
                          && (x.Trigger == NotificationTrigger.AppointmentReminder
                           || x.Trigger == NotificationTrigger.BirthdayGreeting
                           || x.Trigger == NotificationTrigger.PaymentDue
-                          || x.Trigger == NotificationTrigger.WinBack))
+                          || x.Trigger == NotificationTrigger.WinBack
+                          || x.Trigger == NotificationTrigger.SessionRenewal))
                 .ToListAsync(ct);
             if (templates.Count == 0) continue;
 
@@ -103,6 +104,8 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
                 {
                     NotificationTrigger.BirthdayGreeting => yearStart,
                     NotificationTrigger.WinBack => now.AddDays(-30),
+                    // Seans yenileme: paketi bitmek üzere olana ~ayda bir teklif yeter.
+                    NotificationTrigger.SessionRenewal => now.AddDays(-30),
                     _ => dayStart,
                 };
 
@@ -121,6 +124,7 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
                     NotificationTrigger.BirthdayGreeting => await BirthdayTargetsAsync(db, tenantId, today, ct),
                     NotificationTrigger.PaymentDue => (await notifications.GetPaymentDueTargetsAsync(tenantId, today, ct)).ToList(),
                     NotificationTrigger.WinBack => (await notifications.GetWinBackTargetsAsync(tenantId, ct)).ToList(),
+                    NotificationTrigger.SessionRenewal => (await notifications.GetSessionRenewalTargetsAsync(tenantId, ct)).ToList(),
                     _ => new List<Guid>(),
                 };
 

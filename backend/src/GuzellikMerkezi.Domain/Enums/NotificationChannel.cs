@@ -21,6 +21,8 @@ public enum NotificationTrigger
     Campaign = 4,
     /// <summary>Uzun süredir gelmeyen (pasif) müşteriyi geri kazanma.</summary>
     WinBack = 5,
+    /// <summary>Paket seansı bitmek üzere olan müşteriye yenileme teklifi (kalan ≤ 1).</summary>
+    SessionRenewal = 6,
 }
 
 public enum NotificationTemplateStatus

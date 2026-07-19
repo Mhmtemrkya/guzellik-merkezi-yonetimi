@@ -20,6 +20,8 @@ public interface INotificationService
 
     /// <summary>Geri kazanım (win-back) hedefi: uzun süredir gelmeyen pasif müşteri Id'leri.</summary>
     Task<IReadOnlyList<Guid>> GetWinBackTargetsAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>Seans yenileme hedefi: paket seansı bitmek üzere olan (toplam kalan ≤ 1) müşteriler.</summary>
+    Task<IReadOnlyList<Guid>> GetSessionRenewalTargetsAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Vadesi geçen taksit hatırlatmasını şimdi çalıştırır; gönderilen mesaj sayısını döndürür.</summary>
     Task<Result<int>> RunPaymentDueRemindersAsync(Guid tenantId, CancellationToken ct = default);

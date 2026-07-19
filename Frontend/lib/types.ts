@@ -1668,6 +1668,7 @@ export type NotificationTriggerKey =
   | 'PaymentDue'
   | 'Campaign'
   | 'WinBack'
+  | 'SessionRenewal'
 export type NotificationTemplateStatusKey = 'Draft' | 'Active' | 'PendingApproval'
 export type NotificationLogStatusKey = 'Queued' | 'Sent' | 'Failed'
 

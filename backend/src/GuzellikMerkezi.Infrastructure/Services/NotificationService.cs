@@ -329,6 +329,40 @@ public sealed class NotificationService : INotificationService
     }
 
     /// <summary>
+    /// Seans yenileme hedefi: paket almış ve TOPLAM kalan seansı 1 ya da 0'a düşmüş (ama paketi
+    /// son 30 gün içinde hâlâ kullanan) müşteriler — "paketin bitiyor, yenileyelim mi?" teklifi.
+    /// Kara listedekiler hariç.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> GetSessionRenewalTargetsAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var recentCutoff = DateTime.UtcNow.AddDays(-30);
+        var rows = await _db.CustomerPackageSessions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.TotalSessions > 1)
+            .Select(s => new { s.CustomerId, s.TotalSessions, s.UsedSessions, s.UpdatedAtUtc })
+            .ToListAsync(ct);
+        var candidates = rows
+            .GroupBy(r => r.CustomerId)
+            .Where(g =>
+            {
+                var remaining = g.Sum(x => x.TotalSessions - x.UsedSessions);
+                var lastUse = g.Max(x => x.UpdatedAtUtc);
+                // Kalan 0-1 VE yakın zamanda kullanım var (çok eski bitmiş paketlere spam yok).
+                return remaining <= 1 && lastUse >= recentCutoff;
+            })
+            .Select(g => g.Key)
+            .ToList();
+        if (candidates.Count == 0) return candidates;
+
+        // Kara listede olmayanlar (şifreli olmayan bool alan — bellekte süz, Guid Contains MySQL tuzağına girme).
+        var blacklisted = (await _db.Customers.AsNoTracking()
+                .Where(c => c.TenantId == tenantId && c.IsBlacklisted)
+                .Select(c => c.Id)
+                .ToListAsync(ct))
+            .ToHashSet();
+        return candidates.Where(id => !blacklisted.Contains(id)).ToList();
+    }
+
+    /// <summary>
     /// Vadesi geçen taksit hatırlatmasını ŞİMDİ çalıştırır (arka plan taramasını beklemeden).
     /// Aktif "Ödeme hatırlatma" şablonlarını, ödenmemiş vadesi gelmiş taksiti olan müşterilere
     /// gönderir; aynı gün dedupe uygular.

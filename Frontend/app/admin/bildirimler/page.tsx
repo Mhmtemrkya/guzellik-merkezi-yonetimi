@@ -36,6 +36,7 @@ import {
   MessageSquare,
   PenLine,
   Phone,
+  Plus,
   Radio,
   Send,
   Sparkles,
@@ -55,6 +56,7 @@ import type {
   NotificationLogStatusKey,
   NotificationTemplate,
   NotificationTemplateStatusKey,
+  NotificationTriggerKey,
   PagedResult,
 } from '@/lib/types'
 
@@ -272,6 +274,14 @@ function BildirimlerPageInner() {
           </div>
         )}
 
+        {/* HAZIR ŞABLONLAR — tek tıkla yaşam döngüsü otomasyonu kur */}
+        <TemplatePresetGallery
+          tenantId={tenantId}
+          allowedChannels={allowedChannels}
+          existingTriggers={templates.map((t) => t.trigger)}
+          onSuccess={(msg) => { setActionMessage(msg); refresh() }}
+        />
+
         <section className="grid gap-3 xl:grid-cols-[1fr_.85fr]">
           {/* TEMPLATES LIST */}
           <motion.div
@@ -399,6 +409,103 @@ function BildirimlerPageInner() {
 }
 
 // ---------------- Sub-components ----------------
+
+/** Hazır yaşam döngüsü şablonları — tek tıkla oluşturulur ve AKTİF başlar (otomasyon hemen çalışır). */
+const TEMPLATE_PRESETS: Array<{ key: string; title: string; trigger: NotificationTriggerKey; hint: string; body: string }> = [
+  {
+    key: 'birthday', title: 'Doğum Günü Kutlaması', trigger: 'BirthdayGreeting',
+    hint: 'Doğum gününde otomatik gider (yılda 1)',
+    body: 'Sayın {{ad}}, doğum gününüz kutlu olsun! 🎂 Bu özel gününüzde sizi salonumuzda ağırlamaktan mutluluk duyarız. Bu aya özel randevunuzda sizi küçük bir sürpriz bekliyor. ✨',
+  },
+  {
+    key: 'winback', title: 'Sizi Özledik (Geri Kazanım)', trigger: 'WinBack',
+    hint: 'Uzun süredir gelmeyen müşteriye (ayda en çok 1)',
+    body: 'Sayın {{ad}}, sizi özledik! 💐 Son ziyaretinizin üzerinden epey zaman geçti. Yeniden aramızda görmek isteriz — bu hafta randevu alırsanız size özel bir karşılama hazırlayalım. Randevu için bu mesaja yanıt verebilirsiniz.',
+  },
+  {
+    key: 'renewal', title: 'Paket Yenileme Teklifi', trigger: 'SessionRenewal',
+    hint: 'Paketi bitmek üzere olana (ayda en çok 1)',
+    body: 'Sayın {{ad}}, paketinizdeki seanslarınız bitmek üzere. ✨ Bakım rutininiz yarıda kalmasın — yenileme yapan misafirlerimize özel avantajlarımız var. Detaylar için bu mesaja yanıt verebilir ya da salonumuzu arayabilirsiniz.',
+  },
+  {
+    key: 'reminder', title: 'Randevu Hatırlatma', trigger: 'AppointmentReminder',
+    hint: 'Randevudan 24 saat önce otomatik',
+    body: 'Sayın {{ad}}, {{tarih}} {{saat}} randevunuzu hatırlatırız. 📅 Gelemeyecekseniz lütfen önceden haber verin, saatinizi bekleyen misafirlerimize açalım. Görüşmek üzere!',
+  },
+  {
+    key: 'payment', title: 'Ödeme Hatırlatma', trigger: 'PaymentDue',
+    hint: 'Vadesi gelen taksiti olana (günde 1)',
+    body: 'Sayın {{ad}}, vadesi gelen taksit ödemeniz bulunmaktadır. Dilerseniz salonumuza uğrayarak ya da havale ile ödemenizi tamamlayabilirsiniz. Sorularınız için bize yazabilirsiniz. 🙏',
+  },
+]
+
+function TemplatePresetGallery({
+  tenantId,
+  allowedChannels,
+  existingTriggers,
+  onSuccess,
+}: {
+  tenantId: string | undefined
+  allowedChannels: NotificationChannelKey[]
+  existingTriggers: string[]
+  onSuccess: (msg: string) => void
+}) {
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const defaultChannel = allowedChannels.includes('WhatsApp') ? 'WhatsApp' : allowedChannels[0]
+  if (!defaultChannel) return null
+  const existing = new Set(existingTriggers)
+
+  const addPreset = async (preset: (typeof TEMPLATE_PRESETS)[number]): Promise<void> => {
+    setBusyKey(preset.key)
+    try {
+      await adminApi.createNotificationTemplate(
+        { name: preset.title, channel: defaultChannel, trigger: preset.trigger, body: preset.body, status: 'Active' },
+        tenantId,
+      )
+      onSuccess(`"${preset.title}" şablonu eklendi ve aktifleştirildi — otomatik tarama devrede.`)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+      className="rounded-[16px] border border-[#ead8df]/70 bg-white/80 px-4 py-3">
+      <button type="button" onClick={() => setCollapsed((c) => !c)} className="flex w-full items-center justify-between">
+        <span className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+          <Sparkles className="h-3.5 w-3.5" /> Hazır Şablonlar
+          <span className="normal-case tracking-normal text-[#352432]/40">· tek tıkla ekle, otomasyon hemen başlasın ({defaultChannel === 'WhatsApp' ? 'WhatsApp' : defaultChannel} kanalı)</span>
+        </span>
+        <span className="text-[10px] font-mono uppercase tracking-widest text-[#9d7386]">{collapsed ? 'Göster' : 'Gizle'}</span>
+      </button>
+      {!collapsed && (
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+          {TEMPLATE_PRESETS.map((p) => {
+            const added = existing.has(p.trigger)
+            return (
+              <div key={p.key} className={`flex flex-col rounded-[14px] border p-3 ${added ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-[#ead8df]/70 bg-[#fffafc]'}`}>
+                <div className="text-[12.5px] font-semibold text-[#241923]">{p.title}</div>
+                <div className="mt-0.5 text-[10px] text-[#9d7386]">{p.hint}</div>
+                <div className="mt-2 line-clamp-3 flex-1 text-[10.5px] leading-relaxed text-[#352432]/60">{p.body}</div>
+                <button
+                  type="button"
+                  disabled={busyKey === p.key || added}
+                  onClick={() => void addPreset(p)}
+                  className={`mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                    added ? 'border border-emerald-300/60 bg-white text-emerald-700' : 'border border-[#efbfd0] bg-white text-[#c85776] hover:bg-[#fff4f8]'
+                  }`}
+                >
+                  {added ? <><CheckCircle2 className="h-3.5 w-3.5" /> Bu tetikleyicide şablon var</> : busyKey === p.key ? 'Ekleniyor…' : <><Plus className="h-3.5 w-3.5" /> Şablonu ekle</>}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </motion.section>
+  )
+}
 
 function TemplateCreateButton({
   tenantId,

@@ -1215,9 +1215,10 @@ export const notificationTriggerLabels: Record<NotificationTriggerKey, string> =
   PaymentDue: 'Ödeme hatırlatma',
   Campaign: 'Kampanya',
   WinBack: 'Geri kazanım (pasif müşteri)',
+  SessionRenewal: 'Seans yenileme (paketi bitmek üzere)',
 }
 const triggerEnumMap: Record<number, NotificationTriggerKey> = {
-  0: 'Manual', 1: 'AppointmentReminder', 2: 'BirthdayGreeting', 3: 'PaymentDue', 4: 'Campaign', 5: 'WinBack',
+  0: 'Manual', 1: 'AppointmentReminder', 2: 'BirthdayGreeting', 3: 'PaymentDue', 4: 'Campaign', 5: 'WinBack', 6: 'SessionRenewal',
 }
 const validTriggers: NotificationTriggerKey[] = ['Manual', 'AppointmentReminder', 'BirthdayGreeting', 'PaymentDue', 'Campaign', 'WinBack']
 
