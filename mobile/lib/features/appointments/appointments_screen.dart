@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
@@ -137,7 +138,11 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         bottom: false,
         child: Column(
           children: [
-            _Header(onFilter: _openFilter),
+            _Header(
+              onFilter: _openFilter,
+              // Kurum geneli randevu takvim aboneliği yalnızca yöneticide (personel hariç).
+              onCalendarLink: (widget.auth.user?.isStaff ?? false) ? null : _calendarLink,
+            ),
             _WeekStrip(selected: _selectedDate, onSelect: _selectDate),
             FutureBuilder<_DayData>(
               future: _future,
@@ -256,6 +261,55 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       ),
     );
   }
+
+  /// Kurum geneli randevu ICS takvim aboneliği — Google/Apple takvim "URL ile abone ol".
+  /// (Personel takvim aboneliğiyle aynı mekanizma; yalnızca yöneticiye gösterilir.)
+  Future<void> _calendarLink() async {
+    try {
+      final res = await widget.api.get('/api/admin/schedule/appointments-calendar-link');
+      final url = res is Map ? '${res['url'] ?? ''}' : '';
+      if (url.isEmpty || !mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Randevu Takvimi Aboneliği'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Bu linki Google Takvim (Ayarlar → URL ile ekle) veya iPhone '
+                '(Ayarlar → Takvim → Takvim Aboneliği) ile ekleyin; kurumun tüm '
+                'randevuları telefonun takviminde canlı görünür.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 10),
+              SelectableText(url, style: const TextStyle(fontSize: 11)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Takvim linki kopyalandı.')),
+                  );
+                }
+              },
+              child: const Text('Kopyala'),
+            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Kapat')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
 }
 
 class _DayData {
@@ -273,8 +327,9 @@ class _DayData {
 // Header
 // ---------------------------------------------------------------------------
 class _Header extends StatelessWidget {
-  const _Header({required this.onFilter});
+  const _Header({required this.onFilter, this.onCalendarLink});
   final VoidCallback onFilter;
+  final VoidCallback? onCalendarLink;
 
   @override
   Widget build(BuildContext context) {
@@ -294,6 +349,10 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
+          if (onCalendarLink != null) ...[
+            _SquareButton(icon: Icons.event_available_rounded, tint: true, onTap: onCalendarLink!),
+            const SizedBox(width: 8),
+          ],
           _SquareButton(
             icon: Icons.calendar_month_rounded,
             tint: true,

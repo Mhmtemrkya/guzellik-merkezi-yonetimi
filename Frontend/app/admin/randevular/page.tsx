@@ -12,6 +12,7 @@ import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import AppointmentsCalendarLinkButton from '@/components/dashboard/AppointmentsCalendarLinkButton'
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import DayScheduleModal from '@/components/dashboard/DayScheduleModal'
@@ -820,6 +821,7 @@ function RandevularPageInner() {
                 },
               }}
             />
+            {!isStaffUser && <AppointmentsCalendarLinkButton tenantId={tenantId} />}
           </div>
         }
       />

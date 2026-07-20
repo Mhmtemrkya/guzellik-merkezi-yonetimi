@@ -741,6 +741,9 @@ export const adminApi = {
   /** Personel ICS takvim aboneliği linki (Google/Apple/Outlook "URL ile abone ol"). */
   staffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}`, { query: { tenantId } }),
+  /** Kurum geneli randevu ICS takvim aboneliği linki (tüm randevular). */
+  appointmentsCalendarLink: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/schedule/appointments-calendar-link', { query: { tenantId } }),
   workingHoursEnforcement: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { query: { tenantId } }),
   setWorkingHoursEnforcement: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>
