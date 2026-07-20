@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
+import '../../shared/widgets/catalog_picker_field.dart';
 import '../../shared/widgets/page_header.dart';
 import '../customers/customer_picker.dart';
 
@@ -33,14 +34,25 @@ class _StatusMeta {
 const _blue = Color(0xFF2F5FA6);
 
 const _statusMeta = <String, _StatusMeta>{
-  'Waiting':
-      _StatusMeta('Bekliyor', AppColors.warning, Icons.schedule_rounded, 0),
-  'Notified':
-      _StatusMeta('Bilgilendirildi', _blue, Icons.notifications_active_rounded, 1),
-  'Booked':
-      _StatusMeta('Randevu yapıldı', AppColors.success, Icons.event_available_rounded, 2),
-  'Cancelled':
-      _StatusMeta('İptal', AppColors.danger, Icons.cancel_rounded, 3),
+  'Waiting': _StatusMeta(
+    'Bekliyor',
+    AppColors.warning,
+    Icons.schedule_rounded,
+    0,
+  ),
+  'Notified': _StatusMeta(
+    'Bilgilendirildi',
+    _blue,
+    Icons.notifications_active_rounded,
+    1,
+  ),
+  'Booked': _StatusMeta(
+    'Randevu yapıldı',
+    AppColors.success,
+    Icons.event_available_rounded,
+    2,
+  ),
+  'Cancelled': _StatusMeta('İptal', AppColors.danger, Icons.cancel_rounded, 3),
 };
 
 _StatusMeta _meta(String status) =>
@@ -107,7 +119,9 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       final oa = _meta('${a['status']}').order;
       final ob = _meta('${b['status']}').order;
       if (oa != ob) return oa.compareTo(ob);
-      return '${a['createdAtUtc'] ?? ''}'.compareTo('${b['createdAtUtc'] ?? ''}');
+      return '${a['createdAtUtc'] ?? ''}'.compareTo(
+        '${b['createdAtUtc'] ?? ''}',
+      );
     });
     return list;
   }
@@ -121,25 +135,30 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       await _reload();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _setStatus(Map<String, dynamic> entry, String status) =>
-      _run(() => widget.api
-          .post('/api/admin/waitlist/${entry['id']}/status', {'status': status}));
+  Future<void> _setStatus(Map<String, dynamic> entry, String status) => _run(
+    () => widget.api.post('/api/admin/waitlist/${entry['id']}/status', {
+      'status': status,
+    }),
+  );
 
   // Manuel "Yer öner": kaydı Notified yapıp WhatsApp teklif mesajı gönderir.
-  Future<void> _offer(Map<String, dynamic> entry) =>
-      _run(() => widget.api.post('/api/admin/waitlist/${entry['id']}/offer', {}));
+  Future<void> _offer(Map<String, dynamic> entry) => _run(
+    () => widget.api.post('/api/admin/waitlist/${entry['id']}/offer', {}),
+  );
 
   // Manuel "Randevuya çevir": teklifi randevuya dönüştürür (yeni randevu açar).
-  Future<void> _book(Map<String, dynamic> entry) =>
-      _run(() => widget.api.post('/api/admin/waitlist/${entry['id']}/book', {}));
+  Future<void> _book(Map<String, dynamic> entry) => _run(
+    () => widget.api.post('/api/admin/waitlist/${entry['id']}/book', {}),
+  );
 
   Future<void> _delete(Map<String, dynamic> entry) async {
     final ok = await showDialog<bool>(
@@ -149,8 +168,9 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
         content: const Text('Bu bekleme kaydını silmek istiyor musunuz?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Vazgeç')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -180,8 +200,13 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       // Saat girildiyse tam slot (UTC) kaydedilir → yer açılınca otomatik teklif/randevu mümkün olur.
       DateTime? startLocal;
       if (_preferredTime != null) {
-        startLocal = DateTime(_preferredDate!.year, _preferredDate!.month,
-            _preferredDate!.day, _preferredTime!.hour, _preferredTime!.minute);
+        startLocal = DateTime(
+          _preferredDate!.year,
+          _preferredDate!.month,
+          _preferredDate!.day,
+          _preferredTime!.hour,
+          _preferredTime!.minute,
+        );
       }
       await widget.api.post('/api/admin/waitlist/', {
         'customerId': _customerId,
@@ -205,7 +230,8 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Bekleme listesine eklendi.')));
+          const SnackBar(content: Text('Bekleme listesine eklendi.')),
+        );
       }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -233,12 +259,20 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final data =
-                    snapshot.data ?? const _WlData(entries: [], customers: [], services: [], staff: []);
+                    snapshot.data ??
+                    const _WlData(
+                      entries: [],
+                      customers: [],
+                      services: [],
+                      staff: [],
+                    );
                 final entries = _sorted(data.entries);
                 final active = data.entries
-                    .where((e) =>
-                        '${e['status']}' == 'Waiting' ||
-                        '${e['status']}' == 'Notified')
+                    .where(
+                      (e) =>
+                          '${e['status']}' == 'Waiting' ||
+                          '${e['status']}' == 'Notified',
+                    )
                     .length;
                 final booked = data.entries
                     .where((e) => '${e['status']}' == 'Booked')
@@ -262,12 +296,15 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                       _empty()
                     else
                       for (final e in entries)
-                        Builder(builder: (_) {
-                          final isActive = '${e['status']}' == 'Waiting' ||
-                              '${e['status']}' == 'Notified';
-                          final no = isActive ? ++queueNo : null;
-                          return _queueRow(e, no, data);
-                        }),
+                        Builder(
+                          builder: (_) {
+                            final isActive =
+                                '${e['status']}' == 'Waiting' ||
+                                '${e['status']}' == 'Notified';
+                            final no = isActive ? ++queueNo : null;
+                            return _queueRow(e, no, data);
+                          },
+                        ),
                   ],
                 );
               },
@@ -281,14 +318,26 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
   Widget _statsRow(int total, int active, int booked) {
     return Row(
       children: [
-        _statCard('Toplam kayıt', '$total', Icons.event_note_rounded,
-            AppColors.primary),
+        _statCard(
+          'Toplam kayıt',
+          '$total',
+          Icons.event_note_rounded,
+          AppColors.primary,
+        ),
         const SizedBox(width: 10),
-        _statCard('Sırada bekleyen', '$active', Icons.hourglass_top_rounded,
-            AppColors.warning),
+        _statCard(
+          'Sırada bekleyen',
+          '$active',
+          Icons.hourglass_top_rounded,
+          AppColors.warning,
+        ),
         const SizedBox(width: 10),
-        _statCard('Randevuya dönen', '$booked', Icons.check_circle_rounded,
-            AppColors.success),
+        _statCard(
+          'Randevuya dönen',
+          '$booked',
+          Icons.check_circle_rounded,
+          AppColors.success,
+        ),
       ],
     );
   }
@@ -316,18 +365,25 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
               child: Icon(icon, size: 18, color: color),
             ),
             const SizedBox(height: 8),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 10, color: AppColors.muted,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.ink)),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
           ],
         ),
       ),
@@ -357,17 +413,25 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                     alignment: Alignment.center,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
-                          colors: [Color(0xFFF47699), Color(0xFFEF6088)]),
+                        colors: [Color(0xFFF47699), Color(0xFFEF6088)],
+                      ),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.add_rounded,
-                        color: Colors.white, size: 19),
+                    child: const Icon(
+                      Icons.add_rounded,
+                      color: Colors.white,
+                      size: 19,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   const Expanded(
-                    child: Text('Bekleme listesine ekle',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 14)),
+                    child: Text(
+                      'Bekleme listesine ekle',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                   Icon(
                     _formOpen
@@ -381,8 +445,9 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
           ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-            crossFadeState:
-                _formOpen ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: _formOpen
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             firstChild: const SizedBox(width: double.infinity),
             secondChild: _addForm(data),
           ),
@@ -405,13 +470,45 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
             onSelected: (picked) => setState(() => _customerId = picked.id),
           ),
           const SizedBox(height: 12),
-          _dropdown(
-            label: 'Hizmet (ops.)',
-            value: _serviceId,
-            hint: 'Farketmez',
-            items: data.services,
-            nameKeys: const ['name'],
-            onChanged: (v) => setState(() => _serviceId = v),
+          // Hizmet — satış modallarıyla aynı: kategori/alt-kategori/arama ile
+          // süzülebilir seçici (opsiyonel; seçili öğeye tekrar dokun = farketmez).
+          Row(
+            children: [
+              const Text(
+                'Hizmet (ops.)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              const Spacer(),
+              if (_serviceId != null)
+                TextButton(
+                  onPressed: () => setState(() => _serviceId = null),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Temizle · farketmez',
+                    style: TextStyle(fontSize: 11.5),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          CatalogPickerField(
+            items: data.services
+                .where((s) => s['isActive'] != false)
+                .toList(growable: false),
+            selectedId: _serviceId,
+            priceKeys: const ['price'],
+            clearable: true,
+            emptyText: 'Hizmet bulunamadı.',
+            onChanged: (id) => setState(() => _serviceId = id),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Boş bırakılırsa müşteri herhangi bir hizmet için sıraya alınır.',
+            style: TextStyle(fontSize: 11, color: AppColors.muted),
           ),
           const SizedBox(height: 12),
           _dropdown(
@@ -435,11 +532,15 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
               child: Text(
                 _preferredDate == null
                     ? 'Seçin…'
-                    : DateFormat('d MMMM yyyy', 'tr_TR').format(_preferredDate!),
+                    : DateFormat(
+                        'd MMMM yyyy',
+                        'tr_TR',
+                      ).format(_preferredDate!),
                 style: TextStyle(
-                    color: _preferredDate == null
-                        ? AppColors.muted
-                        : AppColors.ink),
+                  color: _preferredDate == null
+                      ? AppColors.muted
+                      : AppColors.ink,
+                ),
               ),
             ),
           ),
@@ -452,7 +553,8 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                 labelText: 'Saat (ops.)',
                 isDense: true,
                 suffixIcon: Icon(Icons.schedule_rounded, size: 18),
-                helperText: 'Girilirse yer açılınca otomatik WhatsApp teklifi gider.',
+                helperText:
+                    'Girilirse yer açılınca otomatik WhatsApp teklifi gider.',
                 helperMaxLines: 2,
               ),
               child: Text(
@@ -460,9 +562,10 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                     ? 'Farketmez'
                     : _preferredTime!.format(context),
                 style: TextStyle(
-                    color: _preferredTime == null
-                        ? AppColors.muted
-                        : AppColors.ink),
+                  color: _preferredTime == null
+                      ? AppColors.muted
+                      : AppColors.ink,
+                ),
               ),
             ),
           ),
@@ -477,9 +580,10 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!,
-                style:
-                    const TextStyle(color: AppColors.danger, fontSize: 12.5)),
+            Text(
+              _error!,
+              style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
+            ),
           ],
           const SizedBox(height: 14),
           SizedBox(
@@ -490,7 +594,10 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                   ? const SizedBox.square(
                       dimension: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.playlist_add_rounded),
               label: const Text('Listeye ekle'),
             ),
@@ -544,22 +651,25 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
   }
 
   Widget _empty() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 36),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.hourglass_empty_rounded,
-                  size: 44, color: AppColors.primary.withValues(alpha: .5)),
-              const SizedBox(height: 12),
-              const Text(
-                'Bekleme listesi boş.\nDolu bir güne talep gelirse buradan ekleyebilirsin.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.muted, fontSize: 13),
-              ),
-            ],
+    padding: const EdgeInsets.symmetric(vertical: 36),
+    child: Center(
+      child: Column(
+        children: [
+          Icon(
+            Icons.hourglass_empty_rounded,
+            size: 44,
+            color: AppColors.primary.withValues(alpha: .5),
           ),
-        ),
-      );
+          const SizedBox(height: 12),
+          const Text(
+            'Bekleme listesi boş.\nDolu bir güne talep gelirse buradan ekleyebilirsin.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.muted, fontSize: 13),
+          ),
+        ],
+      ),
+    ),
+  );
 
   // Kuyruk satırı
   Widget _queueRow(Map<String, dynamic> e, int? queueNo, _WlData data) {
@@ -616,12 +726,15 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w800)),
+                                  Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                                   const SizedBox(height: 3),
                                   _statusPill(meta),
                                 ],
@@ -634,12 +747,16 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                           spacing: 12,
                           runSpacing: 5,
                           children: [
-                            _metaItem(Icons.calendar_today_rounded,
-                                _formatPreferred('${e['preferredDate'] ?? ''}')),
+                            _metaItem(
+                              Icons.calendar_today_rounded,
+                              _formatPreferred('${e['preferredDate'] ?? ''}'),
+                            ),
                             if ('${e['preferredStartUtc'] ?? ''}'.isNotEmpty)
-                              _metaItem(Icons.access_time_rounded,
-                                  _formatSlotTime(e['preferredStartUtc']),
-                                  color: AppColors.primary),
+                              _metaItem(
+                                Icons.access_time_rounded,
+                                _formatSlotTime(e['preferredStartUtc']),
+                                color: AppColors.primary,
+                              ),
                             if (service != null)
                               _metaItem(Icons.content_cut_rounded, service),
                             if (staff != null)
@@ -647,8 +764,11 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                             if (wait != null)
                               _metaItem(Icons.schedule_rounded, wait),
                             if ('${e['note'] ?? ''}'.trim().isNotEmpty)
-                              _metaItem(Icons.format_quote_rounded,
-                                  '${e['note']}', color: const Color(0xFF9A6F22)),
+                              _metaItem(
+                                Icons.format_quote_rounded,
+                                '${e['note']}',
+                                color: const Color(0xFF9A6F22),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -673,27 +793,54 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       children: [
         if (!resolved) ...[
           if (hasSlot) ...[
-            _actionBtn(Icons.send_rounded,
-                status == 'Notified' ? 'Tekrar öner' : 'Yer öner', _blue,
-                () => _offer(e)),
-            _actionBtn(Icons.event_available_rounded, 'Randevuya çevir',
-                AppColors.success, () => _book(e)),
+            _actionBtn(
+              Icons.send_rounded,
+              status == 'Notified' ? 'Tekrar öner' : 'Yer öner',
+              _blue,
+              () => _offer(e),
+            ),
+            _actionBtn(
+              Icons.event_available_rounded,
+              'Randevuya çevir',
+              AppColors.success,
+              () => _book(e),
+            ),
           ] else
-            _actionBtn(Icons.event_available_rounded, 'Randevu yapıldı',
-                AppColors.success, () => _setStatus(e, 'Booked')),
-          _actionBtn(Icons.cancel_rounded, 'İptal', AppColors.muted,
-              () => _setStatus(e, 'Cancelled')),
+            _actionBtn(
+              Icons.event_available_rounded,
+              'Randevu yapıldı',
+              AppColors.success,
+              () => _setStatus(e, 'Booked'),
+            ),
+          _actionBtn(
+            Icons.cancel_rounded,
+            'İptal',
+            AppColors.muted,
+            () => _setStatus(e, 'Cancelled'),
+          ),
         ] else
-          _actionBtn(Icons.replay_rounded, 'Sıraya al', AppColors.primaryDark,
-              () => _setStatus(e, 'Waiting')),
-        _actionBtn(Icons.delete_outline_rounded, 'Sil', AppColors.danger,
-            () => _delete(e)),
+          _actionBtn(
+            Icons.replay_rounded,
+            'Sıraya al',
+            AppColors.primaryDark,
+            () => _setStatus(e, 'Waiting'),
+          ),
+        _actionBtn(
+          Icons.delete_outline_rounded,
+          'Sil',
+          AppColors.danger,
+          () => _delete(e),
+        ),
       ],
     );
   }
 
   Widget _actionBtn(
-      IconData icon, String label, Color color, VoidCallback onTap) {
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Material(
       color: color.withValues(alpha: .1),
       borderRadius: BorderRadius.circular(11),
@@ -707,11 +854,14 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
             children: [
               Icon(icon, size: 15, color: color),
               const SizedBox(width: 5),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -726,15 +876,19 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
         height: 30,
         alignment: Alignment.center,
         decoration: const BoxDecoration(
-          gradient:
-              LinearGradient(colors: [Color(0xFFF47699), Color(0xFFEF6088)]),
+          gradient: LinearGradient(
+            colors: [Color(0xFFF47699), Color(0xFFEF6088)],
+          ),
           shape: BoxShape.circle,
         ),
-        child: Text('$queueNo',
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 13)),
+        child: Text(
+          '$queueNo',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+          ),
+        ),
       );
     }
     return Container(
@@ -769,47 +923,56 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
         ),
         shape: BoxShape.circle,
       ),
-      child: Text(initials.isEmpty ? '•' : initials,
-          style: const TextStyle(
-              color: Color(0xFF7F4057),
-              fontWeight: FontWeight.w800,
-              fontSize: 13)),
+      child: Text(
+        initials.isEmpty ? '•' : initials,
+        style: const TextStyle(
+          color: Color(0xFF7F4057),
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+        ),
+      ),
     );
   }
 
   Widget _statusPill(_StatusMeta meta) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: meta.color.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: meta.color.withValues(alpha: .3)),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: meta.color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: meta.color.withValues(alpha: .3)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(meta.icon, size: 11, color: meta.color),
+        const SizedBox(width: 4),
+        Text(
+          meta.label,
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w800,
+            color: meta.color,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(meta.icon, size: 11, color: meta.color),
-            const SizedBox(width: 4),
-            Text(meta.label,
-                style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: meta.color)),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 
   Widget _metaItem(IconData icon, String text, {Color? color}) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color ?? AppColors.primary),
-          const SizedBox(width: 4),
-          Text(text,
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: color ?? AppColors.muted)),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 13, color: color ?? AppColors.primary),
+      const SizedBox(width: 4),
+      Text(
+        text,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          color: color ?? AppColors.muted,
+        ),
+      ),
+    ],
+  );
 
   String _formatPreferred(String d) {
     if (d.isEmpty) return '—';
@@ -845,15 +1008,23 @@ class _WlData {
   final List<Map<String, dynamic>> services;
   final List<Map<String, dynamic>> staff;
 
-  String customerName(String id) => _name(customers, id,
-      keys: const ['fullName', 'name'], fallback: 'Müşteri');
+  String customerName(String id) => _name(
+    customers,
+    id,
+    keys: const ['fullName', 'name'],
+    fallback: 'Müşteri',
+  );
   String serviceName(String id) =>
       _name(services, id, keys: const ['name'], fallback: 'Hizmet');
-  String staffName(String id) => _name(staff, id,
-      keys: const ['fullName', 'name'], fallback: 'Personel');
+  String staffName(String id) =>
+      _name(staff, id, keys: const ['fullName', 'name'], fallback: 'Personel');
 
-  String _name(List<Map<String, dynamic>> list, String id,
-      {required List<String> keys, required String fallback}) {
+  String _name(
+    List<Map<String, dynamic>> list,
+    String id, {
+    required List<String> keys,
+    required String fallback,
+  }) {
     for (final it in list) {
       if ('${it['id']}' == id) return valueOf(it, keys, fallback: fallback);
     }

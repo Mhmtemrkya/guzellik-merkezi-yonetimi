@@ -6,10 +6,11 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
+import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, guidOrUndefined, normalizeWaitlistEntry } from '@/lib/apiMappers'
+import { apiItems, formatTL, guidOrUndefined, normalizeService, normalizeWaitlistEntry } from '@/lib/apiMappers'
 import type {
   ApiCustomer,
   ApiService,
@@ -259,7 +260,21 @@ export default function BeklemeListesiPage() {
   }, [data])
 
   const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
-  const serviceOptions = useMemo(() => apiItems(data?.services).map((s) => ({ id: s.id || '', name: s.name || 'Hizmet' })).filter((s) => s.id), [data])
+  // Modal satış akışıyla aynı: kategori/alt-kategori/arama ile süzülebilir hizmet seçici verisi.
+  const servicePickerItems = useMemo<PickerItem[]>(
+    () => apiItems(data?.services)
+      .map((s, i) => normalizeService(s, i))
+      .filter((s) => s.isActive)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        price: s.price,
+        cat: s.group || '',
+        sub: s.subGroup || '',
+        meta: `${formatTL(s.price)}${s.duration ? ` · ${s.duration} dk` : ''}`,
+      })),
+    [data],
+  )
   const staffOptions = useMemo(() => apiItems(data?.staff).map((s) => ({ id: s.id || '', name: s.fullName || s.name || 'Personel' })).filter((s) => s.id), [data])
 
   // Kuyruk sırası: önce aktif (Bekliyor→Bilgilendirildi), en eski kayıt en üstte; çözülenler altta soluk.
@@ -407,13 +422,6 @@ export default function BeklemeListesiPage() {
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Hizmet (ops.)</span>
-              <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40">
-                <option value="">Farketmez</option>
-                {serviceOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-            <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Personel (ops.)</span>
               <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40">
                 <option value="">Farketmez</option>
@@ -434,6 +442,28 @@ export default function BeklemeListesiPage() {
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. öğleden sonrası uygun" className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
             </label>
           </div>
+
+          {/* Hizmet — satış modallarıyla aynı: kategori/alt-kategori/arama ile süzülebilir seçici (opsiyonel) */}
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#705a66]">Hizmet (ops.)</span>
+              {serviceId && (
+                <button type="button" onClick={() => setServiceId('')} className="text-[10px] font-semibold text-[#c85776] transition-colors hover:text-[#a83e5b]">
+                  Temizle · farketmez
+                </button>
+              )}
+            </div>
+            <CatalogPicker
+              items={servicePickerItems}
+              value={serviceId}
+              onChange={setServiceId}
+              accent="rose"
+              emptyText="Hizmet bulunamadı."
+              clearable
+            />
+            <span className="mt-1.5 block text-[10px] text-[#9a7d89]">Boş bırakılırsa müşteri herhangi bir hizmet için sıraya alınır.</span>
+          </div>
+
           {actionError && <div className="mt-4 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{actionError}</div>}
           <div className="mt-5 flex justify-end">
             <button type="button" disabled={busy} onClick={handleCreate} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60">

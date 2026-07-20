@@ -109,6 +109,8 @@ export default function CategoryExplorer({
   )
 
   const selectCategory = (name: string) => { setSelectedCat(name); setSelectedSub(''); setAddingSub(false); setNewSubName('') }
+  // Ana kategoriye tıklayıp doğrudan alt kategori eklemeye başla: kategoriyi seç + ekleme kutusunu aç.
+  const startAddSub = (name: string) => { setSelectedCat(name); setSelectedSub(''); setNewSubName(''); setError(''); setAddingSub(true) }
 
   const createCat = async () => {
     const name = newCatName.trim()
@@ -131,11 +133,19 @@ export default function CategoryExplorer({
 
   const createSubCat = async () => {
     const name = newSubName.trim()
-    if (!name || !activeCatCustomId) return
+    if (!name || !activeCat || activeCat === UNCATEGORIZED) return
     setBusy(true)
     setError('')
     try {
-      await adminApi.createServiceCategory({ name, isActive: true, parentId: activeCatCustomId }, tenantId)
+      // Türetilmiş (özel olmayan) üst kategoriye de alt kategori eklenebilsin:
+      // önce üst kategoriyi kuruma özel kategori olarak oluştur, sonra alt kategoriyi ona bağla.
+      let parentId = activeCatCustomId
+      if (!parentId) {
+        const created = await adminApi.createServiceCategory<ApiCustomServiceCategory>({ name: activeCat, isActive: true }, tenantId)
+        parentId = created?.id
+      }
+      if (!parentId) throw new Error('Üst kategori oluşturulamadı')
+      await adminApi.createServiceCategory({ name, isActive: true, parentId }, tenantId)
       setNewSubName('')
       setAddingSub(false)
       setSelectedSub(name)
@@ -214,18 +224,32 @@ export default function CategoryExplorer({
                 <span className="grid h-10 w-10 place-items-center rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]">
                   <ServiceIcon iconKey={suggestIcon(c.name)} className="h-5 w-5" />
                 </span>
-                {c.isCustom && c.customId && canCustomCat && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); void deleteCat(c.customId!) }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void deleteCat(c.customId!) } }}
-                    title="Özel kategoriyi sil"
-                    className="grid h-7 w-7 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:text-rose-600 group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </span>
-                )}
+                <div className="flex items-center gap-1">
+                  {c.name !== UNCATEGORIZED && canCustomCat && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); startAddSub(c.name) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); startAddSub(c.name) } }}
+                      title="Alt kategori ekle"
+                      className="inline-flex items-center gap-0.5 rounded-md border border-[#efbfd0]/60 bg-[#fff1f6]/70 px-1.5 py-1 text-[9px] font-mono uppercase tracking-wide text-[#b14d6c] opacity-0 transition-opacity hover:bg-[#ffe6ef] group-hover:opacity-100"
+                    >
+                      <Plus className="h-3 w-3" /> alt
+                    </span>
+                  )}
+                  {c.isCustom && c.customId && canCustomCat && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); void deleteCat(c.customId!) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void deleteCat(c.customId!) } }}
+                      title="Özel kategoriyi sil"
+                      className="grid h-7 w-7 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:text-rose-600 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="mt-3 truncate font-display text-xl tracking-tight text-[#352432]">{c.name}</div>
               <div className="mt-1.5 flex items-center gap-1.5">
@@ -292,8 +316,8 @@ export default function CategoryExplorer({
                   <span className="text-[11px] text-[#352432]/40">Bu kategoride alt kategori yok.</span>
                 )}
 
-                {/* Alt kategori ekle — yalnızca kuruma özel üst kategorilerde */}
-                {canCustomCat && activeCatCustomId && (
+                {/* Alt kategori ekle — her kategoride (türetilmişse ilk alt eklemede otomatik özel kategoriye çevrilir) */}
+                {canCustomCat && activeCat !== UNCATEGORIZED && (
                   addingSub ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0] bg-white p-0.5 pl-2.5">
                       <input
@@ -314,8 +338,8 @@ export default function CategoryExplorer({
                     </button>
                   )
                 )}
-                {canCustomCat && !activeCatCustomId && (
-                  <span className="text-[10px] text-[#352432]/35">· Alt kategori eklemek için önce bu adı &quot;Yeni Kategori&quot; ile özel kategori yapın.</span>
+                {canCustomCat && activeCat === UNCATEGORIZED && (
+                  <span className="text-[10px] text-[#352432]/35">· &quot;Kategorisiz&quot; altına alt kategori eklenemez.</span>
                 )}
               </div>
 
