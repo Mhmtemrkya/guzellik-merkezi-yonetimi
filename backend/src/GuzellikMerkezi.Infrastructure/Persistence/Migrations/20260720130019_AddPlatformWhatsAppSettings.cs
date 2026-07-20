@@ -38,9 +38,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "WhatsAppProvider",
                 table: "platform_integration_settings",
-                type: "longtext",
+                type: "varchar(32)",
+                maxLength: 32,
                 nullable: false,
-                // Mevcut singleton satır(lar)ı için geri-doldurma; NOT NULL longtext'i strict modda güvenli ekler.
+                // Kısa sağlayıcı adı (Meta/Simülasyon). varchar — longtext'e DEFAULT verilemez (MySQL).
                 defaultValue: "Meta");
         }
 

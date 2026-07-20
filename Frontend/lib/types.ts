@@ -843,6 +843,7 @@ export interface ApiService {
   branchId?: string
   name?: string
   category?: string
+  subCategory?: string | null
   group?: string
   session?: number
   /** Varsayılan seans sayısı — paket oluşturmada ön-dolum (orada düzenlenebilir). */
@@ -862,6 +863,7 @@ export interface Service {
   tenantId?: string
   branchId?: string
   group: string
+  subGroup: string
   name: string
   session: number
   price: number
@@ -887,6 +889,7 @@ export interface ApiServicePackage {
   name?: string
   description?: string | null
   category?: string | null
+  subCategory?: string | null
   totalPrice?: number
   depositAmount?: number
   installmentCount?: number
@@ -915,6 +918,7 @@ export interface ServicePackage {
   name: string
   description: string
   category: string
+  subCategory: string
   totalPrice: number
   depositAmount: number
   installmentCount: number
@@ -1348,6 +1352,7 @@ export interface ApiCustomServiceCategory {
   name?: string
   isActive?: boolean
   createdAtUtc?: string
+  parentId?: string | null
 }
 
 export interface CustomServiceCategory {
@@ -1356,6 +1361,7 @@ export interface CustomServiceCategory {
   name: string
   isActive: boolean
   createdAt: string
+  parentId: string | null
 }
 
 export interface ApiBusinessExpense {

@@ -69,7 +69,7 @@ public sealed class ServicePackageService : IServicePackageService
             request.DepositAmount,
             request.InstallmentCount,
             request.Description);
-        package.SetCategory(request.Category);
+        package.SetCategory(request.Category, request.SubCategory);
         package.SetIcon(request.IconKey);
         package.SetStatus(request.Status);
         package.SetLoyaltyPointCost(request.LoyaltyPointCost);
@@ -104,7 +104,7 @@ public sealed class ServicePackageService : IServicePackageService
             .ToDictionaryByIdsAsync(serviceIds, x => x.Id, cancellationToken);
 
         package.Rename(request.Name, request.Description);
-        package.SetCategory(request.Category);
+        package.SetCategory(request.Category, request.SubCategory);
         package.SetIcon(request.IconKey);
         package.ChangePricing(request.TotalPrice, request.DepositAmount, request.InstallmentCount);
         package.SetStatus(request.Status);
@@ -134,7 +134,7 @@ public sealed class ServicePackageService : IServicePackageService
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (package is null) return Result<ServicePackageDto>.Failure(Error.NotFound("Paket bulunamadı."));
 
-        package.SetCategory(request.Category);
+        package.SetCategory(request.Category, request.SubCategory);
         await _db.SaveChangesAsync(cancellationToken);
 
         var hydrated = await _db.ServicePackages

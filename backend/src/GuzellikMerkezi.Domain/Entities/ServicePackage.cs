@@ -24,6 +24,8 @@ public sealed class ServicePackage : Entity
     public string? Description { get; private set; }
     /// <summary>Kuruma özel kategori adı (hizmetlerdeki kategori ile aynı havuz).</summary>
     public string? Category { get; private set; }
+    /// <summary>Alt kategori adı (üst kategori = Category). null = alt kategori yok.</summary>
+    public string? SubCategory { get; private set; }
     public decimal TotalPrice { get; private set; }
     public decimal DepositAmount { get; private set; }
     public int InstallmentCount { get; private set; }
@@ -71,9 +73,10 @@ public sealed class ServicePackage : Entity
         Touch();
     }
 
-    public void SetCategory(string? category)
+    public void SetCategory(string? category, string? subCategory = null)
     {
         Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
+        SubCategory = string.IsNullOrWhiteSpace(subCategory) ? null : subCategory.Trim();
         Touch();
     }
 

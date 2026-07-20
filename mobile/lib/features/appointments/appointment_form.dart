@@ -198,9 +198,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
   }
 
-  /// Randevudan ayrılmadan seçili müşteriye paket satışı (web paritesi).
-  /// Onayda cariye/taksite ve seans bakiyesine işlenir.
-  Future<void> _openPackageSale() async {
+  /// Randevudan ayrılmadan seçili müşteriye paket ya da hizmet satışı (web paritesi).
+  /// Onaylandığında cariye/taksite ve seans bakiyesine işlenir; satılan paket/hizmet
+  /// randevuda hemen kullanılabilir.
+  Future<void> _openSale({bool serviceSale = false}) async {
     final id = customerId;
     if (id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,7 +215,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
     final name = customer.isNotEmpty
         ? valueOf(customer, const ['fullName', 'name'])
         : (customerName ?? 'Müşteri');
-    final sold = await showModalBottomSheet<bool>(
+    // Satış sheet'i kendi onay/sonuç bildirimini gösterir.
+    await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -222,13 +224,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
         api: widget.api,
         customerId: id,
         customerName: name,
+        serviceSale: serviceSale,
       ),
     );
-    if (sold == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Satış adisyona eklendi. Yönetici onaylayınca cariye ve seansa işlenir.')));
-    }
   }
 
   /// Personel bu hizmeti yapabilir mi? Uzmanlık listesi boşsa kısıt yok; doluysa
@@ -434,10 +432,20 @@ class _AppointmentFormState extends State<AppointmentForm> {
                 ),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: _openPackageSale,
-                    icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                    label: const Text('Paket satışı yap'),
+                  child: Wrap(
+                    spacing: 4,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _openSale(),
+                        icon: const Icon(Icons.card_giftcard_rounded, size: 18),
+                        label: const Text('Paket satışı yap'),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _openSale(serviceSale: true),
+                        icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                        label: const Text('Hizmet satışı yap'),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),

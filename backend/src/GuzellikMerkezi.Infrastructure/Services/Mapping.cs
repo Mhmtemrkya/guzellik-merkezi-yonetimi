@@ -36,14 +36,15 @@ internal static class Mapping
     public static CustomerDto ToDto(this Customer customer) => new(customer.Id, customer.TenantId, customer.BranchId, customer.FullName, customer.Phone, customer.Email, customer.BirthDate, customer.Gender, customer.KvkkConsent, customer.Notes, customer.PhotoUrl, customer.IsBlacklisted, customer.BlacklistReason, customer.CreatedAtUtc, customer.IsVip);
     public static StaffDto ToDto(this StaffMember staff, string? email = null, IReadOnlyCollection<string>? permissions = null, decimal? averageRating = null, int ratingCount = 0) =>
         new(staff.Id, staff.TenantId, staff.BranchId, staff.TenantUserId, staff.FullName, staff.Title, staff.Phone, staff.Specialties, staff.CommissionRate, staff.IsActive, email, permissions ?? Array.Empty<string>(), staff.PhotoUrl, averageRating, ratingCount);
-    public static ServiceDefinitionDto ToDto(this ServiceDefinition service) => new(service.Id, service.TenantId, service.BranchId, service.Name, service.Category, service.DurationMinutes, service.Price, service.IsActive, service.IconKey, service.Status, service.DefaultSessionCount, service.LoyaltyPointCost);
+    public static ServiceDefinitionDto ToDto(this ServiceDefinition service) => new(service.Id, service.TenantId, service.BranchId, service.Name, service.Category, service.DurationMinutes, service.Price, service.IsActive, service.IconKey, service.Status, service.DefaultSessionCount, service.LoyaltyPointCost, service.SubCategory);
 
     public static CustomServiceCategoryDto ToDto(this CustomServiceCategory category) => new(
         category.Id,
         category.TenantId,
         category.Name,
         category.IsActive,
-        category.CreatedAtUtc);
+        category.CreatedAtUtc,
+        category.ParentId);
 
     public static ProductDto ToDto(this Product product) => new(
         product.Id,
@@ -222,6 +223,7 @@ internal static class Mapping
             package.IconKey,
             package.Status,
             package.UpdatedAtUtc ?? package.CreatedAtUtc,
-            package.LoyaltyPointCost);
+            package.LoyaltyPointCost,
+            package.SubCategory);
     }
 }

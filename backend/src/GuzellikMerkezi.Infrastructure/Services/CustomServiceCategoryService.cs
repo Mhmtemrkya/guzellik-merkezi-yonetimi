@@ -30,12 +30,13 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
 
         var existing = await _db.CustomServiceCategories
             .Where(x => x.TenantId == tenantId)
-            .Select(x => new { x.Id, x.Name })
+            .Select(x => new { x.Id, x.Name, x.ParentId })
             .ToListAsync(cancellationToken);
-        var duplicate = existing.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
-        if (duplicate is not null) return Result<CustomServiceCategoryDto>.Failure(Error.Conflict("Bu adda bir kategori zaten var."));
+        // Aynı üst kategori altında (veya üst-seviyede) aynı ada izin verilmez; farklı parent'lar aynı adı taşıyabilir.
+        var duplicate = existing.FirstOrDefault(x => x.ParentId == request.ParentId && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is not null) return Result<CustomServiceCategoryDto>.Failure(Error.Conflict(request.ParentId is null ? "Bu adda bir kategori zaten var." : "Bu üst kategoride bu adda alt kategori zaten var."));
 
-        var category = new CustomServiceCategory(tenantId, name);
+        var category = new CustomServiceCategory(tenantId, name, request.ParentId);
         if (!request.IsActive) category.Deactivate();
         _db.CustomServiceCategories.Add(category);
         await _db.SaveChangesAsync(cancellationToken);
@@ -47,6 +48,7 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         var category = await _db.CustomServiceCategories.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (category is null) return Result<CustomServiceCategoryDto>.Failure(Error.NotFound("Kategori bulunamadı."));
         category.Rename(request.Name);
+        category.SetParent(request.ParentId);
         if (request.IsActive) category.Activate(); else category.Deactivate();
         await _db.SaveChangesAsync(cancellationToken);
         return Result<CustomServiceCategoryDto>.Success(category.ToDto());

@@ -7,11 +7,11 @@ public sealed class ServiceDefinition : Entity
 {
     private ServiceDefinition() { }
 
-    public ServiceDefinition(Guid tenantId, Guid? branchId, string name, int durationMinutes, decimal price, string? category = null)
+    public ServiceDefinition(Guid tenantId, Guid? branchId, string name, int durationMinutes, decimal price, string? category = null, string? subCategory = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
-        Rename(name, category);
+        Rename(name, category, subCategory);
         ChangePricing(durationMinutes, price);
     }
 
@@ -20,6 +20,8 @@ public sealed class ServiceDefinition : Entity
     public Branch? Branch { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string? Category { get; private set; }
+    /// <summary>Alt kategori adı (üst kategori = Category). null = alt kategori yok.</summary>
+    public string? SubCategory { get; private set; }
     public int DurationMinutes { get; private set; }
     public decimal Price { get; private set; }
     public bool IsActive { get; private set; } = true;
@@ -35,11 +37,12 @@ public sealed class ServiceDefinition : Entity
     /// </summary>
     public int? LoyaltyPointCost { get; private set; }
 
-    public void Rename(string name, string? category)
+    public void Rename(string name, string? category, string? subCategory = null)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Hizmet adı boş olamaz.");
         Name = name.Trim();
         Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
+        SubCategory = string.IsNullOrWhiteSpace(subCategory) ? null : subCategory.Trim();
         Touch();
     }
 

@@ -55,6 +55,7 @@ interface Draft {
   name: string
   description: string
   category: string
+  subCategory: string
   iconKey: string
   salePrice: number
   priceTouched: boolean
@@ -67,7 +68,7 @@ interface Draft {
 }
 
 const emptyDraft = (): Draft => ({
-  id: null, name: 'Yeni Paket', description: '', category: '', iconKey: '',
+  id: null, name: 'Yeni Paket', description: '', category: '', subCategory: '', iconKey: '',
   salePrice: 0, priceTouched: false, deposit: 0, depositTouched: false,
   installments: 4, loyaltyPointCost: 0, status: 'Draft', items: [],
 })
@@ -159,6 +160,14 @@ export default function PackageLibrary({
     for (const p of packages) if (p.category) names.add(p.category)
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'))
   }, [customCategories, services, packages])
+  // Alt kategori önerileri: seçili üst kategorinin tanımlı alt kategorileri + paketlerde geçenler.
+  const packageSubCategoryOptions = useMemo(() => {
+    const parentId = customCategories.find((c) => !c.parentId && c.name === draft.category)?.id
+    const names = new Set<string>()
+    for (const c of customCategories) if (c.parentId && (!parentId || c.parentId === parentId)) names.add(c.name)
+    for (const p of packages) if (p.subCategory && (!draft.category || p.category === draft.category)) names.add(p.subCategory)
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'))
+  }, [customCategories, packages, draft.category])
 
   // ---- taslak editörü
   const araToplam = draft.items.reduce((a, i) => a + i.unitPrice * i.sessionCount, 0)
@@ -170,7 +179,7 @@ export default function PackageLibrary({
 
   const selectPackage = (p: ServicePackage) => {
     setDraft({
-      id: p.id, name: p.name, description: p.description, category: p.category,
+      id: p.id, name: p.name, description: p.description, category: p.category, subCategory: p.subCategory,
       iconKey: p.iconKey, salePrice: p.totalPrice, priceTouched: true,
       deposit: p.depositAmount, depositTouched: true, installments: p.installmentCount, loyaltyPointCost: p.loyaltyPointCost || 0, status: p.status,
       items: p.items.map((i) => {
@@ -210,6 +219,7 @@ export default function PackageLibrary({
     name: source.name.trim(),
     description: source.description || null,
     category: source.category || null,
+    subCategory: source.subCategory || null,
     iconKey: source.iconKey || suggestIcon(source.name || source.category) || null,
     totalPrice: source.salePrice,
     depositAmount: source.deposit,
@@ -254,12 +264,26 @@ export default function PackageLibrary({
 
     setBusy(true)
     try {
-      await adminApi.updatePackageCategory(next.id, category || null, tenantId)
+      await adminApi.updatePackageCategory(next.id, category || null, next.subCategory || null, tenantId)
       setSavedMsg(category ? `Paket “${category}” kategorisine eklendi.` : 'Paket kategorisiz olarak güncellendi.')
       await reload()
     } catch (e) {
       setDraft((current) => current.id === next.id ? { ...current, category: previousCategory } : current)
       setActionError(e instanceof Error ? e.message : 'Paket kategorisi güncellenemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveSubCategory = async (subCategory: string) => {
+    if (!draft.id) return
+    setBusy(true); setActionError(''); setSavedMsg('')
+    try {
+      await adminApi.updatePackageCategory(draft.id, draft.category || null, subCategory || null, tenantId)
+      setSavedMsg(subCategory ? `Alt kategori “${subCategory}” olarak güncellendi.` : 'Alt kategori kaldırıldı.')
+      await reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Alt kategori güncellenemedi.')
     } finally {
       setBusy(false)
     }
@@ -516,13 +540,25 @@ export default function PackageLibrary({
               <div className="mt-3"><IconPicker value={draft.iconKey || suggestIcon(draft.name || draft.category)} onChange={(k) => { setDraft((d) => ({ ...d, iconKey: k })); setShowIconPicker(false) }} /></div>
             )}
 
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <select value={draft.category} disabled={busy} onChange={(e) => void changePackageCategory(e.target.value)}
                 className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:opacity-60">
                 <option value="">— Kategorisiz —</option>
                 {assignableCategories.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
-              <span className="ml-2 text-[9px] text-[#352432]/40">
+              <input
+                value={draft.subCategory}
+                disabled={busy}
+                list="pkg-subcategory-options"
+                onChange={(e) => setDraft((d) => ({ ...d, subCategory: e.target.value }))}
+                onBlur={(e) => { if (draft.id) void saveSubCategory(e.currentTarget.value) }}
+                placeholder="Alt kategori (ops.)"
+                className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:opacity-60"
+              />
+              <datalist id="pkg-subcategory-options">
+                {packageSubCategoryOptions.map((n) => <option key={n} value={n} />)}
+              </datalist>
+              <span className="text-[9px] text-[#352432]/40">
                 {draft.id ? 'Seçim otomatik kaydedilir.' : 'Paket ilk kaydedildiğinde kategori atanır.'}
               </span>
             </div>

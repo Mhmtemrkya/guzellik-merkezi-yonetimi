@@ -867,8 +867,8 @@ export const adminApi = {
     apiRequest<T>('/api/admin/packages/', { method: 'POST', query: { tenantId }, body }),
   updatePackage: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/packages/${id}`, { method: 'PUT', query: { tenantId }, body }),
-  updatePackageCategory: <T = unknown>(id: string, category: string | null, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/packages/${id}/category`, { method: 'PATCH', query: { tenantId }, body: { category } }),
+  updatePackageCategory: <T = unknown>(id: string, category: string | null, subCategory: string | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/packages/${id}/category`, { method: 'PATCH', query: { tenantId }, body: { category, subCategory } }),
   deletePackage: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/packages/${id}`, { method: 'DELETE', query: { tenantId } }),
 

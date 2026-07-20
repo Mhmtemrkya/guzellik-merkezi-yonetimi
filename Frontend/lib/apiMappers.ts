@@ -615,6 +615,7 @@ export function normalizeService(service: ApiService | null | undefined, index =
     tenantId: service?.tenantId,
     branchId: service?.branchId,
     group: service?.category || service?.group || 'Genel Hizmet',
+    subGroup: service?.subCategory || '',
     name: service?.name || `Hizmet ${index + 1}`,
     session: Number(service?.defaultSessionCount ?? service?.session ?? 1) || 1,
     price: Number(service?.price || 0),
@@ -640,6 +641,7 @@ export function normalizePackage(pkg: ApiServicePackage | null | undefined, inde
     name: pkg?.name || `Paket ${index + 1}`,
     description: pkg?.description || '',
     category: pkg?.category || '',
+    subCategory: pkg?.subCategory || '',
     totalPrice: Number(pkg?.totalPrice || 0),
     depositAmount: Number(pkg?.depositAmount || 0),
     installmentCount: Number(pkg?.installmentCount || 0),
@@ -871,6 +873,7 @@ export function normalizeCustomServiceCategory(category: ApiCustomServiceCategor
     name: category?.name || `Kategori ${index + 1}`,
     isActive: category?.isActive ?? true,
     createdAt: category?.createdAtUtc || '',
+    parentId: category?.parentId || null,
   }
 }
 

@@ -25,11 +25,12 @@ public sealed record ServicePackageDto(
     string? IconKey = null,
     CatalogStatus Status = CatalogStatus.Active,
     DateTime? UpdatedAtUtc = null,
-    int? LoyaltyPointCost = null);
+    int? LoyaltyPointCost = null,
+    string? SubCategory = null);
 
 public sealed record UpsertServicePackageItemRequest(Guid ServiceDefinitionId, int SessionCount, decimal? UnitPrice);
 
-public sealed record UpdateServicePackageCategoryRequest(string? Category);
+public sealed record UpdateServicePackageCategoryRequest(string? Category, string? SubCategory = null);
 
 public sealed record UpsertServicePackageRequest(
     Guid? BranchId,
@@ -43,4 +44,5 @@ public sealed record UpsertServicePackageRequest(
     IReadOnlyCollection<UpsertServicePackageItemRequest> Items,
     string? IconKey = null,
     CatalogStatus Status = CatalogStatus.Active,
-    int? LoyaltyPointCost = null);
+    int? LoyaltyPointCost = null,
+    string? SubCategory = null);

@@ -43,7 +43,7 @@ public sealed class ServiceCatalogService : IServiceCatalogService
 
     public async Task<Result<ServiceDefinitionDto>> CreateAsync(Guid tenantId, UpsertServiceDefinitionRequest request, CancellationToken cancellationToken = default)
     {
-        var service = new ServiceDefinition(tenantId, request.BranchId, request.Name, request.DurationMinutes, request.Price, request.Category);
+        var service = new ServiceDefinition(tenantId, request.BranchId, request.Name, request.DurationMinutes, request.Price, request.Category, request.SubCategory);
         service.SetStatus(request.Status);
         service.SetIcon(request.IconKey);
         service.SetDefaultSessions(Math.Max(1, request.DefaultSessionCount));
@@ -58,7 +58,7 @@ public sealed class ServiceCatalogService : IServiceCatalogService
         var service = await _db.ServiceDefinitions.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (service is null) return Result<ServiceDefinitionDto>.Failure(Error.NotFound("Hizmet bulunamadı."));
 
-        service.Rename(request.Name, request.Category);
+        service.Rename(request.Name, request.Category, request.SubCategory);
         service.ChangePricing(request.DurationMinutes, request.Price);
         service.SetStatus(request.Status);
         service.SetIcon(request.IconKey);

@@ -28,6 +28,7 @@ class _ServiceFormState extends State<ServiceForm> {
   late final TextEditingController _sessions;
   late final TextEditingController _loyalty;
   String? _category;
+  late final TextEditingController _subCategory;
   String _status = 'Active';
   bool _isActive = true;
   bool _saving = false;
@@ -54,6 +55,7 @@ class _ServiceFormState extends State<ServiceForm> {
     _category = (it?['category'] as String?)?.trim().isNotEmpty == true
         ? it!['category'] as String
         : 'Cilt Bakımı';
+    _subCategory = TextEditingController(text: (it?['subCategory'] as String?) ?? '');
     final st = '${it?['status'] ?? 'Active'}';
     _status = _statusOptions.any((s) => s[0] == st) ? st : 'Active';
     _isActive = it?['isActive'] != false;
@@ -66,6 +68,7 @@ class _ServiceFormState extends State<ServiceForm> {
     _price.dispose();
     _sessions.dispose();
     _loyalty.dispose();
+    _subCategory.dispose();
     super.dispose();
   }
 
@@ -78,6 +81,7 @@ class _ServiceFormState extends State<ServiceForm> {
           : widget.api.auth?.user?.branchId,
       'name': _name.text.trim(),
       'category': _category,
+      'subCategory': _subCategory.text.trim().isEmpty ? null : _subCategory.text.trim(),
       'durationMinutes': int.tryParse(_duration.text) ?? 60,
       'price': double.tryParse(_price.text.replaceAll(',', '.')) ?? 0,
       'defaultSessionCount': int.tryParse(_sessions.text) ?? 1,
@@ -165,6 +169,14 @@ class _ServiceFormState extends State<ServiceForm> {
                 api: widget.api,
                 initialCategory: _category,
                 onChanged: (c) => _category = c,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _subCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Alt kategori (opsiyonel)',
+                  hintText: 'Örn. Bölgesel · Yüz · Vücut',
+                ),
               ),
               const SizedBox(height: 14),
               Row(

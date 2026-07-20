@@ -203,10 +203,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         Opt(typeof(StaffMember), nameof(StaffMember.Phone), nameof(StaffMember.Specialties));
 
         Req(typeof(ServiceDefinition), nameof(ServiceDefinition.Name));
-        Opt(typeof(ServiceDefinition), nameof(ServiceDefinition.Category));
+        Opt(typeof(ServiceDefinition), nameof(ServiceDefinition.Category), nameof(ServiceDefinition.SubCategory));
 
         ReqIndexed(typeof(ServicePackage), nameof(ServicePackage.Name)); // indeks: { TenantId, Name }
-        Opt(typeof(ServicePackage), nameof(ServicePackage.Description), nameof(ServicePackage.Category));
+        Opt(typeof(ServicePackage), nameof(ServicePackage.Description), nameof(ServicePackage.Category), nameof(ServicePackage.SubCategory));
 
         Opt(typeof(Appointment), nameof(Appointment.Notes), nameof(Appointment.CancellationReason));
 
@@ -635,6 +635,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         p.ToTable("platform_integration_settings");
         p.HasKey(x => x.Id);
         p.Property(x => x.SmsProvider).HasMaxLength(32).IsRequired();
+        // Kısa sağlayıcı adı — varchar. longtext'e DEFAULT verilemediğinden (MySQL) migration için de zorunlu.
+        p.Property(x => x.WhatsAppProvider).HasMaxLength(32).IsRequired();
         p.Property(x => x.SmsApiKeyEncrypted).HasColumnType("TEXT");
         p.Property(x => x.SmsApiSecretEncrypted).HasColumnType("TEXT");
         p.Property(x => x.SmsSender).HasMaxLength(64);

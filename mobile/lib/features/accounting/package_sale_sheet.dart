@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../customers/customer_picker.dart';
 
@@ -11,10 +12,11 @@ import '../customers/customer_picker.dart';
 /// - [customerId] verilirse müşteri sabittir (ör. randevu formundan);
 ///   verilmezse müşteri listeden seçilir (menüdeki Satış sayfası).
 ///
-/// Akış web ile birebir: açık adisyon bulunur/açılır (taksit planı adisyona
-/// yazılır), PackageSale/Service kalemi eklenir, peşinat varsa Payment kalemi
-/// eklenir. Kurum yöneticisi adisyonu onayladığında cari borç (+paketse seans
-/// bakiyesi) oluşur.
+/// Akış web ile birebir: paket/hizmet kategori + alt kategori + aramayla bulunur,
+/// açık adisyon bulunur/açılır (taksit planı adisyona yazılır), PackageSale/Service
+/// kalemi eklenir, peşinat varsa Payment kalemi eklenir ve adisyon **anında onaylanır**
+/// → cari borç (+paketse seans bakiyesi) oluşur, satılan hizmet/paket randevuda hemen
+/// kullanılabilir. Onay yetkisi olmayan personelde adisyon yönetici onayına düşer.
 class PackageSaleSheet extends StatefulWidget {
   const PackageSaleSheet({
     required this.api,
@@ -49,6 +51,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   int installmentCount = 3;
   late DateTime firstDueDate;
   bool saving = false;
+  // Katalog süzgeci — web CatalogPicker paritesi.
+  final _search = TextEditingController();
+  String _catFilter = '';
+  String _subFilter = '';
   final price = TextEditingController();
   final downPayment = TextEditingController();
   final notes = TextEditingController();
@@ -66,9 +72,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     final values = await Future.wait([
       widget.serviceSale
           ? widget.api
-              .get('/api/admin/services/', query: {'page': 1, 'pageSize': 200})
+              .get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
           : widget.api
-              .get('/api/admin/packages/', query: {'page': 1, 'pageSize': 200}),
+              .get('/api/admin/packages/', query: {'page': 1, 'pageSize': 300}),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
     ]);
     final catalog = apiItems(values[0])
@@ -88,16 +94,55 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
   @override
   void dispose() {
+    _search.dispose();
     price.dispose();
     downPayment.dispose();
     notes.dispose();
     super.dispose();
   }
 
+  List<Map<String, dynamic>> get _catalog => widget.serviceSale ? services : packages;
+
+  // Üst kategoriler (katalogda geçen).
+  List<String> get _categories {
+    final set = <String>{};
+    for (final p in _catalog) {
+      final c = '${p['category'] ?? ''}';
+      if (c.isNotEmpty) set.add(c);
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
+  // Seçili üst kategorinin alt kategorileri.
+  List<String> get _subCategories {
+    final set = <String>{};
+    for (final p in _catalog) {
+      if (_catFilter.isNotEmpty && '${p['category'] ?? ''}' != _catFilter) continue;
+      final s = '${p['subCategory'] ?? ''}';
+      if (s.isNotEmpty) set.add(s);
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
+  // Kategori + alt kategori + aramayla süzülmüş katalog.
+  List<Map<String, dynamic>> get _filtered {
+    final term = _search.text.trim().toLowerCase();
+    return _catalog.where((p) {
+      final c = '${p['category'] ?? ''}';
+      final s = '${p['subCategory'] ?? ''}';
+      final name = '${p['name'] ?? ''}'.toLowerCase();
+      if (_catFilter.isNotEmpty && c != _catFilter) return false;
+      if (_subFilter.isNotEmpty && s != _subFilter) return false;
+      if (term.isNotEmpty && !name.contains(term)) return false;
+      return true;
+    }).toList();
+  }
+
   Map<String, dynamic>? get _selectedItem {
-    final list = widget.serviceSale ? services : packages;
     final id = widget.serviceSale ? serviceId : packageId;
-    for (final p in list) {
+    for (final p in _catalog) {
       if ('${p['id']}' == id) return p;
     }
     return null;
@@ -226,7 +271,20 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         });
       }
 
+      // 4) Anında onay — cariye işle + seans bakiyesini aç (randevuda hemen kullanılabilir).
+      //    Onay yetkisi olmayan personelde adisyon açık kalır, yönetici onayına düşer.
+      var approved = true;
+      try {
+        await widget.api
+            .post('/api/admin/adisyonlar/$adisyonId/approve', const <String, dynamic>{});
+      } catch (_) {
+        approved = false;
+      }
+
       if (mounted) {
+        _snack(approved
+            ? 'Satış tamamlandı ve onaylandı.'
+            : 'Satış oluşturuldu — yönetici onayı bekliyor.');
         Navigator.pop(context, true);
       }
     } catch (e) {
@@ -293,42 +351,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (widget.serviceSale)
-                  DropdownButtonFormField<String>(
-                    initialValue: serviceId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Hizmet'),
-                    items: services
-                        .map(
-                          (s) => DropdownMenuItem(
-                            value: '${s['id']}',
-                            child: Text(
-                              '${s['name']} · ₺${(s['price'] as num?)?.toStringAsFixed(0) ?? '0'}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(() => serviceId = value),
-                  )
-                else
-                  DropdownButtonFormField<String>(
-                    initialValue: packageId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Paket'),
-                    items: packages
-                        .map(
-                          (p) => DropdownMenuItem(
-                            value: '${p['id']}',
-                            child: Text(
-                              '${p['name']} · ₺${(p['totalPrice'] as num?)?.toStringAsFixed(0) ?? '0'}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(() => packageId = value),
-                  ),
+
+                // Katalog seçimi — arama + kategori + alt kategori + liste (web paritesi).
+                _buildCatalogPicker(),
+
                 if (widget.serviceSale) ...[
                   const SizedBox(height: 12),
                   Row(
@@ -462,13 +488,179 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                 const SizedBox(height: 18),
                 FilledButton(
                   onPressed: saving ? null : _submit,
-                  child: Text(saving ? 'Kaydediliyor...' : 'Satışı kaydet'),
+                  child: Text(saving ? 'Kaydediliyor...' : 'Satışı kaydet ve onayla'),
                 ),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildCatalogPicker() {
+    final cats = _categories;
+    final subs = _subCategories;
+    final filtered = _filtered;
+    final selectedId = widget.serviceSale ? serviceId : packageId;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.serviceSale ? 'Hizmet' : 'Paket',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _search,
+          decoration: const InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search_rounded, size: 18),
+            hintText: 'Ada göre ara…',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        if (cats.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ChoiceChip(
+                label: const Text('Tümü'),
+                selected: _catFilter.isEmpty,
+                onSelected: (_) => setState(() {
+                  _catFilter = '';
+                  _subFilter = '';
+                }),
+              ),
+              for (final c in cats)
+                ChoiceChip(
+                  label: Text(c),
+                  selected: _catFilter == c,
+                  onSelected: (_) => setState(() {
+                    _catFilter = _catFilter == c ? '' : c;
+                    _subFilter = '';
+                  }),
+                ),
+            ],
+          ),
+        ],
+        if (subs.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ChoiceChip(
+                label: const Text('Tüm alt kategoriler'),
+                selected: _subFilter.isEmpty,
+                onSelected: (_) => setState(() => _subFilter = ''),
+              ),
+              for (final s in subs)
+                ChoiceChip(
+                  label: Text(s),
+                  selected: _subFilter == s,
+                  onSelected: (_) =>
+                      setState(() => _subFilter = _subFilter == s ? '' : s),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 8),
+        Container(
+          constraints: const BoxConstraints(maxHeight: 260),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: filtered.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: Text('Sonuç yok.',
+                        style: TextStyle(color: AppColors.muted)),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(6),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 4),
+                  itemBuilder: (context, i) {
+                    final p = filtered[i];
+                    final id = '${p['id']}';
+                    final selected = selectedId == id;
+                    final cat = '${p['category'] ?? ''}';
+                    final sub = '${p['subCategory'] ?? ''}';
+                    final priceNum = widget.serviceSale
+                        ? (p['price'] as num?)?.toStringAsFixed(0) ?? '0'
+                        : (p['totalPrice'] as num?)?.toStringAsFixed(0) ?? '0';
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => setState(() {
+                        if (widget.serviceSale) {
+                          serviceId = id;
+                        } else {
+                          packageId = id;
+                        }
+                        price.clear();
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: selected ? AppColors.rose : Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.primary
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${p['name'] ?? ''}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600),
+                                      overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 2),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      Text('₺$priceNum',
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.muted)),
+                                      if (cat.isNotEmpty)
+                                        Text('· $cat',
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.muted)),
+                                      if (sub.isNotEmpty)
+                                        Text('· $sub',
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.primaryDark)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (selected)
+                              const Icon(Icons.check_circle_rounded,
+                                  size: 18, color: AppColors.primary),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

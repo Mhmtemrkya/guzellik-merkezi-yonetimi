@@ -594,14 +594,25 @@ export default function AppointmentEditor({
                           <span className="normal-case tracking-normal text-[#352432]/[0.40]">· randevu bu seanslardan birine açılır, tamamlanınca düşer</span>
                         </div>
                         {selectedCustomer && (
-                          <PackageSaleDialog
-                            tenantId={tenantId}
-                            stayOnPage
-                            presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
-                            onDone={() => setSessRefreshKey((k) => k + 1)}
-                            triggerLabel="Paket satışı yap"
-                            triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#ffe9f0]"
-                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <PackageSaleDialog
+                              tenantId={tenantId}
+                              stayOnPage
+                              presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
+                              onDone={() => setSessRefreshKey((k) => k + 1)}
+                              triggerLabel="Paket satışı yap"
+                              triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#ffe9f0]"
+                            />
+                            <PackageSaleDialog
+                              tenantId={tenantId}
+                              serviceSale
+                              stayOnPage
+                              presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
+                              onDone={() => setSessRefreshKey((k) => k + 1)}
+                              triggerLabel="Hizmet satışı yap"
+                              triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-white px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
+                            />
+                          </div>
                         )}
                       </div>
                       {!values.customerId ? (
@@ -617,7 +628,7 @@ export default function AppointmentEditor({
                         <div className="rounded-[22px] border border-amber-200/[0.70] bg-amber-50/[0.55] p-6 text-center">
                           <Package className="mx-auto h-7 w-7 text-amber-500/[0.70]" strokeWidth={1.4} />
                           <div className="mt-3 text-[12px] font-medium text-amber-800">Bu müşterinin randevuya uygun (kalan seanslı) paket/hizmeti yok.</div>
-                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Yukarıdaki &quot;Paket satışı yap&quot; ile buradan satış yapabilirsin; kurum yöneticisi adisyonu onayladığında seanslar burada listelenir.</div>
+                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Yukarıdaki &quot;Paket satışı yap&quot; ya da &quot;Hizmet satışı yap&quot; ile buradan satış yapabilirsin; onaylandığında seanslar burada anında listelenir.</div>
                         </div>
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

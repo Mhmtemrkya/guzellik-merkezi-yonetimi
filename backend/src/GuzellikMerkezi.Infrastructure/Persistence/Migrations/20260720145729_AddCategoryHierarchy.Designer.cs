@@ -3,6 +3,7 @@ using System;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GuzellikDbContext))]
-    partial class GuzellikDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720145729_AddCategoryHierarchy")]
+    partial class AddCategoryHierarchy
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1965,8 +1968,7 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("WhatsAppProvider")
                         .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
+                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 

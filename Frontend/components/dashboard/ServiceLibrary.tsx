@@ -154,7 +154,7 @@ export default function ServiceLibrary({
   const apptSeries = useMemo(() => bucketWeekly(appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t))), [appts])
 
   const buildPayload = (s: Service, over: Record<string, unknown>) => ({
-    branchId: s.branchId || branchId || null, name: s.name, category: s.group || null,
+    branchId: s.branchId || branchId || null, name: s.name, category: s.group || null, subCategory: s.subGroup || null,
     durationMinutes: s.duration, price: s.price, isActive: s.status === 'Active',
     iconKey: s.iconKey || suggestIcon(s.name || s.group) || null, status: s.status,
     defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || null, ...over,
@@ -167,7 +167,7 @@ export default function ServiceLibrary({
   const setStatus = (s: Service, status: CatalogStatusKey) => run(() => adminApi.updateService(s.id, buildPayload(s, { status, isActive: status === 'Active' }), tenantId))
 
   const onCreate = async (values: ServiceFormDialogValues) => {
-    await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
+    await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
     await reload()
   }
   const handleCreateCat = async (name: string) => { const r = await adminApi.createServiceCategory<ApiCustomServiceCategory>({ name, isActive: true }, tenantId); await reload(); return normalizeCustomServiceCategory(r) }
@@ -191,7 +191,7 @@ export default function ServiceLibrary({
     return { topName, avgDur, soldThisMonth, activeRate }
   }, [services, appts, staff, statsByService])
 
-  const editInitial = (s: Service): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.group || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status })
+  const editInitial = (s: Service): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.group || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status })
 
   return (
     <>
@@ -372,7 +372,7 @@ export default function ServiceLibrary({
                   <ServiceFormDialog mode="edit" customCategories={customCategories}
                     onCreateCustomCategory={canCustomServiceCat ? handleCreateCat : undefined} onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
-                    onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
+                    onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
                     trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>} />
                   </div>
                 </div>

@@ -42,6 +42,7 @@ const OTHER_SENTINEL = '__OTHER__'
 export interface ServiceFormDialogValues {
   name: string
   category: string | null
+  subCategory: string | null
   durationMinutes: number
   price: number
   /** Varsayılan seans sayısı — paket oluşturmada ön-dolum olarak çekilir. */
@@ -86,6 +87,7 @@ export default function ServiceFormDialog({
   const defaults: ServiceFormDialogValues = {
     name: '',
     category: 'Cilt Bakımı',
+    subCategory: null,
     durationMinutes: 60,
     price: 1500,
     defaultSessionCount: 1,
@@ -184,6 +186,20 @@ export default function ServiceFormDialog({
   const sortedCustomCategories = useMemo(
     () => [...customCategories].filter((c) => c.isActive).sort((a, b) => a.name.localeCompare(b.name, 'tr-TR')),
     [customCategories],
+  )
+
+  // Seçili üst kategorinin alt kategorileri (öneri). Üst kategori özel kayıtsa parentId ile eşleşir;
+  // standart kategoride tüm alt kategoriler önerilir.
+  const parentCategoryId = useMemo(
+    () => customCategories.find((c) => !c.parentId && c.name === values.category)?.id ?? null,
+    [customCategories, values.category],
+  )
+  const subCategoryOptions = useMemo(
+    () => customCategories
+      .filter((c) => c.isActive && c.parentId && (!parentCategoryId || c.parentId === parentCategoryId))
+      .map((c) => c.name)
+      .sort((a, b) => a.localeCompare(b, 'tr')),
+    [customCategories, parentCategoryId],
   )
 
   const previewIcon = values.iconKey || suggestIcon(values.name || values.category)
@@ -379,6 +395,23 @@ export default function ServiceFormDialog({
                 </AnimatePresence>
 
                 <p className={helperStyle}>Raporlarda hizmet gruplaması bu alana göre yapılır.</p>
+
+                {/* Alt kategori (opsiyonel) — kategorinin altında daha ince gruplama */}
+                <div className="mt-1 flex flex-col gap-1.5">
+                  <label className={labelStyle}>Alt kategori <span className="font-normal text-[#705a66]">(opsiyonel)</span></label>
+                  <input
+                    type="text"
+                    list="svc-subcategory-options"
+                    placeholder="Örn. Bölgesel · Yüz · Vücut…"
+                    value={values.subCategory || ''}
+                    onChange={(e) => setValues((v) => ({ ...v, subCategory: e.target.value || null }))}
+                    className={fieldStyle}
+                  />
+                  <datalist id="svc-subcategory-options">
+                    {subCategoryOptions.map((n) => <option key={n} value={n} />)}
+                  </datalist>
+                  <p className={helperStyle}>Kategoriler sayfasında tanımlı alt kategoriler önerilir; serbest de yazabilirsin.</p>
+                </div>
               </div>
 
               {/* Fiyat & Süre */}
