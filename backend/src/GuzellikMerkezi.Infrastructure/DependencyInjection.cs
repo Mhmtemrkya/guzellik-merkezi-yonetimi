@@ -59,7 +59,8 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddScoped<IAuditActivityScope, AuditActivityScope>();
-        // Field-level encryption singleton — AesGcm instance pahalı, paylaşılan.
+        // Field-level encryption singleton — yalnızca ham anahtarı tutar (ucuz), thread-safe.
+        // AesGcm thread-safe olmadığından örneği paylaşmaz, çağrı başına yerel olarak oluşturur.
         services.AddSingleton<IEncryptionService, AesGcmEncryptionService>();
 
         services.AddDbContext<GuzellikDbContext>(options =>

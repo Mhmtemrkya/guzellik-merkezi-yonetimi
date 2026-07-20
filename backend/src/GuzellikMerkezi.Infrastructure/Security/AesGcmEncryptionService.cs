@@ -9,14 +9,21 @@ namespace GuzellikMerkezi.Infrastructure.Security;
 /// AES-256-GCM ile field-level şifreleme. Storage format:
 /// <c>ENC:v1:base64(nonce[12] || ciphertext || tag[16])</c>
 /// </summary>
-public sealed class AesGcmEncryptionService : IEncryptionService, IDisposable
+/// <remarks>
+/// Servis singleton'dır → tüm eşzamanlı istekler paylaşır. <see cref="AesGcm"/> thread-safe DEĞİLDİR;
+/// bu yüzden paylaşılan tek bir örnek TUTULMAZ. Yalnızca ham anahtar (<c>_key</c>) saklanır ve her
+/// Encrypt/Decrypt çağrısında yerel, kısa ömürlü bir <see cref="AesGcm"/> oluşturulur. Aksi halde
+/// eşzamanlı çözümlemeler birbirinin iç state'ini bozar, GCM tag doğrulaması patlar (CryptographicException)
+/// ve çözülemeyen ham "ENC:v1:..." dışarı sızar. AES anahtar genişletmesi çok ucuzdur; çağrı başına
+/// oluşturmanın maliyeti önemsizdir, doğruluk paylaşımdan önce gelir.
+/// </remarks>
+public sealed class AesGcmEncryptionService : IEncryptionService
 {
     private const string Prefix = "ENC:v1:";
     private const int NonceSize = 12;
     private const int TagSize = 16;
 
     private readonly byte[] _key; // 32 byte
-    private readonly AesGcm _aes;
 
     public AesGcmEncryptionService(IConfiguration configuration)
     {
@@ -30,7 +37,6 @@ public sealed class AesGcmEncryptionService : IEncryptionService, IDisposable
         catch (FormatException) { raw = Encoding.UTF8.GetBytes(base64); }
 
         _key = raw.Length == 32 ? raw : SHA256.HashData(raw);
-        _aes = new AesGcm(_key, TagSize);
     }
 
     public bool IsEncrypted(string? value) =>
@@ -47,7 +53,9 @@ public sealed class AesGcmEncryptionService : IEncryptionService, IDisposable
         var cipher = new byte[plainBytes.Length];
         var tag = new byte[TagSize];
 
-        _aes.Encrypt(nonce, plainBytes, cipher, tag);
+        // AesGcm thread-safe değil → çağrı başına yerel örnek (paylaşılan state yok).
+        using (var aes = new AesGcm(_key, TagSize))
+            aes.Encrypt(nonce, plainBytes, cipher, tag);
 
         // nonce || cipher || tag tek paket
         var packed = new byte[NonceSize + cipher.Length + TagSize];
@@ -77,7 +85,9 @@ public sealed class AesGcmEncryptionService : IEncryptionService, IDisposable
             Buffer.BlockCopy(payload, NonceSize + cipher.Length, tag, 0, TagSize);
 
             var plain = new byte[cipher.Length];
-            _aes.Decrypt(nonce, cipher, tag, plain);
+            // AesGcm thread-safe değil → çağrı başına yerel örnek (paylaşılan state yok).
+            using (var aes = new AesGcm(_key, TagSize))
+                aes.Decrypt(nonce, cipher, tag, plain);
             return Encoding.UTF8.GetString(plain);
         }
         catch (CryptographicException)
@@ -86,6 +96,4 @@ public sealed class AesGcmEncryptionService : IEncryptionService, IDisposable
             return ciphertext;
         }
     }
-
-    public void Dispose() => _aes.Dispose();
 }
