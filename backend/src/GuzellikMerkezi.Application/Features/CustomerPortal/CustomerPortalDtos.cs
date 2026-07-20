@@ -35,6 +35,9 @@ public sealed record CreatePortalAppointmentRequest(
     DateTime StartUtc,
     string? Notes);
 
+/// <summary>Erteleme: yalnızca yeni başlangıç istenir; süre korunur, kayıt Draft'a döner.</summary>
+public sealed record ReschedulePortalAppointmentRequest(DateTime StartUtc);
+
 public sealed record PortalAppointmentDto(
     Guid Id,
     Guid BranchId,

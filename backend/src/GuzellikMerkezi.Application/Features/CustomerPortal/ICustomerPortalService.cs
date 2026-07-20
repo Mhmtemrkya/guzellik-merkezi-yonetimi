@@ -16,4 +16,8 @@ public interface ICustomerPortalService
     Task<Result<PortalAvailabilityDto>> GetAvailabilityAsync(Guid customerId, Guid branchId, Guid staffId, Guid serviceId, DateOnly date, CancellationToken cancellationToken = default);
     Task<Result<PortalAppointmentDto>> CreateAppointmentAsync(Guid customerId, CreatePortalAppointmentRequest request, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyCollection<PortalAppointmentDto>>> ListMyAppointmentsAsync(Guid customerId, CancellationToken cancellationToken = default);
+    /// <summary>Müşteri kendi randevusunu iptal eder (başlangıca ≥ 2 saat varken).</summary>
+    Task<Result> CancelMyAppointmentAsync(Guid customerId, Guid appointmentId, CancellationToken cancellationToken = default);
+    /// <summary>Müşteri kendi randevusunu erteler — yeni saat yönetici onayına (Draft) düşer.</summary>
+    Task<Result> RescheduleMyAppointmentAsync(Guid customerId, Guid appointmentId, ReschedulePortalAppointmentRequest request, CancellationToken cancellationToken = default);
 }

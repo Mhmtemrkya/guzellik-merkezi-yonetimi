@@ -185,6 +185,26 @@ export async function customerLogin(input: CustomerLoginInput): Promise<Customer
   return session
 }
 
+/** OTP adım 1: kimlik eşleşirse telefona 6 haneli kod SMS'lenir (dev ortamında kod yanıtta döner). */
+export function customerOtpRequest(input: CustomerLoginInput): Promise<{ message?: string; devCode?: string | null }> {
+  return portalRequest<{ message?: string; devCode?: string | null }>('/api/auth/customer/otp/request', {
+    method: 'POST',
+    auth: false,
+    body: { fullName: input.fullName, phone: input.phone, birthDate: input.birthDate },
+  })
+}
+
+/** OTP adım 2: kod doğruysa normal giriş (JWT) tamamlanır. */
+export async function customerOtpVerify(input: CustomerLoginInput & { code: string }): Promise<CustomerSession> {
+  const session = await portalRequest<CustomerSession>('/api/auth/customer/otp/verify', {
+    method: 'POST',
+    auth: false,
+    body: { fullName: input.fullName, phone: input.phone, birthDate: input.birthDate, code: input.code },
+  })
+  storeCustomerSession(session)
+  return session
+}
+
 export async function customerRegister(input: CustomerRegisterInput): Promise<CustomerSession> {
   const session = await portalRequest<CustomerSession>('/api/auth/customer/register', {
     method: 'POST',
@@ -256,4 +276,14 @@ export function createPortalAppointment(input: {
 
 export function listMyPortalAppointments(): Promise<PortalAppointment[]> {
   return portalRequest<PortalAppointment[]>('/api/customer/appointments')
+}
+
+/** Müşteri kendi randevusunu iptal eder (başlangıca ≥ 2 saat varken). */
+export function cancelMyPortalAppointment(appointmentId: string): Promise<void> {
+  return portalRequest<void>(`/api/customer/appointments/${appointmentId}/cancel`, { method: 'POST', body: {} })
+}
+
+/** Müşteri kendi randevusunu erteler — yeni saat salon onayına düşer. */
+export function rescheduleMyPortalAppointment(appointmentId: string, startUtc: string): Promise<void> {
+  return portalRequest<void>(`/api/customer/appointments/${appointmentId}/reschedule`, { method: 'POST', body: { startUtc } })
 }

@@ -51,6 +51,18 @@ public static class CustomerPortalEndpoints
                 ? (await service.ListMyAppointmentsAsync(id, ct)).ToHttpResult(http)
                 : Forbidden(http));
 
+        // Müşteri kendi randevusunu iptal eder (başlangıca ≥ 2 saat varken).
+        group.MapPost("/appointments/{appointmentId:guid}/cancel", async (Guid appointmentId, ICurrentUser currentUser, ICustomerPortalService service, HttpContext http, CancellationToken ct) =>
+            RequireCustomer(currentUser, http, out var id)
+                ? (await service.CancelMyAppointmentAsync(id, appointmentId, ct)).ToHttpResult(http)
+                : Forbidden(http)).RequireRateLimiting("customer-portal-write");
+
+        // Müşteri kendi randevusunu erteler — yeni saat yönetici onayına (Draft) düşer.
+        group.MapPost("/appointments/{appointmentId:guid}/reschedule", async (Guid appointmentId, ReschedulePortalAppointmentRequest request, ICurrentUser currentUser, ICustomerPortalService service, HttpContext http, CancellationToken ct) =>
+            RequireCustomer(currentUser, http, out var id)
+                ? (await service.RescheduleMyAppointmentAsync(id, appointmentId, request, ct)).ToHttpResult(http)
+                : Forbidden(http)).RequireRateLimiting("customer-portal-write");
+
         // Salon sayfasından manuel yorum: yalnızca o salonda tamamlanmış randevusu olan gerçek müşteri.
         group.MapPost("/salons/{slug}/review", async (string slug, Application.Features.PublicSalons.SubmitSalonReviewRequest request, ICurrentUser currentUser, Application.Features.PublicSalons.IPublicSalonService salons, HttpContext http, CancellationToken ct) =>
             RequireCustomer(currentUser, http, out var id)

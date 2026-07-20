@@ -614,6 +614,8 @@ export const platformApi = {
     apiRequest<T>('/api/platform/messaging/test-sms', { method: 'POST', body: { target } }),
   testEmail: <T = unknown>(target: string): Promise<T> =>
     apiRequest<T>('/api/platform/messaging/test-email', { method: 'POST', body: { target } }),
+  testWhatsApp: <T = unknown>(target: string): Promise<T> =>
+    apiRequest<T>('/api/platform/messaging/test-whatsapp', { method: 'POST', body: { target } }),
 
   // Platform-wide usage summary
   platformUsage: <T = unknown>(): Promise<T> =>

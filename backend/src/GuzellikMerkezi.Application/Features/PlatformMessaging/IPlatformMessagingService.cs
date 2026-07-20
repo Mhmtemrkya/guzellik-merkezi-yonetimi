@@ -9,8 +9,11 @@ public interface IPlatformMessagingService
     Task<Result<PlatformIntegrationSettingsDto>> SaveSettingsAsync(SavePlatformMessagingRequest request, CancellationToken cancellationToken = default);
     Task<Result<MessagingTestResult>> SendTestSmsAsync(string toPhone, CancellationToken cancellationToken = default);
     Task<Result<MessagingTestResult>> SendTestEmailAsync(string toEmail, CancellationToken cancellationToken = default);
+    Task<Result<MessagingTestResult>> SendTestWhatsAppAsync(string toPhone, CancellationToken cancellationToken = default);
 
     /// <summary>Diğer servislerin kullanması için yeniden kullanılabilir gönderim (yapılandırılmamışsa simülasyon).</summary>
     Task<MessagingTestResult> SendSmsAsync(string toPhone, string message, CancellationToken cancellationToken = default);
     Task<MessagingTestResult> SendEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default);
+    /// <summary>Platform geneli WhatsApp (Meta Cloud API) ile serbest metin gönderir; yapılandırılmamışsa simülasyon. Müşteri OTP/2FA kodu bunu kullanır.</summary>
+    Task<MessagingTestResult> SendWhatsAppAsync(string toPhone, string message, CancellationToken cancellationToken = default);
 }

@@ -1114,6 +1114,13 @@ export interface ApiPlatformMessagingSettings {
   hasSmtpPassword?: boolean
   smtpUseSsl?: boolean
   emailConfigured?: boolean
+  // WhatsApp (Meta Cloud API) — platform geneli; müşteri OTP/2FA kodu buradan gider
+  whatsAppEnabled?: boolean
+  whatsAppProvider?: string
+  whatsAppPhoneNumberId?: string | null
+  hasWhatsAppAccessToken?: boolean
+  whatsAppBusinessAccountId?: string | null
+  whatsAppConfigured?: boolean
 }
 
 export interface ApiMessagingTestResult {

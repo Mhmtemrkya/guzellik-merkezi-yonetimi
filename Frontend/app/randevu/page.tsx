@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarCheck,
+  CalendarClock,
   CalendarDays,
   Check,
   Clock3,
@@ -16,9 +17,11 @@ import {
   Sparkles,
   UserRound,
   WandSparkles,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import {
+  cancelMyPortalAppointment,
   createPortalAppointment,
   customerLogout,
   getCustomerSession,
@@ -29,6 +32,7 @@ import {
   listPortalServices,
   listPortalStaff,
   portalStatusMeta,
+  rescheduleMyPortalAppointment,
   PortalApiError,
   type PortalAppointment,
   type PortalAvailability,
@@ -60,6 +64,15 @@ function formatAppointmentDate(utc: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+// Müşteri kendi randevusunu ancak aktif statüde ve başlangıca ≥ 2 saat varken
+// online iptal/erteleyebilir (backend ile aynı kural).
+const SELF_SERVICE_STATUSES = new Set(['1', 'scheduled', '2', 'confirmed', '6', 'draft'])
+const SELF_SERVICE_MIN_LEAD_MS = 2 * 60 * 60 * 1000
+function isSelfServiceEligible(a: PortalAppointment): boolean {
+  if (!SELF_SERVICE_STATUSES.has(String(a.status).toLowerCase())) return false
+  return new Date(a.startUtc).getTime() > Date.now() + SELF_SERVICE_MIN_LEAD_MS
 }
 
 /** Bugünden itibaren 14 günlük seçilebilir tarih listesi. */
@@ -107,6 +120,14 @@ export default function CustomerPortalPage() {
   const [created, setCreated] = useState<PortalAppointment | null>(null)
   // Salon sayfasından gelen ön-seçim (?branch=..&service=..) — şubeler/hizmetler yüklenince uygulanır.
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
+
+  // Randevularım self-servis: iptal/erteleme durumu.
+  const [actionId, setActionId] = useState<string | null>(null) // işlemi süren randevu (spinner)
+  const [rescheduleAppt, setRescheduleAppt] = useState<PortalAppointment | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState(dates[0].value)
+  const [rescheduleAvail, setRescheduleAvail] = useState<PortalAvailability | null>(null)
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
+  const [rescheduleError, setRescheduleError] = useState('')
 
   const handleAuthError = useCallback(
     (err: unknown): string => {
@@ -230,6 +251,74 @@ export default function CustomerPortalPage() {
       setLoading(false)
     }
   }
+
+  const refreshMyAppointments = useCallback(async (): Promise<void> => {
+    try {
+      setAppointments(await listMyPortalAppointments())
+    } catch {
+      /* liste yenilenemezse mevcut hali koru */
+    }
+  }, [])
+
+  const handleCancelAppointment = async (a: PortalAppointment): Promise<void> => {
+    if (!window.confirm('Bu randevuyu iptal etmek istediğinize emin misiniz?')) return
+    setError('')
+    setActionId(a.id)
+    try {
+      await cancelMyPortalAppointment(a.id)
+      if (rescheduleAppt?.id === a.id) setRescheduleAppt(null)
+      await refreshMyAppointments()
+    } catch (err) {
+      const message = handleAuthError(err)
+      if (message) setError(message)
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const openReschedule = (a: PortalAppointment): void => {
+    setRescheduleError('')
+    setRescheduleAvail(null)
+    setRescheduleDate(dates[0].value)
+    setRescheduleAppt(a)
+  }
+
+  const handleRescheduleSlot = async (slotStart: string): Promise<void> => {
+    if (!rescheduleAppt) return
+    setRescheduleError('')
+    setActionId(rescheduleAppt.id)
+    try {
+      // Slot yerel Türkiye saatiyle "HH:mm"; tarayıcı yerel saatinden UTC'ye çevrilir (booking ile aynı).
+      const startUtc = new Date(`${rescheduleDate}T${slotStart}:00`).toISOString()
+      await rescheduleMyPortalAppointment(rescheduleAppt.id, startUtc)
+      setRescheduleAppt(null)
+      await refreshMyAppointments()
+    } catch (err) {
+      const message = handleAuthError(err)
+      if (message) setRescheduleError(message)
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  // Erteleme paneli açıkken seçilen tarih için o randevunun uzman/hizmetine göre slotları çek.
+  useEffect(() => {
+    if (!rescheduleAppt) return
+    let cancelled = false
+    setRescheduleAvail(null)
+    setRescheduleError('')
+    setRescheduleLoading(true)
+    void getPortalAvailability(
+      rescheduleAppt.branchId,
+      rescheduleAppt.staffMemberId,
+      rescheduleAppt.serviceDefinitionId,
+      rescheduleDate,
+    )
+      .then((v) => { if (!cancelled) setRescheduleAvail(v) })
+      .catch((err) => { if (!cancelled) setRescheduleError(handleAuthError(err)) })
+      .finally(() => { if (!cancelled) setRescheduleLoading(false) })
+    return () => { cancelled = true }
+  }, [rescheduleAppt, rescheduleDate, handleAuthError])
 
   const resetWizard = (): void => {
     setCreated(null)
@@ -696,6 +785,9 @@ export default function CustomerPortalPage() {
                       : status.tone === 'rose'
                         ? 'bg-rose-50 text-rose-700'
                         : 'bg-slate-100 text-slate-600'
+                const eligible = isSelfServiceEligible(a)
+                const busy = actionId === a.id
+                const rescheduling = rescheduleAppt?.id === a.id
                 return (
                   <div key={a.id} className="rounded-2xl border border-[#f0e0e6] bg-[#fffafb] p-3.5">
                     <div className="flex items-start justify-between gap-2">
@@ -709,6 +801,119 @@ export default function CustomerPortalPage() {
                       <CalendarDays className="h-3.5 w-3.5 text-[#d65f83]" />
                       {formatAppointmentDate(a.startUtc)}
                     </div>
+
+                    {eligible && (
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => (rescheduling ? setRescheduleAppt(null) : openReschedule(a))}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#ead8df] bg-white py-2 text-[11.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5] hover:text-[#c85776] disabled:opacity-50"
+                        >
+                          <CalendarClock className="h-3.5 w-3.5" />
+                          {rescheduling ? 'Vazgeç' : 'Ertele'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handleCancelAppointment(a)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#f0cdd6] bg-white py-2 text-[11.5px] font-bold text-[#c2415f] transition hover:border-[#e08497] hover:bg-[#fff0f3] disabled:opacity-50"
+                        >
+                          {busy && !rescheduling ? (
+                            <motion.span
+                              aria-hidden
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
+                              className="h-3.5 w-3.5 rounded-full border-2 border-[#c2415f] border-t-transparent"
+                            />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          İptal Et
+                        </button>
+                      </div>
+                    )}
+
+                    <AnimatePresence>
+                      {rescheduling && (
+                        <motion.div
+                          key="resched"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-3 rounded-xl border border-[#ead8df] bg-white p-3">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#b65f7b]">
+                              <Clock3 className="h-3.5 w-3.5" />
+                              Yeni tarih & saat
+                            </div>
+                            <div className="mt-2.5 flex gap-1.5 overflow-x-auto pb-1">
+                              {dates.map((d) => {
+                                const active = d.value === rescheduleDate
+                                return (
+                                  <button
+                                    key={d.value}
+                                    type="button"
+                                    onClick={() => setRescheduleDate(d.value)}
+                                    className={`flex shrink-0 flex-col items-center rounded-lg border px-2.5 py-1.5 text-[10.5px] font-bold transition ${
+                                      active
+                                        ? 'border-[#d65f83] bg-[#d65f83] text-white'
+                                        : 'border-[#ead8df] bg-white text-[#6f5968] hover:border-[#ef9ab5]'
+                                    }`}
+                                  >
+                                    <span className="opacity-80">{d.weekday}</span>
+                                    <span className="text-[13px] leading-tight">{d.day}</span>
+                                    <span className="opacity-80">{d.month}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <div className="mt-2.5">
+                              {rescheduleLoading ? (
+                                <div className="flex items-center gap-2 py-2 text-[11.5px] font-semibold text-[#8d7180]">
+                                  <motion.span
+                                    aria-hidden
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                    className="h-3.5 w-3.5 rounded-full border-2 border-[#c85776] border-t-transparent"
+                                  />
+                                  Uygun saatler yükleniyor...
+                                </div>
+                              ) : (rescheduleAvail?.slots.filter((s) => s.available).length ?? 0) === 0 ? (
+                                <p className="py-2 text-[11.5px] font-semibold text-[#8d7180]">
+                                  Bu gün için uygun saat yok. Başka bir gün seçin.
+                                </p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {rescheduleAvail?.slots.map((s) => (
+                                    <button
+                                      key={s.start}
+                                      type="button"
+                                      disabled={!s.available || busy}
+                                      onClick={() => void handleRescheduleSlot(s.start)}
+                                      className={`rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold transition ${
+                                        s.available
+                                          ? 'border-[#ead8df] bg-white text-[#6f4153] hover:border-[#d65f83] hover:bg-[#fff0f5] disabled:opacity-50'
+                                          : 'cursor-not-allowed border-[#f0e6ea] bg-[#f7eef1] text-[#bda6b0] line-through'
+                                      }`}
+                                    >
+                                      {s.start}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {rescheduleError && (
+                              <p className="mt-2 text-[11px] font-semibold text-[#c2415f]">{rescheduleError}</p>
+                            )}
+                            <p className="mt-2 text-[10.5px] leading-relaxed text-[#9b7b8d]">
+                              Seçtiğiniz yeni saat salonun onayına gönderilir.
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )
               })}

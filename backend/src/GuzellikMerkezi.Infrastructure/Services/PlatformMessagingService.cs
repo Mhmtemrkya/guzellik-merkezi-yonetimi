@@ -41,8 +41,10 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         var smsKeyEnc = string.IsNullOrWhiteSpace(r.SmsApiKey) ? null : _encryption.Encrypt(r.SmsApiKey!.Trim());
         var smsSecretEnc = string.IsNullOrWhiteSpace(r.SmsApiSecret) ? null : _encryption.Encrypt(r.SmsApiSecret!.Trim());
         var smtpPwEnc = string.IsNullOrWhiteSpace(r.SmtpPassword) ? null : _encryption.Encrypt(r.SmtpPassword!.Trim());
+        var waTokenEnc = string.IsNullOrWhiteSpace(r.WhatsAppAccessToken) ? null : _encryption.Encrypt(r.WhatsAppAccessToken!.Trim());
         s.UpdateSms(r.SmsEnabled, r.SmsProvider, smsKeyEnc, smsSecretEnc, r.SmsSender, r.SmsApiUrl);
         s.UpdateEmail(r.EmailEnabled, r.EmailFromAddress, r.EmailFromName, r.SmtpHost, r.SmtpPort, r.SmtpUsername, smtpPwEnc, r.SmtpUseSsl);
+        s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId);
         await _db.SaveChangesAsync(ct);
         return Result<PlatformIntegrationSettingsDto>.Success(ToDto(s));
     }
@@ -58,6 +60,12 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         if (string.IsNullOrWhiteSpace(toEmail)) return Result<MessagingTestResult>.Failure(Error.Validation("E-posta adresi gerekli."));
         return Result<MessagingTestResult>.Success(await SendEmailAsync(toEmail, "BeautyAsist test e-postası",
             "<div style='font-family:sans-serif'><h2>Test e-postası ✅</h2><p>E-posta altyapısı çalışıyor.</p></div>", ct));
+    }
+
+    public async Task<Result<MessagingTestResult>> SendTestWhatsAppAsync(string toPhone, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(toPhone)) return Result<MessagingTestResult>.Failure(Error.Validation("Telefon numarası gerekli."));
+        return Result<MessagingTestResult>.Success(await SendWhatsAppAsync(toPhone, "BeautyAsist WhatsApp test mesajı — WhatsApp altyapısı çalışıyor.", ct));
     }
 
     public async Task<MessagingTestResult> SendSmsAsync(string toPhone, string message, CancellationToken ct = default)
@@ -106,7 +114,48 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         catch (Exception ex) { return new MessagingTestResult(false, false, null, ex.Message); }
     }
 
+    public async Task<MessagingTestResult> SendWhatsAppAsync(string toPhone, string message, CancellationToken ct = default)
+    {
+        var s = await _db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        var phone = NormalizePhone(toPhone);
+        if (phone.Length == 0) return new MessagingTestResult(false, false, null, "Geçersiz telefon numarası.");
+        if (s is null || !s.WhatsAppEnabled || !s.WhatsAppConfigured)
+            return Simulate("WHATSAPP", phone, message);
+
+        var token = _encryption.Decrypt(s.WhatsAppAccessTokenEncrypted) ?? string.Empty;
+        try
+        {
+            return await SendViaMetaWhatsAppAsync(s.WhatsAppPhoneNumberId!, token, phone, message, ct);
+        }
+        catch (Exception ex) { return new MessagingTestResult(false, false, null, ex.Message); }
+    }
+
     // --- sağlayıcılar ---
+
+    private async Task<MessagingTestResult> SendViaMetaWhatsAppAsync(string phoneNumberId, string accessToken, string toPhone, string body, CancellationToken ct)
+    {
+        var client = _httpFactory.CreateClient("WhatsApp");
+        var url = $"https://graph.facebook.com/v21.0/{phoneNumberId}/messages";
+        var payload = new { messaging_product = "whatsapp", recipient_type = "individual", to = toPhone, type = "text", text = new { preview_url = false, body } };
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await client.SendAsync(req, ct);
+        var raw = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode) return new MessagingTestResult(false, false, null, $"Meta {(int)resp.StatusCode}: {Clip(raw)}");
+        // Yanıt: { messages: [ { id: "wamid..." } ] }
+        string? messageId = null;
+        try
+        {
+            using var d = JsonDocument.Parse(raw);
+            if (d.RootElement.TryGetProperty("messages", out var m) && m.GetArrayLength() > 0 && m[0].TryGetProperty("id", out var id))
+                messageId = id.GetString();
+        }
+        catch (JsonException) { /* id parse edilemese de gönderim başarılı */ }
+        return new MessagingTestResult(true, false, messageId, null);
+    }
 
     private async Task<MessagingTestResult> SendViaTwilioAsync(string sid, string token, string from, string to, string body, CancellationToken ct)
     {
@@ -149,10 +198,12 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
     private static PlatformIntegrationSettingsDto ToDto(PlatformIntegrationSettings? s)
     {
         if (s is null)
-            return new PlatformIntegrationSettingsDto(false, "Simulation", false, false, null, null, false, false, null, null, null, 587, null, false, true, false);
+            return new PlatformIntegrationSettingsDto(false, "Simulation", false, false, null, null, false, false, null, null, null, 587, null, false, true, false,
+                false, "Meta", null, false, null, false);
         return new PlatformIntegrationSettingsDto(
             s.SmsEnabled, s.SmsProvider, !string.IsNullOrWhiteSpace(s.SmsApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.SmsApiSecretEncrypted), s.SmsSender, s.SmsApiUrl, s.SmsConfigured,
-            s.EmailEnabled, s.EmailFromAddress, s.EmailFromName, s.SmtpHost, s.SmtpPort, s.SmtpUsername, !string.IsNullOrWhiteSpace(s.SmtpPasswordEncrypted), s.SmtpUseSsl, s.EmailConfigured);
+            s.EmailEnabled, s.EmailFromAddress, s.EmailFromName, s.SmtpHost, s.SmtpPort, s.SmtpUsername, !string.IsNullOrWhiteSpace(s.SmtpPasswordEncrypted), s.SmtpUseSsl, s.EmailConfigured,
+            s.WhatsAppEnabled, s.WhatsAppProvider, s.WhatsAppPhoneNumberId, !string.IsNullOrWhiteSpace(s.WhatsAppAccessTokenEncrypted), s.WhatsAppBusinessAccountId, s.WhatsAppConfigured);
     }
 
     private static string NormalizePhone(string? p) => new string((p ?? string.Empty).Where(char.IsDigit).ToArray());

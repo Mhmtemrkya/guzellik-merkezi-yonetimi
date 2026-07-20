@@ -369,11 +369,11 @@ export default function PlatformSistemPage() {
           <Stat label="Bakım modu" value={maintenanceOn ? 'AÇIK' : 'Kapalı'} icon={Server} sub={maintenanceOn ? 'Bakım bayrağı aktif' : 'Bakım bayrağı kapalı'} />
         </div>
 
-        {/* SMS + E-POSTA ALTYAPISI (platform geneli) */}
+        {/* SMS + WHATSAPP + E-POSTA ALTYAPISI (platform geneli) */}
         <div>
           <div className="mb-3 flex items-baseline gap-3">
             <h2 className="font-display text-lg tracking-tight text-[#fff4f8]">Mesajlaşma Altyapısı</h2>
-            <span className="text-[11px] text-[#fff4f8]/40">SMS &amp; e-posta · tüm kurumlar için merkezi</span>
+            <span className="text-[11px] text-[#fff4f8]/40">SMS, WhatsApp &amp; e-posta · tüm kurumlar için merkezi · müşteri 2FA kodu WhatsApp&apos;tan</span>
           </div>
           <PlatformMessagingSettings />
         </div>

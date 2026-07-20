@@ -32,6 +32,9 @@ builder.Services.AddOpenApi();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApiServices(builder.Configuration);
+// Müşteri OTP girişi — kodlar bellekte 5 dk tutulur (tek örnekli dağıtım).
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();

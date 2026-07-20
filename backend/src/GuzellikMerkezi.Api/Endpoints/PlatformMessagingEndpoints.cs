@@ -21,6 +21,9 @@ public static class PlatformMessagingEndpoints
         group.MapPost("/test-email", async (MessagingTestRequest request, IPlatformMessagingService service, HttpContext http, CancellationToken ct) =>
             (await service.SendTestEmailAsync(request.Target, ct)).ToHttpResult(http));
 
+        group.MapPost("/test-whatsapp", async (MessagingTestRequest request, IPlatformMessagingService service, HttpContext http, CancellationToken ct) =>
+            (await service.SendTestWhatsAppAsync(request.Target, ct)).ToHttpResult(http));
+
         return app;
     }
 }

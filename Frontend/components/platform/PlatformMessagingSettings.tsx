@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageSquare, Mail, Loader2, Check, Send, ShieldCheck, Info } from 'lucide-react'
+import { MessageSquare, MessageCircle, Mail, Loader2, Check, Send, ShieldCheck, Info } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { platformApi } from '@/lib/apiClient'
 import type { ApiPlatformMessagingSettings, ApiMessagingTestResult } from '@/lib/types'
@@ -43,19 +43,24 @@ export default function PlatformMessagingSettings() {
 
   const [sms, setSms] = useState({ enabled: false, provider: 'Netgsm', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
+  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '' })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [smsTarget, setSmsTarget] = useState('')
   const [emailTarget, setEmailTarget] = useState('')
+  const [whatsAppTarget, setWhatsAppTarget] = useState('')
   const [smsTest, setSmsTest] = useState('')
   const [emailTest, setEmailTest] = useState('')
+  const [whatsAppTest, setWhatsAppTest] = useState('')
   const [testingSms, setTestingSms] = useState(false)
   const [testingEmail, setTestingEmail] = useState(false)
+  const [testingWhatsApp, setTestingWhatsApp] = useState(false)
 
   useEffect(() => {
     if (!data) return
     setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Netgsm', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
     setEmail((e) => ({ ...e, enabled: !!data.emailEnabled, fromAddress: data.emailFromAddress || '', fromName: data.emailFromName || '', host: data.smtpHost || '', port: data.smtpPort || 587, username: data.smtpUsername || '', useSsl: data.smtpUseSsl ?? true }))
+    setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '' }))
   }, [data])
 
   const save = async () => {
@@ -64,8 +69,9 @@ export default function PlatformMessagingSettings() {
       await platformApi.saveMessagingSettings({
         smsEnabled: sms.enabled, smsProvider: sms.provider, smsApiKey: sms.apiKey || null, smsApiSecret: sms.apiSecret || null, smsSender: sms.sender || null, smsApiUrl: sms.apiUrl || null,
         emailEnabled: email.enabled, emailFromAddress: email.fromAddress || null, emailFromName: email.fromName || null, smtpHost: email.host || null, smtpPort: Number(email.port) || 587, smtpUsername: email.username || null, smtpPassword: email.password || null, smtpUseSsl: email.useSsl,
+        whatsAppEnabled: whatsApp.enabled, whatsAppProvider: 'Meta', whatsAppPhoneNumberId: whatsApp.phoneNumberId || null, whatsAppAccessToken: whatsApp.accessToken || null, whatsAppBusinessAccountId: whatsApp.businessAccountId || null,
       })
-      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' }))
+      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '' }))
       setSaved(true); await reload(); setTimeout(() => setSaved(false), 2500)
     } finally { setBusy(false) }
   }
@@ -81,6 +87,12 @@ export default function PlatformMessagingSettings() {
     setTestingEmail(true); setEmailTest('')
     try { const r = await platformApi.testEmail<ApiMessagingTestResult>(emailTarget.trim()); setEmailTest(r.success ? (r.simulated ? 'Simülasyon ✓ (kayıtlı ayar canlı değil)' : 'Gönderildi ✓') : `Hata: ${r.error}`) }
     catch { setEmailTest('İstek başarısız') } finally { setTestingEmail(false); setTimeout(() => setEmailTest(''), 6000) }
+  }
+  const runTestWhatsApp = async () => {
+    if (!whatsAppTarget.trim()) return
+    setTestingWhatsApp(true); setWhatsAppTest('')
+    try { const r = await platformApi.testWhatsApp<ApiMessagingTestResult>(whatsAppTarget.trim()); setWhatsAppTest(r.success ? (r.simulated ? 'Simülasyon ✓ (kayıtlı ayar canlı değil)' : 'Gönderildi ✓') : `Hata: ${r.error}`) }
+    catch { setWhatsAppTest('İstek başarısız') } finally { setTestingWhatsApp(false); setTimeout(() => setWhatsAppTest(''), 6000) }
   }
 
   return (
@@ -175,6 +187,50 @@ export default function PlatformMessagingSettings() {
                 </button>
               </div>
               {emailTest && <div className="mt-1.5 text-[11px] text-[#fff4f8]/60">{emailTest}</div>}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* WHATSAPP — müşteri OTP/2FA kanalı (platform geneli, Meta Cloud API) */}
+      <div className={`${card} lg:col-span-2 flex flex-col gap-4 p-5`}>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center border border-emerald-400/25 bg-emerald-400/[0.06]"><MessageCircle className="h-5 w-5 text-emerald-300/80" strokeWidth={1.4} /></div>
+            <div>
+              <div className="font-display text-xl tracking-tight text-[#fff4f8]">WhatsApp Altyapısı</div>
+              <div className="text-[11px] text-[#fff4f8]/45">Meta Cloud API · müşteri giriş kodları (2FA) bu numaradan gönderilir</div>
+            </div>
+          </div>
+          <StatusPill configured={data?.whatsAppConfigured} enabled={data?.whatsAppEnabled} />
+        </div>
+
+        {loading ? <div className="py-4 text-center text-[12px] text-[#fff4f8]/40">Yükleniyor…</div> : (
+          <>
+            <Toggle on={whatsApp.enabled} onClick={() => setWhatsApp((w) => ({ ...w, enabled: !w.enabled }))} label="WhatsApp gönderimini etkinleştir" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>Telefon Numarası ID (phone_number_id)</label>
+                <input value={whatsApp.phoneNumberId} onChange={(e) => setWhatsApp((w) => ({ ...w, phoneNumberId: e.target.value }))} placeholder="123456789012345" className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Erişim Anahtarı (Access Token) {data?.hasWhatsAppAccessToken && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+                <input type="password" value={whatsApp.accessToken} onChange={(e) => setWhatsApp((w) => ({ ...w, accessToken: e.target.value }))} placeholder={data?.hasWhatsAppAccessToken ? 'değiştirmek için yaz' : 'EAAG… (kalıcı erişim anahtarı)'} className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>İşletme Hesabı ID (WABA ID) · opsiyonel</label>
+              <input value={whatsApp.businessAccountId} onChange={(e) => setWhatsApp((w) => ({ ...w, businessAccountId: e.target.value }))} placeholder="WhatsApp Business Account ID" className={inputCls} />
+            </div>
+            <div className="border-t border-[#fff4f8]/10 pt-3">
+              <label className={labelCls}>Test WhatsApp mesajı</label>
+              <div className="flex gap-2">
+                <input value={whatsAppTarget} onChange={(e) => setWhatsAppTarget(e.target.value)} placeholder="05xx xxx xx xx" className={inputCls} />
+                <button type="button" onClick={runTestWhatsApp} disabled={testingWhatsApp} className="flex shrink-0 items-center gap-1.5 border border-[#fff4f8]/20 bg-[#fff4f8]/[0.05] px-3 text-[12px] text-[#fff4f8] transition hover:bg-[#fff4f8]/10 disabled:opacity-50">
+                  {testingWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Test
+                </button>
+              </div>
+              {whatsAppTest && <div className="mt-1.5 text-[11px] text-[#fff4f8]/60">{whatsAppTest}</div>}
             </div>
           </>
         )}

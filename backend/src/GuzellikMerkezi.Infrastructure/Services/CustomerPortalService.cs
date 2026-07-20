@@ -398,6 +398,104 @@ public sealed class CustomerPortalService : ICustomerPortalService
         return Result<IReadOnlyCollection<PortalAppointmentDto>>.Success(items);
     }
 
+    /// <summary>Bu kimliğin sahip olduğu (pazaryeri ise kimliğe uyan tüm kurum-altı) müşteri id'leri.</summary>
+    private async Task<List<Guid>> AllowedCustomerIdsAsync(Customer identity, CancellationToken ct)
+    {
+        var individualTenantId = await IndividualTenantIdAsync(ct);
+        if (identity.TenantId != individualTenantId) return new List<Guid> { identity.Id };
+        var key = PhoneMask.LoginKey(identity.Phone);
+        var name = NormalizeName(identity.FullName);
+        var sameDob = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => !c.IsDeleted && c.BirthDate == identity.BirthDate)
+            .Select(c => new { c.Id, c.Phone, c.FullName })
+            .ToListAsync(ct);
+        return sameDob.Where(c => PhoneMask.LoginKey(c.Phone) == key && NormalizeName(c.FullName) == name).Select(c => c.Id).ToList();
+    }
+
+    /// <summary>Randevuyu yükler ve bu müşteri kimliğine ait olduğunu doğrular; değilse null.</summary>
+    private async Task<Appointment?> LoadOwnedAppointmentAsync(Guid customerId, Guid appointmentId, CancellationToken ct)
+    {
+        var identity = await LoadCustomerAsync(customerId, ct);
+        if (identity is null) return null;
+        var appointment = await _db.Appointments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && !a.IsDeleted, ct);
+        if (appointment is null) return null;
+        var allowed = await AllowedCustomerIdsAsync(identity, ct);
+        return allowed.Contains(appointment.CustomerId) ? appointment : null;
+    }
+
+    private const int SelfServiceMinLeadHours = 2;
+
+    public async Task<Result> CancelMyAppointmentAsync(Guid customerId, Guid appointmentId, CancellationToken cancellationToken = default)
+    {
+        var appointment = await LoadOwnedAppointmentAsync(customerId, appointmentId, cancellationToken);
+        if (appointment is null) return Result.Failure(Error.NotFound("Randevu bulunamadı."));
+        if (appointment.Status is not (AppointmentStatus.Draft or AppointmentStatus.Scheduled or AppointmentStatus.Confirmed))
+            return Result.Failure(Error.Validation("Bu randevu artık iptal edilemez."));
+        if (appointment.StartUtc <= DateTime.UtcNow.AddHours(SelfServiceMinLeadHours))
+            return Result.Failure(Error.Validation($"Randevu saatine {SelfServiceMinLeadHours} saatten az kaldığı için online iptal edilemez. Lütfen salonu arayın."));
+
+        appointment.Cancel("Müşteri online iptal etti.");
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(appointment.TenantId, appointment.BranchId, "Cancel", "Appointment", appointment.Id,
+            $"Müşteri randevusunu online iptal etti ({appointment.StartUtc:dd.MM.yyyy HH:mm})", null, cancellationToken);
+        await _notifications.NotifyRolesAsync(
+            appointment.TenantId, appointment.BranchId,
+            new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+            AppNotificationType.AppointmentCancelled,
+            AppNotificationSeverity.Warning,
+            "Müşteri randevusunu iptal etti",
+            $"{appointment.StartUtc.AddHours(3):dd.MM.yyyy HH:mm} randevusu online iptal edildi — slot boşaldı.",
+            data: new { route = "/appointments", id = appointment.Id.ToString() },
+            dedupeKey: $"portal-cancel:{appointment.Id}",
+            ct: cancellationToken);
+        return Result.Success();
+    }
+
+    public async Task<Result> RescheduleMyAppointmentAsync(Guid customerId, Guid appointmentId, ReschedulePortalAppointmentRequest request, CancellationToken cancellationToken = default)
+    {
+        var appointment = await LoadOwnedAppointmentAsync(customerId, appointmentId, cancellationToken);
+        if (appointment is null) return Result.Failure(Error.NotFound("Randevu bulunamadı."));
+        if (appointment.Status is not (AppointmentStatus.Draft or AppointmentStatus.Scheduled or AppointmentStatus.Confirmed))
+            return Result.Failure(Error.Validation("Bu randevu artık ertelenemez."));
+        if (appointment.StartUtc <= DateTime.UtcNow.AddHours(SelfServiceMinLeadHours))
+            return Result.Failure(Error.Validation($"Randevu saatine {SelfServiceMinLeadHours} saatten az kaldığı için online ertelenemez. Lütfen salonu arayın."));
+
+        var newStart = DateTime.SpecifyKind(request.StartUtc, DateTimeKind.Utc);
+        if (newStart <= DateTime.UtcNow.AddHours(1))
+            return Result.Failure(Error.Validation("Yeni saat en az 1 saat sonrası olmalı."));
+        var duration = appointment.EndUtc - appointment.StartUtc;
+        var newEnd = newStart + duration;
+
+        // Mesai + slot doluluk kontrolleri (yeni randevu almakla aynı kurallar).
+        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, appointment.TenantId, appointment.StaffMemberId, newStart, newEnd, cancellationToken);
+        if (hoursBlock is not null) return Result.Failure(Error.Validation("Seçilen uzman bu saatte çalışmıyor. Lütfen farklı bir saat seçin."));
+        var concurrent = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => !a.IsDeleted
+            && a.TenantId == appointment.TenantId && a.StaffMemberId == appointment.StaffMemberId && a.Id != appointment.Id
+            && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow && a.Status != AppointmentStatus.Draft
+            && a.StartUtc < newEnd && newStart < a.EndUtc, cancellationToken);
+        if (concurrent >= MaxConcurrentAppointmentsPerStaff)
+            return Result.Failure(Error.Conflict("Seçilen saat dolu. Lütfen başka bir saat seçin."));
+
+        appointment.Reschedule(newStart, newEnd);
+        // Müşterinin taşıdığı saat doğrudan takvime düşmez; yönetici onayına (Draft) döner.
+        appointment.SubmitForApproval();
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(appointment.TenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,
+            $"Müşteri randevusunu online erteledi → {newStart:dd.MM.yyyy HH:mm} (onay bekliyor)", null, cancellationToken);
+        await _notifications.NotifyRolesAsync(
+            appointment.TenantId, appointment.BranchId,
+            new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+            AppNotificationType.AppointmentUpdated,
+            AppNotificationSeverity.Info,
+            "Müşteri randevu erteleme talebi",
+            $"Yeni saat: {newStart.AddHours(3):dd.MM.yyyy HH:mm} — onay kutunuzda bekliyor.",
+            data: new { route = "/appointments/inbox", id = appointment.Id.ToString() },
+            dedupeKey: $"portal-resched:{appointment.Id}:{newStart:yyyyMMddHHmm}",
+            ct: cancellationToken);
+        return Result.Success();
+    }
+
     private static DateTime ToUtc(DateOnly date, TimeOnly localTime) =>
         new DateTimeOffset(date.ToDateTime(localTime), TurkeyOffset).UtcDateTime;
 

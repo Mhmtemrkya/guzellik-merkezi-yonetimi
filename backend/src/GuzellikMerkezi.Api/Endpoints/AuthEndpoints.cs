@@ -5,6 +5,9 @@ using GuzellikMerkezi.Application.Features.Auth;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
+/// <summary>OTP doğrulama isteği — kimlik alanları + SMS'teki 6 haneli kod.</summary>
+public sealed record CustomerOtpVerifyRequest(string FullName, string Phone, DateOnly BirthDate, string Code);
+
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
@@ -21,6 +24,14 @@ public static class AuthEndpoints
         // Şifresiz giriş brute-force'a açık olduğundan IP bazlı hız sınırına tabidir.
         group.MapPost("/customer/login", async (CustomerLoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.CustomerLoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+
+        // OTP'li müşteri girişi (opsiyonel, daha güvenli): kimlik eşleşirse SMS ile 6 haneli kod,
+        // kod doğrulanınca JWT verilir. Simülasyon modunda SMS gitmez; Development'ta kod yanıtta döner.
+        group.MapPost("/customer/otp/request", async (CustomerLoginRequest request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
+            (await otp.RequestAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+
+        group.MapPost("/customer/otp/verify", async (CustomerOtpVerifyRequest request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
+            (await otp.VerifyAsync(new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate), request.Code, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
 
         // Kuruma bağlı olmayan müşteri kaydı (kayıt ol) — herkese açık, kayıt sonrası otomatik giriş.
         group.MapPost("/customer/register", async (CustomerRegisterRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>

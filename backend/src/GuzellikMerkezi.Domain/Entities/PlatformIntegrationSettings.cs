@@ -27,8 +27,16 @@ public sealed class PlatformIntegrationSettings : Entity
     public string? SmtpPasswordEncrypted { get; private set; }
     public bool SmtpUseSsl { get; private set; } = true;
 
+    // --- WhatsApp (Meta Cloud API) — platform geneli; müşteri OTP/2FA kodu buradan gider ---
+    public bool WhatsAppEnabled { get; private set; }
+    public string WhatsAppProvider { get; private set; } = "Meta";
+    public string? WhatsAppPhoneNumberId { get; private set; }
+    public string? WhatsAppAccessTokenEncrypted { get; private set; }
+    public string? WhatsAppBusinessAccountId { get; private set; }
+
     public bool SmsConfigured => !string.IsNullOrWhiteSpace(SmsApiKeyEncrypted) && !string.IsNullOrWhiteSpace(SmsSender);
     public bool EmailConfigured => !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(EmailFromAddress);
+    public bool WhatsAppConfigured => !string.IsNullOrWhiteSpace(WhatsAppPhoneNumberId) && !string.IsNullOrWhiteSpace(WhatsAppAccessTokenEncrypted);
 
     /// <param name="apiKeyEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
     public void UpdateSms(bool enabled, string? provider, string? apiKeyEnc, string? apiSecretEnc, string? sender, string? apiUrl)
@@ -53,6 +61,17 @@ public sealed class PlatformIntegrationSettings : Entity
         SmtpUsername = Clean(username);
         if (passwordEnc is not null) SmtpPasswordEncrypted = passwordEnc;
         SmtpUseSsl = useSsl;
+        Touch();
+    }
+
+    /// <param name="accessTokenEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
+    public void UpdateWhatsApp(bool enabled, string? provider, string? phoneNumberId, string? accessTokenEnc, string? businessAccountId)
+    {
+        WhatsAppEnabled = enabled;
+        WhatsAppProvider = string.IsNullOrWhiteSpace(provider) ? "Meta" : provider.Trim();
+        WhatsAppPhoneNumberId = Clean(phoneNumberId);
+        if (accessTokenEnc is not null) WhatsAppAccessTokenEncrypted = accessTokenEnc;
+        WhatsAppBusinessAccountId = Clean(businessAccountId);
         Touch();
     }
 

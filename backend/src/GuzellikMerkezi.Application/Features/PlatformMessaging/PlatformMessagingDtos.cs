@@ -16,7 +16,14 @@ public sealed record PlatformIntegrationSettingsDto(
     string? SmtpUsername,
     bool HasSmtpPassword,
     bool SmtpUseSsl,
-    bool EmailConfigured);
+    bool EmailConfigured,
+    // --- WhatsApp (Meta Cloud API) ---
+    bool WhatsAppEnabled,
+    string WhatsAppProvider,
+    string? WhatsAppPhoneNumberId,
+    bool HasWhatsAppAccessToken,
+    string? WhatsAppBusinessAccountId,
+    bool WhatsAppConfigured);
 
 public sealed record SavePlatformMessagingRequest(
     bool SmsEnabled,
@@ -32,7 +39,13 @@ public sealed record SavePlatformMessagingRequest(
     int SmtpPort,
     string? SmtpUsername,
     string? SmtpPassword,
-    bool SmtpUseSsl);
+    bool SmtpUseSsl,
+    // --- WhatsApp (Meta Cloud API) ---
+    bool WhatsAppEnabled = false,
+    string? WhatsAppProvider = null,
+    string? WhatsAppPhoneNumberId = null,
+    string? WhatsAppAccessToken = null,
+    string? WhatsAppBusinessAccountId = null);
 
 public sealed record MessagingTestRequest(string Target);
 

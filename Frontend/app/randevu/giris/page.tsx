@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import {
   customerLogin,
+  customerOtpRequest,
+  customerOtpVerify,
   customerRegister,
   getCustomerSession,
 } from '@/lib/customerPortalApi'
@@ -83,27 +85,66 @@ export default function CustomerLoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
-    e.preventDefault()
-    setError('')
+  // WhatsApp OTP/2FA akışı: 'idle' → kod istendi ('code') → doğrula.
+  const [otpStage, setOtpStage] = useState<'idle' | 'code'>('idle')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpInfo, setOtpInfo] = useState('')
+
+  /** Ortak kimlik doğrulaması — geçersizse hata basar ve null döner. */
+  const validateIdentity = (): { name: string; normalizedPhone: string } | null => {
     const name = fullName.trim()
     const phoneDigits = phone.replace(/\D/g, '')
     if (name.split(/\s+/).length < 2) {
       setError('Lütfen ad ve soyadınızı birlikte girin.')
-      return
+      return null
     }
     if (phoneDigits.length < 10) {
       setError('Lütfen geçerli bir telefon numarası girin (örn. 05XX XXX XX XX).')
-      return
+      return null
     }
     if (!birthDate) {
       setError('Doğum tarihi zorunlu.')
-      return
+      return null
     }
-    const normalizedPhone = phoneDigits.length === 10 ? `0${phoneDigits}` : phoneDigits
+    return { name, normalizedPhone: phoneDigits.length === 10 ? `0${phoneDigits}` : phoneDigits }
+  }
+
+  const handleOtpRequest = async (): Promise<void> => {
+    setError('')
+    const id = validateIdentity()
+    if (!id) return
     try {
       setLoading(true)
-      if (mode === 'login') {
+      const res = await customerOtpRequest({ fullName: id.name, phone: id.normalizedPhone, birthDate })
+      setOtpStage('code')
+      setOtpCode('')
+      setOtpInfo(
+        res?.devCode
+          ? `Doğrulama kodu WhatsApp numaranıza gönderildi. (Test ortamı kodu: ${res.devCode})`
+          : 'Bilgiler kayıtlarımızla eşleşiyorsa WhatsApp numaranıza 6 haneli doğrulama kodu gönderildi. Kod 5 dakika geçerlidir.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kod gönderilemedi. Lütfen tekrar deneyin.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
+    e.preventDefault()
+    setError('')
+    const id = validateIdentity()
+    if (!id) return
+    const { name, normalizedPhone } = id
+    try {
+      setLoading(true)
+      if (mode === 'login' && otpStage === 'code') {
+        if (otpCode.trim().length !== 6) {
+          setError('WhatsApp ile gelen 6 haneli kodu girin.')
+          return
+        }
+        await customerOtpVerify({ fullName: name, phone: normalizedPhone, birthDate, code: otpCode.trim() })
+      } else if (mode === 'login') {
         await customerLogin({ fullName: name, phone: normalizedPhone, birthDate })
       } else {
         await customerRegister({
@@ -391,6 +432,47 @@ export default function CustomerLoginPage() {
                 )}
               </AnimatePresence>
 
+              {/* OTP kod adımı — WhatsApp ile gelen 6 haneli kod */}
+              <AnimatePresence>
+                {mode === 'login' && otpStage === 'code' && (
+                  <motion.div
+                    key="otp-code"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-2xl border border-[#e798b4]/50 bg-[#fff0f5]/70 p-4">
+                      <div className="text-[12px] leading-relaxed text-[#352432]/[0.70]">{otpInfo}</div>
+                      <div className="mt-3">
+                        <label className={labelCls}>WhatsApp Doğrulama Kodu</label>
+                        <div className={inputWrap}>
+                          <Check className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6 haneli kod"
+                            className={`${inputCls} tracking-[0.4em]`}
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px]">
+                        <button type="button" onClick={() => { setOtpStage('idle'); setError('') }} className="text-[#9d7386] hover:text-[#c85776]">
+                          ← Bilgilerle giriş yap
+                        </button>
+                        <button type="button" disabled={loading} onClick={() => void handleOtpRequest()} className="font-semibold text-[#c85776] hover:underline disabled:opacity-50">
+                          Kodu tekrar gönder
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <AnimatePresence>
                 {error && (
                   <motion.div
@@ -427,12 +509,24 @@ export default function CustomerLoginPage() {
                     </>
                   ) : (
                     <>
-                      {mode === 'login' ? 'Giriş Yap ve Randevu Al' : 'Kayıt Ol ve Randevu Al'}
+                      {mode === 'login' ? (otpStage === 'code' ? 'Kodu Doğrula ve Giriş Yap' : 'Giriş Yap ve Randevu Al') : 'Kayıt Ol ve Randevu Al'}
                       <ArrowRight className="absolute right-5 h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </>
                   )}
                 </span>
               </motion.button>
+
+              {/* WhatsApp kodlu giriş — daha güvenli alternatif (2FA) */}
+              {mode === 'login' && otpStage === 'idle' && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleOtpRequest()}
+                  className="mt-2 w-full rounded-2xl border border-[#ead8df] bg-white/80 py-3 text-[12.5px] font-semibold text-[#c85776] transition-colors hover:border-[#e798b4] hover:bg-[#fff0f5] disabled:opacity-50"
+                >
+                  💬 WhatsApp Kodu ile Giriş (önerilen)
+                </button>
+              )}
 
               <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
                 <Lock className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />

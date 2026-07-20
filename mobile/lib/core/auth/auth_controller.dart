@@ -144,6 +144,42 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// OTP adım 1 (opsiyonel, daha güvenli giriş): kimlik eşleşirse telefona 6 haneli
+  /// kod SMS'lenir. Güvenlik için eşleşmese de aynı yanıt döner. Development ortamında
+  /// kod yanıtta ('devCode') gelir (simülasyonda gerçek SMS gitmez).
+  Future<Map<String, dynamic>> customerOtpRequest({
+    required String fullName,
+    required String phone,
+    required String birthDate,
+  }) async {
+    final data = await api.postPublic('/api/auth/customer/otp/request', {
+      'fullName': fullName.trim(),
+      'phone': phone.trim(),
+      'birthDate': birthDate,
+    });
+    return (data as Map).cast<String, dynamic>();
+  }
+
+  /// OTP adım 2: SMS kodu doğruysa müşteri girişi tamamlanır (JWT).
+  Future<void> customerOtpVerify({
+    required String fullName,
+    required String phone,
+    required String birthDate,
+    required String code,
+  }) async {
+    final data = await api.postPublic('/api/auth/customer/otp/verify', {
+      'fullName': fullName.trim(),
+      'phone': phone.trim(),
+      'birthDate': birthDate,
+      'code': code.trim(),
+    });
+    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
+    _remember = true;
+    await _persistSession();
+    status = AuthStatus.signedIn;
+    notifyListeners();
+  }
+
   /// Kuruma bağlı olmayan müşteri kaydı (kayıt ol). Başarılıysa otomatik giriş yapılır.
   /// gender: 0 Belirtilmemiş, 1 Kadın, 2 Erkek, 3 Diğer (Domain.Enums.Gender ile aynı).
   Future<void> customerRegister({
