@@ -372,32 +372,20 @@ export default function DayScheduleModal({
                 </div>
               ) : (
                 <div style={{ minWidth: innerMinWidth }}>
-                  {/* Personel başlık satırı (sticky) */}
-                  <div className="sticky top-0 z-20 flex border-b border-[#ead8df]/70 bg-white/95 backdrop-blur">
-                    <div className="w-16 shrink-0 border-r border-[#f3e4ea]" />
+                  {/* Personel başlık satırı (sticky) — dikey merkezli kart: tam isim + kompakt izin ikonu */}
+                  <div className="sticky top-0 z-20 flex border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+                    <div className="grid w-16 shrink-0 place-items-center border-r border-[#f3e4ea] text-[#c9aeba]">
+                      <Clock className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    </div>
                     <div className="grid flex-1" style={{ gridTemplateColumns: gridTemplate }}>
                       {columns.map((col) => {
                         const onLeave = col.id ? leaveIds.has(col.id) : false
                         return (
-                          <div key={col.id ?? 'none'} className={`flex items-center gap-2.5 border-l border-[#f3e4ea] px-3 py-2.5 first:border-l-0 ${onLeave ? 'bg-rose-50/50' : ''}`}>
-                            {col.photoUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={col.photoUrl} alt={col.name} className={`h-9 w-9 shrink-0 rounded-full border border-[#efbfd0]/60 object-cover ${onLeave ? 'opacity-60 grayscale' : ''}`} />
-                            ) : col.id === null ? (
-                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#fff4f8] text-[#b08aa0]">
-                                <UserRound className="h-4 w-4" />
-                              </span>
-                            ) : (
-                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efd5dd] bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[10px] font-semibold text-[#7f4057]">
-                                {initialsOf(col.name)}
-                              </span>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[12.5px] font-semibold text-[#241923]">{col.name}</div>
-                              <div className={`truncate text-[10px] ${onLeave ? 'text-rose-500' : 'text-[#c85776]/70'}`}>
-                                {onLeave ? 'İzinli' : col.appts.length ? `${col.appts.length} randevu` : 'boş'}
-                              </div>
-                            </div>
+                          <div
+                            key={col.id ?? 'none'}
+                            className={`group/hd relative flex flex-col items-center gap-1.5 border-l border-[#f3e4ea] px-2.5 py-3 text-center transition-colors first:border-l-0 ${onLeave ? 'bg-rose-50/50' : 'hover:bg-[#fff7fa]'}`}
+                          >
+                            {/* İzin durumu/aksiyonu — köşede kompakt (isme tüm genişlik kalsın) */}
                             {col.id && canManageLeave ? (
                               <button
                                 type="button"
@@ -406,22 +394,63 @@ export default function DayScheduleModal({
                                   if (col.id && date) onToggleLeave?.(col.id, date, onLeave)
                                 }}
                                 title={onLeave ? 'İzni kaldır — randevuya yeniden açılır' : 'Bu personeli bugün izinli yap'}
-                                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                aria-label={onLeave ? 'İzni kaldır' : 'İzinli yap'}
+                                className={`absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                                   onLeave
-                                    ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
-                                    : 'border-[#ead8df] bg-white/70 text-[#9d7386] hover:border-[#efbfd0] hover:bg-[#fff1f6] hover:text-[#c85776]'
+                                    ? 'border-rose-200 bg-rose-100 text-rose-600 hover:bg-rose-200'
+                                    : 'border-[#ead8df] bg-white/85 text-[#c2a2b0] hover:border-[#efbfd0] hover:bg-[#fff1f6] hover:text-[#c85776]'
                                 }`}
                               >
-                                {onLeave ? <X className="h-2.5 w-2.5" /> : <Plane className="h-2.5 w-2.5" />}
-                                {onLeave ? 'İzni kaldır' : 'İzinli yap'}
+                                {onLeave ? <X className="h-3 w-3" /> : <Plane className="h-3 w-3" />}
                               </button>
                             ) : (
                               onLeave && (
-                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold text-rose-600">
-                                  <Plane className="h-2.5 w-2.5" /> İzinli
+                                <span
+                                  title="İzinli"
+                                  className="absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full border border-rose-200 bg-rose-50 text-rose-500"
+                                >
+                                  <Plane className="h-3 w-3" />
                                 </span>
                               )
                             )}
+
+                            {/* Avatar */}
+                            {col.photoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={col.photoUrl} alt={col.name} className={`h-11 w-11 shrink-0 rounded-full border-2 border-white object-cover shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`} />
+                            ) : col.id === null ? (
+                              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#fff4f8] text-[#b08aa0]">
+                                <UserRound className="h-5 w-5" />
+                              </span>
+                            ) : (
+                              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[13px] font-bold text-[#7f4057] shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`}>
+                                {initialsOf(col.name)}
+                              </span>
+                            )}
+
+                            {/* İsim — tam ad, en fazla 2 satır (sabit yükseklikte ortalanır) */}
+                            <div className="flex min-h-[34px] w-full items-center justify-center">
+                              <span className="line-clamp-2 text-[12.5px] font-semibold leading-tight text-[#241923]" title={col.name}>
+                                {col.name}
+                              </span>
+                            </div>
+
+                            {/* Durum rozeti */}
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-semibold ${
+                                onLeave ? 'bg-rose-50 text-rose-500' : col.appts.length ? 'bg-[#fff1f6] text-[#c85776]' : 'bg-[#f4edf0] text-[#a58d99]'
+                              }`}
+                            >
+                              {onLeave ? (
+                                <>
+                                  <Plane className="h-2.5 w-2.5" /> İzinli
+                                </>
+                              ) : col.appts.length ? (
+                                `${col.appts.length} randevu`
+                              ) : (
+                                'boş'
+                              )}
+                            </span>
                           </div>
                         )
                       })}
