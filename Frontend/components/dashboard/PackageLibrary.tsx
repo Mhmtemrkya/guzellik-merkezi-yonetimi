@@ -9,7 +9,7 @@ import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, Gift, Loader2, Minus, PackagePlus, PencilLine,
@@ -88,6 +88,9 @@ export default function PackageLibrary({
   const [actionError, setActionError] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
   const [showIconPicker, setShowIconPicker] = useState(false)
+  // Pakete hizmet seçimi: arama + kategori filtresi.
+  const [svcSearch, setSvcSearch] = useState('')
+  const [svcCat, setSvcCat] = useState('')
 
   const { data, loading, error, reload } = useApiQuery<{
     packages: ApiServicePackage[]; services: ApiService[]; cats: ApiCustomServiceCategory[]
@@ -97,12 +100,13 @@ export default function PackageLibrary({
       if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [] }
       const [packages, services, cats, accounts, campaigns] = await Promise.all([
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
-        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }),
+        // TÜM hizmetleri çek (tek sayfa 200 tavanına takılıp hizmetler eksik görünmesin).
+        fetchAllPaged<ApiService>((page, size) => adminApi.services<ApiService>({ tenantId, page, pageSize: size })).catch(() => [] as ApiService[]),
         adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.campaigns<ApiCampaign>({ tenantId }).catch(() => []),
       ])
-      return { packages: apiItems(packages), services: apiItems(services), cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [] }
+      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [] }
     },
     [tenantId],
     { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [] } },
@@ -293,7 +297,27 @@ export default function PackageLibrary({
   const goPage = (p: number) => setPage(Math.min(totalPages, Math.max(1, p)))
   const pageNumbers = useMemo(() => { const out: (number | '...')[] = []; for (let p = 1; p <= totalPages; p++) { if (p === 1 || p === totalPages || (p >= page - 2 && p <= page + 2)) out.push(p); else if (out[out.length - 1] !== '...') out.push('...') } return out }, [page, totalPages])
 
-  const activeServices = services.filter((s) => s.status === 'Active')
+  // Pakete eklenecek hizmet havuzu: arşivliler hariç TÜM hizmetler (aktif önce), arama + kategori süzgeci.
+  const pickerPool = useMemo(
+    () =>
+      services
+        .filter((s) => s.status !== 'Archived')
+        .sort((a, b) => (a.status === 'Active' ? 0 : 1) - (b.status === 'Active' ? 0 : 1) || a.name.localeCompare(b.name, 'tr')),
+    [services],
+  )
+  const pickerCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of pickerPool) if (s.group) set.add(s.group)
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
+  }, [pickerPool])
+  const pickerServices = useMemo(() => {
+    const t = svcSearch.trim().toLocaleLowerCase('tr')
+    return pickerPool.filter(
+      (s) =>
+        (!svcCat || s.group === svcCat) &&
+        (!t || s.name.toLocaleLowerCase('tr').includes(t) || (s.group || '').toLocaleLowerCase('tr').includes(t)),
+    )
+  }, [pickerPool, svcSearch, svcCat])
 
   return (
     <>
@@ -644,32 +668,97 @@ export default function PackageLibrary({
 
         {/* PAKETE EKLENECEK HİZMETLER */}
         <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
-          <div className="mb-1 font-display text-lg tracking-tight">Pakete Eklenecek Hizmetler</div>
-          <div className="mb-3 text-[11px] text-[#352432]/45">Hizmet havuzundan seçim yaparak paketi oluşturun.</div>
-          <div className="flex gap-2.5 overflow-x-auto pb-2">
-            {activeServices.map((s) => {
-              const inDraft = draft.items.some((i) => i.serviceDefinitionId === s.id)
-              return (
-                <div key={s.id} className={`w-56 shrink-0 rounded-[16px] border p-3.5 transition-colors ${inDraft ? 'border-[#c85776]/60 bg-[#fff1f6]/60' : 'border-[#ead8df]/70 bg-white'}`}>
-                  <div className="flex items-start justify-between">
-                    <span className="grid h-10 w-10 place-items-center rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
-                    {inDraft && <CheckCircle2 className="h-5 w-5 text-[#c85776]" />}
-                  </div>
-                  <div className="mt-2 truncate text-[13px] font-medium text-[#352432]">{s.name}</div>
-                  <div className="truncate text-[10px] text-[#352432]/45">{s.group}</div>
-                  <div className="mt-1 text-[10px] text-[#352432]/55">{s.duration} dk · 1 seans</div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="font-display text-[15px] tabular-nums">{formatTL(s.price)}</span>
-                    <button type="button" onClick={() => addService(s)}
-                      className={`rounded-[8px] border px-2.5 py-1 text-[10px] font-medium transition-colors ${inDraft ? 'border-[#c85776]/50 bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#c85776] hover:bg-[#fff1f6]'}`}>
-                      {inDraft ? 'Seçildi ✓' : '+ Pakete Ekle'}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-            {activeServices.length === 0 && <div className="py-6 text-center text-sm text-[#352432]/45 w-full">Aktif hizmet yok — önce Hizmet Havuzu'ndan hizmet ekleyin.</div>}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-display text-lg tracking-tight">Pakete Eklenecek Hizmetler</div>
+              <div className="text-[11px] text-[#352432]/45">Hizmet kartına tıklayarak pakete ekleyin; seans sayısını yukarıdaki listeden ayarlayın.</div>
+            </div>
+            <span className="shrink-0 rounded-full border border-[#efbfd0]/70 bg-[#fff1f6] px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-[#b14d6c]">
+              {draft.items.length} seçili · {pickerPool.length} hizmet
+            </span>
           </div>
+
+          {/* Arama + kategori süzgeci */}
+          <div className="mt-3 flex flex-col gap-2.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#352432]/35" />
+              <input
+                value={svcSearch}
+                onChange={(e) => setSvcSearch(e.target.value)}
+                placeholder="Hizmet ara: ad veya kategori…"
+                className="w-full rounded-[12px] border border-[#ead8df]/70 bg-white py-2.5 pl-9 pr-9 text-[13px] outline-none transition-colors focus:border-[#c85776]"
+              />
+              {svcSearch && (
+                <button type="button" onClick={() => setSvcSearch('')} aria-label="Aramayı temizle"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#352432]/35 hover:text-[#c85776]"><X className="h-4 w-4" /></button>
+              )}
+            </div>
+            {pickerCategories.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <CatPill active={!svcCat} onClick={() => setSvcCat('')}>Tümü</CatPill>
+                {pickerCategories.map((c) => (
+                  <CatPill key={c} active={svcCat === c} onClick={() => setSvcCat(svcCat === c ? '' : c)}>{c}</CatPill>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Grid — tüm hizmetler görünür (yatay kaydırma yok) */}
+          {pickerPool.length === 0 ? (
+            <div className="mt-4 rounded-[12px] border border-dashed border-[#ead8df] bg-white py-8 text-center text-sm text-[#352432]/45">
+              Henüz hizmet yok — önce Hizmet Havuzu&apos;ndan hizmet ekleyin.
+            </div>
+          ) : pickerServices.length === 0 ? (
+            <div className="mt-4 rounded-[12px] border border-dashed border-[#ead8df] bg-white py-8 text-center text-sm text-[#352432]/45">
+              Aramanıza uygun hizmet bulunamadı.
+            </div>
+          ) : (
+            <div className="mt-3 grid max-h-[420px] grid-cols-2 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+              {pickerServices.map((s) => {
+                const item = draft.items.find((i) => i.serviceDefinitionId === s.id)
+                const inDraft = !!item
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => addService(s)}
+                    title={inDraft ? `${s.name} — tekrar tıkla, seansı artır` : `${s.name} — pakete ekle`}
+                    className={`group relative flex flex-col rounded-[14px] border p-3 text-left transition-all ${
+                      inDraft
+                        ? 'border-[#c85776]/60 bg-[#fff1f6] ring-1 ring-[#c85776]/25'
+                        : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0] hover:shadow-[0_10px_24px_-18px_rgba(200,87,118,0.6)]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <span className="grid h-9 w-9 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]">
+                        <ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-4 w-4" />
+                      </span>
+                      {inDraft ? (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-[#c85776] px-2 py-0.5 text-[10px] font-semibold text-white">
+                          <CheckCircle2 className="h-3 w-3" />×{item!.sessionCount}
+                        </span>
+                      ) : (
+                        <span className="grid h-6 w-6 place-items-center rounded-full border border-[#ead8df] text-[#c85776] transition-colors group-hover:border-[#c85776] group-hover:bg-[#c85776] group-hover:text-white">
+                          <Plus className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 line-clamp-1 text-[12.5px] font-medium text-[#352432]">{s.name}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="line-clamp-1 text-[10px] text-[#352432]/45">{s.group || 'Genel'}</span>
+                      {s.status !== 'Active' && (
+                        <span className={`shrink-0 rounded border px-1 py-px text-[8px] font-mono uppercase ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status]}</span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <span className="text-[10px] text-[#352432]/50">{s.duration} dk</span>
+                      <span className="font-display text-[13px] tabular-nums text-[#352432]">{formatTL(s.price)}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* PAKET ÖZETİ */}
@@ -696,6 +785,22 @@ function Row({ k, v, tone }: { k: string; v: string; tone?: string }) {
       <span className="text-[11px] text-[#352432]/55">{k}</span>
       <span className={`text-[13px] tabular-nums ${tone || 'text-[#352432]'}`}>{v}</span>
     </div>
+  )
+}
+
+function CatPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+        active
+          ? 'border-[#c85776] bg-[#c85776] text-white'
+          : 'border-[#ead8df]/70 bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 

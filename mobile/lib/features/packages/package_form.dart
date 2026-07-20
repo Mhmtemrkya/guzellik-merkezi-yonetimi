@@ -80,12 +80,96 @@ class _PackageFormState extends State<PackageForm> {
   }
 
   Future<void> _load() async {
-    _services = apiItems(
-      await widget.api.get(
-        '/api/admin/services/',
-        query: {'page': 1, 'pageSize': 200},
-      ),
+    // TÜM hizmetleri çek (tek sayfa 200 tavanına takılıp hizmetler eksik görünmesin).
+    _services = apiItems(await widget.api.getAllPaged('/api/admin/services/'));
+  }
+
+  String? _serviceName(String? id) {
+    if (id == null) return null;
+    for (final s in _services) {
+      if ('${s['id']}' == id) return valueOf(s, const ['name']);
+    }
+    return null;
+  }
+
+  /// Aranabilir hizmet seçici (alt sayfa) — ad/kategori ile filtreler; tüm hizmetler görünür.
+  Future<void> _pickService(int index) async {
+    final selectedId = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        var q = '';
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final t = q.trim().toLowerCase();
+            final list = t.isEmpty
+                ? _services
+                : _services.where((s) {
+                    final name = valueOf(s, const ['name']).toLowerCase();
+                    final cat = valueOf(s, const ['category', 'group']).toLowerCase();
+                    return name.contains(t) || cat.contains(t);
+                  }).toList();
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.7,
+                child: Column(children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                    child: TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Hizmet ara: ad veya kategori…',
+                        prefixIcon: Icon(Icons.search_rounded),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setSheet(() => q = v),
+                    ),
+                  ),
+                  Expanded(
+                    child: list.isEmpty
+                        ? const Center(child: Text('Hizmet bulunamadı.', style: TextStyle(color: AppColors.muted)))
+                        : ListView.separated(
+                            itemCount: list.length,
+                            separatorBuilder: (_, _) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final s = list[i];
+                              final id = '${s['id']}';
+                              final selected = id == _items[index].serviceId;
+                              final cat = valueOf(s, const ['category', 'group']);
+                              final price = (s['price'] as num?) ?? 0;
+                              return ListTile(
+                                leading: const CircleAvatar(
+                                  backgroundColor: AppColors.rose,
+                                  child: Icon(Icons.spa_rounded, color: AppColors.primaryDark, size: 18),
+                                ),
+                                title: Text(valueOf(s, const ['name']), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text([
+                                  if (cat.isNotEmpty) cat,
+                                  '${price.toStringAsFixed(price == price.roundToDouble() ? 0 : 2)} ₺',
+                                ].join(' · ')),
+                                trailing: selected ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
+                                onTap: () => Navigator.pop(ctx, id),
+                              );
+                            },
+                          ),
+                  ),
+                ]),
+              ),
+            );
+          },
+        );
+      },
     );
+    if (selectedId != null) setState(() => _items[index].serviceId = selectedId);
   }
 
   @override
@@ -322,29 +406,24 @@ class _PackageFormState extends State<PackageForm> {
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _services.any(
-                          (s) => '${s['id']}' == item.serviceId,
-                        )
-                        ? item.serviceId
-                        : null,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Hizmet',
-                      isDense: true,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _pickService(index),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Hizmet',
+                        isDense: true,
+                        suffixIcon: Icon(Icons.search_rounded, size: 18),
+                      ),
+                      child: Text(
+                        _serviceName(item.serviceId) ?? 'Hizmet seçin',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: item.serviceId == null ? AppColors.muted : AppColors.ink,
+                        ),
+                      ),
                     ),
-                    items: _services
-                        .map(
-                          (s) => DropdownMenuItem(
-                            value: '${s['id']}',
-                            child: Text(
-                              valueOf(s, const ['name']),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => item.serviceId = v),
                   ),
                 ),
                 if (_items.length > 1)
