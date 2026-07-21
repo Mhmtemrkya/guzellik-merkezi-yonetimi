@@ -4,7 +4,6 @@ import '../../core/network/api_client.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
 import '../customers/customer_picker.dart';
-import 'adisyon_detail_sheet.dart';
 
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
@@ -201,6 +200,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         'firstDueDate': installment ? _isoDate(firstDueDate) : null,
         // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
         'forceNew': true,
+        // Faz 2: satış cariye şimdi işlenmez; müşteri ilk randevusunu tamamlayınca otomatik onaylanır.
+        'autoApproveOnFirstAppointment': true,
       });
       final adisyonMap = adisyon is Map
           ? adisyon.cast<String, dynamic>()
@@ -243,17 +244,11 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         });
       }
 
-      // 4) Onaylama YOK — satış AÇIK adisyon olarak kalır ve adisyon kartı açılır (Ön Muhasebe gibi);
-      //    kullanıcı içeride ödeme/peşinat alıp onaylar. (Web PackageSaleDialog paritesi; günlük karttan farklı.)
+      // 4) Faz 2: onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu tamamlayınca
+      //    backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar). Kurum yöneticisine bilgi modalı.
       if (mounted) {
         setState(() => saving = false);
-        await showModalBottomSheet<bool>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
-        );
+        await _showDeferredNotice(pay > 0);
         if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
@@ -261,6 +256,26 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  /// Faz 2 bilgilendirme modalı: satış kaydedildi ama cariye ilk randevu tamamlanınca işlenecek.
+  Future<void> _showDeferredNotice(bool hasDeposit) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.event_available_rounded, color: Color(0xFF0284C7)),
+        title: const Text('Satış kaydedildi · ilk randevuda işlenecek'),
+        content: Text(
+          'Satış açık adisyon olarak kaydedildi. Tutar cariye ŞİMDİ işlenmedi; '
+          '${hasDeposit ? 'peşinat dâhil ' : ''}müşteri ilk randevusunu tamamladığında otomatik olarak '
+          'cariye işlenip ${widget.serviceSale ? 'hizmet seansı' : 'paket seansları'} tanımlanacak. '
+          'Seansları kullanmak için randevu şimdiden verilebilir.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam')),
+        ],
+      ),
+    );
   }
 
   @override
@@ -309,8 +324,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                       const SizedBox(height: 4),
                       Text(
                         widget.customerId != null
-                            ? '$_customerLabel · onayda cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir'
-                            : 'Onayda cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir',
+                            ? '$_customerLabel · ilk randevu tamamlanınca cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir'
+                            : 'İlk randevu tamamlanınca cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.black54,

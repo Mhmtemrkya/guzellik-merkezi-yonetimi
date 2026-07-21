@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Adisyonlar;
 using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Appointments;
 using GuzellikMerkezi.Application.Features.Usage;
@@ -22,8 +23,9 @@ public sealed class AppointmentService : IAppointmentService
     private readonly IDurableJobQueue _jobs;
     private readonly IAppNotificationService _notifications;
     private readonly ICurrentUser _currentUser;
+    private readonly IAdisyonService _adisyon;
 
-    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications, ICurrentUser currentUser)
+    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications, ICurrentUser currentUser, IAdisyonService adisyon)
     {
         _db = db;
         _usage = usage;
@@ -32,6 +34,7 @@ public sealed class AppointmentService : IAppointmentService
         _jobs = jobs;
         _notifications = notifications;
         _currentUser = currentUser;
+        _adisyon = adisyon;
     }
 
     // Personel müşteri telefonunu yalnızca maskeli görür (PhoneMask kuralı).
@@ -208,7 +211,12 @@ public sealed class AppointmentService : IAppointmentService
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
-    /// <summary>Müşterinin onaylanmış satışı (paket seans bakiyesi ya da onaylı adisyonda satış kalemi) var mı?</summary>
+    /// <summary>
+    /// Müşterinin randevu verilebilecek bir satışı var mı? Onaylı satış (paket seans bakiyesi ya da onaylı
+    /// adisyonda satış kalemi) VEYA Faz 2'de "ilk randevu tamamlanınca işlenecek" bekleyen açık satış.
+    /// Deferred satışta henüz seans/cari oluşmaz; yine de randevu verilebilmeli ki ilk randevu tamamlanınca
+    /// otomatik onay tetiklensin (aksi halde satış hiç işlenemeyeceği bir kilitlenme oluşur).
+    /// </summary>
     private async Task<bool> HasApprovedSaleAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken)
     {
         var hasPackage = await _db.CustomerPackageSessions.AsNoTracking()
@@ -220,8 +228,10 @@ public sealed class AppointmentService : IAppointmentService
             join i in _db.AdisyonItems.AsNoTracking() on a.Id equals i.AdisyonId
             where a.TenantId == tenantId
                 && a.CustomerId == customerId
-                && a.Status == AdisyonStatus.Approved
-                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.Product || i.Type == AdisyonItemType.Extra)
+                && (a.Status == AdisyonStatus.Approved
+                    || (a.Status == AdisyonStatus.Open && a.AutoApproveOnFirstAppointment))
+                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.PackageSale
+                    || i.Type == AdisyonItemType.Product || i.Type == AdisyonItemType.Extra)
             select a.Id).AnyAsync(cancellationToken);
     }
 
@@ -280,6 +290,29 @@ public sealed class AppointmentService : IAppointmentService
         // Complete() yalnızca Scheduled/Confirmed'dan çağrılabildiği için bu blok randevu başına tek kez çalışır.
         if (request.Status == AppointmentStatus.Completed && prevStatus != AppointmentStatus.Completed)
         {
+            // Faz 2: Müşterinin "ilk randevu tamamlanınca işle" bekleyen (açık) satış adisyonları varsa
+            // şimdi otomatik onayla → satış cariye borç, peşinat kasaya gelir, satılan seanslar o an oluşur.
+            // Onay seansları yaratır → hemen aşağıdaki seans düşümü (satılan hizmet bu randevuysa) onları bulur.
+            // best-effort: bir satış onaylanamazsa (ör. stok/guard) randevu tamamlanmayı engelleme, denetime yaz.
+            var pendingSaleIds = await _db.Adisyonlar.AsNoTracking()
+                .Where(a => a.TenantId == tenantId
+                         && a.CustomerId == appointment.CustomerId
+                         && a.Status == AdisyonStatus.Open
+                         && a.AutoApproveOnFirstAppointment)
+                .OrderBy(a => a.OpenedAtUtc)
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var saleId in pendingSaleIds)
+            {
+                var approved = await _adisyon.ApproveAsync(tenantId, saleId, cancellationToken);
+                if (!approved.IsSuccess)
+                {
+                    await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveFailed", "Adisyon", saleId,
+                        $"İlk randevu tamamlandı ama satış otomatik cariye işlenemedi: {approved.Error.Message}",
+                        new { appointment.Id, appointment.CustomerId }, cancellationToken);
+                }
+            }
+
             var session = await _db.CustomerPackageSessions
                 .Where(s => s.TenantId == tenantId
                          && s.CustomerId == appointment.CustomerId

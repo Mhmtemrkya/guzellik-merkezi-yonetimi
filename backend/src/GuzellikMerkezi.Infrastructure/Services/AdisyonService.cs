@@ -102,6 +102,8 @@ public sealed class AdisyonService : IAdisyonService
 
         var adisyon = new Adisyon(tenantId, request.BranchId ?? customer.BranchId, customer.Id, request.CustomerAccountId, request.Notes);
         if (request.InstallmentCount.HasValue) adisyon.SetInstallmentPlan(request.InstallmentCount, request.FirstDueDate);
+        // Faz 2: satış modalından açılan adisyon "ilk randevu tamamlanınca otomatik işle" bayrağıyla gelir.
+        if (request.AutoApproveOnFirstAppointment) adisyon.SetAutoApproveOnFirstAppointment(true);
         _db.Adisyonlar.Add(adisyon);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, adisyon.BranchId, "Create", "Adisyon", adisyon.Id, $"Adisyon açıldı: {customer.FullName}", new { adisyon.CustomerId }, cancellationToken);
@@ -118,6 +120,9 @@ public sealed class AdisyonService : IAdisyonService
         // Taksit planı yalnızca satış modalı gönderdiğinde uygulanır (peşin = 0). Alakasız
         // güncellemeler (ör. not) InstallmentCount göndermez → mevcut plan korunur.
         if (request.InstallmentCount.HasValue) adisyon.SetInstallmentPlan(request.InstallmentCount, request.FirstDueDate);
+        // Faz 2 bayrağı yalnızca açık adisyonda anlamlı (onaylanmışta no-op → EnsureOpen atmasın).
+        if (request.AutoApproveOnFirstAppointment.HasValue && adisyon.Status == AdisyonStatus.Open)
+            adisyon.SetAutoApproveOnFirstAppointment(request.AutoApproveOnFirstAppointment.Value);
         await _db.SaveChangesAsync(cancellationToken);
         return await GetAsync(tenantId, id, cancellationToken);
     }
@@ -695,6 +700,7 @@ public sealed class AdisyonService : IAdisyonService
         a.PaymentTotal,
         a.PlannedInstallmentCount,
         a.PlannedFirstDueDate,
+        a.AutoApproveOnFirstAppointment,
         a.Items
             .OrderBy(i => i.CreatedAtUtc)
             .Select(i => new AdisyonItemDto(

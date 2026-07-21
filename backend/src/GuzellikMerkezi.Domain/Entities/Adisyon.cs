@@ -42,6 +42,14 @@ public sealed class Adisyon : Entity
     /// <summary>Taksit planının ilk vade tarihi (taksit varsa). Sonraki taksitler aydan aya ilerler.</summary>
     public DateOnly? PlannedFirstDueDate { get; private set; }
 
+    /// <summary>
+    /// Faz 2: true ise bu satış adisyonu şimdi cariye/kasaya işlenmez (elle onaya da düşmez);
+    /// müşterinin ilk randevusu tamamlandığında <c>AppointmentService</c> otomatik <see cref="Approve"/> eder
+    /// (borç + peşinat + seanslar o an düşer). Satış modallarından açılan adisyonlarda true; manuel/Ön Muhasebe
+    /// adisyonlarında false (onlar eski akışta elle onaylanır).
+    /// </summary>
+    public bool AutoApproveOnFirstAppointment { get; private set; }
+
     public IReadOnlyCollection<AdisyonItem> Items => _items.AsReadOnly();
 
     /// <summary>Cariye borç yazılacak net tutar: hizmet+ürün+ek+paket satışı kalemleri − indirimler (paketten karşılananlar hariç).</summary>
@@ -82,6 +90,17 @@ public sealed class Adisyon : Entity
             PlannedInstallmentCount = count.Value;
             PlannedFirstDueDate = firstDueDate;
         }
+        Touch();
+    }
+
+    /// <summary>
+    /// Satış adisyonunu "ilk randevu tamamlanınca otomatik işle" moduna alır. Açıkken çağrılır;
+    /// onay tetiği <c>AppointmentService.ChangeStatusAsync</c> (Tamamlandı) içindedir.
+    /// </summary>
+    public void SetAutoApproveOnFirstAppointment(bool value)
+    {
+        EnsureOpen();
+        AutoApproveOnFirstAppointment = value;
         Touch();
     }
 

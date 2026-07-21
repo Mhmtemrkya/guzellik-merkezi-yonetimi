@@ -30,6 +30,8 @@ public sealed record AdisyonDto(
     decimal PaymentTotal,
     int PlannedInstallmentCount,
     DateOnly? PlannedFirstDueDate,
+    // Faz 2: true ise satış cariye şimdi işlenmedi; müşterinin ilk randevusu tamamlanınca otomatik işlenir.
+    bool AutoApproveOnFirstAppointment,
     IReadOnlyCollection<AdisyonItemDto> Items);
 
 public sealed record CreateAdisyonRequest(
@@ -40,7 +42,9 @@ public sealed record CreateAdisyonRequest(
     int? InstallmentCount = null,
     DateOnly? FirstDueDate = null,
     // true = mevcut açık fişi yeniden KULLANMA, her seferinde YENİ adisyon aç (satış = kendi adisyonu).
-    bool ForceNew = false);
+    bool ForceNew = false,
+    // Faz 2: true = satış cariye şimdi işlenmez; müşterinin ilk randevusu tamamlanınca otomatik işlenir.
+    bool AutoApproveOnFirstAppointment = false);
 
 public sealed record AddAdisyonItemRequest(
     AdisyonItemType Type,
@@ -55,7 +59,9 @@ public sealed record UpdateAdisyonRequest(
     Guid? CustomerAccountId,
     string? Notes,
     int? InstallmentCount = null,
-    DateOnly? FirstDueDate = null);
+    DateOnly? FirstDueDate = null,
+    // Faz 2: null = değiştirme; değer verilirse "ilk randevu tamamlanınca otomatik işle" bayrağını günceller.
+    bool? AutoApproveOnFirstAppointment = null);
 
 /// <summary>Adisyona hediye çeki / kupon kodu uygula (indirim kalemi eklenir, onayda redeem edilir).</summary>
 public sealed record ApplyAdisyonGiftCardRequest(string Code);

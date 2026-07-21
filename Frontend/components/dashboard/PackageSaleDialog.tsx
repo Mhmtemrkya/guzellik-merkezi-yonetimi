@@ -80,12 +80,17 @@ export default function PackageSaleDialog({
   const router = useRouter()
   const isProductSale = Boolean(productSale)
   const isServiceSale = !isProductSale && (Boolean(presetService) || Boolean(serviceSale))
+  // Faz 2: hizmet/paket satışı cariye ŞİMDİ işlenmez; müşteri ilk randevusunu tamamlayınca backend
+  // otomatik işler (peşinat dâhil). Ürün satışı randevuya bağlı olmadığından bu ertelemeye girmez.
+  const deferToFirstAppointment = !isProductSale
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<SaleStep>('form')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // Onay yetkisi olmayan personelde satış açık adisyon olarak yönetici onayına bırakılır.
   const [pendingApproval, setPendingApproval] = useState(false)
+  // Faz 2: satış "ilk randevu tamamlanınca işlenecek" moduyla kaydedildiyse done ekranı bilgi modalı gösterir.
+  const [deferred, setDeferred] = useState(false)
 
   const [customerId, setCustomerId] = useState('')
   const [customerName, setCustomerName] = useState('')
@@ -109,6 +114,7 @@ export default function PackageSaleDialog({
     if (open) {
       setStep('form')
       setPendingApproval(false)
+      setDeferred(false)
       setCustomerId(presetCustomer?.id || '')
       setCustomerName(presetCustomer?.name || '')
       setPackageId(presetPackageId || '')
@@ -279,6 +285,8 @@ export default function PackageSaleDialog({
           firstDueDate: isInstallment ? firstDueDate : null,
           // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
           forceNew: true,
+          // Faz 2: hizmet/paket satışı ilk randevu tamamlanınca otomatik onaylanır (ürün hariç).
+          autoApproveOnFirstAppointment: deferToFirstAppointment,
         },
         tenantId,
       )
@@ -341,11 +349,16 @@ export default function PackageSaleDialog({
       }
 
       // 4) Davranış:
-      //  - openCardAfterSale (VARSAYILAN): onaylama YOK — satış AÇIK adisyon olarak kalır ve
-      //    adisyon kartı (AdisyonModal) açılır (Ön Muhasebe gibi). Kullanıcı içeride ödeme/peşinat
-      //    alıp "Onayla → cariye aktar" ile bitirir. (Günlük adisyon kartından farklı; bu müşteri kartı.)
-      //  - false: eski davranış — anında onayla → cariye işle + seans aç.
-      if (openCardAfterSale) {
+      //  - Faz 2 (hizmet/paket): onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu
+      //    tamamlayınca backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar). "done"
+      //    ekranında kurum yöneticisine bilgilendirme modalı gösterilir.
+      //  - Ürün + openCardAfterSale: satış açık kalır, adisyon kartı açılır (elle onay).
+      //  - Ürün + !openCardAfterSale: anında onayla → cariye işle + stok düş.
+      if (deferToFirstAppointment) {
+        setDeferred(true)
+        if (onDone) await onDone()
+        setStep('done')
+      } else if (openCardAfterSale) {
         setOpen(false)
         setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
       } else {
@@ -445,7 +458,9 @@ export default function PackageSaleDialog({
                 </DialogTitle>
                 <DialogDescription className="mt-0.5 text-[11px] text-[#352432]/50">
                   {step === 'confirm'
-                    ? 'Onaylayınca satış cariye işlenir' + (isProductSale ? ' ve stoktan düşer.' : isServiceSale ? ' ve seans olarak tanımlanır.' : ' ve seans bakiyesi tanımlanır.')
+                    ? (deferToFirstAppointment
+                        ? 'Kaydedilince satış açılır; ilk randevu tamamlanınca cariye işlenir.'
+                        : 'Onaylayınca satış cariye işlenir ve stoktan düşer.')
                     : `Satış adisyona düşer; onaylayınca ${isProductSale ? 'cariye işlenir ve stoktan düşer.' : `cariye${isServiceSale ? '' : ' + seans bakiyesine'} işlenir.`}`}
                 </DialogDescription>
               </div>
@@ -459,15 +474,21 @@ export default function PackageSaleDialog({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-                className={`mx-auto grid h-14 w-14 place-items-center rounded-full ${pendingApproval ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}
+                className={`mx-auto grid h-14 w-14 place-items-center rounded-full ${deferred ? 'bg-sky-50 text-sky-600' : pendingApproval ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}
               >
-                {pendingApproval ? <ReceiptText className="h-8 w-8" /> : <CheckCircle2 className="h-8 w-8" />}
+                {deferred ? <CalendarDays className="h-8 w-8" /> : pendingApproval ? <ReceiptText className="h-8 w-8" /> : <CheckCircle2 className="h-8 w-8" />}
               </motion.span>
               <h4 className="mt-4 font-display text-xl tracking-tight text-[#352432]">
-                {pendingApproval ? 'Satış oluşturuldu · onay bekliyor' : 'Satış tamamlandı'}
+                {deferred ? 'Satış kaydedildi · ilk randevuda işlenecek' : pendingApproval ? 'Satış oluşturuldu · onay bekliyor' : 'Satış tamamlandı'}
               </h4>
               <p className="mx-auto mt-1.5 max-w-sm text-[12px] text-[#352432]/55">
-                {pendingApproval ? (
+                {deferred ? (
+                  <>
+                    Satış açık adisyon olarak kaydedildi. Tutar cariye <strong className="font-semibold text-[#352432]/75">şimdi işlenmedi</strong>;
+                    {pay > 0 ? ' peşinat dâhil' : ''} müşteri ilk randevusunu tamamladığında otomatik olarak cariye işlenip
+                    {isServiceSale ? ' hizmet seansı tanımlanacak' : ' paket seansları tanımlanacak'}.
+                  </>
+                ) : pendingApproval ? (
                   <>Adisyon açıldı; kurum yöneticisi onayladığında tutar cariye işlenecek{isProductSale ? ' ve ürün stoktan düşecek' : isServiceSale ? ' ve hizmet seansı tanımlanacak' : ' ve paket seansları tanımlanacak'}.</>
                 ) : (
                   <>
@@ -536,13 +557,23 @@ export default function PackageSaleDialog({
                 </div>
               </div>
 
-              <div className="flex items-start gap-2 rounded-[12px] border border-emerald-200/60 bg-emerald-50/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-emerald-800">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
-                <span>
-                  Onaylayınca tutar cariye borç yazılır{pay > 0 ? ', peşinat kasaya gelir düşer' : ''}
-                  {isProductSale ? ' ve ürün stoktan düşülür' : isServiceSale ? ' ve hizmet seansı müşteriye tanımlanır' : ' ve paket seansları müşteriye tanımlanır'}. {isProductSale ? '' : 'Randevu buradan hemen açılabilir.'}
-                </span>
-              </div>
+              {deferToFirstAppointment ? (
+                <div className="flex items-start gap-2 rounded-[12px] border border-sky-200/70 bg-sky-50/70 px-3.5 py-2.5 text-[11.5px] leading-snug text-sky-800">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
+                  <span>
+                    Bu satış cariye <strong className="font-semibold">şimdi işlenmez</strong>. Müşteri ilk randevusunu tamamladığında
+                    {pay > 0 ? ' (peşinat dâhil)' : ''} tutar otomatik cariye borç yazılır
+                    {isServiceSale ? ' ve hizmet seansı tanımlanır' : ' ve paket seansları tanımlanır'}. Seansları kullanmak için randevu şimdiden verilebilir.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-[12px] border border-emerald-200/60 bg-emerald-50/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-emerald-800">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
+                  <span>
+                    Onaylayınca tutar cariye borç yazılır{pay > 0 ? ', peşinat kasaya gelir düşer' : ''} ve ürün stoktan düşülür.
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             /* FORM */
@@ -823,8 +854,10 @@ export default function PackageSaleDialog({
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 {busy
-                  ? (openCardAfterSale ? 'Kaydediliyor…' : 'Onaylanıyor…')
-                  : (openCardAfterSale ? 'Satışı kaydet · adisyonu aç' : 'Onayla ve tamamla')}
+                  ? (deferToFirstAppointment || openCardAfterSale ? 'Kaydediliyor…' : 'Onaylanıyor…')
+                  : deferToFirstAppointment
+                    ? 'Satışı kaydet'
+                    : (openCardAfterSale ? 'Satışı kaydet · adisyonu aç' : 'Onayla ve tamamla')}
               </button>
             </footer>
           )}
