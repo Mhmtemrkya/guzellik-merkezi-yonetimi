@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
+import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/customer_picker.dart';
 import 'calendar_theme.dart';
@@ -445,6 +446,11 @@ class _AppointmentFormState extends State<AppointmentForm> {
                         icon: const Icon(Icons.point_of_sale_rounded, size: 18),
                         label: const Text('Hizmet satışı yap'),
                       ),
+                      TextButton.icon(
+                        onPressed: _openAdisyon,
+                        icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                        label: const Text('Adisyon'),
+                      ),
                     ],
                   ),
                 ),
@@ -511,6 +517,43 @@ class _AppointmentFormState extends State<AppointmentForm> {
         },
       ),
     );
+  }
+
+  /// Randevu formundan müşterinin adisyonunu aç (yoksa oluştur) — Ön Muhasebe'ye gitmeden.
+  Future<void> _openAdisyon() async {
+    final cid = customerId;
+    if (cid == null || cid.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Önce müşteri seçin.')));
+      return;
+    }
+    try {
+      final open = await widget.api.get('/api/admin/adisyonlar/open/$cid');
+      String? id = open is Map ? '${open['id']}' : null;
+      if (id == null || id.isEmpty || id == 'null') {
+        final created = await widget.api.post('/api/admin/adisyonlar/', {
+          'customerId': cid,
+          'customerAccountId': null,
+          'notes': null,
+        });
+        id = created is Map ? '${created['id']}' : null;
+      }
+      if (!mounted) return;
+      final adisyonId = id;
+      if (adisyonId != null && adisyonId.isNotEmpty && adisyonId != 'null') {
+        await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   /// Aramalı müşteri seçimi — binlerce kayıtta dropdown yerine pickCustomer

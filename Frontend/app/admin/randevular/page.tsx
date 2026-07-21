@@ -825,13 +825,22 @@ function RandevularPageInner() {
               triggerLabel="Paket Satışı"
               triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
             />
+            {canAdisyon && (
+              <button
+                type="button"
+                onClick={() => setAdisyonModal({ open: true })}
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              >
+                <ReceiptText className="h-4 w-4" strokeWidth={2.1} /> Müşteri Adisyonu
+              </button>
+            )}
             {!isStaffUser && canAdisyon && (
               <button
                 type="button"
                 onClick={() => setDailyOpen(true)}
                 className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
               >
-                <ReceiptText className="h-4 w-4" strokeWidth={2.1} /> Günlük Adisyon
+                <CalendarDays className="h-4 w-4" strokeWidth={2.1} /> Günlük Adisyon
               </button>
             )}
             {canCreateAppointment && (
@@ -1748,6 +1757,7 @@ function RandevularPageInner() {
         customerName={adisyonModal.customerName}
         tenantId={tenantId}
         onChanged={reload}
+        allowPick
       />
 
       {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}

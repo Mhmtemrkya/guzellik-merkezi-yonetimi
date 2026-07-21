@@ -12,6 +12,7 @@ import {
   FileText,
   Hourglass,
   Layers,
+  ReceiptText,
   ListPlus,
   Loader2,
   Package,
@@ -33,6 +34,7 @@ import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarnin
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
+import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import type { ApiCustomerPackageSession, ApiStaffTimeOff, Customer, Service, ServicePackage, Staff } from '@/lib/types'
 
 export type AppointmentEditorMode = 'create' | 'edit'
@@ -218,6 +220,7 @@ export default function AppointmentEditor({
 
   // Sunucu aramasıyla seçilen müşteri `customers` listesinde olmayabilir — seçimden gelen kaydı tut.
   const [pickedCustomer, setPickedCustomer] = useState<CustomerPickerItem | null>(null)
+  const [adisyonOpen, setAdisyonOpen] = useState(false) // müşteri adisyon kartı (randevu modalı içinden)
   const searchCustomersFn = useMemo(
     () => (serverCustomerSearch ? customerSearchProvider(tenantId) : undefined),
     [serverCustomerSearch, tenantId],
@@ -415,6 +418,7 @@ export default function AppointmentEditor({
   const HeaderIcon = noteOnly ? StickyNote : mode === 'create' ? CalendarPlus : CalendarClock
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
@@ -612,6 +616,13 @@ export default function AppointmentEditor({
                               triggerLabel="Hizmet satışı yap"
                               triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-white px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
                             />
+                            <button
+                              type="button"
+                              onClick={() => setAdisyonOpen(true)}
+                              className="inline-flex !min-h-9 items-center gap-1.5 rounded-xl border border-[#efbfd0] bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
+                            >
+                              <ReceiptText className="h-3.5 w-3.5" /> Adisyon
+                            </button>
                           </div>
                         )}
                       </div>
@@ -945,6 +956,19 @@ export default function AppointmentEditor({
         />
       )}
     </Dialog>
+
+      {/* Randevu modalı içinden müşteri adisyon kartı — Ön Muhasebe'ye gitmeden */}
+      {selectedCustomer && (
+        <AdisyonModal
+          open={adisyonOpen}
+          onOpenChange={(o) => { setAdisyonOpen(o); if (!o) setSessRefreshKey((k) => k + 1) }}
+          customerId={selectedCustomer.id}
+          customerName={selectedCustomer.name}
+          tenantId={tenantId}
+          onChanged={() => setSessRefreshKey((k) => k + 1)}
+        />
+      )}
+    </>
   )
 }
 

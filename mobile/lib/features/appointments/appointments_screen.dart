@@ -7,6 +7,8 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/async_list_page.dart';
+import '../accounting/adisyon_detail_sheet.dart';
+import '../customers/customer_picker.dart';
 import 'appointment_detail_sheet.dart';
 import 'appointment_form.dart';
 import 'calendar_theme.dart';
@@ -140,6 +142,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
           children: [
             _Header(
               onFilter: _openFilter,
+              onAdisyon: _openCustomerAdisyon,
               // Kurum geneli randevu takvim aboneliği yalnızca yöneticide (personel hariç).
               onCalendarLink: (widget.auth.user?.isStaff ?? false) ? null : _calendarLink,
             ),
@@ -310,6 +313,40 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       }
     }
   }
+
+  /// Müşteri bazlı adisyon aç — müşteri seç, açık adisyonu yoksa oluştur, adisyon kartını aç.
+  Future<void> _openCustomerAdisyon() async {
+    final picked = await pickCustomer(context, widget.api);
+    if (picked == null || !mounted) return;
+    final cid = picked.id;
+    try {
+      final open = await widget.api.get('/api/admin/adisyonlar/open/$cid');
+      String? id = open is Map ? '${open['id']}' : null;
+      if (id == null || id.isEmpty || id == 'null') {
+        final created = await widget.api.post('/api/admin/adisyonlar/', {
+          'customerId': cid,
+          'customerAccountId': null,
+          'notes': null,
+        });
+        id = created is Map ? '${created['id']}' : null;
+      }
+      if (!mounted) return;
+      final adisyonId = id;
+      if (adisyonId != null && adisyonId.isNotEmpty && adisyonId != 'null') {
+        await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
 }
 
 class _DayData {
@@ -327,9 +364,10 @@ class _DayData {
 // Header
 // ---------------------------------------------------------------------------
 class _Header extends StatelessWidget {
-  const _Header({required this.onFilter, this.onCalendarLink});
+  const _Header({required this.onFilter, this.onCalendarLink, this.onAdisyon});
   final VoidCallback onFilter;
   final VoidCallback? onCalendarLink;
+  final VoidCallback? onAdisyon;
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +387,10 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
+          if (onAdisyon != null) ...[
+            _SquareButton(icon: Icons.receipt_long_rounded, tint: true, onTap: onAdisyon!),
+            const SizedBox(width: 8),
+          ],
           if (onCalendarLink != null) ...[
             _SquareButton(icon: Icons.event_available_rounded, tint: true, onTap: onCalendarLink!),
             const SizedBox(width: 8),
