@@ -1457,6 +1457,8 @@ export function normalizeAppointment(
     lastReminderAtUtc: appointment?.lastReminderAtUtc,
     isOnline: Boolean(appointment?.isOnline),
     customerPhone: appointment?.customerPhone || customer?.phone || undefined,
+    isVip: appointment?.customerIsVip ?? customer?.isVip ?? false,
+    number: appointment?.number ?? null,
   }
 }
 

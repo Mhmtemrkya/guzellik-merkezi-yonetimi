@@ -38,6 +38,25 @@ public sealed class Appointment : Entity
     /// <summary>Müşteri tarafından mobil/online portaldan alınan randevu mu? (Takvimde "Online" rozeti.)</summary>
     public bool IsOnline { get; private set; }
 
+    /// <summary>Kurum içi sıralı randevu numarası (#RNDV-…). Yeni randevularda atanır; eski kayıtlar null.</summary>
+    public int? Number { get; private set; }
+
+    /// <summary>Sıralı randevu numarasını atar (yalnızca bir kez, oluşturma anında).</summary>
+    public void AssignNumber(int number)
+    {
+        if (Number.HasValue) return;
+        Number = number;
+    }
+
+    /// <summary>Randevuyu başka bir personele aktarır (sürükle-bırak farklı sütun). Tamamlanan aktarılamaz.</summary>
+    public void ReassignStaff(Guid staffMemberId)
+    {
+        if (Status == AppointmentStatus.Completed) throw new BusinessRuleException("Tamamlanan randevu başka personele aktarılamaz.");
+        if (staffMemberId == Guid.Empty) throw new DomainException("Geçersiz personel.");
+        StaffMemberId = staffMemberId;
+        Touch();
+    }
+
     // WhatsApp hatırlatma / müşteri onayı (iş akışı Status'tan bağımsız bilgi alanları)
     public WhatsAppConfirmationStatus CustomerConfirmation { get; private set; } = WhatsAppConfirmationStatus.None;
     public DateTime? LastReminderAtUtc { get; private set; }

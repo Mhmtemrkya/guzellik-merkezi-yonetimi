@@ -21,9 +21,12 @@ public sealed record AppointmentDto(
     WhatsAppConfirmationStatus CustomerConfirmation = WhatsAppConfirmationStatus.None,
     DateTime? LastReminderAtUtc = null,
     bool IsOnline = false,
-    string? CustomerPhone = null);
+    string? CustomerPhone = null,
+    bool CustomerIsVip = false,
+    int? Number = null);
 public sealed record CreateAppointmentRequest(Guid BranchId, Guid CustomerId, Guid StaffMemberId, Guid ServiceDefinitionId, DateTime StartUtc, DateTime EndUtc, decimal Price, string? Notes);
-public sealed record RescheduleAppointmentRequest(DateTime StartUtc, DateTime EndUtc);
+/// <summary>Sürükle-bırak taşıma: yeni zaman + (opsiyonel) yeni personel (farklı sütuna bırakınca).</summary>
+public sealed record RescheduleAppointmentRequest(DateTime StartUtc, DateTime EndUtc, Guid? StaffMemberId = null);
 public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, string? Reason);
 public sealed record ChangeAppointmentNotesRequest(string? Notes);
 

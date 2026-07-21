@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
@@ -15,7 +15,7 @@ import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import AppointmentsCalendarLinkButton from '@/components/dashboard/AppointmentsCalendarLinkButton'
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
-import DayScheduleModal from '@/components/dashboard/DayScheduleModal'
+import DayScheduleModal, { type WaitlistLite } from '@/components/dashboard/DayScheduleModal'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -34,6 +34,7 @@ import {
   normalizeService,
   normalizeStaff,
   normalizeStaffTimeOff,
+  normalizeWaitlistEntry,
 } from '@/lib/apiMappers'
 import {
   Activity,
@@ -66,6 +67,7 @@ import type {
   ApiServicePackage,
   ApiStaff,
   ApiStaffTimeOff,
+  ApiWaitlistEntry,
   Appointment,
   AppointmentLookups,
   AppointmentStatusKey,
@@ -401,6 +403,16 @@ function RandevularPageInner() {
   const monthTimeOffs = useMemo(() => (timeOffData || []).map((t, i) => normalizeStaffTimeOff(t, i)), [timeOffData])
   const [leaveBusy, setLeaveBusy] = useState(false)
 
+  // Aktif bekleme listesi — çizelge modalının sağ rayındaki "Bekleme Listesi" kartı (yönetici).
+  const { data: waitlistData } = useApiQuery<ApiWaitlistEntry[]>(
+    async () => {
+      if (!tenantId || isStaffUser) return []
+      return adminApi.waitlist<ApiWaitlistEntry>(tenantId, true).catch<ApiWaitlistEntry[]>(() => [])
+    },
+    [tenantId, isStaffUser],
+    { initialData: [] },
+  )
+
   // Çizelge modalından personeli o gün izinli yap / iznini kaldır (yalnızca yönetici).
   const handleToggleLeave = async (staffId: string, date: string, currentlyOnLeave: boolean): Promise<void> => {
     if (isStaffUser) return
@@ -471,6 +483,20 @@ function RandevularPageInner() {
   const customersList: Customer[] = useMemo(() => Object.values(normalizedLookups.customers), [normalizedLookups])
   const staffList: Staff[] = useMemo(() => Object.values(normalizedLookups.staff), [normalizedLookups])
   const servicesList: Service[] = useMemo(() => Object.values(normalizedLookups.services), [normalizedLookups])
+
+  // Bekleme listesi satırları (yalnızca aktif: Waiting/Notified) — servis adı çözülerek modala geçer.
+  const waitlistRows = useMemo<WaitlistLite[]>(() => {
+    const svc = normalizedLookups.services
+    return (waitlistData || [])
+      .map((w, i) => normalizeWaitlistEntry(w, i))
+      .filter((w) => w.status === 'Waiting' || w.status === 'Notified')
+      .map((w) => ({
+        id: w.id,
+        customerName: w.customerName || 'Müşteri',
+        serviceName: w.serviceDefinitionId ? svc[w.serviceDefinitionId]?.name : undefined,
+        preferredDate: w.preferredDate || undefined,
+      }))
+  }, [waitlistData, normalizedLookups])
   const selfStaff = useMemo(() => {
     if (!isStaffUser) return null
     const userEmail = user?.email?.toLowerCase()
@@ -659,6 +685,15 @@ function RandevularPageInner() {
     setStaffActionMsg('Randevu durumu güncellendi. Sadece kendi randevu kaydın üzerinde işlem yapıldı.')
     await reload()
   }
+
+  // Çizelge detay paneli için: seçilen müşterinin açık adisyon toplamlarını getir (ödeme/cari).
+  const loadOpenAdisyon = useCallback(
+    async (cid: string) => {
+      const a = await adminApi.openAdisyon<{ chargeTotal?: number; paymentTotal?: number }>(cid, tenantId)
+      return a ? { chargeTotal: Number(a.chargeTotal || 0), paymentTotal: Number(a.paymentTotal || 0) } : null
+    },
+    [tenantId],
+  )
 
   const editingAppointment = useMemo(
     () =>
@@ -1625,6 +1660,39 @@ function RandevularPageInner() {
         isStaffUser={isStaffUser}
         busy={leaveBusy}
         onToggleLeave={!isStaffUser ? handleToggleLeave : undefined}
+        onChangeDate={(iso) => setScheduleDate(iso)}
+        onApprove={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.approveAppointment(id, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onCancel={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.changeAppointmentStatus(id, { status: 'Cancelled', reason: null }, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        loadOpenAdisyon={loadOpenAdisyon}
+        waitlist={waitlistRows}
+        onReschedule={
+          !isStaffUser
+            ? async (id, { date, time, durationMin, staffId }) => {
+                setActionError('')
+                try {
+                  const body = { ...toUtcRange(date, time, durationMin), ...(staffId ? { staffMemberId: staffId } : {}) }
+                  await adminApi.rescheduleAppointment(id, body, tenantId)
+                  await reload()
+                } catch (e) {
+                  setActionError(e instanceof Error ? e.message : 'Randevu taşınamadı.')
+                }
+              }
+            : undefined
+        }
         onClose={() => setScheduleDate(null)}
         onEditAppointment={(id) => {
           setScheduleDate(null)

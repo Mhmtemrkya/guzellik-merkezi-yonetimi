@@ -1845,6 +1845,8 @@ export interface ApiAppointment {
   lastReminderAtUtc?: string | null
   isOnline?: boolean
   customerPhone?: string | null
+  customerIsVip?: boolean
+  number?: number | null
 }
 
 export interface AppointmentLookups {
@@ -1874,6 +1876,8 @@ export interface Appointment {
   lastReminderAtUtc?: string | null
   isOnline?: boolean
   customerPhone?: string
+  isVip?: boolean
+  number?: number | null
 }
 
 // ---------------------------------------------------------------------------

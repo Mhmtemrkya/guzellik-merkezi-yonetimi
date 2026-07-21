@@ -110,7 +110,9 @@ public sealed class AppointmentService : IAppointmentService
                 x.CustomerConfirmation,
                 x.LastReminderAtUtc,
                 x.IsOnline,
-                x.Customer != null ? x.Customer.Phone : null))
+                x.Customer != null ? x.Customer.Phone : null,
+                x.Customer != null && x.Customer.IsVip,
+                x.Number))
             .ToArrayAsync(cancellationToken);
         if (IsStaffViewer)
         {
@@ -178,6 +180,12 @@ public sealed class AppointmentService : IAppointmentService
 
         var appointment = new Appointment(tenantId, request.BranchId, request.CustomerId, request.StaffMemberId, request.ServiceDefinitionId, request.StartUtc, request.EndUtc, request.Price, request.Notes);
 
+        // Kurum içi sıralı randevu numarası (#RNDV-…): mevcut en büyük + 1, taban 10000.
+        var maxNumber = await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Number != null)
+            .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
+        appointment.AssignNumber(maxNumber + 1);
+
         // Personel oluşturduysa randevu doğrudan aktif olmaz; taslak olarak kurum yöneticisi onayına düşer.
         var isStaffRequest = staffTenantUserId.HasValue;
         if (isStaffRequest) appointment.SubmitForApproval();
@@ -222,15 +230,27 @@ public sealed class AppointmentService : IAppointmentService
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
 
-        var overlap = await HasOverlapAsync(tenantId, appointment.StaffMemberId, request.StartUtc, request.EndUtc, appointment.Id, cancellationToken);
+        // Sürükle-bırak farklı sütuna: hedef personel değişebilir. Çakışma hedef personele göre kontrol edilir.
+        var targetStaff = request.StaffMemberId ?? appointment.StaffMemberId;
+        var staffChanged = request.StaffMemberId.HasValue && request.StaffMemberId.Value != appointment.StaffMemberId;
+        if (staffChanged && !await IsStaffInScopeAsync(tenantId, targetStaff, staffTenantUserId, cancellationToken))
+        {
+            return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
+        }
+
+        var overlap = await HasOverlapAsync(tenantId, targetStaff, request.StartUtc, request.EndUtc, appointment.Id, cancellationToken);
         if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında en fazla 2 randevusu olabilir."));
 
         var prevStart = appointment.StartUtc;
+        var prevStaff = appointment.StaffMemberId;
+        if (staffChanged) appointment.ReassignStaff(targetStaff);
         appointment.Reschedule(request.StartUtc, request.EndUtc);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,
-            $"Randevu yeniden planlandı: {prevStart:dd.MM HH:mm} → {appointment.StartUtc:dd.MM HH:mm}",
-            new { prevStart, NewStart = appointment.StartUtc, NewEnd = appointment.EndUtc }, cancellationToken);
+            staffChanged
+                ? $"Randevu taşındı: {prevStart:dd.MM HH:mm} → {appointment.StartUtc:dd.MM HH:mm} (personel değişti)"
+                : $"Randevu yeniden planlandı: {prevStart:dd.MM HH:mm} → {appointment.StartUtc:dd.MM HH:mm}",
+            new { prevStart, NewStart = appointment.StartUtc, NewEnd = appointment.EndUtc, prevStaff, NewStaff = appointment.StaffMemberId }, cancellationToken);
 
         // Saat değişikliğini atanmış personel de görsün (kendisi değiştirmediyse).
         await NotifyAssignedStaffAsync(appointment, staffTenantUserId,
@@ -403,7 +423,11 @@ public sealed class AppointmentService : IAppointmentService
         x.StaffMember != null ? x.StaffMember.FullName : null,
         x.ServiceDefinition != null ? x.ServiceDefinition.Name : null,
         x.CustomerConfirmation,
-        x.LastReminderAtUtc);
+        x.LastReminderAtUtc,
+        x.IsOnline,
+        x.Customer != null ? x.Customer.Phone : null,
+        x.Customer != null && x.Customer.IsVip,
+        x.Number);
 
     public async Task<Result<AppointmentDto>> ChangeNotesAsync(Guid tenantId, Guid id, ChangeAppointmentNotesRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {

@@ -107,7 +107,9 @@ internal static class Mapping
         appointment.ServiceDefinition?.Name,
         appointment.CustomerConfirmation,
         appointment.LastReminderAtUtc,
-        appointment.IsOnline);
+        appointment.IsOnline,
+        CustomerIsVip: appointment.Customer?.IsVip ?? false,
+        Number: appointment.Number);
 
     public static CustomExpenseCategoryDto ToDto(this CustomExpenseCategory category) => new(
         category.Id,
