@@ -173,8 +173,8 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
       builder: (ctx) => AlertDialog(
         title: const Text('Adisyonu sil'),
         content: Text(approved
-            ? 'Bu ONAYLI adisyon silinsin mi? Cari tahsilatı, prim, sadakat, stok ve satılan seanslar geri alınır.'
-            : 'Bu adisyon tamamen silinsin mi?'),
+            ? 'Bu ONAYLI adisyon silinince: bu satışa ait cari hesap (varsa) silinir, satılan hizmet/paket seansları ve ilgili randevular (planlı/onaylı) geri alınır, prim/sadakat/stok geri alınır. Bu işlem geri alınamaz.'
+            : 'Bu adisyon ve kalemleri kalıcı olarak silinecek. Bu işlem geri alınamaz.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),

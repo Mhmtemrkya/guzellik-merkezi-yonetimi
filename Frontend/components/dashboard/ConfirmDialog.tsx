@@ -8,7 +8,7 @@ import { AlertTriangle, Loader2, X, type LucideIcon } from 'lucide-react'
 export interface ConfirmDialogProps {
   trigger: ReactNode
   title: string
-  description?: string
+  description?: ReactNode
   confirmLabel?: string
   cancelLabel?: string
   destructive?: boolean

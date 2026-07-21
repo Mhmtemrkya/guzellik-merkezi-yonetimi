@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
+import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
@@ -283,14 +284,12 @@ export default function AdisyonPanel({
     })
 
   // Açık adisyonu tamamen sil (kalemler + varsa harcanan puan iadesi). Onaylı adisyon silme cariden yapılır.
-  const deleteAdisyonNow = () => {
+  const doDeleteAdisyon = async () => {
     if (!adisyon) return
-    if (!window.confirm('Bu adisyon tamamen silinsin mi? Kalemler ve varsa kullanılan puanlar geri alınır.')) return
-    run(async () => {
-      const refund = (adisyon.items || []).reduce((s, it) => s + pointsOf(it.description), 0)
-      await adminApi.deleteAdisyon(adisyon.id, tenantId)
-      if (refund > 0) await adminApi.adjustLoyalty({ customerId, points: refund, description: 'Adisyon silindi — puan iadesi' }, tenantId)
-    })
+    const refund = (adisyon.items || []).reduce((s, it) => s + pointsOf(it.description), 0)
+    await adminApi.deleteAdisyon(adisyon.id, tenantId)
+    if (refund > 0) await adminApi.adjustLoyalty({ customerId, points: refund, description: 'Adisyon silindi — puan iadesi' }, tenantId)
+    await refresh()
   }
 
   return (
@@ -632,15 +631,30 @@ export default function AdisyonPanel({
             </button>
           </div>
 
-          {/* Adisyonu tamamen sil (açık adisyon) */}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={deleteAdisyonNow}
-            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40"
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil
-          </button>
+          {/* Adisyonu tamamen sil (açık adisyon) — şık onay modalı */}
+          <ConfirmDialog
+            destructive
+            title="Adisyonu sil"
+            confirmLabel="Evet, sil"
+            cancelLabel="Vazgeç"
+            onConfirm={doDeleteAdisyon}
+            description={
+              <span className="block space-y-1.5">
+                <span className="block">Bu <b>açık adisyon</b> ve tüm kalemleri kalıcı olarak silinecek.</span>
+                <span className="block">• Kullanılan sadakat puanı iade edilir.</span>
+                <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
+              </span>
+            }
+            trigger={
+              <button
+                type="button"
+                disabled={busy}
+                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil
+              </button>
+            }
+          />
         </>
       )}
     </div>

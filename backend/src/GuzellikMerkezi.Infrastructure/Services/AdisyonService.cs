@@ -549,6 +549,22 @@ public sealed class AdisyonService : IAdisyonService
             card?.UndoRedeem(discountItem.LineTotal);
         }
 
+        // 5b) İlgili randevuları sil — bu satıştan açılan hizmet/paket seansları için müşterinin
+        //     AKTİF (Planlandı/Onaylandı/Taslak) randevuları silinir. Tamamlanmış randevular seansı
+        //     tükettiği için GUARD 1'de zaten engellendi; İptal/Gelmedi ise pasif olduğundan atlanır.
+        //     (Guid-liste .Contains() tuzağı için müşteri+durum sunucuda süzülür, hizmet bellekte.)
+        if (soldSessions.Count > 0)
+        {
+            var soldServiceIds = soldSessions.Select(s => s.ServiceDefinitionId).Distinct().ToList();
+            var relatedAppointments = (await _db.Appointments
+                    .Where(ap => ap.TenantId == tenantId && ap.CustomerId == adisyon.CustomerId
+                        && (ap.Status == AppointmentStatus.Scheduled || ap.Status == AppointmentStatus.Confirmed || ap.Status == AppointmentStatus.Draft))
+                    .ToListAsync(cancellationToken))
+                .Where(ap => soldServiceIds.Contains(ap.ServiceDefinitionId))
+                .ToList();
+            _db.Appointments.RemoveRange(relatedAppointments);
+        }
+
         // 6) Cari hesap: bu adisyonun tahsilatını kaldır, seanslarını sil, borcu düş / hesabı kapat.
         var accountId = adisyon.CustomerAccountId;
         if (accountId is not null)

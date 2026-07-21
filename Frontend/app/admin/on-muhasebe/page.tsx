@@ -291,20 +291,18 @@ function OnMuhasebePageInner() {
     goScope('accounts')
   }
 
-  // Adisyonu tamamen sil — onaylıda backend cari/kasa/prim/sadakat/stok/seans geri alır (yönetici-only).
-  const deleteAdisyonNow = async (a: Adisyon) => {
-    const isApproved = a.status === 'Approved'
-    const msg = isApproved
-      ? 'Bu ONAYLI adisyon silinsin mi? Oluşan cari tahsilatı, prim, sadakat, stok ve satılan seanslar geri alınır.'
-      : 'Bu adisyon tamamen silinsin mi?'
-    if (!window.confirm(msg)) return
+  // Adisyonu tamamen sil — onaylıda backend cari/kasa/prim/sadakat/stok/seans + ilgili randevular geri alınır (yönetici-only).
+  const doDeleteAdisyon = async (a: Adisyon) => {
     setBusy(true); setActionError(''); setActionMsg('')
     try {
       await adminApi.deleteAdisyon(a.id, tenantId)
-      setActionMsg('Adisyon silindi.')
+      setActionMsg('Adisyon silindi ve ilgili kayıtlar geri alındı.')
       setSelectedAdisyonId(null)
       await reload()
-    } catch (e) { setActionError(e instanceof Error ? e.message : 'Adisyon silinemedi.') } finally { setBusy(false) }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Adisyon silinemedi.')
+      throw e // modalın hata mesajını göstermesi için
+    } finally { setBusy(false) }
   }
 
   // ---------- topbar aksiyonu (sekmeye göre) ----------
@@ -604,10 +602,33 @@ function OnMuhasebePageInner() {
                           <CreditCard className="h-4 w-4" /> Cari hesaplarda gör
                         </button>
                         {!isStaff && (
-                          <button type="button" disabled={busy} onClick={() => deleteAdisyonNow(selAdisyon)}
-                            className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40">
-                            <Trash2 className="h-4 w-4" /> Adisyonu sil{selAdisyon.status === 'Approved' ? ' (geri al)' : ''}
-                          </button>
+                          <ConfirmDialog
+                            destructive
+                            title={selAdisyon.status === 'Approved' ? 'Adisyonu geri al ve sil' : 'Adisyonu sil'}
+                            confirmLabel="Evet, sil"
+                            cancelLabel="Vazgeç"
+                            onConfirm={() => doDeleteAdisyon(selAdisyon)}
+                            description={
+                              selAdisyon.status === 'Approved' ? (
+                                <span className="block space-y-1.5">
+                                  <span className="block">Bu <b>onaylı</b> adisyon silinince şunlar da geri alınacak:</span>
+                                  <span className="block">• Bu satışa ait <b>cari hesap</b> (varsa) silinir</span>
+                                  <span className="block">• Satılan <b>hizmet/paket seansları</b> geri alınır</span>
+                                  <span className="block">• İlgili <b>randevular</b> (planlı/onaylı) silinir</span>
+                                  <span className="block">• <b>Prim, sadakat puanı ve stok</b> geri alınır</span>
+                                  <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
+                                </span>
+                              ) : (
+                                <span className="block">Bu adisyon ve kalemleri kalıcı olarak silinecek. Bu işlem geri alınamaz.</span>
+                              )
+                            }
+                            trigger={
+                              <button type="button" disabled={busy}
+                                className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40">
+                                <Trash2 className="h-4 w-4" /> Adisyonu sil{selAdisyon.status === 'Approved' ? ' (geri al)' : ''}
+                              </button>
+                            }
+                          />
                         )}
                       </div>
                     </>
