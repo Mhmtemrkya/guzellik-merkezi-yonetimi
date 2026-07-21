@@ -22,6 +22,8 @@ public sealed class CustomServiceCategory : Entity
     /// <summary>Üst kategori kimliği. null = üst-seviye kategori; dolu = bu kayıt, ParentId'nin alt kategorisidir.</summary>
     public Guid? ParentId { get; private set; }
     public bool IsActive { get; private set; } = true;
+    /// <summary>Elle sıralama için görüntüleme sırası (küçük = önce). Aynı ParentId altında anlamlıdır.</summary>
+    public int SortOrder { get; private set; }
 
     public void Rename(string name)
     {
@@ -41,4 +43,7 @@ public sealed class CustomServiceCategory : Entity
 
     public void Activate() { IsActive = true; Touch(); }
     public void Deactivate() { IsActive = false; Touch(); }
+
+    /// <summary>Görüntüleme sırasını belirler (negatif değerler 0'a çekilir).</summary>
+    public void SetSortOrder(int order) { SortOrder = order < 0 ? 0 : order; Touch(); }
 }

@@ -165,6 +165,35 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
     );
   }
 
+  /// Adisyonu tamamen sil — onaylıda backend cari/kasa/prim/sadakat/stok/seans geri alır (yönetici-only).
+  Future<void> _deleteAdisyon() async {
+    final approved = '${_adisyon?['status']}' == 'Approved';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adisyonu sil'),
+        content: Text(approved
+            ? 'Bu ONAYLI adisyon silinsin mi? Cari tahsilatı, prim, sadakat, stok ve satılan seanslar geri alınır.'
+            : 'Bu adisyon tamamen silinsin mi?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgeç')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sil')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(
+      () => widget.api.delete('/api/admin/adisyonlar/${widget.adisyonId}'),
+      'Adisyon silindi.',
+      close: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final a = _adisyon;
@@ -285,6 +314,22 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
               ],
             ),
           ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Color(0x55D34D68)),
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: _busy ? null : _deleteAdisyon,
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: Text('${a['status']}' == 'Approved'
+                  ? 'Adisyonu sil (geri al)'
+                  : 'Adisyonu sil'),
+            ),
+          ),
         ],
       ),
     );

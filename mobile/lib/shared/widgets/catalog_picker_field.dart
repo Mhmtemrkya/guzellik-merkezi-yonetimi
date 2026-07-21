@@ -23,6 +23,7 @@ class CatalogPickerField extends StatefulWidget {
     this.emptyText = 'Sonuç yok.',
     this.clearable = false,
     this.maxListHeight = 260,
+    this.categoryOrder = const [],
     super.key,
   });
 
@@ -37,6 +38,10 @@ class CatalogPickerField extends StatefulWidget {
   final String emptyText;
   final bool clearable;
   final double maxListHeight;
+
+  /// Kategori/alt kategori pill sırası (SortOrder) — özel kategori adları manuel sırada;
+  /// listede olmayanlar sona (alfabetik). Boşsa tümü alfabetik.
+  final List<String> categoryOrder;
 
   @override
   State<CatalogPickerField> createState() => _CatalogPickerFieldState();
@@ -65,6 +70,19 @@ class _CatalogPickerFieldState extends State<CatalogPickerField> {
     return '0';
   }
 
+  // Manuel sıra çözücü: ad → categoryOrder içindeki konum (yoksa sona).
+  int _orderOf(String name) {
+    if (widget.categoryOrder.isEmpty) return 0;
+    final key = name.toLowerCase();
+    final i = widget.categoryOrder.indexWhere((c) => c.toLowerCase() == key);
+    return i < 0 ? 1 << 30 : i;
+  }
+
+  int _catCompare(String a, String b) {
+    final d = _orderOf(a) - _orderOf(b);
+    return d != 0 ? d : a.compareTo(b);
+  }
+
   // Üst kategoriler (katalogda geçen).
   List<String> get _categories {
     final set = <String>{};
@@ -72,7 +90,7 @@ class _CatalogPickerFieldState extends State<CatalogPickerField> {
       final c = _catOf(p);
       if (c.isNotEmpty) set.add(c);
     }
-    return set.toList()..sort();
+    return set.toList()..sort(_catCompare);
   }
 
   // Seçili üst kategorinin alt kategorileri.
@@ -83,7 +101,7 @@ class _CatalogPickerFieldState extends State<CatalogPickerField> {
       final s = _subOf(p);
       if (s.isNotEmpty) set.add(s);
     }
-    return set.toList()..sort();
+    return set.toList()..sort(_catCompare);
   }
 
   // Kategori + alt kategori + aramayla süzülmüş katalog.

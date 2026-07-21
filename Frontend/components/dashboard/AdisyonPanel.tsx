@@ -282,6 +282,17 @@ export default function AdisyonPanel({
       if (refund > 0) await adminApi.adjustLoyalty({ customerId, points: refund, description: 'Adisyon iptal — puan iadesi' }, tenantId)
     })
 
+  // Açık adisyonu tamamen sil (kalemler + varsa harcanan puan iadesi). Onaylı adisyon silme cariden yapılır.
+  const deleteAdisyonNow = () => {
+    if (!adisyon) return
+    if (!window.confirm('Bu adisyon tamamen silinsin mi? Kalemler ve varsa kullanılan puanlar geri alınır.')) return
+    run(async () => {
+      const refund = (adisyon.items || []).reduce((s, it) => s + pointsOf(it.description), 0)
+      await adminApi.deleteAdisyon(adisyon.id, tenantId)
+      if (refund > 0) await adminApi.adjustLoyalty({ customerId, points: refund, description: 'Adisyon silindi — puan iadesi' }, tenantId)
+    })
+  }
+
   return (
     <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -620,6 +631,16 @@ export default function AdisyonPanel({
               <X className="h-4 w-4" /> İptal
             </button>
           </div>
+
+          {/* Adisyonu tamamen sil (açık adisyon) */}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={deleteAdisyonNow}
+            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil
+          </button>
         </>
       )}
     </div>

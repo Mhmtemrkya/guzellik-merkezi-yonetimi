@@ -21,6 +21,7 @@ import {
   Phone,
   Plane,
   Plus,
+  ReceiptText,
   Scissors,
   Search,
   Sparkles,
@@ -246,6 +247,8 @@ export interface DayScheduleModalProps {
   onCancel?: (id: string) => void | Promise<void>
   /** Seçilen randevunun müşterisinin açık adisyonunu getir (panelde ödeme/cari için). */
   loadOpenAdisyon?: (customerId: string) => Promise<{ chargeTotal: number; paymentTotal: number } | null>
+  /** Müşterinin adisyon kartını modal olarak aç (kalem/satış, ödeme/peşinat, onay, silme). */
+  onOpenAdisyon?: (customerId: string, customerName?: string) => void
   /** Aktif bekleme listesi (sağ ray "Bekleme Listesi" kartı). */
   waitlist?: WaitlistLite[]
   /** Sürükle-bırak ile randevu saatini (ve farklı sütuna bırakınca personelini) değiştir; süre korunur. */
@@ -276,6 +279,7 @@ export default function DayScheduleModal({
   onApprove,
   onCancel,
   loadOpenAdisyon,
+  onOpenAdisyon,
   waitlist,
   onReschedule,
 }: DayScheduleModalProps) {
@@ -924,6 +928,7 @@ export default function DayScheduleModal({
                     onEdit={onEditAppointment}
                     onApprove={onApprove}
                     onCancel={onCancel}
+                    onOpenAdisyon={onOpenAdisyon}
                     onClose={() => setSelectedId(null)}
                   />
                 ) : (
@@ -983,6 +988,7 @@ function DetailPanel({
   onEdit,
   onApprove,
   onCancel,
+  onOpenAdisyon,
   onClose,
 }: {
   appt: Appointment
@@ -992,6 +998,7 @@ function DetailPanel({
   onEdit?: (id: string) => void
   onApprove?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
+  onOpenAdisyon?: (customerId: string, customerName?: string) => void
   onClose: () => void
 }) {
   const st = statusStyle[appt.status] || statusStyle.bekliyor
@@ -1139,6 +1146,15 @@ function DetailPanel({
             </span>
           )}
         </div>
+        {onOpenAdisyon && appt.customerId && (
+          <button
+            type="button"
+            onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+          >
+            <ReceiptText className="h-3.5 w-3.5" /> Adisyon / Ödeme al
+          </button>
+        )}
         {canManage && (canApprove || canCancel) && (
           <div className="grid grid-cols-2 gap-2">
             {canApprove && onApprove && (

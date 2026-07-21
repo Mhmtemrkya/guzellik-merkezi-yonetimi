@@ -16,6 +16,8 @@ import AppointmentsCalendarLinkButton from '@/components/dashboard/AppointmentsC
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import DayScheduleModal, { type WaitlistLite } from '@/components/dashboard/DayScheduleModal'
+import AdisyonModal from '@/components/dashboard/AdisyonModal'
+import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -52,6 +54,7 @@ import {
   Clock,
   PenLine,
   Plus,
+  ReceiptText,
   StickyNote,
   Trash2,
   UserPlus,
@@ -334,6 +337,9 @@ function RandevularPageInner() {
   const [scheduleDate, setScheduleDate] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
+  // Randevu-içi adisyon kartı + günlük adisyon kartı modalları (Ön Muhasebe'ye gitmeden)
+  const [adisyonModal, setAdisyonModal] = useState<{ open: boolean; customerId?: string; customerName?: string }>({ open: false })
+  const [dailyOpen, setDailyOpen] = useState(false)
   // Aksiyon kutusundan "Ertele" ile gelen randevu (içinde bulunulan ay listesinde olmayabilir).
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
   // Hovered day for quick-add button popout
@@ -506,6 +512,8 @@ function RandevularPageInner() {
   const canCreateAppointment = !isStaffUser || Boolean(selfStaff)
   // Bekleme listesi özelliği açıksa dolu-slot uyarısında "bekleme listesine ekle" teklifi göster.
   const waitlistEnabled = useFeature('appointments.waitlist')
+  // Adisyon (ön muhasebe) özelliği — randevu-içi adisyon kartı + günlük adisyon butonu için.
+  const canAdisyon = useFeature('billing.adisyon')
 
   // Scope-based pre-filter
   const todayIso = isoDateOnly(today)
@@ -817,6 +825,15 @@ function RandevularPageInner() {
               triggerLabel="Paket Satışı"
               triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
             />
+            {!isStaffUser && canAdisyon && (
+              <button
+                type="button"
+                onClick={() => setDailyOpen(true)}
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              >
+                <ReceiptText className="h-4 w-4" strokeWidth={2.1} /> Günlük Adisyon
+              </button>
+            )}
             {canCreateAppointment && (
               <button
                 type="button"
@@ -1678,6 +1695,14 @@ function RandevularPageInner() {
             : undefined
         }
         loadOpenAdisyon={loadOpenAdisyon}
+        onOpenAdisyon={
+          canAdisyon
+            ? (customerId, customerName) => {
+                setScheduleDate(null) // gün modalı z-[200]; adisyon modalı üstte görünsün diye kapat
+                setAdisyonModal({ open: true, customerId, customerName })
+              }
+            : undefined
+        }
         waitlist={waitlistRows}
         onReschedule={
           !isStaffUser
@@ -1712,6 +1737,21 @@ function RandevularPageInner() {
         }
       />
 
+      {/* Randevu-içi adisyon kartı — kalem/satış, ödeme/peşinat, onay, silme (Ön Muhasebe'ye gitmeden) */}
+      <AdisyonModal
+        open={adisyonModal.open}
+        onOpenChange={(o) => {
+          setAdisyonModal((s) => ({ ...s, open: o }))
+          if (!o) void reload()
+        }}
+        customerId={adisyonModal.customerId}
+        customerName={adisyonModal.customerName}
+        tenantId={tenantId}
+        onChanged={reload}
+      />
+
+      {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}
+      <DailyAdisyonModal open={dailyOpen} onOpenChange={setDailyOpen} tenantId={tenantId} />
     </>
   )
 }

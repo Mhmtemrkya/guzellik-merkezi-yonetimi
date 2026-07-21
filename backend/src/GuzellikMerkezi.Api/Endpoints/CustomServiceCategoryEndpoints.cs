@@ -36,6 +36,12 @@ public static class CustomServiceCategoryEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
         });
 
+        group.MapPost("/reorder", async (ReorderCustomServiceCategoryRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomServiceCategoryService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ReorderAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
+        });
+
         return app;
     }
 }

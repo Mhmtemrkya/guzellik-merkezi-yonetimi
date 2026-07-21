@@ -17,7 +17,8 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         var items = await _db.CustomServiceCategories
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId)
-            .OrderBy(x => x.Name)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
             .Select(x => x.ToDto())
             .ToArrayAsync(cancellationToken);
         return Result<IReadOnlyCollection<CustomServiceCategoryDto>>.Success(items);
@@ -30,7 +31,7 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
 
         var existing = await _db.CustomServiceCategories
             .Where(x => x.TenantId == tenantId)
-            .Select(x => new { x.Id, x.Name, x.ParentId })
+            .Select(x => new { x.Id, x.Name, x.ParentId, x.SortOrder })
             .ToListAsync(cancellationToken);
         // Aynı üst kategori altında (veya üst-seviyede) aynı ada izin verilmez; farklı parent'lar aynı adı taşıyabilir.
         var duplicate = existing.FirstOrDefault(x => x.ParentId == request.ParentId && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -38,6 +39,9 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
 
         var category = new CustomServiceCategory(tenantId, name, request.ParentId);
         if (!request.IsActive) category.Deactivate();
+        // Yeni kategori aynı üst-seviyedeki mevcut en büyük sıradan sonraya eklenir (listenin sonu).
+        var nextOrder = existing.Where(x => x.ParentId == request.ParentId).Select(x => x.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+        category.SetSortOrder(nextOrder);
         _db.CustomServiceCategories.Add(category);
         await _db.SaveChangesAsync(cancellationToken);
         return Result<CustomServiceCategoryDto>.Success(category.ToDto());
@@ -61,5 +65,26 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         category.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    public async Task<Result<IReadOnlyCollection<CustomServiceCategoryDto>>> ReorderAsync(Guid tenantId, ReorderCustomServiceCategoryRequest request, CancellationToken cancellationToken = default)
+    {
+        var orderedIds = request?.OrderedIds ?? Array.Empty<Guid>();
+        if (orderedIds.Count == 0) return await ListAsync(tenantId, cancellationToken);
+
+        // Yalnızca bu tenant'ın kategorileri güncellenir; gelen id'ler tenant'a ait olanlarla eşleşenlere uygulanır.
+        var categories = await _db.CustomServiceCategories
+            .Where(x => x.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        var byId = categories.ToDictionary(x => x.Id);
+
+        var order = 0;
+        foreach (var id in orderedIds)
+        {
+            if (byId.TryGetValue(id, out var category))
+                category.SetSortOrder(order++);
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        return await ListAsync(tenantId, cancellationToken);
     }
 }

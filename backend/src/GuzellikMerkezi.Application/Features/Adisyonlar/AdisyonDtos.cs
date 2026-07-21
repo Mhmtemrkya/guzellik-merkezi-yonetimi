@@ -38,7 +38,9 @@ public sealed record CreateAdisyonRequest(
     Guid? CustomerAccountId,
     string? Notes,
     int? InstallmentCount = null,
-    DateOnly? FirstDueDate = null);
+    DateOnly? FirstDueDate = null,
+    // true = mevcut açık fişi yeniden KULLANMA, her seferinde YENİ adisyon aç (satış = kendi adisyonu).
+    bool ForceNew = false);
 
 public sealed record AddAdisyonItemRequest(
     AdisyonItemType Type,
@@ -57,3 +59,29 @@ public sealed record UpdateAdisyonRequest(
 
 /// <summary>Adisyona hediye çeki / kupon kodu uygula (indirim kalemi eklenir, onayda redeem edilir).</summary>
 public sealed record ApplyAdisyonGiftCardRequest(string Code);
+
+/// <summary>Günlük adisyon kartında tek bir satır (bir hizmet/ürün işlemi veya bir tahsilat).</summary>
+public sealed record DailyAdisyonRowDto(
+    Guid AdisyonId,
+    Guid ItemId,
+    DateTime OccurredAtUtc,
+    Guid CustomerId,
+    string? CustomerName,
+    AdisyonItemType Type,
+    string Description,
+    decimal Quantity,
+    decimal Amount,
+    Guid? StaffMemberId,
+    string? StaffName,
+    AdisyonStatus AdisyonStatus);
+
+/// <summary>Bir günün adisyon aktivitesi: kime ne yapıldı (saatli), kim yaptı, tahsilatlar ve gün toplamları.</summary>
+public sealed record DailyAdisyonDto(
+    DateTime FromUtc,
+    DateTime ToUtc,
+    IReadOnlyCollection<DailyAdisyonRowDto> Rows,
+    int ServiceCount,
+    int PaymentCount,
+    int CustomerCount,
+    decimal ChargeTotal,
+    decimal PaymentTotal);

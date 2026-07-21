@@ -30,6 +30,9 @@ import type {
   ApiServicePackage,
   ApiAdisyon,
   Adisyon,
+  ApiDailyAdisyon,
+  DailyAdisyon,
+  DailyAdisyonRow,
   AdisyonItem,
   AdisyonStatusKey,
   AdisyonItemTypeKey,
@@ -710,6 +713,33 @@ export function normalizeAdisyon(a: ApiAdisyon | null | undefined): Adisyon {
   }
 }
 
+export function normalizeDailyAdisyon(d: ApiDailyAdisyon | null | undefined): DailyAdisyon {
+  const rows: DailyAdisyonRow[] = (d?.rows || []).map((r, i) => ({
+    adisyonId: r.adisyonId || '',
+    itemId: r.itemId || `daily-row-${i}`,
+    occurredAtUtc: r.occurredAtUtc || '',
+    customerId: r.customerId || '',
+    customerName: r.customerName ?? null,
+    type: normalizeAdisyonItemType(typeof r.type === 'number' ? String(r.type) : r.type),
+    description: r.description || '',
+    quantity: Number(r.quantity ?? 1),
+    amount: Number(r.amount ?? 0),
+    staffMemberId: r.staffMemberId ?? null,
+    staffName: r.staffName ?? null,
+    adisyonStatus: normalizeAdisyonStatus(typeof r.adisyonStatus === 'number' ? String(r.adisyonStatus) : r.adisyonStatus),
+  }))
+  return {
+    fromUtc: d?.fromUtc || '',
+    toUtc: d?.toUtc || '',
+    rows,
+    serviceCount: Number(d?.serviceCount ?? 0),
+    paymentCount: Number(d?.paymentCount ?? 0),
+    customerCount: Number(d?.customerCount ?? 0),
+    chargeTotal: Number(d?.chargeTotal ?? 0),
+    paymentTotal: Number(d?.paymentTotal ?? 0),
+  }
+}
+
 function normalizeInstallmentStatus(status: string | null | undefined): InstallmentStatusKey {
   const key = String(status || 'Planned')
   if (key === 'Paid' || key === '1') return 'Paid'
@@ -866,6 +896,27 @@ export function normalizeCustomCategory(category: ApiCustomExpenseCategory | nul
   }
 }
 
+/**
+ * Kategori adı → manuel sıra (SortOrder) çözücü. Özel kategoriler kendi SortOrder'ına göre;
+ * türetilmiş/bilinmeyen adlar sona (alfabetik), "Kategorisiz" en sonda sıralanır.
+ * Kullanım: `list.sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))`.
+ */
+export function categoryOrderIndex(
+  customCats: { name: string; sortOrder: number }[],
+): (name: string) => number {
+  const map = new Map<string, number>()
+  for (const c of customCats) {
+    const key = (c?.name || '').trim().toLocaleLowerCase('tr')
+    if (key && !map.has(key)) map.set(key, Number(c.sortOrder ?? 0))
+  }
+  return (name: string) => {
+    const key = (name || '').trim().toLocaleLowerCase('tr')
+    if (!key || key === 'kategorisiz') return Number.MAX_SAFE_INTEGER
+    const v = map.get(key)
+    return v === undefined ? Number.MAX_SAFE_INTEGER - 1 : v
+  }
+}
+
 export function normalizeCustomServiceCategory(category: ApiCustomServiceCategory | null | undefined, index = 0): CustomServiceCategory {
   return {
     id: category?.id || `custom-svc-cat-${index}`,
@@ -874,6 +925,7 @@ export function normalizeCustomServiceCategory(category: ApiCustomServiceCategor
     isActive: category?.isActive ?? true,
     createdAt: category?.createdAtUtc || '',
     parentId: category?.parentId || null,
+    sortOrder: Number(category?.sortOrder ?? index),
   }
 }
 

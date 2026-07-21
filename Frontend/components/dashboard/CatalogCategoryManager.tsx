@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FolderPlus, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FolderPlus, Trash2, X } from 'lucide-react'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 
 export interface CatalogCategoryItem {
@@ -20,6 +20,7 @@ export default function CatalogCategoryManager({
   onSelect,
   onCreate,
   onDelete,
+  onReorder,
 }: {
   title: string
   description: string
@@ -30,6 +31,8 @@ export default function CatalogCategoryManager({
   onSelect: (name: string) => void
   onCreate: (name: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  /** Verilen id sırasına göre kalıcı sıra (SortOrder) yaz. Verilmezse elle sıralama gizlenir. */
+  onReorder?: (orderedCustomIds: string[]) => Promise<void> | void
 }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -65,6 +68,17 @@ export default function CatalogCategoryManager({
     } finally {
       setBusy(false)
     }
+  }
+
+  // Elle sıralama: yalnızca kuruma özel (customId'li) kategoriler taşınabilir.
+  const customIds = categories.filter((c) => c.customId).map((c) => c.customId!)
+  const move = (customId: string, dir: -1 | 1) => {
+    const i = customIds.indexOf(customId)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= customIds.length) return
+    const next = [...customIds]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    void onReorder?.(next)
   }
 
   return (
@@ -128,21 +142,39 @@ export default function CatalogCategoryManager({
                 <ServiceIcon iconKey={suggestIcon(category.name)} className="h-5 w-5" />
               </span>
               {canManage && category.customId && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  title="Kategoriyi sil"
-                  onClick={(e) => { e.stopPropagation(); void remove(category.customId!, category.name) }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.stopPropagation()
-                      void remove(category.customId!, category.name)
-                    }
-                  }}
-                  className="grid h-7 w-7 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </span>
+                <div className="flex items-center gap-0.5">
+                  {onReorder && customIds.length > 1 && (
+                    <>
+                      <span role="button" tabIndex={0} title="Öne al"
+                        onClick={(e) => { e.stopPropagation(); move(category.customId!, -1) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); move(category.customId!, -1) } }}
+                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#c85776] group-hover:opacity-100 ${customIds.indexOf(category.customId!) === 0 ? 'pointer-events-none !opacity-20' : ''}`}>
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </span>
+                      <span role="button" tabIndex={0} title="Geri al"
+                        onClick={(e) => { e.stopPropagation(); move(category.customId!, 1) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); move(category.customId!, 1) } }}
+                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#c85776] group-hover:opacity-100 ${customIds.indexOf(category.customId!) === customIds.length - 1 ? 'pointer-events-none !opacity-20' : ''}`}>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </span>
+                    </>
+                  )}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Kategoriyi sil"
+                    onClick={(e) => { e.stopPropagation(); void remove(category.customId!, category.name) }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.stopPropagation()
+                        void remove(category.customId!, category.name)
+                      }
+                    }}
+                    className="grid h-7 w-7 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </span>
+                </div>
               )}
             </div>
             <div className="mt-2 truncate text-[13px] font-medium text-[#352432]">{category.name}</div>

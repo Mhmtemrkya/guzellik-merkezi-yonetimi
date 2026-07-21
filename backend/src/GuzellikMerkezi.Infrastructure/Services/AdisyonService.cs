@@ -81,10 +81,14 @@ public sealed class AdisyonService : IAdisyonService
 
         // Bir müşterinin aynı anda tek açık adisyonu olur (restoran adisyonu modeli) —
         // açık fiş varsa yenisini açma, mevcut fişi döndür ki kalemler tek fişte toplansın.
-        var existingOpen = await _db.Adisyonlar
-            .Where(x => x.TenantId == tenantId && x.CustomerId == request.CustomerId && x.Status == AdisyonStatus.Open)
-            .OrderByDescending(x => x.OpenedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+        // İSTİSNA: satış akışı ForceNew=true gönderir → her satış KENDİ adisyonunu açar (mevcut açık
+        // fişe/cariye eklenmez), böylece her satış bazlı ayrı adisyon kartı açılır.
+        var existingOpen = request.ForceNew
+            ? null
+            : await _db.Adisyonlar
+                .Where(x => x.TenantId == tenantId && x.CustomerId == request.CustomerId && x.Status == AdisyonStatus.Open)
+                .OrderByDescending(x => x.OpenedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
         if (existingOpen is not null)
         {
             // Açık fiş varsa yenisini açma; taksit planı geldiyse mevcut fişe uygula (satış akışı).
@@ -212,11 +216,13 @@ public sealed class AdisyonService : IAdisyonService
             })
             .ToList();
         var productIds = productSaleGroups.Select(g => g.ProductId).ToList();
+        // MySql.EntityFrameworkCore Guid listesini .Contains() ile SUNUCUDA çeviremez ("no type mapping") →
+        // tenant ürünlerini çekip BELLEKTE filtrele. [[project_mysql_query_gotchas]]
         var productMap = productSaleGroups.Count == 0
             ? new Dictionary<Guid, Product>()
-            : await _db.Products
-                .Where(p => p.TenantId == tenantId && productIds.Contains(p.Id))
-                .ToDictionaryAsync(p => p.Id, cancellationToken);
+            : (await _db.Products.Where(p => p.TenantId == tenantId).ToListAsync(cancellationToken))
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionary(p => p.Id);
 
         foreach (var sale in productSaleGroups)
         {
@@ -333,7 +339,7 @@ public sealed class AdisyonService : IAdisyonService
                 {
                     _db.CustomerPackageSessions.Add(new CustomerPackageSession(
                         tenantId, adisyon.CustomerId, accountId.Value, package.Id,
-                        pkgItem.ServiceDefinitionId, pkgItem.SessionCount * qty));
+                        pkgItem.ServiceDefinitionId, pkgItem.SessionCount * qty, adisyon.Id));
                 }
             }
         }
@@ -348,7 +354,7 @@ public sealed class AdisyonService : IAdisyonService
                 var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
                 _db.CustomerPackageSessions.Add(new CustomerPackageSession(
                     tenantId, adisyon.CustomerId, accountId.Value, Guid.Empty,
-                    item.RefId!.Value, qty));
+                    item.RefId!.Value, qty, adisyon.Id));
             }
         }
 
@@ -448,6 +454,197 @@ public sealed class AdisyonService : IAdisyonService
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, adisyon.BranchId, "Cancel", "Adisyon", adisyon.Id, "Adisyon iptal edildi", null, cancellationToken);
         return await GetAsync(tenantId, id, cancellationToken);
+    }
+
+    public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    {
+        var adisyon = await LoadAsync(tenantId, id, cancellationToken);
+        if (adisyon is null) return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
+
+        // Açık veya İptal edilmiş adisyonun onaydan doğan finansal etkisi yoktur → doğrudan silinir.
+        if (adisyon.Status != AdisyonStatus.Approved)
+        {
+            _db.AdisyonItems.RemoveRange(adisyon.Items);
+            _db.Adisyonlar.Remove(adisyon);
+            await _db.SaveChangesAsync(cancellationToken);
+            await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id, $"Adisyon silindi ({adisyon.Status})", null, cancellationToken);
+            return Result.Success();
+        }
+
+        // ── Onaylı adisyon: onayda oluşan tüm yan etkileri geri al, sonra sil (tek SaveChanges = atomik) ──
+        var charge = adisyon.ChargeTotal;
+        var payment = adisyon.PaymentTotal;
+        var reference = $"ADS-{adisyon.Id:N}".Substring(0, 16); // ApproveAsync ile aynı referans (tahsilat + stok hareketi eşleşmesi)
+        var nowUtc = DateTime.UtcNow;
+
+        // Bu adisyonun satışından açılan seans bakiyeleri (izlenebilir olanlar).
+        var soldSessions = await _db.CustomerPackageSessions
+            .Where(s => s.TenantId == tenantId && s.SourceAdisyonId == adisyon.Id)
+            .ToListAsync(cancellationToken);
+
+        // GUARD 1: satılan seanslardan biri kullanılmışsa geri alınamaz (müşteri o hizmeti almış).
+        if (soldSessions.Any(s => s.UsedSessions > 0))
+            return Result.Failure(Error.Validation("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın."));
+
+        // GUARD 2: satış kalemi var ama izlenebilir seans yok (eski kayıt) → otomatik geri alınamaz.
+        var hasTraceableSaleItems = adisyon.Items.Any(i =>
+            i.Type == AdisyonItemType.PackageSale ||
+            (i.Type == AdisyonItemType.Service && !i.CoveredByPackage));
+        if (hasTraceableSaleItems && soldSessions.Count == 0)
+            return Result.Failure(Error.Validation("Bu adisyon otomatik geri alınamıyor (satılan seanslar izlenemiyor — eski kayıt). Cari hesaptan elle düzeltin."));
+
+        // 1) Personel primleri
+        var commissions = await _db.StaffCommissions
+            .Where(c => c.TenantId == tenantId && c.SourceAdisyonId == adisyon.Id)
+            .ToListAsync(cancellationToken);
+        _db.StaffCommissions.RemoveRange(commissions);
+
+        // 2) Sadakat puanı kazanımları
+        var loyalty = await _db.LoyaltyTransactions
+            .Where(l => l.TenantId == tenantId && l.SourceType == "Adisyon" && l.SourceId == adisyon.Id)
+            .ToListAsync(cancellationToken);
+        _db.LoyaltyTransactions.RemoveRange(loyalty);
+
+        // 3) Ürün satışı → stoğu geri ekle + iade hareketi kaydet.
+        var productItems = adisyon.Items.Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue && !i.CoveredByPackage).ToList();
+        if (productItems.Count > 0)
+        {
+            var productIds = productItems.Select(i => i.RefId!.Value).Distinct().ToList();
+            // Guid listesi .Contains() MySQL'de çevrilemez → bellekte filtrele. [[project_mysql_query_gotchas]]
+            var productMap = (await _db.Products.Where(p => p.TenantId == tenantId).ToListAsync(cancellationToken))
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionary(p => p.Id);
+            foreach (var item in productItems)
+            {
+                if (!productMap.TryGetValue(item.RefId!.Value, out var product)) continue;
+                var qty = Math.Max(1, Math.Round(item.Quantity, 3, MidpointRounding.AwayFromZero));
+                product.AdjustStock(StockMovementType.Inbound, qty);
+                _db.StockMovements.Add(new StockMovement(
+                    tenantId, product.Id, StockMovementType.Inbound, qty, nowUtc,
+                    unitCost: product.Cost, reference: reference,
+                    notes: "Adisyon silme — stok iadesi", staffMemberId: item.StaffMemberId));
+            }
+        }
+
+        // 4) Paket-kullanımı (PackageUse) tüketimini geri kredile — ilgili hizmetin kullanılmış seansını geri al.
+        foreach (var item in adisyon.Items.Where(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue))
+        {
+            var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
+            for (var k = 0; k < qty; k++)
+            {
+                var session = await _db.CustomerPackageSessions
+                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId
+                             && s.ServiceDefinitionId == item.RefId!.Value && s.UsedSessions > 0)
+                    .OrderByDescending(s => s.UpdatedAtUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (session is null) break;
+                session.RestoreOne();
+            }
+        }
+
+        // 5) Hediye çeki / kupon redeem geri alma.
+        foreach (var discountItem in adisyon.Items.Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue))
+        {
+            var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == discountItem.RefId!.Value, cancellationToken);
+            card?.UndoRedeem(discountItem.LineTotal);
+        }
+
+        // 6) Cari hesap: bu adisyonun tahsilatını kaldır, seanslarını sil, borcu düş / hesabı kapat.
+        var accountId = adisyon.CustomerAccountId;
+        if (accountId is not null)
+        {
+            var accountPayments = await _db.AccountPayments
+                .Where(p => p.CustomerAccountId == accountId.Value && p.Reference == reference)
+                .ToListAsync(cancellationToken);
+            _db.AccountPayments.RemoveRange(accountPayments);
+            _db.CustomerPackageSessions.RemoveRange(soldSessions);
+
+            var account = await _db.CustomerAccounts
+                .Include(a => a.Installments)
+                .Include(a => a.Payments)
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == accountId.Value, cancellationToken);
+            if (account is not null)
+            {
+                var otherAdisyon = await _db.Adisyonlar
+                    .AnyAsync(a => a.TenantId == tenantId && a.CustomerAccountId == accountId.Value && a.Id != adisyon.Id, cancellationToken);
+                var totalAccountSessions = await _db.CustomerPackageSessions
+                    .CountAsync(s => s.TenantId == tenantId && s.CustomerAccountId == accountId.Value, cancellationToken);
+                var otherSessions = totalAccountSessions > soldSessions.Count; // bu adisyon dışında seans var mı (eski/başka satış)
+                var remainingPayments = account.Payments.Count(p => p.Reference != reference);
+                var exclusive = !otherAdisyon && !otherSessions && remainingPayments == 0 && account.DepositAmount == 0m;
+
+                if (exclusive)
+                {
+                    // Cari yalnızca bu adisyon için açılmıştı → kapat (kalan tahsilat/seans yok).
+                    account.SoftDelete();
+                }
+                else
+                {
+                    // Paylaşılan cari → yalnız bu satışın borcunu düş; taksit planı varsa yeniden kur.
+                    var newTotal = Math.Max(account.DepositAmount, account.TotalAmount - charge);
+                    account.ChangeTotal(newTotal, account.DepositAmount);
+                    var activeInstallments = account.Installments.Where(i => i.Status != InstallmentStatus.Cancelled).ToList();
+                    if (activeInstallments.Count > 0)
+                        account.RebuildInstallments(activeInstallments.Count, activeInstallments.Min(i => i.DueDate));
+                }
+            }
+        }
+
+        // 7) Adisyonu ve kalemlerini sil.
+        _db.AdisyonItems.RemoveRange(adisyon.Items);
+        _db.Adisyonlar.Remove(adisyon);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id,
+            $"Onaylı adisyon silindi ve geri alındı · borç {charge:N2} · tahsilat {payment:N2}",
+            new { charge, payment, accountId }, cancellationToken);
+        return Result.Success();
+    }
+
+    public async Task<Result<DailyAdisyonDto>> GetDailyAsync(Guid tenantId, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default)
+    {
+        if (fromUtc.Kind != DateTimeKind.Utc) fromUtc = DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc);
+        if (toUtc.Kind != DateTimeKind.Utc) toUtc = DateTime.SpecifyKind(toUtc, DateTimeKind.Utc);
+
+        // Kalem zaman damgasına göre gün penceresi; iptal edilmiş adisyonlar hariç. Müşteri adı join'le çözülür
+        // (Guid-liste .Contains tuzağına girmemek için — [[project_mysql_query_gotchas]]).
+        var raw = await _db.AdisyonItems.AsNoTracking()
+            .Where(i => i.CreatedAtUtc >= fromUtc && i.CreatedAtUtc < toUtc)
+            .Join(_db.Adisyonlar.AsNoTracking().Where(a => a.TenantId == tenantId && a.Status != AdisyonStatus.Cancelled),
+                i => i.AdisyonId, a => a.Id, (i, a) => new { Item = i, a.CustomerId, a.Status })
+            .Join(_db.Customers.AsNoTracking(),
+                x => x.CustomerId, c => c.Id, (x, c) => new { x.Item, x.CustomerId, x.Status, CustomerName = c.FullName })
+            .ToListAsync(cancellationToken);
+
+        var staffIds = raw.Where(x => x.Item.StaffMemberId.HasValue).Select(x => x.Item.StaffMemberId!.Value).Distinct().ToList();
+        var staffMap = new Dictionary<Guid, string>();
+        if (staffIds.Count > 0)
+        {
+            var staffRows = await _db.StaffMembers.AsNoTracking()
+                .Where(s => s.TenantId == tenantId)
+                .Select(s => new { s.Id, s.FullName })
+                .ToListAsync(cancellationToken);
+            staffMap = staffRows.Where(s => staffIds.Contains(s.Id)).ToDictionary(s => s.Id, s => s.FullName);
+        }
+
+        var rows = raw
+            .OrderBy(x => x.Item.CreatedAtUtc)
+            .Select(x => new DailyAdisyonRowDto(
+                x.Item.AdisyonId, x.Item.Id, x.Item.CreatedAtUtc, x.CustomerId, x.CustomerName,
+                x.Item.Type, x.Item.Description, x.Item.Quantity, x.Item.LineTotal,
+                x.Item.StaffMemberId,
+                x.Item.StaffMemberId.HasValue && staffMap.TryGetValue(x.Item.StaffMemberId.Value, out var sn) ? sn : null,
+                x.Status))
+            .ToArray();
+
+        var paymentTotal = rows.Where(r => r.Type == AdisyonItemType.Payment).Sum(r => r.Amount);
+        var discountTotal = rows.Where(r => r.Type == AdisyonItemType.Discount).Sum(r => r.Amount);
+        var chargeTotal = rows.Where(r => r.Type == AdisyonItemType.Service || r.Type == AdisyonItemType.Product || r.Type == AdisyonItemType.Extra || r.Type == AdisyonItemType.PackageSale).Sum(r => r.Amount) - discountTotal;
+        var serviceCount = rows.Count(r => r.Type != AdisyonItemType.Payment && r.Type != AdisyonItemType.Discount);
+        var paymentCount = rows.Count(r => r.Type == AdisyonItemType.Payment);
+        var customerCount = rows.Select(r => r.CustomerId).Distinct().Count();
+
+        return Result<DailyAdisyonDto>.Success(new DailyAdisyonDto(fromUtc, toUtc, rows, serviceCount, paymentCount, customerCount, chargeTotal, paymentTotal));
     }
 
     private Task<Adisyon?> LoadAsync(Guid tenantId, Guid id, CancellationToken cancellationToken) =>

@@ -7,6 +7,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
+import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import ExpenseFormDialog, { type ExpenseFormDialogValues } from '@/components/dashboard/ExpenseFormDialog'
@@ -82,6 +83,7 @@ function OnMuhasebePageInner() {
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [dailyOpen, setDailyOpen] = useState(false)
 
   useEffect(() => {
     if (scope === 'upcoming') setAccountFilter('upcoming')
@@ -289,6 +291,22 @@ function OnMuhasebePageInner() {
     goScope('accounts')
   }
 
+  // Adisyonu tamamen sil — onaylıda backend cari/kasa/prim/sadakat/stok/seans geri alır (yönetici-only).
+  const deleteAdisyonNow = async (a: Adisyon) => {
+    const isApproved = a.status === 'Approved'
+    const msg = isApproved
+      ? 'Bu ONAYLI adisyon silinsin mi? Oluşan cari tahsilatı, prim, sadakat, stok ve satılan seanslar geri alınır.'
+      : 'Bu adisyon tamamen silinsin mi?'
+    if (!window.confirm(msg)) return
+    setBusy(true); setActionError(''); setActionMsg('')
+    try {
+      await adminApi.deleteAdisyon(a.id, tenantId)
+      setActionMsg('Adisyon silindi.')
+      setSelectedAdisyonId(null)
+      await reload()
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Adisyon silinemedi.') } finally { setBusy(false) }
+  }
+
   // ---------- topbar aksiyonu (sekmeye göre) ----------
   const topAction = (() => {
     if (tab === 'adisyon') {
@@ -472,6 +490,13 @@ function OnMuhasebePageInner() {
               <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
                 <ReceiptText className="h-4 w-4" /> <b>ADİSYON</b> · AÇIK HESAP FİŞLERİ — ONAYLANANLAR CARİYE VE KASAYA İŞLENİR
               </div>
+              <button
+                type="button"
+                onClick={() => setDailyOpen(true)}
+                className="inline-flex items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              >
+                <CalendarDays className="h-4 w-4" /> Bugünün Kartı
+              </button>
               {monthNav}
             </div>
 
@@ -573,10 +598,18 @@ function OnMuhasebePageInner() {
                         ))}
                       </div>
 
-                      <button type="button" onClick={() => showInAccounts(selAdisyon)}
-                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-emerald-300/50 bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-700 hover:bg-emerald-100">
-                        <CreditCard className="h-4 w-4" /> Cari hesaplarda gör
-                      </button>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        <button type="button" onClick={() => showInAccounts(selAdisyon)}
+                          className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-emerald-300/50 bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-700 hover:bg-emerald-100">
+                          <CreditCard className="h-4 w-4" /> Cari hesaplarda gör
+                        </button>
+                        {!isStaff && (
+                          <button type="button" disabled={busy} onClick={() => deleteAdisyonNow(selAdisyon)}
+                            className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40">
+                            <Trash2 className="h-4 w-4" /> Adisyonu sil{selAdisyon.status === 'Approved' ? ' (geri al)' : ''}
+                          </button>
+                        )}
+                      </div>
                     </>
                   )
                 ) : <div className="grid h-full place-items-center py-16 text-sm text-[#352432]/45">Adisyon seçimi yok.</div>}
@@ -852,6 +885,9 @@ function OnMuhasebePageInner() {
           </>
         )}
       </div>
+
+      {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}
+      <DailyAdisyonModal open={dailyOpen} onOpenChange={setDailyOpen} tenantId={tenantId} />
     </>
   )
 }

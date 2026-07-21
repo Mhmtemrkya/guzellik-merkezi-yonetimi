@@ -79,6 +79,21 @@ public static class AdisyonEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CancelAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
         });
 
+        // Adisyon silme yıkıcıdır (onaylıda finansal geri alma yapar) — yalnız yönetici rolleri; personel yapamaz.
+        group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
+        {
+            if (currentUser.Role == Domain.Enums.UserRole.Staff) return Results.Forbid();
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+        });
+
+        // Günlük adisyon kartı: [fromUtc, toUtc) aralığındaki işlem + tahsilat satırları (istemci yerel-gün penceresini gönderir).
+        group.MapGet("/daily", async (DateTime fromUtc, DateTime toUtc, Guid? tenantId, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetDailyAsync(resolvedTenantId, fromUtc, toUtc, ct)).ToHttpResult(http);
+        });
+
         return app;
     }
 }

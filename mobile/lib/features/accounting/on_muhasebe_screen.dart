@@ -12,6 +12,7 @@ import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../appointments/calendar_theme.dart';
+import 'daily_adisyon_sheet.dart';
 
 const _expenseCategories = [
   CrudOption('Salary', 'Maaş'),
@@ -336,6 +337,21 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              useSafeArea: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => DailyAdisyonSheet(api: widget.api),
+            ),
+            icon: const Icon(Icons.today_rounded, size: 18),
+            label: const Text('Bugünün Kartı'),
+          ),
+        ),
+        const SizedBox(height: 8),
         _filterChips(
           {'all': 'Tümü', 'Open': 'Açık', 'Approved': 'Onaylı', 'Cancelled': 'İptal'},
           _adisyonFilter,

@@ -9,10 +9,51 @@ class ServiceCategoriesScreen extends StatelessWidget {
   const ServiceCategoriesScreen({required this.api, super.key});
   final ApiClient api;
 
+  /// Kategoriyi kardeşleri arasında öne/geri taşı (elle sıralama → SortOrder).
+  Future<bool> _move(BuildContext context, Map<String, dynamic> item, int dir) async {
+    try {
+      final data = await api.get('/api/admin/service-categories/');
+      // Liste zaten SortOrder'a göre gelir; aynı üst kategori altındaki kardeşleri diz.
+      final siblings = apiItems(data)
+          .where((c) => c['parentId'] == item['parentId'])
+          .toList();
+      final ids = siblings.map((c) => '${c['id']}').toList();
+      final i = ids.indexOf('${item['id']}');
+      final j = i + dir;
+      if (i < 0 || j < 0 || j >= ids.length) return false;
+      final tmp = ids[i];
+      ids[i] = ids[j];
+      ids[j] = tmp;
+      await api.post('/api/admin/service-categories/reorder', {'orderedIds': ids});
+      return true;
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = api.auth?.user;
+    final canManage = me?.canAction(Perm.servicesManage) ?? true;
     return CrudListScreen(
+      rowActions: canManage
+          ? [
+              CrudRowAction(
+                label: 'Öne al',
+                icon: Icons.arrow_upward_rounded,
+                run: (ctx, item) => _move(ctx, item, -1),
+              ),
+              CrudRowAction(
+                label: 'Geri al',
+                icon: Icons.arrow_downward_rounded,
+                run: (ctx, item) => _move(ctx, item, 1),
+              ),
+            ]
+          : const [],
       canCreate: me?.canAction(Perm.servicesManage) ?? true,
       canUpdate: me?.canAction(Perm.servicesManage) ?? true,
       canDelete: me?.canAction(Perm.servicesManage) ?? true,

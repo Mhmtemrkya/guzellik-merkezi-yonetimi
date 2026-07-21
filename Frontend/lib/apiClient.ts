@@ -932,6 +932,11 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/adisyonlar/${id}/approve`, { method: 'POST', query: { tenantId } }),
   cancelAdisyon: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}/cancel`, { method: 'POST', query: { tenantId } }),
+  deleteAdisyon: (id: string, tenantId?: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/admin/adisyonlar/${id}`, { method: 'DELETE', query: { tenantId } }),
+  /** Günlük adisyon kartı: [fromUtc, toUtc) aralığındaki işlem + tahsilat satırları (ISO UTC). */
+  dailyAdisyon: <T = unknown>(fromUtc: string, toUtc: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/adisyonlar/daily', { query: { fromUtc, toUtc, tenantId } }),
 
   // ---------- Personel primi (2B) ----------
   commissions: <T = unknown>(query: QueryRecord = {}): Promise<T[]> =>
@@ -1085,6 +1090,9 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/service-categories/${id}`, { method: 'PUT', query: { tenantId }, body }),
   deleteServiceCategory: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/service-categories/${id}`, { method: 'DELETE', query: { tenantId } }),
+  /** Kategorileri elle sırala: verilen id sırasına göre SortOrder yazılır, güncel liste döner. */
+  reorderServiceCategories: <T = unknown>(orderedIds: string[], tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/service-categories/reorder', { method: 'POST', query: { tenantId }, body: { orderedIds } }),
 }
 
 export function pagedItems<T>(result: PagedResult<T> | T[] | null | undefined): T[] {

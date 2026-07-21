@@ -184,7 +184,7 @@ export default function ServiceFormDialog({
   }
 
   const sortedCustomCategories = useMemo(
-    () => [...customCategories].filter((c) => c.isActive).sort((a, b) => a.name.localeCompare(b.name, 'tr-TR')),
+    () => [...customCategories].filter((c) => c.isActive).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr-TR')),
     [customCategories],
   )
 
@@ -197,8 +197,8 @@ export default function ServiceFormDialog({
   const subCategoryOptions = useMemo(
     () => customCategories
       .filter((c) => c.isActive && c.parentId && (!parentCategoryId || c.parentId === parentCategoryId))
-      .map((c) => c.name)
-      .sort((a, b) => a.localeCompare(b, 'tr')),
+      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr'))
+      .map((c) => c.name),
     [customCategories, parentCategoryId],
   )
 

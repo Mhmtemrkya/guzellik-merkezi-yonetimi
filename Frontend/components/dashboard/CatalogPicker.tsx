@@ -26,6 +26,7 @@ export default function CatalogPicker({
   accent = 'rose',
   emptyText,
   clearable = false,
+  categoryOrder,
 }: {
   items: PickerItem[]
   value: string
@@ -34,18 +35,22 @@ export default function CatalogPicker({
   emptyText: string
   /** true ise seçili öğeye tekrar tıklamak seçimi temizler (opsiyonel alanlarda). */
   clearable?: boolean
+  /** Kategori/alt kategori pill'lerini manuel sıraya (SortOrder) göre dizmek için ad→sıra çözücü. */
+  categoryOrder?: (name: string) => number
 }) {
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('')
   const [sub, setSub] = useState('')
 
   const cats = useMemo(
-    () => Array.from(new Set(items.map((i) => i.cat).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'tr')),
-    [items],
+    () => Array.from(new Set(items.map((i) => i.cat).filter(Boolean)))
+      .sort((a, b) => (categoryOrder ? categoryOrder(a) - categoryOrder(b) : 0) || a.localeCompare(b, 'tr')),
+    [items, categoryOrder],
   )
   const subs = useMemo(
-    () => Array.from(new Set(items.filter((i) => !cat || i.cat === cat).map((i) => i.sub).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'tr')),
-    [items, cat],
+    () => Array.from(new Set(items.filter((i) => !cat || i.cat === cat).map((i) => i.sub).filter(Boolean)))
+      .sort((a, b) => (categoryOrder ? categoryOrder(a) - categoryOrder(b) : 0) || a.localeCompare(b, 'tr')),
+    [items, cat, categoryOrder],
   )
   const filtered = useMemo(() => {
     const term = q.trim().toLocaleLowerCase('tr')

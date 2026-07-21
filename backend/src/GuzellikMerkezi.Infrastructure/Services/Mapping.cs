@@ -44,7 +44,8 @@ internal static class Mapping
         category.Name,
         category.IsActive,
         category.CreatedAtUtc,
-        category.ParentId);
+        category.ParentId,
+        category.SortOrder);
 
     public static ProductDto ToDto(this Product product) => new(
         product.Id,

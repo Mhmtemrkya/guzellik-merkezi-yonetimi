@@ -10,7 +10,7 @@ import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
+import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, Gift, Loader2, Minus, PackagePlus, PencilLine,
   PauseCircle, Plus, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud, Wallet, X,
@@ -150,7 +150,9 @@ export default function PackageLibrary({
       current.count++
       m.set(name, current)
     }
-    return Array.from(m.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'tr'))
+    // Manuel sıra (SortOrder) önce; türetilmiş adlar adete/alfabeye göre.
+    const orderOf = categoryOrderIndex(customCategories)
+    return Array.from(m.values()).sort((a, b) => orderOf(a.name) - orderOf(b.name) || b.count - a.count || a.name.localeCompare(b.name, 'tr'))
   }, [packages, customCategories])
   const categories = useMemo(() => categorySettings.map((c) => c.name), [categorySettings])
   const assignableCategories = useMemo(() => {
@@ -158,7 +160,8 @@ export default function PackageLibrary({
     for (const c of customCategories) names.add(c.name)
     for (const s of services) if (s.group) names.add(s.group)
     for (const p of packages) if (p.category) names.add(p.category)
-    return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'))
+    const orderOf = categoryOrderIndex(customCategories)
+    return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
   }, [customCategories, services, packages])
   // Alt kategori önerileri: seçili üst kategorinin tanımlı alt kategorileri + paketlerde geçenler.
   const packageSubCategoryOptions = useMemo(() => {
@@ -166,7 +169,8 @@ export default function PackageLibrary({
     const names = new Set<string>()
     for (const c of customCategories) if (c.parentId && (!parentId || c.parentId === parentId)) names.add(c.name)
     for (const p of packages) if (p.subCategory && (!draft.category || p.category === draft.category)) names.add(p.subCategory)
-    return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'))
+    const orderOf = categoryOrderIndex(customCategories.filter((c) => c.parentId))
+    return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
   }, [customCategories, packages, draft.category])
 
   // ---- taslak editörü
@@ -303,6 +307,11 @@ export default function PackageLibrary({
 
   const deleteCategory = async (id: string) => {
     await adminApi.deleteServiceCategory(id, tenantId)
+    await reload()
+  }
+
+  const reorderCategory = async (orderedIds: string[]) => {
+    await adminApi.reorderServiceCategories(orderedIds, tenantId)
     await reload()
   }
 
@@ -700,6 +709,7 @@ export default function PackageLibrary({
           onSelect={setCatFilter}
           onCreate={createCategory}
           onDelete={deleteCategory}
+          onReorder={canCustomServiceCat ? reorderCategory : undefined}
         />
 
         {/* PAKETE EKLENECEK HİZMETLER */}

@@ -9,8 +9,8 @@ import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
-import { Clock3, FolderPlus, Layers3, Package, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
+import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
+import { ChevronLeft, ChevronRight, Clock3, FolderPlus, Layers3, Package, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import type { ApiCustomServiceCategory, ApiService, ApiServicePackage } from '@/lib/types'
 
 const UNCATEGORIZED = 'Kategorisiz'
@@ -77,7 +77,12 @@ export default function CategoryExplorer({
     }
     for (const s of services) touch(s.group || UNCATEGORIZED).serviceCount++
     for (const p of packages) touch(p.category || UNCATEGORIZED).packageCount++
-    return [...map.values()].sort((a, b) => (b.serviceCount + b.packageCount) - (a.serviceCount + a.packageCount) || a.name.localeCompare(b.name, 'tr'))
+    // Manuel sıra (SortOrder) önce; türetilmiş adlar adete/alfabeye göre sona, "Kategorisiz" en sonda.
+    const orderOf = categoryOrderIndex(topCustomCats)
+    return [...map.values()].sort((a, b) =>
+      orderOf(a.name) - orderOf(b.name)
+      || (b.serviceCount + b.packageCount) - (a.serviceCount + a.packageCount)
+      || a.name.localeCompare(b.name, 'tr'))
   }, [topCustomCats, services, packages])
 
   const activeCat = selectedCat && categories.some((c) => c.name === selectedCat) ? selectedCat : categories[0]?.name || null
@@ -96,7 +101,8 @@ export default function CategoryExplorer({
     }
     for (const s of services) if ((s.group || UNCATEGORIZED) === activeCat && s.subGroup) touch(s.subGroup).serviceCount++
     for (const p of packages) if ((p.category || UNCATEGORIZED) === activeCat && p.subCategory) touch(p.subCategory).packageCount++
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    const orderOf = categoryOrderIndex(customCats.filter((c) => c.parentId === activeCatCustomId))
+    return [...map.values()].sort((a, b) => orderOf(a.name) - orderOf(b.name) || a.name.localeCompare(b.name, 'tr'))
   }, [customCats, services, packages, activeCat, activeCatCustomId])
 
   const catServices = useMemo(
@@ -170,6 +176,30 @@ export default function CategoryExplorer({
     }
   }
 
+  // Elle sıralama: verilen id sırasına göre backend SortOrder yazar (özel kategoriler için).
+  const reorderCats = async (orderedIds: string[]) => {
+    setBusy(true)
+    setError('')
+    try {
+      await adminApi.reorderServiceCategories(orderedIds, tenantId)
+      await reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sıralama kaydedilemedi')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const moveInList = (ids: string[], id: string, dir: -1 | 1) => {
+    const i = ids.indexOf(id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ids.length) return
+    const next = [...ids]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    void reorderCats(next)
+  }
+  const topCustomIds = useMemo(() => categories.filter((c) => c.customId).map((c) => c.customId!), [categories])
+  const subCustomIds = useMemo(() => subCategories.filter((s) => s.customId).map((s) => s.customId!), [subCategories])
+
   return (
     <>
       <Topbar
@@ -225,6 +255,22 @@ export default function CategoryExplorer({
                   <ServiceIcon iconKey={suggestIcon(c.name)} className="h-5 w-5" />
                 </span>
                 <div className="flex items-center gap-1">
+                  {c.isCustom && c.customId && canCustomCat && topCustomIds.length > 1 && (
+                    <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                      <span role="button" tabIndex={0} title="Öne al"
+                        onClick={(e) => { e.stopPropagation(); moveInList(topCustomIds, c.customId!, -1) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); moveInList(topCustomIds, c.customId!, -1) } }}
+                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/35 hover:bg-[#fff1f6] hover:text-[#c85776] ${topCustomIds.indexOf(c.customId!) === 0 ? 'pointer-events-none opacity-30' : ''}`}>
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </span>
+                      <span role="button" tabIndex={0} title="Geri al"
+                        onClick={(e) => { e.stopPropagation(); moveInList(topCustomIds, c.customId!, 1) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); moveInList(topCustomIds, c.customId!, 1) } }}
+                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/35 hover:bg-[#fff1f6] hover:text-[#c85776] ${topCustomIds.indexOf(c.customId!) === topCustomIds.length - 1 ? 'pointer-events-none opacity-30' : ''}`}>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </span>
+                    </span>
+                  )}
                   {c.name !== UNCATEGORIZED && canCustomCat && (
                     <span
                       role="button"
@@ -300,6 +346,16 @@ export default function CategoryExplorer({
                       {s.name}
                       <span className={`ml-1 tabular-nums ${selectedSub === s.name ? 'text-white/70' : 'text-[#352432]/35'}`}>{s.serviceCount + s.packageCount}</span>
                     </button>
+                    {s.customId && canCustomCat && subCustomIds.length > 1 && (
+                      <span className="ml-0.5 inline-flex items-center opacity-0 transition-opacity group-hover/sub:opacity-100">
+                        <button type="button" title="Öne al" disabled={subCustomIds.indexOf(s.customId) === 0}
+                          onClick={() => moveInList(subCustomIds, s.customId!, -1)}
+                          className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronLeft className="h-3 w-3" /></button>
+                        <button type="button" title="Geri al" disabled={subCustomIds.indexOf(s.customId) === subCustomIds.length - 1}
+                          onClick={() => moveInList(subCustomIds, s.customId!, 1)}
+                          className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronRight className="h-3 w-3" /></button>
+                      </span>
+                    )}
                     {s.customId && canCustomCat && (
                       <button
                         type="button"

@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/customer_call.dart';
+import '../accounting/adisyon_detail_sheet.dart';
 import 'calendar_theme.dart';
 
 /// Appointment detail bottom sheet with edit / cancel / customer profile.
@@ -129,6 +130,43 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
         ],
       ),
     );
+  }
+
+  /// Randevudan müşterinin adisyonunu aç — Ön Muhasebe'ye gitmeden satış/ödeme/onay.
+  /// Açık adisyon yoksa oluşturur, sonra adisyon detay sheet'ini açar.
+  Future<void> _openAdisyon() async {
+    final cid = '${appt['customerId'] ?? ''}'.trim();
+    if (cid.isEmpty || cid.toLowerCase() == 'null') return;
+    setState(() => _busy = true);
+    try {
+      final open = await widget.api.get('/api/admin/adisyonlar/open/$cid');
+      String? id = open is Map ? '${open['id']}' : null;
+      if (id == null || id.isEmpty || id == 'null') {
+        final created = await widget.api.post('/api/admin/adisyonlar/', {
+          'customerId': cid,
+          'customerAccountId': null,
+          'notes': null,
+        });
+        id = created is Map ? '${created['id']}' : null;
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final adisyonId = id;
+      if (adisyonId != null && adisyonId.isNotEmpty && adisyonId != 'null') {
+        await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   void _showCustomerProfile() {
@@ -363,6 +401,25 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: _busy ? null : _openAdisyon,
+                  icon: const Icon(Icons.receipt_long_rounded, size: 20),
+                  label: const Text(
+                    'Adisyon / Ödeme al',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
               SizedBox(

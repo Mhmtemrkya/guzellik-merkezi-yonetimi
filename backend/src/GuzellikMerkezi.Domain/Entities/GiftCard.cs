@@ -98,6 +98,14 @@ public sealed class GiftCard : Entity
         Touch();
     }
 
+    /// <summary>Redeem'i geri alır (adisyon geri alma): hediye çekinde bakiye iade edilir, kullanım sayısı azaltılır.</summary>
+    public void UndoRedeem(decimal amount)
+    {
+        if (Kind == GiftCardKind.StoredValue && amount > 0) Balance += amount;
+        if (UsedCount > 0) UsedCount -= 1;
+        Touch();
+    }
+
     public void SetActive(bool active) { IsActive = active; Touch(); }
 
     public void SetNote(string? note)

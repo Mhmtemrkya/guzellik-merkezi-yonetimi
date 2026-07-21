@@ -18,13 +18,14 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
+import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
-import type { ApiAdisyon, ApiCustomer, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
+import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import type { ApiAdisyon, ApiCustomer, ApiCustomServiceCategory, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
 
 const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-[#352432]/45'
 const inputCls =
@@ -50,6 +51,7 @@ export default function PackageSaleDialog({
   triggerLabel,
   triggerClassName,
   stayOnPage,
+  openCardAfterSale = true,
 }: {
   tenantId?: string
   /** Müşteri kartından açılırsa müşteri sabitlenir. */
@@ -67,6 +69,11 @@ export default function PackageSaleDialog({
   triggerClassName?: string
   /** true ise satış sonrası müşteri kartına yönlendirme yapılmaz (ör. randevu modalı içinden satış). */
   stayOnPage?: boolean
+  /**
+   * true (varsayılan): satış AÇIK adisyon olarak kaydedilir ve adisyon kartı açılır (Ön Muhasebe gibi) —
+   * kullanıcı içeride ödeme/peşinat alıp onaylar. false: eski davranış (anında onayla → cariye işle).
+   */
+  openCardAfterSale?: boolean
 }) {
   const canAdisyon = useFeature('billing.adisyon')
   const canProducts = useFeature('stock.products')
@@ -81,6 +88,9 @@ export default function PackageSaleDialog({
   const [pendingApproval, setPendingApproval] = useState(false)
 
   const [customerId, setCustomerId] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  // Satış sonrası açılan adisyon kartı (openCardAfterSale) — Ön Muhasebe'deki gibi açık adisyon.
+  const [cardCustomer, setCardCustomer] = useState<{ id: string; name: string } | null>(null)
   const [packageId, setPackageId] = useState('')
   const [serviceId, setServiceId] = useState('')
   const [productId, setProductId] = useState('')
@@ -100,6 +110,7 @@ export default function PackageSaleDialog({
       setStep('form')
       setPendingApproval(false)
       setCustomerId(presetCustomer?.id || '')
+      setCustomerName(presetCustomer?.name || '')
       setPackageId(presetPackageId || '')
       setServiceId(presetService?.id || '')
       setProductId('')
@@ -111,11 +122,11 @@ export default function PackageSaleDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const { data } = useApiQuery<{ customers: ApiCustomer[]; packages: ApiServicePackage[]; services: ApiService[]; products: ApiProduct[]; staff: ApiStaff[] }>(
+  const { data } = useApiQuery<{ customers: ApiCustomer[]; packages: ApiServicePackage[]; services: ApiService[]; products: ApiProduct[]; staff: ApiStaff[]; cats: ApiCustomServiceCategory[] }>(
     async () => {
-      if (!open) return { customers: [], packages: [], services: [], products: [], staff: [] }
+      if (!open) return { customers: [], packages: [], services: [], products: [], staff: [], cats: [] }
       // Sınırsız müşteri ölçeği: müşteri listesi çekilmez — seçim sunucu aramasıyla yapılır.
-      const [packages, services, products, staff] = await Promise.all([
+      const [packages, services, products, staff, cats] = await Promise.all([
         isServiceSale || isProductSale
           ? Promise.resolve({ items: [] })
           : adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -126,6 +137,7 @@ export default function PackageSaleDialog({
           ? adminApi.products<ApiProduct>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] }))
           : Promise.resolve({ items: [] }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+        adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
       ])
       return {
         customers: [],
@@ -133,11 +145,15 @@ export default function PackageSaleDialog({
         services: apiItems(services),
         products: apiItems(products),
         staff: apiItems(staff),
+        cats: Array.isArray(cats) ? cats : [],
       }
     },
     [open, tenantId, presetCustomer?.id, isServiceSale, isProductSale],
-    { initialData: { customers: [], packages: [], services: [], products: [], staff: [] } },
+    { initialData: { customers: [], packages: [], services: [], products: [], staff: [], cats: [] } },
   )
+
+  // Kategori pill sıralaması için manuel sıra çözücü (SortOrder).
+  const categoryOrder = useMemo(() => categoryOrderIndex((data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i))), [data])
 
   const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const packages = useMemo(
@@ -261,6 +277,8 @@ export default function PackageSaleDialog({
           notes: notes.trim() || null,
           installmentCount: isInstallment ? installmentCount : 0,
           firstDueDate: isInstallment ? firstDueDate : null,
+          // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
+          forceNew: true,
         },
         tenantId,
       )
@@ -322,17 +340,24 @@ export default function PackageSaleDialog({
         )
       }
 
-      // 4) Anında onay — cariye işle + seans bakiyesini aç (randevuda hemen kullanılabilir).
-      //    Onay yetkisi olmayan personelde adisyon açık kalır, yönetici onayına düşer.
-      try {
-        await adminApi.approveAdisyon(adisyon.id, tenantId)
-        setPendingApproval(false)
-      } catch {
-        setPendingApproval(true)
+      // 4) Davranış:
+      //  - openCardAfterSale (VARSAYILAN): onaylama YOK — satış AÇIK adisyon olarak kalır ve
+      //    adisyon kartı (AdisyonModal) açılır (Ön Muhasebe gibi). Kullanıcı içeride ödeme/peşinat
+      //    alıp "Onayla → cariye aktar" ile bitirir. (Günlük adisyon kartından farklı; bu müşteri kartı.)
+      //  - false: eski davranış — anında onayla → cariye işle + seans aç.
+      if (openCardAfterSale) {
+        setOpen(false)
+        setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
+      } else {
+        try {
+          await adminApi.approveAdisyon(adisyon.id, tenantId)
+          setPendingApproval(false)
+        } catch {
+          setPendingApproval(true)
+        }
+        if (onDone) await onDone()
+        setStep('done')
       }
-
-      if (onDone) await onDone()
-      setStep('done')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Satış kaydedilemedi')
     } finally {
@@ -351,6 +376,7 @@ export default function PackageSaleDialog({
   const title = isProductSale ? 'Ürün Satışı' : isServiceSale ? 'Hizmet Satışı' : 'Paket Satışı'
 
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(next: boolean) => {
@@ -544,6 +570,7 @@ export default function PackageSaleDialog({
                     onSearch={customerSearch}
                     value={customerId}
                     onChange={setCustomerId}
+                    onSelectItem={(it) => { setCustomerId(it.id); setCustomerName(it.name) }}
                     className={inputCls}
                   />
                 </label>
@@ -619,14 +646,14 @@ export default function PackageSaleDialog({
                 ) : (
                   <div>
                     <div className={labelCls}>Hizmet</div>
-                    <CatalogPicker items={servicePickerItems} value={serviceId} onChange={(id) => { setServiceId(id); setPrice('') }} accent="rose" emptyText="Hizmet bulunamadı." />
+                    <CatalogPicker items={servicePickerItems} value={serviceId} onChange={(id) => { setServiceId(id); setPrice('') }} accent="rose" emptyText="Hizmet bulunamadı." categoryOrder={categoryOrder} />
                   </div>
                 )
               ) : (
                 <>
                   <div>
                     <div className={labelCls}>Paket</div>
-                    <CatalogPicker items={packagePickerItems} value={packageId} onChange={(id) => { setPackageId(id); setPrice('') }} accent="rose" emptyText="Paket bulunamadı." />
+                    <CatalogPicker items={packagePickerItems} value={packageId} onChange={(id) => { setPackageId(id); setPrice('') }} accent="rose" emptyText="Paket bulunamadı." categoryOrder={categoryOrder} />
                   </div>
                 </>
               )}
@@ -795,12 +822,31 @@ export default function PackageSaleDialog({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {busy ? 'Onaylanıyor…' : 'Onayla ve tamamla'}
+                {busy
+                  ? (openCardAfterSale ? 'Kaydediliyor…' : 'Onaylanıyor…')
+                  : (openCardAfterSale ? 'Satışı kaydet · adisyonu aç' : 'Onayla ve tamamla')}
               </button>
             </footer>
           )}
         </div>
       </DialogContent>
     </Dialog>
+
+      {/* Satış sonrası açılan MÜŞTERİ adisyon kartı (Ön Muhasebe gibi açık adisyon) —
+          günlük adisyon kartından farklı; burada ödeme/peşinat alınıp onaylanır. */}
+      <AdisyonModal
+        open={!!cardCustomer}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCardCustomer(null)
+            if (onDone) void onDone()
+          }
+        }}
+        customerId={cardCustomer?.id}
+        customerName={cardCustomer?.name}
+        tenantId={tenantId}
+        onChanged={onDone}
+      />
+    </>
   )
 }

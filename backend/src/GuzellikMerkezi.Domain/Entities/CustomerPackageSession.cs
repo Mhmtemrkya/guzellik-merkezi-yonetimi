@@ -17,7 +17,8 @@ public sealed class CustomerPackageSession : Entity
         Guid customerAccountId,
         Guid servicePackageId,
         Guid serviceDefinitionId,
-        int totalSessions)
+        int totalSessions,
+        Guid? sourceAdisyonId = null)
     {
         if (totalSessions < 0) throw new DomainException("Seans sayısı negatif olamaz.");
         TenantId = tenantId;
@@ -27,6 +28,7 @@ public sealed class CustomerPackageSession : Entity
         ServiceDefinitionId = serviceDefinitionId;
         TotalSessions = totalSessions;
         UsedSessions = 0;
+        SourceAdisyonId = sourceAdisyonId;
     }
 
     public Guid TenantId { get; private set; }
@@ -38,6 +40,8 @@ public sealed class CustomerPackageSession : Entity
     public ServiceDefinition? ServiceDefinition { get; private set; }
     public int TotalSessions { get; private set; }
     public int UsedSessions { get; private set; }
+    /// <summary>Bu seans bakiyesini açan adisyon (satış). Adisyon geri alınırken izlenebilirlik için; eski kayıtlarda null.</summary>
+    public Guid? SourceAdisyonId { get; private set; }
 
     public int RemainingSessions => Math.Max(0, TotalSessions - UsedSessions);
 

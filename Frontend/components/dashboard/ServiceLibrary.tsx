@@ -10,7 +10,7 @@ import ServiceFormDialog, { type ServiceFormDialogValues } from '@/components/da
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, CreditCard, Layers3, PauseCircle,
@@ -132,7 +132,9 @@ export default function ServiceLibrary({
       current.count++
       m.set(name, current)
     }
-    return Array.from(m.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'tr'))
+    // Manuel sıra (SortOrder) önce; türetilmiş adlar adete/alfabeye göre.
+    const orderOf = categoryOrderIndex(customCategories)
+    return Array.from(m.values()).sort((a, b) => orderOf(a.name) - orderOf(b.name) || b.count - a.count || a.name.localeCompare(b.name, 'tr'))
   }, [services, customCategories])
 
   const filtered = useMemo(() => {
@@ -173,6 +175,7 @@ export default function ServiceLibrary({
   const handleCreateCat = async (name: string) => { const r = await adminApi.createServiceCategory<ApiCustomServiceCategory>({ name, isActive: true }, tenantId); await reload(); return normalizeCustomServiceCategory(r) }
   const handleCreateCatSetting = async (name: string) => { await handleCreateCat(name) }
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
+  const handleReorderCat = async (orderedIds: string[]) => { await adminApi.reorderServiceCategories(orderedIds, tenantId); await reload() }
 
   const goPage = (p: number) => setPage(Math.min(totalPages, Math.max(1, p)))
   const pageNumbers = useMemo(() => { const out: (number | '...')[] = []; for (let p = 1; p <= totalPages; p++) { if (p === 1 || p === totalPages || (p >= page - 2 && p <= page + 2)) out.push(p); else if (out[out.length - 1] !== '...') out.push('...') } return out }, [page, totalPages])
@@ -441,6 +444,7 @@ export default function ServiceLibrary({
           onSelect={(name) => { setCatFilter(name); setPage(1) }}
           onCreate={handleCreateCatSetting}
           onDelete={handleDeleteCat}
+          onReorder={canCustomServiceCat ? handleReorderCat : undefined}
         />
 
         {/* HİZMET ÖZETİ */}

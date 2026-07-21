@@ -1279,6 +1279,59 @@ export interface Adisyon {
   items: AdisyonItem[]
 }
 
+// ---------- Günlük adisyon kartı ----------
+export interface ApiDailyAdisyonRow {
+  adisyonId?: string
+  itemId?: string
+  occurredAtUtc?: string
+  customerId?: string
+  customerName?: string | null
+  type?: AdisyonItemTypeKey | string | number
+  description?: string
+  quantity?: number
+  amount?: number
+  staffMemberId?: string | null
+  staffName?: string | null
+  adisyonStatus?: AdisyonStatusKey | string | number
+}
+
+export interface ApiDailyAdisyon {
+  fromUtc?: string
+  toUtc?: string
+  rows?: ApiDailyAdisyonRow[]
+  serviceCount?: number
+  paymentCount?: number
+  customerCount?: number
+  chargeTotal?: number
+  paymentTotal?: number
+}
+
+export interface DailyAdisyonRow {
+  adisyonId: string
+  itemId: string
+  occurredAtUtc: string
+  customerId: string
+  customerName: string | null
+  type: AdisyonItemTypeKey
+  description: string
+  quantity: number
+  amount: number
+  staffMemberId: string | null
+  staffName: string | null
+  adisyonStatus: AdisyonStatusKey
+}
+
+export interface DailyAdisyon {
+  fromUtc: string
+  toUtc: string
+  rows: DailyAdisyonRow[]
+  serviceCount: number
+  paymentCount: number
+  customerCount: number
+  chargeTotal: number
+  paymentTotal: number
+}
+
 // ---------- Personel primi (2B) ----------
 export interface ApiStaffCommissionTotal {
   staffMemberId?: string
@@ -1353,6 +1406,7 @@ export interface ApiCustomServiceCategory {
   isActive?: boolean
   createdAtUtc?: string
   parentId?: string | null
+  sortOrder?: number
 }
 
 export interface CustomServiceCategory {
@@ -1362,6 +1416,7 @@ export interface CustomServiceCategory {
   isActive: boolean
   createdAt: string
   parentId: string | null
+  sortOrder: number
 }
 
 export interface ApiBusinessExpense {

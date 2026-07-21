@@ -4,6 +4,7 @@ import '../../core/network/api_client.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
 import '../customers/customer_picker.dart';
+import 'adisyon_detail_sheet.dart';
 
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
@@ -41,6 +42,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   List<Map<String, dynamic>> services = [];
   List<Map<String, dynamic>> customers = [];
   List<Map<String, dynamic>> staff = [];
+  List<String> categoryOrder = []; // özel kategori adları (SortOrder sırasında) — pill sırası
 
   String? customerId;
   String? packageId;
@@ -76,7 +78,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
               query: {'page': 1, 'pageSize': 300},
             ),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
+      widget.api.get('/api/admin/service-categories/'),
     ]);
+    // Kategori pill sırası: backend SortOrder'a göre gelir, ad listesini o sırayla al.
+    categoryOrder = apiItems(values[2]).map((c) => '${c['name'] ?? ''}').toList();
     final catalog = apiItems(
       values[0],
     ).where((p) => p['isActive'] != false).toList(growable: false);
@@ -194,6 +199,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
         'installmentCount': installment ? installmentCount : 0,
         'firstDueDate': installment ? _isoDate(firstDueDate) : null,
+        // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
+        'forceNew': true,
       });
       final adisyonMap = adisyon is Map
           ? adisyon.cast<String, dynamic>()
@@ -236,25 +243,18 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         });
       }
 
-      // 4) Anında onay — cariye işle + seans bakiyesini aç (randevuda hemen kullanılabilir).
-      //    Onay yetkisi olmayan personelde adisyon açık kalır, yönetici onayına düşer.
-      var approved = true;
-      try {
-        await widget.api.post(
-          '/api/admin/adisyonlar/$adisyonId/approve',
-          const <String, dynamic>{},
-        );
-      } catch (_) {
-        approved = false;
-      }
-
+      // 4) Onaylama YOK — satış AÇIK adisyon olarak kalır ve adisyon kartı açılır (Ön Muhasebe gibi);
+      //    kullanıcı içeride ödeme/peşinat alıp onaylar. (Web PackageSaleDialog paritesi; günlük karttan farklı.)
       if (mounted) {
-        _snack(
-          approved
-              ? 'Satış tamamlandı ve onaylandı.'
-              : 'Satış oluşturuldu — yönetici onayı bekliyor.',
+        setState(() => saving = false);
+        await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
         );
-        Navigator.pop(context, true);
+        if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) _snack('$e');
@@ -350,6 +350,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                           }
                           price.clear();
                         }),
+                        categoryOrder: categoryOrder,
                       ),
 
                       if (widget.serviceSale) ...[
@@ -508,7 +509,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                 child: FilledButton(
                   onPressed: saving ? null : _submit,
                   child: Text(
-                    saving ? 'Kaydediliyor...' : 'Satışı kaydet ve onayla',
+                    saving ? 'Kaydediliyor...' : 'Satışı kaydet · adisyonu aç',
                   ),
                 ),
               ),
