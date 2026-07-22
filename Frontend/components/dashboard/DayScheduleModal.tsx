@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -97,17 +97,83 @@ function waLink(phone?: string): string | null {
   return `https://wa.me/${d}`
 }
 
-/** Bir tarihin (YYYY-MM-DD) bir gün öncesini döndürür. */
-function prevDayIso(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`)
-  d.setDate(d.getDate() - 1)
-  return d.toISOString().slice(0, 10)
+// Tarih matematiği YEREL bileşenlerle yapılır — `toISOString()` UTC'ye çevirip
+// UTC+3'te günü bir kaydırıyordu (örn. "sonraki gün" aynı günde takılıyordu).
+function parseIso(iso: string): Date {
+  const [y, m, d] = (iso || '').split('-').map(Number)
+  return new Date(y || 1970, (m || 1) - 1, d || 1)
 }
+function toIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function todayIso(): string {
+  return toIso(new Date())
+}
+/** Bir günü `delta` gün kaydırır (yerel, UTC kaymasız). */
 function shiftDayIso(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00`)
+  const d = parseIso(iso)
   d.setDate(d.getDate() + delta)
-  return d.toISOString().slice(0, 10)
+  return toIso(d)
 }
+/** Bir tarihin bir gün öncesi. */
+function prevDayIso(iso: string): string {
+  return shiftDayIso(iso, -1)
+}
+/** Ayı `delta` kaydırır; gün-of-month korunur (kısa aylarda son güne sıkışır). */
+function monthShiftIso(iso: string, delta: number): string {
+  const d = parseIso(iso)
+  const first = new Date(d.getFullYear(), d.getMonth() + delta, 1)
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  first.setDate(Math.min(d.getDate(), lastDay))
+  return toIso(first)
+}
+/** `iso`'yu içeren Pazartesi-başlangıçlı haftanın 7 günü. */
+function weekDaysOf(iso: string): string[] {
+  const d = parseIso(iso)
+  const dow = (d.getDay() + 6) % 7 // Pzt=0 … Paz=6
+  d.setDate(d.getDate() - dow)
+  return Array.from({ length: 7 }, (_, i) => {
+    const x = new Date(d)
+    x.setDate(d.getDate() + i)
+    return toIso(x)
+  })
+}
+/** `iso`'nun ayındaki tüm günler. */
+function monthDaysOf(iso: string): string[] {
+  const d = parseIso(iso)
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const n = new Date(y, m + 1, 0).getDate()
+  return Array.from({ length: n }, (_, i) => toIso(new Date(y, m, i + 1)))
+}
+/** Ay ızgarası: 42 hücre (Pzt başlangıç), her biri ay-içi mi bilgisiyle. */
+function monthCellsOf(iso: string): { iso: string; inMonth: boolean }[] {
+  const d = parseIso(iso)
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const startPad = (new Date(y, m, 1).getDay() + 6) % 7
+  const gridStart = new Date(y, m, 1 - startPad)
+  return Array.from({ length: 42 }, (_, i) => {
+    const c = new Date(gridStart)
+    c.setDate(gridStart.getDate() + i)
+    return { iso: toIso(c), inMonth: c.getMonth() === m }
+  })
+}
+/** "21 – 27 Temmuz 2026" / ay-yıl aşan aralıklarda uygun kısaltma. */
+function weekRangeLabel(days: string[]): string {
+  if (days.length < 7) return ''
+  const a = parseIso(days[0])
+  const b = parseIso(days[6])
+  const dOnly = new Intl.DateTimeFormat('tr-TR', { day: 'numeric' })
+  const dMon = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' })
+  const dMonYear = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
+  const full = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return `${dOnly.format(a)} – ${full.format(b)}`
+  if (a.getFullYear() === b.getFullYear()) return `${dMon.format(a)} – ${dMon.format(b)} ${b.getFullYear()}`
+  return `${dMonYear.format(a)} – ${full.format(b)}`
+}
+
+export type CalView = 'day' | 'week' | 'month'
 
 interface LaidOutAppt {
   appt: Appointment
@@ -183,6 +249,7 @@ function KpiCard({
   label,
   value,
   prev,
+  prevLabel = 'Dün',
   delta,
   invertDelta,
   tone,
@@ -191,7 +258,9 @@ function KpiCard({
   label: string
   value: string
   prev?: string
-  /** Dün'e göre değişim: ok yönü işarete göre; null ise gizlenir. */
+  /** Önceki dönem etiketi (Dün / Geçen hafta / Geçen ay). */
+  prevLabel?: string
+  /** Önceki döneme göre değişim: ok yönü işarete göre; null ise gizlenir. */
   delta?: number | null
   /** true ise azalma "iyi" (ör. İptal) — renk tersine döner. */
   invertDelta?: boolean
@@ -214,7 +283,7 @@ function KpiCard({
             </span>
           )}
         </div>
-        {prev && <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">Dün: {prev}</div>}
+        {prev && <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">{prevLabel}: {prev}</div>}
       </div>
     </div>
   )
@@ -284,6 +353,8 @@ export default function DayScheduleModal({
   onReschedule,
 }: DayScheduleModalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Görünüm modu: Gün (saatlik personel çizelgesi) · Hafta · Ay
+  const [view, setView] = useState<CalView>('day')
   const [staffFilter, setStaffFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<AppointmentStatusKey | ''>('')
   const [search, setSearch] = useState('')
@@ -317,12 +388,13 @@ export default function DayScheduleModal({
     }
   }, [open, onClose])
 
-  // Gün değişince / kapanınca seçim + filtreleri sıfırla
+  // Gün / görünüm değişince seçim temizle; kapanınca filtre + görünüm sıfırla
   useEffect(() => {
     setSelectedId(null)
-  }, [date])
+  }, [date, view])
   useEffect(() => {
     if (!open) {
+      setView('day')
       setStaffFilter('')
       setStatusFilter('')
       setSearch('')
@@ -337,6 +409,28 @@ export default function DayScheduleModal({
     () => (date ? appointments.filter((a) => a.date === date) : []),
     [appointments, date],
   )
+
+  // Aktif görünümün kapsadığı günler (Gün: tek gün · Hafta: 7 gün · Ay: ayın günleri)
+  // ve önceki eşdeğer dönem (KPI karşılaştırması için).
+  const curDays = useMemo(
+    () => (!date ? [] : view === 'day' ? [date] : view === 'week' ? weekDaysOf(date) : monthDaysOf(date)),
+    [date, view],
+  )
+  const prevDays = useMemo(
+    () =>
+      !date
+        ? []
+        : view === 'day'
+          ? [prevDayIso(date)]
+          : view === 'week'
+            ? weekDaysOf(shiftDayIso(date, -7))
+            : monthDaysOf(monthShiftIso(date, -1)),
+    [date, view],
+  )
+  const curDaySet = useMemo(() => new Set(curDays), [curDays])
+  // Görünen aralıktaki tüm randevular (hafta/ay). Gün görünümü dayAppts kullanır.
+  const rangeAppts = useMemo(() => appointments.filter((a) => curDaySet.has(a.date)), [appointments, curDaySet])
+  const scopeAppts = view === 'day' ? dayAppts : rangeAppts
 
   // O gün izinli personellerin id'leri — bu personellere randevu açılamaz.
   const leaveIds = useMemo(() => {
@@ -390,6 +484,15 @@ export default function DayScheduleModal({
     [columns, staffFilter],
   )
 
+  // Personel filtresi seçenekleri: Gün'de o günün sütunları, Hafta/Ay'da tüm aktif personel.
+  const staffChoices = useMemo<{ id: string; name: string }[]>(
+    () =>
+      view === 'day'
+        ? columns.filter((c) => c.id !== null).map((c) => ({ id: c.id as string, name: c.name }))
+        : staff.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name })),
+    [view, columns, staff],
+  )
+
   // Zaman penceresi (en erken/en geç randevuya göre, en az 09–19)
   const { startHour, endHour, hours } = useMemo(() => {
     let minS = 9 * 60
@@ -409,28 +512,43 @@ export default function DayScheduleModal({
   const gridHeight = (endHour - startHour) * PX_PER_HOUR
   const workMin = (endHour - startHour) * 60
 
-  // ---- KPI hesapları ----
-  const metricsFor = (iso: string) => {
-    const list = appointments.filter((a) => a.date === iso)
-    return {
-      randevu: list.filter((a) => a.status !== 'iptal').length,
-      iptal: list.filter((a) => a.status === 'iptal').length,
-      onay: list.filter((a) => a.status === 'taslak').length,
-      gelir: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + (Number(a.price) || 0), 0),
-      bookedMin: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + apptDur(a), 0),
-    }
-  }
-  const yStr = date ? prevDayIso(date) : ''
-  const today = date ? metricsFor(date) : { randevu: 0, iptal: 0, onay: 0, gelir: 0, bookedMin: 0 }
-  const yday = yStr ? metricsFor(yStr) : { randevu: 0, iptal: 0, onay: 0, gelir: 0, bookedMin: 0 }
+  // ---- KPI hesapları (aktif görünüm dönemine göre) ----
+  const metricsForDays = useCallback(
+    (days: string[]) => {
+      const set = new Set(days)
+      const list = appointments.filter((a) => set.has(a.date))
+      return {
+        randevu: list.filter((a) => a.status !== 'iptal').length,
+        completed: list.filter((a) => a.status === 'tamamlandi').length,
+        iptal: list.filter((a) => a.status === 'iptal').length,
+        onay: list.filter((a) => a.status === 'taslak').length,
+        gelir: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + (Number(a.price) || 0), 0),
+        bookedMin: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + apptDur(a), 0),
+      }
+    },
+    [appointments],
+  )
+  const cur = useMemo(() => metricsForDays(curDays), [metricsForDays, curDays])
+  const prev = useMemo(() => metricsForDays(prevDays), [metricsForDays, prevDays])
 
+  // Gün görünümü: boş slot + doluluk (personel kapasitesine göre).
   const workingCols = columns.filter((c) => c.id !== null && !leaveIds.has(c.id as string))
   const capMin = Math.max(1, workingCols.length * workMin)
   const slotCap = Math.max(1, workingCols.length * Math.floor(workMin / 30))
   const bookedSlots = dayAppts.filter((a) => a.status !== 'iptal').reduce((s, a) => s + Math.ceil(apptDur(a) / 30), 0)
   const bosSlot = Math.max(0, slotCap - bookedSlots)
-  const occToday = Math.round(Math.min(1, today.bookedMin / capMin) * 100)
-  const occYest = Math.round(Math.min(1, yday.bookedMin / capMin) * 100)
+  const occCur = Math.round(Math.min(1, cur.bookedMin / capMin) * 100)
+  const occPrev = Math.round(Math.min(1, prev.bookedMin / capMin) * 100)
+  // Hafta/ay görünümü: tamamlanma oranı (halkalı KPI kartı için).
+  const complCur = Math.round((cur.completed / Math.max(1, cur.randevu)) * 100)
+  const complPrev = Math.round((prev.completed / Math.max(1, prev.randevu)) * 100)
+
+  // Görünüme göre etiketler + halka kartı verisi.
+  const prevLabel = view === 'day' ? 'Dün' : view === 'week' ? 'Geçen hafta' : 'Geçen ay'
+  const rangeLabel = view === 'day' ? 'Bugünkü' : view === 'week' ? 'Haftalık' : 'Aylık'
+  const ringLabel = view === 'day' ? 'Doluluk Oranı' : 'Tamamlanma'
+  const ringPct = view === 'day' ? occCur : complCur
+  const ringPrevPct = view === 'day' ? occPrev : complPrev
 
   // Personel başına doluluk %
   const colOcc = (col: ColumnDef): number | null => {
@@ -439,27 +557,28 @@ export default function DayScheduleModal({
     return Math.round(Math.min(1, b / Math.max(1, workMin)) * 100)
   }
 
-  // Bugünün "şimdi" çizgisi
-  const todayKey = new Date().toISOString().slice(0, 10)
+  // Bugünün "şimdi" çizgisi (yerel tarih — UTC kaymasız)
+  const todayKey = todayIso()
   const isToday = date === todayKey
+  const isTodayInView = curDaySet.has(todayKey)
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
   const nowTop = ((nowMin - startHour * 60) / 60) * PX_PER_HOUR
   const showNow = isToday && nowMin >= startHour * 60 && nowMin <= endHour * 60
 
   const counts = useMemo(() => {
     const c: Record<AppointmentStatusKey, number> = { tamamlandi: 0, devam: 0, bekliyor: 0, taslak: 0, iptal: 0 }
-    for (const a of dayAppts) c[a.status] = (c[a.status] ?? 0) + 1
+    for (const a of scopeAppts) c[a.status] = (c[a.status] ?? 0) + 1
     return c
-  }, [dayAppts])
+  }, [scopeAppts])
 
-  // Yaklaşan hatırlatmalar: o günün aktif randevularından henüz hatırlatma gönderilmemiş olanlar.
+  // Yaklaşan hatırlatmalar: kapsamdaki aktif randevulardan henüz hatırlatma gönderilmemiş olanlar.
   const reminders = useMemo(
     () =>
-      dayAppts
+      scopeAppts
         .filter((a) => (a.status === 'devam' || a.status === 'bekliyor' || a.status === 'taslak') && !a.lastReminderAtUtc)
-        .sort((a, b) => parseMinutes(a.time) - parseMinutes(b.time))
+        .sort((a, b) => a.date.localeCompare(b.date) || parseMinutes(a.time) - parseMinutes(b.time))
         .slice(0, 6),
-    [dayAppts],
+    [scopeAppts],
   )
 
   // No-show riski: bugünkü randevusu olan müşterilerin yüklü kapsamdaki geçmiş gelmedi/iptal sayısı.
@@ -475,29 +594,40 @@ export default function DayScheduleModal({
       e.name = a.musteri || e.name
       score.set(a.customerId, e)
     }
-    const todayCustIds = new Set(dayAppts.filter((a) => a.status !== 'iptal' && a.customerId).map((a) => a.customerId as string))
+    const scopeCustIds = new Set(scopeAppts.filter((a) => a.status !== 'iptal' && a.customerId).map((a) => a.customerId as string))
     return [...score.entries()]
-      .filter(([id]) => todayCustIds.has(id))
+      .filter(([id]) => scopeCustIds.has(id))
       .map(([id, e]) => ({ id, name: e.name, noshow: e.noshow, cancel: e.cancel, weight: e.noshow * 2 + e.cancel }))
       .filter((r) => r.weight > 0)
       .sort((a, b) => b.weight - a.weight)
       .slice(0, 6)
-  }, [appointments, dayAppts])
+  }, [appointments, scopeAppts])
 
-  const dateObj = date ? new Date(`${date}T00:00:00`) : null
-  const titleLabel = dateObj
+  const dateObj = date ? parseIso(date) : null
+  const dayTitleLabel = dateObj
     ? new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(dateObj)
     : ''
   const weekdayLabel = dateObj ? new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(dateObj) : ''
+  const monthTitleLabel = dateObj
+    ? new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(dateObj)
+    : ''
+  // Üst bar başlığı + alt satırı görünüme göre.
+  const headTitle = view === 'day' ? dayTitleLabel : view === 'week' ? weekRangeLabel(curDays) : monthTitleLabel
+  const headSubtitle =
+    view === 'day'
+      ? `${weekdayLabel} · saatlik personel çizelgesi`
+      : view === 'week'
+        ? `Haftalık çizelge · ${scopeAppts.length} randevu`
+        : `Aylık genel görünüm · ${scopeAppts.length} randevu`
+  const badgeLabel = view === 'day' ? 'Bugün' : view === 'week' ? 'Bu hafta' : 'Bu ay'
 
   const gridTemplate = `repeat(${visibleColumns.length}, minmax(184px, 1fr))`
   const innerMinWidth = 64 + visibleColumns.length * 200
 
   const hourLineBg = `repeating-linear-gradient(to bottom, transparent 0, transparent ${PX_PER_HOUR - 1}px, rgba(243,228,234,0.9) ${PX_PER_HOUR - 1}px, rgba(243,228,234,0.9) ${PX_PER_HOUR}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${PX_PER_HOUR / 2 - 1}px, rgba(243,228,234,0.45) ${PX_PER_HOUR / 2 - 1}px, rgba(243,228,234,0.45) ${PX_PER_HOUR / 2}px)`
 
-  // Randevu bloğu filtre/aramaya uyuyor mu? (uymayan bloklar soluklaşır)
-  const matches = (a: Appointment): boolean => {
-    if (chipBos) return false
+  // Durum/arama/rozet filtreleri (personel hariç — o, gün görünümünde sütunla, hafta/ayda sert filtreyle uygulanır)
+  const passesSoft = (a: Appointment): boolean => {
     if (statusFilter && a.status !== statusFilter) return false
     if (chipOnaysiz && a.status !== 'taslak') return false
     if (chipVip && !isVipAppt(a)) return false
@@ -506,10 +636,21 @@ export default function DayScheduleModal({
     if (q && !`${a.musteri} ${a.islem} ${a.personel}`.toLocaleLowerCase('tr').includes(q)) return false
     return true
   }
-  const anyFilter = chipBos || chipOnaysiz || chipVip || chipOdeme || Boolean(statusFilter) || Boolean(search.trim())
-  const debtCount = dayAppts.filter((a) => hasDebt(a)).length
+  // Gün görünümü: uymayan bloklar soluklaşır (chipBos ile tümü soluk = boş slotları vurgula).
+  const matches = (a: Appointment): boolean => {
+    if (chipBos) return false
+    return passesSoft(a)
+  }
+  // Hafta/ay görünümü: sert filtre (personel dahil) — yalnızca uyanlar gösterilir.
+  const rangeFilter = (a: Appointment): boolean => {
+    if (staffFilter && a.staffMemberId !== staffFilter) return false
+    return passesSoft(a)
+  }
+  const anyFilter =
+    chipBos || chipOnaysiz || chipVip || chipOdeme || Boolean(statusFilter) || Boolean(search.trim()) || Boolean(staffFilter)
+  const debtCount = scopeAppts.filter((a) => hasDebt(a)).length
 
-  const selectedAppt = selectedId ? dayAppts.find((a) => a.id === selectedId) || null : null
+  const selectedAppt = selectedId ? scopeAppts.find((a) => a.id === selectedId) || null : null
 
   // Seçim değişince müşterinin açık adisyonunu getir (gerçek ödeme/cari — boş lookup'a bağlı değil).
   const selectedCustomerId = selectedAppt?.customerId
@@ -598,30 +739,38 @@ export default function DayScheduleModal({
                   <CalendarDays className="h-5 w-5" strokeWidth={1.7} />
                 </span>
                 {onChangeDate && (
-                  <button type="button" onClick={() => onChangeDate(shiftDayIso(date, -1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label="Önceki gün">
+                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, -1) : view === 'week' ? shiftDayIso(date, -7) : monthShiftIso(date, -1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label={view === 'day' ? 'Önceki gün' : view === 'week' ? 'Önceki hafta' : 'Önceki ay'}>
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                 )}
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-display text-[20px] font-bold leading-none tracking-tight text-[#241923]">{titleLabel}</h2>
-                    {isToday && <span className="rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2 py-0.5 text-[10px] font-semibold text-[#c85776]">Bugün</span>}
+                    <h2 className="font-display text-[20px] font-bold leading-none tracking-tight text-[#241923]">{headTitle}</h2>
+                    {isTodayInView && <span className="rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2 py-0.5 text-[10px] font-semibold text-[#c85776]">{badgeLabel}</span>}
                   </div>
-                  <div className="mt-1 text-[11.5px] capitalize text-[#8a7480]">{weekdayLabel} · saatlik personel çizelgesi</div>
+                  <div className="mt-1 text-[11.5px] capitalize text-[#8a7480]">{headSubtitle}</div>
                 </div>
                 {onChangeDate && (
-                  <button type="button" onClick={() => onChangeDate(shiftDayIso(date, 1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label="Sonraki gün">
+                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, 1) : view === 'week' ? shiftDayIso(date, 7) : monthShiftIso(date, 1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label={view === 'day' ? 'Sonraki gün' : view === 'week' ? 'Sonraki hafta' : 'Sonraki ay'}>
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 )}
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Görünüm sekmeleri (Gün aktif; Hafta/Ay sayfada) */}
-                <div className="hidden items-center rounded-full border border-[#ead8df] bg-white p-0.5 md:flex">
-                  <span className="rounded-full bg-[#c85776] px-3 py-1 text-[11px] font-semibold text-white">Gün</span>
-                  <button type="button" onClick={onClose} title="Hafta görünümü sayfada" className="rounded-full px-3 py-1 text-[11px] font-semibold text-[#9d7386] hover:text-[#c85776]">Hafta</button>
-                  <button type="button" onClick={onClose} title="Ay görünümü sayfada" className="rounded-full px-3 py-1 text-[11px] font-semibold text-[#9d7386] hover:text-[#c85776]">Ay</button>
+                {/* Görünüm sekmeleri — Gün · Hafta · Ay (modal içinde geçiş yapar) */}
+                <div className="flex items-center rounded-full border border-[#ead8df] bg-white p-0.5">
+                  {([['day', 'Gün'], ['week', 'Hafta'], ['month', 'Ay']] as [CalView, string][]).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setView(v)}
+                      aria-pressed={view === v}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${view === v ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#c85776]'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 {/* Arama */}
                 <div className="relative hidden sm:block">
@@ -646,32 +795,36 @@ export default function DayScheduleModal({
 
             {/* ===================== KPI ŞERİDİ ===================== */}
             <div className="flex shrink-0 items-stretch gap-2.5 overflow-x-auto border-b border-[#ead8df]/70 bg-[#fffafc] px-4 py-3 sm:px-5">
-              <KpiCard icon={CalendarDays} label="Bugünkü Randevu" value={String(today.randevu)} prev={String(yday.randevu)} delta={today.randevu - yday.randevu} tone="bg-[#fbeaf1] text-[#c85776]" />
-              <KpiCard icon={CalendarClock} label="Boş Slot" value={String(bosSlot)} tone="bg-sky-50 text-sky-600" />
-              <KpiCard icon={Hourglass} label="Bekleyen Onay" value={String(today.onay)} prev={String(yday.onay)} delta={today.onay - yday.onay} tone="bg-amber-50 text-amber-600" />
-              <KpiCard icon={Ban} label="İptal" value={String(today.iptal)} prev={String(yday.iptal)} delta={today.iptal - yday.iptal} invertDelta tone="bg-rose-50 text-rose-500" />
-              <KpiCard icon={Wallet} label="Gelir Tahmini" value={formatTL(today.gelir)} prev={formatTL(yday.gelir)} tone="bg-emerald-50 text-emerald-600" />
-              {/* Doluluk — halkalı */}
+              <KpiCard icon={CalendarDays} label={`${rangeLabel} Randevu`} value={String(cur.randevu)} prev={String(prev.randevu)} prevLabel={prevLabel} delta={cur.randevu - prev.randevu} tone="bg-[#fbeaf1] text-[#c85776]" />
+              {view === 'day' ? (
+                <KpiCard icon={CalendarClock} label="Boş Slot" value={String(bosSlot)} tone="bg-sky-50 text-sky-600" />
+              ) : (
+                <KpiCard icon={CheckCircle2} label="Tamamlandı" value={String(cur.completed)} prev={String(prev.completed)} prevLabel={prevLabel} delta={cur.completed - prev.completed} tone="bg-emerald-50 text-emerald-600" />
+              )}
+              <KpiCard icon={Hourglass} label="Bekleyen Onay" value={String(cur.onay)} prev={String(prev.onay)} prevLabel={prevLabel} delta={cur.onay - prev.onay} tone="bg-amber-50 text-amber-600" />
+              <KpiCard icon={Ban} label="İptal" value={String(cur.iptal)} prev={String(prev.iptal)} prevLabel={prevLabel} delta={cur.iptal - prev.iptal} invertDelta tone="bg-rose-50 text-rose-500" />
+              <KpiCard icon={Wallet} label="Gelir Tahmini" value={formatTL(cur.gelir)} prev={formatTL(prev.gelir)} prevLabel={prevLabel} tone="bg-emerald-50 text-emerald-600" />
+              {/* Doluluk (gün) / Tamamlanma (hafta·ay) — halkalı */}
               <div className="flex min-w-[150px] flex-1 items-center gap-3 rounded-[16px] border border-[#efe1e7] bg-white px-3.5 py-3 shadow-[0_10px_26px_-22px_rgba(200,87,118,0.5)]">
                 <div className="relative grid h-11 w-11 shrink-0 place-items-center">
                   <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90">
                     <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f3e4ea" strokeWidth="4" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#2f9e72" strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(occToday / 100) * 97.4} 97.4`} />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#2f9e72" strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(ringPct / 100) * 97.4} 97.4`} />
                   </svg>
                   <Percent className="absolute h-3.5 w-3.5 text-emerald-600" />
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#8a7480]">Doluluk Oranı</div>
+                  <div className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#8a7480]">{ringLabel}</div>
                   <div className="mt-0.5 flex items-center gap-1.5">
-                    <span className="font-display text-[19px] font-bold leading-none text-[#241923]">%{occToday}</span>
-                    {occToday - occYest !== 0 && (
-                      <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${occToday - occYest > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {occToday - occYest > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {Math.abs(occToday - occYest)}
+                    <span className="font-display text-[19px] font-bold leading-none text-[#241923]">%{ringPct}</span>
+                    {ringPct - ringPrevPct !== 0 && (
+                      <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${ringPct - ringPrevPct > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {ringPct - ringPrevPct > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {Math.abs(ringPct - ringPrevPct)}
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">Dün: %{occYest}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">{prevLabel}: %{ringPrevPct}</div>
                 </div>
               </div>
             </div>
@@ -684,8 +837,8 @@ export default function DayScheduleModal({
                 className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
               >
                 <option value="">Personel: Tümü</option>
-                {columns.filter((c) => c.id !== null).map((c) => (
-                  <option key={c.id} value={c.id as string}>{c.name}</option>
+                {staffChoices.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
               <select
@@ -698,11 +851,13 @@ export default function DayScheduleModal({
                   <option key={k} value={k}>{statusStyle[k].label}</option>
                 ))}
               </select>
-              <button type="button" onClick={() => setChipBos((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipBos ? 'border-sky-300 bg-sky-50 text-sky-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
-                <CalendarClock className="h-3.5 w-3.5" /> Sadece boş slotlar
-              </button>
+              {view === 'day' && (
+                <button type="button" onClick={() => setChipBos((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipBos ? 'border-sky-300 bg-sky-50 text-sky-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
+                  <CalendarClock className="h-3.5 w-3.5" /> Sadece boş slotlar
+                </button>
+              )}
               <button type="button" onClick={() => setChipOnaysiz((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipOnaysiz ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
-                Onaysız {today.onay > 0 && <span className="rounded-full bg-indigo-500 px-1.5 text-[9px] text-white">{today.onay}</span>}
+                Onaysız {cur.onay > 0 && <span className="rounded-full bg-indigo-500 px-1.5 text-[9px] text-white">{cur.onay}</span>}
               </button>
               <button type="button" onClick={() => setChipVip((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipVip ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
                 <Star className="h-3.5 w-3.5" /> VIP müşteriler
@@ -713,7 +868,7 @@ export default function DayScheduleModal({
                 </button>
               )}
               {anyFilter && (
-                <button type="button" onClick={() => { setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="ml-auto text-[11px] font-semibold text-[#c85776] hover:underline">
+                <button type="button" onClick={() => { setStaffFilter(''); setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="ml-auto text-[11px] font-semibold text-[#c85776] hover:underline">
                   Filtreleri temizle
                 </button>
               )}
@@ -723,7 +878,8 @@ export default function DayScheduleModal({
             <div className="flex min-h-0 flex-1">
               {/* Takvim */}
               <div className="relative min-w-0 flex-1 overflow-auto">
-                {dayAppts.length === 0 && columns.length === 0 ? (
+                {view === 'day' ? (
+                  dayAppts.length === 0 && columns.length === 0 ? (
                   <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
                     <span className="grid h-14 w-14 place-items-center rounded-full border border-[#f3d7e0] bg-[#fff4f8] text-[#c85776]">
                       <Clock className="h-6 w-6" strokeWidth={1.6} />
@@ -914,6 +1070,32 @@ export default function DayScheduleModal({
                       </div>
                     </div>
                   </div>
+                  )
+                ) : view === 'week' ? (
+                  <WeekView
+                    days={curDays}
+                    appts={rangeAppts}
+                    todayKey={todayKey}
+                    filter={rangeFilter}
+                    isVip={isVipAppt}
+                    hasDebt={hasDebt}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onOpenDay={(iso) => { onChangeDate?.(iso); setView('day') }}
+                    onCreateAt={onCreateAt}
+                  />
+                ) : (
+                  <MonthView
+                    cells={monthCellsOf(date)}
+                    appts={rangeAppts}
+                    todayKey={todayKey}
+                    filter={rangeFilter}
+                    isVip={isVipAppt}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onOpenDay={(iso) => { onChangeDate?.(iso); setView('day') }}
+                    onCreateAt={onCreateAt}
+                  />
                 )}
               </div>
 
@@ -933,8 +1115,9 @@ export default function DayScheduleModal({
                   />
                 ) : (
                   <DaySummary
+                    title={view === 'day' ? 'Günün Özeti' : view === 'week' ? 'Haftanın Özeti' : 'Ayın Özeti'}
                     counts={counts}
-                    total={dayAppts.length}
+                    total={scopeAppts.length}
                     reminders={reminders}
                     noShowRisk={noShowRisk}
                     waitlist={waitlist}
@@ -953,7 +1136,7 @@ export default function DayScheduleModal({
                     <span className={`h-2 w-2 rounded-full ${statusStyle[k].dot}`} /> {statusStyle[k].label}
                   </span>
                 ))}
-                {canDrag && (
+                {canDrag && view === 'day' && (
                   <span className="hidden items-center gap-1.5 rounded-full border border-[#ead8df] bg-white px-2 py-0.5 text-[10px] font-medium text-[#9d7386] md:inline-flex">
                     <GripVertical className="h-3 w-3 text-[#c85776]" /> Sürükle: saat değiştir · farklı sütun = personel aktar
                   </span>
@@ -1191,6 +1374,7 @@ interface ReminderRow { id: string; time: string; musteri: string; islem: string
 interface RiskRow { id: string; name: string; noshow: number; cancel: number; weight: number }
 
 function DaySummary({
+  title = 'Günün Özeti',
   counts,
   total,
   reminders,
@@ -1199,6 +1383,7 @@ function DaySummary({
   onSelect,
   onCreate,
 }: {
+  title?: string
   counts: Record<AppointmentStatusKey, number>
   total: number
   reminders: ReminderRow[]
@@ -1220,7 +1405,7 @@ function DaySummary({
       <div>
         <div className="mb-2 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-[#c85776]" />
-          <span className="text-[13px] font-bold text-[#241923]">Günün Özeti</span>
+          <span className="text-[13px] font-bold text-[#241923]">{title}</span>
         </div>
         <div className="rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3">
           <div className="flex items-baseline justify-between border-b border-[#f3e4ea] pb-2.5">
@@ -1330,6 +1515,284 @@ function DaySummary({
           <Plus className="h-3.5 w-3.5" /> Yeni randevu
         </button>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Hafta görünümü — 7 gün × saatlik ızgara (blok tıkla → detay · başlık tıkla → gün)
+// ---------------------------------------------------------------------------
+function WeekView({
+  days,
+  appts,
+  todayKey,
+  filter,
+  isVip,
+  hasDebt,
+  selectedId,
+  onSelect,
+  onOpenDay,
+  onCreateAt,
+}: {
+  days: string[]
+  appts: Appointment[]
+  todayKey: string
+  filter: (a: Appointment) => boolean
+  isVip: (a: Appointment) => boolean
+  hasDebt: (a: Appointment) => boolean
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onOpenDay: (iso: string) => void
+  onCreateAt?: (info: { date: string; time?: string; staffId?: string }) => void
+}) {
+  const filtered = useMemo(() => appts.filter(filter), [appts, filter])
+  const { startHour, endHour, hours } = useMemo(() => {
+    let minS = 9 * 60
+    let maxE = 19 * 60
+    for (const a of filtered) {
+      const s = parseMinutes(a.time)
+      minS = Math.min(minS, s)
+      maxE = Math.max(maxE, s + apptDur(a))
+    }
+    const sh = Math.max(6, Math.min(9, Math.floor(minS / 60)))
+    let eh = Math.min(24, Math.max(19, Math.ceil(maxE / 60)))
+    if (eh <= sh) eh = sh + 1
+    return { startHour: sh, endHour: eh, hours: Array.from({ length: eh - sh }, (_, i) => sh + i) }
+  }, [filtered])
+  const gridHeight = (endHour - startHour) * PX_PER_HOUR
+  const perDay = useMemo(
+    () => days.map((iso) => ({ iso, laid: packLanes(filtered.filter((a) => a.date === iso)) })),
+    [days, filtered],
+  )
+
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+  const nowTop = ((nowMin - startHour * 60) / 60) * PX_PER_HOUR
+  const showNow = days.includes(todayKey) && nowMin >= startHour * 60 && nowMin <= endHour * 60
+
+  const wdFmt = new Intl.DateTimeFormat('tr-TR', { weekday: 'short' })
+  const dFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' })
+  const gridTemplate = 'repeat(7, minmax(116px, 1fr))'
+  const innerMinWidth = 64 + 7 * 128
+  const hourLineBg = `repeating-linear-gradient(to bottom, transparent 0, transparent ${PX_PER_HOUR - 1}px, rgba(243,228,234,0.9) ${PX_PER_HOUR - 1}px, rgba(243,228,234,0.9) ${PX_PER_HOUR}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${PX_PER_HOUR / 2 - 1}px, rgba(243,228,234,0.45) ${PX_PER_HOUR / 2 - 1}px, rgba(243,228,234,0.45) ${PX_PER_HOUR / 2}px)`
+
+  const handleColClick = (iso: string, e: React.MouseEvent<HTMLDivElement>): void => {
+    if (!onCreateAt || e.target !== e.currentTarget) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const raw = startHour * 60 + ((e.clientY - rect.top) / PX_PER_HOUR) * 60
+    const snapped = Math.max(startHour * 60, Math.round(raw / 15) * 15)
+    onCreateAt({ date: iso, time: minutesToLabel(snapped) })
+  }
+
+  return (
+    <div style={{ minWidth: innerMinWidth }}>
+      {/* Gün başlıkları (sticky) */}
+      <div className="sticky top-0 z-20 flex border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+        <div className="grid w-16 shrink-0 place-items-center border-r border-[#f3e4ea] text-[#c9aeba]">
+          <Clock className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </div>
+        <div className="grid flex-1" style={{ gridTemplateColumns: gridTemplate }}>
+          {perDay.map(({ iso, laid }, i) => {
+            const d = parseIso(iso)
+            const isTod = iso === todayKey
+            const weekend = i >= 5
+            const count = laid.filter((l) => l.appt.status !== 'iptal').length
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => onOpenDay(iso)}
+                title={`${dFmt.format(d)} — gün görünümünü aç`}
+                className={`group/hd flex flex-col items-center gap-1 border-l border-[#f3e4ea] px-2 py-2.5 text-center transition-colors first:border-l-0 ${isTod ? 'bg-[#fff1f6]' : weekend ? 'bg-[#fffafc] hover:bg-[#fff7fa]' : 'hover:bg-[#fff7fa]'}`}
+              >
+                <span className={`text-[10.5px] font-semibold uppercase tracking-wide ${weekend ? 'text-[#c85776]/70' : 'text-[#9d8592]'}`}>{wdFmt.format(d)}</span>
+                <span className={`grid h-8 w-8 place-items-center rounded-full font-display text-[15px] font-bold tabular-nums transition-colors ${isTod ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#241923] group-hover/hd:bg-[#fff1f6]'}`}>{d.getDate()}</span>
+                {count > 0 ? (
+                  <span className="rounded-full bg-[#f0aac2]/25 px-1.5 text-[9px] font-bold text-[#c85776]">{count} randevu</span>
+                ) : (
+                  <span className="text-[9px] text-[#c2adb6]">—</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Zaman ekseni + 7 sütun */}
+      <div className="relative flex" style={{ height: gridHeight }}>
+        <div className="relative w-16 shrink-0 border-r border-[#f3e4ea]">
+          {hours.map((h, i) => (
+            <div key={h} className="absolute right-2 text-[10px] font-mono font-semibold tabular-nums text-[#7c6170]" style={{ top: i === 0 ? 2 : i * PX_PER_HOUR - 6 }}>
+              {`${String(h).padStart(2, '0')}:00`}
+            </div>
+          ))}
+        </div>
+        <div className="relative flex-1">
+          <div className="absolute inset-0" style={{ backgroundImage: hourLineBg }} aria-hidden />
+          {showNow && (
+            <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: nowTop }} aria-hidden>
+              <div className="relative h-px bg-rose-400/80">
+                <span className="absolute -left-1 -top-[3px] h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]" />
+              </div>
+            </div>
+          )}
+          <div className="relative grid h-full" style={{ gridTemplateColumns: gridTemplate }}>
+            {perDay.map(({ iso, laid }, ci) => (
+              <div
+                key={iso}
+                onClick={(e) => handleColClick(iso, e)}
+                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${iso === todayKey ? 'bg-[#fff7fa]/40' : ci >= 5 ? 'bg-[#fffafc]/50' : ''} ${onCreateAt ? 'cursor-copy' : ''}`}
+                title={onCreateAt ? 'Boş saate tıklayıp randevu ekle' : undefined}
+              >
+                {laid.map(({ appt, startMin, dur, lane, lanes }) => {
+                  const st = statusStyle[appt.status] || statusStyle.bekliyor
+                  const top = ((startMin - startHour * 60) / 60) * PX_PER_HOUR
+                  const height = Math.max(24, (dur / 60) * PX_PER_HOUR)
+                  const widthPct = 100 / lanes
+                  const compact = height < 40
+                  const isSel = selectedId === appt.id
+                  const vip = isVip(appt)
+                  const debt = hasDebt(appt)
+                  return (
+                    <button
+                      key={appt.id}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSelect(appt.id) }}
+                      title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}`}
+                      style={{ top, height, left: `calc(${lane * widthPct}% + 2px)`, width: `calc(${widthPct}% - 4px)` }}
+                      className={`group absolute z-[2] flex flex-col overflow-hidden rounded-[9px] border px-1.5 py-1 text-left shadow-[0_8px_20px_-14px_rgba(120,71,88,0.55)] transition-all ${st.block} ${isSel ? 'z-[3] ring-2 ring-[#c85776] ring-offset-1' : ''}`}
+                    >
+                      <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${st.bar}`} />
+                      <div className="flex items-center gap-1 pl-1">
+                        <span className="font-mono text-[9.5px] font-semibold tabular-nums text-[#3d2f3a]">{minutesToLabel(startMin)}</span>
+                        {(vip || debt) && (
+                          <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                            {debt && <span title="Ödeme bekliyor" className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                            {vip && <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`truncate pl-1 text-[11px] font-semibold leading-tight text-[#241923] ${appt.status === 'iptal' ? 'line-through' : ''}`}>{appt.musteri}</div>
+                      {!compact && <div className="truncate pl-1 text-[9.5px] text-[#5d4a56]/85">{appt.islem}</div>}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Ay görünümü — takvim ızgarası (hücre tıkla → gün · randevu tıkla → detay)
+// ---------------------------------------------------------------------------
+function MonthView({
+  cells,
+  appts,
+  todayKey,
+  filter,
+  isVip,
+  selectedId,
+  onSelect,
+  onOpenDay,
+  onCreateAt,
+}: {
+  cells: { iso: string; inMonth: boolean }[]
+  appts: Appointment[]
+  todayKey: string
+  filter: (a: Appointment) => boolean
+  isVip: (a: Appointment) => boolean
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onOpenDay: (iso: string) => void
+  onCreateAt?: (info: { date: string; time?: string; staffId?: string }) => void
+}) {
+  const byDay = useMemo(() => {
+    const m = new Map<string, Appointment[]>()
+    for (const a of appts) {
+      if (!filter(a)) continue
+      const list = m.get(a.date)
+      if (list) list.push(a)
+      else m.set(a.date, [a])
+    }
+    for (const list of m.values()) list.sort((x, y) => parseMinutes(x.time) - parseMinutes(y.time))
+    return m
+  }, [appts, filter])
+
+  const weekdays = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+  const dFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' })
+
+  return (
+    <div className="min-w-[720px]">
+      {/* Haftagünü başlığı (sticky) */}
+      <div className="sticky top-0 z-20 grid grid-cols-7 border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+        {weekdays.map((d, i) => (
+          <div key={d} className={`px-3 py-2 text-center text-[10.5px] font-semibold uppercase tracking-wide ${i >= 5 ? 'text-[#c85776]/70' : 'text-[#9d8592]'}`}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {cells.map((cell, i) => {
+          const d = parseIso(cell.iso)
+          const list = cell.inMonth ? byDay.get(cell.iso) || [] : []
+          const isTod = cell.iso === todayKey
+          const weekend = i % 7 >= 5
+          const completed = list.filter((a) => a.status === 'tamamlandi').length
+          return (
+            <div
+              key={cell.iso + i}
+              onClick={() => onOpenDay(cell.iso)}
+              className={`group/cell relative min-h-[104px] cursor-pointer border-b border-l border-[#f3e4ea] p-2 transition-colors [&:nth-child(7n+1)]:border-l-0 ${!cell.inMonth ? 'bg-[#fdf7f9]/50 opacity-55 hover:opacity-80' : isTod ? 'bg-[#fff1f6]/70' : weekend ? 'bg-[#fffafc] hover:bg-[#fff7fa]' : 'bg-white hover:bg-[#fff7fa]'}`}
+              title={cell.inMonth ? `${dFmt.format(d)} — gün görünümünü aç` : undefined}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`grid h-7 w-7 place-items-center rounded-full font-display text-[13px] font-bold tabular-nums ${isTod ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : !cell.inMonth ? 'text-[#c2adb6]' : weekend ? 'text-[#c85776]/80' : 'text-[#241923]'}`}>{d.getDate()}</span>
+                {list.length > 0 && (
+                  <span
+                    title={`${list.length} randevu · ${completed} tamamlandı`}
+                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-bold ${completed === list.length ? 'bg-emerald-50 text-emerald-600' : list.length >= 5 ? 'bg-gradient-to-br from-[#f0aac2] to-[#d48aa7] text-white' : 'bg-[#f0aac2]/25 text-[#c85776]'}`}
+                  >
+                    {list.length}
+                  </span>
+                )}
+              </div>
+              {cell.inMonth && (
+                <div className="mt-1.5 space-y-1">
+                  {list.slice(0, 3).map((a) => {
+                    const st = statusStyle[a.status] || statusStyle.bekliyor
+                    const isSel = selectedId === a.id
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onSelect(a.id) }}
+                        title={`${a.time} · ${a.musteri} · ${a.islem}`}
+                        className={`flex w-full items-center gap-1 overflow-hidden rounded-[7px] border px-1.5 py-0.5 text-left transition-all ${st.block} ${isSel ? 'ring-2 ring-[#c85776]' : ''}`}
+                      >
+                        <span aria-hidden className={`h-3 w-0.5 shrink-0 rounded ${st.bar}`} />
+                        <span className="font-mono text-[9px] font-semibold tabular-nums text-[#3d2f3a]">{a.time}</span>
+                        <span className={`truncate text-[10px] font-medium text-[#241923] ${a.status === 'iptal' ? 'line-through' : ''}`}>{a.musteri}</span>
+                        {isVip(a) && <Star className="ml-auto h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" />}
+                      </button>
+                    )
+                  })}
+                  {list.length > 3 && <div className="pl-1 text-[9px] font-semibold text-[#a58d99]">+{list.length - 3} randevu</div>}
+                  {list.length === 0 && onCreateAt && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onCreateAt({ date: cell.iso }) }}
+                      className="mt-0.5 hidden w-full items-center justify-center gap-1 rounded-[7px] border border-dashed border-[#efbfd0] py-1 text-[9px] font-semibold text-[#c85776] transition-colors hover:bg-[#fff1f6] group-hover/cell:flex"
+                    >
+                      <Plus className="h-2.5 w-2.5" /> Ekle
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

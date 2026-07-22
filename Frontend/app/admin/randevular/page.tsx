@@ -1686,7 +1686,18 @@ function RandevularPageInner() {
         isStaffUser={isStaffUser}
         busy={leaveBusy}
         onToggleLeave={!isStaffUser ? handleToggleLeave : undefined}
-        onChangeDate={(iso) => setScheduleDate(iso)}
+        onChangeDate={(iso) => {
+          setScheduleDate(iso)
+          // Modal içinde hafta/ay gezinirken görünen aralığın verisi de yüklensin diye
+          // ay getirme aralığını (monthDate) senkronize et; arka plandaki takvim de takip eder.
+          const [yy, mm, dd] = iso.split('-').map(Number)
+          if (yy && mm) {
+            setMonthDate((prevMonth) =>
+              prevMonth.getFullYear() === yy && prevMonth.getMonth() === mm - 1 ? prevMonth : new Date(yy, mm - 1, 1),
+            )
+            if (dd) setSelectedDay(dd)
+          }
+        }}
         onApprove={
           !isStaffUser
             ? async (id) => {

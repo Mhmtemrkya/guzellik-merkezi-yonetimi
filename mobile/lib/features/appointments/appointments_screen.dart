@@ -13,6 +13,9 @@ import 'appointment_detail_sheet.dart';
 import 'appointment_form.dart';
 import 'calendar_theme.dart';
 
+/// Randevu ekranı görünüm modu — web'deki Gün/Hafta/Ay sekmeleriyle parite.
+enum _CalView { day, week, month }
+
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({required this.api, required this.auth, super.key});
   final ApiClient api;
@@ -27,6 +30,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   static const _endHour = 20;
   static const _hourHeight = 84.0;
 
+  _CalView _view = _CalView.day;
   DateTime _selectedDate = DateUtils.dateOnly(DateTime.now());
   String? _selectedStaffId; // null => Tümü
   bool _showCancelled = true;
@@ -45,16 +49,27 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     });
   }
 
+  /// Aktif görünümün getirme aralığı: [from, to) yerel tarih sınırları.
+  (DateTime, DateTime) _rangeFor(_CalView view, DateTime anchor) {
+    final d = DateUtils.dateOnly(anchor);
+    switch (view) {
+      case _CalView.day:
+        return (d, d.add(const Duration(days: 1)));
+      case _CalView.week:
+        final monday = d.subtract(Duration(days: d.weekday - 1));
+        return (monday, monday.add(const Duration(days: 7)));
+      case _CalView.month:
+        final first = DateTime(d.year, d.month, 1);
+        return (first, DateTime(d.year, d.month + 1, 1));
+    }
+  }
+
+  String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
   Future<_DayData> _load() async {
-    final from = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-    );
-    final to = from.add(const Duration(days: 1));
-    final iso = '${from.year.toString().padLeft(4, '0')}-'
-        '${from.month.toString().padLeft(2, '0')}-'
-        '${from.day.toString().padLeft(2, '0')}';
+    final (from, to) = _rangeFor(_view, _selectedDate);
+    final pageSize = _view == _CalView.day ? 200 : 500;
     final results = await Future.wait([
       widget.api.get(
         '/api/admin/appointments/',
@@ -62,14 +77,17 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
           'fromUtc': from.toUtc().toIso8601String(),
           'toUtc': to.toUtc().toIso8601String(),
           'page': 1,
-          'pageSize': 200,
+          'pageSize': pageSize,
         },
       ),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       widget.api
           .get(
             '/api/admin/schedule/timeoff',
-            query: {'fromDate': iso, 'toDate': iso},
+            query: {
+              'fromDate': _isoDate(from),
+              'toDate': _isoDate(to.subtract(const Duration(days: 1))),
+            },
           )
           .catchError((_) => const <dynamic>[]),
     ]);
@@ -87,6 +105,56 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       _selectedDate = DateUtils.dateOnly(date);
       _reload();
     });
+  }
+
+  void _setView(_CalView v) {
+    if (v == _view) return;
+    setState(() {
+      _view = v;
+      _reload();
+    });
+  }
+
+  /// Üst navigasyonda ‹ › ile aktif dönemi (gün/hafta/ay) kaydır.
+  void _shiftPeriod(int dir) {
+    setState(() {
+      switch (_view) {
+        case _CalView.day:
+          _selectedDate = _selectedDate.add(Duration(days: dir));
+        case _CalView.week:
+          _selectedDate = _selectedDate.add(Duration(days: 7 * dir));
+        case _CalView.month:
+          final m = DateTime(_selectedDate.year, _selectedDate.month + dir, 1);
+          final lastDay = DateTime(m.year, m.month + 1, 0).day;
+          _selectedDate = DateTime(m.year, m.month, _selectedDate.day.clamp(1, lastDay));
+      }
+      _reload();
+    });
+  }
+
+  /// Hafta/ay hücresinden gün görünümüne geç.
+  void _openDay(DateTime day) {
+    setState(() {
+      _view = _CalView.day;
+      _selectedDate = DateUtils.dateOnly(day);
+      _reload();
+    });
+  }
+
+  /// Üst navigasyondaki dönem etiketi.
+  String _periodLabel() {
+    switch (_view) {
+      case _CalView.day:
+        return CalendarText.longDate(_selectedDate);
+      case _CalView.week:
+        final (from, to) = _rangeFor(_CalView.week, _selectedDate);
+        final end = to.subtract(const Duration(days: 1));
+        return from.month == end.month
+            ? '${from.day} – ${end.day} ${CalendarText.months[end.month - 1]} ${end.year}'
+            : '${from.day} ${CalendarText.months[from.month - 1]} – ${end.day} ${CalendarText.months[end.month - 1]} ${end.year}';
+      case _CalView.month:
+        return '${CalendarText.months[_selectedDate.month - 1]} ${_selectedDate.year}';
+    }
   }
 
   Future<void> _openCreate({DateTime? presetStart, String? presetStaffId}) async {
@@ -146,19 +214,28 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               // Kurum geneli randevu takvim aboneliği yalnızca yöneticide (personel hariç).
               onCalendarLink: (widget.auth.user?.isStaff ?? false) ? null : _calendarLink,
             ),
-            _WeekStrip(selected: _selectedDate, onSelect: _selectDate),
-            FutureBuilder<_DayData>(
-              future: _future,
-              builder: (context, snapshot) {
-                final staff = snapshot.data?.staff ?? const [];
-                return _StaffStrip(
-                  staff: staff,
-                  selectedId: _selectedStaffId,
-                  onSelect: (id) => setState(() => _selectedStaffId = id),
-                );
-              },
-            ),
-            const _Legend(),
+            _ViewTabs(value: _view, onChanged: _setView),
+            if (_view == _CalView.day) ...[
+              _WeekStrip(selected: _selectedDate, onSelect: _selectDate),
+              FutureBuilder<_DayData>(
+                future: _future,
+                builder: (context, snapshot) {
+                  final staff = snapshot.data?.staff ?? const [];
+                  return _StaffStrip(
+                    staff: staff,
+                    selectedId: _selectedStaffId,
+                    onSelect: (id) => setState(() => _selectedStaffId = id),
+                  );
+                },
+              ),
+              const _Legend(),
+            ] else
+              _PeriodNav(
+                label: _periodLabel(),
+                onPrev: () => _shiftPeriod(-1),
+                onNext: () => _shiftPeriod(1),
+                onToday: () => _selectDate(DateTime.now()),
+              ),
             Expanded(
               child: FutureBuilder<_DayData>(
                 future: _future,
@@ -174,19 +251,40 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   }
                   final data = snapshot.data!;
                   final filtered = _filteredAppointments(data);
-                  return _Timeline(
-                    appointments: filtered,
-                    timeOff: _filteredTimeOff(data),
-                    staff: data.staff,
-                    selectedStaffId: _selectedStaffId,
-                    date: _selectedDate,
-                    startHour: _startHour,
-                    endHour: _endHour,
-                    hourHeight: _hourHeight,
-                    onTap: _openDetail,
-                    onEmptyTap: (time, staffId) =>
-                        _openCreate(presetStart: time, presetStaffId: staffId),
-                  );
+                  switch (_view) {
+                    case _CalView.day:
+                      return _Timeline(
+                        appointments: filtered,
+                        timeOff: _filteredTimeOff(data),
+                        staff: data.staff,
+                        selectedStaffId: _selectedStaffId,
+                        date: _selectedDate,
+                        startHour: _startHour,
+                        endHour: _endHour,
+                        hourHeight: _hourHeight,
+                        onTap: _openDetail,
+                        onEmptyTap: (time, staffId) =>
+                            _openCreate(presetStart: time, presetStaffId: staffId),
+                      );
+                    case _CalView.week:
+                      final monday = _selectedDate
+                          .subtract(Duration(days: _selectedDate.weekday - 1));
+                      return _WeekAgenda(
+                        appointments: filtered,
+                        weekStart: DateUtils.dateOnly(monday),
+                        onTapAppt: _openDetail,
+                        onOpenDay: _openDay,
+                        onCreateForDay: (d) => _openCreate(
+                          presetStart: DateTime(d.year, d.month, d.day, _startHour),
+                        ),
+                      );
+                    case _CalView.month:
+                      return _MonthGrid(
+                        appointments: filtered,
+                        month: _selectedDate,
+                        onOpenDay: _openDay,
+                      );
+                  }
                 },
               ),
             ),
@@ -512,6 +610,600 @@ class _WeekStrip extends StatelessWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Görünüm sekmeleri (Gün · Hafta · Ay) — web modalıyla parite
+// ---------------------------------------------------------------------------
+class _ViewTabs extends StatelessWidget {
+  const _ViewTabs({required this.value, required this.onChanged});
+  final _CalView value;
+  final ValueChanged<_CalView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(_CalView v, String label) {
+      final selected = v == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onChanged(v),
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            margin: const EdgeInsets.all(3),
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppColors.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.muted,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          tab(_CalView.day, 'Gün'),
+          tab(_CalView.week, 'Hafta'),
+          tab(_CalView.month, 'Ay'),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dönem navigasyonu (Hafta/Ay) — ‹ etiket › + Bugün
+// ---------------------------------------------------------------------------
+class _PeriodNav extends StatelessWidget {
+  const _PeriodNav({
+    required this.label,
+    required this.onPrev,
+    required this.onNext,
+    this.onToday,
+  });
+  final String label;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback? onToday;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          _RoundIcon(icon: Icons.chevron_left_rounded, onTap: onPrev),
+          Expanded(
+            child: Center(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          ),
+          if (onToday != null)
+            GestureDetector(
+              onTap: onToday,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                margin: const EdgeInsets.only(right: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Bugün',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          _RoundIcon(icon: Icons.chevron_right_rounded, onTap: onNext),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundIcon extends StatelessWidget {
+  const _RoundIcon({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, color: AppColors.primaryDark),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hafta görünümü — 7 günlük ajanda (gün başlığına dokun → gün görünümü)
+// ---------------------------------------------------------------------------
+class _WeekAgenda extends StatelessWidget {
+  const _WeekAgenda({
+    required this.appointments,
+    required this.weekStart,
+    required this.onTapAppt,
+    required this.onOpenDay,
+    required this.onCreateForDay,
+  });
+  final List<Map<String, dynamic>> appointments;
+  final DateTime weekStart;
+  final void Function(Map<String, dynamic>) onTapAppt;
+  final void Function(DateTime) onOpenDay;
+  final void Function(DateTime) onCreateForDay;
+
+  static String _key(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final days = List.generate(7, (i) => weekStart.add(Duration(days: i)));
+    final byDay = <String, List<Map<String, dynamic>>>{};
+    for (final a in appointments) {
+      final s = DateTime.tryParse('${a['startUtc']}')?.toLocal();
+      if (s == null) continue;
+      byDay.putIfAbsent(_key(DateUtils.dateOnly(s)), () => []).add(a);
+    }
+    for (final list in byDay.values) {
+      list.sort((a, b) {
+        final sa = DateTime.tryParse('${a['startUtc']}') ?? DateTime(0);
+        final sb = DateTime.tryParse('${b['startUtc']}') ?? DateTime(0);
+        return sa.compareTo(sb);
+      });
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
+      children: [
+        for (final d in days)
+          _DaySection(
+            day: d,
+            isToday: DateUtils.isSameDay(d, today),
+            appts: byDay[_key(d)] ?? const [],
+            onOpenDay: onOpenDay,
+            onTapAppt: onTapAppt,
+            onCreate: onCreateForDay,
+          ),
+      ],
+    );
+  }
+}
+
+class _DaySection extends StatelessWidget {
+  const _DaySection({
+    required this.day,
+    required this.isToday,
+    required this.appts,
+    required this.onOpenDay,
+    required this.onTapAppt,
+    required this.onCreate,
+  });
+  final DateTime day;
+  final bool isToday;
+  final List<Map<String, dynamic>> appts;
+  final void Function(DateTime) onOpenDay;
+  final void Function(Map<String, dynamic>) onTapAppt;
+  final void Function(DateTime) onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final active =
+        appts.where((a) => '${a['status']}'.toLowerCase() != 'cancelled').length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isToday ? AppColors.primary : AppColors.border,
+          width: isToday ? 1.4 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            onTap: () => onOpenDay(day),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isToday ? AppColors.primary : AppColors.surfaceSoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${day.day}',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: isToday ? Colors.white : AppColors.primaryDark,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          CalendarText.weekdayLong[day.weekday - 1],
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          '${day.day} ${CalendarText.months[day.month - 1]}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (active > 0)
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.rose,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$active randevu',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+                ],
+              ),
+            ),
+          ),
+          if (appts.isEmpty)
+            GestureDetector(
+              onTap: () => onCreate(day),
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.fromLTRB(14, 2, 14, 14),
+                child: Row(
+                  children: [
+                    Icon(Icons.add_circle_outline_rounded,
+                        size: 18, color: AppColors.muted),
+                    SizedBox(width: 8),
+                    Text(
+                      'Boş — randevu ekle',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+              child: Column(
+                children: [
+                  for (final a in appts)
+                    _AgendaCard(appointment: a, onTap: () => onTapAppt(a)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgendaCard extends StatelessWidget {
+  const _AgendaCard({required this.appointment, required this.onTap});
+  final Map<String, dynamic> appointment;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = appointment;
+    final start = DateTime.tryParse('${a['startUtc']}')?.toLocal();
+    final end = DateTime.tryParse('${a['endUtc']}')?.toLocal();
+    final style = CalendarTheme.styleFor('${a['status']}');
+    final name = valueOf(a, const ['customerName', 'fullName']);
+    final service = valueOf(a, const ['serviceName'], fallback: '');
+    final time = start == null
+        ? ''
+        : (end == null
+              ? CalendarText.hm(start)
+              : '${CalendarText.hm(start)} - ${CalendarText.hm(end)}');
+    final cancelled = '${a['status']}'.toLowerCase() == 'cancelled';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+        decoration: BoxDecoration(
+          color: style.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: style.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 38,
+              decoration: BoxDecoration(
+                color: style.title,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: style.title,
+                      decoration: cancelled ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  if (service.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        service,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: style.sub),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  time,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: style.sub,
+                  ),
+                ),
+                if (style.showCheck)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(Icons.check_circle, size: 15, color: style.title),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ay görünümü — takvim ızgarası (hücreye dokun → gün görünümü)
+// ---------------------------------------------------------------------------
+class _MonthGrid extends StatelessWidget {
+  const _MonthGrid({
+    required this.appointments,
+    required this.month,
+    required this.onOpenDay,
+  });
+  final List<Map<String, dynamic>> appointments;
+  final DateTime month;
+  final void Function(DateTime) onOpenDay;
+
+  static String _key(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final first = DateTime(month.year, month.month, 1);
+    final gridStart = first.subtract(Duration(days: first.weekday - 1));
+    final cells = List.generate(42, (i) => gridStart.add(Duration(days: i)));
+    final byDay = <String, List<Map<String, dynamic>>>{};
+    for (final a in appointments) {
+      final s = DateTime.tryParse('${a['startUtc']}')?.toLocal();
+      if (s == null) continue;
+      byDay.putIfAbsent(_key(DateUtils.dateOnly(s)), () => []).add(a);
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+          child: Row(
+            children: [
+              for (var i = 0; i < 7; i++)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      CalendarText.weekdayShort[i],
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: i >= 5 ? AppColors.primary : AppColors.muted,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: GridView.count(
+              crossAxisCount: 7,
+              childAspectRatio: 0.74,
+              mainAxisSpacing: 5,
+              crossAxisSpacing: 5,
+              children: [
+                for (final c in cells)
+                  _MonthCell(
+                    day: c,
+                    inMonth: c.month == month.month,
+                    isToday: DateUtils.isSameDay(c, today),
+                    appts: byDay[_key(c)] ?? const [],
+                    onTap: () => onOpenDay(c),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MonthCell extends StatelessWidget {
+  const _MonthCell({
+    required this.day,
+    required this.inMonth,
+    required this.isToday,
+    required this.appts,
+    required this.onTap,
+  });
+  final DateTime day;
+  final bool inMonth;
+  final bool isToday;
+  final List<Map<String, dynamic>> appts;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = appts
+        .where((a) => '${a['status']}'.toLowerCase() != 'cancelled')
+        .toList();
+    final weekend = day.weekday >= 6;
+    return GestureDetector(
+      onTap: inMonth ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Opacity(
+        opacity: inMonth ? 1 : 0.35,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+          decoration: BoxDecoration(
+            color: isToday ? AppColors.rose : Colors.white,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: isToday ? AppColors.primary : AppColors.border,
+              width: isToday ? 1.3 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                '${day.day}',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: isToday
+                      ? AppColors.primaryDark
+                      : (weekend ? AppColors.primary : AppColors.ink),
+                ),
+              ),
+              const SizedBox(height: 3),
+              if (active.isNotEmpty) ...[
+                Wrap(
+                  spacing: 2,
+                  runSpacing: 2,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final a in active.take(3))
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: CalendarText.statusColor('${a['status']}'),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${active.length}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
