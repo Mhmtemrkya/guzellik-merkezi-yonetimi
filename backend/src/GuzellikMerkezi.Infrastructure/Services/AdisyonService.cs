@@ -482,21 +482,42 @@ public sealed class AdisyonService : IAdisyonService
         var reference = $"ADS-{adisyon.Id:N}".Substring(0, 16); // ApproveAsync ile aynı referans (tahsilat + stok hareketi eşleşmesi)
         var nowUtc = DateTime.UtcNow;
 
-        // Bu adisyonun satışından açılan seans bakiyeleri (izlenebilir olanlar).
+        // Bu adisyonun satışından açılan seans bakiyeleri (izlenebilir olanlar — SourceAdisyonId eşleşen).
         var soldSessions = await _db.CustomerPackageSessions
             .Where(s => s.TenantId == tenantId && s.SourceAdisyonId == adisyon.Id)
             .ToListAsync(cancellationToken);
 
-        // GUARD 1: satılan seanslardan biri kullanılmışsa geri alınamaz (müşteri o hizmeti almış).
-        if (soldSessions.Any(s => s.UsedSessions > 0))
-            return Result.Failure(Error.Validation("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın."));
-
-        // GUARD 2: satış kalemi var ama izlenebilir seans yok (eski kayıt) → otomatik geri alınamaz.
-        var hasTraceableSaleItems = adisyon.Items.Any(i =>
+        // Eski kayıt (SourceAdisyonId sütunu 21 Tem'de eklendi): daha önce onaylanmış satışların seansları
+        // izlenemez. ENGELLEMEK yerine bu onayla AYNI ANDA açılmış (CreatedAtUtc, ApprovedAtUtc'ye milisaniye
+        // yakın) ve kaynağı işaretlenmemiş (SourceAdisyonId == null) seansları bu satışa ait kabul et. Seanslar
+        // onay isteğinde tek bir utcNow ile damgalandığından (GuzellikDbContext.ApplyAuditInfo), dar zaman
+        // penceresi paylaşılan caride bile bu satışın seanslarını izole eder → GUARD ve finansal geri alma
+        // eski kayıtta da çalışır. (Cari-liste .Contains tuzağı yok; cari sunucuda, zaman bellekte süzülür.)
+        var hasSaleItems = adisyon.Items.Any(i =>
             i.Type == AdisyonItemType.PackageSale ||
             (i.Type == AdisyonItemType.Service && !i.CoveredByPackage));
-        if (hasTraceableSaleItems && soldSessions.Count == 0)
-            return Result.Failure(Error.Validation("Bu adisyon otomatik geri alınamıyor (satılan seanslar izlenemiyor — eski kayıt). Cari hesaptan elle düzeltin."));
+        var legacyMatched = 0;
+        if (hasSaleItems && soldSessions.Count == 0
+            && adisyon.CustomerAccountId is Guid legacyAccountId
+            && adisyon.ApprovedAtUtc is DateTime approvedAt)
+        {
+            const double windowSeconds = 120; // onay + seans oluşturma aynı istek (ms yakınlık); 2 dk güvenli izolasyon
+            var legacySessions = (await _db.CustomerPackageSessions
+                    .Where(s => s.TenantId == tenantId
+                             && s.CustomerAccountId == legacyAccountId
+                             && s.SourceAdisyonId == null)
+                    .ToListAsync(cancellationToken))
+                .Where(s => Math.Abs((s.CreatedAtUtc - approvedAt).TotalSeconds) <= windowSeconds)
+                .ToList();
+            soldSessions.AddRange(legacySessions);
+            legacyMatched = legacySessions.Count;
+        }
+
+        // GUARD: satılan seanslardan biri kullanılmışsa geri alınamaz (müşteri o hizmeti almış). İzlenebilir
+        // (yeni) ve zaman-eşleşmeli (eski) seansları birlikte kapsar → aşağıdaki RemoveRange yalnızca hiç
+        // kullanılmamış seansları siler, verilmiş (tüketilmiş) hizmet asla yok edilmez.
+        if (soldSessions.Any(s => s.UsedSessions > 0))
+            return Result.Failure(Error.Validation("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın."));
 
         // 1) Personel primleri
         var commissions = await _db.StaffCommissions
@@ -617,8 +638,10 @@ public sealed class AdisyonService : IAdisyonService
         await _db.SaveChangesAsync(cancellationToken);
 
         await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id,
-            $"Onaylı adisyon silindi ve geri alındı · borç {charge:N2} · tahsilat {payment:N2}",
-            new { charge, payment, accountId }, cancellationToken);
+            legacyMatched > 0
+                ? $"Onaylı adisyon silindi ve geri alındı (eski kayıt · {legacyMatched} seans zaman-eşleşmeyle temizlendi) · borç {charge:N2} · tahsilat {payment:N2}"
+                : $"Onaylı adisyon silindi ve geri alındı · borç {charge:N2} · tahsilat {payment:N2}",
+            new { charge, payment, accountId, legacyMatched }, cancellationToken);
         return Result.Success();
     }
 
