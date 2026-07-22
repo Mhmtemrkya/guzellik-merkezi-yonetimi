@@ -932,8 +932,8 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/adisyonlar/${id}/approve`, { method: 'POST', query: { tenantId } }),
   cancelAdisyon: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}/cancel`, { method: 'POST', query: { tenantId } }),
-  deleteAdisyon: (id: string, tenantId?: string): Promise<unknown> =>
-    apiRequest<unknown>(`/api/admin/adisyonlar/${id}`, { method: 'DELETE', query: { tenantId } }),
+  deleteAdisyon: (id: string, tenantId?: string, force?: boolean): Promise<unknown> =>
+    apiRequest<unknown>(`/api/admin/adisyonlar/${id}`, { method: 'DELETE', query: { tenantId, force: force ? 'true' : undefined } }),
   /** Günlük adisyon kartı: [fromUtc, toUtc) aralığındaki işlem + tahsilat satırları (ISO UTC). */
   dailyAdisyon: <T = unknown>(fromUtc: string, toUtc: string, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/adisyonlar/daily', { query: { fromUtc, toUtc, tenantId } }),

@@ -461,7 +461,7 @@ public sealed class AdisyonService : IAdisyonService
         return await GetAsync(tenantId, id, cancellationToken);
     }
 
-    public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    public async Task<Result> DeleteAsync(Guid tenantId, Guid id, bool force = false, CancellationToken cancellationToken = default)
     {
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
@@ -513,11 +513,17 @@ public sealed class AdisyonService : IAdisyonService
             legacyMatched = legacySessions.Count;
         }
 
-        // GUARD: satılan seanslardan biri kullanılmışsa geri alınamaz (müşteri o hizmeti almış). İzlenebilir
-        // (yeni) ve zaman-eşleşmeli (eski) seansları birlikte kapsar → aşağıdaki RemoveRange yalnızca hiç
-        // kullanılmamış seansları siler, verilmiş (tüketilmiş) hizmet asla yok edilmez.
-        if (soldSessions.Any(s => s.UsedSessions > 0))
-            return Result.Failure(Error.Validation("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın."));
+        // GUARD: satılan seanslardan biri kullanılmışsa (müşteri o hizmeti almış) varsayılan olarak engelle.
+        // İzlenebilir (yeni) ve zaman-eşleşmeli (eski) seansları birlikte kapsar. force=true (yönetici "zorla
+        // sil" onayı) → kullanılmış seansları geri-alma setinden ÇIKAR (koru, asla yok etme); kalan tüm finansal
+        // etki (borç/tahsilat/prim/sadakat/stok) tamamen geri alınır, yalnızca kullanılmamış seanslar silinir.
+        var usedSessionCount = soldSessions.Count(s => s.UsedSessions > 0);
+        if (usedSessionCount > 0)
+        {
+            if (!force)
+                return Result.Failure(Error.SessionUsed("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın ya da yönetici olarak zorla silin (kullanılmış seanslar korunur, kalan tüm bedel iade edilir)."));
+            soldSessions.RemoveAll(s => s.UsedSessions > 0);
+        }
 
         // 1) Personel primleri
         var commissions = await _db.StaffCommissions
@@ -637,11 +643,12 @@ public sealed class AdisyonService : IAdisyonService
         _db.Adisyonlar.Remove(adisyon);
         await _db.SaveChangesAsync(cancellationToken);
 
+        var forceNote = usedSessionCount > 0 ? $" · ZORLA (kullanılmış {usedSessionCount} seans korundu)" : string.Empty;
         await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id,
             legacyMatched > 0
-                ? $"Onaylı adisyon silindi ve geri alındı (eski kayıt · {legacyMatched} seans zaman-eşleşmeyle temizlendi) · borç {charge:N2} · tahsilat {payment:N2}"
-                : $"Onaylı adisyon silindi ve geri alındı · borç {charge:N2} · tahsilat {payment:N2}",
-            new { charge, payment, accountId, legacyMatched }, cancellationToken);
+                ? $"Onaylı adisyon silindi ve geri alındı (eski kayıt · {legacyMatched} seans zaman-eşleşmeyle temizlendi){forceNote} · borç {charge:N2} · tahsilat {payment:N2}"
+                : $"Onaylı adisyon silindi ve geri alındı{forceNote} · borç {charge:N2} · tahsilat {payment:N2}",
+            new { charge, payment, accountId, legacyMatched, usedSessionCount, force }, cancellationToken);
         return Result.Success();
     }
 

@@ -25,9 +25,10 @@ public interface IAdisyonService
     /// <summary>
     /// Adisyonu tamamen siler. Açık/İptal → doğrudan silinir. Onaylı → onayda oluşan tüm finansal
     /// kayıtlar (cari tahsilatı, prim, sadakat, stok, satılan seans, hediye çeki) geri alınıp silinir.
-    /// Satılan seans kullanılmışsa veya eski (izlenemeyen) satış varsa güvenlik gereği engellenir.
+    /// Satılan seanslardan biri kullanılmışsa varsayılan olarak engellenir (AdisyonSessionUsed);
+    /// <paramref name="force"/> = true ise kullanılmış seanslar korunur, kalan her şey geri alınıp silinir.
     /// </summary>
-    Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+    Task<Result> DeleteAsync(Guid tenantId, Guid id, bool force = false, CancellationToken cancellationToken = default);
 
     /// <summary>Verilen UTC aralığındaki adisyon aktivitesi (günlük kart): kalem + tahsilat satırları ve toplamlar.</summary>
     Task<Result<DailyAdisyonDto>> GetDailyAsync(Guid tenantId, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default);

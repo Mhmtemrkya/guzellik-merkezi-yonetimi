@@ -80,11 +80,12 @@ public static class AdisyonEndpoints
         });
 
         // Adisyon silme yıkıcıdır (onaylıda finansal geri alma yapar) — yalnız yönetici rolleri; personel yapamaz.
-        group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
+        // force=true: kullanılmış seans olsa bile sil (kullanılmış seanslar korunur, kalan tüm bedel iade edilir).
+        group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, bool? force, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
         {
             if (currentUser.Role == Domain.Enums.UserRole.Staff) return Results.Forbid();
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteAsync(resolvedTenantId, id, force ?? false, ct)).ToHttpResult(http);
         });
 
         // Günlük adisyon kartı: [fromUtc, toUtc) aralığındaki işlem + tahsilat satırları (istemci yerel-gün penceresini gönderir).

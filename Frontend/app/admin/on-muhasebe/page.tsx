@@ -16,7 +16,7 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged, ApiClientError } from '@/lib/apiClient'
 import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, normalizeAccount, normalizeAdisyon,
@@ -83,6 +83,8 @@ function OnMuhasebePageInner() {
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  // Kullanılmış seans içeren onaylı adisyon silmede: ilk deneme engellenirse "zorla sil" onayına yükseltilir.
+  const [forceDeleteAdisyon, setForceDeleteAdisyon] = useState(false)
   const [dailyOpen, setDailyOpen] = useState(false)
 
   useEffect(() => {
@@ -192,6 +194,8 @@ function OnMuhasebePageInner() {
     return adisyonFilter === 'all' ? list : list.filter((a) => a.status === adisyonFilter)
   }, [adisyonlar, adisyonFilter, monthStart]) // eslint-disable-line react-hooks/exhaustive-deps
   const selAdisyon = useMemo(() => filteredAdisyonlar.find((a) => a.id === selectedAdisyonId) || filteredAdisyonlar[0], [filteredAdisyonlar, selectedAdisyonId])
+  // Görüntülenen adisyon değişince "zorla sil" modunu sıfırla (bir sonraki adisyonda taze onay akışı).
+  useEffect(() => { setForceDeleteAdisyon(false) }, [selAdisyon?.id])
 
   // ---------- cari hesaplar ----------
   const filteredAccounts = useMemo(() => {
@@ -292,16 +296,20 @@ function OnMuhasebePageInner() {
   }
 
   // Adisyonu tamamen sil — onaylıda backend cari/kasa/prim/sadakat/stok/seans + ilgili randevular geri alınır (yönetici-only).
-  const doDeleteAdisyon = async (a: Adisyon) => {
+  // force=true: kullanılmış seans olsa bile sil (kullanılmış seanslar korunur, kalan tüm bedel iade edilir).
+  const doDeleteAdisyon = async (a: Adisyon, force = false) => {
     setBusy(true); setActionError(''); setActionMsg('')
     try {
-      await adminApi.deleteAdisyon(a.id, tenantId)
+      await adminApi.deleteAdisyon(a.id, tenantId, force)
       setActionMsg('Adisyon silindi ve ilgili kayıtlar geri alındı.')
+      setForceDeleteAdisyon(false)
       setSelectedAdisyonId(null)
       await reload()
     } catch (e) {
+      // Kullanılmış seans engeli → aynı modalı "zorla sil" onayına yükselt (ikinci tık force gönderir).
+      if (!force && e instanceof ApiClientError && e.code === 'AdisyonSessionUsed') setForceDeleteAdisyon(true)
       setActionError(e instanceof Error ? e.message : 'Adisyon silinemedi.')
-      throw e // modalın hata mesajını göstermesi için
+      throw e // modalın hata mesajını göstermesi + açık kalması için
     } finally { setBusy(false) }
   }
 
@@ -604,12 +612,20 @@ function OnMuhasebePageInner() {
                         {!isStaff && (
                           <ConfirmDialog
                             destructive
-                            title={selAdisyon.status === 'Approved' ? 'Adisyonu geri al ve sil' : 'Adisyonu sil'}
-                            confirmLabel="Evet, sil"
+                            title={forceDeleteAdisyon ? 'Kullanılmış seans var — zorla sil' : (selAdisyon.status === 'Approved' ? 'Adisyonu geri al ve sil' : 'Adisyonu sil')}
+                            confirmLabel={forceDeleteAdisyon ? 'Yine de zorla sil' : 'Evet, sil'}
                             cancelLabel="Vazgeç"
-                            onConfirm={() => doDeleteAdisyon(selAdisyon)}
+                            onConfirm={() => doDeleteAdisyon(selAdisyon, forceDeleteAdisyon)}
                             description={
-                              selAdisyon.status === 'Approved' ? (
+                              forceDeleteAdisyon ? (
+                                <span className="block space-y-1.5">
+                                  <span className="block">Bu satıştan <b>kullanılmış (müşteriye verilmiş) seans</b> var.</span>
+                                  <span className="block">• <b>Kullanılmış seanslar korunur</b>, silinmez</span>
+                                  <span className="block">• Kullanılmamış seanslar geri alınır</span>
+                                  <span className="block">• <b>Borç, tahsilat, prim, sadakat ve stok tamamen iade edilir</b></span>
+                                  <span className="block text-rose-600">Müşteri kullandığı hizmetlerin bedelini de geri almış olur; cariyi kontrol et. Geri alınamaz.</span>
+                                </span>
+                              ) : selAdisyon.status === 'Approved' ? (
                                 <span className="block space-y-1.5">
                                   <span className="block">Bu <b>onaylı</b> adisyon silinince şunlar da geri alınacak:</span>
                                   <span className="block">• Bu satışa ait <b>cari hesap</b> (varsa) silinir</span>

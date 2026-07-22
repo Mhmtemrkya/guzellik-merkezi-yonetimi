@@ -187,11 +187,58 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
       ),
     );
     if (ok != true) return;
-    await _run(
-      () => widget.api.delete('/api/admin/adisyonlar/${widget.adisyonId}'),
-      'Adisyon silindi.',
-      close: true,
-    );
+    await _tryDelete(force: false);
+  }
+
+  /// force=false ilk deneme; kullanılmış seans engeli (AdisyonSessionUsed) gelirse "zorla sil"
+  /// onayına yükseltir → force=true (kullanılmış seanslar korunur, kalan tüm bedel iade edilir).
+  Future<void> _tryDelete({required bool force}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    String? sessionUsedMsg;
+    try {
+      final path =
+          '/api/admin/adisyonlar/${widget.adisyonId}${force ? '?force=true' : ''}';
+      await widget.api.delete(path);
+      _changed = true;
+      if (mounted) Navigator.pop(context, true);
+      return;
+    } on ApiException catch (e) {
+      if (!force && e.code == 'AdisyonSessionUsed') {
+        sessionUsedMsg = e.message;
+      } else if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    // Kullanılmış seans → ekstra "zorla sil" onayı (busy artık kapalı; ikinci diyalog güvenli).
+    if (sessionUsedMsg != null && mounted) {
+      final force2 = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Kullanılmış seans var — zorla sil'),
+          content: Text(
+              '$sessionUsedMsg\n\nKullanılmış seanslar korunur; kullanılmamışlar geri alınır; borç, tahsilat, prim, sadakat ve stok tamamen iade edilir. Müşteri kullandığı hizmetlerin bedelini de geri almış olur; cariyi kontrol et. Bu işlem geri alınamaz.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Vazgeç')),
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Yine de zorla sil')),
+          ],
+        ),
+      );
+      if (force2 == true) await _tryDelete(force: true);
+    }
   }
 
   @override
