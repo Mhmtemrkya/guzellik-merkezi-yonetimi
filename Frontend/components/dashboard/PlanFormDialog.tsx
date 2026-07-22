@@ -48,6 +48,8 @@ interface PlanFormValues {
   maxMonthlyAppointments: number
   maxMonthlySmsCount: number
   maxMonthlyWhatsAppCount: number
+  maxMonthlyWhatsAppMarketing: number
+  defaultWhatsAppSpendCapTry: number
   maxMonthlyEmailCount: number
   features: Set<FeatureKey>
 }
@@ -67,6 +69,8 @@ function emptyForm(): PlanFormValues {
     maxMonthlyAppointments: 500,
     maxMonthlySmsCount: 0,
     maxMonthlyWhatsAppCount: 0,
+    maxMonthlyWhatsAppMarketing: 0,
+    defaultWhatsAppSpendCapTry: 0,
     maxMonthlyEmailCount: 0,
     features: new Set(),
   }
@@ -87,6 +91,8 @@ function planToForm(plan: SubscriptionPlan): PlanFormValues {
     maxMonthlyAppointments: plan.maxMonthlyAppointments,
     maxMonthlySmsCount: plan.maxMonthlySmsCount,
     maxMonthlyWhatsAppCount: plan.maxMonthlyWhatsAppCount,
+    maxMonthlyWhatsAppMarketing: plan.maxMonthlyWhatsAppMarketing ?? 0,
+    defaultWhatsAppSpendCapTry: plan.defaultWhatsAppSpendCapTry ?? 0,
     maxMonthlyEmailCount: plan.maxMonthlyEmailCount,
     features: new Set(plan.features as FeatureKey[]),
   }
@@ -187,6 +193,8 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
         maxMonthlyAppointments: Number(form.maxMonthlyAppointments),
         maxMonthlySmsCount: Number(form.maxMonthlySmsCount),
         maxMonthlyWhatsAppCount: Number(form.maxMonthlyWhatsAppCount),
+        maxMonthlyWhatsAppMarketing: Number(form.maxMonthlyWhatsAppMarketing),
+        defaultWhatsAppSpendCapTry: Number(form.defaultWhatsAppSpendCapTry),
         maxMonthlyEmailCount: Number(form.maxMonthlyEmailCount),
         features: featuresCsv,
         displayOrder: Number(form.displayOrder),
@@ -377,9 +385,17 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                   <input type="number" value={form.maxMonthlySmsCount}
                     onChange={(e) => update('maxMonthlySmsCount', Number(e.target.value))} className={inputClass} />
                 </Field>
-                <Field label="Aylık WhatsApp" helper="WhatsApp gönderim kotası">
+                <Field label="Aylık WhatsApp (Hatırlatma)" helper="Utility kotası — pakete dahil işlemsel mesaj">
                   <input type="number" value={form.maxMonthlyWhatsAppCount}
                     onChange={(e) => update('maxMonthlyWhatsAppCount', Number(e.target.value))} className={inputClass} />
+                </Field>
+                <Field label="Aylık WhatsApp (Pazarlama)" helper="Marketing kotası — genelde 0, kontörle alınır">
+                  <input type="number" value={form.maxMonthlyWhatsAppMarketing}
+                    onChange={(e) => update('maxMonthlyWhatsAppMarketing', Number(e.target.value))} className={inputClass} />
+                </Field>
+                <Field label="Kontör harcama tavanı (₺)" helper="Aylık üst sınır önerisi — 0 = platform varsayılanı">
+                  <input type="number" value={form.defaultWhatsAppSpendCapTry}
+                    onChange={(e) => update('defaultWhatsAppSpendCapTry', Number(e.target.value))} className={inputClass} />
                 </Field>
                 <Field label="Aylık E-posta" helper="E-posta gönderim kotası">
                   <input type="number" value={form.maxMonthlyEmailCount}

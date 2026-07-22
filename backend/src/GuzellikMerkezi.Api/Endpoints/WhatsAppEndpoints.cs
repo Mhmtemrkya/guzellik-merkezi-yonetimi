@@ -34,6 +34,32 @@ public static class WhatsAppEndpoints
             return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SendReminderAsync(tid, appointmentId, ct)).ToHttpResult(http);
         });
 
+        // --- Kontör cüzdanı (kurum yöneticisi): bakiye, kullanım, ek kontör satın alma ---
+        group.MapGet("/wallet", async (Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await billing.GetWalletAsync(tid, ct)).ToHttpResult(http);
+        });
+
+        group.MapGet("/wallet/transactions", async (Guid? tenantId, int? take, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await billing.GetTransactionsAsync(tid, take ?? 50, ct)).ToHttpResult(http);
+        });
+
+        // Kontör satın alma TALEBİ oluşturur (platform onayına düşer; bakiye onaysız artmaz).
+        group.MapPost("/wallet/topup", async (TopUpRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await billing.RequestPurchaseAsync(tid, request, currentUser.UserId, ct)).ToHttpResult(http);
+        });
+
+        group.MapGet("/wallet/purchases", async (Guid? tenantId, int? take, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await billing.GetTenantPurchasesAsync(tid, take ?? 20, ct)).ToHttpResult(http);
+        });
+
         // --- Webhook (anonim; Meta çağırır, /api/admin dışında → onay kapısı/auth uygulanmaz) ---
         var hook = app.MapGroup("/api/whatsapp").WithTags("WhatsApp");
 

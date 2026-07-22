@@ -340,6 +340,8 @@ export interface ApiSubscriptionPlan {
   maxMonthlySmsCount?: number
   maxMonthlyWhatsAppCount?: number
   maxMonthlyEmailCount?: number
+  maxMonthlyWhatsAppMarketing?: number
+  defaultWhatsAppSpendCapTry?: number
   features?: string | null
   displayOrder?: number
   isActive?: boolean
@@ -360,6 +362,8 @@ export interface SubscriptionPlan {
   maxMonthlySmsCount: number
   maxMonthlyWhatsAppCount: number
   maxMonthlyEmailCount: number
+  maxMonthlyWhatsAppMarketing?: number
+  defaultWhatsAppSpendCapTry?: number
   features: string[]
   displayOrder: number
   isActive: boolean
@@ -1125,6 +1129,8 @@ export interface ApiPlatformMessagingSettings {
   hasWhatsAppAccessToken?: boolean
   whatsAppBusinessAccountId?: string | null
   whatsAppConfigured?: boolean
+  hasWhatsAppAppSecret?: boolean
+  whatsAppVerifyToken?: string | null
 }
 
 export interface ApiMessagingTestResult {
@@ -1139,13 +1145,114 @@ export type WhatsAppConfirmation = 'None' | 'Pending' | 'Confirmed' | 'Declined'
 export interface ApiWhatsAppSettings {
   enabled?: boolean
   phoneNumberId?: string | null
-  hasAccessToken?: boolean
+  displayPhoneNumber?: string | null
+  connectionStatus?: 'NotConnected' | 'Pending' | 'Connected' | 'Disabled'
+  isConnected?: boolean
   businessAccountId?: string | null
-  verifyToken?: string | null
   reminderTemplate?: string | null
   provider?: string
   webhookUrl?: string
-  configured?: boolean
+  marketingEnabled?: boolean
+  allowWalletOverage?: boolean
+  monthlySpendCapTry?: number | null
+}
+
+// --- WhatsApp kontör/faturalama ---
+export type WhatsAppMessageCategory = 'Utility' | 'Marketing' | 'Authentication' | 'Service'
+export type WhatsAppBillingSource = 'None' | 'Quota' | 'Wallet' | 'Simulation'
+export type WalletTransactionType = 'TopUp' | 'Reserve' | 'Capture' | 'Refund' | 'Adjustment'
+export type CreditPurchaseStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+
+export interface ApiCreditPackage {
+  id: string
+  name: string
+  description?: string | null
+  priceTry: number
+  grantsTry: number
+  displayOrder: number
+  isActive: boolean
+  estimatedUtilityMessages: number
+}
+
+export interface ApiMessagingWallet {
+  tenantId: string
+  balanceTry: number
+  reservedTry: number
+  availableTry: number
+  lifetimeTopUpTry: number
+  lifetimeSpentTry: number
+  lowBalanceThresholdTry: number
+  isLowBalance: boolean
+  utilityUsed: number
+  utilityLimit: number
+  marketingUsed: number
+  marketingLimit: number
+  monthlyWalletSpentTry: number
+  monthlySpendCapTry?: number | null
+  marketingEnabled: boolean
+  allowWalletOverage: boolean
+  utilityPriceTry: number
+  marketingPriceTry: number
+  estimatedUtilityMessages: number
+  billingEnabled: boolean
+  creditPackages: ApiCreditPackage[]
+}
+
+export interface ApiWalletTransaction {
+  id: string
+  type: WalletTransactionType
+  amountTry: number
+  balanceAfterTry: number
+  description?: string | null
+  category?: WhatsAppMessageCategory | null
+  createdAtUtc: string
+}
+
+export interface ApiCreditPurchase {
+  id: string
+  tenantId: string
+  tenantName?: string | null
+  creditPackageId?: string | null
+  packageName: string
+  priceTry: number
+  grantsTry: number
+  status: CreditPurchaseStatus
+  note?: string | null
+  createdAtUtc: string
+  processedAtUtc?: string | null
+}
+
+export interface ApiWhatsAppPricingRule {
+  id: string
+  category: WhatsAppMessageCategory
+  metaUsdPrice: number
+  sellPriceTry: number
+  effectiveFromUtc: string
+  note?: string | null
+  isActive: boolean
+  estimatedMetaTry: number
+}
+
+export interface ApiWhatsAppBillingSettings {
+  billingEnabled: boolean
+  chargeSimulated: boolean
+  usdTryRate: number
+  lowBalanceThresholdTry: number
+  defaultMonthlySpendCapTry?: number | null
+  autoApproveTopUps: boolean
+}
+
+export interface ApiWhatsAppConnection {
+  tenantId: string
+  tenantName: string
+  planName?: string | null
+  phoneNumberId?: string | null
+  businessAccountId?: string | null
+  displayPhoneNumber?: string | null
+  connectionStatus: 'NotConnected' | 'Pending' | 'Connected' | 'Disabled'
+  isConnected: boolean
+  hasTokenOverride: boolean
+  webhookUrl: string
 }
 
 export interface ApiWhatsAppMessage {
@@ -1160,6 +1267,9 @@ export interface ApiWhatsAppMessage {
   providerMessageId?: string | null
   errorMessage?: string | null
   createdAtUtc?: string
+  category?: WhatsAppMessageCategory
+  billingSource?: WhatsAppBillingSource
+  chargedAmountTry?: number
 }
 
 export interface ApiWhatsAppReminderResult {

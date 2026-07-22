@@ -6,6 +6,7 @@ import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
+import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
 import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
@@ -346,9 +347,10 @@ export default function AyarlarPage() {
           </motion.div>
         </section>
 
-        {/* WHATSAPP HATIRLATMA ENTEGRASYONU */}
+        {/* WHATSAPP BİLDİRİM + KONTÖR */}
         <section data-guide="ayarlar-whatsapp" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           <WhatsAppSettingsCard tenantId={tenantId} />
+          <WhatsAppWalletCard tenantId={tenantId} />
         </section>
 
         {/* GÜVENLİK — personel ekran görüntüsü izni */}

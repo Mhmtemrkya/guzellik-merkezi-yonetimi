@@ -64,6 +64,8 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
                 req.MaxBranches, req.MaxStaff, req.MaxCustomers, req.MaxMonthlyAppointments, req.MaxMonthlySmsCount,
                 req.Features, req.Description, req.DisplayOrder, req.MaxMonthlyWhatsAppCount, req.MaxMonthlyEmailCount,
                 req.YearlyPriceTRY);
+            plan.SetWhatsAppCategoryLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyWhatsAppMarketing);
+            plan.SetDefaultWhatsAppSpendCap(req.DefaultWhatsAppSpendCapTry);
             _db.SubscriptionPlans.Add(plan);
             await _db.SaveChangesAsync(ct);
             return Result<SubscriptionPlanDto>.Success(ToDto(plan, 0));
@@ -86,6 +88,8 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             plan.SetYearlyPrice(req.YearlyPriceTRY);
             plan.SetLimits(req.MaxBranches, req.MaxStaff, req.MaxCustomers, req.MaxMonthlyAppointments, req.MaxMonthlySmsCount);
             plan.SetMessagingLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyEmailCount);
+            plan.SetWhatsAppCategoryLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyWhatsAppMarketing);
+            plan.SetDefaultWhatsAppSpendCap(req.DefaultWhatsAppSpendCapTry);
             plan.SetFeatures(req.Features);
             plan.SetDisplayOrder(req.DisplayOrder);
             if (req.IsActive) plan.Activate(); else plan.Deactivate();
@@ -131,5 +135,6 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
         p.Id, p.PlanKey, p.Name, p.Description, p.MonthlyPriceTRY, p.YearlyPriceTRY,
         p.MaxBranches, p.MaxStaff, p.MaxCustomers, p.MaxMonthlyAppointments, p.MaxMonthlySmsCount,
         p.MaxMonthlyWhatsAppCount, p.MaxMonthlyEmailCount,
-        p.Features, p.DisplayOrder, p.IsActive, tenantCount);
+        p.Features, p.DisplayOrder, p.IsActive, tenantCount,
+        p.MaxMonthlyWhatsAppMarketing, p.DefaultWhatsAppSpendCapTry);
 }

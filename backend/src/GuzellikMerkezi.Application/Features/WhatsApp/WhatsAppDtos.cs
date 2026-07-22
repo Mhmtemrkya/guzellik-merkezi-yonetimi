@@ -2,24 +2,27 @@ using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Application.Features.WhatsApp;
 
+/// <summary>Kurum yöneticisinin gördüğü WhatsApp ayarı: bağlantı DURUMU (salt-okunur, platform bağlar) + içerik + faturalama tercihleri.</summary>
 public sealed record WhatsAppSettingsDto(
     bool Enabled,
     string? PhoneNumberId,
-    bool HasAccessToken,
+    string? DisplayPhoneNumber,
+    string ConnectionStatus,
+    bool IsConnected,
     string? BusinessAccountId,
-    string? VerifyToken,
     string? ReminderTemplate,
     string Provider,
     string WebhookUrl,
-    bool Configured);
+    bool MarketingEnabled,
+    bool AllowWalletOverage,
+    decimal? MonthlySpendCapTry);
 
+/// <summary>Kurum yöneticisi yalnızca içeriği ve faturalama tercihlerini kaydeder (bağlantıyı platform yönetir).</summary>
 public sealed record SaveWhatsAppSettingsRequest(
-    bool Enabled,
-    string? PhoneNumberId,
-    string? AccessToken,
-    string? BusinessAccountId,
-    string? VerifyToken,
-    string? ReminderTemplate);
+    string? ReminderTemplate,
+    bool MarketingEnabled = false,
+    bool AllowWalletOverage = false,
+    decimal? MonthlySpendCapTry = null);
 
 public sealed record ReminderResultDto(
     bool Sent,
@@ -40,4 +43,32 @@ public sealed record WhatsAppMessageDto(
     WhatsAppReplyIntent Intent,
     string? ProviderMessageId,
     string? ErrorMessage,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    WhatsAppMessageCategory Category,
+    WhatsAppBillingSource BillingSource,
+    decimal ChargedAmountTry);
+
+// --- Platform tarafı: bağlantı yönetimi ---
+
+/// <summary>Platform admin'in "WhatsApp Bağlantıları" ekranında bir kurumun bağlantı durumu.</summary>
+public sealed record WhatsAppConnectionDto(
+    Guid TenantId,
+    string TenantName,
+    string? PlanName,
+    string? PhoneNumberId,
+    string? BusinessAccountId,
+    string? DisplayPhoneNumber,
+    string ConnectionStatus,
+    bool IsConnected,
+    bool HasTokenOverride,
+    string WebhookUrl);
+
+public sealed record BindWhatsAppConnectionRequest(
+    string? PhoneNumberId,
+    string? BusinessAccountId,
+    string? DisplayPhoneNumber,
+    string ConnectionStatus,
+    string? VerifyToken,
+    string? AccessTokenOverride);
+
+public sealed record SendTestMessageRequest(string ToPhone, string? Text);

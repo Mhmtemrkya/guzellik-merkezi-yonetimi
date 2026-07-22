@@ -32,6 +32,9 @@ public sealed class SubscriptionPlan : Entity
         SetYearlyPrice(yearlyPriceTRY);
         SetLimits(maxBranches, maxStaff, maxCustomers, maxMonthlyAppointments, maxMonthlySmsCount);
         SetMessagingLimits(maxMonthlyWhatsAppCount, maxMonthlyEmailCount);
+        // Yeni Utility/Marketing ayrımı: eski tek WhatsApp kotası Utility'ye taşınır (işlemsel hatırlatma),
+        // Marketing varsayılan 0 (pakete dahil değil — kontörle satın alınır).
+        SetWhatsAppCategoryLimits(maxMonthlyWhatsAppCount, 0);
         Features = features?.Trim();
         Description = description?.Trim();
         DisplayOrder = displayOrder;
@@ -54,6 +57,15 @@ public sealed class SubscriptionPlan : Entity
     public int MaxMonthlySmsCount { get; private set; }
     public int MaxMonthlyWhatsAppCount { get; private set; }
     public int MaxMonthlyEmailCount { get; private set; }
+
+    /// <summary>Pakete dahil aylık WhatsApp Utility (işlemsel hatırlatma/onay) kotası. -1 = sınırsız.</summary>
+    public int MaxMonthlyWhatsAppUtility { get; private set; }
+
+    /// <summary>Pakete dahil aylık WhatsApp Marketing (kampanya/doğum günü) kotası. Genelde 0 — kontörle alınır.</summary>
+    public int MaxMonthlyWhatsAppMarketing { get; private set; }
+
+    /// <summary>Aylık kontör harcama tavanı (₺) önerisi — bu paketteki kurumlar için varsayılan. 0/null = platform varsayılanı.</summary>
+    public decimal DefaultWhatsAppSpendCapTry { get; private set; }
 
     /// <summary>Bayrak feature'ları CSV: "Reports,Notifications,AdvancedAnalytics,APIAccess".</summary>
     public string? Features { get; private set; }
@@ -97,6 +109,21 @@ public sealed class SubscriptionPlan : Entity
     {
         MaxMonthlyWhatsAppCount = NormalizeLimit(monthlyWhatsApp);
         MaxMonthlyEmailCount = NormalizeLimit(monthlyEmail);
+        Touch();
+    }
+
+    /// <summary>WhatsApp Utility/Marketing kotalarını ayrı ayrı belirler. Eski MaxMonthlyWhatsAppCount senkron kalsın diye Utility'ye eşitlenir.</summary>
+    public void SetWhatsAppCategoryLimits(int monthlyUtility, int monthlyMarketing)
+    {
+        MaxMonthlyWhatsAppUtility = NormalizeLimit(monthlyUtility);
+        MaxMonthlyWhatsAppMarketing = NormalizeLimit(monthlyMarketing);
+        MaxMonthlyWhatsAppCount = MaxMonthlyWhatsAppUtility; // geriye uyumlu toplam alan
+        Touch();
+    }
+
+    public void SetDefaultWhatsAppSpendCap(decimal capTry)
+    {
+        DefaultWhatsAppSpendCapTry = capTry < 0 ? 0 : decimal.Round(capTry, 2);
         Touch();
     }
 

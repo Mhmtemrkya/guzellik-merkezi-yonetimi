@@ -28,15 +28,22 @@ public sealed class PlatformIntegrationSettings : Entity
     public bool SmtpUseSsl { get; private set; } = true;
 
     // --- WhatsApp (Meta Cloud API) — platform geneli; müşteri OTP/2FA kodu buradan gider ---
+    // YENİ: Tek Business Manager + tek sistem token'ı tüm kurumların numaralarını yönetir. Kuruma özel
+    // phone_number_id WhatsAppSettings'te; buradaki token BM altındaki tüm numaralara gönderim yapar.
     public bool WhatsAppEnabled { get; private set; }
     public string WhatsAppProvider { get; private set; } = "Meta";
-    public string? WhatsAppPhoneNumberId { get; private set; }
-    public string? WhatsAppAccessTokenEncrypted { get; private set; }
-    public string? WhatsAppBusinessAccountId { get; private set; }
+    public string? WhatsAppPhoneNumberId { get; private set; }          // platform kendi numarası (OTP/genel)
+    public string? WhatsAppAccessTokenEncrypted { get; private set; }   // BM sistem kullanıcısı kalıcı token'ı
+    public string? WhatsAppBusinessAccountId { get; private set; }      // platform WABA id
+    /// <summary>Meta App Secret (webhook X-Hub-Signature-256 doğrulaması). DB'de yoksa config'e düşülür.</summary>
+    public string? WhatsAppAppSecretEncrypted { get; private set; }
+    /// <summary>Webhook doğrulama token'ı (Meta panelinde girilen hub.verify_token).</summary>
+    public string? WhatsAppVerifyToken { get; private set; }
 
     public bool SmsConfigured => !string.IsNullOrWhiteSpace(SmsApiKeyEncrypted) && !string.IsNullOrWhiteSpace(SmsSender);
     public bool EmailConfigured => !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(EmailFromAddress);
-    public bool WhatsAppConfigured => !string.IsNullOrWhiteSpace(WhatsAppPhoneNumberId) && !string.IsNullOrWhiteSpace(WhatsAppAccessTokenEncrypted);
+    /// <summary>Platform sistem token'ı tanımlı mı? Kurumların numaralarına gönderim bunu kullanır.</summary>
+    public bool WhatsAppConfigured => !string.IsNullOrWhiteSpace(WhatsAppAccessTokenEncrypted);
 
     /// <param name="apiKeyEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
     public void UpdateSms(bool enabled, string? provider, string? apiKeyEnc, string? apiSecretEnc, string? sender, string? apiUrl)
@@ -65,13 +72,17 @@ public sealed class PlatformIntegrationSettings : Entity
     }
 
     /// <param name="accessTokenEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
-    public void UpdateWhatsApp(bool enabled, string? provider, string? phoneNumberId, string? accessTokenEnc, string? businessAccountId)
+    /// <param name="appSecretEnc">null = mevcut korunur.</param>
+    public void UpdateWhatsApp(bool enabled, string? provider, string? phoneNumberId, string? accessTokenEnc, string? businessAccountId,
+        string? appSecretEnc = null, string? verifyToken = null)
     {
         WhatsAppEnabled = enabled;
         WhatsAppProvider = string.IsNullOrWhiteSpace(provider) ? "Meta" : provider.Trim();
         WhatsAppPhoneNumberId = Clean(phoneNumberId);
         if (accessTokenEnc is not null) WhatsAppAccessTokenEncrypted = accessTokenEnc;
         WhatsAppBusinessAccountId = Clean(businessAccountId);
+        if (appSecretEnc is not null) WhatsAppAppSecretEncrypted = appSecretEnc;
+        WhatsAppVerifyToken = Clean(verifyToken);
         Touch();
     }
 

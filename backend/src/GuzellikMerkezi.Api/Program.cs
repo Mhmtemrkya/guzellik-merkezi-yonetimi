@@ -38,6 +38,7 @@ builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();
+builder.Services.AddHostedService<WhatsAppReservationSweepBackgroundService>();
 // Arka plan iş kuyruğu tüketicisi (WhatsApp/SMS/FCM gönderimlerini request-path dışında yürütür).
 builder.Services.AddHostedService<QueuedHostedService>();
 // Kalıcı (DB-outbox) iş kuyruğu tüketicisi — restart'ta kaybolmaması gereken işler.
@@ -234,6 +235,7 @@ app.MapDeviceEndpoints();
 app.MapSecurityEndpoints();
 app.MapFeatureEndpoints();
 app.MapPlatformMessagingEndpoints();
+app.MapPlatformWhatsAppEndpoints();
 app.MapPlatformOpsEndpoints();
 
 app.Run();

@@ -42,9 +42,10 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         var smsSecretEnc = string.IsNullOrWhiteSpace(r.SmsApiSecret) ? null : _encryption.Encrypt(r.SmsApiSecret!.Trim());
         var smtpPwEnc = string.IsNullOrWhiteSpace(r.SmtpPassword) ? null : _encryption.Encrypt(r.SmtpPassword!.Trim());
         var waTokenEnc = string.IsNullOrWhiteSpace(r.WhatsAppAccessToken) ? null : _encryption.Encrypt(r.WhatsAppAccessToken!.Trim());
+        var waSecretEnc = string.IsNullOrWhiteSpace(r.WhatsAppAppSecret) ? null : _encryption.Encrypt(r.WhatsAppAppSecret!.Trim());
         s.UpdateSms(r.SmsEnabled, r.SmsProvider, smsKeyEnc, smsSecretEnc, r.SmsSender, r.SmsApiUrl);
         s.UpdateEmail(r.EmailEnabled, r.EmailFromAddress, r.EmailFromName, r.SmtpHost, r.SmtpPort, r.SmtpUsername, smtpPwEnc, r.SmtpUseSsl);
-        s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId);
+        s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId, waSecretEnc, r.WhatsAppVerifyToken);
         await _db.SaveChangesAsync(ct);
         return Result<PlatformIntegrationSettingsDto>.Success(ToDto(s));
     }
@@ -199,11 +200,12 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
     {
         if (s is null)
             return new PlatformIntegrationSettingsDto(false, "Simulation", false, false, null, null, false, false, null, null, null, 587, null, false, true, false,
-                false, "Meta", null, false, null, false);
+                false, "Meta", null, false, null, false, false, null);
         return new PlatformIntegrationSettingsDto(
             s.SmsEnabled, s.SmsProvider, !string.IsNullOrWhiteSpace(s.SmsApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.SmsApiSecretEncrypted), s.SmsSender, s.SmsApiUrl, s.SmsConfigured,
             s.EmailEnabled, s.EmailFromAddress, s.EmailFromName, s.SmtpHost, s.SmtpPort, s.SmtpUsername, !string.IsNullOrWhiteSpace(s.SmtpPasswordEncrypted), s.SmtpUseSsl, s.EmailConfigured,
-            s.WhatsAppEnabled, s.WhatsAppProvider, s.WhatsAppPhoneNumberId, !string.IsNullOrWhiteSpace(s.WhatsAppAccessTokenEncrypted), s.WhatsAppBusinessAccountId, s.WhatsAppConfigured);
+            s.WhatsAppEnabled, s.WhatsAppProvider, s.WhatsAppPhoneNumberId, !string.IsNullOrWhiteSpace(s.WhatsAppAccessTokenEncrypted), s.WhatsAppBusinessAccountId, s.WhatsAppConfigured,
+            !string.IsNullOrWhiteSpace(s.WhatsAppAppSecretEncrypted), s.WhatsAppVerifyToken);
     }
 
     private static string NormalizePhone(string? p) => new string((p ?? string.Empty).Where(char.IsDigit).ToArray());

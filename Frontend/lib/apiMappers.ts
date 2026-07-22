@@ -225,6 +225,8 @@ export function normalizeSubscriptionPlan(p: ApiSubscriptionPlan | null | undefi
     maxMonthlySmsCount: Number(p?.maxMonthlySmsCount ?? 0),
     maxMonthlyWhatsAppCount: Number(p?.maxMonthlyWhatsAppCount ?? 0),
     maxMonthlyEmailCount: Number(p?.maxMonthlyEmailCount ?? 0),
+    maxMonthlyWhatsAppMarketing: Number(p?.maxMonthlyWhatsAppMarketing ?? 0),
+    defaultWhatsAppSpendCapTry: Number(p?.defaultWhatsAppSpendCapTry ?? 0),
     features,
     displayOrder: Number(p?.displayOrder ?? 0),
     isActive: p?.isActive ?? true,

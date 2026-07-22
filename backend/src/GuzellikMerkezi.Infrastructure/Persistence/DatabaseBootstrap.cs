@@ -130,6 +130,68 @@ public static class DatabaseBootstrap
         await AlignFeatureTableCollationsAsync(db, logger);
 
         await SeedSubscriptionPlansAsync(db, logger);
+        await SeedWhatsAppBillingAsync(db, logger);
+    }
+
+    /// <summary>
+    /// WhatsApp faturalama başlangıç verisi: kategori fiyat kuralları, kontör paketleri, genel ayar (kur/tavan).
+    /// Idempotent — yalnızca hiç kural yoksa ekler. Ayrıca eski (per-tenant token'la çalışan) WhatsApp
+    /// bağlantılarını yeni ConnectionStatus modeline taşır (canlı gönderim kopmadan devam etsin).
+    /// </summary>
+    private static async Task SeedWhatsAppBillingAsync(GuzellikDbContext db, ILogger logger)
+    {
+        try
+        {
+            // 1) Genel ayar (singleton) — yoksa gerçekçi kur ile oluştur.
+            if (!await db.WhatsAppBillingSettings.AnyAsync())
+            {
+                var settings = new Domain.Entities.WhatsAppBillingSettings();
+                // 22 Tem 2026 yaklaşık kur; tavan ₺500; otomatik onay KAPALI (her yükleme platform onayından geçer).
+                settings.Update(billingEnabled: true, chargeSimulated: false, usdTryRate: 47.21m,
+                    lowBalanceThresholdTry: 50m, defaultMonthlySpendCapTry: 500m, autoApproveTopUps: false);
+                db.WhatsAppBillingSettings.Add(settings);
+            }
+
+            // 2) Kategori fiyatları — yoksa Meta liste fiyatı + makul satış marjı ile ekle.
+            if (!await db.WhatsAppPricingRules.AnyAsync())
+            {
+                var from = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                db.WhatsAppPricingRules.AddRange(
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Utility, 0.0009m, 0.15m, from, "İşlemsel hatırlatma/onay"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Authentication, 0.0009m, 0.15m, from, "Doğrulama kodu"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Marketing, 0.0109m, 0.90m, from, "Kampanya/indirim"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Service, 0m, 0m, from, "Müşteri 24s serbest yanıt (ücretsiz)"));
+            }
+
+            // 3) Kontör paketleri — yoksa 3 varsayılan paket.
+            if (!await db.WhatsAppCreditPackages.AnyAsync())
+            {
+                db.WhatsAppCreditPackages.AddRange(
+                    new Domain.Entities.WhatsAppCreditPackage("Başlangıç Kontör", 150m, 150m, 1, "≈1.000 hatırlatma mesajı"),
+                    new Domain.Entities.WhatsAppCreditPackage("Standart Kontör", 350m, 375m, 2, "≈2.500 hatırlatma + bonus"),
+                    new Domain.Entities.WhatsAppCreditPackage("Büyük Kontör", 650m, 750m, 3, "≈5.000 hatırlatma + bonus"));
+            }
+
+            await db.SaveChangesAsync();
+
+            // 4) Eski bağlantıları taşı: Enabled + numara + token varsa ama durum NotConnected ise → Connected.
+            var legacy = await db.WhatsAppSettings.IgnoreQueryFilters()
+                .Where(s => !s.IsDeleted && s.Enabled
+                         && s.PhoneNumberId != null && s.AccessTokenEncrypted != null
+                         && s.ConnectionStatus == Domain.Enums.WhatsAppConnectionStatus.NotConnected)
+                .ToListAsync();
+            foreach (var s in legacy)
+                s.SetConnectionStatus(Domain.Enums.WhatsAppConnectionStatus.Connected);
+            if (legacy.Count > 0)
+            {
+                await db.SaveChangesAsync();
+                logger.LogInformation("{Count} eski WhatsApp bağlantısı yeni modele (Connected) taşındı.", legacy.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "WhatsApp faturalama başlangıç verisi eklenemedi (şema henüz yok olabilir).");
+        }
     }
 
     /// <summary>
@@ -147,6 +209,7 @@ public static class DatabaseBootstrap
         var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseBootstrap");
         await SeedSubscriptionPlansAsync(db, logger);
+        await SeedWhatsAppBillingAsync(db, logger);
     }
 
     private static readonly string[] CollationSensitiveTables =

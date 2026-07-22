@@ -64,6 +64,12 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
     public DbSet<WhatsAppSettings> WhatsAppSettings => Set<WhatsAppSettings>();
     public DbSet<WhatsAppMessage> WhatsAppMessages => Set<WhatsAppMessage>();
+    public DbSet<WhatsAppPricingRule> WhatsAppPricingRules => Set<WhatsAppPricingRule>();
+    public DbSet<WhatsAppCreditPackage> WhatsAppCreditPackages => Set<WhatsAppCreditPackage>();
+    public DbSet<WhatsAppBillingSettings> WhatsAppBillingSettings => Set<WhatsAppBillingSettings>();
+    public DbSet<TenantMessagingWallet> TenantMessagingWallets => Set<TenantMessagingWallet>();
+    public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
+    public DbSet<WhatsAppCreditPurchase> WhatsAppCreditPurchases => Set<WhatsAppCreditPurchase>();
     public DbSet<PlatformIntegrationSettings> PlatformIntegrationSettings => Set<PlatformIntegrationSettings>();
     public DbSet<PlatformSystemSettings> PlatformSystemSettings => Set<PlatformSystemSettings>();
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
@@ -646,6 +652,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         p.Property(x => x.SmtpHost).HasMaxLength(256);
         p.Property(x => x.SmtpUsername).HasMaxLength(256);
         p.Property(x => x.SmtpPasswordEncrypted).HasColumnType("TEXT");
+        p.Property(x => x.WhatsAppPhoneNumberId).HasMaxLength(64);
+        p.Property(x => x.WhatsAppAccessTokenEncrypted).HasColumnType("TEXT");
+        p.Property(x => x.WhatsAppBusinessAccountId).HasMaxLength(64);
+        p.Property(x => x.WhatsAppAppSecretEncrypted).HasColumnType("TEXT");
+        p.Property(x => x.WhatsAppVerifyToken).HasMaxLength(128);
         // Platform geneli (tenant'sız) — query filter yok.
     }
 
@@ -707,9 +718,13 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         s.Property(x => x.PhoneNumberId).HasMaxLength(64);
         s.Property(x => x.AccessTokenEncrypted).HasColumnType("TEXT");
         s.Property(x => x.BusinessAccountId).HasMaxLength(64);
+        s.Property(x => x.DisplayPhoneNumber).HasMaxLength(32);
+        s.Property(x => x.ConnectionStatus).HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(WhatsAppConnectionStatus.NotConnected); // eski satırlar bağlantısız başlar (seed'de taşınır)
         s.Property(x => x.VerifyToken).HasMaxLength(128);
         s.Property(x => x.ReminderTemplate).HasMaxLength(1000);
         s.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+        s.Property(x => x.MonthlySpendCapTry).HasPrecision(18, 2);
         s.HasIndex(x => x.TenantId).IsUnique();
         s.HasIndex(x => x.PhoneNumberId); // webhook tenant çözümü
         // Kuruma özel (tek satır). Webhook'ta IgnoreQueryFilters ile aşılır.
@@ -721,6 +736,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         m.Property(x => x.Direction).HasConversion<string>().HasMaxLength(16).IsRequired();
         m.Property(x => x.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         m.Property(x => x.Intent).HasConversion<string>().HasMaxLength(16).IsRequired();
+        m.Property(x => x.Category).HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(WhatsAppMessageCategory.Utility); // eski satırlar Utility varsayılır
+        m.Property(x => x.BillingSource).HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(WhatsAppBillingSource.None); // eski satırlar ücretlendirilmemiş sayılır
+        m.Property(x => x.ChargedAmountTry).HasPrecision(18, 4).HasDefaultValue(0m);
         m.Property(x => x.Phone).HasMaxLength(32).IsRequired();
         m.Property(x => x.Body).HasColumnType("TEXT");
         m.Property(x => x.TemplateName).HasMaxLength(128);
@@ -728,7 +748,75 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         m.Property(x => x.ErrorMessage).HasMaxLength(500);
         m.HasIndex(x => new { x.TenantId, x.AppointmentId });
         m.HasIndex(x => new { x.TenantId, x.Direction, x.CreatedAtUtc });
+        m.HasIndex(x => new { x.TenantId, x.Category, x.BillingSource, x.CreatedAtUtc }); // kategori bazlı aylık sayım
+        m.HasIndex(x => x.ProviderMessageId); // webhook status → wamid eşleşmesi
         m.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+
+        ConfigureWhatsAppBilling(modelBuilder);
+    }
+
+    private void ConfigureWhatsAppBilling(ModelBuilder modelBuilder)
+    {
+        var pr = modelBuilder.Entity<WhatsAppPricingRule>();
+        pr.ToTable("whatsapp_pricing_rules");
+        pr.HasKey(x => x.Id);
+        pr.Property(x => x.Category).HasConversion<string>().HasMaxLength(16).IsRequired();
+        pr.Property(x => x.MetaUsdPrice).HasPrecision(18, 6);
+        pr.Property(x => x.SellPriceTry).HasPrecision(18, 4);
+        pr.Property(x => x.Note).HasMaxLength(256);
+        pr.HasIndex(x => new { x.Category, x.EffectiveFromUtc });
+        pr.HasQueryFilter(x => !x.IsDeleted); // platform geneli
+
+        var cp = modelBuilder.Entity<WhatsAppCreditPackage>();
+        cp.ToTable("whatsapp_credit_packages");
+        cp.HasKey(x => x.Id);
+        cp.Property(x => x.Name).HasMaxLength(80).IsRequired();
+        cp.Property(x => x.Description).HasMaxLength(256);
+        cp.Property(x => x.PriceTry).HasPrecision(18, 2);
+        cp.Property(x => x.GrantsTry).HasPrecision(18, 2);
+        cp.HasQueryFilter(x => !x.IsDeleted); // platform geneli
+
+        var bs = modelBuilder.Entity<WhatsAppBillingSettings>();
+        bs.ToTable("whatsapp_billing_settings");
+        bs.HasKey(x => x.Id);
+        bs.Property(x => x.UsdTryRate).HasPrecision(18, 4);
+        bs.Property(x => x.LowBalanceThresholdTry).HasPrecision(18, 2);
+        bs.Property(x => x.DefaultMonthlySpendCapTry).HasPrecision(18, 2);
+        // Singleton, platform geneli — query filter yok.
+
+        var w = modelBuilder.Entity<TenantMessagingWallet>();
+        w.ToTable("tenant_messaging_wallets");
+        w.HasKey(x => x.Id);
+        w.Property(x => x.BalanceTry).HasPrecision(18, 4);
+        w.Property(x => x.ReservedTry).HasPrecision(18, 4);
+        w.Property(x => x.LifetimeTopUpTry).HasPrecision(18, 4);
+        w.Property(x => x.LifetimeSpentTry).HasPrecision(18, 4);
+        w.HasIndex(x => x.TenantId).IsUnique();
+        w.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var wt = modelBuilder.Entity<WalletTransaction>();
+        wt.ToTable("wallet_transactions");
+        wt.HasKey(x => x.Id);
+        wt.Property(x => x.Type).HasConversion<string>().HasMaxLength(16).IsRequired();
+        wt.Property(x => x.Category).HasConversion<string>().HasMaxLength(16);
+        wt.Property(x => x.AmountTry).HasPrecision(18, 4);
+        wt.Property(x => x.BalanceAfterTry).HasPrecision(18, 4);
+        wt.Property(x => x.ReservedAfterTry).HasPrecision(18, 4);
+        wt.Property(x => x.Description).HasMaxLength(256);
+        wt.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        wt.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var cpu = modelBuilder.Entity<WhatsAppCreditPurchase>();
+        cpu.ToTable("whatsapp_credit_purchases");
+        cpu.HasKey(x => x.Id);
+        cpu.Property(x => x.PackageName).HasMaxLength(80).IsRequired();
+        cpu.Property(x => x.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
+        cpu.Property(x => x.PriceTry).HasPrecision(18, 2);
+        cpu.Property(x => x.GrantsTry).HasPrecision(18, 2);
+        cpu.Property(x => x.Note).HasMaxLength(256);
+        cpu.HasIndex(x => new { x.Status, x.CreatedAtUtc });
+        cpu.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        cpu.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
     private void ConfigureConsultationForm(ModelBuilder modelBuilder)

@@ -23,7 +23,9 @@ public sealed record PlatformIntegrationSettingsDto(
     string? WhatsAppPhoneNumberId,
     bool HasWhatsAppAccessToken,
     string? WhatsAppBusinessAccountId,
-    bool WhatsAppConfigured);
+    bool WhatsAppConfigured,
+    bool HasWhatsAppAppSecret,
+    string? WhatsAppVerifyToken);
 
 public sealed record SavePlatformMessagingRequest(
     bool SmsEnabled,
@@ -45,7 +47,9 @@ public sealed record SavePlatformMessagingRequest(
     string? WhatsAppProvider = null,
     string? WhatsAppPhoneNumberId = null,
     string? WhatsAppAccessToken = null,
-    string? WhatsAppBusinessAccountId = null);
+    string? WhatsAppBusinessAccountId = null,
+    string? WhatsAppAppSecret = null,
+    string? WhatsAppVerifyToken = null);
 
 public sealed record MessagingTestRequest(string Target);
 

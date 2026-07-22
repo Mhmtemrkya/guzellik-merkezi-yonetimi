@@ -5,7 +5,6 @@ using System.Text.Json;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Features;
-using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain;
@@ -40,12 +39,12 @@ public sealed class WhatsAppService : IWhatsAppService
     private readonly IConfiguration _config;
     private readonly ILogger<WhatsAppService> _logger;
     private readonly IFeatureService _features;
-    private readonly IUsageService _usage;
+    private readonly IWhatsAppBillingService _billing;
     private readonly ICurrentUser _currentUser;
     private readonly IWaitlistService _waitlist;
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
 
-    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IUsageService usage, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications)
+    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications)
     {
         _db = db;
         _encryption = encryption;
@@ -53,7 +52,7 @@ public sealed class WhatsAppService : IWhatsAppService
         _config = config;
         _logger = logger;
         _features = features;
-        _usage = usage;
+        _billing = billing;
         _currentUser = currentUser;
         _waitlist = waitlist;
         _notifications = notifications;
@@ -61,6 +60,8 @@ public sealed class WhatsAppService : IWhatsAppService
 
     // Personel müşteri telefonunu yalnızca son 4 hane görür; ham numara API'den hiç çıkmaz.
     private bool IsStaffViewer => _currentUser.Role == UserRole.Staff;
+
+    // ==================== KURUM: AYAR (içerik + faturalama tercihleri) ====================
 
     public async Task<Result<WhatsAppSettingsDto>> GetSettingsAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -76,20 +77,113 @@ public sealed class WhatsAppService : IWhatsAppService
             s = new WhatsAppSettings(tenantId);
             _db.WhatsAppSettings.Add(s);
         }
-        // Token boş gelirse mevcut korunur; doluysa şifrele.
-        string? encToken = string.IsNullOrWhiteSpace(request.AccessToken) ? null : _encryption.Encrypt(request.AccessToken!.Trim());
-        s.Update(request.Enabled, request.PhoneNumberId, encToken, request.BusinessAccountId, request.VerifyToken, request.ReminderTemplate);
+        s.UpdateContent(request.ReminderTemplate);
+        s.UpdateBillingPreferences(request.MarketingEnabled, request.AllowWalletOverage, request.MonthlySpendCapTry);
         await _db.SaveChangesAsync(ct);
         return Result<WhatsAppSettingsDto>.Success(BuildSettingsDto(s));
     }
 
+    // ==================== PLATFORM: BAĞLANTI YÖNETİMİ ====================
+
+    public async Task<Result<IReadOnlyCollection<WhatsAppConnectionDto>>> GetConnectionsAsync(CancellationToken ct = default)
+    {
+        var webhookUrl = BuildWebhookUrl();
+        var tenants = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .Include(t => t.SubscriptionPlan)
+            .Where(t => !t.IsDeleted)
+            .Select(t => new { t.Id, t.Name, PlanName = t.SubscriptionPlan != null ? t.SubscriptionPlan.Name : null })
+            .ToListAsync(ct);
+
+        var settings = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .ToListAsync(ct);
+        var byTenant = settings.ToDictionary(x => x.TenantId);
+
+        var list = tenants.Select(t =>
+        {
+            byTenant.TryGetValue(t.Id, out var s);
+            return new WhatsAppConnectionDto(
+                t.Id, t.Name, t.PlanName,
+                s?.PhoneNumberId, s?.BusinessAccountId, s?.DisplayPhoneNumber,
+                (s?.ConnectionStatus ?? WhatsAppConnectionStatus.NotConnected).ToString(),
+                s?.IsConnected ?? false,
+                !string.IsNullOrWhiteSpace(s?.AccessTokenEncrypted),
+                webhookUrl);
+        }).OrderBy(x => x.TenantName).ToList();
+
+        return Result<IReadOnlyCollection<WhatsAppConnectionDto>>.Success(list);
+    }
+
+    public async Task<Result<WhatsAppConnectionDto>> BindConnectionAsync(Guid tenantId, BindWhatsAppConnectionRequest request, CancellationToken ct = default)
+    {
+        var tenant = await _db.Tenants.IgnoreQueryFilters().Include(t => t.SubscriptionPlan)
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+        if (tenant is null) return Result<WhatsAppConnectionDto>.Failure(Error.NotFound("Kurum bulunamadı."));
+
+        var s = await _db.WhatsAppSettings.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
+        if (s is null)
+        {
+            s = new WhatsAppSettings(tenantId);
+            _db.WhatsAppSettings.Add(s);
+        }
+
+        if (!Enum.TryParse<WhatsAppConnectionStatus>(request.ConnectionStatus, ignoreCase: true, out var status))
+            status = string.IsNullOrWhiteSpace(request.PhoneNumberId) ? WhatsAppConnectionStatus.NotConnected : WhatsAppConnectionStatus.Connected;
+
+        // Aynı phone_number_id başka kuruma bağlı mı? (webhook tenant çözümü tekilliğe dayanır)
+        if (!string.IsNullOrWhiteSpace(request.PhoneNumberId))
+        {
+            var clash = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(x => x.TenantId != tenantId && !x.IsDeleted && x.PhoneNumberId == request.PhoneNumberId.Trim(), ct);
+            if (clash) return Result<WhatsAppConnectionDto>.Failure(Error.Conflict("Bu numara (phone_number_id) başka bir kuruma bağlı."));
+        }
+
+        s.BindConnection(request.PhoneNumberId, request.BusinessAccountId, request.DisplayPhoneNumber, status, request.VerifyToken);
+        if (request.AccessTokenOverride is not null)
+        {
+            var enc = string.IsNullOrWhiteSpace(request.AccessTokenOverride) ? null : _encryption.Encrypt(request.AccessTokenOverride.Trim());
+            s.SetAccessTokenOverride(enc);
+        }
+        await _db.SaveChangesAsync(ct);
+
+        return Result<WhatsAppConnectionDto>.Success(new WhatsAppConnectionDto(
+            tenant.Id, tenant.Name, tenant.SubscriptionPlan?.Name,
+            s.PhoneNumberId, s.BusinessAccountId, s.DisplayPhoneNumber,
+            s.ConnectionStatus.ToString(), s.IsConnected,
+            !string.IsNullOrWhiteSpace(s.AccessTokenEncrypted), BuildWebhookUrl()));
+    }
+
+    public async Task<Result<ReminderResultDto>> SendTestMessageAsync(Guid tenantId, SendTestMessageRequest request, CancellationToken ct = default)
+    {
+        var toPhone = NormalizePhone(request.ToPhone);
+        if (toPhone.Length == 0) return Result<ReminderResultDto>.Failure(Error.Validation("Geçerli bir telefon numarası girin."));
+
+        var salon = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
+        var body = string.IsNullOrWhiteSpace(request.Text)
+            ? $"Merhaba! {salon} WhatsApp bağlantısı başarıyla test edildi. ✅"
+            : request.Text!.Trim();
+
+        var ctx = await ResolveSendContextAsync(tenantId, ct);
+        if (!ctx.Live)
+            return Result<ReminderResultDto>.Failure(Error.Conflict("Kurumun WhatsApp bağlantısı aktif değil. Önce numarayı bağlayın ve durumu 'Connected' yapın."));
+
+        var outcome = await SendViaMetaAsync(ctx.PhoneNumberId!, ctx.Token, toPhone, body, ct);
+        _db.WhatsAppMessages.Add(new WhatsAppMessage(
+            tenantId, null, null, null, WhatsAppMessageDirection.Outbound,
+            toPhone, body, outcome.Success ? WhatsAppMessageStatus.Sent : WhatsAppMessageStatus.Failed,
+            templateName: "connection-test", providerMessageId: outcome.ProviderMessageId, error: outcome.Error,
+            category: WhatsAppMessageCategory.Utility, billingSource: WhatsAppBillingSource.None));
+        await _db.SaveChangesAsync(ct);
+
+        return Result<ReminderResultDto>.Success(new ReminderResultDto(outcome.Success, false, toPhone, body, outcome.ProviderMessageId, outcome.Error));
+    }
+
+    // ==================== GÖNDERİM ====================
+
     public async Task<Result<ReminderResultDto>> SendReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
     {
-        // Paket kapısı: özellik + aylık WhatsApp kotası
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsWhatsApp, ct))
             return Result<ReminderResultDto>.Failure(Error.Conflict("WhatsApp gönderimi paketinizde yok. Üst pakete geçerek kullanabilirsiniz."));
-        var quota = await _usage.CheckLimitAsync(tenantId, "whatsapp", ct);
-        if (quota.IsFailure) return Result<ReminderResultDto>.Failure(quota.Error);
 
         var appt = await _db.Appointments
             .Include(a => a.Customer)
@@ -105,34 +199,21 @@ public sealed class WhatsAppService : IWhatsAppService
 
         var settings = await _db.WhatsAppSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
         var body = RenderTemplate(settings?.ReminderTemplate ?? DefaultTemplate, appt);
-        var toPhone = NormalizePhone(phone);
 
-        var live = settings is { Enabled: true } && settings.HasCredentials;
-        WhatsAppSendOutcome outcome;
-        bool simulated;
-        if (live)
+        var result = await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null,
+            phone!, body, WhatsAppMessageCategory.Utility, templateName: "reminder", ct);
+
+        if (result.Blocked)
+            return Result<ReminderResultDto>.Failure(Error.Conflict(result.BlockReason!));
+
+        if (result.Success)
         {
-            var token = _encryption.Decrypt(settings!.AccessTokenEncrypted);
-            outcome = await SendViaMetaAsync(settings.PhoneNumberId!, token ?? string.Empty, toPhone, body, ct);
-            simulated = false;
-        }
-        else
-        {
-            _logger.LogInformation("[WhatsApp SIM] {Tenant} -> {Phone}: {Body}", tenantId, toPhone, body);
-            outcome = new WhatsAppSendOutcome(true, $"sim-{Guid.NewGuid():N}", null);
-            simulated = true;
+            appt.MarkReminderSent();
+            await _db.SaveChangesAsync(ct);
         }
 
-        var status = !outcome.Success ? WhatsAppMessageStatus.Failed : simulated ? WhatsAppMessageStatus.Simulated : WhatsAppMessageStatus.Sent;
-        _db.WhatsAppMessages.Add(new WhatsAppMessage(
-            tenantId, appt.BranchId, appt.Id, appt.CustomerId, WhatsAppMessageDirection.Outbound,
-            toPhone, body, status, templateName: null, providerMessageId: outcome.ProviderMessageId, error: outcome.Error));
-
-        if (outcome.Success) appt.MarkReminderSent();
-        await _db.SaveChangesAsync(ct);
-
-        var resultPhone = IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone;
-        return Result<ReminderResultDto>.Success(new ReminderResultDto(outcome.Success, simulated, resultPhone, body, outcome.ProviderMessageId, outcome.Error));
+        var resultPhone = IsStaffViewer ? PhoneMask.Mask(result.ToPhone) : result.ToPhone;
+        return Result<ReminderResultDto>.Success(new ReminderResultDto(result.Success, result.Simulated, resultPhone, body, result.ProviderMessageId, result.Error));
     }
 
     public async Task<Result<IReadOnlyCollection<WhatsAppMessageDto>>> RecentMessagesAsync(Guid tenantId, Guid? appointmentId, CancellationToken ct = default)
@@ -140,7 +221,7 @@ public sealed class WhatsAppService : IWhatsAppService
         var q = _db.WhatsAppMessages.AsNoTracking().Where(m => m.TenantId == tenantId);
         if (appointmentId.HasValue) q = q.Where(m => m.AppointmentId == appointmentId.Value);
         var rows = await q.OrderByDescending(m => m.CreatedAtUtc).Take(50)
-            .Select(m => new WhatsAppMessageDto(m.Id, m.AppointmentId, m.CustomerId, m.Direction, m.Phone, m.Body, m.Status, m.Intent, m.ProviderMessageId, m.ErrorMessage, m.CreatedAtUtc))
+            .Select(m => new WhatsAppMessageDto(m.Id, m.AppointmentId, m.CustomerId, m.Direction, m.Phone, m.Body, m.Status, m.Intent, m.ProviderMessageId, m.ErrorMessage, m.CreatedAtUtc, m.Category, m.BillingSource, m.ChargedAmountTry))
             .ToListAsync(ct);
         if (IsStaffViewer) rows = rows.Select(r => r with { Phone = PhoneMask.Mask(r.Phone) }).ToList();
         return Result<IReadOnlyCollection<WhatsAppMessageDto>>.Success(rows);
@@ -166,7 +247,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 : string.Empty;
 
             var body = RenderSlotTemplate(WaitlistOfferTemplate, customer.FullName, startUtc, serviceName, salonName);
-            await TrySendAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, ct);
+            await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct);
         }
         catch (Exception ex)
         {
@@ -191,20 +272,13 @@ public sealed class WhatsAppService : IWhatsAppService
                 .Replace("{ad}", FirstName(appt.Customer.FullName))
                 .Replace("{salon}", salonName)
                 .Replace("{link}", link);
-            await TrySendAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, ct);
+            await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "rating-link", ct);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Değerlendirme linki gönderilemedi: {Appointment}", appointmentId);
         }
     }
-
-    /// <summary>Rate sayfasının (Next.js) tabanı — API tabanından farklı olabilir.</summary>
-    private string FrontendBaseUrl() =>
-        (_config["Frontend:PublicBaseUrl"] ?? _config["WhatsApp:PublicBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
-
-    private static string FirstName(string? fullName) =>
-        string.IsNullOrWhiteSpace(fullName) ? "Değerli müşterimiz" : fullName.Trim().Split(' ')[0];
 
     public async Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
     {
@@ -217,7 +291,7 @@ public sealed class WhatsAppService : IWhatsAppService
 
             var body = RenderSlotTemplate(WaitlistActivatedTemplate, appt.Customer.FullName, appt.StartUtc,
                 appt.ServiceDefinition?.Name ?? string.Empty, appt.Branch?.Name ?? string.Empty);
-            await TrySendAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, ct);
+            await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct);
         }
         catch (Exception ex)
         {
@@ -225,24 +299,57 @@ public sealed class WhatsAppService : IWhatsAppService
         }
     }
 
-    /// <summary>Ortak gönderim: feature+kota (best-effort), canlı/simülasyon, mesaj loglama. Başarılıysa true.</summary>
-    private async Task<bool> TrySendAsync(Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId, Guid? waitlistEntryId, string phone, string body, CancellationToken ct)
+    /// <summary>Bağlantı çözümü: canlı gönderim yapılabilir mi, hangi numara ve token ile?</summary>
+    private async Task<SendContext> ResolveSendContextAsync(Guid tenantId, CancellationToken ct)
     {
-        // Feature ya da kota kapalıysa akışı bozmadan sessizce atla.
-        if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsWhatsApp, ct)) return false;
-        if ((await _usage.CheckLimitAsync(tenantId, "whatsapp", ct)).IsFailure) return false;
+        var settings = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && !x.IsDeleted, ct);
+        if (settings is null || !settings.IsConnected || string.IsNullOrWhiteSpace(settings.PhoneNumberId))
+            return SendContext.Offline;
 
+        // Token: önce kuruma özel override, yoksa platform sistem token'ı (tek Business Manager).
+        string? token = null;
+        if (!string.IsNullOrWhiteSpace(settings.AccessTokenEncrypted))
+            token = _encryption.Decrypt(settings.AccessTokenEncrypted);
+        else
+        {
+            var platform = await _db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+            if (platform is { WhatsAppEnabled: true } && !string.IsNullOrWhiteSpace(platform.WhatsAppAccessTokenEncrypted))
+                token = _encryption.Decrypt(platform.WhatsAppAccessTokenEncrypted);
+        }
+        if (string.IsNullOrWhiteSpace(token)) return SendContext.Offline;
+        return new SendContext(true, settings.PhoneNumberId, token!);
+    }
+
+    /// <summary>
+    /// Ortak gönderim: bağlantı çözümü → faturalama rezervasyonu (kota/kontör) → canlı/sim gönderim → mesaj kaydı.
+    /// Engellenirse (kota/kontör/izin) mesaj gönderilmez; sonuç Blocked=true döner (reminder yolu kullanıcıya iletir,
+    /// best-effort yollar yok sayar).
+    /// </summary>
+    private async Task<DispatchResult> DispatchAsync(
+        Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId, Guid? waitlistEntryId,
+        string phone, string body, WhatsAppMessageCategory category, string? templateName, CancellationToken ct)
+    {
         var toPhone = NormalizePhone(phone);
-        if (toPhone.Length == 0) return false;
+        if (toPhone.Length == 0) return DispatchResult.Skipped;
 
-        var settings = await _db.WhatsAppSettings.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
-        var live = settings is { Enabled: true } && settings.HasCredentials;
+        // Paket kapısı: WhatsApp özelliği açık değilse hiç gönderme (best-effort yollar sessizce atlar).
+        if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsWhatsApp, ct))
+            return new DispatchResult(true, "WhatsApp gönderimi paketinizde yok.", null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+
+        var ctx = await ResolveSendContextAsync(tenantId, ct);
+
+        var decision = await _billing.ReserveAsync(tenantId, category, ctx.Live, ct);
+        if (!decision.Allowed)
+        {
+            _logger.LogInformation("[WhatsApp] Gönderim engellendi ({Tenant}/{Category}): {Reason}", tenantId, category, decision.BlockReason);
+            return new DispatchResult(true, decision.BlockReason, null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+        }
+
         WhatsAppSendOutcome outcome;
         bool simulated;
-        if (live)
+        if (ctx.Live)
         {
-            var token = _encryption.Decrypt(settings!.AccessTokenEncrypted);
-            outcome = await SendViaMetaAsync(settings.PhoneNumberId!, token ?? string.Empty, toPhone, body, ct);
+            outcome = await SendViaMetaAsync(ctx.PhoneNumberId!, ctx.Token, toPhone, body, ct);
             simulated = false;
         }
         else
@@ -253,32 +360,39 @@ public sealed class WhatsAppService : IWhatsAppService
         }
 
         var status = !outcome.Success ? WhatsAppMessageStatus.Failed : simulated ? WhatsAppMessageStatus.Simulated : WhatsAppMessageStatus.Sent;
-        _db.WhatsAppMessages.Add(new WhatsAppMessage(
+        var msg = new WhatsAppMessage(
             tenantId, branchId, appointmentId, customerId, WhatsAppMessageDirection.Outbound,
-            toPhone, body, status, templateName: null, providerMessageId: outcome.ProviderMessageId,
-            error: outcome.Error, waitlistEntryId: waitlistEntryId));
+            toPhone, body, status, templateName: templateName, providerMessageId: outcome.ProviderMessageId,
+            error: outcome.Error, waitlistEntryId: waitlistEntryId,
+            category: decision.Category, billingSource: decision.Source, chargedAmountTry: decision.AmountTry);
+        _db.WhatsAppMessages.Add(msg);
+
+        // Canlı gönderim ANINDA başarısızsa (Meta hata döndü) kontör rezervasyonunu geri al.
+        if (!outcome.Success)
+            await _billing.RefundInlineAsync(tenantId, msg, ct);
+
         await _db.SaveChangesAsync(ct);
-        return outcome.Success;
+
+        var outPhone = IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone;
+        return new DispatchResult(false, null, msg, outcome.Success, simulated, outPhone, body, outcome.ProviderMessageId, outcome.Error);
     }
 
-    private static string RenderSlotTemplate(string template, string? name, DateTime startUtc, string serviceName, string salonName)
-    {
-        var local = startUtc.AddHours(3); // Türkiye UTC+3
-        return template
-            .Replace("{ad}", name ?? string.Empty)
-            .Replace("{tarih}", local.ToString("dd.MM.yyyy"))
-            .Replace("{saat}", local.ToString("HH:mm"))
-            .Replace("{hizmet}", serviceName)
-            .Replace("{personel}", string.Empty)
-            .Replace("{salon}", salonName);
-    }
+    // ==================== WEBHOOK ====================
 
     public async Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken ct = default)
     {
         if (!string.Equals(mode, "subscribe", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(verifyToken))
             return null;
+
+        // 1) Platform geneli verify token (DB) — tek Business Manager modeli.
+        var platformToken = await _db.PlatformIntegrationSettings.AsNoTracking().Select(p => p.WhatsAppVerifyToken).FirstOrDefaultAsync(ct);
+        if (!string.IsNullOrEmpty(platformToken) && verifyToken == platformToken) return challenge;
+
+        // 2) Config fallback.
         var appToken = _config["WhatsApp:VerifyToken"];
         if (!string.IsNullOrEmpty(appToken) && verifyToken == appToken) return challenge;
+
+        // 3) Eski kuruma özel verify token (geriye uyumluluk).
         var matches = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(s => !s.IsDeleted && s.VerifyToken == verifyToken, ct);
         return matches ? challenge : null;
@@ -286,9 +400,7 @@ public sealed class WhatsAppService : IWhatsAppService
 
     public async Task HandleInboundAsync(string payloadJson, string? signatureHeader, CancellationToken ct = default)
     {
-        // GÜVENLİK: gövdeyi işlemeden önce Meta imzasını doğrula. Geçersiz/eksik imza → hiçbir yan etki
-        // uygulanmaz (aksi halde anonim bir istek sahte "iptal"/"onay" ile gerçek randevuları manipüle edebilirdi).
-        if (!VerifyInboundSignature(payloadJson, signatureHeader))
+        if (!await VerifyInboundSignatureAsync(payloadJson, signatureHeader, ct))
         {
             _logger.LogWarning("WhatsApp webhook imza doğrulaması başarısız — istek işlenmeden yok sayıldı.");
             return;
@@ -306,6 +418,20 @@ public sealed class WhatsAppService : IWhatsAppService
                 foreach (var change in changes.EnumerateArray())
                 {
                     if (!change.TryGetProperty("value", out var value)) continue;
+
+                    // 1) Teslim/okundu/başarısız durum bildirimleri → kontör kesinleşme/iade.
+                    if (value.TryGetProperty("statuses", out var statuses))
+                    {
+                        foreach (var st in statuses.EnumerateArray())
+                        {
+                            var wamid = st.TryGetProperty("id", out var sid) ? sid.GetString() : null;
+                            var statusStr = st.TryGetProperty("status", out var ss) ? ss.GetString() : null;
+                            if (string.IsNullOrWhiteSpace(wamid) || string.IsNullOrWhiteSpace(statusStr)) continue;
+                            await ProcessStatusAsync(wamid!, statusStr!, ct);
+                        }
+                    }
+
+                    // 2) Gelen mesajlar → niyet motoru (onay/iptal/erteleme).
                     var phoneNumberId = value.TryGetProperty("metadata", out var meta) && meta.TryGetProperty("phone_number_id", out var pnid) ? pnid.GetString() : null;
                     if (string.IsNullOrWhiteSpace(phoneNumberId)) continue;
                     if (!value.TryGetProperty("messages", out var messages)) continue;
@@ -328,25 +454,57 @@ public sealed class WhatsAppService : IWhatsAppService
                 }
             }
         }
-        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Meta teslim durumu (delivered/read/failed) → mesajı işaretle + kontörü kesinleştir/iade et.</summary>
+    private async Task ProcessStatusAsync(string wamid, string status, CancellationToken ct)
+    {
+        var msg = await _db.WhatsAppMessages.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.ProviderMessageId == wamid && m.Direction == WhatsAppMessageDirection.Outbound, ct);
+        if (msg is null) return;
+
+        switch (status.ToLowerInvariant())
+        {
+            case "delivered":
+            case "read":
+            {
+                var firstDelivery = msg.MarkDelivered();
+                if (status.Equals("read", StringComparison.OrdinalIgnoreCase)) msg.MarkRead();
+                await _db.SaveChangesAsync(ct);
+                if (firstDelivery) await _billing.CaptureAsync(msg, ct); // kontörü kesinleştir (teslim edildi)
+                break;
+            }
+            case "failed":
+            {
+                if (msg.MarkFailed("Meta: teslim edilemedi"))
+                {
+                    await _db.SaveChangesAsync(ct);
+                    await _billing.RefundAsync(msg, ct); // rezervasyonu iade et
+                }
+                break;
+            }
+        }
     }
 
     /// <summary>
-    /// Meta webhook imzasını (X-Hub-Signature-256 = "sha256=" + hex(HMAC-SHA256(appSecret, rawBody))) doğrular.
-    /// Anahtar kaynağı: <c>WhatsApp:AppSecret</c> (Meta App Dashboard → App Secret). Sabit-zamanlı karşılaştırma.
-    /// App secret tanımlı DEĞİLSE: Development'ta izin verilir (simülasyon/yerel test), Production'da REDDEDİLİR
-    /// (fail-closed) — canlıda imzasız webhook işlenmez.
+    /// Meta webhook imzasını doğrular. Anahtar kaynağı: önce platform App Secret (DB, şifreli), yoksa
+    /// <c>WhatsApp:AppSecret</c> config. App secret tanımlı değilse Development'ta izin, Production'da RED.
     /// </summary>
-    private bool VerifyInboundSignature(string rawBody, string? signatureHeader)
+    private async Task<bool> VerifyInboundSignatureAsync(string rawBody, string? signatureHeader, CancellationToken ct)
     {
-        var appSecret = _config["WhatsApp:AppSecret"];
+        string? appSecret = null;
+        var platformSecretEnc = await _db.PlatformIntegrationSettings.AsNoTracking().Select(p => p.WhatsAppAppSecretEncrypted).FirstOrDefaultAsync(ct);
+        if (!string.IsNullOrWhiteSpace(platformSecretEnc))
+            appSecret = _encryption.Decrypt(platformSecretEnc);
+        appSecret ??= _config["WhatsApp:AppSecret"];
+
         if (string.IsNullOrWhiteSpace(appSecret))
         {
             var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
             var isDevelopment = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
             if (!isDevelopment)
-                _logger.LogError("WhatsApp:AppSecret tanımlı değil — webhook imzası doğrulanamıyor, istek reddedildi. " +
-                                 "Üretimde Meta App Secret'ı WhatsApp__AppSecret ortam değişkeni ile geçirin.");
+                _logger.LogError("WhatsApp App Secret tanımlı değil — webhook imzası doğrulanamıyor, istek reddedildi. " +
+                                 "Platform ayarlarından App Secret girin ya da WhatsApp__AppSecret ortam değişkenini tanımlayın.");
             return isDevelopment;
         }
 
@@ -369,18 +527,18 @@ public sealed class WhatsAppService : IWhatsAppService
         var recentOutbound = await _db.WhatsAppMessages.IgnoreQueryFilters()
             .Where(m => m.TenantId == tenantId && m.Direction == WhatsAppMessageDirection.Outbound && m.CreatedAtUtc >= since)
             .OrderByDescending(m => m.CreatedAtUtc).Take(25).ToListAsync(ct);
-        // En son giden mesaj (hatırlatma ya da bekleme teklifi) bu telefona hangi bağlamı açtıysa onu izleriz.
         var match = recentOutbound.FirstOrDefault(m => PhonesMatch(m.Phone, fromPhone));
 
         var intent = Interpret(text);
         _db.WhatsAppMessages.Add(new WhatsAppMessage(
             tenantId, match?.BranchId, match?.AppointmentId, match?.CustomerId, WhatsAppMessageDirection.Inbound,
-            NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received, intent: intent, waitlistEntryId: match?.WaitlistEntryId));
-        await _db.SaveChangesAsync(ct); // gelen mesajı kalıcılaştır; otomasyon adımları ayrı iş birimleri
+            NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received, intent: intent, waitlistEntryId: match?.WaitlistEntryId,
+            category: WhatsAppMessageCategory.Service, billingSource: WhatsAppBillingSource.None));
+        await _db.SaveChangesAsync(ct);
 
         if (match is null || intent == WhatsAppReplyIntent.Unknown) return;
 
-        // 1) Bekleme listesi teklifine yanıt: Evet → randevu aç + aktifleşti; Hayır → sıradakine teklif.
+        // 1) Bekleme listesi teklifine yanıt.
         if (match.WaitlistEntryId is { } waitlistId)
         {
             if (intent == WhatsAppReplyIntent.Confirm)
@@ -396,7 +554,7 @@ public sealed class WhatsAppService : IWhatsAppService
             return;
         }
 
-        // 2) Randevu hatırlatmasına yanıt: onay durumunu güncelle; "İptal" → randevuyu otomatik iptal et.
+        // 2) Randevu hatırlatmasına yanıt.
         if (match.AppointmentId is { } apptId)
         {
             var appt = await _db.Appointments.IgnoreQueryFilters()
@@ -411,12 +569,11 @@ public sealed class WhatsAppService : IWhatsAppService
                 _ => WhatsAppConfirmationStatus.Pending,
             });
 
-            // Otomatik iptal kararı: müşteri "İptal" dedi → randevuyu iptal et, slotu bekleme listesine aç.
             if (intent == WhatsAppReplyIntent.Cancel &&
                 appt.Status is not (AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow))
             {
                 appt.Cancel("Müşteri WhatsApp ile iptal etti");
-                await _db.SaveChangesAsync(ct); // overlap DB'den okunacağı için iptali ÖNCE kaydet
+                await _db.SaveChangesAsync(ct);
                 var offer = await _waitlist.SelectAndMarkOfferAsync(tenantId, appt.Id, ct);
                 if (offer.IsSuccess && offer.Value is { } offeredId) await SendWaitlistOfferAsync(tenantId, offeredId, ct);
             }
@@ -425,7 +582,6 @@ public sealed class WhatsAppService : IWhatsAppService
                 await _db.SaveChangesAsync(ct);
             }
 
-            // Kurum/şube yöneticisine müşteri yanıtı bildirimi (onay/iptal/erteleme).
             var (title, severity) = intent switch
             {
                 WhatsAppReplyIntent.Confirm => ("Müşteri randevusunu onayladı", AppNotificationSeverity.Success),
@@ -488,10 +644,11 @@ public sealed class WhatsAppService : IWhatsAppService
     {
         var webhookUrl = BuildWebhookUrl();
         if (s is null)
-            return new WhatsAppSettingsDto(false, null, false, null, null, null, "Meta", webhookUrl, false);
+            return new WhatsAppSettingsDto(false, null, null, WhatsAppConnectionStatus.NotConnected.ToString(), false, null, null, "Meta", webhookUrl, false, false, null);
         return new WhatsAppSettingsDto(
-            s.Enabled, s.PhoneNumberId, !string.IsNullOrWhiteSpace(s.AccessTokenEncrypted), s.BusinessAccountId,
-            s.VerifyToken, s.ReminderTemplate, s.Provider, webhookUrl, s.HasCredentials);
+            s.Enabled, s.PhoneNumberId, s.DisplayPhoneNumber, s.ConnectionStatus.ToString(), s.IsConnected,
+            s.BusinessAccountId, s.ReminderTemplate, s.Provider, webhookUrl,
+            s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapTry);
     }
 
     private string BuildWebhookUrl()
@@ -500,6 +657,25 @@ public sealed class WhatsAppService : IWhatsAppService
             ?? _config["Urls"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
             ?? "http://localhost:5019";
         return $"{baseUrl.TrimEnd('/')}/api/whatsapp/webhook";
+    }
+
+    /// <summary>Rate sayfasının (Next.js) tabanı — API tabanından farklı olabilir.</summary>
+    private string FrontendBaseUrl() =>
+        (_config["Frontend:PublicBaseUrl"] ?? _config["WhatsApp:PublicBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+
+    private static string FirstName(string? fullName) =>
+        string.IsNullOrWhiteSpace(fullName) ? "Değerli müşterimiz" : fullName.Trim().Split(' ')[0];
+
+    private static string RenderSlotTemplate(string template, string? name, DateTime startUtc, string serviceName, string salonName)
+    {
+        var local = startUtc.AddHours(3); // Türkiye UTC+3
+        return template
+            .Replace("{ad}", name ?? string.Empty)
+            .Replace("{tarih}", local.ToString("dd.MM.yyyy"))
+            .Replace("{saat}", local.ToString("HH:mm"))
+            .Replace("{hizmet}", serviceName)
+            .Replace("{personel}", string.Empty)
+            .Replace("{salon}", salonName);
     }
 
     private static string RenderTemplate(string template, Appointment appt)
@@ -528,7 +704,7 @@ public sealed class WhatsAppService : IWhatsAppService
 
     private static WhatsAppReplyIntent Interpret(string text)
     {
-        var t = NormalizeTr(text); // Türkçe'yi ASCII'ye indir (İ/ı/ş/ğ/ü/ö/ç) → anahtar kelimeler güvenle eşleşir
+        var t = NormalizeTr(text);
         if (t.Length == 0) return WhatsAppReplyIntent.Unknown;
         var words = t.Split(new[] { ' ', '\t', '\n', '\r', '.', ',', '!', '?', ';' }, StringSplitOptions.RemoveEmptyEntries);
         bool Has(params string[] keys) => keys.Contains(t) || words.Any(w => keys.Contains(w));
@@ -538,10 +714,8 @@ public sealed class WhatsAppService : IWhatsAppService
         return WhatsAppReplyIntent.Unknown;
     }
 
-    /// <summary>Türkçe metni eşleştirme için ASCII'ye indirir (İ→i, ş→s, ...) ve combining dot kalıntısını temizler.</summary>
     private static string NormalizeTr(string? text)
     {
-        // ToLowerInvariant 'İ'yi (U+0130) çevirmez — Türkçe büyük I/İ/ı'yı önce 'i'ye indir.
         var s = (text ?? string.Empty).Trim().Replace('İ', 'i').Replace('I', 'i').Replace('ı', 'i').ToLowerInvariant();
         var sb = new System.Text.StringBuilder(s.Length);
         foreach (var ch in s)
@@ -554,11 +728,21 @@ public sealed class WhatsAppService : IWhatsAppService
                 case 'ü': sb.Append('u'); break;
                 case 'ö': sb.Append('o'); break;
                 case 'ç': sb.Append('c'); break;
-                case '̇': break; // İ → "i̇" lowercasing kalıntısı (combining dot above)
+                case '̇': break;
                 default: sb.Append(ch); break;
             }
         }
         return sb.ToString();
+    }
+
+    private readonly record struct SendContext(bool Live, string? PhoneNumberId, string Token)
+    {
+        public static readonly SendContext Offline = new(false, null, string.Empty);
+    }
+
+    private sealed record DispatchResult(bool Blocked, string? BlockReason, WhatsAppMessage? Message, bool Success, bool Simulated, string ToPhone, string Body, string? ProviderMessageId, string? Error)
+    {
+        public static readonly DispatchResult Skipped = new(false, null, null, false, false, string.Empty, string.Empty, null, null);
     }
 }
 

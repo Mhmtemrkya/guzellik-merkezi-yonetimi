@@ -617,6 +617,46 @@ export const platformApi = {
   testWhatsApp: <T = unknown>(target: string): Promise<T> =>
     apiRequest<T>('/api/platform/messaging/test-whatsapp', { method: 'POST', body: { target } }),
 
+  // WhatsApp merkezi yönetim (bağlantı + kontör faturalama)
+  waBillingSettings: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/whatsapp/billing-settings'),
+  saveWaBillingSettings: <T = unknown>(body: PlatformPayload): Promise<T> =>
+    apiRequest<T>('/api/platform/whatsapp/billing-settings', { method: 'PUT', body }),
+  waPricing: <T = unknown>(): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/whatsapp/pricing'),
+  createWaPricing: <T = unknown>(body: PlatformPayload): Promise<T> =>
+    apiRequest<T>('/api/platform/whatsapp/pricing', { method: 'POST', body }),
+  updateWaPricing: <T = unknown>(id: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/pricing/${id}`, { method: 'PUT', body }),
+  deleteWaPricing: (id: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/platform/whatsapp/pricing/${id}`, { method: 'DELETE' }),
+  waCreditPackages: <T = unknown>(includeInactive = true): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/whatsapp/credit-packages', { query: { includeInactive } }),
+  createWaCreditPackage: <T = unknown>(body: PlatformPayload): Promise<T> =>
+    apiRequest<T>('/api/platform/whatsapp/credit-packages', { method: 'POST', body }),
+  updateWaCreditPackage: <T = unknown>(id: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/credit-packages/${id}`, { method: 'PUT', body }),
+  deleteWaCreditPackage: (id: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/platform/whatsapp/credit-packages/${id}`, { method: 'DELETE' }),
+  waConnections: <T = unknown>(): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/whatsapp/connections'),
+  bindWaConnection: <T = unknown>(tenantId: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/connections/${tenantId}`, { method: 'POST', body }),
+  testWaConnection: <T = unknown>(tenantId: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/connections/${tenantId}/test`, { method: 'POST', body }),
+  waWallet: <T = unknown>(tenantId: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/wallets/${tenantId}`),
+  waWalletTransactions: <T = unknown>(tenantId: string, take?: number): Promise<T[]> =>
+    apiRequest<T[]>(`/api/platform/whatsapp/wallets/${tenantId}/transactions`, { query: { take } }),
+  adjustWaWallet: <T = unknown>(tenantId: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/wallets/${tenantId}/adjust`, { method: 'POST', body }),
+  waPurchases: <T = unknown>(pending = false): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/whatsapp/purchases', { query: { pending } }),
+  approveWaPurchase: <T = unknown>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/approve`, { method: 'POST', body: {} }),
+  rejectWaPurchase: <T = unknown>(id: string, note?: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/reject`, { method: 'POST', body: { note } }),
+
   // Platform-wide usage summary
   platformUsage: <T = unknown>(): Promise<T> =>
     apiRequest<T>('/api/platform/usage'),
@@ -814,6 +854,16 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/whatsapp/reminder/${appointmentId}`, { method: 'POST', query: { tenantId }, body: {} }),
   whatsappMessages: <T = unknown>(appointmentId?: string, tenantId?: string): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/messages', { query: { appointmentId, tenantId } }),
+  /** WhatsApp kontör cüzdanı: bakiye + aylık kullanım + satın alınabilir paketler. */
+  whatsappWallet: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/whatsapp/wallet', { query: { tenantId } }),
+  whatsappWalletTransactions: <T = unknown>(tenantId?: string, take?: number): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/whatsapp/wallet/transactions', { query: { tenantId, take } }),
+  /** Ek kontör satın alma talebi oluşturur (platform onayına düşer). */
+  requestWhatsappTopUp: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/whatsapp/wallet/topup', { method: 'POST', query: { tenantId }, body }),
+  whatsappPurchases: <T = unknown>(tenantId?: string, take?: number): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/whatsapp/wallet/purchases', { query: { tenantId, take } }),
   staff: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/staff/', { query: { page: 1, pageSize: 100, ...query } }),
   createStaff: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>

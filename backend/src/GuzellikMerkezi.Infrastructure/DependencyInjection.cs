@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<ITreatmentPhotoService, TreatmentPhotoService>();
         services.AddScoped<IConsultationService, ConsultationService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
+        services.AddScoped<Application.Features.WhatsApp.IWhatsAppBillingService, WhatsAppBillingService>();
         // Dış gönderim HttpClient'ları Polly standart dayanıklılık boru hattıyla sarılır
         // (retry + timeout + circuit breaker + rate limiter) → tek deneme yerine geçici hatalara dayanıklı.
         services.AddHttpClient("WhatsApp").AddStandardResilienceHandler();

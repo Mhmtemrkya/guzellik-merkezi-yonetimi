@@ -43,7 +43,7 @@ export default function PlatformMessagingSettings() {
 
   const [sms, setSms] = useState({ enabled: false, provider: 'Netgsm', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
-  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '' })
+  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '' })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [smsTarget, setSmsTarget] = useState('')
@@ -60,7 +60,7 @@ export default function PlatformMessagingSettings() {
     if (!data) return
     setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Netgsm', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
     setEmail((e) => ({ ...e, enabled: !!data.emailEnabled, fromAddress: data.emailFromAddress || '', fromName: data.emailFromName || '', host: data.smtpHost || '', port: data.smtpPort || 587, username: data.smtpUsername || '', useSsl: data.smtpUseSsl ?? true }))
-    setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '' }))
+    setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '', verifyToken: data.whatsAppVerifyToken || '' }))
   }, [data])
 
   const save = async () => {
@@ -70,8 +70,9 @@ export default function PlatformMessagingSettings() {
         smsEnabled: sms.enabled, smsProvider: sms.provider, smsApiKey: sms.apiKey || null, smsApiSecret: sms.apiSecret || null, smsSender: sms.sender || null, smsApiUrl: sms.apiUrl || null,
         emailEnabled: email.enabled, emailFromAddress: email.fromAddress || null, emailFromName: email.fromName || null, smtpHost: email.host || null, smtpPort: Number(email.port) || 587, smtpUsername: email.username || null, smtpPassword: email.password || null, smtpUseSsl: email.useSsl,
         whatsAppEnabled: whatsApp.enabled, whatsAppProvider: 'Meta', whatsAppPhoneNumberId: whatsApp.phoneNumberId || null, whatsAppAccessToken: whatsApp.accessToken || null, whatsAppBusinessAccountId: whatsApp.businessAccountId || null,
+        whatsAppAppSecret: whatsApp.appSecret || null, whatsAppVerifyToken: whatsApp.verifyToken || null,
       })
-      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '' }))
+      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '', appSecret: '' }))
       setSaved(true); await reload(); setTimeout(() => setSaved(false), 2500)
     } finally { setBusy(false) }
   }
@@ -222,6 +223,19 @@ export default function PlatformMessagingSettings() {
               <label className={labelCls}>İşletme Hesabı ID (WABA ID) · opsiyonel</label>
               <input value={whatsApp.businessAccountId} onChange={(e) => setWhatsApp((w) => ({ ...w, businessAccountId: e.target.value }))} placeholder="WhatsApp Business Account ID" className={inputCls} />
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>App Secret (webhook imzası) {data?.hasWhatsAppAppSecret && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+                <input type="password" value={whatsApp.appSecret} onChange={(e) => setWhatsApp((w) => ({ ...w, appSecret: e.target.value }))} placeholder={data?.hasWhatsAppAppSecret ? 'değiştirmek için yaz' : 'Meta App Secret'} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Webhook Verify Token</label>
+                <input value={whatsApp.verifyToken} onChange={(e) => setWhatsApp((w) => ({ ...w, verifyToken: e.target.value }))} placeholder="kendi belirlediğiniz gizli dizi" className={inputCls} />
+              </div>
+            </div>
+            <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
+              Tek Business Manager modeli: buradaki token tüm kurumların numaralarına gönderim yapar. Kurum başına numara bağlama <b>WhatsApp Yönetimi</b> sayfasındadır.
+            </p>
             <div className="border-t border-[#fff4f8]/10 pt-3">
               <label className={labelCls}>Test WhatsApp mesajı</label>
               <div className="flex gap-2">
