@@ -1446,7 +1446,8 @@ export function appointmentStatusKey(status: string | null | undefined): Appoint
   const key = String(status || 'Scheduled').toLowerCase()
   if (['draft', 'taslak', 'pendingapproval'].includes(key)) return 'taslak'
   if (['completed', 'tamamlandi', 'tamamlandı'].includes(key)) return 'tamamlandi'
-  if (['confirmed', 'inprogress', 'devam', 'arrived'].includes(key)) return 'devam'
+  if (['inprogress', 'islemde'].includes(key)) return 'islemde'
+  if (['confirmed', 'devam', 'arrived'].includes(key)) return 'devam'
   if (['cancelled', 'canceled', 'noshow', 'no_show', 'gelmedi', 'iptal'].includes(key)) return 'iptal'
   return 'bekliyor'
 }
@@ -1456,11 +1457,13 @@ export function statusLabel(statusKey: AppointmentStatusKey): string {
     ? 'Tamamlandı'
     : statusKey === 'devam'
       ? 'Devam'
-      : statusKey === 'iptal'
-        ? 'İptal'
-        : statusKey === 'taslak'
-          ? 'Taslak'
-          : 'Bekliyor'
+      : statusKey === 'islemde'
+        ? 'İşlemde'
+        : statusKey === 'iptal'
+          ? 'İptal'
+          : statusKey === 'taslak'
+            ? 'Taslak'
+            : 'Bekliyor'
 }
 
 export function isoDate(value: string | Date | null | undefined): string {

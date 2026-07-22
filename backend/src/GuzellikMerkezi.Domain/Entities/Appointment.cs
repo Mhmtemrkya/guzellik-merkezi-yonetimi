@@ -116,9 +116,17 @@ public sealed class Appointment : Entity
         Touch();
     }
 
+    /// <summary>Müşteri işleme alındı (hizmet uygulanıyor) — çizelgede "İşlemde" (mor) görünür.</summary>
+    public void StartService()
+    {
+        if (Status is not (AppointmentStatus.Scheduled or AppointmentStatus.Confirmed)) throw new BusinessRuleException("Yalnızca planlanan/onaylanan randevu işleme alınabilir.");
+        Status = AppointmentStatus.InProgress;
+        Touch();
+    }
+
     public void Complete()
     {
-        if (Status is not (AppointmentStatus.Scheduled or AppointmentStatus.Confirmed)) throw new BusinessRuleException("Bu randevu tamamlanamaz.");
+        if (Status is not (AppointmentStatus.Scheduled or AppointmentStatus.Confirmed or AppointmentStatus.InProgress)) throw new BusinessRuleException("Bu randevu tamamlanamaz.");
         Status = AppointmentStatus.Completed;
         Touch();
     }

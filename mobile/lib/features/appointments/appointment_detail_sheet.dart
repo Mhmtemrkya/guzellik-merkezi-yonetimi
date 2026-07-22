@@ -69,6 +69,26 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     }, 'Randevu iptal edildi.');
   }
 
+  /// Müşteri koltukta — randevuyu "İşlemde" yap (çizelgede mor kart).
+  Future<void> _startService() async {
+    await _run(() async {
+      await widget.api.patch('/api/admin/appointments/${appt['id']}/status', {
+        'status': 'InProgress',
+        'reason': null,
+      });
+    }, 'Randevu işleme alındı.');
+  }
+
+  /// İşlem bitti → Tamamlandı (seans düşer; bekleyen satış varsa cariye işlenir).
+  Future<void> _complete() async {
+    await _run(() async {
+      await widget.api.patch('/api/admin/appointments/${appt['id']}/status', {
+        'status': 'Completed',
+        'reason': null,
+      });
+    }, 'Randevu tamamlandı.');
+  }
+
   Future<void> _edit() async {
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -383,6 +403,44 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                 text: email.isEmpty ? '—' : email,
               ),
               const SizedBox(height: 18),
+              // Şu an işlemde / işlemi bitir — duruma göre tek buton
+              if (status == 'Scheduled' || status == 'Confirmed') ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF8B5CF6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _startService,
+                    icon: const Icon(Icons.auto_awesome_rounded, size: 20),
+                    label: const Text('Şu an işlemde',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ] else if (status == 'InProgress') ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2A9D64),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _complete,
+                    icon: const Icon(Icons.check_circle_rounded, size: 20),
+                    label: const Text('İşlemi bitir · Tamamlandı',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -697,6 +755,7 @@ class _EditSheetState extends State<_EditSheet> {
   static const _statuses = [
     ['Scheduled', 'Planlandı'],
     ['Confirmed', 'Onaylandı'],
+    ['InProgress', 'İşlemde'],
     ['Completed', 'Tamamlandı'],
     ['NoShow', 'Gelmedi'],
   ];

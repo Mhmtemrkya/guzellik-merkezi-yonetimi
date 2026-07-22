@@ -1872,7 +1872,7 @@ export interface AuditLog {
   createdAtFormatted: string
 }
 
-export type AppointmentStatusKey = 'tamamlandi' | 'devam' | 'bekliyor' | 'iptal' | 'taslak'
+export type AppointmentStatusKey = 'tamamlandi' | 'devam' | 'bekliyor' | 'iptal' | 'taslak' | 'islemde'
 
 /** Kurum yöneticisi aksiyon kutusu — saati gelmiş randevular + onay bekleyen taslaklar. */
 export interface AppointmentInbox {

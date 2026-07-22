@@ -4,6 +4,7 @@ import '../../core/network/api_client.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
 import '../customers/customer_picker.dart';
+import 'adisyon_detail_sheet.dart';
 
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
@@ -245,10 +246,19 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       }
 
       // 4) Faz 2: onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu tamamlayınca
-      //    backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar). Kurum yöneticisine bilgi modalı.
+      //    backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar).
+      //    Kullanıcı isteği: bilgi modalı yerine ADİSYON KARTI açılır — peşinat/kalemler orada
+      //    görülür-eklenir; cariye işleme yine ilk randevu tamamlanınca otomatik olur.
       if (mounted) {
         setState(() => saving = false);
-        await _showDeferredNotice(pay > 0);
+        // Kart, satış sheet'inin üstünde açılır; kart kapanınca satış sheet'i de kapanır.
+        await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+        );
         if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
@@ -256,26 +266,6 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
-  }
-
-  /// Faz 2 bilgilendirme modalı: satış kaydedildi ama cariye ilk randevu tamamlanınca işlenecek.
-  Future<void> _showDeferredNotice(bool hasDeposit) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.event_available_rounded, color: Color(0xFF0284C7)),
-        title: const Text('Satış kaydedildi · ilk randevuda işlenecek'),
-        content: Text(
-          'Satış açık adisyon olarak kaydedildi. Tutar cariye ŞİMDİ işlenmedi; '
-          '${hasDeposit ? 'peşinat dâhil ' : ''}müşteri ilk randevusunu tamamladığında otomatik olarak '
-          'cariye işlenip ${widget.serviceSale ? 'hizmet seansı' : 'paket seansları'} tanımlanacak. '
-          'Seansları kullanmak için randevu şimdiden verilebilir.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam')),
-        ],
-      ),
-    );
   }
 
   @override

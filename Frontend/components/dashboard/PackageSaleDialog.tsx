@@ -350,14 +350,16 @@ export default function PackageSaleDialog({
 
       // 4) Davranış:
       //  - Faz 2 (hizmet/paket): onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu
-      //    tamamlayınca backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar). "done"
-      //    ekranında kurum yöneticisine bilgilendirme modalı gösterilir.
+      //    tamamlayınca backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar).
+      //    Kullanıcı isteği: bilgi modalıyla kapanmak yerine ADİSYON KARTI açılır — peşinat/ek kalem
+      //    orada görülür-eklenir; cariye işleme yine ilk randevu tamamlanınca otomatik olur.
       //  - Ürün + openCardAfterSale: satış açık kalır, adisyon kartı açılır (elle onay).
       //  - Ürün + !openCardAfterSale: anında onayla → cariye işle + stok düş.
       if (deferToFirstAppointment) {
         setDeferred(true)
         if (onDone) await onDone()
-        setStep('done')
+        setOpen(false)
+        setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
       } else if (openCardAfterSale) {
         setOpen(false)
         setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })

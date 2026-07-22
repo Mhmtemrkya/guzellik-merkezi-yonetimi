@@ -38,6 +38,7 @@ const statusBadge: Record<AppointmentStatusKey, { label: string; icon: LucideIco
   bekliyor: { label: 'Bekliyor', icon: Clock, cls: 'border-amber-100 bg-amber-50 text-amber-700' },
   iptal: { label: 'İptal', icon: FileWarning, cls: 'border-rose-100 bg-rose-50 text-rose-700' },
   taslak: { label: 'Taslak', icon: Clock, cls: 'border-dashed border-indigo-200 bg-indigo-50 text-indigo-600' },
+  islemde: { label: 'İşlemde', icon: Activity, cls: 'border-violet-200 bg-violet-50 text-violet-700' },
 }
 
 const cardShell =

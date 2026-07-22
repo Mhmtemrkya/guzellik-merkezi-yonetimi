@@ -28,6 +28,7 @@ const STATUS_META: Record<AppointmentStatusKey, { bar: string; label: string; pi
   bekliyor: { bar: '#b88938', label: 'Bekliyor', pillBg: 'rgba(184,137,56,.16)', pillText: '#946d23' },
   taslak: { bar: '#8b6fc9', label: 'Taslak', pillBg: 'rgba(139,111,201,.16)', pillText: '#6d51b0' },
   iptal: { bar: '#d1556f', label: 'İptal', pillBg: 'rgba(209,85,111,.12)', pillText: '#c23e5e' },
+  islemde: { bar: '#8b5cf6', label: 'İşlemde', pillBg: 'rgba(139,92,246,.16)', pillText: '#7c3aed' },
 }
 
 /** Yerel takvim günü anahtarı (YYYY-MM-DD) — normalizeAppointment.date (localDateKey) ile hizalı. */

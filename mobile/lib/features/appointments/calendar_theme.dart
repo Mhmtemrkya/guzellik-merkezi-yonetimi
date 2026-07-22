@@ -42,6 +42,13 @@ abstract final class CalendarTheme {
     title: Color(0xFF6B6B72),
     sub: Color(0xFF9A9AA0),
   );
+  /// "Şu an işlemde" — mor kart (müşteri koltukta, hizmet uygulanıyor).
+  static const _purple = EventStyle(
+    bg: Color(0xFFF1EAFB),
+    border: Color(0xFFD9C8F2),
+    title: Color(0xFF6D3FBF),
+    sub: Color(0xFF8B66C9),
+  );
   static const timeOff = EventStyle(
     bg: Color(0xFFFDEFE0),
     border: Color(0xFFF6D5AE),
@@ -55,6 +62,8 @@ abstract final class CalendarTheme {
         return _greenChecked;
       case 'confirmed':
         return _green;
+      case 'inprogress':
+        return _purple;
       case 'cancelled':
       case 'noshow':
         return _gray;
@@ -112,6 +121,8 @@ abstract final class CalendarText {
         return 'Planlandı';
       case 'confirmed':
         return 'Onaylandı';
+      case 'inprogress':
+        return 'İşlemde';
       case 'completed':
         return 'Tamamlandı';
       case 'cancelled':
@@ -130,6 +141,8 @@ abstract final class CalendarText {
       case 'confirmed':
       case 'completed':
         return const Color(0xFF2A7A50);
+      case 'inprogress':
+        return const Color(0xFF6D3FBF);
       case 'cancelled':
         return const Color(0xFFD34D68);
       case 'noshow':

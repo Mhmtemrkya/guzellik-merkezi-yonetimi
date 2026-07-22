@@ -52,12 +52,13 @@ interface StatusStyle {
 const statusStyle: Record<AppointmentStatusKey, StatusStyle> = {
   tamamlandi: { label: 'Tamamlandı', bar: 'bg-emerald-500', dot: 'bg-emerald-500', block: 'border-emerald-200 bg-emerald-50/95 hover:bg-emerald-50', chipText: 'text-emerald-700', chipBg: 'bg-emerald-50 border-emerald-200' },
   devam: { label: 'Onaylandı', bar: 'bg-sky-500', dot: 'bg-sky-500', block: 'border-sky-200 bg-sky-50/95 hover:bg-sky-50', chipText: 'text-sky-700', chipBg: 'bg-sky-50 border-sky-200' },
+  islemde: { label: 'İşlemde', bar: 'bg-violet-500', dot: 'bg-violet-500', block: 'border-violet-300 bg-violet-100/90 hover:bg-violet-100', chipText: 'text-violet-700', chipBg: 'bg-violet-50 border-violet-200' },
   bekliyor: { label: 'Bekliyor', bar: 'bg-amber-400', dot: 'bg-amber-400', block: 'border-amber-200 bg-amber-50/95 hover:bg-amber-50', chipText: 'text-amber-700', chipBg: 'bg-amber-50 border-amber-200' },
   taslak: { label: 'Onay Bekliyor', bar: 'bg-indigo-400', dot: 'bg-indigo-400', block: 'border-dashed border-indigo-300 bg-indigo-50/95 hover:bg-indigo-50', chipText: 'text-indigo-700', chipBg: 'bg-indigo-50 border-indigo-200' },
   iptal: { label: 'İptal', bar: 'bg-rose-400', dot: 'bg-rose-400', block: 'border-rose-200 bg-rose-50/85 opacity-75 hover:opacity-95', chipText: 'text-rose-600', chipBg: 'bg-rose-50 border-rose-200' },
 }
 
-const statusOrder: AppointmentStatusKey[] = ['tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
+const statusOrder: AppointmentStatusKey[] = ['islemde', 'tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
 
 const PX_PER_HOUR = 64
 
@@ -312,6 +313,10 @@ export interface DayScheduleModalProps {
   onChangeDate?: (isoDate: string) => void
   /** Taslak randevuyu onayla (yalnızca yönetici). */
   onApprove?: (id: string) => void | Promise<void>
+  /** Randevuyu "Şu an işlemde" yap (müşteri koltukta) — çizelgede mor kart. */
+  onStartService?: (id: string) => void | Promise<void>
+  /** İşlemi bitir → Tamamlandı (seans düşer; bekleyen satış varsa cariye işlenir). */
+  onComplete?: (id: string) => void | Promise<void>
   /** Randevuyu iptal et (yalnızca yönetici). */
   onCancel?: (id: string) => void | Promise<void>
   /** Seçilen randevunun müşterisinin açık adisyonunu getir (panelde ödeme/cari için). */
@@ -346,6 +351,8 @@ export default function DayScheduleModal({
   onToggleLeave,
   onChangeDate,
   onApprove,
+  onStartService,
+  onComplete,
   onCancel,
   loadOpenAdisyon,
   onOpenAdisyon,
@@ -566,7 +573,7 @@ export default function DayScheduleModal({
   const showNow = isToday && nowMin >= startHour * 60 && nowMin <= endHour * 60
 
   const counts = useMemo(() => {
-    const c: Record<AppointmentStatusKey, number> = { tamamlandi: 0, devam: 0, bekliyor: 0, taslak: 0, iptal: 0 }
+    const c: Record<AppointmentStatusKey, number> = { tamamlandi: 0, devam: 0, bekliyor: 0, taslak: 0, iptal: 0, islemde: 0 }
     for (const a of scopeAppts) c[a.status] = (c[a.status] ?? 0) + 1
     return c
   }, [scopeAppts])
@@ -1109,6 +1116,8 @@ export default function DayScheduleModal({
                     canManage={!isStaffUser}
                     onEdit={onEditAppointment}
                     onApprove={onApprove}
+                    onStartService={onStartService}
+                    onComplete={onComplete}
                     onCancel={onCancel}
                     onOpenAdisyon={onOpenAdisyon}
                     onClose={() => setSelectedId(null)}
@@ -1170,6 +1179,8 @@ function DetailPanel({
   canManage,
   onEdit,
   onApprove,
+  onStartService,
+  onComplete,
   onCancel,
   onOpenAdisyon,
   onClose,
@@ -1180,6 +1191,8 @@ function DetailPanel({
   canManage: boolean
   onEdit?: (id: string) => void
   onApprove?: (id: string) => void | Promise<void>
+  onStartService?: (id: string) => void | Promise<void>
+  onComplete?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
   onClose: () => void
@@ -1196,6 +1209,8 @@ function DetailPanel({
   const dateLabel = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(dateObj)
   const canCancel = appt.status !== 'iptal' && appt.status !== 'tamamlandi'
   const canApprove = appt.status === 'taslak'
+  // Planlanan/onaylanan randevu işleme alınabilir (müşteri koltukta → mor kart).
+  const canStart = appt.status === 'bekliyor' || appt.status === 'devam'
 
   return (
     <div className="flex flex-col">
@@ -1338,6 +1353,24 @@ function DetailPanel({
             <ReceiptText className="h-3.5 w-3.5" /> Adisyon / Ödeme al
           </button>
         )}
+        {canManage && appt.status === 'islemde' && onComplete && (
+          <button
+            type="button"
+            onClick={() => void onComplete(appt.id)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-emerald-500 to-emerald-600 px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(16,185,129,0.95)] transition-transform hover:-translate-y-0.5"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> İşlemi bitir · Tamamlandı
+          </button>
+        )}
+        {canManage && canStart && onStartService && (
+          <button
+            type="button"
+            onClick={() => void onStartService(appt.id)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-violet-500 to-violet-600 px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(139,92,246,0.95)] transition-transform hover:-translate-y-0.5"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Şu an işlemde
+          </button>
+        )}
         {canManage && (canApprove || canCancel) && (
           <div className="grid grid-cols-2 gap-2">
             {canApprove && onApprove && (
@@ -1393,6 +1426,7 @@ function DaySummary({
   onCreate?: () => void
 }) {
   const rows: { key: AppointmentStatusKey; label: string }[] = [
+    { key: 'islemde', label: 'İşlemde' },
     { key: 'tamamlandi', label: 'Tamamlanan' },
     { key: 'devam', label: 'Onaylı' },
     { key: 'bekliyor', label: 'Bekleyen' },

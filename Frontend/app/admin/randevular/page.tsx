@@ -90,6 +90,7 @@ interface StaffStatusFormValues {
 
 const staffStatusOptions = [
   { value: 'Confirmed', label: 'Devam' },
+  { value: 'InProgress', label: 'İşlemde' },
   { value: 'Completed', label: 'Tamamlandı' },
   { value: 'Cancelled', label: 'İptal' },
   { value: 'NoShow', label: 'Gelmedi' },
@@ -135,6 +136,12 @@ const statusBadge: Record<AppointmentStatusKey, BadgeMeta> = {
     cls: 'border border-dashed border-indigo-300/60 bg-indigo-50 text-indigo-600',
     dot: 'bg-indigo-300',
   },
+  islemde: {
+    label: 'İşlemde',
+    icon: Activity,
+    cls: 'bg-violet-100 text-violet-700 border border-violet-300/60',
+    dot: 'bg-violet-500',
+  },
 }
 
 // Alt bölüm (gün özeti + çizelge) için yumuşak durum tonları — takvim statusBadge'i kullanmaya devam eder.
@@ -176,9 +183,15 @@ const statusTone: Record<AppointmentStatusKey, StatusTone> = {
     bar: 'from-indigo-300 to-indigo-400',
     pill: 'border border-dashed border-indigo-200 bg-indigo-50 text-indigo-600',
   },
+  islemde: {
+    label: 'İşlemde',
+    dot: 'bg-violet-500',
+    bar: 'from-violet-400 to-violet-500',
+    pill: 'border border-violet-200 bg-violet-50 text-violet-700',
+  },
 }
 
-const statusToneOrder: AppointmentStatusKey[] = ['tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
+const statusToneOrder: AppointmentStatusKey[] = ['islemde', 'tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
 
 const metricCardShell =
   'relative overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]'
@@ -786,6 +799,7 @@ function RandevularPageInner() {
     bekliyor: selectedAppointments.filter((r) => r.status === 'bekliyor').length,
     taslak: selectedAppointments.filter((r) => r.status === 'taslak').length,
     iptal: selectedAppointments.filter((r) => r.status === 'iptal').length,
+    islemde: selectedAppointments.filter((r) => r.status === 'islemde').length,
   }
   const dayTotalAmount = selectedAppointments.reduce((sum, r) => sum + Number(r.price || 0), 0)
   const daySegments = statusToneOrder
@@ -1702,6 +1716,22 @@ function RandevularPageInner() {
           !isStaffUser
             ? async (id) => {
                 await adminApi.approveAppointment(id, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onStartService={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.changeAppointmentStatus(id, { status: 'InProgress', reason: null }, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onComplete={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.changeAppointmentStatus(id, { status: 'Completed', reason: null }, tenantId)
                 await reload()
               }
             : undefined

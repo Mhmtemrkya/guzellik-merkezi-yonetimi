@@ -147,6 +147,11 @@ const statusBadge: Record<AppointmentStatusKey, StatusBadgeMeta> = {
     icon: Clock,
     cls: 'border border-dashed border-indigo-200 bg-indigo-50 text-indigo-600',
   },
+  islemde: {
+    label: 'İşlemde',
+    icon: Activity,
+    cls: 'border border-violet-200 bg-violet-50 text-violet-700',
+  },
 }
 
 const quickActions: QuickAction[] = [

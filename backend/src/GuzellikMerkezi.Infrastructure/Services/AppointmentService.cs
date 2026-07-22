@@ -281,6 +281,7 @@ public sealed class AppointmentService : IAppointmentService
         switch (request.Status)
         {
             case AppointmentStatus.Confirmed: appointment.Confirm(); break;
+            case AppointmentStatus.InProgress: appointment.StartService(); break;
             case AppointmentStatus.Completed: appointment.Complete(); break;
             case AppointmentStatus.Cancelled: appointment.Cancel(request.Reason ?? "Belirtilmedi"); break;
             case AppointmentStatus.NoShow: appointment.MarkNoShow(); break;
