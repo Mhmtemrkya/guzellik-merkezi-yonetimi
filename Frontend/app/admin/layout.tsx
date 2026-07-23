@@ -33,32 +33,6 @@ const items: SidebarNavItem[] = [
   { group: 'Genel', label: 'Dashboard', href: '/admin', icon: LayoutGrid },
   {
     group: 'Genel',
-    label: 'Onay Bekleyenler',
-    href: '/admin/onaylar',
-    icon: ShieldCheck,
-    // Sadece kurum yöneticisi onay verir — Staff için gizli
-    featureKeys: ['approval.workflow'],
-    children: [
-      { label: 'Bekleyenler', href: '/admin/onaylar?scope=pending' },
-      { label: 'Onaylanmış', href: '/admin/onaylar?scope=approved' },
-      { label: 'Reddedilmiş', href: '/admin/onaylar?scope=rejected' },
-    ],
-  },
-  {
-    group: 'Genel',
-    label: 'Log Kayıtları',
-    href: '/admin/loglar',
-    icon: ClipboardList,
-    permissionKey: 'Logs',
-    featureKeys: ['audit.logs'],
-    children: [
-      { label: 'Bugün', href: '/admin/loglar?scope=today' },
-      { label: 'Bu hafta', href: '/admin/loglar?scope=week' },
-      { label: 'Tüm geçmiş', href: '/admin/loglar?scope=all' },
-    ],
-  },
-  {
-    group: 'İşletme',
     label: 'Müşteriler',
     href: '/admin/musteriler',
     icon: Users,
@@ -68,6 +42,19 @@ const items: SidebarNavItem[] = [
       { label: 'KVKK onaylı', href: '/admin/musteriler?scope=kvkk' },
       { label: 'KVKK bekleyen', href: '/admin/musteriler?scope=kvkk-pending' },
       { label: 'Yeni eklenen', href: '/admin/musteriler?scope=recent' },
+    ],
+  },
+  {
+    group: 'Genel',
+    label: 'Randevular',
+    href: '/admin/randevular',
+    icon: Calendar,
+    permissionKey: 'Appointments',
+    children: [
+      { label: 'Bugün', href: '/admin/randevular?scope=today' },
+      { label: 'Bu hafta', href: '/admin/randevular?scope=week' },
+      { label: 'Bu ay', href: '/admin/randevular?scope=month' },
+      { label: 'Bekleyenler', href: '/admin/randevular?scope=pending' },
     ],
   },
   {
@@ -110,19 +97,6 @@ const items: SidebarNavItem[] = [
       { label: 'Kritik stok', href: '/admin/stok?scope=critical' },
       { label: 'Satış ürünleri', href: '/admin/stok?scope=sale' },
       { label: 'Sarf malzeme', href: '/admin/stok?scope=consumable' },
-    ],
-  },
-  {
-    group: 'İşletme',
-    label: 'Randevular',
-    href: '/admin/randevular',
-    icon: Calendar,
-    permissionKey: 'Appointments',
-    children: [
-      { label: 'Bugün', href: '/admin/randevular?scope=today' },
-      { label: 'Bu hafta', href: '/admin/randevular?scope=week' },
-      { label: 'Bu ay', href: '/admin/randevular?scope=month' },
-      { label: 'Bekleyenler', href: '/admin/randevular?scope=pending' },
     ],
   },
   {
@@ -186,6 +160,19 @@ const items: SidebarNavItem[] = [
   },
   {
     group: 'Yönetim',
+    label: 'Onay Bekleyenler',
+    href: '/admin/onaylar',
+    icon: ShieldCheck,
+    // Sadece kurum yöneticisi onay verir — Staff için gizli
+    featureKeys: ['approval.workflow'],
+    children: [
+      { label: 'Bekleyenler', href: '/admin/onaylar?scope=pending' },
+      { label: 'Onaylanmış', href: '/admin/onaylar?scope=approved' },
+      { label: 'Reddedilmiş', href: '/admin/onaylar?scope=rejected' },
+    ],
+  },
+  {
+    group: 'Yönetim',
     label: 'Personel & Roller',
     href: '/admin/personel',
     icon: UserCog,
@@ -218,6 +205,19 @@ const items: SidebarNavItem[] = [
     icon: Store,
     permissionKey: 'Settings',
     featureKeys: ['appointments.onlinebooking'],
+  },
+  {
+    group: 'Yönetim',
+    label: 'Log Kayıtları',
+    href: '/admin/loglar',
+    icon: ClipboardList,
+    permissionKey: 'Logs',
+    featureKeys: ['audit.logs'],
+    children: [
+      { label: 'Bugün', href: '/admin/loglar?scope=today' },
+      { label: 'Bu hafta', href: '/admin/loglar?scope=week' },
+      { label: 'Tüm geçmiş', href: '/admin/loglar?scope=all' },
+    ],
   },
   { group: 'Yönetim', label: 'Ayarlar', href: '/admin/ayarlar', icon: Settings, permissionKey: 'Settings' },
 ]

@@ -93,7 +93,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
         (preset != null && customers.isNotEmpty) ? preset : null;
     staffId = widget.presetStaffId ??
         (staff.isEmpty ? null : '${staff.first['id']}');
-    serviceId = services.isEmpty ? null : '${services.first['id']}';
+    // Tek işlem/hizmet varsa otomatik seç; birden fazlaysa seçimi kullanıcı yapar.
+    serviceId = services.length == 1 ? '${services.first['id']}' : null;
   }
 
   @override
@@ -290,7 +291,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
   }
 
   Future<void> save() async {
-    if (customerId == null || staffId == null || serviceId == null) return;
+    if (customerId == null || staffId == null) return;
+    if (serviceId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lütfen bir hizmet/işlem seçin.')));
+      return;
+    }
     final service = services.firstWhere((e) => '${e['id']}' == serviceId);
     // Kategori yetkisi (backend de doğrular; burada erken uyarı).
     final chosenStaff = staff.firstWhere(

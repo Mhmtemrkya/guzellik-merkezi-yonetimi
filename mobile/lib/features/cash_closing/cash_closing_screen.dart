@@ -79,10 +79,15 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     final preview = results[0] is Map
         ? (results[0] as Map).cast<String, dynamic>()
         : <String, dynamic>{};
+    final allEntries = apiItems(results[1]);
     final cashEntries =
-        apiItems(results[1]).where((e) => _isCash(e['method'])).toList();
+        allEntries.where((e) => _isCash(e['method'])).toList();
     final closings = apiItems(results[2]);
-    return _CcData(preview: preview, cashEntries: cashEntries, closings: closings);
+    return _CcData(
+        preview: preview,
+        cashEntries: cashEntries,
+        allEntries: allEntries,
+        closings: closings);
   }
 
   Future<void> _reload() async {
@@ -197,7 +202,11 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
               future: _future,
               builder: (context, snapshot) {
                 final data = snapshot.data ??
-                    const _CcData(preview: {}, cashEntries: [], closings: []);
+                    const _CcData(
+                        preview: {},
+                        cashEntries: [],
+                        allEntries: [],
+                        closings: []);
                 final loading =
                     snapshot.connectionState != ConnectionState.done &&
                         !snapshot.hasData;
@@ -239,6 +248,8 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
                       counted: counted,
                       loading: loading,
                     ),
+                    const SizedBox(height: 14),
+                    _methodBreakdownCard(data.allEntries),
                     const SizedBox(height: 14),
                     _infoCard(suggestedOpening),
                     if (data.cashEntries.isNotEmpty) ...[
@@ -614,6 +625,144 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
     );
   }
 
+  String _methodKey(dynamic m) {
+    if (m is num) {
+      switch (m.toInt()) {
+        case 0:
+          return 'cash';
+        case 1:
+          return 'card';
+        case 2:
+          return 'transfer';
+        case 3:
+          return 'check';
+        default:
+          return 'other';
+      }
+    }
+    final s = '$m'.toLowerCase();
+    if (s.startsWith('cash') || s == 'nakit') return 'cash';
+    if (s.startsWith('card') || s == 'kart') return 'card';
+    if (s.startsWith('transfer') ||
+        s.contains('havale') ||
+        s.contains('eft') ||
+        s.contains('bank')) {
+      return 'transfer';
+    }
+    if (s.startsWith('check') || s.contains('çek') || s.contains('cek')) {
+      return 'check';
+    }
+    return 'other';
+  }
+
+  /// Ödeme yöntemi kırılımı — günün tahsilatları nakit/kart/EFT-havale/çek olarak.
+  Widget _methodBreakdownCard(List<Map<String, dynamic>> entries) {
+    final income = <String, double>{};
+    final count = <String, int>{};
+    for (final e in entries) {
+      final isIncome = '${e['type']}'.toLowerCase() == 'income' || e['type'] == 0;
+      if (!isIncome) continue;
+      final k = _methodKey(e['method']);
+      income[k] = (income[k] ?? 0) + ((e['amount'] as num?)?.toDouble() ?? 0);
+      count[k] = (count[k] ?? 0) + 1;
+    }
+    final total = income.values.fold<double>(0, (s, v) => s + v);
+    final methods = <(String, String, Color)>[
+      ('cash', 'Nakit', AppColors.success),
+      ('card', 'Kart', const Color(0xFF3B82F6)),
+      ('transfer', 'EFT / Havale', const Color(0xFFA78BFA)),
+      if ((count['check'] ?? 0) > 0) ('check', 'Çek', AppColors.warning),
+    ];
+    Widget tileFor(int i) => i < methods.length
+        ? _methodTile(methods[i].$2, income[methods[i].$1] ?? 0,
+            count[methods[i].$1] ?? 0, methods[i].$3)
+        : const SizedBox();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet_rounded,
+                  size: 17, color: AppColors.primary),
+              const SizedBox(width: 7),
+              const Text('Ödeme yöntemi kırılımı',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              const Spacer(),
+              Text(CalendarText.tl(total),
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFB06A26))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: tileFor(0)),
+            const SizedBox(width: 10),
+            Expanded(child: tileFor(1)),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: tileFor(2)),
+            const SizedBox(width: 10),
+            Expanded(child: tileFor(3)),
+          ]),
+          const SizedBox(height: 8),
+          const Text(
+            'Kart / EFT / havale kasada fiziki nakit oluşturmaz; yalnızca nakit sistem nakdine ve sayım farkına girer. Bu kırılım günün tüm tahsilat yöntemlerini gösterir.',
+            style: TextStyle(fontSize: 11, color: AppColors.muted, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _methodTile(String label, double amount, int cnt, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: .3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+              if (label == 'Nakit') ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('sayımda',
+                      style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.success)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(CalendarText.tl(amount),
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w900, color: color)),
+          Text('$cnt tahsilat',
+              style: const TextStyle(fontSize: 10, color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+
   Widget _cashFlowCard(List<Map<String, dynamic>> entries) {
     return _card(
       child: Column(
@@ -825,10 +974,12 @@ class _CcData {
   const _CcData({
     required this.preview,
     required this.cashEntries,
+    required this.allEntries,
     required this.closings,
   });
   final Map<String, dynamic> preview;
   final List<Map<String, dynamic>> cashEntries;
+  final List<Map<String, dynamic>> allEntries;
   final List<Map<String, dynamic>> closings;
 }
 

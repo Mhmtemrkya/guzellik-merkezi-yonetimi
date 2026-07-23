@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -158,7 +158,7 @@ const quickActions: QuickAction[] = [
   { label: 'Yeni Randevu\nOluştur', href: '/admin/randevular', icon: CalendarPlus, tone: 'rose' },
   { label: 'Danışan\nEkle', href: '/admin/musteriler', icon: UserPlus, tone: 'peach' },
   { label: 'Paket Satışı\nYap', href: '/admin/paketler', icon: ShoppingBag, tone: 'cream' },
-  { label: 'Ödeme\nAl', href: '/admin/kasa', icon: CreditCard, tone: 'mint' },
+  { label: 'Ödeme\nAl', href: '/admin/on-muhasebe?scope=accounts', icon: CreditCard, tone: 'mint' },
   { label: 'Stok Çıkışı\nYap', href: '/admin/stok', icon: Boxes, tone: 'violet' },
   { label: 'Kampanya\nOluştur', href: '/admin/paketler?scope=packages#kampanyalar', icon: Tag, tone: 'gold' },
 ]
@@ -844,20 +844,42 @@ function InstallmentSummary({
   )
 }
 
-function InstallmentCalendar({ months }: { months: AccountMonthlyInstallment[] }) {
-  const VISIBLE = 6
-  const [offset, setOffset] = useState(0)
+function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstallment[]; period: RangePeriod }) {
+  const now = new Date()
+  const curY = now.getFullYear()
+  const curM = now.getMonth() + 1
+  const nextY = curM === 12 ? curY + 1 : curY
+  const nextMo = curM === 12 ? 1 : curM + 1
+  const isYearly = period === 'yearly'
+  const VISIBLE = isYearly ? 12 : 6
+  // Takvim geçmiş ayları da içerir; "bu ay" index ile değil yıl/ay eşleşmesiyle bulunur.
+  const currentIndex = useMemo(() => {
+    const i = months.findIndex((m) => m.year === curY && m.month === curM)
+    return i >= 0 ? i : 0
+  }, [months, curY, curM])
+  // Varsayılan pencere: yıllık → yılın Ocak ayı; aylık → 1 geçmiş + bu ay + gelecek görünsün.
+  const defaultStart = useMemo(() => {
+    if (isYearly) {
+      const jan = months.findIndex((m) => m.year === curY && m.month === 1)
+      return Math.max(0, jan >= 0 ? jan : currentIndex)
+    }
+    return Math.max(0, currentIndex - 1)
+  }, [isYearly, months, curY, currentIndex])
   const maxOffset = Math.max(0, months.length - VISIBLE)
-  const start = Math.min(offset, maxOffset)
+  const [start, setStart] = useState(0)
+  useEffect(() => {
+    setStart(Math.min(defaultStart, maxOffset))
+  }, [defaultStart, maxOffset])
   const visible = months.slice(start, start + VISIBLE)
-  const chartData: InstallmentChartPoint[] = visible.map((month, index) => {
-    const globalIndex = start + index
-    const state = globalIndex === 0 ? 'current' : globalIndex === 1 ? 'next' : 'default'
+  const chartData: InstallmentChartPoint[] = visible.map((month) => {
+    const isCurrent = month.year === curY && month.month === curM
+    const isNextMonth = month.year === nextY && month.month === nextMo
+    const state = isCurrent ? 'current' : isNextMonth ? 'next' : 'default'
     return {
       ...month,
       key: `${month.year}-${month.month}`,
       axisLabel: `${month.label}|${month.year}|${state}`,
-      isNext: globalIndex === 1,
+      isNext: isNextMonth,
       collectionRate: month.due > 0 ? Math.min(100, (month.collected / month.due) * 100) : 0,
     }
   })
@@ -865,7 +887,7 @@ function InstallmentCalendar({ months }: { months: AccountMonthlyInstallment[] }
   const windowCollected = visible.reduce((sum, month) => sum + month.collected, 0)
   const windowRemaining = visible.reduce((sum, month) => sum + month.remaining, 0)
   const windowCollectionRate = windowDue > 0 ? Math.min(100, (windowCollected / windowDue) * 100) : 0
-  const nextMonth = months[1] ?? null
+  const nextMonth = months.find((m) => m.year === nextY && m.month === nextMo) ?? null
   const hasAny = months.some((month) => month.due > 0 || month.collected > 0 || month.remaining > 0)
   const canPrev = start > 0
   const canNext = start + VISIBLE < months.length
@@ -893,13 +915,13 @@ function InstallmentCalendar({ months }: { months: AccountMonthlyInstallment[] }
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="mr-1 hidden rounded-full border border-[#eadde3] bg-white/80 px-3 py-1.5 text-[10px] font-semibold text-[#806b75] md:inline">
-            6 aylık görünüm
+            {isYearly ? `${curY} yılı` : `${VISIBLE} aylık görünüm`}
           </span>
           <button
             type="button"
             aria-label="Önceki aylar"
             disabled={!canPrev}
-            onClick={() => setOffset(Math.max(0, start - VISIBLE))}
+            onClick={() => setStart(Math.max(0, start - VISIBLE))}
             className="grid h-9 w-9 place-items-center rounded-full border border-[#eadde3] bg-white text-[#a34a62] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#e7bfd0] hover:bg-[#fff1f6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -908,7 +930,7 @@ function InstallmentCalendar({ months }: { months: AccountMonthlyInstallment[] }
             type="button"
             aria-label="Sonraki aylar"
             disabled={!canNext}
-            onClick={() => setOffset(Math.min(maxOffset, start + VISIBLE))}
+            onClick={() => setStart(Math.min(maxOffset, start + VISIBLE))}
             className="grid h-9 w-9 place-items-center rounded-full border border-[#eadde3] bg-white text-[#a34a62] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#e7bfd0] hover:bg-[#fff1f6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
             <ChevronRight className="h-4 w-4" />
@@ -1290,9 +1312,9 @@ export default function AdminDashboard() {
   // Dönem filtreli paket raporu (KPI kartları); henüz yüklenmediyse genel rapora düş.
   const packageReport = normalizeAccountReport(packageReportData ?? data?.reportResult)
 
-  // Tahsilat oranı: alacakların ne kadarı tahsil edildi (gauge kartı).
+  // Bekleyen tahsilat: toplam alacağın (tahsil + kalan) ne kadarı hâlâ borç olarak bekliyor (gauge kartı).
   const collectionBase = report.totalCollected + report.totalReceivable
-  const collectionRate = collectionBase > 0 ? Math.round((report.totalCollected / collectionBase) * 100) : 0
+  const debtRate = collectionBase > 0 ? Math.round((report.totalReceivable / collectionBase) * 100) : 0
 
   const passiveCustomers = data?.passiveResult?.items ?? []
   const passiveThresholdDays = data?.passiveResult?.thresholdDays ?? 0
@@ -1408,14 +1430,14 @@ export default function AdminDashboard() {
           />
           <MetricCard
             icon={CreditCard}
-            title="Tahsilat Oranı"
-            value={`%${collectionRate}`}
-            detail={<>Kalan {formatTL(Math.round(report.totalReceivable))}</>}
-            subDetail={<>{formatTL(Math.round(report.totalCollected))} tahsil</>}
-            visual={<DonutGauge value={collectionRate} />}
+            title="Bekleyen Tahsilat"
+            value={`%${debtRate}`}
+            detail={<>Kalan borç {formatTL(Math.round(report.totalReceivable))}</>}
+            subDetail={<>{formatTL(Math.round(report.totalCollected))} tahsil edildi</>}
+            visual={<DonutGauge value={debtRate} />}
             control={
               <span className="inline-flex shrink-0 items-center rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2 py-[3px] text-[10px] font-semibold text-[#9a8590]">
-                Tüm zamanlar
+                Cari hesaplar
               </span>
             }
             tone="mint"
@@ -1522,7 +1544,7 @@ export default function AdminDashboard() {
                   <ReportKpi icon={FileWarning} tone="peach" label="Vadesi Geçmiş" value={formatTL(Math.round(packageReport.overdueAmount))} hint="Gecikmiş tahsilat" danger={packageReport.overdueAmount > 0} />
                 </div>
 
-                <InstallmentCalendar months={reportMonths} />
+                <InstallmentCalendar months={reportMonths} period={packagePeriod} />
               </div>
             </SectionCard>
 

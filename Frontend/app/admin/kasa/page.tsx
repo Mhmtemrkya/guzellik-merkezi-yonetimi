@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
-import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
 import ExpenseFormDialog, { type ExpenseFormDialogValues } from '@/components/dashboard/ExpenseFormDialog'
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -27,7 +27,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Banknote,
-  Calendar,
   Clock,
   CreditCard,
   Hash,
@@ -36,7 +35,6 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
-  User,
 } from 'lucide-react'
 import type {
   ApiCashFlowEntry,
@@ -121,14 +119,6 @@ function getRange(scope: ScopeKey): { from: Date; to: Date } {
   return { from, to }
 }
 
-interface PaymentFormValues {
-  accountId?: string
-  amount?: number
-  method?: string
-  reference?: string
-  occurredAtUtc?: string
-}
-
 function KasaPageInner() {
   const search = useSearchParams()
   const scopeParam = search?.get('scope') as ScopeKey | null
@@ -203,22 +193,21 @@ function KasaPageInner() {
   )
 
   // Modal handlers
-  const handleCreatePayment = async (values: PaymentFormValues): Promise<void> => {
+  const handleCreatePayment = async (values: CollectionSubmitPayload): Promise<void> => {
     if (!values.accountId) throw new Error('Cari hesap seçimi zorunlu.')
-    const occurredIso = values.occurredAtUtc || new Date().toISOString().slice(0, 10)
     const body = {
       amount: Number(values.amount || 0),
       method: values.method || 'cash',
       reference: values.reference || null,
-      occurredAtUtc: new Date(`${occurredIso}T12:00:00`).toISOString(),
+      occurredAtUtc: values.occurredAtUtc,
     }
     const res = await performWrite({
       operationType: 'RegisterAccountPayment',
-      title: `Tahsilat: ${Number(values.amount || 0)} ₺`,
+      title: `Tahsilat: ${formatTL(Number(values.amount || 0))}`,
       summary: `${values.method || 'cash'}`,
       payload: { accountId: values.accountId, body },
       tenantId,
-      directAction: () => adminApi.registerAccountPayment(values.accountId!, body, tenantId),
+      directAction: () => adminApi.registerAccountPayment(values.accountId, body, tenantId),
     })
     if (res.submittedToApproval) setStaffActionMsg(staffApprovalSuccessMessage('Tahsilat'))
     await reload()
@@ -283,71 +272,7 @@ function KasaPageInner() {
         breadcrumbs={isStaff ? ['Personel', 'Finans', 'Günlük Kasa', scopeInfo.label] : ['Admin', 'Finans', 'Günlük Kasa', scopeInfo.label]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AdminEditDialog
-              triggerLabel="Tahsilat al"
-              eyebrow="AccountPayment · POST"
-              titleIcon={ArrowUpRight}
-              title="Yeni tahsilat"
-              description="Cari hesabı olan bir müşteriden ödeme al. Tahsilat sıradaki açık taksiti otomatik kapatır."
-              note="POST /api/admin/accounts/{id}/payments"
-              submitLabel="Tahsilatı kaydet"
-              onSubmit={async (v) => handleCreatePayment(v as PaymentFormValues)}
-              fields={[
-                {
-                  label: 'Cari hesap',
-                  name: 'accountId',
-                  type: 'select',
-                  value: accounts[0]?.id || '',
-                  options: accounts.map((a) => ({
-                    value: a.id,
-                    label: `${a.customerName} · ${a.name} · ${formatTL(a.remainingAmount)} kalan`,
-                  })),
-                  required: true,
-                  icon: User,
-                  fullWidth: true,
-                  section: 'Cari & tutar',
-                  helper: 'Cari hesap yoksa Ön Muhasebe → Yeni cari ile aç',
-                },
-                {
-                  label: 'Tutar',
-                  name: 'amount',
-                  type: 'number',
-                  value: 1500,
-                  required: true,
-                  icon: Wallet,
-                  prefix: '₺',
-                },
-                {
-                  label: 'Ödeme yöntemi',
-                  name: 'method',
-                  type: 'select',
-                  value: 'card',
-                  options: [
-                    { value: 'cash', label: 'Nakit' },
-                    { value: 'card', label: 'Kart' },
-                    { value: 'transfer', label: 'Havale / EFT' },
-                  ],
-                  required: true,
-                  icon: CreditCard,
-                },
-                {
-                  label: 'Tarih',
-                  name: 'occurredAtUtc',
-                  type: 'date',
-                  value: new Date().toISOString().slice(0, 10),
-                  icon: Calendar,
-                  section: 'İz',
-                },
-                {
-                  label: 'Dekont / referans',
-                  name: 'reference',
-                  value: '',
-                  icon: Hash,
-                  placeholder: 'Opsiyonel',
-                  fullWidth: true,
-                },
-              ]}
-            />
+            <CollectionDialog accounts={accounts} onSubmit={handleCreatePayment} />
             <ExpenseFormDialog
               customCategories={customCategories}
               onCreateCustomCategory={handleCreateCustomCategory}

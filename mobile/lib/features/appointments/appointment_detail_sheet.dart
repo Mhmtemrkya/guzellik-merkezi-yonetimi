@@ -7,6 +7,7 @@ import '../../shared/json_helpers.dart';
 import '../../shared/customer_call.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import 'calendar_theme.dart';
+import 'complete_appointment.dart';
 
 /// Appointment detail bottom sheet with edit / cancel / customer profile.
 class AppointmentDetailSheet extends StatefulWidget {
@@ -79,14 +80,15 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     }, 'Randevu işleme alındı.');
   }
 
-  /// İşlem bitti → Tamamlandı (seans düşer; bekleyen satış varsa cariye işlenir).
+  /// İşlem bitti → Tamamlandı. Ortak akış: "Ödeme alındı mı?" → tutar+yöntem → tahsilat.
   Future<void> _complete() async {
-    await _run(() async {
-      await widget.api.patch('/api/admin/appointments/${appt['id']}/status', {
-        'status': 'Completed',
-        'reason': null,
-      });
-    }, 'Randevu tamamlandı.');
+    final enriched = <String, dynamic>{
+      ...appt,
+      'customerName':
+          '${appt['customerName'] ?? customer?['fullName'] ?? customer?['name'] ?? ''}',
+    };
+    final ok = await runCompleteAppointment(context, widget.api, enriched);
+    if (ok && mounted) Navigator.pop(context, true);
   }
 
   Future<void> _edit() async {

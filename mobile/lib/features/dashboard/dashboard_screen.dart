@@ -447,7 +447,8 @@ class _MetricGrid extends StatelessWidget {
       final collected = numberOf(data.report, const ['totalCollected']);
       final receivable = numberOf(data.report, const ['totalReceivable']);
       final base = collected + receivable;
-      final rate = base > 0 ? ((collected / base) * 100).round() : 0;
+      // Bekleyen tahsilat oranı: toplam alacağın ne kadarı hâlâ borç.
+      final rate = base > 0 ? ((receivable / base) * 100).round() : 0;
       cards = [
         (
           'Randevu',
@@ -468,10 +469,10 @@ class _MetricGrid extends StatelessWidget {
           'Toplam ${data.customersTotal}',
         ),
         (
-          'Tahsilat',
+          'Bekleyen Tahsilat',
           '%$rate',
           Icons.pie_chart_rounded,
-          'Kalan ${_compactMoney(receivable)}',
+          'Kalan borç ${_compactMoney(receivable)}',
         ),
       ];
     }
@@ -777,7 +778,7 @@ class _QuickActions extends StatelessWidget {
     ('Yeni Randevu', Icons.event_available_rounded, '/appointments'),
     ('Yeni Danışan', Icons.person_add_alt_1_rounded, '/customers'),
     ('Paket Satışı', Icons.workspaces_rounded, '/packages'),
-    ('Ödeme Al', Icons.account_balance_wallet_rounded, '/cash'),
+    ('Ödeme Al', Icons.account_balance_wallet_rounded, '/accounting'),
     ('Stok', Icons.inventory_2_rounded, '/stock'),
     ('Kampanya', Icons.campaign_rounded, '/campaigns'),
   ];

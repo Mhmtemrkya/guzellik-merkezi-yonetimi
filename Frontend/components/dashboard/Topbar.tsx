@@ -4,6 +4,7 @@ import {
   Bell,
   CalendarClock,
   CalendarDays,
+  CalendarPlus,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -383,6 +384,21 @@ export default function Topbar({
                 </motion.span>
                 {time}
               </span>
+            )}
+
+            {/* HER SAYFADA RANDEVU OLUŞTUR — randevu ekranındaki tam create akışını açar (?action=new) */}
+            {scope !== 'platform' && (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.94 }}
+                onClick={() => router.push(`${scope === 'personel' ? '/personel' : '/admin'}/randevular?action=new`)}
+                aria-label="Randevu oluştur"
+                title="Randevu oluştur"
+                className="group relative flex min-h-10 items-center gap-2 overflow-hidden rounded-2xl border border-[#c85776]/30 bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11px] font-semibold text-white shadow-[0_14px_30px_-18px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+              >
+                <CalendarPlus className="relative z-10 h-3.5 w-3.5" strokeWidth={1.8} />
+                <span className="relative z-10 hidden md:inline">Randevu Oluştur</span>
+              </motion.button>
             )}
 
             {!compact && scope !== 'personel' && <BranchSwitcher />}

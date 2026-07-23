@@ -10,6 +10,7 @@ import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/sparkline.dart';
+import '../appointments/complete_appointment.dart';
 import '../appointments/calendar_theme.dart';
 
 /// Onay Bekleyenler — web `app/admin/onaylar` sayfasının mobil paritesi:
@@ -340,14 +341,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 ? [
                     Expanded(
                       child: _btn('Tamamlandı', Icons.check_circle_rounded,
-                          AppColors.success, () {
-                        _run(
-                          () => widget.api.patch(
-                            '/api/admin/appointments/${a['id']}/status',
-                            {'status': 'Completed', 'reason': null},
-                          ),
-                          'Randevu tamamlandı.',
-                        );
+                          AppColors.success, () async {
+                        final ok = await runCompleteAppointment(
+                            context, widget.api, a);
+                        if (ok) _reload();
                       }),
                     ),
                     const SizedBox(width: 8),

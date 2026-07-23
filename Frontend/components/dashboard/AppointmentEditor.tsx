@@ -306,6 +306,15 @@ export default function AppointmentEditor({
     }))
   }
 
+  // Tek işlem/hizmet kartı varsa otomatik seç — birden fazlaysa seçimi kullanıcı yapar (dokunma).
+  useEffect(() => {
+    if (!open || mode !== 'create' || sessLoading) return
+    if (values.serviceDefinitionId) return
+    if (bookableByService.length !== 1) return
+    handleSessionSelect(bookableByService[0].serviceDefinitionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, sessLoading, bookableByService, values.serviceDefinitionId])
+
 
   // Seçili tarihte izinli personeller — izinli personele o gün randevu açılamaz.
   const [leaveStaffIds, setLeaveStaffIds] = useState<Set<string>>(new Set())

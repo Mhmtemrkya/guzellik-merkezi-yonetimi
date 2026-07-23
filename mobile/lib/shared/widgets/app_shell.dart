@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/auth/permissions.dart';
 import '../../core/theme/app_theme.dart';
+import '../../features/appointments/appointment_form.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -47,8 +48,34 @@ class AppShell extends StatelessWidget {
       };
     }
 
+    // Her sayfada "Randevu Oluştur" — Randevular sekmesi dışında global hızlı erişim.
+    final canCreateAppointment = !isPlatform &&
+        user != null &&
+        (!user.isStaff || user.hasPage(Perm.appointments));
+    final showFab = canCreateAppointment && navigationShell.currentIndex != 2;
+
     return Scaffold(
       body: navigationShell,
+      floatingActionButton: showFab
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final created = await showModalBottomSheet<bool>(
+                  context: context,
+                  isScrollControlled: true,
+                  useSafeArea: true,
+                  builder: (_) => AppointmentForm(api: auth.api),
+                );
+                if (created == true && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Randevu oluşturuldu.')));
+                }
+              },
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Randevu'),
+            )
+          : null,
       bottomNavigationBar: DecoratedBox(
         decoration: const BoxDecoration(
           color: Colors.white,

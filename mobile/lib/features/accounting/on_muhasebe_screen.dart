@@ -805,11 +805,13 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
   }
 
   Future<void> _payment() async {
+    // Varsayılan tutar = carinin kalan borcu (remainingAmount).
+    final remaining = (a['remainingAmount'] as num?)?.toDouble() ?? 0;
     final result = await showModalBottomSheet<CrudSheetResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => const CrudFormSheet(
+      builder: (_) => CrudFormSheet(
         title: 'Tahsilat kaydet',
         icon: Icons.payments_rounded,
         fields: [
@@ -817,7 +819,9 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
               key: 'amount',
               label: 'Tutar',
               type: CrudFieldType.decimal,
-              required: true),
+              required: true,
+              defaultValue:
+                  remaining > 0 ? remaining.toStringAsFixed(0) : null),
           CrudField(
             key: 'method',
             label: 'Ödeme yöntemi',

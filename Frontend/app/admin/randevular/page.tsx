@@ -18,6 +18,7 @@ import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import DayScheduleModal, { type WaitlistLite } from '@/components/dashboard/DayScheduleModal'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
+import CompleteAppointmentDialog from '@/components/dashboard/CompleteAppointmentDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -353,6 +354,8 @@ function RandevularPageInner() {
   // Randevu-içi adisyon kartı + günlük adisyon kartı modalları (Ön Muhasebe'ye gitmeden)
   const [adisyonModal, setAdisyonModal] = useState<{ open: boolean; customerId?: string; customerName?: string }>({ open: false })
   const [dailyOpen, setDailyOpen] = useState(false)
+  // Randevu tamamlama + ödeme kutusu hedefi (günlük kart, liste, onay kutusu ortak kullanır).
+  const [completeTarget, setCompleteTarget] = useState<{ appointmentId: string; customerId: string | null; customerName: string; fallbackAmount: number } | null>(null)
   // Aksiyon kutusundan "Ertele" ile gelen randevu (içinde bulunulan ay listesinde olmayabilir).
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
   // Hovered day for quick-add button popout
@@ -705,6 +708,40 @@ function RandevularPageInner() {
     )
     setStaffActionMsg('Randevu durumu güncellendi. Sadece kendi randevu kaydın üzerinde işlem yapıldı.')
     await reload()
+  }
+
+  // "Tamamlandı" → ödeme kutusunu aç (günlük personel kartındaki akışın aynısı, her yüzeyde ortak).
+  const openCompleteFor = (appointmentId: string): void => {
+    const a = appointments.find((x) => x.id === appointmentId)
+    setScheduleDate(null) // gün modalı üstte kalmasın diye kapat (adisyon akışıyla aynı)
+    setCompleteTarget({
+      appointmentId,
+      customerId: a?.customerId || null,
+      customerName: a?.musteri || '',
+      fallbackAmount: Number(a?.price || 0),
+    })
+  }
+
+  // Hızlı durum aksiyonu (liste satırı + günlük kart): işleme al / onayla / iptal.
+  const quickStatus = async (appointmentId: string, status: 'InProgress' | 'Confirmed' | 'Cancelled'): Promise<void> => {
+    setActionError('')
+    try {
+      await adminApi.changeAppointmentStatus(appointmentId, { status, reason: null }, tenantId)
+      await reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Randevu durumu güncellenemedi.')
+    }
+  }
+
+  // Taslak randevuyu onayla (liste satırı + onay kutusu).
+  const quickApprove = async (appointmentId: string): Promise<void> => {
+    setActionError('')
+    try {
+      await adminApi.approveAppointment(appointmentId, tenantId)
+      await reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Randevu onaylanamadı.')
+    }
   }
 
   // Çizelge detay paneli için: seçilen müşterinin açık adisyon toplamlarını getir (ödeme/cari).
@@ -1510,6 +1547,41 @@ function RandevularPageInner() {
                         </td>
                         <td className="px-4 py-4">
                           <span className="flex items-center justify-end gap-1">
+                            {!isStaffUser && !['Cancelled', 'Completed', 'NoShow'].includes(r.rawStatus ?? '') && (
+                              <>
+                                {r.rawStatus === 'Draft' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void quickApprove(r.id)}
+                                    title="Onayla"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]"
+                                  >
+                                    <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                  </button>
+                                ) : (
+                                  <>
+                                    {r.rawStatus !== 'InProgress' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void quickStatus(r.id, 'InProgress')}
+                                        title="Şu an işlemde"
+                                        className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600"
+                                      >
+                                        <Activity className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openCompleteFor(r.id)}
+                                      title="Tamamla · ödeme al"
+                                      className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
                             {!isStaffUser && (
                               <button
                                 type="button"
@@ -1728,14 +1800,7 @@ function RandevularPageInner() {
               }
             : undefined
         }
-        onComplete={
-          !isStaffUser
-            ? async (id) => {
-                await adminApi.changeAppointmentStatus(id, { status: 'Completed', reason: null }, tenantId)
-                await reload()
-              }
-            : undefined
-        }
+        onComplete={!isStaffUser ? (id) => openCompleteFor(id) : undefined}
         onCancel={
           !isStaffUser
             ? async (id) => {
@@ -1803,6 +1868,22 @@ function RandevularPageInner() {
 
       {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}
       <DailyAdisyonModal open={dailyOpen} onOpenChange={setDailyOpen} tenantId={tenantId} />
+
+      {/* Randevu tamamlama + ödeme kutusu — günlük kart, liste ve onay kutusu ortak kullanır */}
+      {completeTarget && (
+        <CompleteAppointmentDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCompleteTarget(null)
+          }}
+          appointmentId={completeTarget.appointmentId}
+          customerId={completeTarget.customerId}
+          customerName={completeTarget.customerName}
+          fallbackAmount={completeTarget.fallbackAmount}
+          tenantId={tenantId}
+          onDone={reload}
+        />
+      )}
     </>
   )
 }

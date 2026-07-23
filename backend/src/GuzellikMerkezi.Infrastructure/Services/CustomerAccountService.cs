@@ -330,21 +330,29 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Where(p => p.OccurredAtUtc.Year == today.Year && p.OccurredAtUtc.Month == today.Month)
             .Sum(p => p.Amount);
 
-        // Pencere uzunluğu: bu aydan, taksiti olan en son aya kadar (en az 'months', en çok 36 ay).
-        // Böylece taksit bitince takvim de biter; ileri tarihli uzun planlar varsa oklarla erişilir.
+        // Pencere: GEÇMİŞ (en erken taksit ya da bu yılın Ocak ayı) → gelecekteki son taksit ayı.
+        // Geçmiş aylar da dahil edilir ki panodaki "bu ay" ve "bu yıl (Ocak–Aralık)" görünümleri
+        // taksit performansını doğru göstersin. Sonda boş kuyruk olmasın diye son taksit ayında biter.
+        var earliestOffset = 0;
         var lastInstallmentOffset = 0;
         foreach (var (key, agg) in monthBuckets)
         {
             if (agg.Due <= 0m) continue;
             var offset = (key.Year - firstOfThisMonth.Year) * 12 + (key.Month - firstOfThisMonth.Month);
+            if (offset < earliestOffset) earliestOffset = offset;
             if (offset > lastInstallmentOffset) lastInstallmentOffset = offset;
         }
-        var windowCount = Math.Min(hardCapMonths, Math.Max(months, lastInstallmentOffset + 1));
+        // Yıllık görünüm için en azından içinde bulunulan yılın Ocak ayına kadar geriye git.
+        var startOfYearOffset = -(today.Month - 1);
+        var startOffset = Math.Min(earliestOffset, startOfYearOffset);
+        var totalSpan = lastInstallmentOffset - startOffset + 1;
+        if (totalSpan < months) totalSpan = months;                 // taban ay sayısını koru
+        if (totalSpan > hardCapMonths) totalSpan = hardCapMonths;   // üst sınırı aşma (gelecek uçtan kırpılır)
 
-        var monthly = new List<AccountMonthlyInstallmentDto>(windowCount);
-        for (var i = 0; i < windowCount; i++)
+        var monthly = new List<AccountMonthlyInstallmentDto>(totalSpan);
+        for (var i = 0; i < totalSpan; i++)
         {
-            var d = firstOfThisMonth.AddMonths(i);
+            var d = firstOfThisMonth.AddMonths(startOffset + i);
             var agg = monthBuckets.TryGetValue((d.Year, d.Month), out var cur) ? cur : (Due: 0m, Collected: 0m);
             monthly.Add(new AccountMonthlyInstallmentDto(
                 d.Year, d.Month, agg.Due, agg.Collected, Math.Max(0m, agg.Due - agg.Collected)));

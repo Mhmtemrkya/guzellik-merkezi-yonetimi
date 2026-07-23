@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import CollectionDialog from '@/components/dashboard/CollectionDialog'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
@@ -827,22 +828,24 @@ function OnMuhasebePageInner() {
 
                     {/* Aksiyonlar */}
                     <div className="mt-4 grid grid-cols-2 gap-2">
-                      <AdminEditDialog
-                        triggerLabel="Tahsilat Al" eyebrow="AccountPayment · POST" titleIcon={Banknote} title={`Tahsilat · ${selAccount.customerName || selAccount.name}`}
-                        description="Tahsilat en eski vadeden başlayarak taksitlere dağıtılır: tutar yettiği taksitleri tam kapatır, eksik kalırsa o taksit kısmen ödenmiş görünür. Bir taksitten fazla ödeme sonraki taksitlere sayılır." submitLabel="Tahsilatı kaydet"
-                        onSubmit={async (v) => {
-                          const fv = v as Record<string, unknown>
-                          const payload = { amount: Number(fv.amount || 0), method: String(fv.method || 'cash'), reference: (fv.reference as string) || null, occurredAtUtc: new Date(`${String(fv.date || todayIso)}T12:00:00`).toISOString() }
-                          const res = await performWrite({ operationType: 'RegisterAccountPayment', title: `Tahsilat: ${formatTL(payload.amount)}`, summary: selAccount.customerName || '', payload: { ...payload, accountId: selAccount.id }, tenantId, directAction: () => adminApi.registerAccountPayment(selAccount.id, payload, tenantId) })
+                      <CollectionDialog
+                        accounts={accounts}
+                        initialAccountId={selAccount.id}
+                        title={`Tahsilat · ${selAccount.customerName || selAccount.name}`}
+                        trigger={
+                          <button
+                            type="button"
+                            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                          >
+                            <Banknote className="h-4 w-4" /> Tahsilat Al
+                          </button>
+                        }
+                        onSubmit={async (p) => {
+                          const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc }
+                          const res = await performWrite({ operationType: 'RegisterAccountPayment', title: `Tahsilat: ${formatTL(p.amount)}`, summary: (accounts.find((a) => a.id === p.accountId)?.customerName) || '', payload: { ...payload, accountId: p.accountId }, tenantId, directAction: () => adminApi.registerAccountPayment(p.accountId, payload, tenantId) })
                           if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Tahsilat'))
                           await reload()
                         }}
-                        fields={[
-                          { label: 'Tutar', name: 'amount', type: 'number', value: selAccount.nextDueAmount || 500, required: true, icon: Wallet, prefix: '₺' },
-                          { label: 'Yöntem', name: 'method', type: 'select', value: 'cash', options: [{ value: 'cash', label: 'Nakit' }, { value: 'card', label: 'Kart' }, { value: 'transfer', label: 'Havale / EFT' }], icon: CreditCard },
-                          { label: 'Tarih', name: 'date', type: 'date', value: todayIso, icon: CalendarDays },
-                          { label: 'Referans', name: 'reference', value: '', icon: FileText },
-                        ]}
                       />
                       <AdminEditDialog
                         triggerVariant="ghost" triggerLabel="Taksiti Değiştir" eyebrow="Reschedule · PATCH" titleIcon={PencilLine} title="Taksit planını yeniden oluştur"

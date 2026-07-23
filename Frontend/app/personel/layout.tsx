@@ -29,7 +29,7 @@ import type { FeatureKey } from '@/lib/types'
 const personelItems: SidebarNavItem[] = [
   { group: 'Genel', label: 'Dashboard', href: '/personel', icon: LayoutGrid },
   {
-    group: 'İşletme',
+    group: 'Genel',
     label: 'Müşterilerim',
     href: '/personel/musteriler',
     icon: Users,
@@ -38,6 +38,19 @@ const personelItems: SidebarNavItem[] = [
       { label: 'Tüm müşteriler', href: '/personel/musteriler?scope=all' },
       { label: 'KVKK onaylı', href: '/personel/musteriler?scope=kvkk' },
       { label: 'Yeni eklenen', href: '/personel/musteriler?scope=recent' },
+    ],
+  },
+  {
+    group: 'Genel',
+    label: 'Randevularım',
+    href: '/personel/randevular',
+    icon: Calendar,
+    permissionKey: 'Appointments',
+    children: [
+      { label: 'Bugün', href: '/personel/randevular?scope=today' },
+      { label: 'Bu hafta', href: '/personel/randevular?scope=week' },
+      { label: 'Bu ay', href: '/personel/randevular?scope=month' },
+      { label: 'Bekleyenler', href: '/personel/randevular?scope=pending' },
     ],
   },
   {
@@ -72,19 +85,6 @@ const personelItems: SidebarNavItem[] = [
       { label: 'Kritik stok', href: '/personel/stok?scope=critical' },
       { label: 'Satış ürünleri', href: '/personel/stok?scope=sale' },
       { label: 'Sarf malzeme', href: '/personel/stok?scope=consumable' },
-    ],
-  },
-  {
-    group: 'Günlük İş Akışı',
-    label: 'Randevularım',
-    href: '/personel/randevular',
-    icon: Calendar,
-    permissionKey: 'Appointments',
-    children: [
-      { label: 'Bugün', href: '/personel/randevular?scope=today' },
-      { label: 'Bu hafta', href: '/personel/randevular?scope=week' },
-      { label: 'Bu ay', href: '/personel/randevular?scope=month' },
-      { label: 'Bekleyenler', href: '/personel/randevular?scope=pending' },
     ],
   },
   {

@@ -6,6 +6,7 @@ import { BellRing, CalendarClock, Check, CheckCircle2, Clock3, FileClock, UserX,
 import { useManagerInbox } from '@/hooks/useManagerInbox'
 import { formatTL } from '@/lib/apiMappers'
 import type { Appointment } from '@/lib/types'
+import CompleteAppointmentDialog from '@/components/dashboard/CompleteAppointmentDialog'
 
 /**
  * Kurum yöneticisi randevu aksiyon kutusu.
@@ -26,6 +27,8 @@ export default function ManagerAppointmentInbox({
   const inbox = useManagerInbox({ enabled, tenantId })
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  // "Tamamlandı" → randevu oluşturma/günlük karttaki gibi ödeme kutusu (tutar+yöntem) aç.
+  const [completeTarget, setCompleteTarget] = useState<Appointment | null>(null)
 
   if (!enabled) return null
   if (!inbox.loading && inbox.total === 0) return null
@@ -119,7 +122,7 @@ export default function ManagerAppointmentInbox({
                       <button
                         type="button"
                         disabled={busyId === a.id}
-                        onClick={() => run(a.id, () => inbox.complete(a.id))}
+                        onClick={() => setCompleteTarget(a)}
                         className="inline-flex items-center gap-1 rounded-[9px] border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" /> Tamamlandı
@@ -199,6 +202,24 @@ export default function ManagerAppointmentInbox({
           </div>
         )}
       </div>
+
+      {completeTarget && (
+        <CompleteAppointmentDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCompleteTarget(null)
+          }}
+          appointmentId={completeTarget.id}
+          customerId={completeTarget.customerId}
+          customerName={completeTarget.musteri}
+          fallbackAmount={Number(completeTarget.price || 0)}
+          tenantId={tenantId}
+          onDone={async () => {
+            await inbox.refresh()
+            if (onChanged) await onChanged()
+          }}
+        />
+      )}
     </motion.section>
   )
 }

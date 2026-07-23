@@ -9,8 +9,17 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { cashFlowMethodLabel, formatTL, guidOrUndefined, normalizeCashClosing, normalizeCashFlowEntry } from '@/lib/apiMappers'
-import type { ApiCashClosing, ApiCashClosingPreview, ApiCashFlowEntry } from '@/lib/types'
-import { ArrowDownRight, ArrowUpRight, Award, Banknote, Calculator, CalendarCheck, CheckCircle2, HelpCircle, Lock, Receipt, TrendingDown, TrendingUp, Trash2 } from 'lucide-react'
+import type { ApiCashClosing, ApiCashClosingPreview, ApiCashFlowEntry, CashFlowMethodKey } from '@/lib/types'
+import { ArrowDownRight, ArrowUpRight, Award, Banknote, Calculator, CalendarCheck, CheckCircle2, CreditCard, HelpCircle, Landmark, Lock, Receipt, TrendingDown, TrendingUp, Trash2, Wallet, type LucideIcon } from 'lucide-react'
+
+// Kasa kapanışı yöntem kırılımı — günün tahsilatları nakit/kart/EFT-havale/çek olarak
+// ayrı gösterilir. Yalnızca NAKİT fiziki sayıma ve sistem nakdine girer.
+const METHOD_CARDS: { key: CashFlowMethodKey; label: string; icon: LucideIcon; ring: string; chip: string; text: string }[] = [
+  { key: 'cash', label: 'Nakit', icon: Banknote, ring: 'border-emerald-200', chip: 'bg-emerald-50/60', text: 'text-emerald-700' },
+  { key: 'card', label: 'Kart', icon: CreditCard, ring: 'border-sky-200', chip: 'bg-sky-50/60', text: 'text-sky-700' },
+  { key: 'transfer', label: 'EFT / Havale', icon: Landmark, ring: 'border-violet-200', chip: 'bg-violet-50/60', text: 'text-violet-700' },
+  { key: 'check', label: 'Çek', icon: Receipt, ring: 'border-amber-200', chip: 'bg-amber-50/60', text: 'text-amber-700' },
+]
 
 function todayLocalIso(): string {
   const d = new Date()
@@ -61,9 +70,25 @@ export default function KasaKapanisPage() {
     [tenantId, fromUtc, toUtc],
     { initialData: [] },
   )
-  const cashEntries = useMemo(
-    () => (flowData || []).map((e, i) => normalizeCashFlowEntry(e, i)).filter((e) => e.method === 'cash'),
-    [flowData],
+  const normEntries = useMemo(() => (flowData || []).map((e, i) => normalizeCashFlowEntry(e, i)), [flowData])
+  const cashEntries = useMemo(() => normEntries.filter((e) => e.method === 'cash'), [normEntries])
+
+  // Ödeme yöntemi kırılımı — günün tüm tahsilat/giderleri yönteme göre gruplanır.
+  const methodBreakdown = useMemo(() => {
+    const acc: Record<string, { income: number; expense: number; count: number }> = {}
+    for (const e of normEntries) {
+      const key = e.method || 'unknown'
+      const b = acc[key] || { income: 0, expense: 0, count: 0 }
+      if (e.type === 'income') b.income += e.amount
+      else b.expense += e.amount
+      b.count += 1
+      acc[key] = b
+    }
+    return acc
+  }, [normEntries])
+  const totalMethodIncome = useMemo(
+    () => Object.values(methodBreakdown).reduce((s, b) => s + b.income, 0),
+    [methodBreakdown],
   )
 
   // Canlı hesap — kullanıcı açılış/sayım girdikçe güncellenir.
@@ -263,6 +288,48 @@ export default function KasaKapanisPage() {
             </div>
           </motion.div>
         </div>
+
+        {/* Ödeme yöntemi kırılımı — nakit + kart + EFT/havale (+çek) */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.13 }}
+          className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)] sm:p-6"
+        >
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#f2e6eb] pb-4 text-[#241923]">
+            <Wallet className="h-4 w-4 text-[#c85776]" />
+            <h3 className="font-display text-lg font-bold">Ödeme yöntemi kırılımı</h3>
+            <span className="rounded-full border border-[#efe1e7] bg-[#fffafc] px-2.5 py-0.5 text-[10px] font-semibold text-[#705a66]">bugünün tahsilatları</span>
+            <span className="ml-auto text-[12px] font-semibold text-[#705a66]">
+              Toplam tahsilat: <span className="font-display text-[15px] font-bold text-[#b06a26]">{formatTL(Math.round(totalMethodIncome))}</span>
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {METHOD_CARDS.filter((m) => m.key !== 'check' || (methodBreakdown['check']?.count ?? 0) > 0).map((m) => {
+              const b = methodBreakdown[m.key] || { income: 0, expense: 0, count: 0 }
+              const Icon = m.icon
+              return (
+                <div key={m.key} className={`rounded-[16px] border ${m.ring} ${m.chip} p-4`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold ${m.text}`}>
+                      <Icon className="h-4 w-4" /> {m.label}
+                    </span>
+                    {m.key === 'cash' && (
+                      <span className="rounded-full border border-emerald-200 bg-white/70 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide text-emerald-700">sayıma dahil</span>
+                    )}
+                  </div>
+                  <div className={`mt-2 font-display text-xl font-bold tabular-nums ${m.text}`}>{formatTL(Math.round(b.income))}</div>
+                  <div className="mt-0.5 text-[10.5px] text-[#705a66]">
+                    {b.count} tahsilat{b.expense > 0 ? ` · ${formatTL(Math.round(b.expense))} gider` : ''}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-[#705a66]">
+            Kart / EFT / havale kasada fiziki nakit oluşturmaz; yalnızca <b className="font-semibold text-[#241923]">nakit</b> sistem nakdine ve sayım farkına girer. Bu kırılım, günün tüm tahsilat yöntemlerini alınan tahsilatlardan otomatik gösterir.
+          </p>
+        </motion.div>
 
         {/* Günün nakit hareketleri (drill-down) */}
         {cashEntries.length > 0 && (

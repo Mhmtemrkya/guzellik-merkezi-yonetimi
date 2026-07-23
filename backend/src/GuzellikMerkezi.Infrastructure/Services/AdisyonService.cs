@@ -419,10 +419,13 @@ public sealed class AdisyonService : IAdisyonService
         }
 
         // 5) Tahsilatı cariye + kasaya işle (taksitleri yeniden böler — 1F).
+        // Yöntem "cash" (nakit) olarak yazılır: POS/adisyon tahsilatı kasa kapanışının
+        // nakit kovasına düşsün ve yöntem kırılımına entegre olsun. (Eski "Adisyon" değeri
+        // hiçbir kovaya düşmüyordu.) Referans ADS-... ile kaynak yine adisyon olarak izlenir.
         if (accountId is not null && payment > 0)
         {
             var payResult = await _accounts.RegisterPaymentAsync(tenantId, accountId.Value,
-                new RegisterAccountPaymentRequest(payment, "Adisyon", $"ADS-{adisyon.Id:N}".Substring(0, 16), nowUtc), cancellationToken);
+                new RegisterAccountPaymentRequest(payment, "cash", $"ADS-{adisyon.Id:N}".Substring(0, 16), nowUtc), cancellationToken);
             if (payResult.IsFailure) return Result<AdisyonDto>.Failure(payResult.Error);
         }
 
