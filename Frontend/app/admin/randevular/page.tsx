@@ -511,6 +511,12 @@ function RandevularPageInner() {
   const customersList: Customer[] = useMemo(() => Object.values(normalizedLookups.customers), [normalizedLookups])
   const staffList: Staff[] = useMemo(() => Object.values(normalizedLookups.staff), [normalizedLookups])
   const servicesList: Service[] = useMemo(() => Object.values(normalizedLookups.services), [normalizedLookups])
+  // Gelir tahmini için: serviceDefinitionId → katalog fiyatı (paket seansında randevu fiyatı 0 gelir).
+  const servicePrices: Record<string, number> = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const s of servicesList) if (s.id) m[s.id] = Number(s.price || 0)
+    return m
+  }, [servicesList])
 
   // Bekleme listesi satırları (yalnızca aktif: Waiting/Notified) — servis adı çözülerek modala geçer.
   const waitlistRows = useMemo<WaitlistLite[]>(() => {
@@ -1828,6 +1834,7 @@ function RandevularPageInner() {
         appointments={appointments}
         staff={isStaffUser && selfStaff ? [selfStaff] : staffList}
         customers={normalizedLookups.customers}
+        servicePrices={servicePrices}
         timeOffs={monthTimeOffs}
         isStaffUser={isStaffUser}
         busy={leaveBusy}

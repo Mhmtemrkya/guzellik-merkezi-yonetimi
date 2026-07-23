@@ -671,17 +671,18 @@ public sealed class AdisyonService : IAdisyonService
         if (fromUtc.Kind != DateTimeKind.Utc) fromUtc = DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc);
         if (toUtc.Kind != DateTimeKind.Utc) toUtc = DateTime.SpecifyKind(toUtc, DateTimeKind.Utc);
 
-        // Kalem zaman damgasına göre gün penceresi; iptal edilmiş adisyonlar hariç. Müşteri adı join'le çözülür
-        // (Guid-liste .Contains tuzağına girmemek için — [[project_mysql_query_gotchas]]).
-        var raw = await _db.AdisyonItems.AsNoTracking()
-            .Where(i => i.CreatedAtUtc >= fromUtc && i.CreatedAtUtc < toUtc)
+        // İŞLEM/SATIŞ satırları — adisyon kalemleri (TAHSİLAT HARİÇ). Ödeme gösterimi gerçek
+        // tahsilat kaydından (AccountPayment) gelir; böylece cari tahsilatlar da düşer ve çift
+        // sayım olmaz. Müşteri adı join'le çözülür (Guid-liste .Contains tuzağı — [[project_mysql_query_gotchas]]).
+        var chargeRaw = await _db.AdisyonItems.AsNoTracking()
+            .Where(i => i.CreatedAtUtc >= fromUtc && i.CreatedAtUtc < toUtc && i.Type != AdisyonItemType.Payment)
             .Join(_db.Adisyonlar.AsNoTracking().Where(a => a.TenantId == tenantId && a.Status != AdisyonStatus.Cancelled),
                 i => i.AdisyonId, a => a.Id, (i, a) => new { Item = i, a.CustomerId, a.Status })
             .Join(_db.Customers.AsNoTracking(),
                 x => x.CustomerId, c => c.Id, (x, c) => new { x.Item, x.CustomerId, x.Status, CustomerName = c.FullName })
             .ToListAsync(cancellationToken);
 
-        var staffIds = raw.Where(x => x.Item.StaffMemberId.HasValue).Select(x => x.Item.StaffMemberId!.Value).Distinct().ToList();
+        var staffIds = chargeRaw.Where(x => x.Item.StaffMemberId.HasValue).Select(x => x.Item.StaffMemberId!.Value).Distinct().ToList();
         var staffMap = new Dictionary<Guid, string>();
         if (staffIds.Count > 0)
         {
@@ -692,22 +693,51 @@ public sealed class AdisyonService : IAdisyonService
             staffMap = staffRows.Where(s => staffIds.Contains(s.Id)).ToDictionary(s => s.Id, s => s.FullName);
         }
 
-        var rows = raw
-            .OrderBy(x => x.Item.CreatedAtUtc)
+        var chargeRows = chargeRaw
             .Select(x => new DailyAdisyonRowDto(
                 x.Item.AdisyonId, x.Item.Id, x.Item.CreatedAtUtc, x.CustomerId, x.CustomerName,
                 x.Item.Type, x.Item.Description, x.Item.Quantity, x.Item.LineTotal,
                 x.Item.StaffMemberId,
                 x.Item.StaffMemberId.HasValue && staffMap.TryGetValue(x.Item.StaffMemberId.Value, out var sn) ? sn : null,
                 x.Status,
-                x.Item.Method))
-            .ToArray();
+                null))
+            .ToList();
 
-        var paymentTotal = rows.Where(r => r.Type == AdisyonItemType.Payment).Sum(r => r.Amount);
-        var discountTotal = rows.Where(r => r.Type == AdisyonItemType.Discount).Sum(r => r.Amount);
-        var chargeTotal = rows.Where(r => r.Type == AdisyonItemType.Service || r.Type == AdisyonItemType.Product || r.Type == AdisyonItemType.Extra || r.Type == AdisyonItemType.PackageSale).Sum(r => r.Amount) - discountTotal;
-        var serviceCount = rows.Count(r => r.Type != AdisyonItemType.Payment && r.Type != AdisyonItemType.Discount);
-        var paymentCount = rows.Count(r => r.Type == AdisyonItemType.Payment);
+        // TAHSİLAT satırları — gerçek AccountPayment'lar (adisyon peşinatı + doğrudan cari tahsilat),
+        // yöntemli (nakit/kart/havale). Tenant/şube kapsamı hesap üzerinden süzülür (global filtre).
+        var payRaw = await _db.AccountPayments.AsNoTracking()
+            .Where(p => p.OccurredAtUtc >= fromUtc && p.OccurredAtUtc < toUtc)
+            .Select(p => new { p.Id, p.CustomerAccountId, p.Amount, p.Method, p.OccurredAtUtc })
+            .ToListAsync(cancellationToken);
+        var payAccountIds = payRaw.Select(p => p.CustomerAccountId).Distinct().ToList();
+        var accMeta = new Dictionary<Guid, (Guid CustomerId, string? CustomerName)>();
+        if (payAccountIds.Count > 0)
+        {
+            var accs = await _db.CustomerAccounts.AsNoTracking()
+                .Where(a => a.TenantId == tenantId)
+                .Select(a => new { a.Id, a.CustomerId, CustomerName = a.Customer != null ? a.Customer.FullName : null })
+                .ToListAsync(cancellationToken);
+            accMeta = accs.Where(a => payAccountIds.Contains(a.Id)).ToDictionary(a => a.Id, a => (a.CustomerId, a.CustomerName));
+        }
+        var paymentRows = payRaw
+            .Where(p => accMeta.ContainsKey(p.CustomerAccountId))
+            .Select(p =>
+            {
+                var m = accMeta[p.CustomerAccountId];
+                return new DailyAdisyonRowDto(
+                    Guid.Empty, p.Id, p.OccurredAtUtc, m.CustomerId, m.CustomerName,
+                    AdisyonItemType.Payment, "Tahsilat", 1m, p.Amount,
+                    null, null, AdisyonStatus.Approved, p.Method);
+            })
+            .ToList();
+
+        var rows = chargeRows.Concat(paymentRows).OrderBy(r => r.OccurredAtUtc).ToArray();
+
+        var paymentTotal = paymentRows.Sum(r => r.Amount);
+        var discountTotal = chargeRows.Where(r => r.Type == AdisyonItemType.Discount).Sum(r => r.Amount);
+        var chargeTotal = chargeRows.Where(r => r.Type == AdisyonItemType.Service || r.Type == AdisyonItemType.Product || r.Type == AdisyonItemType.Extra || r.Type == AdisyonItemType.PackageSale).Sum(r => r.Amount) - discountTotal;
+        var serviceCount = chargeRows.Count(r => r.Type != AdisyonItemType.Discount);
+        var paymentCount = paymentRows.Count;
         var customerCount = rows.Select(r => r.CustomerId).Distinct().Count();
 
         return Result<DailyAdisyonDto>.Success(new DailyAdisyonDto(fromUtc, toUtc, rows, serviceCount, paymentCount, customerCount, chargeTotal, paymentTotal));

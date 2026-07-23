@@ -300,6 +300,8 @@ export interface DayScheduleModalProps {
   appointments: Appointment[]
   staff: Staff[]
   customers?: Record<string, Customer>
+  /** serviceDefinitionId → katalog fiyatı; gelir tahmini için (paket seansında appt.price=0 olur). */
+  servicePrices?: Record<string, number>
   timeOffs?: StaffTimeOff[]
   isStaffUser?: boolean
   /** İzin ekleme/kaldırma sürerken true — toggle butonları kilitlenir. */
@@ -347,6 +349,7 @@ export default function DayScheduleModal({
   appointments,
   staff,
   customers,
+  servicePrices,
   timeOffs,
   isStaffUser = false,
   busy = false,
@@ -535,11 +538,14 @@ export default function DayScheduleModal({
         completed: list.filter((a) => a.status === 'tamamlandi').length,
         iptal: list.filter((a) => a.status === 'iptal').length,
         onay: list.filter((a) => a.status === 'taslak').length,
-        gelir: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + (Number(a.price) || 0), 0),
+        // Gelir tahmini: randevunun fiyatı 0 ise (paket seansı) hizmetin katalog fiyatını kullan.
+        gelir: list
+          .filter((a) => a.status !== 'iptal')
+          .reduce((s, a) => s + (Number(a.price) || servicePrices?.[a.serviceDefinitionId ?? ''] || 0), 0),
         bookedMin: list.filter((a) => a.status !== 'iptal').reduce((s, a) => s + apptDur(a), 0),
       }
     },
-    [appointments],
+    [appointments, servicePrices],
   )
   const cur = useMemo(() => metricsForDays(curDays), [metricsForDays, curDays])
   const prev = useMemo(() => metricsForDays(prevDays), [metricsForDays, prevDays])
