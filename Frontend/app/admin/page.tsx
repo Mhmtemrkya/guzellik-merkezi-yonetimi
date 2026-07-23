@@ -34,7 +34,6 @@ import {
   FileWarning,
   MoreHorizontal,
   Package,
-  Plus,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
@@ -1366,15 +1365,6 @@ export default function AdminDashboard() {
           meta: 'Onay',
           href: '/admin/onaylar',
         }))}
-        actions={
-          <Link
-            href="/admin/randevular"
-            className="group relative inline-flex min-w-max items-center gap-2 overflow-hidden rounded-[15px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.8} />
-            Yeni Randevu
-          </Link>
-        }
       />
 
       <div className="relative space-y-5 px-4 pb-8 pt-4 sm:px-6 lg:px-6 xl:px-7">
