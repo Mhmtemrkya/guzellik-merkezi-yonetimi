@@ -319,10 +319,12 @@ export interface DayScheduleModalProps {
   onComplete?: (id: string) => void | Promise<void>
   /** Randevuyu iptal et (yalnızca yönetici). */
   onCancel?: (id: string) => void | Promise<void>
-  /** Seçilen randevunun müşterisinin açık adisyonunu getir (panelde ödeme/cari için). */
-  loadOpenAdisyon?: (customerId: string) => Promise<{ chargeTotal: number; paymentTotal: number } | null>
+  /** Seçilen randevunun müşterisinin açık adisyonunu + cari borcunu getir (panelde ödeme/cari için). */
+  loadOpenAdisyon?: (customerId: string, customerName?: string) => Promise<PaymentInfo | null>
   /** Müşterinin adisyon kartını modal olarak aç (kalem/satış, ödeme/peşinat, onay, silme). */
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
+  /** Müşteriden doğrudan tahsilat al (cari hesap ödeme modalı). */
+  onCollect?: (customerId: string, customerName?: string) => void
   /** Aktif bekleme listesi (sağ ray "Bekleme Listesi" kartı). */
   waitlist?: WaitlistLite[]
   /** Sürükle-bırak ile randevu saatini (ve farklı sütuna bırakınca personelini) değiştir; süre korunur. */
@@ -335,6 +337,9 @@ export interface WaitlistLite {
   serviceName?: string
   preferredDate?: string
 }
+
+/** Panel ödeme kutusu verisi: açık adisyon toplamları + (varsa) cari hesap borcu. */
+type PaymentInfo = { chargeTotal: number; paymentTotal: number; cariRemaining?: number; accountId?: string }
 
 export default function DayScheduleModal({
   open,
@@ -356,6 +361,7 @@ export default function DayScheduleModal({
   onCancel,
   loadOpenAdisyon,
   onOpenAdisyon,
+  onCollect,
   waitlist,
   onReschedule,
 }: DayScheduleModalProps) {
@@ -370,7 +376,7 @@ export default function DayScheduleModal({
   const [chipVip, setChipVip] = useState(false)
   const [chipOdeme, setChipOdeme] = useState(false)
   // Seçilen randevunun açık adisyonu (panel ödeme kutusu için, on-demand yüklenir).
-  const [payment, setPayment] = useState<{ chargeTotal: number; paymentTotal: number } | null | 'loading'>(null)
+  const [payment, setPayment] = useState<PaymentInfo | null | 'loading'>(null)
   // Sürükle-bırak: taşınan randevu + üzerinde gezilen sütun/konum göstergesi.
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropInfo, setDropInfo] = useState<{ colKey: string; startMin: number } | null>(null)
@@ -668,13 +674,13 @@ export default function DayScheduleModal({
     }
     let alive = true
     setPayment('loading')
-    loadOpenAdisyon(selectedCustomerId)
+    loadOpenAdisyon(selectedCustomerId, selectedAppt?.musteri)
       .then((r) => { if (alive) setPayment(r) })
       .catch(() => { if (alive) setPayment(null) })
     return () => {
       alive = false
     }
-  }, [selectedCustomerId, loadOpenAdisyon])
+  }, [selectedCustomerId, selectedAppt?.musteri, loadOpenAdisyon])
 
   const handleColumnClick = (col: ColumnDef, e: React.MouseEvent<HTMLDivElement>): void => {
     if (!onCreateAt || !date) return
@@ -1120,6 +1126,7 @@ export default function DayScheduleModal({
                     onComplete={onComplete}
                     onCancel={onCancel}
                     onOpenAdisyon={onOpenAdisyon}
+                    onCollect={onCollect}
                     onClose={() => setSelectedId(null)}
                   />
                 ) : (
@@ -1183,11 +1190,12 @@ function DetailPanel({
   onComplete,
   onCancel,
   onOpenAdisyon,
+  onCollect,
   onClose,
 }: {
   appt: Appointment
   customer?: Customer
-  payment?: { chargeTotal: number; paymentTotal: number } | null | 'loading'
+  payment?: PaymentInfo | null | 'loading'
   canManage: boolean
   onEdit?: (id: string) => void
   onApprove?: (id: string) => void | Promise<void>
@@ -1195,6 +1203,7 @@ function DetailPanel({
   onComplete?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
+  onCollect?: (customerId: string, customerName?: string) => void
   onClose: () => void
 }) {
   const st = statusStyle[appt.status] || statusStyle.bekliyor
@@ -1283,37 +1292,54 @@ function DetailPanel({
           <Row label="Personel" value={appt.personel || '—'} />
         </div>
 
-        {/* Ödeme · cari — seçilen müşterinin açık adisyonundan (anlık) */}
+        {/* Ödeme · cari — açık adisyon toplamları + (varsa) cari hesap borcu + tahsilat al */}
         <div className="rounded-[12px] border border-[#efe1e7] bg-white px-3 py-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8a7480]">
             <Wallet className="h-3 w-3 text-[#c85776]" /> Ödeme · Cari
           </div>
           {payment === 'loading' ? (
             <div className="py-1 text-[11.5px] text-[#a58d99]">Yükleniyor…</div>
-          ) : payment ? (
-            (() => {
-              const kalan = Math.max(0, payment.chargeTotal - payment.paymentTotal)
-              return (
-                <div className="space-y-1.5 text-[12px]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[#8a7480]">Ödeme Durumu</span>
-                    {kalan > 0 ? (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">Ödeme bekliyor</span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">Ödendi</span>
-                    )}
-                  </div>
-                  <Row label="Toplam Tutar" value={formatTL(payment.chargeTotal)} />
-                  <Row label="Ödenen" value={formatTL(payment.paymentTotal)} />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[#8a7480]">Kalan</span>
-                    <span className={`font-bold tabular-nums ${kalan > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatTL(kalan)}</span>
-                  </div>
+          ) : payment && (payment.chargeTotal > 0 || payment.paymentTotal > 0 || (payment.cariRemaining ?? 0) > 0) ? (
+            <div className="space-y-1.5 text-[12px]">
+              {(payment.chargeTotal > 0 || payment.paymentTotal > 0) && (() => {
+                const kalan = Math.max(0, payment.chargeTotal - payment.paymentTotal)
+                return (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[#8a7480]">Açık adisyon</span>
+                      {kalan > 0 ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">Ödeme bekliyor</span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">Ödendi</span>
+                      )}
+                    </div>
+                    <Row label="Toplam Tutar" value={formatTL(payment.chargeTotal)} />
+                    <Row label="Ödenen" value={formatTL(payment.paymentTotal)} />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[#8a7480]">Kalan</span>
+                      <span className={`font-bold tabular-nums ${kalan > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatTL(kalan)}</span>
+                    </div>
+                  </>
+                )
+              })()}
+              {(payment.cariRemaining ?? 0) > 0 && (
+                <div className={`flex items-center justify-between gap-2 ${payment.chargeTotal > 0 || payment.paymentTotal > 0 ? 'border-t border-[#f2e6eb] pt-1.5' : ''}`}>
+                  <span className="text-[#8a7480]">Cari borç (toplam kalan)</span>
+                  <span className="font-bold tabular-nums text-rose-600">{formatTL(payment.cariRemaining ?? 0)}</span>
                 </div>
-              )
-            })()
+              )}
+              {onCollect && appt.customerId && (payment.cariRemaining ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onCollect(appt.customerId as string, appt.musteri)}
+                  className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
+                >
+                  <Wallet className="h-3.5 w-3.5" /> Tahsilat Al
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="py-1 text-[11.5px] text-[#a58d99]">Açık adisyon yok — bekleyen ödeme görünmüyor.</div>
+            <div className="py-1 text-[11.5px] text-[#a58d99]">Bekleyen ödeme / cari borç görünmüyor.</div>
           )}
         </div>
 

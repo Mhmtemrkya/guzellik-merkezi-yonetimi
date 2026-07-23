@@ -19,6 +19,7 @@ import DayScheduleModal, { type WaitlistLite } from '@/components/dashboard/DayS
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import CompleteAppointmentDialog from '@/components/dashboard/CompleteAppointmentDialog'
+import CollectionDialog from '@/components/dashboard/CollectionDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -31,6 +32,7 @@ import {
   formatTL,
   guidOrUndefined,
   monthLabel,
+  normalizeAccount,
   normalizeAppointment,
   normalizeCustomer,
   normalizePackage,
@@ -67,6 +69,7 @@ import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import type {
   ApiAppointment,
   ApiCustomer,
+  ApiCustomerAccount,
   ApiService,
   ApiServicePackage,
   ApiStaff,
@@ -76,6 +79,7 @@ import type {
   AppointmentLookups,
   AppointmentStatusKey,
   Customer,
+  CustomerAccount,
   PagedResult,
   Service,
   ServicePackage,
@@ -356,6 +360,8 @@ function RandevularPageInner() {
   const [dailyOpen, setDailyOpen] = useState(false)
   // Randevu tamamlama + ödeme kutusu hedefi (günlük kart, liste, onay kutusu ortak kullanır).
   const [completeTarget, setCompleteTarget] = useState<{ appointmentId: string; customerId: string | null; customerName: string; fallbackAmount: number } | null>(null)
+  // Günlük karttan doğrudan tahsilat hedefi (cari hesap ödeme modalı).
+  const [collectTarget, setCollectTarget] = useState<{ accounts: CustomerAccount[]; accountId: string } | null>(null)
   // Aksiyon kutusundan "Ertele" ile gelen randevu (içinde bulunulan ay listesinde olmayabilir).
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
   // Hovered day for quick-add button popout
@@ -746,12 +752,43 @@ function RandevularPageInner() {
 
   // Çizelge detay paneli için: seçilen müşterinin açık adisyon toplamlarını getir (ödeme/cari).
   const loadOpenAdisyon = useCallback(
-    async (cid: string) => {
-      const a = await adminApi.openAdisyon<{ chargeTotal?: number; paymentTotal?: number }>(cid, tenantId)
-      return a ? { chargeTotal: Number(a.chargeTotal || 0), paymentTotal: Number(a.paymentTotal || 0) } : null
+    async (cid: string, customerName?: string) => {
+      const [a, accRes] = await Promise.all([
+        adminApi.openAdisyon<{ chargeTotal?: number; paymentTotal?: number }>(cid, tenantId).catch(() => null),
+        customerName
+          ? adminApi.accounts<ApiCustomerAccount>({ tenantId, search: customerName, page: 1, pageSize: 30 }).catch(() => null)
+          : Promise.resolve(null),
+      ])
+      const accounts = accRes ? apiItems(accRes).map((x, i) => normalizeAccount(x, i)) : []
+      const match = accounts.find((x) => x.customerId === cid)
+      if (!a && !match) return null
+      return {
+        chargeTotal: Number(a?.chargeTotal || 0),
+        paymentTotal: Number(a?.paymentTotal || 0),
+        cariRemaining: match ? match.remainingAmount : 0,
+        accountId: match?.id,
+      }
     },
     [tenantId],
   )
+
+  // Günlük karttan doğrudan tahsilat: müşterinin carisini bul, CollectionDialog aç.
+  const openCollectFor = async (customerId: string, customerName?: string): Promise<void> => {
+    setScheduleDate(null) // gün modalını kapat (z-index; adisyon akışıyla aynı)
+    setActionError('')
+    try {
+      const res = await adminApi.accounts<ApiCustomerAccount>({ tenantId, search: customerName || '', page: 1, pageSize: 50 })
+      const items = apiItems(res).map((a, i) => normalizeAccount(a, i))
+      const match = items.find((a) => a.customerId === customerId)
+      if (!match) {
+        setActionError('Bu müşterinin cari hesabı yok — tahsilat için önce satış/cari açın.')
+        return
+      }
+      setCollectTarget({ accounts: items, accountId: match.id })
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Cari hesap alınamadı.')
+    }
+  }
 
   const editingAppointment = useMemo(
     () =>
@@ -1818,6 +1855,7 @@ function RandevularPageInner() {
               }
             : undefined
         }
+        onCollect={!isStaffUser ? (customerId, customerName) => void openCollectFor(customerId, customerName) : undefined}
         waitlist={waitlistRows}
         onReschedule={
           !isStaffUser
@@ -1882,6 +1920,27 @@ function RandevularPageInner() {
           fallbackAmount={completeTarget.fallbackAmount}
           tenantId={tenantId}
           onDone={reload}
+        />
+      )}
+
+      {/* Günlük karttan doğrudan tahsilat — cari hesap ödeme modalı (varsayılan tutar = kalan borç) */}
+      {collectTarget && (
+        <CollectionDialog
+          open
+          hideTrigger
+          onOpenChange={(o) => {
+            if (!o) setCollectTarget(null)
+          }}
+          accounts={collectTarget.accounts}
+          initialAccountId={collectTarget.accountId}
+          onSubmit={async (p) => {
+            await adminApi.registerAccountPayment(
+              p.accountId,
+              { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc },
+              tenantId,
+            )
+            await reload()
+          }}
         />
       )}
     </>

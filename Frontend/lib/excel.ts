@@ -491,36 +491,42 @@ export async function exportDailyAdisyonToExcel(
   const wb = new ExcelJS.Workbook()
   wb.creator = 'BeautyAsist'
   const ws = wb.addWorksheet('Günlük Adisyon', { views: [{ showGridLines: false }] })
-  ws.columns = [{ width: 9 }, { width: 15 }, { width: 34 }, { width: 22 }, { width: 24 }, { width: 13 }, { width: 14 }, { width: 13 }]
+  // Geniş kolonlar + kaydırma (wrapText) → uzun açıklama/isimler hücrede tam görünür.
+  ws.columns = [{ width: 9 }, { width: 14 }, { width: 42 }, { width: 24 }, { width: 26 }, { width: 14 }, { width: 15 }, { width: 13 }]
 
+  // 1. satır: KARE logo (bozulmadan) + marka + başlık — diğer raporlarla aynı desen.
+  ws.getRow(1).height = 40
+  ws.mergeCells('A1:H1')
+  const brand = ws.getCell('A1')
+  brand.value = {
+    richText: [
+      { text: '        BeautyAsist', font: { size: 17, bold: true, color: { argb: 'FF7A2E44' } } },
+      { text: '      Günlük Adisyon Raporu', font: { size: 13, bold: true, color: { argb: 'FF9A6F86' } } },
+    ],
+  }
+  brand.alignment = { vertical: 'middle', horizontal: 'left' }
   const logo = await fetchLogoBuffer()
   if (logo) {
     const imgId = wb.addImage({ buffer: logo, extension: 'png' })
-    ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 150, height: 46 } })
+    ws.addImage(imgId, { tl: { col: 0.12, row: 0.08 }, ext: { width: 38, height: 38 } })
   }
 
-  ws.mergeCells('C1:H1')
-  const t = ws.getCell('C1')
-  t.value = 'Günlük Adisyon Raporu'
-  t.font = { size: 16, bold: true, color: { argb: 'FF7A2E44' } }
-  t.alignment = { vertical: 'middle', horizontal: 'right' }
-  ws.mergeCells('C2:H2')
-  const sub = ws.getCell('C2')
-  sub.value = `${meta.dateLabel}${meta.filtered ? ' · (filtrelenmiş görünüm)' : ''}`
+  // 2. satır: tarih
+  ws.getRow(2).height = 18
+  ws.mergeCells('A2:H2')
+  const sub = ws.getCell('A2')
+  sub.value = `  ${meta.dateLabel}${meta.filtered ? '   ·   (filtrelenmiş görünüm)' : ''}`
   sub.font = { size: 10, color: { argb: 'FF8A7480' } }
-  sub.alignment = { horizontal: 'right' }
-  ws.getRow(1).height = 26
-  ws.getRow(2).height = 15
+  sub.alignment = { vertical: 'middle', horizontal: 'left' }
   ws.getRow(3).height = 6
 
   const head = ws.addRow(['Saat', 'İçerik', 'Açıklama', 'Danışan', 'İşlemi Yapan Personel', 'Yöntem', 'Tutar', 'Durum'])
-  head.height = 20
-  head.eachCell((cell) => {
+  head.height = 24
+  head.eachCell((cell, col) => {
     cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA63E5F' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'left' }
+    cell.alignment = { vertical: 'middle', horizontal: col === 7 ? 'right' : 'left', wrapText: true }
   })
-  head.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' }
 
   let zebra = false
   for (const r of rows) {
@@ -538,10 +544,9 @@ export async function exportDailyAdisyonToExcel(
       r.status,
     ])
     row.getCell(7).numFmt = '#,##0.00 ₺'
-    row.getCell(7).alignment = { horizontal: 'right' }
-    row.eachCell((cell) => {
+    row.eachCell((cell, col) => {
       cell.font = { size: 10, color: { argb: 'FF352432' } }
-      cell.alignment = { ...cell.alignment, vertical: 'middle' }
+      cell.alignment = { vertical: 'top', horizontal: col === 7 ? 'right' : 'left', wrapText: col === 3 || col === 4 || col === 5 }
       if (zebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7FA' } }
       cell.border = { bottom: { style: 'hair', color: { argb: 'FFF3E4EA' } } }
     })
