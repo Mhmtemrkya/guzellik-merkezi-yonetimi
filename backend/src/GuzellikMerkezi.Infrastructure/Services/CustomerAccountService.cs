@@ -342,12 +342,18 @@ public sealed class CustomerAccountService : ICustomerAccountService
             if (offset < earliestOffset) earliestOffset = offset;
             if (offset > lastInstallmentOffset) lastInstallmentOffset = offset;
         }
-        // Yıllık görünüm için en azından içinde bulunulan yılın Ocak ayına kadar geriye git.
+        // Pencere sınırları — KURAL: "bu ay" (offset 0) HER ZAMAN görünür.
+        //  • start: yıl başına ya da en erken taksite kadar geri gider (ama asla >0).
+        //  • end:   son taksit ayına kadar ileri gider (ama asla <0).
+        //  • üst sınırda önce GEÇMİŞTEN kırpılır ki bu ay + gelecek taksitler gizlenmesin;
+        //    çok ileri-tarihli plan varsa bu ay yine de gösterilir.
         var startOfYearOffset = -(today.Month - 1);
-        var startOffset = Math.Min(earliestOffset, startOfYearOffset);
-        var totalSpan = lastInstallmentOffset - startOffset + 1;
-        if (totalSpan < months) totalSpan = months;                 // taban ay sayısını koru
-        if (totalSpan > hardCapMonths) totalSpan = hardCapMonths;   // üst sınırı aşma (gelecek uçtan kırpılır)
+        var startOffset = Math.Min(Math.Min(earliestOffset, startOfYearOffset), 0);
+        var endOffset = Math.Max(lastInstallmentOffset, 0);
+        if (endOffset - startOffset + 1 < months) endOffset = startOffset + months - 1; // tabanı koru (geleceği uzat)
+        if (endOffset - startOffset + 1 > hardCapMonths) startOffset = endOffset - hardCapMonths + 1; // geçmişten kırp
+        if (startOffset > 0) { startOffset = 0; endOffset = Math.Min(endOffset, hardCapMonths - 1); }
+        var totalSpan = endOffset - startOffset + 1;
 
         var monthly = new List<AccountMonthlyInstallmentDto>(totalSpan);
         for (var i = 0; i < totalSpan; i++)
