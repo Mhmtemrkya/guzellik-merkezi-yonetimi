@@ -104,10 +104,10 @@ public sealed class Adisyon : Entity
         Touch();
     }
 
-    public AdisyonItem AddItem(AdisyonItemType type, Guid? refId, string description, decimal quantity, decimal unitPrice, Guid? staffMemberId, bool coveredByPackage)
+    public AdisyonItem AddItem(AdisyonItemType type, Guid? refId, string description, decimal quantity, decimal unitPrice, Guid? staffMemberId, bool coveredByPackage, string? method = null)
     {
         EnsureOpen();
-        var item = new AdisyonItem(Id, type, refId, description, quantity, unitPrice, staffMemberId, coveredByPackage);
+        var item = new AdisyonItem(Id, type, refId, description, quantity, unitPrice, staffMemberId, coveredByPackage, method);
         _items.Add(item);
         Touch();
         return item;
@@ -150,7 +150,7 @@ public sealed class AdisyonItem : Entity
 {
     private AdisyonItem() { }
 
-    public AdisyonItem(Guid adisyonId, AdisyonItemType type, Guid? refId, string description, decimal quantity, decimal unitPrice, Guid? staffMemberId, bool coveredByPackage)
+    public AdisyonItem(Guid adisyonId, AdisyonItemType type, Guid? refId, string description, decimal quantity, decimal unitPrice, Guid? staffMemberId, bool coveredByPackage, string? method = null)
     {
         AdisyonId = adisyonId;
         Type = type;
@@ -161,6 +161,8 @@ public sealed class AdisyonItem : Entity
         StaffMemberId = staffMemberId;
         // Paketten karşılanma yalnızca hizmet/paket-kullanım kalemleri için anlamlı.
         CoveredByPackage = coveredByPackage || type == AdisyonItemType.PackageUse;
+        // Ödeme yöntemi yalnızca Tahsilat kalemlerinde anlamlı (cash/card/transfer).
+        Method = type == AdisyonItemType.Payment && !string.IsNullOrWhiteSpace(method) ? method.Trim().ToLowerInvariant() : null;
     }
 
     public Guid AdisyonId { get; private set; }
@@ -172,6 +174,8 @@ public sealed class AdisyonItem : Entity
     public decimal UnitPrice { get; private set; }
     public Guid? StaffMemberId { get; private set; }
     public bool CoveredByPackage { get; private set; }
+    /// <summary>Tahsilat kaleminin ödeme yöntemi: cash / card / transfer (diğer kalemlerde null).</summary>
+    public string? Method { get; private set; }
 
     public decimal LineTotal => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
 }

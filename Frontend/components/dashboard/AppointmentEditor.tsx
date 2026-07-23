@@ -601,39 +601,9 @@ export default function AppointmentEditor({
                   {/* CREATE — müşteriye satılan paket/hizmet seçimi (katalog değil) */}
                   {mode === 'create' && (
                     <section className="space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/[0.65]">
-                          <Layers className="h-3 w-3" /> Satın alınan paket / hizmet
-                          <span className="normal-case tracking-normal text-[#352432]/[0.40]">· randevu bu seanslardan birine açılır, tamamlanınca düşer</span>
-                        </div>
-                        {selectedCustomer && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <PackageSaleDialog
-                              tenantId={tenantId}
-                              stayOnPage
-                              presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
-                              onDone={() => setSessRefreshKey((k) => k + 1)}
-                              triggerLabel="Paket satışı yap"
-                              triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#ffe9f0]"
-                            />
-                            <PackageSaleDialog
-                              tenantId={tenantId}
-                              serviceSale
-                              stayOnPage
-                              presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
-                              onDone={() => setSessRefreshKey((k) => k + 1)}
-                              triggerLabel="Hizmet satışı yap"
-                              triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-white px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setAdisyonOpen(true)}
-                              className="inline-flex !min-h-9 items-center gap-1.5 rounded-xl border border-[#efbfd0] bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
-                            >
-                              <ReceiptText className="h-3.5 w-3.5" /> Adisyon
-                            </button>
-                          </div>
-                        )}
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/[0.65]">
+                        <Layers className="h-3 w-3" /> Satın alınan paket / hizmet
+                        <span className="normal-case tracking-normal text-[#352432]/[0.40]">· randevu bu seanslardan birine açılır, tamamlanınca düşer</span>
                       </div>
                       {!values.customerId ? (
                         <div className="rounded-[22px] border border-dashed border-[#ead8df]/[0.80] bg-white/[0.70] p-8 text-center text-[12px] text-[#352432]/[0.55]">
@@ -648,7 +618,7 @@ export default function AppointmentEditor({
                         <div className="rounded-[22px] border border-amber-200/[0.70] bg-amber-50/[0.55] p-6 text-center">
                           <Package className="mx-auto h-7 w-7 text-amber-500/[0.70]" strokeWidth={1.4} />
                           <div className="mt-3 text-[12px] font-medium text-amber-800">Bu müşterinin randevuya uygun (kalan seanslı) paket/hizmeti yok.</div>
-                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Yukarıdaki &quot;Paket satışı yap&quot; ya da &quot;Hizmet satışı yap&quot; ile buradan satış yapabilirsin; onaylandığında seanslar burada anında listelenir.</div>
+                          <div className="mt-1 text-[11px] text-amber-700/[0.80]">Aşağıdaki &quot;Paket satışı yap&quot; ya da &quot;Hizmet satışı yap&quot; ile buradan satış yapabilirsin; onaylandığında seanslar burada anında listelenir.</div>
                         </div>
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -668,6 +638,35 @@ export default function AppointmentEditor({
                               />
                             </motion.div>
                           ))}
+                        </div>
+                      )}
+                      {selectedCustomer && (
+                        <div className="flex flex-wrap items-center gap-2 border-t border-[#ead8df]/[0.70] pt-4">
+                          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#352432]/[0.42]">Bu müşteriye sat:</span>
+                          <PackageSaleDialog
+                            tenantId={tenantId}
+                            stayOnPage
+                            presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
+                            onDone={() => setSessRefreshKey((k) => k + 1)}
+                            triggerLabel="Paket satışı yap"
+                            triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-[#fff4f8] px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#ffe9f0]"
+                          />
+                          <PackageSaleDialog
+                            tenantId={tenantId}
+                            serviceSale
+                            stayOnPage
+                            presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
+                            onDone={() => setSessRefreshKey((k) => k + 1)}
+                            triggerLabel="Hizmet satışı yap"
+                            triggerClassName="!min-h-9 rounded-xl border border-[#efbfd0] bg-white px-3.5 !py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAdisyonOpen(true)}
+                            className="inline-flex !min-h-9 items-center gap-1.5 rounded-xl border border-[#efbfd0] bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-[#c85776] hover:bg-[#fff4f8]"
+                          >
+                            <ReceiptText className="h-3.5 w-3.5" /> Adisyon
+                          </button>
                         </div>
                       )}
                     </section>

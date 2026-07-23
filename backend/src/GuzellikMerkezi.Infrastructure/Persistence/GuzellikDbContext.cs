@@ -869,6 +869,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         item.HasKey(x => x.Id);
         item.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
         item.Property(x => x.Description).HasMaxLength(300).IsRequired();
+        item.Property(x => x.Method).HasMaxLength(32);
         item.Property(x => x.Quantity).HasPrecision(18, 2);
         item.Property(x => x.UnitPrice).HasPrecision(18, 2);
         item.HasIndex(x => x.AdisyonId);

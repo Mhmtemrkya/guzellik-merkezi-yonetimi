@@ -134,7 +134,7 @@ public sealed class AdisyonService : IAdisyonService
         AdisyonItem item;
         try
         {
-            item = adisyon.AddItem(request.Type, request.RefId, request.Description, request.Quantity, request.UnitPrice, request.StaffMemberId, request.CoveredByPackage);
+            item = adisyon.AddItem(request.Type, request.RefId, request.Description, request.Quantity, request.UnitPrice, request.StaffMemberId, request.CoveredByPackage, request.Method);
         }
         catch (DomainException ex)
         {
@@ -418,15 +418,26 @@ public sealed class AdisyonService : IAdisyonService
                     .SetProperty(a => a.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
         }
 
-        // 5) Tahsilatı cariye + kasaya işle (taksitleri yeniden böler — 1F).
-        // Yöntem "cash" (nakit) olarak yazılır: POS/adisyon tahsilatı kasa kapanışının
-        // nakit kovasına düşsün ve yöntem kırılımına entegre olsun. (Eski "Adisyon" değeri
-        // hiçbir kovaya düşmüyordu.) Referans ADS-... ile kaynak yine adisyon olarak izlenir.
+        // 5) Tahsilatı cariye + kasaya işle — ÖDEME YÖNTEMİNE göre ayrı kayıt (nakit/kart/havale).
+        // Böylece kasa kapanışı ve günlük adisyon yöntem kırılımı doğru olur; yöntem yoksa "cash" varsayılır.
+        // (Eski davranış her şeyi tek "Adisyon"/"cash" yazıyordu.) Referans ADS-... ile kaynak izlenir.
         if (accountId is not null && payment > 0)
         {
-            var payResult = await _accounts.RegisterPaymentAsync(tenantId, accountId.Value,
-                new RegisterAccountPaymentRequest(payment, "cash", $"ADS-{adisyon.Id:N}".Substring(0, 16), nowUtc), cancellationToken);
-            if (payResult.IsFailure) return Result<AdisyonDto>.Failure(payResult.Error);
+            var reference = $"ADS-{adisyon.Id:N}".Substring(0, 16);
+            var byMethod = adisyon.Items
+                .Where(i => i.Type == AdisyonItemType.Payment && i.LineTotal > 0)
+                .GroupBy(i => string.IsNullOrWhiteSpace(i.Method) ? "cash" : i.Method!)
+                .Select(g => new { Method = g.Key, Amount = g.Sum(i => i.LineTotal) })
+                .ToList();
+            // Güvenlik: kalem toplamı PaymentTotal ile uyuşmazsa tek "cash" kaydına düş.
+            if (byMethod.Count == 0 || byMethod.Sum(m => m.Amount) != payment)
+                byMethod = new[] { new { Method = "cash", Amount = payment } }.ToList();
+            foreach (var m in byMethod)
+            {
+                var payResult = await _accounts.RegisterPaymentAsync(tenantId, accountId.Value,
+                    new RegisterAccountPaymentRequest(m.Amount, m.Method, reference, nowUtc), cancellationToken);
+                if (payResult.IsFailure) return Result<AdisyonDto>.Failure(payResult.Error);
+            }
         }
 
         // 5b) Sadakat puanı: onaylanan tahsilata göre kazanım (4B).
@@ -688,7 +699,8 @@ public sealed class AdisyonService : IAdisyonService
                 x.Item.Type, x.Item.Description, x.Item.Quantity, x.Item.LineTotal,
                 x.Item.StaffMemberId,
                 x.Item.StaffMemberId.HasValue && staffMap.TryGetValue(x.Item.StaffMemberId.Value, out var sn) ? sn : null,
-                x.Status))
+                x.Status,
+                x.Item.Method))
             .ToArray();
 
         var paymentTotal = rows.Where(r => r.Type == AdisyonItemType.Payment).Sum(r => r.Amount);

@@ -188,6 +188,7 @@ Future<void> _collect(ApiClient api, String customerId, String customerName,
     'unitPrice': amount,
     'staffMemberId': null,
     'coveredByPackage': false,
+    'method': method,
   });
   await api.post('/api/admin/adisyonlar/$adisyonId/approve', {});
 }

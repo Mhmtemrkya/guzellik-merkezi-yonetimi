@@ -131,7 +131,7 @@ export default function CompleteAppointmentDialog({
     if (!adisyonId) throw new Error('Tahsilat için adisyon açılamadı.')
     await adminApi.addAdisyonItem(
       adisyonId,
-      { type: 'Payment', refId: null, description: 'Randevu tahsilatı', quantity: 1, unitPrice: amt, staffMemberId: null, coveredByPackage: false },
+      { type: 'Payment', refId: null, description: 'Randevu tahsilatı', quantity: 1, unitPrice: amt, staffMemberId: null, coveredByPackage: false, method: mth },
       tenantId,
     )
     await adminApi.approveAdisyon(adisyonId, tenantId)

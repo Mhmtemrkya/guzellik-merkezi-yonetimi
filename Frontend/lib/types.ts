@@ -1403,6 +1403,7 @@ export interface ApiDailyAdisyonRow {
   staffMemberId?: string | null
   staffName?: string | null
   adisyonStatus?: AdisyonStatusKey | string | number
+  method?: string | null
 }
 
 export interface ApiDailyAdisyon {
@@ -1429,6 +1430,7 @@ export interface DailyAdisyonRow {
   staffMemberId: string | null
   staffName: string | null
   adisyonStatus: AdisyonStatusKey
+  method: string | null
 }
 
 export interface DailyAdisyon {

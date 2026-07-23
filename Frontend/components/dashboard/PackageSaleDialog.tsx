@@ -717,18 +717,21 @@ export default function PackageSaleDialog({
                     />
                   </label>
                 )}
-                <label className={labelCls}>
-                  Peşinat (ops.)
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={downPayment}
-                    onChange={(e) => setDownPayment(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0,00"
-                    className={inputCls}
-                  />
-                </label>
+                {/* Hizmet satışında peşinat alınmaz (kullanıcı talebi); paket/ürün satışında kalır. */}
+                {!isServiceSale && (
+                  <label className={labelCls}>
+                    Peşinat (ops.)
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={downPayment}
+                      onChange={(e) => setDownPayment(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="0,00"
+                      className={inputCls}
+                    />
+                  </label>
+                )}
               </div>
 
               {/* Ödeme planı: peşin ya da taksit — taksit cariye onayda kurulur */}

@@ -729,6 +729,7 @@ export function normalizeDailyAdisyon(d: ApiDailyAdisyon | null | undefined): Da
     staffMemberId: r.staffMemberId ?? null,
     staffName: r.staffName ?? null,
     adisyonStatus: normalizeAdisyonStatus(typeof r.adisyonStatus === 'number' ? String(r.adisyonStatus) : r.adisyonStatus),
+    method: r.method ?? null,
   }))
   return {
     fromUtc: d?.fromUtc || '',

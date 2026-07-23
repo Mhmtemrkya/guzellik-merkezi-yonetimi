@@ -53,7 +53,8 @@ public sealed record AddAdisyonItemRequest(
     decimal Quantity,
     decimal UnitPrice,
     Guid? StaffMemberId,
-    bool CoveredByPackage);
+    bool CoveredByPackage,
+    string? Method = null);
 
 public sealed record UpdateAdisyonRequest(
     Guid? CustomerAccountId,
@@ -79,7 +80,8 @@ public sealed record DailyAdisyonRowDto(
     decimal Amount,
     Guid? StaffMemberId,
     string? StaffName,
-    AdisyonStatus AdisyonStatus);
+    AdisyonStatus AdisyonStatus,
+    string? Method = null);
 
 /// <summary>Bir günün adisyon aktivitesi: kime ne yapıldı (saatli), kim yaptı, tahsilatlar ve gün toplamları.</summary>
 public sealed record DailyAdisyonDto(

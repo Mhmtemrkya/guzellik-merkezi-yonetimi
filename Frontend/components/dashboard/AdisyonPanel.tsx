@@ -183,6 +183,8 @@ export default function AdisyonPanel({
       return
     }
 
+    // Tahsilat kaleminin ödeme yöntemi (nakit/kart/havale) — kanonik değere çevrilir.
+    const methodMap: Record<string, string> = { Nakit: 'cash', Kart: 'card', 'Havale/EFT': 'transfer' }
     const body = {
       type: form.type,
       refId,
@@ -191,6 +193,7 @@ export default function AdisyonPanel({
       unitPrice,
       staffMemberId: form.staffMemberId || null,
       coveredByPackage: isPackageUse,
+      method: isPayment ? (methodMap[form.method] || 'cash') : null,
     }
     if (!adisyon) return
     run(async () => {
