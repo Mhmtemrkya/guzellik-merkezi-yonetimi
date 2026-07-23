@@ -59,7 +59,10 @@ const METHOD_OPTIONS: { value: string; label: string }[] = [
 ]
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  // YEREL tarih (UTC değil): toISOString() UTC verir; gece yarısından sonra (UTC+3)
+  // bir önceki güne kayar → tahsilat düne işlenir, günlük ciro/kasa/kapanışta görünmez.
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function CollectionDialog({

@@ -148,7 +148,8 @@ function OnMuhasebePageInner() {
     const t = new Date(iso).getTime()
     return !Number.isNaN(t) && t >= monthStart.getTime() && t < monthEnd.getTime()
   }
-  const todayIso = new Date().toISOString().slice(0, 10)
+  // YEREL tarih (UTC değil) — gece yarısından sonra gün kaymasını önler (tahsilat/gider bugüne işlensin).
+  const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
 
   // Ön muhasebe standardı: GELİR = fiili tahsilat (kasaya giren para). Randevu cirosu
   // tahakkuktur; cari/adisyon üzerinden tahsil edildiğinde zaten paymentsMonth'a düşer —

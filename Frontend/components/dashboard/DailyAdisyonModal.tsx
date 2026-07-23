@@ -153,125 +153,28 @@ export default function DailyAdisyonModal({
 
   const [exporting, setExporting] = useState(false)
 
-  // Ödeme yöntemi etiketi (nakit/kart/havale) — eski kayıtlarda yöntem yoksa Nakit varsay.
-  const methodLabel = (m: string | null): string => {
-    const k = (m || '').toLowerCase()
-    if (k === 'card') return 'Kart'
-    if (k === 'transfer') return 'Havale/EFT'
-    if (k === 'check') return 'Çek'
-    return 'Nakit'
-  }
-  const methodKey = (m: string | null): 'cash' | 'card' | 'transfer' => {
-    const k = (m || '').toLowerCase()
-    if (k === 'card') return 'card'
-    if (k === 'transfer') return 'transfer'
-    return 'cash'
-  }
-
-  // Şık Excel dışa aktarma — BeautyAsist logosu + yöntem kırılımlı toplam (exceljs).
+  // Şık Excel dışa aktarma — logolu, yöntem kırılımlı toplam. exceljs statik olarak
+  // lib/excel'de tutulur; buradan yalnız kendi modülümüz tembel yüklenir (güvenilir).
   const exportExcel = async () => {
     setExporting(true)
     try {
-      const ExcelJS = (await import('exceljs')).default
-      const { saveAs } = await import('file-saver')
-      const wb = new ExcelJS.Workbook()
-      wb.creator = 'BeautyAsist'
-      const ws = wb.addWorksheet('Günlük Adisyon', { views: [{ showGridLines: false }] })
-      ws.columns = [
-        { width: 9 }, { width: 15 }, { width: 34 }, { width: 22 }, { width: 24 }, { width: 13 }, { width: 14 }, { width: 13 },
-      ]
-
-      // Logo (public/logo.png) — sol üst
-      try {
-        const res = await fetch('/logo.png')
-        const buf = await res.arrayBuffer()
-        const imgId = wb.addImage({ buffer: buf, extension: 'png' })
-        ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 150, height: 46 } })
-      } catch {
-        /* logo yüklenemezse başlıkla devam */
-      }
-
-      // Başlık bloğu (logonun sağında)
-      ws.mergeCells('C1:H1')
-      const t = ws.getCell('C1')
-      t.value = 'Günlük Adisyon Raporu'
-      t.font = { size: 16, bold: true, color: { argb: 'FF7A2E44' } }
-      t.alignment = { vertical: 'middle', horizontal: 'right' }
-      ws.mergeCells('C2:H2')
-      const s = ws.getCell('C2')
-      s.value = `${dateLabel}${anyFilter ? ' · (filtrelenmiş görünüm)' : ''}`
-      s.font = { size: 10, color: { argb: 'FF8A7480' } }
-      s.alignment = { horizontal: 'right' }
-      ws.getRow(1).height = 26
-      ws.getRow(2).height = 15
-      ws.getRow(3).height = 6
-
-      // Kolon başlıkları
-      const head = ws.addRow(['Saat', 'İçerik', 'Açıklama', 'Danışan', 'İşlemi Yapan Personel', 'Yöntem', 'Tutar', 'Durum'])
-      head.height = 20
-      head.eachCell((cell) => {
-        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA63E5F' } }
-        cell.alignment = { vertical: 'middle', horizontal: 'left' }
-      })
-      head.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' }
-
-      // Satırlar (hizmetler + tahsilatlar dahil)
-      let zebra = false
-      for (const r of filteredRows) {
-        const isPayment = r.type === 'Payment'
-        const isPkgUse = r.type === 'PackageUse'
-        const isDiscount = r.type === 'Discount'
-        const row = ws.addRow([
-          r.occurredAtUtc ? timeFmt.format(new Date(r.occurredAtUtc)) : '',
-          TYPE_LABELS[r.type],
-          r.description,
-          r.customerName || '',
-          r.staffName || '',
-          isPayment ? methodLabel(r.method) : isPkgUse ? 'Paketten' : '',
-          isPkgUse ? 0 : isDiscount ? -r.amount : r.amount,
-          r.adisyonStatus === 'Open' ? 'Açık' : 'Tamamlandı',
-        ])
-        row.getCell(7).numFmt = '#,##0.00 ₺'
-        row.getCell(7).alignment = { horizontal: 'right' }
-        row.eachCell((cell) => {
-          cell.font = { size: 10, color: { argb: 'FF352432' } }
-          cell.alignment = { ...cell.alignment, vertical: 'middle' }
-          if (zebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7FA' } }
-          cell.border = { bottom: { style: 'hair', color: { argb: 'FFF3E4EA' } } }
-        })
-        row.getCell(2).font = { size: 9, bold: true, color: { argb: 'FFA63E5F' } }
-        zebra = !zebra
-      }
-
-      // Yöntem kırılımı (tahsilatlar) + toplamlar
-      const byMethod = { cash: 0, card: 0, transfer: 0 }
-      let ciro = 0
-      let tahsilat = 0
-      for (const r of filteredRows) {
-        if (r.type === 'Payment') { byMethod[methodKey(r.method)] += r.amount; tahsilat += r.amount }
-        else if (r.type === 'Service' || r.type === 'Product' || r.type === 'PackageSale' || r.type === 'Extra') ciro += r.amount
-        else if (r.type === 'Discount') ciro -= r.amount
-      }
-
-      ws.addRow([])
-      const addTotal = (label: string, value: number, opts?: { strong?: boolean; color?: string }) => {
-        const rr = ws.addRow(['', '', '', '', '', label, value, ''])
-        rr.getCell(6).font = { bold: !!opts?.strong, size: opts?.strong ? 11 : 10, color: { argb: opts?.color || 'FF5D4A56' } }
-        rr.getCell(6).alignment = { horizontal: 'right' }
-        rr.getCell(7).numFmt = '#,##0.00 ₺'
-        rr.getCell(7).font = { bold: true, size: opts?.strong ? 12 : 10, color: { argb: opts?.color || 'FF241923' } }
-        rr.getCell(7).alignment = { horizontal: 'right' }
-        return rr
-      }
-      addTotal('Nakit', byMethod.cash, { color: 'FF2F9E72' })
-      addTotal('Kart', byMethod.card, { color: 'FF2563EB' })
-      addTotal('Havale / EFT', byMethod.transfer, { color: 'FF7C3AED' })
-      addTotal('Toplam Tahsilat', tahsilat, { strong: true, color: 'FF2F9E72' })
-      addTotal('Toplam Ciro', ciro, { strong: true, color: 'FFA63E5F' })
-
-      const buffer = await wb.xlsx.writeBuffer()
-      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `gunluk-adisyon-${dayKey}.xlsx`)
+      const { exportDailyAdisyonToExcel } = await import('@/lib/excel')
+      await exportDailyAdisyonToExcel(
+        filteredRows.map((r) => ({
+          time: r.occurredAtUtc ? timeFmt.format(new Date(r.occurredAtUtc)) : '',
+          typeLabel: TYPE_LABELS[r.type],
+          type: r.type,
+          description: r.description,
+          customerName: r.customerName || '',
+          staffName: r.staffName || '',
+          method: r.method,
+          amount: r.amount,
+          status: r.adisyonStatus === 'Open' ? 'Açık' : 'Tamamlandı',
+        })),
+        { dateLabel, dayKey, filtered: anyFilter },
+      )
+    } catch (e) {
+      console.error('Excel dışa aktarma hatası', e)
     } finally {
       setExporting(false)
     }
