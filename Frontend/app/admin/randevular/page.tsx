@@ -751,40 +751,63 @@ function RandevularPageInner() {
   }
 
   // Çizelge detay paneli için: seçilen müşterinin açık adisyon toplamlarını getir (ödeme/cari).
-  const loadOpenAdisyon = useCallback(
-    async (cid: string, customerName?: string) => {
-      const [a, accRes] = await Promise.all([
-        adminApi.openAdisyon<{ chargeTotal?: number; paymentTotal?: number }>(cid, tenantId).catch(() => null),
-        customerName
-          ? adminApi.accounts<ApiCustomerAccount>({ tenantId, search: customerName, page: 1, pageSize: 30 }).catch(() => null)
-          : Promise.resolve(null),
-      ])
-      const accounts = accRes ? apiItems(accRes).map((x, i) => normalizeAccount(x, i)) : []
-      const match = accounts.find((x) => x.customerId === cid)
-      if (!a && !match) return null
-      return {
-        chargeTotal: Number(a?.chargeTotal || 0),
-        paymentTotal: Number(a?.paymentTotal || 0),
-        cariRemaining: match ? match.remainingAmount : 0,
-        accountId: match?.id,
+  // Müşterinin cari hesap id'sini bul — İSİM ARAMA YOK (Customer.FullName şifreli, aranamaz).
+  // Kaynak: açık adisyonun customerAccountId'si ya da paket seanslarındaki customerAccountId.
+  const findAccountIdFor = useCallback(
+    async (cid: string, openAdisyon?: { customerAccountId?: string | null } | null): Promise<string | null> => {
+      const fromAdisyon = openAdisyon?.customerAccountId ? String(openAdisyon.customerAccountId) : null
+      if (fromAdisyon && fromAdisyon !== 'null') return fromAdisyon
+      try {
+        const sessions = await adminApi.customerSessions<{ customerAccountId?: string | null }>(cid, tenantId)
+        const id = (Array.isArray(sessions) ? sessions : []).map((s) => s?.customerAccountId).find((x) => !!x && String(x) !== 'null')
+        return id ? String(id) : null
+      } catch {
+        return null
       }
     },
     [tenantId],
   )
 
-  // Günlük karttan doğrudan tahsilat: müşterinin carisini bul, CollectionDialog aç.
-  const openCollectFor = async (customerId: string, customerName?: string): Promise<void> => {
+  const loadOpenAdisyon = useCallback(
+    async (cid: string) => {
+      const a = await adminApi
+        .openAdisyon<{ chargeTotal?: number; paymentTotal?: number; customerAccountId?: string | null }>(cid, tenantId)
+        .catch(() => null)
+      const accountId = await findAccountIdFor(cid, a)
+      let cariRemaining = 0
+      let accId: string | undefined
+      if (accountId) {
+        const acc = await adminApi.account<ApiCustomerAccount>(accountId, tenantId).catch(() => null)
+        if (acc) {
+          const n = normalizeAccount(acc, 0)
+          cariRemaining = n.remainingAmount
+          accId = n.id
+        }
+      }
+      if (!a && !accId) return null
+      return {
+        chargeTotal: Number(a?.chargeTotal || 0),
+        paymentTotal: Number(a?.paymentTotal || 0),
+        cariRemaining,
+        accountId: accId,
+      }
+    },
+    [tenantId, findAccountIdFor],
+  )
+
+  // Günlük karttan doğrudan tahsilat: bilinen cari hesabı (accountId) getirip CollectionDialog aç.
+  const openCollectFor = async (customerId: string, accountId?: string): Promise<void> => {
     setScheduleDate(null) // gün modalını kapat (z-index; adisyon akışıyla aynı)
     setActionError('')
+    const id = accountId || (await findAccountIdFor(customerId, null))
+    if (!id) {
+      setActionError('Bu müşterinin cari hesabı yok — tahsilat için önce satış/cari açın.')
+      return
+    }
     try {
-      const res = await adminApi.accounts<ApiCustomerAccount>({ tenantId, search: customerName || '', page: 1, pageSize: 50 })
-      const items = apiItems(res).map((a, i) => normalizeAccount(a, i))
-      const match = items.find((a) => a.customerId === customerId)
-      if (!match) {
-        setActionError('Bu müşterinin cari hesabı yok — tahsilat için önce satış/cari açın.')
-        return
-      }
-      setCollectTarget({ accounts: items, accountId: match.id })
+      const acc = await adminApi.account<ApiCustomerAccount>(id, tenantId)
+      const n = normalizeAccount(acc, 0)
+      setCollectTarget({ accounts: [n], accountId: n.id })
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Cari hesap alınamadı.')
     }
@@ -1855,7 +1878,7 @@ function RandevularPageInner() {
               }
             : undefined
         }
-        onCollect={!isStaffUser ? (customerId, customerName) => void openCollectFor(customerId, customerName) : undefined}
+        onCollect={!isStaffUser ? (customerId, _customerName, accountId) => void openCollectFor(customerId, accountId) : undefined}
         waitlist={waitlistRows}
         onReschedule={
           !isStaffUser

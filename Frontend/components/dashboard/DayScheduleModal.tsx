@@ -323,8 +323,8 @@ export interface DayScheduleModalProps {
   loadOpenAdisyon?: (customerId: string, customerName?: string) => Promise<PaymentInfo | null>
   /** Müşterinin adisyon kartını modal olarak aç (kalem/satış, ödeme/peşinat, onay, silme). */
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
-  /** Müşteriden doğrudan tahsilat al (cari hesap ödeme modalı). */
-  onCollect?: (customerId: string, customerName?: string) => void
+  /** Müşteriden doğrudan tahsilat al (cari hesap ödeme modalı). accountId biliniyorsa iletilir. */
+  onCollect?: (customerId: string, customerName?: string, accountId?: string) => void
   /** Aktif bekleme listesi (sağ ray "Bekleme Listesi" kartı). */
   waitlist?: WaitlistLite[]
   /** Sürükle-bırak ile randevu saatini (ve farklı sütuna bırakınca personelini) değiştir; süre korunur. */
@@ -1203,7 +1203,7 @@ function DetailPanel({
   onComplete?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
-  onCollect?: (customerId: string, customerName?: string) => void
+  onCollect?: (customerId: string, customerName?: string, accountId?: string) => void
   onClose: () => void
 }) {
   const st = statusStyle[appt.status] || statusStyle.bekliyor
@@ -1220,6 +1220,9 @@ function DetailPanel({
   const canApprove = appt.status === 'taslak'
   // Planlanan/onaylanan randevu işleme alınabilir (müşteri koltukta → mor kart).
   const canStart = appt.status === 'bekliyor' || appt.status === 'devam'
+  // Cari borç (varsa) — "Ödeme Al" yalnızca borç varken çıkar; accountId doğrudan tahsilat için.
+  const cariDebt = payment && payment !== 'loading' ? (payment.cariRemaining ?? 0) : 0
+  const cariAccountId = payment && payment !== 'loading' ? payment.accountId : undefined
 
   return (
     <div className="flex flex-col">
@@ -1292,7 +1295,7 @@ function DetailPanel({
           <Row label="Personel" value={appt.personel || '—'} />
         </div>
 
-        {/* Ödeme · cari — açık adisyon toplamları + (varsa) cari hesap borcu + tahsilat al */}
+        {/* Ödeme · cari — açık adisyon toplamları + (varsa) cari hesap borcu (tahsilat butonu aksiyonlarda) */}
         <div className="rounded-[12px] border border-[#efe1e7] bg-white px-3 py-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8a7480]">
             <Wallet className="h-3 w-3 text-[#c85776]" /> Ödeme · Cari
@@ -1328,15 +1331,6 @@ function DetailPanel({
                   <span className="font-bold tabular-nums text-rose-600">{formatTL(payment.cariRemaining ?? 0)}</span>
                 </div>
               )}
-              {onCollect && appt.customerId && (payment.cariRemaining ?? 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onCollect(appt.customerId as string, appt.musteri)}
-                  className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
-                >
-                  <Wallet className="h-3.5 w-3.5" /> Tahsilat Al
-                </button>
-              )}
             </div>
           ) : (
             <div className="py-1 text-[11.5px] text-[#a58d99]">Bekleyen ödeme / cari borç görünmüyor.</div>
@@ -1370,14 +1364,27 @@ function DetailPanel({
             </span>
           )}
         </div>
-        {onOpenAdisyon && appt.customerId && (
-          <button
-            type="button"
-            onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri)}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
-          >
-            <ReceiptText className="h-3.5 w-3.5" /> Adisyon / Ödeme al
-          </button>
+        {((onOpenAdisyon && appt.customerId) || (onCollect && appt.customerId && cariDebt > 0)) && (
+          <div className={`grid gap-2 ${onOpenAdisyon && appt.customerId && onCollect && cariDebt > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {onOpenAdisyon && appt.customerId && (
+              <button
+                type="button"
+                onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+              >
+                <ReceiptText className="h-3.5 w-3.5" /> Adisyon
+              </button>
+            )}
+            {onCollect && appt.customerId && cariDebt > 0 && (
+              <button
+                type="button"
+                onClick={() => onCollect(appt.customerId as string, appt.musteri, cariAccountId)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
+              >
+                <Wallet className="h-3.5 w-3.5" /> Ödeme Al
+              </button>
+            )}
+          </div>
         )}
         {canManage && appt.status === 'islemde' && onComplete && (
           <button
