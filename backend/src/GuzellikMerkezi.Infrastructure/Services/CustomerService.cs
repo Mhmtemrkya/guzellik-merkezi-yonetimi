@@ -37,6 +37,14 @@ public sealed class CustomerService : ICustomerService
 
     private static string MaskPhone(string? phone) => PhoneMask.Mask(phone);
 
+    // Mükerrer telefon karşılaştırması için rakam-normalize (DataImportService ile aynı mantık):
+    // yalnızca rakamlar, son 10 hane; baştaki 0'lar atılır.
+    private static string DigitsOf(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        return digits.Length > 10 ? digits[^10..] : digits.TrimStart('0');
+    }
+
     public async Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
     {
         // Performans: base64 fotoğraf (LONGTEXT) liste sorgusuna DAHİL EDİLMEZ — payload'ı 10-100x küçültür.
@@ -148,6 +156,21 @@ public sealed class CustomerService : ICustomerService
             return Result<CustomerDto>.Failure(Error.NotFound("Şube bulunamadı."));
         }
 
+        // Mükerrer telefon engeli: telefon şifreli saklandığından (AES-GCM rastgele nonce) DB'de
+        // UNIQUE index kurulamaz; import'la aynı şekilde rakam-normalize edip bellekte karşılaştırırız.
+        var newDigits = DigitsOf(request.Phone);
+        if (newDigits.Length >= 7)
+        {
+            var phones = await _db.Customers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => x.Phone)
+                .ToListAsync(cancellationToken);
+            if (phones.Any(p => DigitsOf(p) == newDigits))
+            {
+                return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı bir müşteri zaten var."));
+            }
+        }
+
         var customer = new Customer(tenantId, request.BranchId, request.FullName, request.Phone, request.Email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         customer.SetPhoto(request.PhotoUrl);
@@ -171,6 +194,21 @@ public sealed class CustomerService : ICustomerService
         // yazarsa (maske yok) normal güncellenir.
         var phone = PhoneMask.IsMasked(request.Phone) ? customer.Phone : request.Phone;
         var email = EmailMask.IsMasked(request.Email) ? customer.Email : request.Email;
+
+        // Telefon değişiyorsa başka bir müşteride kullanılmadığını doğrula (kendisi hariç).
+        var updatedDigits = DigitsOf(phone);
+        if (updatedDigits.Length >= 7 && updatedDigits != DigitsOf(customer.Phone))
+        {
+            var others = await _db.Customers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id != id)
+                .Select(x => x.Phone)
+                .ToListAsync(cancellationToken);
+            if (others.Any(p => DigitsOf(p) == updatedDigits))
+            {
+                return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı başka bir müşteri var."));
+            }
+        }
+
         customer.UpdateContact(request.FullName, phone, email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         if (request.PhotoUrl is not null) customer.SetPhoto(request.PhotoUrl);
