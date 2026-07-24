@@ -188,7 +188,7 @@ class CustomersScreen extends StatelessWidget {
           key: 'kvkkConsent',
           label: 'KVKK onayı var',
           type: CrudFieldType.toggle,
-          defaultValue: true,
+          defaultValue: false,
         ),
         CrudField(key: 'notes', label: 'Notlar', type: CrudFieldType.multiline),
       ],

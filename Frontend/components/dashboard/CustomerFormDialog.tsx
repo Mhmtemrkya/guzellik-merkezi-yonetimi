@@ -68,7 +68,7 @@ function initials(name: string): string {
 }
 
 function emptyValues(): CustomerFormValues {
-  return { fullName: '', phone: '', email: '', birthDate: '', gender: 'Female', kvkkConsent: true, notes: '', photoUrl: '' }
+  return { fullName: '', phone: '', email: '', birthDate: '', gender: 'Female', kvkkConsent: false, notes: '', photoUrl: '' }
 }
 
 export default function CustomerFormDialog({
