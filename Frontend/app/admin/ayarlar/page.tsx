@@ -4,7 +4,6 @@ import Link from 'next/link'
 import Topbar from '@/components/dashboard/Topbar'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
-import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
 import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
@@ -236,29 +235,6 @@ export default function AyarlarPage() {
                 ]}
               />
             )}
-            <ExcelTransferActions<SettingsBranch>
-              featureKey="excel.branches" moduleName="Şubeler" context={`${selectedInstitution?.name || 'Kurum'} · ${branches.length} şube`}
-              rows={branches}
-              sheet={{
-                subtitle: `${selectedInstitution?.name || 'Kurum'} şube kayıtları`,
-                columns: [
-                  { key: 'name', header: 'Şube', width: 26, type: 'text', accessor: (b) => b.name },
-                  { key: 'city', header: 'Şehir', width: 18, type: 'text', accessor: (b) => b.city },
-                  { key: 'isDefault', header: 'Varsayılan', width: 12, type: 'boolean', accessor: (b) => b.isDefault },
-                  { key: 'staffCount', header: 'Personel Kapasitesi', width: 18, type: 'number', accessor: (b) => b.staffCount },
-                  { key: 'roomCount', header: 'Oda Kapasitesi', width: 16, type: 'number', accessor: (b) => b.roomCount },
-                ],
-                totals: { name: 'TOPLAM', staffCount: branches.reduce((s, b) => s + b.staffCount, 0), roomCount: branches.reduce((s, b) => s + b.roomCount, 0) },
-              }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                for (const row of first.rows) {
-                  const name = String(row['Şube'] || '').trim(); if (!name) continue
-                  await adminApi.createBranch({ name, city: String(row['Şehir'] || ''), isDefault: String(row['Varsayılan'] || 'Hayır').toLocaleLowerCase('tr-TR') === 'evet', staffCount: Number(row['Personel Kapasitesi'] || 0), roomCount: Number(row['Oda Kapasitesi'] || 0) }, tenantId)
-                }
-                await reload(); refreshBranches()
-              }}
-            />
           </div>
         }
       />

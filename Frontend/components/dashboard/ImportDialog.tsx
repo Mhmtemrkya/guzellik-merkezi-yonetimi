@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
   Boxes,
+  BadgeCheck,
   CheckCircle2,
   FileSpreadsheet,
   Loader2,
@@ -47,6 +48,8 @@ interface ImportTotals {
   packagesSkipped: number
   productsCreated: number
   productsSkipped: number
+  staffCreated: number
+  staffSkipped: number
   failed: number
   errors: string[]
 }
@@ -60,6 +63,7 @@ const ENTITY_ICONS: Record<ImportEntityType, typeof Users> = {
   service: Scissors,
   package: Package,
   product: Boxes,
+  staff: BadgeCheck,
 }
 
 export default function ImportDialog({ open, onClose, entityType, onDone }: ImportDialogProps) {
@@ -87,7 +91,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
   const close = (): void => {
     if (step === 'importing') return // aktarım ortasında kapatma
     // Kayıt eklendiyse çağıran sayfa listesini tazelesin (dashboard'da onDone yok, zararsız).
-    if (step === 'done' && (totals?.customersCreated || totals?.servicesCreated || totals?.packagesCreated || totals?.productsCreated)) onDone?.()
+    if (step === 'done' && (totals?.customersCreated || totals?.servicesCreated || totals?.packagesCreated || totals?.productsCreated || totals?.staffCreated)) onDone?.()
     reset()
     onClose()
   }
@@ -139,6 +143,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
       packagesSkipped: 0,
       productsCreated: 0,
       productsSkipped: 0,
+      staffCreated: 0,
+      staffSkipped: 0,
       failed: 0,
       errors: [],
     }
@@ -150,7 +156,9 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
           ? analyzed.services
           : analyzed.entityType === 'product'
             ? analyzed.products
-            : analyzed.packages
+            : analyzed.entityType === 'staff'
+              ? analyzed.staff
+              : analyzed.packages
     const phoneless = analyzed.entityType === 'customer' ? analyzed.customers.length - rows.length : 0
     acc.failed += phoneless
     if (phoneless > 0) acc.errors.push(`${phoneless} satır geçerli telefon olmadığı için aktarılmadı.`)
@@ -164,6 +172,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
         if (analyzed.entityType === 'customer') body.customers = chunks[i]
         else if (analyzed.entityType === 'service') body.services = chunks[i]
         else if (analyzed.entityType === 'product') body.products = chunks[i]
+        else if (analyzed.entityType === 'staff') body.staff = chunks[i]
         else body.packages = chunks[i]
 
         const result = await adminApi.bulkImport<{
@@ -175,6 +184,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
           packagesSkipped: number
           productsCreated: number
           productsSkipped: number
+          staffCreated: number
+          staffSkipped: number
           failed: number
           errors: string[]
         }>(body)
@@ -187,6 +198,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
         acc.packagesSkipped += result.packagesSkipped ?? 0
         acc.productsCreated += result.productsCreated ?? 0
         acc.productsSkipped += result.productsSkipped ?? 0
+        acc.staffCreated += result.staffCreated ?? 0
+        acc.staffSkipped += result.staffSkipped ?? 0
         acc.failed += result.failed ?? 0
         if (result.errors?.length && acc.errors.length < 20) acc.errors.push(...result.errors.slice(0, 20 - acc.errors.length))
         setProgress(Math.round(((i + 1) / chunks.length) * 100))
@@ -206,6 +219,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
       return analyzed.customers.slice(0, 6).map((c) => [c.fullName, c.phone || '—', c.email || '—', c.birthDate || '—'])
     if (analyzed.entityType === 'service')
       return analyzed.services.slice(0, 6).map((s) => [s.name, s.category || '—', s.durationMinutes != null ? `${s.durationMinutes} dk` : '—', s.price != null ? `₺${s.price}` : '—'])
+    if (analyzed.entityType === 'staff')
+      return analyzed.staff.slice(0, 6).map((p) => [p.fullName, p.title || '—', p.phone || '—', p.commissionRate != null ? `%${p.commissionRate}` : '—'])
     if (analyzed.entityType === 'product')
       return analyzed.products.slice(0, 6).map((p) => [p.name, p.barcode || p.sku || '—', p.currentStock != null ? `${p.currentStock}` : '—', p.salePrice != null ? `₺${p.salePrice}` : '—'])
     // Pakette içerik önizlemesi önemli: hizmet kalemleri doğru çözüldü mü kullanıcı burada görür.
@@ -224,10 +239,12 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
         ? ['Hizmet', 'Kategori', 'Süre', 'Fiyat']
         : analyzed?.entityType === 'product'
           ? ['Ürün', 'Barkod / Stok Kodu', 'Stok', 'Satış Fiyatı']
-          : ['Paket', 'İçerik', 'Seans', 'Toplam Fiyat']
+          : analyzed?.entityType === 'staff'
+            ? ['Ad Soyad', 'Unvan', 'Telefon', 'Komisyon']
+            : ['Paket', 'İçerik', 'Seans', 'Toplam Fiyat']
 
-  const totalCreated = (totals?.customersCreated ?? 0) + (totals?.servicesCreated ?? 0) + (totals?.packagesCreated ?? 0) + (totals?.productsCreated ?? 0)
-  const totalSkipped = (totals?.customersSkipped ?? 0) + (totals?.servicesSkipped ?? 0) + (totals?.packagesSkipped ?? 0) + (totals?.productsSkipped ?? 0)
+  const totalCreated = (totals?.customersCreated ?? 0) + (totals?.servicesCreated ?? 0) + (totals?.packagesCreated ?? 0) + (totals?.productsCreated ?? 0) + (totals?.staffCreated ?? 0)
+  const totalSkipped = (totals?.customersSkipped ?? 0) + (totals?.servicesSkipped ?? 0) + (totals?.packagesSkipped ?? 0) + (totals?.productsSkipped ?? 0) + (totals?.staffSkipped ?? 0)
 
   return (
     <AnimatePresence>
@@ -360,7 +377,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                       <div className="mb-2 text-[11px] font-semibold text-[#7c6170]">
                         Veri türü {analyzed.autoDetected && <span className="ml-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">otomatik tespit</span>}
                       </div>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                         {(Object.keys(ENTITY_LABELS) as ImportEntityType[]).map((type) => {
                           const Icon = ENTITY_ICONS[type]
                           const active = analyzed.entityType === type

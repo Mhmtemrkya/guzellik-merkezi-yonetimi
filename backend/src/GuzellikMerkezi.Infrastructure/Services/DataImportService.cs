@@ -38,7 +38,7 @@ public sealed class DataImportService : IDataImportService
         }
 
         var errors = new List<string>();
-        int custCreated = 0, custSkipped = 0, svcCreated = 0, svcSkipped = 0, pkgCreated = 0, pkgSkipped = 0, prodCreated = 0, prodSkipped = 0, failed = 0;
+        int custCreated = 0, custSkipped = 0, svcCreated = 0, svcSkipped = 0, pkgCreated = 0, pkgSkipped = 0, prodCreated = 0, prodSkipped = 0, staffCreated = 0, staffSkipped = 0, failed = 0;
 
         // ---- MÜŞTERİLER --------------------------------------------------------
         if (request.Customers is { Count: > 0 })
@@ -246,15 +246,51 @@ public sealed class DataImportService : IDataImportService
             }
         }
 
+        // ---- PERSONEL ----------------------------------------------------------
+        if (request.Staff is { Count: > 0 })
+        {
+            var limit = await _usage.CheckLimitAsync(tenantId, "staff", cancellationToken);
+            if (limit.IsFailure) return Result<BulkImportResultDto>.Failure(limit.Error);
+
+            // Ad şifreli olduğundan SQL'de karşılaştırılamaz — mevcutlar belleğe alınıp çözülmüş
+            // değerler üzerinden mükerrer kontrolü yapılır (müşteri akışıyla aynı desen).
+            var existingStaff = new HashSet<string>(
+                (await _db.StaffMembers.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.FullName).ToListAsync(cancellationToken))
+                    .Select(NormalizeName));
+
+            foreach (var row in request.Staff)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var name = (row.FullName ?? string.Empty).Trim();
+                    if (name.Length == 0) { failed++; continue; }
+                    if (!existingStaff.Add(NormalizeName(name))) { staffSkipped++; continue; }
+
+                    var title = string.IsNullOrWhiteSpace(row.Title) ? "Personel" : row.Title!.Trim();
+                    var member = new StaffMember(tenantId, request.BranchId, name, title, NullIfBlank(row.Phone));
+                    member.UpdateProfile(name, title, NullIfBlank(row.Phone), NullIfBlank(row.Specialties));
+                    if (row.CommissionRate is >= 0) member.SetCommissionRate(row.CommissionRate.Value);
+                    _db.StaffMembers.Add(member);
+                    staffCreated++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (errors.Count < 50) errors.Add($"Personel satırı hatası: {ex.Message}");
+                }
+            }
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
-        var totalCreated = custCreated + svcCreated + pkgCreated + prodCreated;
+        var totalCreated = custCreated + svcCreated + pkgCreated + prodCreated + staffCreated;
         await _audit.LogAsync(tenantId, request.BranchId, "Import", "DataImport", null,
-            $"Excel içeri aktarma: {custCreated} müşteri, {svcCreated} hizmet, {pkgCreated} paket, {prodCreated} ürün eklendi ({custSkipped + svcSkipped + pkgSkipped + prodSkipped} mükerrer atlandı, {failed} hatalı).",
-            new { custCreated, svcCreated, pkgCreated, prodCreated, custSkipped, svcSkipped, pkgSkipped, prodSkipped, failed }, cancellationToken);
+            $"Excel içeri aktarma: {custCreated} müşteri, {svcCreated} hizmet, {pkgCreated} paket, {prodCreated} ürün, {staffCreated} personel eklendi ({custSkipped + svcSkipped + pkgSkipped + prodSkipped + staffSkipped} mükerrer atlandı, {failed} hatalı).",
+            new { custCreated, svcCreated, pkgCreated, prodCreated, staffCreated, custSkipped, svcSkipped, pkgSkipped, prodSkipped, staffSkipped, failed }, cancellationToken);
 
         return Result<BulkImportResultDto>.Success(new BulkImportResultDto(
-            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors, prodCreated, prodSkipped));
+            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors, prodCreated, prodSkipped, staffCreated, staffSkipped));
     }
 
     /// <summary>

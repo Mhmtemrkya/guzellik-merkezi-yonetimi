@@ -39,6 +39,20 @@ public sealed record ImportProductRow(
     decimal? CurrentStock,
     decimal? MinStockLevel);
 
+/// <summary>Excel'den analiz edilip normalize edilmiş personel satırı.</summary>
+/// <remarks>
+/// E-posta ALANI YOKTUR — bilinçli. Personele e-posta verilmesi bir GİRİŞ HESABI açar ve
+/// üretilen ilk parola yalnızca tekil oluşturma akışında yöneticiye gösterilir. Toplu aktarımda
+/// bu parolalar hiçbir yere düşmez; kimsenin bilmediği hesaplar oluşurdu. Bu yüzden aktarım
+/// yalnızca personel KARTINI oluşturur; giriş yetkisi personel sayfasından tek tek verilir.
+/// </remarks>
+public sealed record ImportStaffRow(
+    string FullName,
+    string? Title,
+    string? Phone,
+    string? Specialties,
+    decimal? CommissionRate);
+
 /// <summary>
 /// Genel toplu içeri aktarma isteği — frontend Excel'i analiz eder, tespit ettiği
 /// varlık tipine göre ilgili listeyi doldurur (tek istekte birden çok tip de olabilir).
@@ -48,7 +62,8 @@ public sealed record BulkImportRequest(
     IReadOnlyCollection<ImportCustomerRow>? Customers = null,
     IReadOnlyCollection<ImportServiceRow>? Services = null,
     IReadOnlyCollection<ImportPackageRow>? Packages = null,
-    IReadOnlyCollection<ImportProductRow>? Products = null);
+    IReadOnlyCollection<ImportProductRow>? Products = null,
+    IReadOnlyCollection<ImportStaffRow>? Staff = null);
 
 public sealed record BulkImportResultDto(
     int CustomersCreated, int CustomersSkipped,
@@ -56,4 +71,5 @@ public sealed record BulkImportResultDto(
     int PackagesCreated, int PackagesSkipped,
     int Failed,
     IReadOnlyCollection<string> Errors,
-    int ProductsCreated = 0, int ProductsSkipped = 0);
+    int ProductsCreated = 0, int ProductsSkipped = 0,
+    int StaffCreated = 0, int StaffSkipped = 0);

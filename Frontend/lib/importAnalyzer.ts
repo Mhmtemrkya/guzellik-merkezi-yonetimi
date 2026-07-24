@@ -9,7 +9,7 @@ import type { ImportedRow, ImportResult } from './excel'
 // beklediği normalize satırlara çevirir.
 // ---------------------------------------------------------------------------
 
-export type ImportEntityType = 'customer' | 'service' | 'package' | 'product'
+export type ImportEntityType = 'customer' | 'service' | 'package' | 'product' | 'staff'
 
 export interface ImportCustomerRow {
   fullName: string
@@ -59,6 +59,14 @@ export interface ImportProductRow {
   minStockLevel: number | null
 }
 
+export interface ImportStaffRow {
+  fullName: string
+  title: string | null
+  phone: string | null
+  specialties: string | null
+  commissionRate: number | null
+}
+
 export interface AnalyzedSheet {
   sheetName: string
   entityType: ImportEntityType
@@ -72,6 +80,7 @@ export interface AnalyzedSheet {
   services: ImportServiceRow[]
   packages: ImportPackageRow[]
   products: ImportProductRow[]
+  staff: ImportStaffRow[]
   warnings: string[]
 }
 
@@ -80,6 +89,7 @@ export const ENTITY_LABELS: Record<ImportEntityType, string> = {
   service: 'Hizmet',
   package: 'Paket',
   product: 'Ürün',
+  staff: 'Personel',
 }
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -102,6 +112,9 @@ export const FIELD_LABELS: Record<string, string> = {
   packageItems: 'Paket İçeriği',
   deposit: 'Peşinat',
   installment: 'Taksit',
+  title: 'Unvan',
+  specialties: 'Uzmanlık',
+  commission: 'Komisyon %',
   sku: 'Stok Kodu',
   barcode: 'Barkod',
   brand: 'Marka',
@@ -165,6 +178,10 @@ const FIELD_SYNONYMS: Record<string, string[]> = {
   cost: ['maliyet', 'alisfiyati', 'alisfiyat', 'cost', 'malyet'],
   stock: ['stok', 'mevcutstok', 'stokadedi', 'currentstock', 'stokmiktari'],
   minStock: ['minstok', 'minimumstok', 'kritikstok', 'minstokseviyesi', 'minstocklevel'],
+  // --- personel ---
+  title: ['unvan', 'gorev', 'pozisyon', 'title', 'jobtitle', 'unvani'],
+  specialties: ['uzmanlik', 'uzmanliklar', 'brans', 'specialty', 'specialties', 'uzmanlk', 'uzmanlkalan'],
+  commission: ['komisyon', 'komisyonorani', 'prim', 'primorani', 'commission', 'commissionrate'],
 }
 
 /** Başlığı bir alana eşle; en uzun (en spesifik) eşleşme kazanır. */
@@ -305,6 +322,7 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
   let service = 0
   let pkg = 0
   let product = 0
+  let staff = 0
 
   if (mappedFields.has('phone')) customer += 3
   if (mappedFields.has('firstName') || mappedFields.has('lastName') || mappedFields.has('fullName')) customer += 2
@@ -332,6 +350,13 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
   if (mappedFields.has('brand')) product += 2
   if (/urun|stok|rn/.test(headerText)) product += 2
 
+  // Personel: unvan/uzmanlık/komisyon üçlüsü müşteri listelerinde bulunmaz. Müşteri de
+  // ad+telefon taşıdığı için bu sinyaller müşteri puanını (ad+telefon+değer deseni) aşmalı.
+  if (mappedFields.has('title')) staff += 3
+  if (mappedFields.has('specialties')) staff += 3
+  if (mappedFields.has('commission')) staff += 3
+  if (/personel|calisan|uzman|staff|kuafor|alan/.test(headerText)) staff += 2
+
   // Başlıklar bir şey söylemiyorsa değer desenlerine bak: satırların çoğunda
   // telefon görünümlü hücre varsa müşteri listesidir.
   const sample = rows.slice(0, 30)
@@ -349,6 +374,7 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
     if (phoneish / sample.length > 0.5) customer += 2
   }
 
+  if (staff > 0 && staff >= customer && staff >= service && staff >= pkg && staff >= product) return 'staff'
   if (product > 0 && product >= customer && product >= service && product >= pkg) return 'product'
   if (pkg > 0 && pkg >= customer && pkg >= service) return 'package'
   if (service > customer) return 'service'
@@ -391,6 +417,7 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
   const services: ImportServiceRow[] = []
   const packages: ImportPackageRow[] = []
   const products: ImportProductRow[] = []
+  const staffRows: ImportStaffRow[] = []
 
   for (const row of sheet.rows) {
     const primary = str(row[sheet.headers[0] ?? ''] ?? '')
@@ -418,6 +445,21 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
         durationMinutes: parseNumber(get(row, 'duration')),
         price: parseNumber(get(row, 'price') || get(row, 'totalPrice')),
         sessionCount: parseNumber(get(row, 'sessionCount')),
+      })
+    } else if (entityType === 'staff') {
+      const fullName =
+        get(row, 'fullName') ||
+        [get(row, 'firstName'), get(row, 'lastName')].filter(Boolean).join(' ').trim() ||
+        get(row, 'name') ||
+        primary
+      if (!fullName) continue
+      // E-posta bilerek okunmaz: aktarım giriş hesabı AÇMAZ (bkz. backend ImportStaffRow notu).
+      staffRows.push({
+        fullName,
+        title: get(row, 'title') || null,
+        phone: bestPhone(getAll(row, 'phone')) || null,
+        specialties: get(row, 'specialties') || null,
+        commissionRate: parseNumber(get(row, 'commission')),
       })
     } else if (entityType === 'product') {
       const name = get(row, 'name') || get(row, 'fullName') || primary
@@ -466,7 +508,9 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
         ? services.length
         : entityType === 'product'
           ? products.length
-          : packages.length
+          : entityType === 'staff'
+            ? staffRows.length
+            : packages.length
 
   return {
     sheetName: sheet.sheetName,
@@ -479,6 +523,7 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
     services,
     packages,
     products,
+    staff: staffRows,
     warnings,
   }
 }

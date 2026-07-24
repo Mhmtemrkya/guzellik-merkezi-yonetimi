@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import ImportDialog from '@/components/dashboard/ImportDialog'
 import StaffFormDialog from '@/components/dashboard/StaffFormDialog'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import TenantCredentialsDialog from '@/components/dashboard/TenantCredentialsDialog'
@@ -20,7 +21,7 @@ import { apiItems, guidOrUndefined, initialsFromName, normalizeAppointment, norm
 import { downscaleImage } from '@/lib/imageUtils'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeftRight, Boxes, Calendar, CalendarClock, CreditCard, FileBarChart, ImagePlus, KeyRound, Layers3, Search, ShieldCheck, Star,
+  ArrowLeftRight, Boxes, Calendar, CalendarClock, CreditCard, FileBarChart, FileUp, ImagePlus, KeyRound, Layers3, Search, ShieldCheck, Star,
   MonitorSmartphone, UserCheck, UserCog, UserPlus, UserX, Users, Wallet, Zap, type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -70,6 +71,7 @@ function PersonelPageInner() {
   const [actionError, setActionError] = useState('')
   const [resetCredentials, setResetCredentials] = useState<ApiTenantCredentials | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [transferBranchId, setTransferBranchId] = useState('')
   const [deviceDialogOpen, setDeviceDialogOpen] = useState(false)
   const deviceControlFeature = useFeature('security.devicecontrol')
@@ -216,15 +218,16 @@ function PersonelPageInner() {
                   { key: 'status', header: 'Durum', width: 10, type: 'text', accessor: (p) => (p.active ? 'Aktif' : 'Pasif') },
                 ],
               }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                for (const row of first.rows) {
-                  const fullName = String(row['Ad Soyad'] || '').trim(); if (!fullName) continue
-                  await adminApi.createStaff({ branchId: branchId || branchOptions[0]?.id, fullName, title: String(row['Unvan'] || 'Personel'), phone: String(row['Telefon'] || '') || null, specialties: String(row['Uzmanlık'] || '') || null, commissionRate: Number(row['Komisyon %'] || 0) || null, isActive: true, email: String(row['E-posta'] || '') || null, permissions: [] }, tenantId)
-                }
-                await reload()
-              }}
             />
+            {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi (kolon-agnostik,
+                mükerrer atlar, tek istekte parti hâlinde gönderir). */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            >
+              <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
+            </button>
           </div>
         }
       />
@@ -621,6 +624,13 @@ function PersonelPageInner() {
         description="Yeni geçici şifre üretildi; personelin aktif oturumları kapatıldı. Bu bilgiler yalnızca bir kez gösterilir."
         pdfHeading="PERSONEL GİRİŞ BİLGİLERİ"
         pdfSubjectLabel="PERSONEL"
+      />
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityType="staff"
+        onDone={() => void reload()}
       />
     </>
   )
