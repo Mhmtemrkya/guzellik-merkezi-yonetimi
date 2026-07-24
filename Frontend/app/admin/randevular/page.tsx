@@ -835,10 +835,15 @@ function RandevularPageInner() {
   const monthlyTotal = appointments.length
   const completed = appointments.filter((r) => r.status === 'tamamlandi').length
   const pendingCount = appointments.filter((r) => r.status === 'bekliyor').length
-  const totalRevenue = appointments.reduce(
-    (sum, r) => sum + (r.status === 'tamamlandi' ? Number(r.price || 0) : 0),
-    0,
-  )
+  // Tahmini ciro: randevu fiyatı 0 taşır (satış adisyon katmanında) → hizmetin katalog fiyatına düş.
+  // İptal edilenler hariç tüm randevular (tamamlanan + bekleyen + işlemde …) tahmine dahil.
+  const estimatedAmount = (r: (typeof appointments)[number]): number => {
+    if (r.status === 'iptal') return 0
+    const p = Number(r.price || 0)
+    if (p > 0) return p
+    return r.serviceDefinitionId ? Number(servicePrices[r.serviceDefinitionId] || 0) : 0
+  }
+  const totalRevenue = appointments.reduce((sum, r) => sum + estimatedAmount(r), 0)
 
   // Metrik kartlarındaki sparkline'lar için ay içi günlük seriler (~10 noktaya gruplanır)
   const sparkSeries = useMemo(() => {
@@ -851,10 +856,8 @@ function RandevularPageInner() {
       const day = Number(r.date?.slice(8, 10))
       if (!day || day < 1 || day > days) return
       total[day - 1] += 1
-      if (r.status === 'tamamlandi') {
-        done[day - 1] += 1
-        revenue[day - 1] += Number(r.price || 0)
-      }
+      revenue[day - 1] += estimatedAmount(r)
+      if (r.status === 'tamamlandi') done[day - 1] += 1
       if (r.status === 'bekliyor') pending[day - 1] += 1
     })
     const bucket = (values: number[]): number[] => {
