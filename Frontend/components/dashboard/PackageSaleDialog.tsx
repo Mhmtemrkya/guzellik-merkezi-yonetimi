@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
@@ -65,7 +65,8 @@ export default function PackageSaleDialog({
   /** true ise ürün satışı modu: stoktaki satış ürünlerinden seçim yapılır. */
   productSale?: boolean
   onDone?: () => unknown
-  triggerLabel?: string
+  /** Tetik butonunun etiketi. ReactNode kabul eder — ör. navbar'da dar ekranda gizlenen bir <span>. */
+  triggerLabel?: ReactNode
   triggerClassName?: string
   /** true ise satış sonrası müşteri kartına yönlendirme yapılmaz (ör. randevu modalı içinden satış). */
   stayOnPage?: boolean

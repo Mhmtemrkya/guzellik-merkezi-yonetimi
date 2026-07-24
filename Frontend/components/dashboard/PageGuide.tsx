@@ -257,7 +257,7 @@ export default function PageGuide() {
         }}
         aria-label="Bu sayfanın kullanım kılavuzunu aç"
         title="Sayfa kılavuzu"
-        className="group relative grid min-h-10 min-w-10 place-items-center overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+        className="group relative grid min-h-10 min-w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
       >
         <span
           aria-hidden

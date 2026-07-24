@@ -11,6 +11,7 @@ import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
+import '../accounting/package_sale_sheet.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../notifications/notification_inbox_screen.dart';
 
@@ -242,7 +243,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 10),
-                      const _QuickActions(),
+                      _QuickActions(api: widget.api),
                     ],
                     const SizedBox(height: 20),
                     Text(
@@ -772,19 +773,39 @@ class _DashCard extends StatelessWidget {
 
 /// Dashboard hızlı işlem kısayolları (web 'Hızlı İşlemler').
 class _QuickActions extends StatelessWidget {
-  const _QuickActions();
+  const _QuickActions({required this.api});
 
+  final ApiClient api;
+
+  // Yol yerine 'sale' geçen kayıt, sayfaya gitmek yerine satış sayfasını doğrudan açar
+  // (web'de navbar'daki "Paket Sat" butonunun karşılığı — paket listesinde dolaşmaya gerek yok).
   static const _actions = <(String, IconData, String)>[
     ('Yeni Randevu', Icons.event_available_rounded, '/appointments'),
     ('Yeni Danışan', Icons.person_add_alt_1_rounded, '/customers'),
-    ('Paket Satışı', Icons.workspaces_rounded, '/packages'),
+    ('Paket Sat', Icons.workspaces_rounded, 'sale'),
     ('Ödeme Al', Icons.account_balance_wallet_rounded, '/accounting'),
     ('Stok', Icons.inventory_2_rounded, '/stock'),
     ('Kampanya', Icons.campaign_rounded, '/campaigns'),
   ];
 
+  Future<void> _openSale(BuildContext context) async {
+    final sold = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => PackageSaleSheet(api: api),
+    );
+    if (sold == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Satış adisyona eklendi. Yönetici onaylayınca cariye işlenir.')));
+    }
+  }
+
   void _go(BuildContext context, String path) {
-    if (path == '/appointments' || path == '/customers') {
+    if (path == 'sale') {
+      _openSale(context);
+    } else if (path == '/appointments' || path == '/customers') {
       context.go(path);
     } else {
       context.push(path);

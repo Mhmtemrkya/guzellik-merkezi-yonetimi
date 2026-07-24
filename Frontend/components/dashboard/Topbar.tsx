@@ -30,8 +30,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import BranchSwitcher from './BranchSwitcher'
 import ImportDialog from './ImportDialog'
+import PackageSaleDialog from './PackageSaleDialog'
 import PageGuide from './PageGuide'
 import { useAuth } from './AuthContext'
+import { useBranch } from './BranchContext'
+import { guidOrUndefined } from '@/lib/apiMappers'
 import { useManagerInbox } from '@/hooks/useManagerInbox'
 import type { NotificationItem } from '@/lib/types'
 
@@ -142,6 +145,8 @@ export default function Topbar({
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
+  const { selectedInstitutionId } = useBranch()
+  const tenantId = guidOrUndefined(selectedInstitutionId)
   const displayName = user?.fullName || user?.email || 'Melis Yılmaz'
   const displayRole = user?.roleLabel || 'Yönetici'
   const avatarText =
@@ -351,7 +356,11 @@ export default function Topbar({
           )}
 
           {/* Right controls */}
-          <div className={`flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 2xl:flex-nowrap ${compact ? 'w-full lg:justify-end' : 'lg:justify-end'}`}>
+          {/* NOT: burada `flex-nowrap` KULLANILMAZ. Çocukların min-genişlikleri var (arama kutusu, şube
+              kartı, sayfa aksiyonları); nowrap'te toplam min-genişlik kapsayıcıyı aşınca öğeler
+              küçülemeyip taşıyor ve üst üste biniyordu (Randevular sayfası, 7 aksiyon butonu).
+              Sarma serbest bırakılınca fazlalık alta iner — sıkışmak yerine yeni satır. */}
+          <div className={`flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 ${compact ? 'w-full lg:justify-end' : 'lg:justify-end'}`}>
             {/* SEARCH TRIGGER (opens palette) */}
             <motion.button
               whileTap={{ scale: 0.97 }}
@@ -404,6 +413,18 @@ export default function Topbar({
 
             {!compact && scope !== 'personel' && <BranchSwitcher />}
 
+            {/* PAKET SAT — yalnızca dashboard'da (İçeri Aktar ile aynı gerekçe: diğer sayfaların
+                navbar'ını sıkıştırmasın). Satışın kendi ekranına gitmeden hızlı giriş.
+                İkincil stil: navbar'daki tek BİRİNCİL aksiyon "Randevu Oluştur" olarak kalsın.
+                Paket paketinde adisyon yoksa PackageSaleDialog kendini gizler (feature gate içeride). */}
+            {scope === 'admin' && pathname === '/admin' && (
+              <PackageSaleDialog
+                tenantId={tenantId}
+                triggerLabel={<span className="hidden lg:inline">Paket Sat</span>}
+                triggerClassName="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#efbfd0] bg-white/82 px-3 text-[11px] font-semibold text-[#c85776] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#c85776] hover:bg-[#fff4f8]"
+              />
+            )}
+
             {/* GENEL EXCEL İÇERİ AKTAR — yalnızca dashboard'da; diğer sayfaların aksiyon
                 dolu navbar'ını sıkıştırmasın */}
             {scope === 'admin' && pathname === '/admin' && (
@@ -427,8 +448,8 @@ export default function Topbar({
             {/* SAYFA KILAVUZU */}
             <PageGuide />
 
-            {/* BELL + TRAY */}
-            <div className="relative">
+            {/* BELL + TRAY — shrink-0: dar alanda ezilip komşu kontrolün üstüne binmesin. */}
+            <div className="relative shrink-0">
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.92 }}
@@ -600,8 +621,10 @@ export default function Topbar({
               </AnimatePresence>
             </div>
 
+            {/* SAYFA AKSİYONLARI — her zaman KENDİ satırında (basis-full). Topbar'ın kendi kontrolleriyle
+                (arama / şube / kılavuz / zil) aynı satırı paylaşmaya çalışınca sığmayıp iç içe giriyordu. */}
             {actions && (
-              <div className={`flex min-w-0 flex-wrap items-center gap-2 ${compact ? 'w-full justify-start lg:w-auto lg:justify-end' : 'shrink-0 basis-full justify-end 2xl:shrink 2xl:basis-auto'}`}>
+              <div className={`flex min-w-0 flex-wrap items-center gap-2 ${compact ? 'w-full justify-start lg:w-auto lg:justify-end' : 'basis-full justify-end'}`}>
                 {actions}
               </div>
             )}
