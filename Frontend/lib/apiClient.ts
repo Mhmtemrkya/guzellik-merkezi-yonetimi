@@ -892,6 +892,9 @@ export const adminApi = {
     apiRequest<T>('/api/admin/tenant/public-profile', { method: 'PUT', body }),
   setSalonLogo: <T = unknown>(imageData: string | null): Promise<T> =>
     apiRequest<T>('/api/admin/tenant/public-profile/logo', { method: 'PUT', body: { imageData } }),
+  /** Kuruma özel KVKK aydınlatma metnini kaydeder (null/boş = yerleşik varsayılana dön). */
+  setKvkkText: <T = unknown>(text: string | null): Promise<T> =>
+    apiRequest<T>('/api/admin/tenant/public-profile/kvkk', { method: 'PUT', body: { text } }),
   galleryPhotos: <T = unknown>(kind?: string): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/tenant/gallery', { query: kind ? { kind } : {} }),
   addGalleryPhoto: <T = unknown>(body: { kind: string; imageData: string; caption?: string | null }): Promise<T> =>

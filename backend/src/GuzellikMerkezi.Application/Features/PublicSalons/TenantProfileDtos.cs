@@ -11,7 +11,8 @@ public sealed record TenantPublicProfileDto(
     string? PublicEmail,
     string? PublicPhone,
     string? WorkingHoursText,
-    string? MapUrl);
+    string? MapUrl,
+    string? KvkkConsentText);
 
 public sealed record UpdateTenantPublicProfileRequest(
     bool IsPublished,
@@ -31,6 +32,9 @@ public sealed record AddTenantGalleryPhotoRequest(string Kind, string ImageData,
 /// <summary>Kurum logosu — ImageData null/boş gönderilirse logo kaldırılır.</summary>
 public sealed record SetTenantLogoRequest(string? ImageData);
 
+/// <summary>KVKK aydınlatma metni — Text null/boş gönderilirse yerleşik varsayılana döner.</summary>
+public sealed record SetTenantKvkkTextRequest(string? Text);
+
 /// <summary>Platform admin: kuruma Premium/Öne Çıkan etiketi ver/kaldır.</summary>
 public sealed record SetTenantFeaturedRequest(bool IsFeatured);
 public sealed record TenantFeaturedDto(bool IsFeatured);
@@ -44,6 +48,8 @@ public interface ITenantProfileService
     Task<Common.Result> DeleteGalleryPhotoAsync(Guid tenantId, Guid photoId, CancellationToken cancellationToken = default);
     /// <summary>Kurum logosunu ayarlar (null = kaldır).</summary>
     Task<Common.Result<TenantPublicProfileDto>> SetLogoAsync(Guid tenantId, SetTenantLogoRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Kuruma özel KVKK aydınlatma metnini ayarlar (null/boş = varsayılana dön).</summary>
+    Task<Common.Result<TenantPublicProfileDto>> SetKvkkTextAsync(Guid tenantId, SetTenantKvkkTextRequest request, CancellationToken cancellationToken = default);
     /// <summary>Premium/Öne Çıkan etiketini okur (platform admin liste satırı için hafif uç).</summary>
     Task<Common.Result<TenantFeaturedDto>> GetFeaturedAsync(Guid tenantId, CancellationToken cancellationToken = default);
     /// <summary>Premium/Öne Çıkan etiketini ayarlar (yalnızca platform admin çağırır).</summary>

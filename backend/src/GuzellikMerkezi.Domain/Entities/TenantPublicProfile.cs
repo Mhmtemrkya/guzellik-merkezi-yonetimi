@@ -51,6 +51,19 @@ public sealed class TenantPublicProfile : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Kuruma özel KVKK aydınlatma / açık rıza metni. Boşsa panel yerleşik varsayılan metni gösterir;
+    /// kurum yöneticisi Ayarlar sayfasından düzenleyebilir. Yeni müşteri ekleme modalında görüntülenir + PDF olarak indirilebilir.
+    /// </summary>
+    public string? KvkkConsentText { get; private set; }
+
+    public void SetKvkkConsentText(string? text)
+    {
+        var trimmed = text?.Trim();
+        KvkkConsentText = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+        Touch();
+    }
+
     public void Update(
         bool isPublished,
         string? description,

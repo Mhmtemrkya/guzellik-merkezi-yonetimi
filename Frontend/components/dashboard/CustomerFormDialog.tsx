@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { downscaleImage } from '@/lib/imageUtils'
+import KvkkConsentModal from '@/components/dashboard/KvkkConsentModal'
 import type { CustomerGender } from '@/lib/types'
 
 export interface CustomerFormValues {
@@ -251,6 +252,10 @@ export default function CustomerFormDialog({
                   <motion.span animate={{ x: values.kvkkConsent ? 24 : 4 }} transition={{ type: 'spring', stiffness: 360, damping: 24 }} className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
                 </span>
               </button>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 px-1">
+                <KvkkConsentModal />
+                <span className="text-[10.5px] text-[#9d7386]">Metni Ayarlar sayfasından düzenleyebilirsiniz.</span>
+              </div>
               <div className="mt-3">
                 <label className={LABEL}>Müşteri notu</label>
                 <textarea rows={3} value={values.notes || ''} onChange={(e) => set({ notes: e.target.value })} placeholder="Tercih, cilt tipi, alerji vb." className={`${INPUT} resize-none`} />

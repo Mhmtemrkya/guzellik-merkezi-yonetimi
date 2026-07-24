@@ -158,9 +158,30 @@ public sealed class TenantProfileService : ITenantProfileService
         return Result<TenantFeaturedDto>.Success(new TenantFeaturedDto(profile.IsFeatured));
     }
 
+    public async Task<Result<TenantPublicProfileDto>> SetKvkkTextAsync(Guid tenantId, SetTenantKvkkTextRequest request, CancellationToken cancellationToken = default)
+    {
+        // Aşırı büyük metin frenle — sözleşme metni birkaç sayfayı geçmez.
+        if (!string.IsNullOrEmpty(request.Text) && request.Text.Length > 20_000)
+            return Result<TenantPublicProfileDto>.Failure(Error.Validation("KVKK metni çok uzun (en fazla 20.000 karakter)."));
+
+        var profile = await _db.TenantPublicProfiles
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId, cancellationToken);
+        if (profile is null)
+        {
+            profile = new TenantPublicProfile(tenantId);
+            _db.TenantPublicProfiles.Add(profile);
+        }
+        profile.SetKvkkConsentText(request.Text);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, null, "Update", "TenantPublicProfile", profile.Id,
+            string.IsNullOrWhiteSpace(request.Text) ? "KVKK metni varsayılana döndürüldü." : "KVKK aydınlatma metni güncellendi.",
+            null, cancellationToken);
+        return Result<TenantPublicProfileDto>.Success(ToDto(profile));
+    }
+
     private static TenantPublicProfileDto ToDto(TenantPublicProfile? p) =>
         new(p?.IsPublished ?? false, p?.LogoData, p?.Description, p?.Address, p?.City, p?.Instagram,
-            p?.PublicEmail, p?.PublicPhone, p?.WorkingHoursText, p?.MapUrl);
+            p?.PublicEmail, p?.PublicPhone, p?.WorkingHoursText, p?.MapUrl, p?.KvkkConsentText);
 
     private static bool TryParseKind(string? kind, out GalleryPhotoKind parsed)
     {

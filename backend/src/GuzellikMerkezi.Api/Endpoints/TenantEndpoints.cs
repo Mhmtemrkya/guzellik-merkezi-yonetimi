@@ -86,6 +86,12 @@ public static class TenantEndpoints
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetLogoAsync(t, request, ct)).ToHttpResult(http);
         });
 
+        adminGroup.MapPut("/public-profile/kvkk", async (SetTenantKvkkTextRequest request, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetKvkkTextAsync(t, request, ct)).ToHttpResult(http);
+        });
+
         adminGroup.MapGet("/gallery", async (string? kind, Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>
         {
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);

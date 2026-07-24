@@ -618,6 +618,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         p.Property(x => x.MapUrl).HasMaxLength(1000);
         // base64 logo — proje görsel deseni
         p.Property(x => x.LogoData).HasColumnType("LONGTEXT");
+        // KVKK aydınlatma metni — çok satırlı, uzun olabilir
+        p.Property(x => x.KvkkConsentText).HasColumnType("LONGTEXT");
         p.HasIndex(x => x.TenantId).IsUnique();
         p.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         // Public vitrin: tenant filtresine takılmadan slug üzerinden okunur (IgnoreQueryFilters gerekmesin diye yalnızca soft-delete filtresi).

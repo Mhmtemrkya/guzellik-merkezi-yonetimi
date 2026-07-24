@@ -8,6 +8,7 @@ import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
 import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
+import KvkkSettingsCard from '@/components/dashboard/KvkkSettingsCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -356,6 +357,11 @@ export default function AyarlarPage() {
         {/* GÜVENLİK — personel ekran görüntüsü izni */}
         <section data-guide="ayarlar-guvenlik" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           <SecuritySettingsCard tenantId={tenantId} />
+        </section>
+
+        {/* KVKK AYDINLATMA METNİ */}
+        <section data-guide="ayarlar-kvkk">
+          <KvkkSettingsCard tenantId={tenantId} />
         </section>
 
         {/* SATIR 2: GELİR BİLGİLERİ + GELİR KALEMLERİ */}
