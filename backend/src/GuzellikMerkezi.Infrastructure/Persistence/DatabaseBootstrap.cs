@@ -134,6 +134,54 @@ public static class DatabaseBootstrap
     }
 
     /// <summary>
+    /// Mevcut müşterilerin blind index'ini (SearchIndex) doldurur — şifreli olduğu için SQL ile
+    /// hesaplanamaz, uygulama içinde çözülüp yeniden yazılmalıdır.
+    /// </summary>
+    /// <remarks>
+    /// <para>Idempotent ve kesintiye dayanıklı: yalnızca <c>SearchIndex IS NULL</c> satırları alır, partiler
+    /// hâlinde ilerler. Yarıda kalırsa sonraki açılışta kaldığı yerden devam eder.</para>
+    /// <para>Backfill bitene kadar arama ve mükerrer-telefon kontrolü otomatik olarak eski (tam tarama)
+    /// davranışına düşer; yani bu iş bitmeden de sonuçlar DOĞRUdur, sadece yavaştır.</para>
+    /// <para>Yan etki: indekslenen satırların <c>UpdatedAtUtc</c> alanı tazelenir (tek seferlik).</para>
+    /// </remarks>
+    public static async Task BackfillCustomerSearchIndexAsync(IServiceProvider services)
+    {
+        const int BatchSize = 500;
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("SearchIndexBackfill");
+
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+
+            var total = 0;
+            while (true)
+            {
+                // Query filter startup'ta tenant bağlamı olmadığından devre dışı; yine de silinmişleri atla.
+                var batch = await db.Customers.IgnoreQueryFilters()
+                    .Where(x => !x.IsDeleted && x.SearchIndex == null)
+                    .Take(BatchSize)
+                    .ToListAsync();
+                if (batch.Count == 0) break;
+
+                // Değeri bilerek "değişmiş" işaretliyoruz; gerçek indeksi SaveChanges (ApplySearchIndex) üretir.
+                foreach (var customer in batch) customer.SetSearchIndex(string.Empty);
+                await db.SaveChangesAsync();
+
+                total += batch.Count;
+                if (batch.Count < BatchSize) break;
+            }
+
+            if (total > 0) logger.LogInformation("{Count} müşteri için arama indeksi (blind index) oluşturuldu.", total);
+        }
+        catch (Exception ex)
+        {
+            // Şema henüz yoksa veya DB erişilemiyorsa uygulama açılışı bundan ötürü durmamalı.
+            logger.LogWarning(ex, "Müşteri arama indeksi backfill'i tamamlanamadı; arama tam-tarama moduna düşecek.");
+        }
+    }
+
+    /// <summary>
     /// WhatsApp faturalama başlangıç verisi: kategori fiyat kuralları, kontör paketleri, genel ayar (kur/tavan).
     /// Idempotent — yalnızca hiç kural yoksa ekler. Ayrıca eski (per-tenant token'la çalışan) WhatsApp
     /// bağlantılarını yeni ConnectionStatus modeline taşır (canlı gönderim kopmadan devam etsin).

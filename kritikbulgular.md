@@ -72,7 +72,16 @@ Sonuçları:
 
 ### 3. Alan şifreleme ile SQL arama ve sıralama birbiriyle uyumsuz
 
-Önem: Kritik
+Önem: Kritik — **arama/mükerrer kısmı 25 Tem 2026'da çözüldü, sıralama kısmı açık**
+
+> **Durum (25 Tem 2026):** Müşteri araması ve mükerrer telefon kontrolü artık **HMAC blind index**
+> (`customers.SearchIndex`, migration `AddCustomerSearchIndex`) üzerinden SQL'de daraltılıyor; kesin
+> eşleşme yalnızca aday kümesinde, bellekte doğrulanıyor. "Tenant'ın tüm müşterilerini yükle ve çöz"
+> davranışı kalktı. İndeks `SaveChanges` içinde otomatik üretilir (`GuzellikDbContext.ApplySearchIndex`),
+> mevcut kayıtlar açılışta partiler hâlinde doldurulur, indekslenmemiş kayıt varsa sistem güvenli biçimde
+> eski tam-tarama davranışına düşer. Kapsanan testler: `CustomerSearchIndexTests`.
+> **Açık kalan:** alfabetik sıralama (ORDER BY hâlâ ciphertext'e göre — deterministik ama alfabetik değil)
+> ve personel/hizmet aramaları (kayıt sayısı düşük olduğundan öncelikli değil).
 
 Müşteri adı, telefon, personel adı ve benzeri alanlar rastgele nonce kullanan AES-GCM ile şifreleniyor. Buna rağmen bu alanlarda SQL `Contains`, `OrderBy` ve index işlemleri uygulanıyor.
 
@@ -275,18 +284,27 @@ Sonuçları:
 
 ### 12. Test kapsamı kritik akışlar için yetersiz
 
-Önem: Yüksek
+Önem: Yüksek — **kısmen kapatıldı (25 Tem 2026)**
 
-Mevcut 18 test başarılı fakat kapsam ağırlıklı olarak domain, validator ve birkaç infrastructure senaryosuyla sınırlı.
+> **Durum (25 Tem 2026):** Bu maddedeki "18 test başarılı" tespiti çoktan geçersizleşmişti — test projesi
+> **derlenmiyordu bile**. `AppointmentService` ve `TenantService` yeni bağımlılık aldıkça testlerdeki
+> kurucu çağrıları kırılmış, CI olmadığı için kimse görmemişti. Onarıldı (kırılgan elle kurulan
+> bağımlılıklar için NSubstitute eklendi) ve kapsam **45 teste** çıkarıldı.
+>
+> Eklenen kapsam: tenant izolasyonu + şube kapsamı + soft-delete gizleme (`TenantIsolationTests`),
+> iki seviyeli personel yetkisi ve geriye uyumluluk kuralı (`StaffPermissionTests`), şifreli alanda
+> arama/mükerrer telefon/maskeleme (`CustomerSearchIndexTests`).
+>
+> Ayrıca `.github/workflows/ci.yml`: her push/PR'da backend (`build --warnaserror` + test + **bekleyen
+> migration kontrolü**), web (typecheck + build) ve mobil (analyze + test).
 
-Eksik başlıca testler:
+Hâlâ eksik başlıca testler:
 
-- MySQL ile gerçek entegrasyon testleri.
-- Tenant ve şube izolasyonu.
-- Endpoint rol/permission authorization.
-- Pending operation approve/reject yetkileri.
+- MySQL ile gerçek entegrasyon testleri (şu an EF InMemory; SQL çevirisi farklarını yakalamaz).
+- Endpoint seviyesinde rol/permission authorization (`PermissionEndpointFilter` HTTP üzerinden).
+- Pending operation approve/reject yetkileri ve onay replay'i.
 - Eşzamanlı refresh-token rotasyonu.
-- Alan şifreleme sonrası arama ve sıralama.
+- Adisyon → cari/taksit dağıtım matematiği (para yolu, testsiz).
 - Notification provider ve kota davranışı.
 - API health/login/CRUD smoke testleri.
 
@@ -304,4 +322,21 @@ Eksik başlıca testler:
 
 ## Not
 
-Bu belge inceleme bulgularını kayıt altına alır. Henüz kaynak kod üzerinde bu maddelere yönelik bir düzeltme uygulanmamıştır.
+Bu belge 18 Haziran 2026 inceleme bulgularını kayıt altına alır. **Maddelerin çoğu o tarihten sonra
+düzeltilmiştir** — her maddenin başındaki durum notuna ve `CANLI_DEPLOY_NOTLARI.md`'deki
+"Bu seansta DÜZELTİLENLER" / "Hâlâ AÇIK" bölümlerine bak. Özet:
+
+| # | Konu | Durum |
+|---|------|-------|
+| 1 | Rol/izin kontrolleri | Kısmi — `PermissionEndpointFilter` hassas uçlarda; okuma kapısı matrisi açık |
+| 2 | `X-Branch-Id` güveni | ✅ Çözüldü (tenant doğrulaması + rol bazlı sabitleme) |
+| 3 | Şifreli alanda arama | ✅ Arama/mükerrer çözüldü (blind index); alfabetik sıralama açık |
+| 4 | FluentValidation pipeline | ✅ Çözüldü (`ValidationFilter<T>`) |
+| 5 | GET audit gürültüsü | ✅ Çözüldü |
+| 6 | Refresh-token rotasyonu | ✅ Çözüldü (koşullu update) |
+| 7 | Onay kuyruğu sessiz hata | ✅ Çözüldü |
+| 8 | Bildirim durumu/kota | ✅ Çözüldü |
+| 9 | Dev parolası | Kabul edilebilir — dosya git'e girmiyor (gitignore) |
+| 10 | Plansız tenant fail-open | ✅ Çözüldü (prod'da fail-closed) |
+| 11 | Platform özeti N+1 | ✅ Çözüldü (GROUP BY) |
+| 12 | Test kapsamı | Kısmi — 45 test + CI kuruldu; entegrasyon/para-yolu testleri açık |

@@ -62,6 +62,8 @@ public static class DependencyInjection
         // Field-level encryption singleton — yalnızca ham anahtarı tutar (ucuz), thread-safe.
         // AesGcm thread-safe olmadığından örneği paylaşmaz, çağrı başına yerel olarak oluşturur.
         services.AddSingleton<IEncryptionService, AesGcmEncryptionService>();
+        // Şifreli alanlarda arama: blind index (HMAC). Yalnızca türetilmiş anahtarı tutar → singleton.
+        services.AddSingleton<ISearchIndexService, HmacSearchIndexService>();
 
         services.AddDbContext<GuzellikDbContext>(options =>
         {

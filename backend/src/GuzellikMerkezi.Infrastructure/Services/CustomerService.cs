@@ -18,14 +18,16 @@ public sealed class CustomerService : ICustomerService
     private readonly IAuditLogger _audit;
     private readonly ICurrentUser _currentUser;
     private readonly IFeatureService _features;
+    private readonly ISearchIndexService _search;
 
-    public CustomerService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, ICurrentUser currentUser, IFeatureService features)
+    public CustomerService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, ICurrentUser currentUser, IFeatureService features, ISearchIndexService search)
     {
         _db = db;
         _usage = usage;
         _audit = audit;
         _currentUser = currentUser;
         _features = features;
+        _search = search;
     }
 
     // Personel rolü müşteri telefonunu yalnızca son 4 hane görür (müşteri çalmayı önleme).
@@ -37,13 +39,68 @@ public sealed class CustomerService : ICustomerService
 
     private static string MaskPhone(string? phone) => PhoneMask.Mask(phone);
 
-    // Mükerrer telefon karşılaştırması için rakam-normalize (DataImportService ile aynı mantık):
+    // Mükerrer telefon karşılaştırması için rakam-normalize (import ve blind index ile aynı mantık):
     // yalnızca rakamlar, son 10 hane; baştaki 0'lar atılır.
-    private static string DigitsOf(string? value)
+    private static string DigitsOf(string? value) => SearchText.NormalizePhone(value);
+
+    /// <summary>
+    /// Sorguyu blind index ile aday kümesine daraltır. Henüz indekslenmemiş (SearchIndex NULL) kayıt
+    /// varsa daraltma YAPILMAZ — backfill tamamlanana kadar arama yavaş ama DOĞRU çalışır. Sessizce
+    /// eksik sonuç dönmek, yavaş dönmekten çok daha kötüdür.
+    /// </summary>
+    private async Task<IQueryable<Customer>> NarrowBySearchIndexAsync(IQueryable<Customer> query, string term, CancellationToken ct)
     {
-        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
-        return digits.Length > 10 ? digits[^10..] : digits.TrimStart('0');
+        var keys = _search.BuildLookupKeys(term);
+        if (keys.Count == 0) return query;
+        if (await HasUnindexedAsync(query, ct)) return query;
+
+        foreach (var k in keys)
+        {
+            var key = k; // closure capture — her Where kendi anahtarını görmeli
+            query = query.Where(x => x.SearchIndex != null && x.SearchIndex.Contains(key));
+        }
+        return query;
     }
+
+    /// <summary>Backfill henüz bitmemiş mi? İlk eşleşmede kısa devre yapar; backfill sonrası hep false.</summary>
+    private static Task<bool> HasUnindexedAsync(IQueryable<Customer> query, CancellationToken ct) =>
+        query.AnyAsync(x => x.SearchIndex == null, ct);
+
+    /// <summary>
+    /// Bu telefon numarası kurumda başka bir müşteride var mı? Blind index'in tam-telefon anahtarıyla
+    /// aday çekilir, eşitlik çözülmüş numarada doğrulanır. İndekslenmemiş kayıt varsa (backfill sürüyor)
+    /// eski tam-tarama davranışına düşer — mükerrer kaydın sızmasındansa yavaş olmak yeğdir.
+    /// </summary>
+    private async Task<bool> PhoneExistsAsync(Guid tenantId, string? phone, string digits, Guid? excludeId, CancellationToken ct)
+    {
+        var baseQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (excludeId is not null) baseQuery = baseQuery.Where(x => x.Id != excludeId.Value);
+
+        var key = _search.BuildPhoneKey(phone);
+        var query = key is not null && !await HasUnindexedAsync(baseQuery, ct)
+            ? baseQuery.Where(x => x.SearchIndex != null && x.SearchIndex.Contains(key))
+            : baseQuery;
+
+        var phones = await query.Select(x => x.Phone).ToListAsync(ct);
+        return phones.Any(p => DigitsOf(p) == digits);
+    }
+
+    /// <summary>
+    /// Aramanın kesin (bellekte) filtresi — blind index yalnızca aday üretir.
+    /// </summary>
+    /// <remarks>
+    /// Kurallar blind index ile BİREBİR aynı olmalıdır, aksi halde indeks kaydı aday gösterir ve filtre eler:
+    /// <list type="bullet">
+    ///   <item>Ad/e-posta: aksan + büyük-küçük duyarsız ("seyma" → "Şeyma").</item>
+    ///   <item>Telefon: iki taraf da rakam-normalize edilir. Aksi halde "+90 555 111 22 33" kaydı
+    ///         "5551112233" aramasıyla BULUNAMAZ (boşluk/artı işareti yüzünden) — eski davranıştaki hata.</item>
+    ///   <item>Telefon karşılaştırması yalnızca terimde harf YOKSA yapılır (indeksin telefon yolu da öyle).</item>
+    /// </list>
+    /// </remarks>
+    private static bool MatchesSearch(string? fullName, string? phone, string? email, string term, string digits) =>
+        SearchText.FoldedContains(fullName, term)
+        || (digits.Length > 0 && !term.Any(char.IsLetter) && SearchText.NormalizePhone(phone).Contains(digits, StringComparison.Ordinal))
+        || (!string.IsNullOrEmpty(email) && SearchText.FoldedContains(email, term));
 
     public async Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
     {
@@ -53,18 +110,20 @@ public sealed class CustomerService : ICustomerService
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
-            // ŞİFRELİ alanlarda (ad/telefon/e-posta) SQL `.Contains()` ÇALIŞMAZ — ciphertext'te arar (kritikbulgular #3).
-            // Tenant'ın müşterileri yüklenip BELLEKTE (çözülmüş değerlerde) filtrelenir + alfabetik sıralanır.
-            // Müşteri sayısı plan limitiyle sınırlıdır.
+            // ŞİFRELİ alanlarda (ad/telefon/e-posta) SQL `.Contains()` ciphertext'te arar → çalışmaz.
+            // Çözüm: blind index (bkz. ISearchIndexService). SQL yalnızca ADAY kümesini daraltır;
+            // kesin eşleşme aşağıda çözülmüş değerler üzerinde doğrulanır (prefix eşleşmesi yaklaşıktır).
             var search = request.Search.Trim();
-            var digits = new string(search.Where(char.IsDigit).ToArray());
-            var all = await entityQuery
+            // Telefon karşılaştırması normalize edilmiş rakamlar üzerinden yapılır (bkz. MatchesSearch).
+            var digits = SearchText.NormalizePhone(search);
+
+            var candidateQuery = await NarrowBySearchIndexAsync(entityQuery, search, cancellationToken);
+            var candidates = await candidateQuery
                 .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
                 .ToArrayAsync(cancellationToken);
-            var filtered = all
-                .Where(c => c.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
-                            || (digits.Length > 0 && (c.Phone ?? string.Empty).Contains(digits))
-                            || (!string.IsNullOrEmpty(c.Email) && c.Email.Contains(search, StringComparison.OrdinalIgnoreCase)))
+
+            var filtered = candidates
+                .Where(c => MatchesSearch(c.FullName, c.Phone, c.Email, search, digits))
                 .OrderBy(c => c.FullName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             var pageItems = filtered.Skip(request.Skip).Take(request.SafePageSize).ToArray();
@@ -157,18 +216,11 @@ public sealed class CustomerService : ICustomerService
         }
 
         // Mükerrer telefon engeli: telefon şifreli saklandığından (AES-GCM rastgele nonce) DB'de
-        // UNIQUE index kurulamaz; import'la aynı şekilde rakam-normalize edip bellekte karşılaştırırız.
+        // UNIQUE index kurulamaz; blind index ile aday bulunur, eşitlik rakam-normalize karşılaştırmayla doğrulanır.
         var newDigits = DigitsOf(request.Phone);
-        if (newDigits.Length >= 7)
+        if (newDigits.Length >= 7 && await PhoneExistsAsync(tenantId, request.Phone, newDigits, null, cancellationToken))
         {
-            var phones = await _db.Customers.AsNoTracking()
-                .Where(x => x.TenantId == tenantId)
-                .Select(x => x.Phone)
-                .ToListAsync(cancellationToken);
-            if (phones.Any(p => DigitsOf(p) == newDigits))
-            {
-                return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı bir müşteri zaten var."));
-            }
+            return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı bir müşteri zaten var."));
         }
 
         var customer = new Customer(tenantId, request.BranchId, request.FullName, request.Phone, request.Email);
@@ -197,16 +249,10 @@ public sealed class CustomerService : ICustomerService
 
         // Telefon değişiyorsa başka bir müşteride kullanılmadığını doğrula (kendisi hariç).
         var updatedDigits = DigitsOf(phone);
-        if (updatedDigits.Length >= 7 && updatedDigits != DigitsOf(customer.Phone))
+        if (updatedDigits.Length >= 7 && updatedDigits != DigitsOf(customer.Phone)
+            && await PhoneExistsAsync(tenantId, phone, updatedDigits, id, cancellationToken))
         {
-            var others = await _db.Customers.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.Id != id)
-                .Select(x => x.Phone)
-                .ToListAsync(cancellationToken);
-            if (others.Any(p => DigitsOf(p) == updatedDigits))
-            {
-                return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı başka bir müşteri var."));
-            }
+            return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı başka bir müşteri var."));
         }
 
         customer.UpdateContact(request.FullName, phone, email);

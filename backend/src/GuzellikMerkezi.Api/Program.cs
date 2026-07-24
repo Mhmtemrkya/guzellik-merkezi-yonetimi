@@ -131,6 +131,11 @@ else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var 
     await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
 }
 
+// Şifreli ad/telefon/e-posta üzerinde arama yapabilmek için blind index'i doldur. Her ortamda çalışır:
+// veri-only + idempotent (yalnızca SearchIndex NULL satırlara dokunur), DDL yapmaz. Kolon henüz yoksa
+// (migration uygulanmamış) sessizce uyarı loglar. Bitene kadar arama tam-tarama moduna düşer, sonuç doğrudur.
+await DatabaseBootstrap.BackfillCustomerSearchIndexAsync(app.Services);
+
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
 // rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
 // Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:

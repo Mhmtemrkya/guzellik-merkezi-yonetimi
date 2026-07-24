@@ -13,14 +13,16 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     private readonly ICurrentUser? _currentUser;
     private readonly IDateTimeProvider? _clock;
     private readonly IEncryptionService? _encryption;
+    private readonly ISearchIndexService? _searchIndex;
 
-    public GuzellikDbContext(DbContextOptions<GuzellikDbContext> options, ITenantContext? tenantContext = null, ICurrentUser? currentUser = null, IDateTimeProvider? clock = null, IEncryptionService? encryption = null)
+    public GuzellikDbContext(DbContextOptions<GuzellikDbContext> options, ITenantContext? tenantContext = null, ICurrentUser? currentUser = null, IDateTimeProvider? clock = null, IEncryptionService? encryption = null, ISearchIndexService? searchIndex = null)
         : base(options)
     {
         _tenantContext = tenantContext;
         _currentUser = currentUser;
         _clock = clock;
         _encryption = encryption;
+        _searchIndex = searchIndex;
     }
 
     private bool TenantFilterDisabled => _tenantContext is null || _tenantContext.IsPlatformAdmin || _tenantContext.TenantId is null;
@@ -334,8 +336,28 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        // Sıra önemli: arama indeksi ApplyAuditInfo'dan ÖNCE üretilir. ApplyAuditInfo silinen kaydı
+        // Deleted → Modified'a çevirdiğinden, sonra çalışsaydı silinmiş kayıtlar da yeniden indekslenirdi.
+        ApplySearchIndex();
         ApplyAuditInfo();
         return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Şifreli alanlar üzerinde arama yapılabilmesi için blind index'i tazeler. Tek noktada durduğundan
+    /// müşteri oluşturan/güncelleyen her yol (servis, import, portal kaydı, onay replay'i) otomatik kapsanır.
+    /// </summary>
+    private void ApplySearchIndex()
+    {
+        if (_searchIndex is null) return;
+
+        foreach (var entry in ChangeTracker.Entries<Customer>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            // Converter'lar yalnızca provider'a yazarken çalışır → entity üzerindeki değerler hâlâ düz metin.
+            entry.Entity.SetSearchIndex(_searchIndex.BuildCustomerIndex(
+                entry.Entity.FullName, entry.Entity.Phone, entry.Entity.Email));
+        }
     }
 
     private void ApplyAuditInfo()
@@ -424,6 +446,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.PhotoUrl).HasColumnType("LONGTEXT");
         builder.Property(x => x.BlacklistReason).HasMaxLength(500);
         builder.Property(x => x.BirthDate).HasConversion(DateOnlyNullableConverter).HasColumnType("date");
+        // Blind index — ŞİFRELENMEZ (anahtarlı hash zaten; şifrelenirse aranamaz hale gelir).
+        // TEXT: ad+e-posta+telefon ön-ekleri ~1-2 KB tutabilir. Arama `LIKE '%|hash|%'` olduğundan
+        // B-tree index'i kullanamaz; kazanç, 12 bin satırı çözüp belleğe almak yerine dar bir kolonda
+        // tarama yapmaktan gelir. Gerekirse ileride ayrı token tablosu + gerçek index'e taşınabilir.
+        builder.Property(x => x.SearchIndex).HasColumnType("TEXT");
         builder.HasIndex(x => new { x.TenantId, x.BranchId, x.Phone });
         // Online portal girişi doğum tarihi + telefon + ad eşleşmesiyle yapılır; doğum tarihi ön-filtresi için index.
         builder.HasIndex(x => x.BirthDate);

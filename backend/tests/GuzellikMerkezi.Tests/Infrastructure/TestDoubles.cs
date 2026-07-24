@@ -1,6 +1,11 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Usage;
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Security;
+using Microsoft.Extensions.Configuration;
 
 namespace GuzellikMerkezi.Tests.Infrastructure;
 
@@ -57,4 +62,71 @@ internal sealed class NoopAuditLogger : IAuditLogger
         object? data = null,
         string? ipAddress = null,
         CancellationToken ct = default) => Task.CompletedTask;
+}
+
+/// <summary>Testlerde rol/izin/şube bağlamını tek satırda kurmak için.</summary>
+internal sealed class TestCurrentUser : ICurrentUser
+{
+    public TestCurrentUser(UserRole? role = UserRole.InstitutionOwner, Guid? tenantId = null, Guid? branchId = null, params string[] permissions)
+    {
+        Role = role;
+        TenantId = tenantId;
+        BranchId = branchId;
+        Permissions = permissions;
+    }
+
+    public Guid? UserId { get; } = Guid.NewGuid();
+    public string? Email => "test@qa.test";
+    public UserRole? Role { get; }
+    public Guid? TenantId { get; }
+    public Guid? BranchId { get; }
+    public Guid? CustomerId => null;
+    public bool IsAuthenticated => true;
+    public bool IsPlatformAdmin => Role == UserRole.PlatformAdmin;
+    public string? IpAddress => "127.0.0.1";
+    public string? DeviceId => null;
+    public string? DeviceInfoJson => null;
+    public IReadOnlyCollection<string> Permissions { get; }
+}
+
+/// <summary>Paket kapısı testlerin konusu değilse her şeye izin ver.</summary>
+internal sealed class AllowAllFeatureService : IFeatureService
+{
+    public Task<bool> HasFeatureAsync(Guid tenantId, string featureKey, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool> IsFeatureAllowedAsync(Guid tenantId, string featureKey, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<Result<TenantFeaturesDto>> GetTenantFeaturesAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(Result<TenantFeaturesDto>.Success(new TenantFeaturesDto(tenantId, null, null, null, Array.Empty<string>())));
+    public FeatureCatalogDto GetCatalog() => new(Array.Empty<FeatureCatalogItem>());
+    public void InvalidateTenant(Guid tenantId) { }
+}
+
+/// <summary>Testlerde tenant/şube kapsamını elle kurmak için (EF global query filter'ı sürer).</summary>
+internal sealed class TestTenantContext : ITenantContext
+{
+    public TestTenantContext(Guid? tenantId = null, Guid? branchId = null, bool isPlatformAdmin = false)
+        => Set(tenantId, branchId, isPlatformAdmin);
+
+    public Guid? TenantId { get; private set; }
+    public Guid? BranchId { get; private set; }
+    public bool IsPlatformAdmin { get; private set; }
+
+    public void Set(Guid? tenantId, Guid? branchId, bool isPlatformAdmin)
+    {
+        TenantId = tenantId;
+        BranchId = branchId;
+        IsPlatformAdmin = isPlatformAdmin;
+    }
+}
+
+internal static class TestSearchIndex
+{
+    /// <summary>Testler gerçek HMAC üreticisini kullanır — sahte değil; indeks/arama uyumu böyle doğrulanır.</summary>
+    public static ISearchIndexService Create() =>
+        new HmacSearchIndexService(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // 32 byte base64 — testte sabit olması indeksin deterministik olduğunu da doğrular.
+                ["Encryption:MasterKeyBase64"] = Convert.ToBase64String(new byte[32]),
+            })
+            .Build());
 }

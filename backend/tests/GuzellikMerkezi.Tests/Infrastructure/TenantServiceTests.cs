@@ -34,7 +34,7 @@ public sealed class TenantServiceTests
 
         await using (var db = new GuzellikDbContext(options))
         {
-            var service = new TenantService(db, passwordHasher);
+            var service = new TenantService(db, passwordHasher, new AllowAllFeatureService(), new NoopAuditLogger());
 
             var result = await service.GrantAccessAsync(
                 tenantId,

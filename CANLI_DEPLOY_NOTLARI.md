@@ -28,6 +28,14 @@
     - `dotnet ef database update -p backend/src/GuzellikMerkezi.Infrastructure -s backend/src/GuzellikMerkezi.Api`
     - veya script üret: `dotnet ef migrations script <önceki> WidenEncryptedColumns -i -o widen.sql` → kontrol et → prod'da çalıştır.
   - **Uygulanmadan** kurum/personel/müşteri oluşturma "Data too long for column" (500) vermeye devam eder.
+- [ ] **Müşteri arama indeksi migration'ını uygula:** `AddCustomerSearchIndex` (`20260724215005`).
+  - `customers` tablosuna `SearchIndex TEXT NULL` ekler (blind index — şifreli ad/telefon/e-posta üzerinde arama).
+  - Uygulama açılışında mevcut müşteriler için indeks **otomatik doldurulur** (500'lük partiler, idempotent,
+    kesilirse sonraki açılışta devam eder). Ayrı bir komut çalıştırmana gerek yok.
+  - **Uygulanmasa bile arama bozulmaz:** kolon yoksa/indeks boşsa sistem eski tam-tarama davranışına düşer
+    (yavaş ama doğru). Kazanç yalnızca migration + backfill tamamlandıktan sonra devreye girer.
+  - ⚠️ İndeks `Encryption:MasterKeyBase64`'ten türetilir. **Anahtar değişirse indeks anlamsızlaşır** — o durumda
+    `UPDATE customers SET SearchIndex = NULL;` çalıştırıp uygulamayı yeniden başlat (backfill yeniden üretir).
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
@@ -84,9 +92,18 @@ Pentest/güvenlik denetimi sonrası kapatılan açıklar:
 - **#8 Bildirimler:** SMS/e-posta artık platform servisinden GERÇEK gönderiliyor (sağlayıcı yoksa simülasyon); durum gerçek sonuca göre (Sent/Failed); e-posta kotası da kontrol ediliyor.
 - **#11 Platform kullanım özeti N+1 → GROUP BY** (sorgu sayısı tenant sayısından bağımsız).
 - **#3 (kısmi):** Müşteri + personel ARAMASI düzeltildi — şifreli alanlarda SQL `.Contains()` çalışmadığından bellekte (çözülmüş değerde) filtreleme (bu repodaki yerleşik desen).
+- **#3 (arama/ölçek) — 25 Tem 2026 ÇÖZÜLDÜ:** Müşteri araması artık **HMAC blind index** ile SQL'de daraltılıyor
+  (`customers.SearchIndex`, migration `AddCustomerSearchIndex`). Tenant'ın tüm müşterilerini belleğe çekip çözme
+  davranışı kalktı. Ayrıca: Türkçe aksan katlaması ("seyma" → "Şeyma") ve **telefon formatı hatası düzeltildi**
+  (`"+90 555 111 22 33"` kaydı `5551112233` aramasıyla bulunmuyordu — iki taraf da rakam-normalize ediliyor).
+  Mükerrer telefon kontrolü de aynı indeksi kullanıyor. İndeks düz metin içermez; `SaveChanges`'te otomatik tazelenir.
+- **#12 (kısmi) — 25 Tem 2026:** Test projesi **derlenmiyordu** (servisler yeni bağımlılık aldıkça kırılmış, CI olmadığı
+  için fark edilmemiş). Onarıldı + kritik akış testleri eklendi: tenant/şube izolasyonu (query filter), iki seviyeli
+  personel yetkisi, blind index arama. 18 → **45 test**. `.github/workflows/ci.yml` ile her push/PR'da backend
+  (build --warnaserror + test + bekleyen migration kontrolü), web (typecheck + build) ve mobil (analyze + test) çalışıyor.
 
 ## ⏳ Hâlâ AÇIK (dedike çalışma gerektirir — bkz. kritikbulgular.md)
 
-- **#3 (kalan) Alfabetik sıralama + ölçek:** Şifreli `FullName` SQL'de alfabetik sıralanamaz (ORDER BY ciphertext'e göre, deterministik ama alfabetik değil) ve büyük tenant'ta arama tüm satırları yükler. Tam çözüm: aranabilir/sıralanabilir alanlar için **HMAC blind-index + normalize sort-key** kolonları (ayrı tasarım + migration). Telefon eşitliği/mükerrer kontrolü de bu kapsamda.
+- **#3 (kalan) Alfabetik sıralama:** Şifreli `FullName` SQL'de alfabetik sıralanamaz (ORDER BY ciphertext'e göre — deterministik, dolayısıyla sayfalama tutarlı, ama alfabetik değil). Aramada sıralama bellekte alfabetik yapılır; aramasız listede değil. Çözüm normalize bir **sort-key** kolonu olur (blind index'in yanına, aynı desenle). Arama/ölçek kısmı ✅ çözüldü (aşağı bak).
 - **#1 (kalan) Tam authz matrisi:** Cari (`/api/admin/accounts`) okuma kapısı 5 Tem 2026'da eklendi. Kalan: Müşteri/Randevu/Hizmet/Stok/Rapor/Komisyon uçlarının personel OKUMA izin kapısı, çapraz bağımlılıklar (ör. randevu oluştururken müşteri/hizmet/personel listesi okuma; adisyonda ürün listesi) nedeniyle "okuma vs yönetim" ayrımı gerektirir; frontend ile koordineli test edilmeli. Not: Staff yazma işlemleri zaten onay kapısı + aksiyon izniyle korunuyor; bu madde yalnız OKUMA sızıntısı içindir.
 - **#9 Dev parolası:** `appsettings.Development.json` git'e GİRMEMİŞ (gitignore'lu) — repo/geçmiş riski yok. Yine de paylaşıldıysa döndür; prod'da farklı secret kullan.

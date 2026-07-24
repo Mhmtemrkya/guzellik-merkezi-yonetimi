@@ -38,6 +38,16 @@ public sealed class Customer : Entity
     /// <summary>Online portal son giriş zamanı (ad+soyad+telefon+doğum tarihi eşleşmesi ile giriş).</summary>
     public DateTime? LastLoginUtc { get; private set; }
 
+    /// <summary>
+    /// Ad/telefon/e-posta üzerinde SQL araması yapabilmek için anahtarlı hash (blind index) — <c>|hash|hash|</c>.
+    /// Düz metin İÇERMEZ. Elle set edilmez: <c>GuzellikDbContext.SaveChangesAsync</c> her ekleme/güncellemede
+    /// <c>ISearchIndexService</c> ile yeniden üretir, böylece hiçbir kod yolu indeksi güncellemeyi unutamaz.
+    /// </summary>
+    public string? SearchIndex { get; private set; }
+
+    /// <summary>Yalnızca altyapı (DbContext + backfill) tarafından çağrılır; iş kuralı taşımaz.</summary>
+    public void SetSearchIndex(string? value) => SearchIndex = value;
+
     public void SetVip(bool isVip)
     {
         IsVip = isVip;

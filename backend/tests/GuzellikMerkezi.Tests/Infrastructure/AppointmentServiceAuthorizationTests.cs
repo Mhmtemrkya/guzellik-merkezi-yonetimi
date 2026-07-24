@@ -1,5 +1,9 @@
+using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Adisyonlar;
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Appointments;
+using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -7,6 +11,7 @@ using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
+using NSubstitute;
 
 namespace GuzellikMerkezi.Tests.Infrastructure;
 
@@ -18,7 +23,7 @@ public sealed class AppointmentServiceAuthorizationTests
         var fixture = await SeedTwoStaffAppointmentsAsync();
 
         await using var db = new GuzellikDbContext(fixture.Options);
-        var service = new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger());
+        var service = NewAppointmentService(db);
 
         var result = await service.ListAsync(
             fixture.TenantId,
@@ -42,7 +47,7 @@ public sealed class AppointmentServiceAuthorizationTests
         var fixture = await SeedTwoStaffAppointmentsAsync();
 
         await using var db = new GuzellikDbContext(fixture.Options);
-        var service = new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger());
+        var service = NewAppointmentService(db);
 
         var result = await service.GetAsync(
             fixture.TenantId,
@@ -60,7 +65,7 @@ public sealed class AppointmentServiceAuthorizationTests
 
         await using (var db = new GuzellikDbContext(fixture.Options))
         {
-            var service = new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger());
+            var service = NewAppointmentService(db);
 
             var result = await service.ChangeStatusAsync(
                 fixture.TenantId,
@@ -78,6 +83,20 @@ public sealed class AppointmentServiceAuthorizationTests
             Assert.Equal(AppointmentStatus.Scheduled, bobAppointment.Status);
         }
     }
+
+    /// <summary>
+    /// Testin konusu yetkilendirme; randevunun yan etkileri (bekleme listesi teklifi, iş kuyruğu,
+    /// bildirim, adisyon) substitute'lanır. Servis yeni bir bağımlılık alırsa yalnızca burası güncellenir.
+    /// </summary>
+    private static AppointmentService NewAppointmentService(GuzellikDbContext db) =>
+        new(db,
+            new AlwaysAllowUsageService(),
+            new NoopAuditLogger(),
+            Substitute.For<IWaitlistService>(),
+            Substitute.For<IDurableJobQueue>(),
+            Substitute.For<IAppNotificationService>(),
+            new TestCurrentUser(),
+            Substitute.For<IAdisyonService>());
 
     private static async Task<AppointmentAuthorizationFixture> SeedTwoStaffAppointmentsAsync()
     {
