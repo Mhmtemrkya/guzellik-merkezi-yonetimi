@@ -5,11 +5,11 @@ import type { ImportedRow, ImportResult } from './excel'
 // Kolon adları ne olursa olsun (Türkçe/İngilizce, bozuk karakter kodlaması,
 // büyük/küçük harf, GSM 1 / GSM 2 gibi çoklu kolonlar) başlıkları normalize
 // edip eş anlamlı sözlüğüyle eşler; satır değerlerine de bakarak dosyanın
-// müşteri mi, hizmet mi, paket mi olduğunu tespit eder ve backend'in beklediği
-// normalize satırlara çevirir.
+// müşteri mi, hizmet mi, paket mi, ürün mü olduğunu tespit eder ve backend'in
+// beklediği normalize satırlara çevirir.
 // ---------------------------------------------------------------------------
 
-export type ImportEntityType = 'customer' | 'service' | 'package'
+export type ImportEntityType = 'customer' | 'service' | 'package' | 'product'
 
 export interface ImportCustomerRow {
   fullName: string
@@ -28,12 +28,35 @@ export interface ImportServiceRow {
   sessionCount: number | null
 }
 
+/** Paket içeriğindeki tek hizmet — "Lazer Epilasyon (8)" gibi bir parçadan çözülür. */
+export interface ImportPackageItemRow {
+  serviceName: string
+  sessionCount: number | null
+}
+
 export interface ImportPackageRow {
   name: string
   description: string | null
   category: string | null
   totalPrice: number | null
   sessionCount: number | null
+  depositAmount: number | null
+  installmentCount: number | null
+  /** Paketin kapsadığı hizmetler. Boşsa backend tek kalemli varsayılana düşer. */
+  items: ImportPackageItemRow[]
+}
+
+export interface ImportProductRow {
+  name: string
+  sku: string | null
+  barcode: string | null
+  brand: string | null
+  category: string | null
+  unit: string | null
+  cost: number | null
+  salePrice: number | null
+  currentStock: number | null
+  minStockLevel: number | null
 }
 
 export interface AnalyzedSheet {
@@ -48,6 +71,7 @@ export interface AnalyzedSheet {
   customers: ImportCustomerRow[]
   services: ImportServiceRow[]
   packages: ImportPackageRow[]
+  products: ImportProductRow[]
   warnings: string[]
 }
 
@@ -55,6 +79,7 @@ export const ENTITY_LABELS: Record<ImportEntityType, string> = {
   customer: 'Müşteri',
   service: 'Hizmet',
   package: 'Paket',
+  product: 'Ürün',
 }
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -74,6 +99,16 @@ export const FIELD_LABELS: Record<string, string> = {
   totalPrice: 'Toplam Fiyat',
   sessionCount: 'Seans Sayısı',
   description: 'Açıklama',
+  packageItems: 'Paket İçeriği',
+  deposit: 'Peşinat',
+  installment: 'Taksit',
+  sku: 'Stok Kodu',
+  barcode: 'Barkod',
+  brand: 'Marka',
+  unit: 'Birim',
+  cost: 'Maliyet',
+  stock: 'Stok',
+  minStock: 'Min. Stok',
 }
 
 // --- başlık normalizasyonu ---------------------------------------------------
@@ -106,13 +141,30 @@ const FIELD_SYNONYMS: Record<string, string[]> = {
   gender: ['cinsiyet', 'gender', 'cnsyet', 'sex'],
   notes: ['not', 'notlar', 'note', 'notes', 'comment'],
   createdAt: ['olusturulmatarihi', 'kayittarihi', 'olusturma', 'createdat', 'oluturulmatarh', 'oluturulma'],
-  name: ['hizmetadi', 'hizmet', 'islemadi', 'islem', 'paketadi', 'paket', 'urunadi', 'servicename', 'service', 'baslik', 'hzmet', 'lemad'],
+  name: ['hizmetadi', 'hizmet', 'islemadi', 'islem', 'paketadi', 'paket', 'urunadi', 'urun', 'servicename', 'service', 'baslik', 'hzmet', 'lemad', 'rn'],
   category: ['kategori', 'category', 'grup', 'kategor'],
   duration: ['sure', 'suredakika', 'dakika', 'duration', 'durationminutes', 'islemsuresi', 'sre'],
   price: ['fiyat', 'ucret', 'tutar', 'price', 'amount', 'birimfiyat', 'fyat', 'cret'],
   totalPrice: ['toplamfiyat', 'toplamtutar', 'totalprice', 'pakettutari', 'paketfiyati'],
   sessionCount: ['seans', 'seanssayisi', 'seansadedi', 'sessioncount', 'sessions'],
-  description: ['aciklama', 'description', 'detay', 'icerik', 'aklama'],
+  description: ['aciklama', 'description', 'detay', 'aklama'],
+  // "İçerik" bu projenin paket dışa aktarımında paketin KAPSADIĞI HİZMETLERdir
+  // ("Lazer (8) + Cilt Bakımı (4)"), açıklama değil. Bu yüzden description'dan ayrıldı.
+  // Parçalanamazsa ham metin yine açıklamaya düşer (bkz. analyzeSheet).
+  packageItems: ['icerik', 'icerigi', 'paketicerigi', 'kapsam', 'dahilhizmetler', 'hizmetler', 'cerk'],
+  deposit: ['pesinat', 'onodeme', 'kapora', 'deposit', 'downpayment', 'peinat'],
+  installment: ['taksit', 'taksitsayisi', 'installment', 'installmentcount'],
+  // --- ürün / stok ---
+  // NOT: en uzun eşleşme kazandığı için çakışmalar kendiliğinden çözülür:
+  // "Stok Kodu" → sku ('stokkodu' 8 > 'stok' 4), "Barkod" → barcode ('barkod' 6 > 'kod'),
+  // "Min. Stok" → minStock ('minstok' 7 > 'stok' 4), "Birim Fiyat" → price ('birimfiyat' 10 > 'birim' 5).
+  sku: ['sku', 'stokkodu', 'urunkodu', 'productcode', 'stokkod'],
+  barcode: ['barkod', 'barcode', 'ean'],
+  brand: ['marka', 'brand'],
+  unit: ['birim', 'unit', 'olcubirimi'],
+  cost: ['maliyet', 'alisfiyati', 'alisfiyat', 'cost', 'malyet'],
+  stock: ['stok', 'mevcutstok', 'stokadedi', 'currentstock', 'stokmiktari'],
+  minStock: ['minstok', 'minimumstok', 'kritikstok', 'minstokseviyesi', 'minstocklevel'],
 }
 
 /** Başlığı bir alana eşle; en uzun (en spesifik) eşleşme kazanır. */
@@ -187,6 +239,64 @@ function parseGender(v: unknown): number {
   return 0
 }
 
+/**
+ * Paket içeriği metnini hizmet kalemlerine ayırır.
+ *
+ * Desteklenen biçimler (bu projenin kendi Excel çıktısı ilk sıradaki):
+ * - `Lazer Epilasyon (8) + Cilt Bakımı (4)`
+ * - `Lazer Epilasyon x8, Cilt Bakımı x4`
+ * - `8 x Lazer Epilasyon; Cilt Bakımı`   (sayı yoksa 1 seans varsayılır)
+ *
+ * Ayraç: `+`, `,`, `;`, `/` ve yeni satır. Hiçbir kalem çözülemezse boş döner —
+ * çağıran taraf metni açıklama olarak kullanır (veri kaybolmasın).
+ *
+ * SERBEST METİN KORUMASI: tek parça + hiç seans sayısı yoksa bu bir içerik listesi değil,
+ * düz bir açıklamadır ("Cildinizi yenileyen özel bakım") ve boş döner. Aksi halde o cümle
+ * hizmet adı sanılıp katalogda çöp bir hizmet oluşturur — geri alması zor bir hata.
+ * Bedeli: tek hizmetli, sayısız içerik ("Cilt Bakımı") açıklamaya düşer; backend paketi
+ * kendi adıyla tek kaleme bağlar. Sessiz çöp üretmektense bu yön tercih edilir.
+ */
+export function parsePackageItems(text: string): ImportPackageItemRow[] {
+  if (!text.trim()) return []
+  const items: ImportPackageItemRow[] = []
+  let sawExplicitCount = false
+
+  for (const rawPart of text.split(/[+,;/\n]/)) {
+    let part = rawPart.trim()
+    if (!part) continue
+    let count: number | null = null
+
+    // "... (8)" — parantez içi seans sayısı
+    const paren = part.match(/^(.*?)\s*\(\s*(\d+)\s*\)\s*$/)
+    if (paren) {
+      part = paren[1].trim()
+      count = Number(paren[2])
+    } else {
+      // "... x8" / "... 8 seans"
+      const suffix = part.match(/^(.*?)\s*[x*]\s*(\d+)$/i) ?? part.match(/^(.*?)\s+(\d+)\s*seans$/i)
+      if (suffix) {
+        part = suffix[1].trim()
+        count = Number(suffix[2])
+      } else {
+        // "8 x ..." — sayı önde
+        const prefix = part.match(/^(\d+)\s*[x*]?\s+(.*)$/)
+        if (prefix && prefix[2].trim()) {
+          count = Number(prefix[1])
+          part = prefix[2].trim()
+        }
+      }
+    }
+
+    if (!part || /^\d+$/.test(part)) continue // yalnız sayıdan ibaret parça hizmet adı değildir
+    if (count && count > 0) sawExplicitCount = true
+    items.push({ serviceName: part, sessionCount: count && count > 0 ? count : null })
+  }
+
+  // Tek parça + hiç sayı yok → içerik listesi değil, serbest açıklama.
+  if (items.length <= 1 && !sawExplicitCount) return []
+  return items
+}
+
 // --- varlık tipi tespiti ------------------------------------------------------
 
 function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: Set<string>): ImportEntityType {
@@ -194,6 +304,7 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
   let customer = 0
   let service = 0
   let pkg = 0
+  let product = 0
 
   if (mappedFields.has('phone')) customer += 3
   if (mappedFields.has('firstName') || mappedFields.has('lastName') || mappedFields.has('fullName')) customer += 2
@@ -209,6 +320,17 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
   if (/paket/.test(headerText)) pkg += 4
   if (mappedFields.has('sessionCount')) pkg += 2
   if (mappedFields.has('totalPrice')) pkg += 1
+  // İçerik/peşinat/taksit kolonları yalnızca paket listelerinde bulunur.
+  if (mappedFields.has('packageItems')) pkg += 3
+  if (mappedFields.has('deposit') || mappedFields.has('installment')) pkg += 2
+
+  // Ürün/stok: barkod ve stok kodu neredeyse yalnız ürün listelerinde bulunur.
+  if (mappedFields.has('barcode')) product += 4
+  if (mappedFields.has('sku')) product += 3
+  if (mappedFields.has('stock') || mappedFields.has('minStock')) product += 3
+  if (mappedFields.has('cost')) product += 2
+  if (mappedFields.has('brand')) product += 2
+  if (/urun|stok|rn/.test(headerText)) product += 2
 
   // Başlıklar bir şey söylemiyorsa değer desenlerine bak: satırların çoğunda
   // telefon görünümlü hücre varsa müşteri listesidir.
@@ -227,6 +349,7 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
     if (phoneish / sample.length > 0.5) customer += 2
   }
 
+  if (product > 0 && product >= customer && product >= service && product >= pkg) return 'product'
   if (pkg > 0 && pkg >= customer && pkg >= service) return 'package'
   if (service > customer) return 'service'
   return 'customer'
@@ -267,6 +390,7 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
   const customers: ImportCustomerRow[] = []
   const services: ImportServiceRow[] = []
   const packages: ImportPackageRow[] = []
+  const products: ImportProductRow[] = []
 
   for (const row of sheet.rows) {
     const primary = str(row[sheet.headers[0] ?? ''] ?? '')
@@ -295,15 +419,37 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
         price: parseNumber(get(row, 'price') || get(row, 'totalPrice')),
         sessionCount: parseNumber(get(row, 'sessionCount')),
       })
+    } else if (entityType === 'product') {
+      const name = get(row, 'name') || get(row, 'fullName') || primary
+      if (!name) continue
+      products.push({
+        name,
+        sku: get(row, 'sku') || null,
+        barcode: get(row, 'barcode') || null,
+        brand: get(row, 'brand') || null,
+        category: get(row, 'category') || null,
+        unit: get(row, 'unit') || null,
+        cost: parseNumber(get(row, 'cost')),
+        salePrice: parseNumber(get(row, 'price') || get(row, 'totalPrice')),
+        currentStock: parseNumber(get(row, 'stock')),
+        minStockLevel: parseNumber(get(row, 'minStock')),
+      })
     } else {
       const name = get(row, 'name') || get(row, 'fullName') || primary
       if (!name) continue
+      // İçerik kolonu önce kalemlere ayrılmaya çalışılır; ayrılamazsa (serbest metin)
+      // veri kaybolmasın diye açıklama olarak saklanır.
+      const itemsText = get(row, 'packageItems')
+      const items = parsePackageItems(itemsText)
       packages.push({
         name,
-        description: get(row, 'description') || get(row, 'notes') || null,
+        description: get(row, 'description') || (items.length === 0 ? itemsText : '') || get(row, 'notes') || null,
         category: get(row, 'category') || null,
         totalPrice: parseNumber(get(row, 'totalPrice') || get(row, 'price')),
         sessionCount: parseNumber(get(row, 'sessionCount')),
+        depositAmount: parseNumber(get(row, 'deposit')),
+        installmentCount: parseNumber(get(row, 'installment')),
+        items,
       })
     }
   }
@@ -314,7 +460,13 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
   }
 
   const validRows =
-    entityType === 'customer' ? customers.filter((c) => c.phone).length : entityType === 'service' ? services.length : packages.length
+    entityType === 'customer'
+      ? customers.filter((c) => c.phone).length
+      : entityType === 'service'
+        ? services.length
+        : entityType === 'product'
+          ? products.length
+          : packages.length
 
   return {
     sheetName: sheet.sheetName,
@@ -326,6 +478,7 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
     customers,
     services,
     packages,
+    products,
     warnings,
   }
 }

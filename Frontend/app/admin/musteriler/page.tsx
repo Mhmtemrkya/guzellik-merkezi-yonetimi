@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import CustomerFormDialog from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
+import ImportDialog from '@/components/dashboard/ImportDialog'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
 import CustomerOperationsJournal from '@/components/dashboard/CustomerOperationsJournal'
@@ -24,7 +25,7 @@ import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import {
-  ChevronLeft, ChevronRight, CreditCard,
+  ChevronLeft, ChevronRight, CreditCard, FileUp,
   Mail, Phone, PenLine, PieChart, Search, Sparkles,
   UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
@@ -96,6 +97,7 @@ function MusterilerPageInner() {
   const [apptOpen, setApptOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   // Seans kartını tazelemek için sayaç — paket satışı / randevu sonrası artar.
   const [sessRefresh, setSessRefresh] = useState(0)
   // Liste payload'ı için fotoğraf artık liste DTO'sunda gelmiyor; seçili müşterinin fotoğrafını ayrı çekeriz.
@@ -392,16 +394,18 @@ function MusterilerPageInner() {
                 ],
                 totals: { name: 'TOPLAM', debt: filtered.reduce((s, c) => s + (c as Enriched).debt, 0) },
               }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                for (const row of first.rows) {
-                  const fullName = String(row['Ad Soyad'] || row['Ad'] || '').trim(); const phone = String(row['Telefon'] || '').trim()
-                  if (!fullName || !phone) continue
-                  await adminApi.createCustomer({ branchId, fullName, phone, email: String(row['E-posta'] || '') || null, gender: String(row['Cinsiyet'] || 'Unspecified'), kvkkConsent: String(row['KVKK'] || '').toLocaleLowerCase('tr-TR') === 'evet', notes: String(row['Not'] || '') || null }, tenantId)
-                }
-                await reload()
-              }}
             />
+            {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi: kolon adlarına bağlı
+                değil (otomatik eşleme), mükerrer telefonu atlar ve 400'lük partiler hâlinde tek
+                istekte gönderir. Eskiden burada satır başına bir API çağrısı yapan, başlıkları
+                birebir tutturmayı şart koşan bir döngü vardı. */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            >
+              <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
+            </button>
           </div>
         }
       />
@@ -629,6 +633,13 @@ function MusterilerPageInner() {
         tenantId={tenantId}
         initialValues={{ customerId: selected?.id || '', date: new Date().toISOString().slice(0, 10) }}
         onSubmit={handleCreateAppointment}
+      />
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityType="customer"
+        onDone={() => void reloadWithSessions()}
       />
     </>
   )

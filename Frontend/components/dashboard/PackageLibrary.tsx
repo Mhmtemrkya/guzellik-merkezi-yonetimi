@@ -6,13 +6,14 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import CampaignPanel from '@/components/dashboard/CampaignPanel'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, FileText, Gift, Loader2, Minus, PackagePlus, PencilLine,
+  CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Gift, Loader2, Minus, PackagePlus, PencilLine,
   PauseCircle, Plus, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud, Wallet, X,
 } from 'lucide-react'
 import type {
@@ -80,6 +81,7 @@ export default function PackageLibrary({
 }) {
   const [tab, setTab] = useState<TabKey>('all')
   const [q, setQ] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
   const [priceSort, setPriceSort] = useState('')
   const [page, setPage] = useState(1)
@@ -380,24 +382,18 @@ export default function PackageLibrary({
                 ],
                 totals: { name: 'TOPLAM', totalPrice: filtered.reduce((a, p) => a + p.totalPrice, 0) },
               }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                const byName = new Map<string, Service>()
-                services.forEach((s) => byName.set(s.name.trim().toLocaleLowerCase('tr'), s))
-                for (const row of first.rows) {
-                  const name = String(row['Paket Adı'] || '').trim(); if (!name) continue
-                  const content = String(row['İçerik'] || '').trim()
-                  const items: Array<{ serviceDefinitionId: string; sessionCount: number; unitPrice: number }> = []
-                  for (const part of content.split('+')) {
-                    const m = part.trim().match(/^(.*?)\s*\((\d+)\)\s*$/)
-                    const svc = byName.get((m ? m[1] : part).trim().toLocaleLowerCase('tr'))
-                    if (svc) items.push({ serviceDefinitionId: svc.id, sessionCount: m ? Number(m[2]) : 1, unitPrice: svc.price })
-                  }
-                  await adminApi.createPackage({ branchId: branchId || null, name, description: null, totalPrice: Number(row['Satış Fiyatı'] || row['Toplam Tutar'] || 0), depositAmount: Number(row['Peşinat'] || 0), installmentCount: Number(row['Taksit'] || 0), isActive: String(row['Durum'] || 'Aktif').toLocaleLowerCase('tr') !== 'pasif', items }, tenantId)
-                }
-                await reload()
-              }}
             />
+            {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi: kolon adlarına
+                bağlı değil (otomatik eşleme), mükerrer kaydı atlar ve tek istekte parti
+                hâlinde gönderir. Eskiden burada satır başına bir API çağrısı yapan,
+                başlıkları birebir tutturmayı şart koşan bir döngü vardı. */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            >
+              <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
+            </button>
           </div>
         }
       />
@@ -821,6 +817,13 @@ export default function PackageLibrary({
 
         <CampaignPanel tenantId={tenantId} />
       </div>
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityType="package"
+        onDone={() => void reload()}
+      />
     </>
   )
 }

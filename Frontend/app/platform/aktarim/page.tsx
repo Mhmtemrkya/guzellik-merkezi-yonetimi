@@ -5,6 +5,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  Boxes,
   Building2,
   CheckCircle2,
   ChevronDown,
@@ -45,6 +46,7 @@ const ENTITY_ICONS: Record<ImportEntityType, typeof Users> = {
   customer: Users,
   service: Scissors,
   package: Package,
+  product: Boxes,
 }
 
 export default function PlatformImportPage() {
@@ -130,10 +132,11 @@ export default function PlatformImportPage() {
     const acc: ImportTotals = { created: 0, skipped: 0, failed: 0, errors: [] }
 
     // Sayfalar sırayla, her sayfa 400'lük parçalarla gönderilir.
-    const jobs: { key: 'customers' | 'services' | 'packages'; rows: unknown[] }[] = []
+    const jobs: { key: 'customers' | 'services' | 'packages' | 'products'; rows: unknown[] }[] = []
     for (const s of included) {
       if (s.analyzed.entityType === 'customer') jobs.push({ key: 'customers', rows: s.analyzed.customers.filter((c) => c.phone) })
       else if (s.analyzed.entityType === 'service') jobs.push({ key: 'services', rows: s.analyzed.services })
+      else if (s.analyzed.entityType === 'product') jobs.push({ key: 'products', rows: s.analyzed.products })
       else jobs.push({ key: 'packages', rows: s.analyzed.packages })
     }
     const chunks: { key: string; rows: unknown[] }[] = []
@@ -150,11 +153,13 @@ export default function PlatformImportPage() {
           servicesSkipped: number
           packagesCreated: number
           packagesSkipped: number
+          productsCreated: number
+          productsSkipped: number
           failed: number
           errors: string[]
         }>(tenantId, { [chunks[i]!.key]: chunks[i]!.rows })
-        acc.created += (result.customersCreated ?? 0) + (result.servicesCreated ?? 0) + (result.packagesCreated ?? 0)
-        acc.skipped += (result.customersSkipped ?? 0) + (result.servicesSkipped ?? 0) + (result.packagesSkipped ?? 0)
+        acc.created += (result.customersCreated ?? 0) + (result.servicesCreated ?? 0) + (result.packagesCreated ?? 0) + (result.productsCreated ?? 0)
+        acc.skipped += (result.customersSkipped ?? 0) + (result.servicesSkipped ?? 0) + (result.packagesSkipped ?? 0) + (result.productsSkipped ?? 0)
         acc.failed += result.failed ?? 0
         if (result.errors?.length && acc.errors.length < 20) acc.errors.push(...result.errors.slice(0, 20 - acc.errors.length))
         setProgress(Math.round(((i + 1) / chunks.length) * 100))

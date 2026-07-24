@@ -6,13 +6,14 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ProductFormDialog from '@/components/dashboard/ProductFormDialog'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import ImportDialog from '@/components/dashboard/ImportDialog'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeProduct, normalizeStockMovement, productCategoryLabels } from '@/lib/apiMappers'
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, Banknote, Barcode as BarcodeIcon, Boxes, Cake,
-  ChevronLeft, ChevronRight, Hash, ImagePlus, Layers3, Loader2, MapPin, Package, PackagePlus,
+  ChevronLeft, ChevronRight, FileUp, Hash, ImagePlus, Layers3, Loader2, MapPin, Package, PackagePlus,
   PencilLine, Repeat, Ruler, Search, Star, Tag, Timer, ToggleRight, Trash2, TrendingUp, Truck, Wallet, X,
 } from 'lucide-react'
 import type { ApiProduct, ApiStockMovement, Product, ProductCategoryKey, StockMovement } from '@/lib/types'
@@ -57,6 +58,7 @@ export default function ProductLibrary({
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab)
   const [q, setQ] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -210,15 +212,18 @@ export default function ProductLibrary({
                 ],
                 totals: { name: 'TOPLAM', cost: filtered.reduce((a, p) => a + p.stockValueCost, 0) },
               }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                for (const row of first.rows) {
-                  const name = String(row['Ürün'] || row['Ürün Adı'] || '').trim(); if (!name) continue
-                  await adminApi.createProduct({ branchId, name, sku: String(row['SKU'] || name).trim(), category: 'SkinCare', unit: 'adet', cost: Number(row['Maliyet'] || 0), salePrice: Number(row['Satış Fiyatı'] || 0), currentStock: Number(row['Stok'] || 0), minStockLevel: Number(row['Min. Stok'] || 0), isActive: true, barcode: String(row['Barkod'] || '') || null, brand: String(row['Marka'] || '') || null }, tenantId)
-                }
-                await reload()
-              }}
             />
+            {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi: kolon adlarına
+                bağlı değil (otomatik eşleme), mükerrer kaydı atlar ve tek istekte parti
+                hâlinde gönderir. Eskiden burada satır başına bir API çağrısı yapan,
+                başlıkları birebir tutturmayı şart koşan bir döngü vardı. */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            >
+              <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
+            </button>
           </div>
         }
       />
@@ -477,6 +482,13 @@ export default function ProductLibrary({
           </div>
         </div>
       </div>
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityType="product"
+        onDone={() => void reload()}
+      />
     </>
   )
 }

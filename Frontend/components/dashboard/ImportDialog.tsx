@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
+  Boxes,
   CheckCircle2,
   FileSpreadsheet,
   Loader2,
@@ -27,6 +28,14 @@ import { useBranch } from './BranchContext'
 interface ImportDialogProps {
   open: boolean
   onClose: () => void
+  /**
+   * Sayfaya özel aktarım: verilirse tip tespiti yapılmaz, dosya doğrudan bu tür olarak
+   * okunur ve tür seçici gizlenir (müşteriler sayfasında müşteri, hizmetler sayfasında
+   * hizmet aktarılır). Verilmezse dashboard davranışı: tür otomatik tespit + elle değiştirilebilir.
+   */
+  entityType?: ImportEntityType
+  /** Aktarım bittiğinde sayfanın listesini tazelemesi için. */
+  onDone?: () => void
 }
 
 interface ImportTotals {
@@ -36,6 +45,8 @@ interface ImportTotals {
   servicesSkipped: number
   packagesCreated: number
   packagesSkipped: number
+  productsCreated: number
+  productsSkipped: number
   failed: number
   errors: string[]
 }
@@ -48,9 +59,10 @@ const ENTITY_ICONS: Record<ImportEntityType, typeof Users> = {
   customer: Users,
   service: Scissors,
   package: Package,
+  product: Boxes,
 }
 
-export default function ImportDialog({ open, onClose }: ImportDialogProps) {
+export default function ImportDialog({ open, onClose, entityType, onDone }: ImportDialogProps) {
   const { selectedBranchId } = useBranch()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [step, setStep] = useState<Step>('pick')
@@ -74,6 +86,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
 
   const close = (): void => {
     if (step === 'importing') return // aktarım ortasında kapatma
+    // Kayıt eklendiyse çağıran sayfa listesini tazelesin (dashboard'da onDone yok, zararsız).
+    if (step === 'done' && (totals?.customersCreated || totals?.servicesCreated || totals?.packagesCreated || totals?.productsCreated)) onDone?.()
     reset()
     onClose()
   }
@@ -95,7 +109,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
       // En çok satırı olan sayfa esas alınır
       const main = withRows.reduce((a, b) => (b.rows.length > a.rows.length ? b : a))
       setRawSheets(withRows)
-      setAnalyzed(analyzeSheet(main))
+      // Sayfa kapsamlıysa tür sabit (entityType), değilse otomatik tespit.
+      setAnalyzed(analyzeSheet(main, entityType))
       setStep('preview')
     } catch {
       setError('Dosya okunamadı. Geçerli bir Excel dosyası olduğundan emin olun.')
@@ -122,6 +137,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
       servicesSkipped: 0,
       packagesCreated: 0,
       packagesSkipped: 0,
+      productsCreated: 0,
+      productsSkipped: 0,
       failed: 0,
       errors: [],
     }
@@ -131,7 +148,9 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
         ? analyzed.customers.filter((c) => c.phone)
         : analyzed.entityType === 'service'
           ? analyzed.services
-          : analyzed.packages
+          : analyzed.entityType === 'product'
+            ? analyzed.products
+            : analyzed.packages
     const phoneless = analyzed.entityType === 'customer' ? analyzed.customers.length - rows.length : 0
     acc.failed += phoneless
     if (phoneless > 0) acc.errors.push(`${phoneless} satır geçerli telefon olmadığı için aktarılmadı.`)
@@ -144,6 +163,7 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
         const body: Record<string, unknown> = { branchId: selectedBranchId }
         if (analyzed.entityType === 'customer') body.customers = chunks[i]
         else if (analyzed.entityType === 'service') body.services = chunks[i]
+        else if (analyzed.entityType === 'product') body.products = chunks[i]
         else body.packages = chunks[i]
 
         const result = await adminApi.bulkImport<{
@@ -153,6 +173,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
           servicesSkipped: number
           packagesCreated: number
           packagesSkipped: number
+          productsCreated: number
+          productsSkipped: number
           failed: number
           errors: string[]
         }>(body)
@@ -163,6 +185,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
         acc.servicesSkipped += result.servicesSkipped ?? 0
         acc.packagesCreated += result.packagesCreated ?? 0
         acc.packagesSkipped += result.packagesSkipped ?? 0
+        acc.productsCreated += result.productsCreated ?? 0
+        acc.productsSkipped += result.productsSkipped ?? 0
         acc.failed += result.failed ?? 0
         if (result.errors?.length && acc.errors.length < 20) acc.errors.push(...result.errors.slice(0, 20 - acc.errors.length))
         setProgress(Math.round(((i + 1) / chunks.length) * 100))
@@ -182,7 +206,15 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
       return analyzed.customers.slice(0, 6).map((c) => [c.fullName, c.phone || '—', c.email || '—', c.birthDate || '—'])
     if (analyzed.entityType === 'service')
       return analyzed.services.slice(0, 6).map((s) => [s.name, s.category || '—', s.durationMinutes != null ? `${s.durationMinutes} dk` : '—', s.price != null ? `₺${s.price}` : '—'])
-    return analyzed.packages.slice(0, 6).map((p) => [p.name, p.category || '—', p.sessionCount != null ? `${p.sessionCount} seans` : '—', p.totalPrice != null ? `₺${p.totalPrice}` : '—'])
+    if (analyzed.entityType === 'product')
+      return analyzed.products.slice(0, 6).map((p) => [p.name, p.barcode || p.sku || '—', p.currentStock != null ? `${p.currentStock}` : '—', p.salePrice != null ? `₺${p.salePrice}` : '—'])
+    // Pakette içerik önizlemesi önemli: hizmet kalemleri doğru çözüldü mü kullanıcı burada görür.
+    return analyzed.packages.slice(0, 6).map((p) => [
+      p.name,
+      p.items.length > 0 ? p.items.map((i) => `${i.serviceName}${i.sessionCount ? ` (${i.sessionCount})` : ''}`).join(' + ') : '—',
+      p.sessionCount != null ? `${p.sessionCount} seans` : '—',
+      p.totalPrice != null ? `₺${p.totalPrice}` : '—',
+    ])
   }, [analyzed])
 
   const previewHeaders =
@@ -190,10 +222,12 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
       ? ['Ad Soyad', 'Telefon', 'E-posta', 'Doğum Tarihi']
       : analyzed?.entityType === 'service'
         ? ['Hizmet', 'Kategori', 'Süre', 'Fiyat']
-        : ['Paket', 'Kategori', 'Seans', 'Toplam Fiyat']
+        : analyzed?.entityType === 'product'
+          ? ['Ürün', 'Barkod / Stok Kodu', 'Stok', 'Satış Fiyatı']
+          : ['Paket', 'İçerik', 'Seans', 'Toplam Fiyat']
 
-  const totalCreated = (totals?.customersCreated ?? 0) + (totals?.servicesCreated ?? 0) + (totals?.packagesCreated ?? 0)
-  const totalSkipped = (totals?.customersSkipped ?? 0) + (totals?.servicesSkipped ?? 0) + (totals?.packagesSkipped ?? 0)
+  const totalCreated = (totals?.customersCreated ?? 0) + (totals?.servicesCreated ?? 0) + (totals?.packagesCreated ?? 0) + (totals?.productsCreated ?? 0)
+  const totalSkipped = (totals?.customersSkipped ?? 0) + (totals?.servicesSkipped ?? 0) + (totals?.packagesSkipped ?? 0) + (totals?.productsSkipped ?? 0)
 
   return (
     <AnimatePresence>
@@ -222,9 +256,13 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
                   <FileSpreadsheet className="h-4.5 w-4.5" strokeWidth={1.7} />
                 </span>
                 <div>
-                  <div className="text-[14px] font-semibold text-[#352432]">Excel İçeri Aktar</div>
+                  <div className="text-[14px] font-semibold text-[#352432]">
+                    {entityType ? `${ENTITY_LABELS[entityType]} İçeri Aktar` : 'Excel İçeri Aktar'}
+                  </div>
                   <div className="text-[11px] text-[#7c6170]">
-                    Müşteri, hizmet veya paket listesi — kolon yapısı otomatik tanınır
+                    {entityType
+                      ? `${ENTITY_LABELS[entityType]} listesi — kolon adları farklı olsa da otomatik eşlenir`
+                      : 'Müşteri, hizmet veya paket listesi — kolon yapısı otomatik tanınır'}
                   </div>
                 </div>
               </div>
@@ -308,33 +346,43 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
                     </button>
                   </div>
 
-                  {/* tip seçimi */}
-                  <div>
-                    <div className="mb-2 text-[11px] font-semibold text-[#7c6170]">
-                      Veri türü {analyzed.autoDetected && <span className="ml-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">otomatik tespit</span>}
+                  {/* tip seçimi — sayfaya özel aktarımda tür zaten belli, seçici gösterilmez */}
+                  {entityType ? (
+                    <div className="flex items-center gap-2 rounded-xl border border-[#ef6f94]/40 bg-[#fff1f6] px-3.5 py-2.5 text-[12px] font-semibold text-[#c85776]">
+                      {(() => {
+                        const Icon = ENTITY_ICONS[entityType]
+                        return <Icon className="h-4 w-4" />
+                      })()}
+                      {ENTITY_LABELS[entityType]} olarak aktarılacak
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(Object.keys(ENTITY_LABELS) as ImportEntityType[]).map((type) => {
-                        const Icon = ENTITY_ICONS[type]
-                        const active = analyzed.entityType === type
-                        return (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() => changeType(type)}
-                            className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors ${
-                              active
-                                ? 'border-[#ef6f94] bg-[#fff1f6] text-[#c85776]'
-                                : 'border-[#ead8df] bg-white text-[#7c6170] hover:border-[#ef9ab5]'
-                            }`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            {ENTITY_LABELS[type]}
-                          </button>
-                        )
-                      })}
+                  ) : (
+                    <div>
+                      <div className="mb-2 text-[11px] font-semibold text-[#7c6170]">
+                        Veri türü {analyzed.autoDetected && <span className="ml-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">otomatik tespit</span>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {(Object.keys(ENTITY_LABELS) as ImportEntityType[]).map((type) => {
+                          const Icon = ENTITY_ICONS[type]
+                          const active = analyzed.entityType === type
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => changeType(type)}
+                              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors ${
+                                active
+                                  ? 'border-[#ef6f94] bg-[#fff1f6] text-[#c85776]'
+                                  : 'border-[#ead8df] bg-white text-[#7c6170] hover:border-[#ef9ab5]'
+                              }`}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                              {ENTITY_LABELS[type]}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* kolon eşleme */}
                   {Object.keys(analyzed.mapping).length > 0 && (

@@ -5,6 +5,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import ServiceFormDialog, { type ServiceFormDialogValues } from '@/components/dashboard/ServiceFormDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
@@ -13,7 +14,7 @@ import { adminApi } from '@/lib/apiClient'
 import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, CreditCard, Layers3, PauseCircle,
+  CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, CreditCard, FileUp, Layers3, PauseCircle,
   PencilLine, Search, Sparkles, Star, TrendingUp, Trophy, UploadCloud, UserCheck, Users, Wand2,
 } from 'lucide-react'
 import type { ApiAppointment, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
@@ -69,6 +70,7 @@ export default function ServiceLibrary({
 }) {
   const [tab, setTab] = useState<TabKey>('all')
   const [q, setQ] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
   const [durFilter, setDurFilter] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -229,13 +231,18 @@ export default function ServiceLibrary({
                 ],
                 totals: { name: 'TOPLAM', price: filtered.reduce((a, s) => a + s.price, 0) },
               }}
-              onImport={async (result) => {
-                const first = result[0]; if (!first) return
-                for (const row of first.rows) { const name = String(row['Hizmet Adı'] || row['Hizmet adı'] || '').trim(); if (!name) continue
-                  await adminApi.createService({ branchId: branchId || null, name, category: String(row['Kategori'] || '') || null, durationMinutes: Number(row['Süre (dk)'] || row['Süre'] || 30), price: Number(row['Fiyat'] || 0), isActive: String(row['Durum'] || 'Aktif').toLocaleLowerCase('tr') !== 'pasif' }, tenantId) }
-                await reload()
-              }}
             />
+            {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi: kolon adlarına
+                bağlı değil (otomatik eşleme), mükerrer kaydı atlar ve tek istekte parti
+                hâlinde gönderir. Eskiden burada satır başına bir API çağrısı yapan,
+                başlıkları birebir tutturmayı şart koşan bir döngü vardı. */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            >
+              <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
+            </button>
           </div>
         }
       />
@@ -459,6 +466,13 @@ export default function ServiceLibrary({
           </div>
         </div>
       </div>
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityType="service"
+        onDone={() => void reload()}
+      />
     </>
   )
 }

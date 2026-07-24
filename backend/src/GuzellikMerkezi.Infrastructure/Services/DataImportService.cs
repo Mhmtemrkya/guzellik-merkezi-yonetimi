@@ -3,6 +3,7 @@ using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.DataImport;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,7 +38,7 @@ public sealed class DataImportService : IDataImportService
         }
 
         var errors = new List<string>();
-        int custCreated = 0, custSkipped = 0, svcCreated = 0, svcSkipped = 0, pkgCreated = 0, pkgSkipped = 0, failed = 0;
+        int custCreated = 0, custSkipped = 0, svcCreated = 0, svcSkipped = 0, pkgCreated = 0, pkgSkipped = 0, prodCreated = 0, prodSkipped = 0, failed = 0;
 
         // ---- MÜŞTERİLER --------------------------------------------------------
         if (request.Customers is { Count: > 0 })
@@ -150,17 +151,39 @@ public sealed class DataImportService : IDataImportService
                     var sessions = row.SessionCount is > 0 ? row.SessionCount.Value : 1;
                     var total = row.TotalPrice is >= 0 ? row.TotalPrice.Value : 0;
 
-                    // Paket kalemi için aynı adlı hizmet aranır; yoksa otomatik oluşturulur.
-                    if (!serviceByName.TryGetValue(NormalizeName(name), out var svc))
+                    // Excel'deki "İçerik" kolonu paketin kapsadığı hizmetleri taşır
+                    // ("Lazer (8) + Cilt Bakımı (4)"). Varsa gerçek kalemler kurulur;
+                    // yoksa eski davranış: paket adıyla aynı adlı tek kalem.
+                    var itemRows = row.Items is { Count: > 0 }
+                        ? row.Items.Where(i => !string.IsNullOrWhiteSpace(i.ServiceName)).ToArray()
+                        : new[] { new ImportPackageItemRow(name, sessions) };
+
+                    // Kalem başına birim fiyat: toplam, seanslara eşit dağıtılır (Excel birim fiyat taşımıyor).
+                    var totalSessions = itemRows.Sum(i => i.SessionCount is > 0 ? i.SessionCount!.Value : 1);
+                    var unitPrice = totalSessions > 0 ? Math.Round(total / totalSessions, 2) : total;
+
+                    var items = new List<(Guid, int, decimal)>(itemRows.Length);
+                    foreach (var item in itemRows)
                     {
-                        svc = new ServiceDefinition(tenantId, null, name, 60, sessions > 0 ? Math.Round(total / sessions, 2) : total, NullIfBlank(row.Category));
-                        _db.ServiceDefinitions.Add(svc);
-                        serviceByName[NormalizeName(name)] = svc;
+                        var itemName = item.ServiceName.Trim();
+                        var itemSessions = item.SessionCount is > 0 ? item.SessionCount!.Value : 1;
+
+                        // Aynı adlı hizmet aranır; yoksa otomatik oluşturulur (aktarım yarıda kalmasın).
+                        if (!serviceByName.TryGetValue(NormalizeName(itemName), out var svc))
+                        {
+                            svc = new ServiceDefinition(tenantId, null, itemName, 60, unitPrice, NullIfBlank(row.Category));
+                            _db.ServiceDefinitions.Add(svc);
+                            serviceByName[NormalizeName(itemName)] = svc;
+                        }
+                        items.Add((svc.Id, itemSessions, unitPrice));
                     }
 
-                    var package = new ServicePackage(tenantId, null, name, total, 0, 0, NullIfBlank(row.Description));
+                    var deposit = row.DepositAmount is >= 0 ? row.DepositAmount.Value : 0;
+                    var installments = row.InstallmentCount is > 0 ? row.InstallmentCount.Value : 0;
+
+                    var package = new ServicePackage(tenantId, null, name, total, deposit, installments, NullIfBlank(row.Description));
                     package.SetCategory(NullIfBlank(row.Category));
-                    package.ReplaceItems(new[] { (svc.Id, sessions, sessions > 0 ? Math.Round(total / sessions, 2) : total) });
+                    package.ReplaceItems(items);
                     _db.ServicePackages.Add(package);
                     pkgCreated++;
                 }
@@ -172,15 +195,86 @@ public sealed class DataImportService : IDataImportService
             }
         }
 
+        // ---- ÜRÜNLER (STOK) ----------------------------------------------------
+        if (request.Products is { Count: > 0 })
+        {
+            // Mükerrer ölçütü: stok kodu (SKU) → yoksa ürün adı. Barkod tek başına
+            // güvenilir değil (aynı ürünün farklı ambalajı aynı barkodu taşıyabiliyor).
+            var existingProducts = await _db.Products.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => new { x.Name, x.Sku })
+                .ToListAsync(cancellationToken);
+            var existingSkus = new HashSet<string>(existingProducts.Select(x => NormalizeName(x.Sku)).Where(s => s.Length > 0));
+            var existingProdNames = new HashSet<string>(existingProducts.Select(x => NormalizeName(x.Name)));
+
+            foreach (var row in request.Products)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var name = (row.Name ?? string.Empty).Trim();
+                    if (name.Length == 0) { failed++; continue; }
+
+                    var sku = string.IsNullOrWhiteSpace(row.Sku) ? name : row.Sku!.Trim();
+                    if (!existingSkus.Add(NormalizeName(sku)) || !existingProdNames.Add(NormalizeName(name)))
+                    {
+                        prodSkipped++;
+                        continue;
+                    }
+
+                    var product = new Product(
+                        tenantId,
+                        request.BranchId,
+                        name,
+                        sku,
+                        ParseProductCategory(row.Category),
+                        string.IsNullOrWhiteSpace(row.Unit) ? "adet" : row.Unit!.Trim(),
+                        row.Cost is >= 0 ? row.Cost.Value : 0,
+                        row.SalePrice is >= 0 ? row.SalePrice.Value : 0,
+                        row.CurrentStock is >= 0 ? row.CurrentStock.Value : 0,
+                        row.MinStockLevel is >= 0 ? row.MinStockLevel.Value : 0);
+                    product.SetBarcode(NullIfBlank(row.Barcode));
+                    product.SetExtras(NullIfBlank(row.Brand), null, null, null, null, null);
+                    _db.Products.Add(product);
+                    prodCreated++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (errors.Count < 50) errors.Add($"Ürün satırı hatası: {ex.Message}");
+                }
+            }
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
-        var totalCreated = custCreated + svcCreated + pkgCreated;
+        var totalCreated = custCreated + svcCreated + pkgCreated + prodCreated;
         await _audit.LogAsync(tenantId, request.BranchId, "Import", "DataImport", null,
-            $"Excel içeri aktarma: {custCreated} müşteri, {svcCreated} hizmet, {pkgCreated} paket eklendi ({custSkipped + svcSkipped + pkgSkipped} mükerrer atlandı, {failed} hatalı).",
-            new { custCreated, svcCreated, pkgCreated, custSkipped, svcSkipped, pkgSkipped, failed }, cancellationToken);
+            $"Excel içeri aktarma: {custCreated} müşteri, {svcCreated} hizmet, {pkgCreated} paket, {prodCreated} ürün eklendi ({custSkipped + svcSkipped + pkgSkipped + prodSkipped} mükerrer atlandı, {failed} hatalı).",
+            new { custCreated, svcCreated, pkgCreated, prodCreated, custSkipped, svcSkipped, pkgSkipped, prodSkipped, failed }, cancellationToken);
 
         return Result<BulkImportResultDto>.Success(new BulkImportResultDto(
-            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors));
+            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors, prodCreated, prodSkipped));
+    }
+
+    /// <summary>
+    /// Excel'deki serbest kategori metnini <see cref="ProductCategory"/>'ye çevirir.
+    /// Tanınmayan değer <c>Other</c> olur — aktarım kategori yüzünden durmasın.
+    /// </summary>
+    private static ProductCategory ParseProductCategory(string? value)
+    {
+        var v = NormalizeName(value).Replace(" ", string.Empty);
+        if (v.Length == 0) return ProductCategory.SkinCare; // stok sayfasının varsayılanı
+
+        if (Enum.TryParse<ProductCategory>(v, ignoreCase: true, out var parsed)) return parsed;
+
+        if (v.Contains("cilt") || v.Contains("skin")) return ProductCategory.SkinCare;
+        if (v.Contains("sarf") || v.Contains("consum")) return ProductCategory.Consumable;
+        if (v.Contains("sac") || v.Contains("saç") || v.Contains("hair")) return ProductCategory.HairCare;
+        if (v.Contains("makyaj") || v.Contains("makeup")) return ProductCategory.Makeup;
+        if (v.Contains("tirnak") || v.Contains("tırnak") || v.Contains("nail")) return ProductCategory.NailCare;
+        if (v.Contains("satis") || v.Contains("satış") || v.Contains("sale")) return ProductCategory.Sale;
+        return ProductCategory.Other;
     }
 
     /// <summary>Karşılaştırma anahtarı: ülke kodu/başındaki sıfır farkı elensin diye son 10 hane.</summary>

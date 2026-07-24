@@ -384,7 +384,10 @@ export default function ExcelTransferActions<TRow>({
 
   return (
     <div className={compact ? 'flex items-center gap-2' : 'grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center'}>
-      {/* IMPORT MODAL */}
+      {/* IMPORT MODAL — içeri aktarma bu modülde desteklenmiyorsa (onImport verilmemişse)
+          hiç gösterilmez. Eskiden kalıcı DEVRE DIŞI bir buton çiziliyordu; sayfanın yanında
+          çalışan bir "İçeri Aktar" butonu varken bu yalnızca kafa karıştırıyor. */}
+      {canImport && (<>
       <ModalShell
         open={importOpen}
         onOpenChange={(next) => {
@@ -559,7 +562,7 @@ export default function ExcelTransferActions<TRow>({
             <div className="border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-700">{importError}</div>
           )}
         </div>
-      </ModalShell>
+      </ModalShell></>)}
 
       {/* EXPORT MODAL */}
       <ModalShell
