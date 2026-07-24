@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
+import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import CampaignPanel from '@/components/dashboard/CampaignPanel'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
@@ -156,7 +157,6 @@ export default function PackageLibrary({
     const orderOf = categoryOrderIndex(customCategories)
     return Array.from(m.values()).sort((a, b) => orderOf(a.name) - orderOf(b.name) || b.count - a.count || a.name.localeCompare(b.name, 'tr'))
   }, [packages, customCategories])
-  const categories = useMemo(() => categorySettings.map((c) => c.name), [categorySettings])
   const assignableCategories = useMemo(() => {
     const names = new Set<string>()
     for (const c of customCategories) names.add(c.name)
@@ -440,28 +440,19 @@ export default function PackageLibrary({
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
                   <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: paket adı…" className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]" />
                 </div>
-                <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
-                  <option value="">Kategori</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
                 <select value={priceSort} onChange={(e) => setPriceSort(e.target.value)} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
                   <option value="">Fiyat</option><option value="asc">Artan</option><option value="desc">Azalan</option>
                 </select>
               </div>
-              {/* Kategori çipleri — Kategoriler sayfasındaki gruplamanın hızlı filtresi */}
-              {categorySettings.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <button type="button" onClick={() => setCatFilter('')}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${!catFilter ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
-                    Tümü <span className={`ml-1 tabular-nums ${!catFilter ? 'text-white/75' : 'text-[#352432]/40'}`}>{packages.length}</span>
-                  </button>
-                  {categorySettings.map((c) => (
-                    <button key={c.name} type="button" onClick={() => setCatFilter(catFilter === c.name ? '' : c.name)}
-                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${catFilter === c.name ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
-                      {c.name} <span className={`ml-1 tabular-nums ${catFilter === c.name ? 'text-white/75' : 'text-[#352432]/40'}`}>{c.count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Kategori rayı — durum sekmeleriyle karışmasın diye kenarlıksız, tek satır ve
+                  pay barlı. Ayrıntılı gerekçe: CatalogCategoryRail. */}
+              <CatalogCategoryRail
+                items={categorySettings}
+                value={catFilter}
+                onChange={setCatFilter}
+                total={packages.length}
+                itemLabel="paket"
+              />
             </div>
 
             <div className="hidden grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">

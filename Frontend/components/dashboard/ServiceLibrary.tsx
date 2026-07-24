@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
+import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
@@ -292,28 +293,19 @@ export default function ServiceLibrary({
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
                   <input value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} placeholder="Hizmet ara…" className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]" />
                 </div>
-                <select value={catFilter} onChange={(e) => { setCatFilter(e.target.value); setPage(1) }} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
-                  <option value="">Kategori</option>{categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                </select>
                 <select value={durFilter} onChange={(e) => { setDurFilter(e.target.value); setPage(1) }} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
                   <option value="">Süre</option><option value="0-30">≤30 dk</option><option value="31-60">31–60 dk</option><option value="61-999">60+ dk</option>
                 </select>
               </div>
-              {/* Kategori çipleri — Kategoriler sayfasındaki gruplamanın hızlı filtresi */}
-              {categories.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <button type="button" onClick={() => { setCatFilter(''); setPage(1) }}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${!catFilter ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
-                    Tümü <span className={`ml-1 tabular-nums ${!catFilter ? 'text-white/75' : 'text-[#352432]/40'}`}>{services.length}</span>
-                  </button>
-                  {categories.map((c) => (
-                    <button key={c.name} type="button" onClick={() => { setCatFilter(catFilter === c.name ? '' : c.name); setPage(1) }}
-                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${catFilter === c.name ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
-                      {c.name} <span className={`ml-1 tabular-nums ${catFilter === c.name ? 'text-white/75' : 'text-[#352432]/40'}`}>{c.count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Kategori rayı — durum sekmeleriyle karışmasın diye kenarlıksız, tek satır ve
+                  pay barlı. Ayrıntılı gerekçe: CatalogCategoryRail. */}
+              <CatalogCategoryRail
+                items={categories}
+                value={catFilter}
+                onChange={(name) => { setCatFilter(name); setPage(1) }}
+                total={services.length}
+                itemLabel="hizmet"
+              />
             </div>
 
             <div className="hidden grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
