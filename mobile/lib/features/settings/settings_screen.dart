@@ -5,6 +5,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/kvkk/kvkk_view_sheet.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
@@ -434,6 +435,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const SizedBox(height: 12),
       _securityCard(d.security, d.screenshotStaff),
       const SizedBox(height: 12),
+      _kvkkCard(),
+      const SizedBox(height: 12),
       _incomeCard(incomeMonth, growth),
       const SizedBox(height: 12),
       _incomeItemsCard(kalemler, kalemToplam),
@@ -558,6 +561,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Personel ekran görüntüsü izni güncellendi.',
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// KVKK aydınlatma metni — görüntüle/PDF + düzenle (web KvkkSettingsCard paritesi).
+  Widget _kvkkCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.shield_rounded, size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('KVKK Aydınlatma Metni',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              ),
+              _editChip(() async {
+                final saved = await showKvkkEditorSheet(context, widget.api);
+                if (saved && mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('KVKK metni kaydedildi.')));
+                }
+              }),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Yeni müşteri ekleme ekranında gösterilen aydınlatma metni. Özelleştirebilir, '
+            'markalı PDF olarak indirebilirsiniz. {KURUM} yazdığınız yere kurum adı yerleşir.',
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              minimumSize: const Size.fromHeight(44),
+            ),
+            onPressed: () => showKvkkViewSheet(context, widget.api),
+            icon: const Icon(Icons.description_rounded, size: 18),
+            label: const Text('Metni görüntüle / PDF indir'),
           ),
         ],
       ),

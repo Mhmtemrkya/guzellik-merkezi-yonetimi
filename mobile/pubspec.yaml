@@ -43,6 +43,10 @@ dependencies:
   image_picker: ^1.1.2
   url_launcher: ^6.3.1
 
+  # KVKK aydınlatma metni için markalı PDF üretimi + paylaş/yazdır
+  pdf: ^3.11.1
+  printing: ^5.13.4
+
   # Canlı bildirim altyapısı:
   #  - flutter_local_notifications + timezone: yerel + zamanlanmış bildirim (internetsiz/kapalıyken çalışır)
   #  - flutter_background_service: uygulama arka plandayken LAN feed'i yoklayan ön plan servisi
@@ -78,6 +82,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/
 
 flutter_launcher_icons:
   android: true

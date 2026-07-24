@@ -6,6 +6,7 @@ import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/kvkk/kvkk_view_sheet.dart';
 import '../../shared/widgets/async_list_page.dart';
 
 const _genders = [
@@ -192,6 +193,27 @@ class CustomersScreen extends StatelessWidget {
         ),
         CrudField(key: 'notes', label: 'Notlar', type: CrudFieldType.multiline),
       ],
+      formExtra: Builder(
+        builder: (ctx) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                minimumSize: const Size.fromHeight(44),
+              ),
+              onPressed: () => showKvkkViewSheet(ctx, api),
+              icon: const Icon(Icons.description_rounded, size: 18),
+              label: const Text('KVKK aydınlatma metnini görüntüle'),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4, left: 2),
+              child: Text('Metni Ayarlar ekranından düzenleyebilirsiniz.',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted)),
+            ),
+          ],
+        ),
+      ),
       onCreate: (body) async {
         body['branchId'] = await _resolveBranchId();
         return api.post('/api/admin/customers/', body);

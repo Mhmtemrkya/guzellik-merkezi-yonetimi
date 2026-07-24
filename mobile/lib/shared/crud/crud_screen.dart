@@ -144,6 +144,7 @@ class CrudListScreen extends StatefulWidget {
     this.canCreate = true,
     this.canUpdate = true,
     this.canDelete = true,
+    this.formExtra,
     super.key,
   });
 
@@ -187,6 +188,10 @@ class CrudListScreen extends StatefulWidget {
   final bool canUpdate;
   final bool canDelete;
 
+  /// Form sheet'inde alanların altında gösterilen ek içerik (ör. KVKK metnini
+  /// görüntüle butonu + açıklama notu). Oluşturma ve düzenleme sheet'lerinde görünür.
+  final Widget? formExtra;
+
   @override
   State<CrudListScreen> createState() => _CrudListScreenState();
 }
@@ -210,6 +215,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
         title: widget.createLabel,
         fields: widget.fields.where((f) => f.showOnCreate).toList(),
         icon: widget.icon,
+        extra: widget.formExtra,
       ),
     );
     final body = result?.body;
@@ -236,6 +242,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
         canDelete: widget.onDelete != null && widget.canDelete,
         deleteLabel: widget.deleteLabel,
         rowActions: widget.rowActions,
+        extra: widget.formExtra,
       ),
     );
     if (result == null) return;
@@ -342,6 +349,7 @@ class CrudFormSheet extends StatefulWidget {
     this.canDelete = false,
     this.deleteLabel = 'Sil',
     this.rowActions = const [],
+    this.extra,
     super.key,
   });
 
@@ -352,6 +360,9 @@ class CrudFormSheet extends StatefulWidget {
   final bool canDelete;
   final String deleteLabel;
   final List<CrudRowAction> rowActions;
+
+  /// Alanların altında gösterilen ek içerik (ör. KVKK metnini görüntüle butonu).
+  final Widget? extra;
 
   @override
   State<CrudFormSheet> createState() => _CrudFormSheetState();
@@ -727,6 +738,10 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
               const SizedBox(height: 16),
               for (final field in widget.fields) ...[
                 _buildField(field),
+                const SizedBox(height: 12),
+              ],
+              if (widget.extra != null) ...[
+                widget.extra!,
                 const SizedBox(height: 12),
               ],
               for (final action in widget.rowActions)
