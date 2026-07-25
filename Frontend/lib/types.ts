@@ -1018,6 +1018,26 @@ export interface ApiCustomerAccount {
   createdAtUtc?: string
   /** Tüm borcu aşan tahsilat (fazla ödeme / kredi). */
   creditBalance?: number
+  // --- satış kimliği (müşteri kartı "Paket & Hizmet Satışları") ---
+  soldAtUtc?: string
+  soldByStaffMemberId?: string | null
+  soldByStaffName?: string | null
+  isHistorical?: boolean
+  cancelledAtUtc?: string | null
+  cancellationReason?: string | null
+  sessionsTotal?: number
+  sessionsUsed?: number
+  sessionsRemaining?: number
+  items?: ApiCustomerAccountItem[]
+  saleStatus?: string
+}
+
+export interface ApiCustomerAccountItem {
+  serviceDefinitionId?: string | null
+  name?: string
+  amount?: number
+  sessionsTotal?: number
+  sessionsUsed?: number
 }
 
 export interface AccountInstallmentItem {
@@ -1067,6 +1087,30 @@ export interface CustomerAccount {
   nextDueDate: string | null
   nextDueAmount: number
   hasOverdue: boolean
+  // --- satış kimliği ---
+  /** Satışın gerçekte yapıldığı tarih (geçmiş kayıtta geçmiş bir tarih). */
+  soldAtUtc: string
+  soldByStaffName: string
+  /** Yazılıma geçmeden önceki satışın elle girilmiş kaydı. */
+  isHistorical: boolean
+  cancelledAtUtc: string | null
+  cancellationReason: string
+  sessionsTotal: number
+  sessionsUsed: number
+  sessionsRemaining: number
+  items: CustomerAccountItem[]
+  /** 'Active' | 'Completed' | 'Cancelled' */
+  saleStatus: SaleStatusKey
+}
+
+export type SaleStatusKey = 'Active' | 'Completed' | 'Cancelled'
+
+export interface CustomerAccountItem {
+  serviceDefinitionId: string | null
+  name: string
+  amount: number
+  sessionsTotal: number
+  sessionsUsed: number
 }
 
 export interface ApiCustomerPackageSession {

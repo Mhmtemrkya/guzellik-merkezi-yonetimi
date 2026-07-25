@@ -18,6 +18,7 @@ public sealed class CustomerAccount : Entity
         ServicePackageId = servicePackageId;
         Rename(name);
         ChangeTotal(totalAmount, depositAmount);
+        SoldAtUtc = DateTime.UtcNow;
     }
 
     public Guid TenantId { get; private set; }
@@ -32,6 +33,24 @@ public sealed class CustomerAccount : Entity
     public decimal DepositAmount { get; private set; }
     public string? Notes { get; private set; }
     public bool IsActive { get; private set; } = true;
+
+    /// <summary>
+    /// Satışın GERÇEKTEN yapıldığı an. Normal satışta kayıt anıyla aynıdır; geçmiş yıllara ait
+    /// satışlar sisteme sonradan girildiğinde (bkz. <see cref="IsHistorical"/>) geçmiş bir tarih olur.
+    /// Müşteri kartındaki satış listesi bu tarihe göre sıralanır — kayıt tarihine göre değil.
+    /// </summary>
+    public DateTime SoldAtUtc { get; private set; }
+
+    /// <summary>Satışı yapan personel (prim/performans ve "kim sattı" sorusu için).</summary>
+    public Guid? SoldByStaffMemberId { get; private set; }
+    public StaffMember? SoldByStaffMember { get; private set; }
+
+    /// <summary>Yazılıma geçmeden önce yapılmış satışın elle girilen kaydı — raporlarda ayırt edilebilsin.</summary>
+    public bool IsHistorical { get; private set; }
+
+    /// <summary>İptal edildiyse ne zaman ve neden (paket iadesi, müşteri vazgeçti vb.).</summary>
+    public DateTime? CancelledAtUtc { get; private set; }
+    public string? CancellationReason { get; private set; }
     public IReadOnlyCollection<Installment> Installments => _installments.AsReadOnly();
     public IReadOnlyCollection<AccountPayment> Payments => _payments.AsReadOnly();
 
@@ -135,6 +154,38 @@ public sealed class CustomerAccount : Entity
 
     public void Activate() { IsActive = true; Touch(); }
     public void Deactivate() { IsActive = false; Touch(); }
+
+    /// <summary>Satış bilgisi: gerçek satış tarihi + satan personel. Geçmiş kayıt işareti ayrıca verilir.</summary>
+    public void SetSaleInfo(DateTime soldAtUtc, Guid? soldByStaffMemberId, bool isHistorical = false)
+    {
+        if (soldAtUtc == default) soldAtUtc = DateTime.UtcNow;
+        // DB'den okunan DateTime Kind=Unspecified döner; değer UTC instant olduğundan işaretlenir.
+        SoldAtUtc = DateTime.SpecifyKind(soldAtUtc, DateTimeKind.Utc);
+        SoldByStaffMemberId = soldByStaffMemberId == Guid.Empty ? null : soldByStaffMemberId;
+        IsHistorical = isHistorical;
+        Touch();
+    }
+
+    /// <summary>
+    /// Satışı iptal eder ve gerekçeyi kaydeder. Cari pasifleşir; geçmiş tahsilatlar ve taksitler
+    /// silinmez (finansal iz korunur), yalnızca kayıt "iptal" olarak işaretlenir.
+    /// </summary>
+    public void CancelSale(string? reason)
+    {
+        IsActive = false;
+        CancelledAtUtc = DateTime.UtcNow;
+        CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        Touch();
+    }
+
+    /// <summary>İptali geri alır (yanlış iptal edilmiş satış).</summary>
+    public void RestoreSale()
+    {
+        IsActive = true;
+        CancelledAtUtc = null;
+        CancellationReason = null;
+        Touch();
+    }
 }
 
 public sealed class Installment : Entity

@@ -961,6 +961,14 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/accounts/${id}`, { method: 'PUT', query: { tenantId }, body }),
   rescheduleAccount: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/reschedule`, { method: 'PATCH', query: { tenantId }, body }),
+  /** Geçmiş satış: yazılıma geçmeden önce yapılmış paket/hizmet satışını sisteme işler. */
+  createHistoricalSale: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/historical', { method: 'POST', query: { tenantId }, body }),
+  /** Satış iptali + gerekçe (finansal iz korunur). */
+  cancelSale: <T = unknown>(id: string, reason: string | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/cancel-sale`, { method: 'POST', query: { tenantId }, body: { reason } }),
+  restoreSale: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, { method: 'POST', query: { tenantId } }),
   registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/payments`, { method: 'POST', query: { tenantId }, body }),
   deleteAccount: (id: string, tenantId?: string): Promise<unknown> =>

@@ -584,7 +584,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         accBuilder.Property(x => x.Notes).HasMaxLength(1000);
         accBuilder.Property(x => x.TotalAmount).HasPrecision(18, 2);
         accBuilder.Property(x => x.DepositAmount).HasPrecision(18, 2);
+        accBuilder.Property(x => x.CancellationReason).HasMaxLength(500);
         accBuilder.HasIndex(x => new { x.TenantId, x.CustomerId });
+        // Müşteri kartındaki satış listesi satış tarihine göre sıralanır.
+        accBuilder.HasIndex(x => new { x.TenantId, x.CustomerId, x.SoldAtUtc });
+        accBuilder.HasOne(x => x.SoldByStaffMember).WithMany().HasForeignKey(x => x.SoldByStaffMemberId).OnDelete(DeleteBehavior.SetNull);
         accBuilder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         accBuilder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         accBuilder.HasOne(x => x.ServicePackage).WithMany().HasForeignKey(x => x.ServicePackageId).OnDelete(DeleteBehavior.SetNull);

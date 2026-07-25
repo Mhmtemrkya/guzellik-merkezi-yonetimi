@@ -212,6 +212,7 @@ export default function CustomerDetailModal({
   onDelete,
   editSlot,
   saleSlot,
+  salesPanel,
 }: {
   open: boolean
   onClose: () => void
@@ -232,6 +233,8 @@ export default function CustomerDetailModal({
   onDelete: () => void
   editSlot?: ReactNode
   saleSlot?: ReactNode
+  /** Sağ sütundaki "Paket & Hizmet Satışları" paneli (müşteri kartı satış geçmişi). */
+  salesPanel?: ReactNode
 }) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [noteDraft, setNoteDraft] = useState('')
@@ -538,6 +541,9 @@ export default function CustomerDetailModal({
                         ))}
                       </div>
                     </SectionCard>
+
+                    {/* Paket & hizmet satışları — aktif, biten ve iptal edilen satışlar + geçmiş kayıt girişi */}
+                    {salesPanel}
                   </div>
                 </div>
               )}

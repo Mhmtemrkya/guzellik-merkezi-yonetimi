@@ -18,6 +18,8 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
+import CustomerSalesPanel from '@/components/dashboard/CustomerSalesPanel'
+import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import { usePermission } from '@/hooks/usePermission'
 import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
 import { useBranch } from '@/components/dashboard/BranchContext'
@@ -312,6 +314,51 @@ function MusterilerPageInner() {
           : String(Math.max(0.01, Math.round(rawPct * 100) / 100)).replace('.', ','),
     }
   }, [stats, total])
+
+  // --- Müşteri kartı satış paneli aksiyonları (geçmiş kayıt / iptal / tahsilat) ---
+  const [salesBusy, setSalesBusy] = useState(false)
+  const runSaleAction = async (fn: () => Promise<unknown>): Promise<void> => {
+    setSalesBusy(true)
+    try {
+      await fn()
+      setSessRefresh((v) => v + 1)
+      await Promise.all([reload(), reloadStats()])
+    } finally {
+      setSalesBusy(false)
+    }
+  }
+
+  const handleCreateHistoricalSale = (values: HistoricalSaleValues): Promise<void> =>
+    runSaleAction(() => adminApi.createHistoricalSale({
+      customerId: selected?.id,
+      name: values.name,
+      soldAtUtc: values.soldAt,
+      totalAmount: values.totalAmount,
+      paidAmount: values.paidAmount,
+      soldByStaffMemberId: values.soldByStaffMemberId,
+      servicePackageId: values.servicePackageId,
+      serviceDefinitionId: values.serviceDefinitionId,
+      sessionsTotal: values.sessionsTotal,
+      sessionsUsed: values.sessionsUsed,
+      installmentCount: values.installmentCount,
+      firstDueDate: values.firstDueDate,
+      notes: values.notes,
+      branchId: branchId ?? null,
+    }, tenantId))
+
+  const handleCancelSale = (accountId: string, reason: string): Promise<void> =>
+    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, tenantId))
+
+  const handleRestoreSale = (accountId: string): Promise<void> =>
+    runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
+
+  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+    runSaleAction(() => adminApi.registerAccountPayment(accountId, {
+      amount,
+      method: 'cash',
+      reference: null,
+      occurredAtUtc: new Date().toISOString(),
+    }, tenantId))
 
   const customerPayload = (values: CustomerFormValues): Record<string, unknown> => ({
     branchId: guidOrUndefined(values.branchId) || branchId, fullName: values.fullName, phone: values.phone,
@@ -609,6 +656,20 @@ function MusterilerPageInner() {
             onUploadPhoto={(file) => { if (selected) void uploadPhoto(selected, file) }}
             onCreateAppointment={() => setApptOpen(true)}
             onDelete={handleDeleteCustomer}
+            salesPanel={selected ? (
+              <CustomerSalesPanel
+                customerName={selected.name}
+                accounts={accounts}
+                staffOptions={staffList.map((s) => ({ id: s.id, name: s.name }))}
+                packageOptions={packagesList.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice }))}
+                serviceOptions={servicesList.map((s) => ({ id: s.id, name: s.name, price: s.price }))}
+                busy={salesBusy}
+                onCreateHistorical={handleCreateHistoricalSale}
+                onCancelSale={handleCancelSale}
+                onRestoreSale={handleRestoreSale}
+                onCollectInstallment={handleCollectInstallment}
+              />
+            ) : undefined}
             editSlot={selected ? (
               <CustomerFormDialog
                 mode="edit"

@@ -53,6 +53,7 @@ import type {
   BusinessExpense,
   Customer,
   CustomerAccount,
+  SaleStatusKey,
   CashFlowEntry,
   CashFlowEntryTypeKey,
   CashFlowMethodKey,
@@ -840,6 +841,10 @@ export function normalizeAccount(account: ApiCustomerAccount | null | undefined,
     occurredAtUtc: p.occurredAtUtc || '',
   }))
 
+  const saleStatus = (account?.saleStatus === 'Cancelled' || account?.saleStatus === 'Completed'
+    ? account.saleStatus
+    : 'Active') as SaleStatusKey
+
   // Sıradaki tahsilat = en erken vadeli, tam ödenmemiş (kalanı olan) taksit.
   const nextPending = installments
     .filter((i) => i.status !== 'Paid' && i.remaining > 0.005)
@@ -867,6 +872,23 @@ export function normalizeAccount(account: ApiCustomerAccount | null | undefined,
     appointmentRevenue: Number(account?.appointmentRevenue || 0),
     completedAppointmentCount: Number(account?.completedAppointmentCount || 0),
     createdAtUtc: account?.createdAtUtc || '',
+    // Satış kimliği — eski kayıtlarda satış tarihi yoksa kayıt tarihine düşülür.
+    soldAtUtc: account?.soldAtUtc || account?.createdAtUtc || '',
+    soldByStaffName: account?.soldByStaffName || '',
+    isHistorical: Boolean(account?.isHistorical),
+    cancelledAtUtc: account?.cancelledAtUtc ?? null,
+    cancellationReason: account?.cancellationReason || '',
+    sessionsTotal: Number(account?.sessionsTotal || 0),
+    sessionsUsed: Number(account?.sessionsUsed || 0),
+    sessionsRemaining: Number(account?.sessionsRemaining || 0),
+    items: (account?.items || []).map((i) => ({
+      serviceDefinitionId: i?.serviceDefinitionId ?? null,
+      name: i?.name || 'Hizmet',
+      amount: Number(i?.amount || 0),
+      sessionsTotal: Number(i?.sessionsTotal || 0),
+      sessionsUsed: Number(i?.sessionsUsed || 0),
+    })),
+    saleStatus,
     nextDueDate: nextPending?.dueDate || null,
     nextDueAmount: nextPending?.remaining || 0,
     hasOverdue: installments.some((i) => i.overdue),

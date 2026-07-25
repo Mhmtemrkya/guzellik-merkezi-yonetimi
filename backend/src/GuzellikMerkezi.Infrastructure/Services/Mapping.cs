@@ -190,7 +190,14 @@ internal static class Mapping
             payments,
             appointmentRevenue,
             completedCount,
-            account.CreatedAtUtc);
+            account.CreatedAtUtc,
+            // Satış kimliği: eski kayıtlarda SoldAtUtc boş olabilir → kayıt tarihine düşülür.
+            account.SoldAtUtc == default ? account.CreatedAtUtc : account.SoldAtUtc,
+            account.SoldByStaffMemberId,
+            account.SoldByStaffMember?.FullName,
+            account.IsHistorical,
+            account.CancelledAtUtc,
+            account.CancellationReason);
     }
 
     public static ServicePackageDto ToDto(this ServicePackage package)

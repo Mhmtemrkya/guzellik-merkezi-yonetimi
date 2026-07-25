@@ -36,6 +36,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Include(x => x.ServicePackage)
             .Include(x => x.Installments)
             .Include(x => x.Payments)
+            .Include(x => x.SoldByStaffMember)
             .OrderByDescending(x => x.CreatedAtUtc)
             .AsQueryable();
 
@@ -69,7 +70,207 @@ public sealed class CustomerAccountService : ICustomerAccountService
             return Mask(a.ToDto(stats?.Revenue ?? 0m, stats?.Count ?? 0));
         }).ToArray();
 
+        // Müşteri kartındaki satış paneli: seans durumu + kalemler + Aktif/Tamamlandı/İptal rozeti.
+        // Yalnızca tek müşteri süzüldüğünde hesaplanır (genel liste hafif kalsın).
+        if (customerId is { } scoped && scoped != Guid.Empty)
+            items = await EnrichSalesAsync(tenantId, accounts, items, cancellationToken);
+
         return Result<PagedResult<CustomerAccountDto>>.Success(new PagedResult<CustomerAccountDto>(items, total, request.SafePage, request.SafePageSize));
+    }
+
+    /// <summary>
+    /// Satış satırlarına seans durumu, kalem dökümü ve durum rozetini ekler.
+    /// Kalem tutarı: paket kalemi birim fiyatı varsa ondan, yoksa satış toplamı seanslara dağıtılarak.
+    /// </summary>
+    private async Task<CustomerAccountDto[]> EnrichSalesAsync(
+        Guid tenantId, CustomerAccount[] accounts, CustomerAccountDto[] dtos, CancellationToken cancellationToken)
+    {
+        if (dtos.Length == 0) return dtos;
+        var accountIds = accounts.Select(a => a.Id).ToHashSet();
+
+        // Seanslar (hizmet adı EF ile çözülür — şifreli kolon).
+        var sessionRows = await _db.CustomerPackageSessions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new
+            {
+                x.CustomerAccountId,
+                x.ServiceDefinitionId,
+                ServiceName = x.ServiceDefinition!.Name,
+                x.TotalSessions,
+                x.UsedSessions,
+            })
+            .ToListAsync(cancellationToken);
+        var sessionsByAccount = sessionRows
+            .Where(x => accountIds.Contains(x.CustomerAccountId))
+            .GroupBy(x => x.CustomerAccountId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Paket kalemi birim fiyatları (kalem tutarını doğru göstermek için).
+        var packageIds = accounts.Where(a => a.ServicePackageId.HasValue).Select(a => a.ServicePackageId!.Value).ToHashSet();
+        var unitPrices = new Dictionary<(Guid PackageId, Guid ServiceId), decimal>();
+        if (packageIds.Count > 0)
+        {
+            var priceRows = await _db.ServicePackages.AsNoTracking()
+                .Where(p => p.TenantId == tenantId)
+                .SelectMany(p => p.Items.Select(i => new { i.ServicePackageId, i.ServiceDefinitionId, i.UnitPrice }))
+                .ToListAsync(cancellationToken);
+            foreach (var row in priceRows.Where(r => packageIds.Contains(r.ServicePackageId)))
+                unitPrices[(row.ServicePackageId, row.ServiceDefinitionId)] = row.UnitPrice;
+        }
+
+        var byId = accounts.ToDictionary(a => a.Id);
+        return dtos.Select(dto =>
+        {
+            var account = byId[dto.Id];
+            var sessions = sessionsByAccount.TryGetValue(dto.Id, out var list) ? list : new();
+            var sessionsTotal = sessions.Sum(x => x.TotalSessions);
+            var sessionsUsed = sessions.Sum(x => x.UsedSessions);
+
+            IReadOnlyCollection<CustomerAccountItemDto> items;
+            if (sessions.Count > 0)
+            {
+                // Fiyatı olmayan kalemler için toplam tutar seanslara oranla dağıtılır.
+                var weights = sessions
+                    .Select(x => account.ServicePackageId is { } pid && unitPrices.TryGetValue((pid, x.ServiceDefinitionId), out var up) && up > 0m
+                        ? up * Math.Max(1, x.TotalSessions)
+                        : 0m)
+                    .ToArray();
+                if (weights.All(w => w <= 0m))
+                    for (var i = 0; i < weights.Length; i++) weights[i] = Math.Max(1, sessions[i].TotalSessions);
+                var weightSum = weights.Sum();
+
+                items = sessions.Select((x, i) => new CustomerAccountItemDto(
+                    x.ServiceDefinitionId,
+                    x.ServiceName,
+                    weightSum > 0m ? Math.Round(account.TotalAmount * weights[i] / weightSum, 2) : 0m,
+                    x.TotalSessions,
+                    x.UsedSessions)).ToArray();
+            }
+            else
+            {
+                // Seanssız satış (tek hizmet / geçmiş kayıt): kalem = satışın kendisi.
+                items = new[] { new CustomerAccountItemDto(null, account.Name, account.TotalAmount, 0, 0) };
+            }
+
+            var status = account.CancelledAtUtc is not null
+                ? "Cancelled"
+                : sessionsTotal > 0
+                    ? (sessionsUsed >= sessionsTotal ? "Completed" : "Active")
+                    : (account.RemainingAmount <= 0.005m ? "Completed" : "Active");
+
+            return dto with
+            {
+                SessionsTotal = sessionsTotal,
+                SessionsUsed = sessionsUsed,
+                SessionsRemaining = Math.Max(0, sessionsTotal - sessionsUsed),
+                Items = items,
+                SaleStatus = status,
+            };
+        }).ToArray();
+    }
+
+    /// <summary>
+    /// GEÇMİŞ SATIŞ: yazılıma geçmeden önce yapılmış paket/hizmet satışını sisteme işler.
+    /// Tahsil edilmiş tutar peşinat olarak, kalan tutar taksit planı olarak yazılır; kullanılmış
+    /// seanslar da baştan düşülmüş gelir (müşteri kartı geçmişi olduğu gibi görünsün).
+    /// </summary>
+    public async Task<Result<CustomerAccountDto>> CreateHistoricalAsync(Guid tenantId, CreateHistoricalSaleRequest request, CancellationToken cancellationToken = default)
+    {
+        var customer = await _db.Customers.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId, cancellationToken);
+        if (customer is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+        if (string.IsNullOrWhiteSpace(request.Name)) return Result<CustomerAccountDto>.Failure(Error.Validation("Paket / hizmet adı zorunludur."));
+        if (request.TotalAmount < 0) return Result<CustomerAccountDto>.Failure(Error.Validation("Tutar negatif olamaz."));
+        if (request.PaidAmount < 0) return Result<CustomerAccountDto>.Failure(Error.Validation("Tahsil edilen tutar negatif olamaz."));
+        if (request.SessionsUsed > request.SessionsTotal)
+            return Result<CustomerAccountDto>.Failure(Error.Validation("Kullanılan seans, toplam seanstan fazla olamaz."));
+
+        var soldAtUtc = DateTime.SpecifyKind(request.SoldAtUtc == default ? DateTime.UtcNow : request.SoldAtUtc, DateTimeKind.Utc);
+        if (soldAtUtc > DateTime.UtcNow.AddDays(1))
+            return Result<CustomerAccountDto>.Failure(Error.Validation("Geçmiş satış tarihi gelecekte olamaz."));
+
+        ServicePackage? package = null;
+        if (request.ServicePackageId is { } packageId && packageId != Guid.Empty)
+        {
+            package = await _db.ServicePackages.Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == packageId, cancellationToken);
+            if (package is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Paket bulunamadı."));
+        }
+
+        var branchId = request.BranchId ?? customer.BranchId;
+        // Peşinat = geçmişte tahsil edilmiş tutar; kalan borç taksitlere bölünür.
+        var paid = Math.Min(request.PaidAmount, request.TotalAmount);
+        var account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, paid);
+        account.SetNotes(request.Notes);
+        account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+
+        var remaining = request.TotalAmount - paid;
+        if (request.InstallmentCount > 0 && remaining > 0)
+        {
+            // Vade verilmediyse satış tarihinin bir ay sonrasından başlatılır.
+            var firstDue = request.FirstDueDate ?? DateOnly.FromDateTime(soldAtUtc.AddMonths(1));
+            account.RebuildInstallments(request.InstallmentCount, firstDue);
+        }
+
+        _db.CustomerAccounts.Add(account);
+
+        // Seanslar: pakette kalem varsa onlardan, yoksa tek hizmet + adet olarak.
+        if (package is not null && package.Items.Count > 0)
+        {
+            foreach (var item in package.Items)
+                _db.CustomerPackageSessions.Add(new CustomerPackageSession(
+                    tenantId, customer.Id, account.Id, package.Id, item.ServiceDefinitionId, item.SessionCount));
+        }
+        else if (request.SessionsTotal > 0 && request.ServiceDefinitionId is { } serviceId && serviceId != Guid.Empty)
+        {
+            _db.CustomerPackageSessions.Add(new CustomerPackageSession(
+                tenantId, customer.Id, account.Id, package?.Id ?? Guid.Empty, serviceId, request.SessionsTotal));
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // Geçmişte KULLANILMIŞ seanslar düşülür (kart "3/8 kaldı" desin).
+        if (request.SessionsUsed > 0)
+        {
+            var sessions = await _db.CustomerPackageSessions
+                .Where(x => x.TenantId == tenantId && x.CustomerAccountId == account.Id)
+                .ToListAsync(cancellationToken);
+            var toConsume = request.SessionsUsed;
+            foreach (var session in sessions)
+            {
+                while (toConsume > 0 && session.TryConsume()) toConsume--;
+                if (toConsume == 0) break;
+            }
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        await _audit.LogAsync(tenantId, account.BranchId, "CreateHistorical", "CustomerAccount", account.Id,
+            $"Geçmiş satış girildi: {account.Name} · {soldAtUtc:dd.MM.yyyy} · {account.TotalAmount:N2}",
+            new { account.Name, account.TotalAmount, paid, soldAtUtc, request.SessionsTotal, request.SessionsUsed }, cancellationToken);
+
+        var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
+        return Result<CustomerAccountDto>.Success(Mask(hydrated!.ToDto()));
+    }
+
+    public async Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default)
+    {
+        var account = await LoadAsync(tenantId, id, cancellationToken);
+        if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Satış kaydı bulunamadı."));
+        account.CancelSale(request.Reason);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, account.BranchId, "Cancel", "CustomerAccount", account.Id,
+            $"Satış iptal edildi: {account.Name}", new { request.Reason }, cancellationToken);
+        return Result<CustomerAccountDto>.Success(Mask(account.ToDto()));
+    }
+
+    public async Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    {
+        var account = await LoadAsync(tenantId, id, cancellationToken);
+        if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Satış kaydı bulunamadı."));
+        account.RestoreSale();
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, account.BranchId, "Restore", "CustomerAccount", account.Id,
+            $"Satış iptali geri alındı: {account.Name}", null, cancellationToken);
+        return Result<CustomerAccountDto>.Success(Mask(account.ToDto()));
     }
 
     public async Task<Result<CustomerAccountDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
@@ -590,6 +791,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Include(x => x.ServicePackage)
             .Include(x => x.Installments)
             .Include(x => x.Payments)
+            .Include(x => x.SoldByStaffMember)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
     }
 

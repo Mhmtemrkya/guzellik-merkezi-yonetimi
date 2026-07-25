@@ -39,7 +39,56 @@ public sealed record CustomerAccountDto(
     IReadOnlyCollection<AccountPaymentDto> Payments,
     decimal AppointmentRevenue,
     int CompletedAppointmentCount,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    // --- satış kimliği (müşteri kartındaki "Paket & Hizmet Satışları" paneli) ---
+    /// <summary>Satışın gerçekte yapıldığı tarih (geçmiş kayıtlarda geçmiş bir tarih).</summary>
+    DateTime SoldAtUtc = default,
+    Guid? SoldByStaffMemberId = null,
+    string? SoldByStaffName = null,
+    /// <summary>Yazılıma geçmeden önceki satışın elle girilmiş kaydı.</summary>
+    bool IsHistorical = false,
+    DateTime? CancelledAtUtc = null,
+    string? CancellationReason = null,
+    // --- seans durumu (paket bitti mi?) ---
+    int SessionsTotal = 0,
+    int SessionsUsed = 0,
+    int SessionsRemaining = 0,
+    /// <summary>Satış kalemleri: hizmet adı + tutarı (detay modalindeki küçük kart).</summary>
+    IReadOnlyCollection<CustomerAccountItemDto>? Items = null,
+    /// <summary>Aktif · Tamamlandı · İptal — panelde rozet olarak gösterilir.</summary>
+    string SaleStatus = "Active");
+
+/// <summary>Satıştaki tek kalem: hizmet adı, tutarı ve seans durumu.</summary>
+public sealed record CustomerAccountItemDto(
+    Guid? ServiceDefinitionId,
+    string Name,
+    decimal Amount,
+    int SessionsTotal,
+    int SessionsUsed);
+
+/// <summary>
+/// GEÇMİŞ SATIŞ kaydı: yazılıma geçmeden önce (geçmiş yıllarda) yapılmış paket/hizmet satışının
+/// sisteme elle girilmesi. Satış tarihi, satan personel, tahsil edilmiş tutar, kalan taksitler ve
+/// kullanılmış seanslar birlikte verilir — böylece geçmiş de kartta görünür.
+/// </summary>
+public sealed record CreateHistoricalSaleRequest(
+    Guid CustomerId,
+    string Name,
+    DateTime SoldAtUtc,
+    decimal TotalAmount,
+    decimal PaidAmount,
+    Guid? SoldByStaffMemberId = null,
+    Guid? ServicePackageId = null,
+    Guid? ServiceDefinitionId = null,
+    int SessionsTotal = 0,
+    int SessionsUsed = 0,
+    int InstallmentCount = 0,
+    DateOnly? FirstDueDate = null,
+    string? Notes = null,
+    Guid? BranchId = null);
+
+/// <summary>Satış iptali + gerekçesi.</summary>
+public sealed record CancelSaleRequest(string? Reason);
 
 public sealed record CreateCustomerAccountRequest(
     Guid? BranchId,
