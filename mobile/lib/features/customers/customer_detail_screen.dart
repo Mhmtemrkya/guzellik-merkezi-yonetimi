@@ -10,6 +10,7 @@ import '../../shared/customer_call.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
+import 'customer_sales_panel.dart';
 import '../accounting/on_muhasebe_screen.dart' show AccountDetailSheet;
 import '../appointments/appointment_form.dart';
 import '../appointments/calendar_theme.dart';
@@ -135,8 +136,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     try {
       final results = await Future.wait<dynamic>([
         _api.get('/api/admin/customers/$_id').catchError((_) => null),
+        // Ölçek: tüm cari listesi çekilmez — yalnız bu müşterinin satışları (sunucu filtresi).
         _api
-            .get('/api/admin/accounts/', query: {'page': 1, 'pageSize': 500})
+            .get('/api/admin/accounts/',
+                query: {'page': 1, 'pageSize': 200, 'customerId': _id})
             .catchError((_) => const <dynamic>[]),
         _api
             .get('/api/admin/appointments/',
@@ -667,6 +670,18 @@ class _OverviewTab extends StatelessWidget {
               : Column(
                   children: [for (final a in recent) _ApptRow(appt: a)],
                 ),
+        ),
+        // Paket & hizmet satışları: aktif / biten / iptal + geçmiş satış girişi (web paritesi).
+        _Section(
+          title: 'Paket & Hizmet Satışları',
+          icon: Icons.inventory_2_rounded,
+          child: CustomerSalesPanel(
+            api: state.widget.api,
+            customerId: '${c['id']}',
+            customerName: state._name,
+            accounts: state._accounts,
+            onChanged: state._reload,
+          ),
         ),
       ],
     );
