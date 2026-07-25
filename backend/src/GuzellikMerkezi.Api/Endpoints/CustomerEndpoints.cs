@@ -14,10 +14,14 @@ public static class CustomerEndpoints
     {
         var group = app.MapGroup("/api/admin/customers").WithTags("Customers").RequireAuthorization().RequirePermission(Permissions.Customers);
 
-        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        // filter: all|vip|kvkk|kvkk-pending|debt|recent|blacklist · sort: recent|oldest|debt|spent|last-visit
+        // Sayfalama/filtre/sıralama SUNUCUDA yapılır; istemci tüm listeyi çekmez (bkz. CustomerService.ListAsync).
+        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, string? filter, string? sort, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct)).ToHttpResult(http);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            var query = new CustomerListQuery(page, pageSize, search, ParseFilter(filter), ParseSort(sort));
+            return (await service.ListAsync(resolvedTenantId, query, ct)).ToHttpResult(http);
         });
 
         // Onaylanmış paket/hizmet satışı olan müşteri Id'leri — randevu sayfası listesini bununla filtreler.
@@ -121,4 +125,24 @@ public static class CustomerEndpoints
 
         return app;
     }
+
+    private static CustomerListFilter ParseFilter(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
+    {
+        "vip" => CustomerListFilter.Vip,
+        "kvkk" => CustomerListFilter.KvkkApproved,
+        "kvkk-pending" => CustomerListFilter.KvkkPending,
+        "debt" => CustomerListFilter.Debt,
+        "recent" => CustomerListFilter.Recent,
+        "blacklist" => CustomerListFilter.Blacklist,
+        _ => CustomerListFilter.All,
+    };
+
+    private static CustomerListSort ParseSort(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
+    {
+        "oldest" => CustomerListSort.Oldest,
+        "debt" => CustomerListSort.Debt,
+        "spent" => CustomerListSort.Spent,
+        "last-visit" => CustomerListSort.LastVisit,
+        _ => CustomerListSort.Recent,
+    };
 }

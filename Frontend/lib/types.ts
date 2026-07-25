@@ -562,6 +562,30 @@ export interface ApiCustomer {
   blacklistReason?: string | null
   createdAtUtc?: string
   isVip?: boolean
+  // --- liste uçlarında sunucuda hesaplanan satır özetleri (tekil uçta 0/null) ---
+  debt?: number
+  totalSpent?: number
+  lastVisitUtc?: string | null
+  lastServiceName?: string | null
+  appointmentCount?: number
+}
+
+/** /customers/stats — liste ve pano kartları için toplu sayaçlar (liste çekilmeden). */
+export interface ApiCustomerStats {
+  total?: number
+  birthdayThisMonth?: number
+  kvkkPending?: number
+  blacklisted?: number
+  newByDay?: Array<{ date?: string; count?: number }>
+  vip?: number
+  newLast90?: number
+  newThisMonth?: number
+  newPrevMonth?: number
+  totalDebt?: number
+  debtorCount?: number
+  avgSpent?: number
+  topAgeSegment?: string | null
+  topAgeSegmentPercent?: number
 }
 
 export interface ApiPassiveCustomer {
@@ -601,6 +625,10 @@ export interface Customer {
   isBlacklisted: boolean
   blacklistReason?: string | null
   isVip: boolean
+  /** Liste uçlarında sunucudan gelen satır özetleri. */
+  lastVisitUtc?: string | null
+  lastServiceName?: string
+  appointmentCount?: number
 }
 
 export type GiftCardKind = 'Percentage' | 'FixedAmount' | 'StoredValue'

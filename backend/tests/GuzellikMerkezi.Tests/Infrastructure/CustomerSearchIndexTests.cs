@@ -43,13 +43,13 @@ public sealed class CustomerSearchIndexTests
 
     [Theory]
     // Ön-ek araması: kullanıcı tam adı yazmak zorunda değil.
-    [InlineData("meh", "Mehmet Kaya")]
-    [InlineData("kaya", "Mehmet Kaya")]
-    [InlineData("mehmet kaya", "Mehmet Kaya")]
+    [InlineData("meh", "Mehmet KAYA")]
+    [InlineData("kaya", "Mehmet KAYA")]
+    [InlineData("mehmet kaya", "Mehmet KAYA")]
     // Türkçe katlama: kullanıcı Türkçe karakter yazmadan da bulabilmeli.
-    [InlineData("sey", "Şeyma Gökçe")]
-    [InlineData("gokce", "Şeyma Gökçe")]
-    [InlineData("ŞEY", "Şeyma Gökçe")]
+    [InlineData("sey", "Şeyma GÖKÇE")]
+    [InlineData("gokce", "Şeyma GÖKÇE")]
+    [InlineData("ŞEY", "Şeyma GÖKÇE")]
     public async Task Search_FindsCustomer(string term, string expectedName)
     {
         var options = NewOptions();
@@ -66,7 +66,7 @@ public sealed class CustomerSearchIndexTests
 
         await using (var db = NewDb(options, search))
         {
-            var result = await NewService(db, search).ListAsync(tenantId, new PageRequest(Search: term));
+            var result = await NewService(db, search).ListAsync(tenantId, new CustomerListQuery(Search: term));
             Assert.True(result.IsSuccess);
             var item = Assert.Single(result.Value!.Items);
             Assert.Equal(expectedName, item.FullName);
@@ -92,9 +92,9 @@ public sealed class CustomerSearchIndexTests
 
         await using (var db = NewDb(options, search))
         {
-            var result = await NewService(db, search).ListAsync(tenantId, new PageRequest(Search: term));
+            var result = await NewService(db, search).ListAsync(tenantId, new CustomerListQuery(Search: term));
             var item = Assert.Single(result.Value!.Items);
-            Assert.Equal("Mehmet Kaya", item.FullName);
+            Assert.Equal("Mehmet KAYA", item.FullName);
         }
     }
 
@@ -115,7 +115,7 @@ public sealed class CustomerSearchIndexTests
 
         await using (var db = NewDb(options, search))
         {
-            var result = await NewService(db, search).ListAsync(tenantA, new PageRequest(Search: "mehmet"));
+            var result = await NewService(db, search).ListAsync(tenantA, new CustomerListQuery(Search: "mehmet"));
             var item = Assert.Single(result.Value!.Items);
             Assert.Equal(tenantA, item.TenantId);
         }
@@ -160,7 +160,7 @@ public sealed class CustomerSearchIndexTests
         await using (var db = NewDb(options, search))
         {
             Assert.True(await db.Customers.AnyAsync(x => x.SearchIndex == null));
-            var result = await NewService(db, search).ListAsync(tenantId, new PageRequest(Search: "mehmet"));
+            var result = await NewService(db, search).ListAsync(tenantId, new CustomerListQuery(Search: "mehmet"));
             Assert.Single(result.Value!.Items);
         }
     }
@@ -208,8 +208,8 @@ public sealed class CustomerSearchIndexTests
         await using (var db = NewDb(options, search))
         {
             var service = NewService(db, search);
-            Assert.Empty((await service.ListAsync(tenantId, new PageRequest(Search: "mehmet"))).Value!.Items);
-            Assert.Single((await service.ListAsync(tenantId, new PageRequest(Search: "zeynep"))).Value!.Items);
+            Assert.Empty((await service.ListAsync(tenantId, new CustomerListQuery(Search: "mehmet"))).Value!.Items);
+            Assert.Single((await service.ListAsync(tenantId, new CustomerListQuery(Search: "zeynep"))).Value!.Items);
         }
     }
 
@@ -225,7 +225,7 @@ public sealed class CustomerSearchIndexTests
 
         await using (var db = NewDb(options, search))
         {
-            var result = await NewService(db, search).ListAsync(tenantId, new PageRequest(Search: "veli"));
+            var result = await NewService(db, search).ListAsync(tenantId, new CustomerListQuery(Search: "veli"));
             Assert.Empty(result.Value!.Items);
             Assert.Equal(0, result.Value.TotalCount);
         }
@@ -244,7 +244,7 @@ public sealed class CustomerSearchIndexTests
 
         await using (var db = NewDb(options, search))
         {
-            var result = await NewService(db, search, UserRole.Staff).ListAsync(tenantId, new PageRequest(Search: "mehmet"));
+            var result = await NewService(db, search, UserRole.Staff).ListAsync(tenantId, new CustomerListQuery(Search: "mehmet"));
             var item = Assert.Single(result.Value!.Items);
             Assert.DoesNotContain("5551112233", item.Phone);
             Assert.Contains("2233", item.Phone);

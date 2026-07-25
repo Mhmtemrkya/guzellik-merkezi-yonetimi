@@ -15,10 +15,10 @@ public static class CustomerAccountEndpoints
         // (Yazma işlemleri ayrıca onay kapısında Accounting.Accounts/Collect aksiyon iznine tabidir.)
         var group = app.MapGroup("/api/admin/accounts").WithTags("CustomerAccounts").RequireAuthorization().RequirePermission(Permissions.Accounting);
 
-        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, Guid? customerId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct, customerId)).ToHttpResult(http);
         });
 
         group.MapGet("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>

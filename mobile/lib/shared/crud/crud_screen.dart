@@ -158,6 +158,7 @@ class CrudListScreen extends StatefulWidget {
     this.canUpdate = true,
     this.canDelete = true,
     this.formExtra,
+    this.remoteSearch,
     super.key,
   });
 
@@ -204,6 +205,10 @@ class CrudListScreen extends StatefulWidget {
   /// Form sheet'inde alanların altında gösterilen ek içerik (ör. KVKK metnini
   /// görüntüle butonu + açıklama notu). Oluşturma ve düzenleme sheet'lerinde görünür.
   final Widget? formExtra;
+
+  /// Sunucu-taraflı arama (bkz. AsyncListPage.remoteSearch) — büyük listelerde
+  /// tüm kayıtları indirmek yerine terim sunucuya gönderilir.
+  final Future<dynamic> Function(String query)? remoteSearch;
 
   @override
   State<CrudListScreen> createState() => _CrudListScreenState();
@@ -322,6 +327,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
       subtitle: widget.subtitle,
       icon: widget.icon,
       loader: widget.loader,
+      remoteSearch: widget.remoteSearch,
       titleKeys: widget.titleKeys,
       subtitleKeys: widget.subtitleKeys,
       trailingKeys: widget.trailingKeys,

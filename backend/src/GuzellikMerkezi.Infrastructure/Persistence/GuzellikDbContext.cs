@@ -452,6 +452,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // tarama yapmaktan gelir. Gerekirse ileride ayrı token tablosu + gerçek index'e taşınabilir.
         builder.Property(x => x.SearchIndex).HasColumnType("TEXT");
         builder.HasIndex(x => new { x.TenantId, x.BranchId, x.Phone });
+        // Liste varsayılan sıralaması (en yeni) + "yeni eklenen" filtresi.
+        builder.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         // Online portal girişi doğum tarihi + telefon + ad eşleşmesiyle yapılır; doğum tarihi ön-filtresi için index.
         builder.HasIndex(x => x.BirthDate);
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
@@ -543,6 +545,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.IsOnline).HasDefaultValue(false);
         builder.HasIndex(x => new { x.TenantId, x.BranchId, x.StartUtc });
         builder.HasIndex(x => new { x.TenantId, x.StaffMemberId, x.StartUtc, x.EndUtc });
+        // Müşteri listesi satır zenginleştirme (son ziyaret / randevu sayısı) ve müşteri kartı.
+        builder.HasIndex(x => new { x.TenantId, x.CustomerId, x.StartUtc });
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Restrict);

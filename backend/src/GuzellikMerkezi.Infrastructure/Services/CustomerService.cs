@@ -30,6 +30,12 @@ public sealed class CustomerService : ICustomerService
         _search = search;
     }
 
+    /// <summary>
+    /// Ham SQL (toplu sayaç, FULLTEXT arama, satır zenginleştirme) yalnızca ilişkisel sağlayıcıda
+    /// çalışır. Birim testleri InMemory sağlayıcı kullandığından bu yollar orada LINQ'e düşer.
+    /// </summary>
+    private bool IsRelational => _db.Database.IsRelational();
+
     // Personel rolü müşteri telefonunu yalnızca son 4 hane görür (müşteri çalmayı önleme).
     // Ham numara API'den hiç çıkmaz; kurum yöneticisi/şube yöneticisi tam görür.
     private bool IsStaffViewer => _currentUser.Role == UserRole.Staff;
@@ -48,11 +54,43 @@ public sealed class CustomerService : ICustomerService
     /// varsa daraltma YAPILMAZ — backfill tamamlanana kadar arama yavaş ama DOĞRU çalışır. Sessizce
     /// eksik sonuç dönmek, yavaş dönmekten çok daha kötüdür.
     /// </summary>
+    /// <summary>
+    /// Aramada aday kümesini blind index üzerinden daraltır.
+    ///
+    /// ÖLÇEK: `LIKE '%anahtar%'` indeks kullanamaz — her arama tam tablo taraması olurdu (9 bin
+    /// müşteride ~270 ms, 1 milyonda dakikalar). Blind index "|hash|hash|" biçiminde saklandığından
+    /// FULLTEXT indeksi her hash'i ayrı kelime görür; MATCH ... AGAINST (BOOLEAN MODE) indeksten okur.
+    /// FULLTEXT yoksa (migration uygulanmamış) eski LIKE yoluna düşülür — sonuç doğru, sadece yavaş.
+    /// </summary>
     private async Task<IQueryable<Customer>> NarrowBySearchIndexAsync(IQueryable<Customer> query, string term, CancellationToken ct)
     {
         var keys = _search.BuildLookupKeys(term);
         if (keys.Count == 0) return query;
         if (await HasUnindexedAsync(query, ct)) return query;
+
+        var tokens = keys.Select(k => k.Trim('|')).Where(k => k.Length > 0).ToArray();
+        if (tokens.Length == 0) return query;
+        var booleanTerms = string.Join(' ', tokens.Select(t => "+" + t));
+
+        if (IsRelational)
+        {
+            try
+            {
+                // Aday kümesi FULLTEXT indeksinden gelir; şifreli alanlar EF materializasyonunda çözülür.
+                // LIMIT: aynı ön-ekten binlerce kayıt varsa bile bellek sabit kalır.
+                return _db.Customers
+                    .FromSqlInterpolated($@"
+SELECT * FROM customers
+WHERE IsDeleted = 0
+  AND MATCH(SearchIndex) AGAINST ({booleanTerms} IN BOOLEAN MODE)
+LIMIT 2000")
+                    .AsNoTracking();
+            }
+            catch (Exception)
+            {
+                // FULLTEXT indeksi yoksa aşağıdaki LIKE yoluna düşülür (doğru sonuç, yavaş).
+            }
+        }
 
         foreach (var k in keys)
         {
@@ -102,11 +140,19 @@ public sealed class CustomerService : ICustomerService
         || (digits.Length > 0 && !term.Any(char.IsLetter) && SearchText.NormalizePhone(phone).Contains(digits, StringComparison.Ordinal))
         || (!string.IsNullOrEmpty(email) && SearchText.FoldedContains(email, term));
 
-    public async Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Müşteri listesi — SUNUCU TARAFI sayfalama + sekme filtresi + sıralama + satır zenginleştirme.
+    ///
+    /// Ölçek kuralı: istemci hiçbir zaman tüm müşteri/cari/randevu listesini çekmez. Borç, harcama,
+    /// son ziyaret ve randevu sayısı yalnızca DÖNEN SAYFANIN satırları için ilişkili alt sorgularla
+    /// hesaplanır; böylece 12 bin de 1 milyon müşteri de aynı sürede açılır (maliyet sayfa boyutuna bağlı).
+    /// </summary>
+    public async Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, CustomerListQuery query, CancellationToken cancellationToken = default)
     {
+        var request = new PageRequest(query.Page, query.PageSize, query.Search);
         // Performans: base64 fotoğraf (LONGTEXT) liste sorgusuna DAHİL EDİLMEZ — payload'ı 10-100x küçültür.
         // Fotoğraf yalnızca tekil müşteri (GetAsync) çağrısında döner; liste grid'i baş harf avatarı gösterir.
-        var entityQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var entityQuery = ApplyListFilter(_db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId), tenantId, query.Filter);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
@@ -127,21 +173,185 @@ public sealed class CustomerService : ICustomerService
                 .OrderBy(c => c.FullName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             var pageItems = filtered.Skip(request.Skip).Take(request.SafePageSize).ToArray();
+            // Arama sonucu da liste satırıyla aynı bilgileri göstersin (borç/son ziyaret).
+            pageItems = await EnrichAsync(tenantId, pageItems, cancellationToken);
             if (IsStaffViewer) pageItems = pageItems.Select(Mask).ToArray();
             return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(pageItems, filtered.Length, request.SafePage, request.SafePageSize));
         }
 
         // Aramasız liste: sıralama ENTITY üzerinde (Select'ten ÖNCE) yapılır. Projekte edilmiş DTO üzerinde
-        // OrderBy, EF Core tarafından çevrilemez ve 500 üretir; bu yüzden ORDER BY entity kolonuna uygulanır.
-        // FullName şifreli olduğundan sıralama ciphertext'e göredir (alfabetik değil) ama deterministik → sayfalama tutarlı.
+        // OrderBy, EF Core tarafından çevrilemez ve 500 üretir; bu yüzden ORDER BY entity kolonuna/alt sorguya uygulanır.
         var total = await entityQuery.CountAsync(cancellationToken);
-        var items = await entityQuery
-            .OrderBy(x => x.FullName)
+        var ordered = ApplyListSort(entityQuery, tenantId, query.Sort);
+        var page = await ordered
             .Skip(request.Skip).Take(request.SafePageSize)
             .Select(x => new CustomerDto(x.Id, x.TenantId, x.BranchId, x.FullName, x.Phone, x.Email, x.BirthDate, x.Gender, x.KvkkConsent, x.Notes, null, x.IsBlacklisted, x.BlacklistReason, x.CreatedAtUtc, x.IsVip))
             .ToArrayAsync(cancellationToken);
+
+        var items = await EnrichAsync(tenantId, page, cancellationToken);
         if (IsStaffViewer) items = items.Select(Mask).ToArray();
         return Result<PagedResult<CustomerDto>>.Success(new PagedResult<CustomerDto>(items, total, request.SafePage, request.SafePageSize));
+    }
+
+    /// <summary>Sekme filtresi — hepsi DB tarafında (istemci tüm listeyi süzmez).</summary>
+    private IQueryable<Customer> ApplyListFilter(IQueryable<Customer> q, Guid tenantId, CustomerListFilter filter)
+    {
+        var since30 = DateTime.UtcNow.AddDays(-30);
+        return filter switch
+        {
+            CustomerListFilter.Vip => q.Where(x => x.IsVip),
+            CustomerListFilter.KvkkApproved => q.Where(x => x.KvkkConsent),
+            CustomerListFilter.KvkkPending => q.Where(x => !x.KvkkConsent),
+            CustomerListFilter.Blacklist => q.Where(x => x.IsBlacklisted),
+            CustomerListFilter.Recent => q.Where(x => x.CreatedAtUtc >= since30),
+            CustomerListFilter.Debt => q.Where(x => _db.CustomerAccounts
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Any(a => a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount) > 0)),
+            _ => q,
+        };
+    }
+
+    /// <summary>
+    /// Sıralama. Ad ŞİFRELİ (AES-GCM, rastgele nonce) olduğundan alfabetik sıralama SQL'de mümkün değil;
+    /// bu yüzden varsayılan "en yeni kayıt" ve diğer ölçütler tarih/tutar üzerinden yapılır.
+    /// </summary>
+    private IQueryable<Customer> ApplyListSort(IQueryable<Customer> q, Guid tenantId, CustomerListSort sort) => sort switch
+    {
+        CustomerListSort.Oldest => q.OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id),
+        CustomerListSort.Debt => q
+            .OrderByDescending(x => _db.CustomerAccounts
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Sum(a => (decimal?)(a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount))) ?? 0m)
+            .ThenByDescending(x => x.CreatedAtUtc),
+        CustomerListSort.Spent => q
+            .OrderByDescending(x => _db.CustomerAccounts
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Sum(a => (decimal?)(a.DepositAmount + a.Payments.Sum(p => p.Amount))) ?? 0m)
+            .ThenByDescending(x => x.CreatedAtUtc),
+        CustomerListSort.LastVisit => q
+            .OrderByDescending(x => _db.Appointments
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Max(a => (DateTime?)a.StartUtc))
+            .ThenByDescending(x => x.CreatedAtUtc),
+        _ => q.OrderByDescending(x => x.CreatedAtUtc).ThenBy(x => x.Id),
+    };
+
+    /// <summary>
+    /// Sayfadaki satırlara borç / harcama / son ziyaret / randevu sayısını ekler.
+    /// Tek bir gruplu sorgu ile (sayfa kadar müşteri) — N+1 yok, tüm liste çekilmez.
+    /// </summary>
+    /// <summary>MySQL sürücüsü Guid kolonunu Guid ya da string döndürebilir — ikisini de kabul et.</summary>
+    private static Guid ReadGuid(System.Data.Common.DbDataReader reader, int ordinal)
+    {
+        var value = reader.GetValue(ordinal);
+        return value is Guid guid ? guid : Guid.Parse(Convert.ToString(value)!);
+    }
+
+    private async Task<CustomerDto[]> EnrichAsync(Guid tenantId, CustomerDto[] items, CancellationToken cancellationToken)
+    {
+        if (items.Length == 0 || !IsRelational) return items;
+        var ids = items.Select(x => x.Id).ToArray();
+
+        // MySQL sağlayıcısı Guid listesiyle .Contains()'i çeviremiyor (bkz. proje notu) →
+        // sayfadaki id'ler için tek seferlik ham SQL IN listesi kurulur (değerler Guid, enjeksiyon riski yok).
+        var inList = string.Join(",", ids.Select(id => $"'{id}'"));
+
+        var money = new Dictionary<Guid, (decimal Debt, decimal Spent)>();
+        var visits = new Dictionary<Guid, (DateTime? Last, int Count)>();
+
+        await using (var command = _db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = $@"
+SELECT a.CustomerId,
+       COALESCE(SUM(GREATEST(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0), 0)), 0) AS Debt,
+       COALESCE(SUM(a.DepositAmount + COALESCE(p.Paid, 0)), 0) AS Spent
+FROM customer_accounts a
+LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
+       ON p.CustomerAccountId = a.Id
+WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}' AND a.CustomerId IN ({inList})
+GROUP BY a.CustomerId;";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var id = ReadGuid(reader, 0);
+                money[id] = (Convert.ToDecimal(reader.GetValue(1)), Convert.ToDecimal(reader.GetValue(2)));
+            }
+        }
+
+        await using (var command = _db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = $@"
+SELECT CustomerId, MAX(StartUtc) AS LastVisit, COUNT(*) AS Cnt
+FROM appointments
+WHERE IsDeleted = 0 AND TenantId = '{tenantId}' AND CustomerId IN ({inList})
+GROUP BY CustomerId;";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var id = ReadGuid(reader, 0);
+                var last = reader.IsDBNull(1) ? (DateTime?)null : DateTime.SpecifyKind(reader.GetDateTime(1), DateTimeKind.Utc);
+                visits[id] = (last, Convert.ToInt32(reader.GetValue(2)));
+            }
+        }
+
+        // Son işlem adı: hizmet adı ŞİFRELİ kolondur → ham SQL ile okunamaz (ciphertext döner).
+        // Bu yüzden ham SQL yalnız son randevunun hizmet Id'sini verir; ad EF üzerinden çözülür.
+        var lastServiceIds = new Dictionary<Guid, Guid>();
+        var withVisit = visits.Where(v => v.Value.Last.HasValue).Select(v => v.Key).ToArray();
+        if (withVisit.Length > 0)
+        {
+            var visitIn = string.Join(",", withVisit.Select(id => $"'{id}'"));
+            await using var command = _db.Database.GetDbConnection().CreateCommand();
+            command.CommandText = $@"
+SELECT a.CustomerId, a.ServiceDefinitionId
+FROM appointments a
+JOIN (SELECT CustomerId, MAX(StartUtc) AS MaxStart FROM appointments
+      WHERE IsDeleted = 0 AND TenantId = '{tenantId}' AND CustomerId IN ({visitIn})
+      GROUP BY CustomerId) m
+  ON m.CustomerId = a.CustomerId AND m.MaxStart = a.StartUtc
+WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}';";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var customerId = ReadGuid(reader, 0);
+                if (!reader.IsDBNull(1)) lastServiceIds[customerId] = ReadGuid(reader, 1);
+            }
+        }
+
+        var lastServiceNames = new Dictionary<Guid, string>();
+        if (lastServiceIds.Count > 0)
+        {
+            // Hizmet kataloğu küçük (yüzler mertebesi) — tek sorgu, EF şifre çözümüyle.
+            var neededIds = lastServiceIds.Values.ToHashSet();
+            var services = await _db.ServiceDefinitions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => new { x.Id, x.Name })
+                .ToListAsync(cancellationToken);
+            var nameById = services.Where(x => neededIds.Contains(x.Id)).ToDictionary(x => x.Id, x => x.Name);
+            foreach (var (customerId, serviceId) in lastServiceIds)
+                if (nameById.TryGetValue(serviceId, out var name)) lastServiceNames[customerId] = name;
+        }
+
+        return items.Select(dto =>
+        {
+            var m = money.TryGetValue(dto.Id, out var mv) ? mv : (Debt: 0m, Spent: 0m);
+            var v = visits.TryGetValue(dto.Id, out var vv) ? vv : (Last: (DateTime?)null, Count: 0);
+            lastServiceNames.TryGetValue(dto.Id, out var lastService);
+            return dto with
+            {
+                Debt = m.Debt,
+                TotalSpent = m.Spent,
+                LastVisitUtc = v.Last,
+                AppointmentCount = v.Count,
+                LastServiceName = lastService,
+            };
+        }).ToArray();
     }
 
     public async Task<Result<CustomerDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
@@ -171,28 +381,135 @@ public sealed class CustomerService : ICustomerService
     {
         var baseQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
 
-        var total = await baseQuery.CountAsync(cancellationToken);
-        var blacklisted = await baseQuery.CountAsync(x => x.IsBlacklisted, cancellationToken);
-        var kvkkPending = await baseQuery.CountAsync(x => !x.KvkkConsent, cancellationToken);
+        // Sayaçların TAMAMI tek tablo taramasıyla gelir (eskiden 6 ayrı COUNT vardı;
+        // 1M müşteride her biri ayrı tam tarama demekti).
+        var nowUtc = DateTime.UtcNow;
+        var since90 = nowUtc.AddDays(-90);
+        var monthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var prevMonthStart = monthStart.AddMonths(-1);
+        var thisMonth = nowUtc.Month;
 
-        // Doğum günü ayı: MONTH() çevirisine güvenmemek için tarihe göre grupla, ayı bellekte topla.
-        var thisMonth = DateTime.UtcNow.Month;
-        var birthDates = await baseQuery
-            .Where(x => x.BirthDate != null)
-            .GroupBy(x => x.BirthDate)
-            .Select(g => new { Date = g.Key, Count = g.Count() })
-            .ToListAsync(cancellationToken);
-        var birthdayThisMonth = birthDates
-            .Where(x => x.Date.HasValue && x.Date.Value.Month == thisMonth)
-            .Sum(x => x.Count);
+        int total = 0, blacklisted = 0, kvkkPending = 0, vip = 0, birthdayThisMonth = 0;
+        int newLast90 = 0, newThisMonth = 0, newPrevMonth = 0;
+        var ageBuckets = new Dictionary<string, int>();
 
-        // Gün bazında yeni müşteri sayıları — 100 bin müşteri de olsa gruplu sonuç küçüktür.
-        // Paneller yerel (TR, UTC+3) güne göre sayar; UTC gününe göre gruplarsak 21:00 sonrası
-        // kayıtlar ertesi güne düşer ve "bugün/bu hafta" sayaçları tutmaz.
+        if (!IsRelational)
+        {
+            // InMemory (testler): sayaçlar LINQ ile — ölçek kaygısı yok.
+            var rows = await baseQuery.Select(x => new { x.IsBlacklisted, x.KvkkConsent, x.IsVip, x.BirthDate, x.CreatedAtUtc }).ToListAsync(cancellationToken);
+            total = rows.Count;
+            blacklisted = rows.Count(x => x.IsBlacklisted);
+            kvkkPending = rows.Count(x => !x.KvkkConsent);
+            vip = rows.Count(x => x.IsVip);
+            birthdayThisMonth = rows.Count(x => x.BirthDate.HasValue && x.BirthDate.Value.Month == thisMonth);
+            newLast90 = rows.Count(x => x.CreatedAtUtc >= since90);
+            newThisMonth = rows.Count(x => x.CreatedAtUtc >= monthStart);
+            newPrevMonth = rows.Count(x => x.CreatedAtUtc >= prevMonthStart && x.CreatedAtUtc < monthStart);
+            var newByDayMemory = rows
+                .GroupBy(x => x.CreatedAtUtc.AddHours(3).Date)
+                .Select(g => new CustomerDailyCountDto(g.Key.ToString("yyyy-MM-dd"), g.Count()))
+                .OrderBy(x => x.Date)
+                .ToArray();
+            return Result<CustomerStatsDto>.Success(new CustomerStatsDto(
+                total, birthdayThisMonth, kvkkPending, blacklisted, newByDayMemory,
+                vip, newLast90, newThisMonth, newPrevMonth, 0m, 0, 0m, null, 0));
+        }
+
+        await using (var command = _db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = $@"
+SELECT COUNT(*) AS Total,
+       COALESCE(SUM(IsBlacklisted = 1), 0) AS Blacklisted,
+       COALESCE(SUM(KvkkConsent = 0), 0) AS KvkkPending,
+       COALESCE(SUM(IsVip = 1), 0) AS Vip,
+       COALESCE(SUM(BirthDate IS NOT NULL AND MONTH(BirthDate) = {thisMonth}), 0) AS BirthdayThisMonth,
+       COALESCE(SUM(CreatedAtUtc >= '{since90:yyyy-MM-dd HH:mm:ss}'), 0) AS NewLast90,
+       COALESCE(SUM(CreatedAtUtc >= '{monthStart:yyyy-MM-dd HH:mm:ss}'), 0) AS NewThisMonth,
+       COALESCE(SUM(CreatedAtUtc >= '{prevMonthStart:yyyy-MM-dd HH:mm:ss}' AND CreatedAtUtc < '{monthStart:yyyy-MM-dd HH:mm:ss}'), 0) AS NewPrevMonth
+FROM customers
+WHERE IsDeleted = 0 AND TenantId = '{tenantId}';";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                total = Convert.ToInt32(reader.GetValue(0));
+                blacklisted = Convert.ToInt32(reader.GetValue(1));
+                kvkkPending = Convert.ToInt32(reader.GetValue(2));
+                vip = Convert.ToInt32(reader.GetValue(3));
+                birthdayThisMonth = Convert.ToInt32(reader.GetValue(4));
+                newLast90 = Convert.ToInt32(reader.GetValue(5));
+                newThisMonth = Convert.ToInt32(reader.GetValue(6));
+                newPrevMonth = Convert.ToInt32(reader.GetValue(7));
+            }
+        }
+
+        // Yaş segmenti: gruplama veritabanında (müşteri satırları belleğe alınmaz).
+        await using (var command = _db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = $@"
+SELECT CASE
+         WHEN age < 25 THEN '18–24 Yaş'
+         WHEN age < 35 THEN '25–34 Yaş'
+         WHEN age < 45 THEN '35–44 Yaş'
+         WHEN age < 55 THEN '45–54 Yaş'
+         ELSE '55+ Yaş' END AS Segment,
+       COUNT(*) AS Cnt
+FROM (SELECT TIMESTAMPDIFF(YEAR, BirthDate, CURDATE()) AS age
+      FROM customers
+      WHERE IsDeleted = 0 AND TenantId = '{tenantId}' AND BirthDate IS NOT NULL) t
+WHERE age > 0 AND age < 120
+GROUP BY Segment;";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                ageBuckets[reader.GetString(0)] = Convert.ToInt32(reader.GetValue(1));
+        }
+
+        // Gün bazında yeni müşteri sayıları. Paneller yerel (TR, UTC+3) güne göre sayar; UTC gününe
+        // göre gruplarsak 21:00 sonrası kayıtlar ertesi güne düşer ve "bugün/bu hafta" sayaçları tutmaz.
+        // ÖLÇEK: yalnız son 400 gün taranır (yıllık görünümü fazlasıyla kapsar) — (TenantId, CreatedAtUtc)
+        // indeksiyle aralık taraması olur; tüm geçmişi taramak 1M müşteride gereksiz maliyetti.
+        var trendSince = nowUtc.AddDays(-400);
         var newByDay = await baseQuery
+            .Where(x => x.CreatedAtUtc >= trendSince)
             .GroupBy(x => x.CreatedAtUtc.AddHours(3).Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
+
+        // Borç / harcama: TEK satır dönen toplu sorgu. (Eskiden müşteri başına satır belleğe alınıyordu;
+        // 1M müşteride bu yüz binlerce satır demekti — sayaçlar artık veritabanında toplanıyor.)
+        decimal totalDebt = 0m; var debtorCount = 0; decimal avgSpent = 0m;
+        await using (var command = _db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = $@"
+SELECT COALESCE(SUM(GREATEST(t.Debt, 0)), 0) AS TotalDebt,
+       COALESCE(SUM(CASE WHEN t.Debt > 0 THEN 1 ELSE 0 END), 0) AS Debtors,
+       COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent
+FROM (
+  SELECT a.CustomerId,
+         SUM(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0)) AS Debt,
+         SUM(a.DepositAmount + COALESCE(p.Paid, 0)) AS Spent
+  FROM customer_accounts a
+  LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
+         ON p.CustomerAccountId = a.Id
+  WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
+  GROUP BY a.CustomerId
+) t;";
+            if (command.Connection!.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                totalDebt = Convert.ToDecimal(reader.GetValue(0));
+                debtorCount = Convert.ToInt32(reader.GetValue(1));
+                avgSpent = Math.Round(Convert.ToDecimal(reader.GetValue(2)), 2);
+            }
+        }
+
+        var segmentTotal = ageBuckets.Values.Sum();
+        var topSegment = ageBuckets.OrderByDescending(x => x.Value).Select(x => (Segment: x.Key, Count: x.Value)).FirstOrDefault();
 
         return Result<CustomerStatsDto>.Success(new CustomerStatsDto(
             total,
@@ -202,7 +519,16 @@ public sealed class CustomerService : ICustomerService
             newByDay
                 .OrderBy(x => x.Date)
                 .Select(x => new CustomerDailyCountDto(x.Date.ToString("yyyy-MM-dd"), x.Count))
-                .ToArray()));
+                .ToArray(),
+            vip,
+            newLast90,
+            newThisMonth,
+            newPrevMonth,
+            totalDebt,
+            debtorCount,
+            avgSpent,
+            topSegment.Segment,
+            segmentTotal > 0 && topSegment.Segment is not null ? (int)Math.Round(topSegment.Count * 100.0 / segmentTotal) : 0));
     }
 
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)

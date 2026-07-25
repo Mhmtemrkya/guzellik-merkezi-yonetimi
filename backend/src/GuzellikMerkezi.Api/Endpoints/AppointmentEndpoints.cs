@@ -15,10 +15,10 @@ public static class AppointmentEndpoints
     {
         var group = app.MapGroup("/api/admin/appointments").WithTags("Appointments").RequireAuthorization().RequirePermission(Permissions.Appointments);
 
-        group.MapGet("/", async (Guid? tenantId, DateTime? fromUtc, DateTime? toUtc, int page, int pageSize, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
+        group.MapGet("/", async (Guid? tenantId, DateTime? fromUtc, DateTime? toUtc, int page, int pageSize, Guid? customerId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, fromUtc, toUtc, new PageRequest(page, pageSize), ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, fromUtc, toUtc, new PageRequest(page, pageSize), ct, ResolveStaffTenantUserId(currentUser), customerId)).ToHttpResult(http);
         });
 
         // Kurum yöneticisi aksiyon kutusu — saati gelmiş randevular + onay bekleyen taslaklar.

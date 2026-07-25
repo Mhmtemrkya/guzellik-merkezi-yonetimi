@@ -27,7 +27,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
     private CustomerAccountDto Mask(CustomerAccountDto dto) =>
         IsStaffViewer ? dto with { CustomerPhone = PhoneMask.Mask(dto.CustomerPhone) } : dto;
 
-    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null)
     {
         var query = _db.CustomerAccounts
             .AsNoTracking()
@@ -38,6 +38,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Include(x => x.Payments)
             .OrderByDescending(x => x.CreatedAtUtc)
             .AsQueryable();
+
+        // Müşteri kartı: yalnız o müşterinin carileri (tüm liste çekilmesin).
+        if (customerId is { } cid && cid != Guid.Empty) query = query.Where(x => x.CustomerId == cid);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

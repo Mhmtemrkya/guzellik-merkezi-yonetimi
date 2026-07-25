@@ -4,7 +4,7 @@ namespace GuzellikMerkezi.Application.Features.Customers;
 
 public interface ICustomerService
 {
-    Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<CustomerDto>>> ListAsync(Guid tenantId, CustomerListQuery query, CancellationToken cancellationToken = default);
     Task<Result<CustomerDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
     Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerDto>> UpdateAsync(Guid tenantId, Guid id, UpsertCustomerRequest request, CancellationToken cancellationToken = default);

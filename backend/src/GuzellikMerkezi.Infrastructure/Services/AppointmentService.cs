@@ -83,13 +83,15 @@ public sealed class AppointmentService : IAppointmentService
             ct: ct);
     }
 
-    public async Task<Result<PagedResult<AppointmentDto>>> ListAsync(Guid tenantId, DateTime? fromUtc, DateTime? toUtc, PageRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    public async Task<Result<PagedResult<AppointmentDto>>> ListAsync(Guid tenantId, DateTime? fromUtc, DateTime? toUtc, PageRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null, Guid? customerId = null)
     {
         var query = ApplyStaffScope(_db.Appointments.AsNoTracking().Where(x => x.TenantId == tenantId), staffTenantUserId)
             .OrderBy(x => x.StartUtc)
             .AsQueryable();
         if (fromUtc.HasValue) query = query.Where(x => x.StartUtc >= fromUtc.Value);
         if (toUtc.HasValue) query = query.Where(x => x.StartUtc <= toUtc.Value);
+        // Müşteri kartı: yalnız o müşterinin randevuları (tüm liste çekilmesin).
+        if (customerId is { } cid && cid != Guid.Empty) query = query.Where(x => x.CustomerId == cid);
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .Skip(request.Skip)

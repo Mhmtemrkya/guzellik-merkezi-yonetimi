@@ -31,7 +31,7 @@ import {
   Mail, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
   UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
-import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
+import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiCustomerStats, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
 
 interface CustomerFormValues {
   fullName?: string; phone?: string; email?: string; birthDate?: string
@@ -44,9 +44,12 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'debt', label: 'Borçlu' }, { key: 'recent', label: 'Yeni Eklenen' },
   { key: 'blacklist', label: 'Kara Liste' }, { key: 'passive', label: 'Pasif' },
 ]
-type SortKey = 'name' | 'debt' | 'spent' | 'recent'
+// Sıralama SUNUCUDA yapılır. Ad AES-GCM ile şifreli saklandığından alfabetik sıralama SQL'de
+// mümkün değil; bu yüzden "İsim (A-Z)" yerine kayıt tarihi / tutar / son ziyaret ölçütleri var.
+type SortKey = 'recent' | 'oldest' | 'debt' | 'spent' | 'last-visit'
 const SORTS: { key: SortKey; label: string }[] = [
-  { key: 'name', label: 'İsim (A-Z)' }, { key: 'recent', label: 'Son işlem (yeni)' },
+  { key: 'recent', label: 'Son eklenen' }, { key: 'oldest', label: 'İlk eklenen' },
+  { key: 'last-visit', label: 'Son ziyaret' },
   { key: 'debt', label: 'Borç (yüksek)' }, { key: 'spent', label: 'Harcama (yüksek)' },
 ]
 
@@ -90,7 +93,7 @@ function MusterilerPageInner() {
   const scopeParam = (search?.get('scope') as TabKey | null)
   const [tab, setTab] = useState<TabKey>(scopeParam && TABS.some((t) => t.key === scopeParam) ? scopeParam : 'all')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState<SortKey>('name')
+  const [sort, setSort] = useState<SortKey>('recent')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Toplu seçim: satırlara tıklayarak seç, alt çubuktan topluca sil.
   // Silme yetkisi olmayan personelde seçim hiç açılmaz (buton da görünmez).
@@ -142,103 +145,113 @@ function MusterilerPageInner() {
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
   const { isStaff, performWrite } = useStaffApproval()
 
-  const { data, loading, error, reload } = useApiQuery<{ customers: ApiCustomer[]; accounts: ApiCustomerAccount[]; appts: ApiAppointment[]; staff: ApiStaff[]; services: ApiService[]; packages: ApiServicePackage[] }>(
+  // Arama sunucuya gider — her tuşta istek atmamak için 350 ms debounce.
+  const [debouncedQ, setDebouncedQ] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQ(q.trim()), 350)
+    return () => clearTimeout(id)
+  }, [q])
+
+  // ---- LİSTE: yalnızca görünen SAYFA çekilir (sunucu tarafı filtre/sıralama/arama).
+  // 12 bin de 1 milyon müşteri de aynı hızda açılır; istemci hiçbir zaman tüm listeyi indirmez.
+  const { data, loading, error, reload } = useApiQuery<PagedResult<ApiCustomer>>(
     async () => {
-      if (!tenantId) return { customers: [], accounts: [], appts: [], staff: [], services: [], packages: [] }
-      // Müşteri/cari/randevu listeleri TÜM kayıtlar gelene kadar sayfa sayfa çekilir
-      // (12 bin+ müşteri içeri aktarımı sonrası tek sayfa yetmiyor).
-      const [customers, accounts, appts, staff, services, packages] = await Promise.all([
-        fetchAllPaged<ApiCustomer>((page, pageSize) => adminApi.customers<ApiCustomer>({ tenantId, page, pageSize })),
-        fetchAllPaged<ApiCustomerAccount>((page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, page, pageSize })).catch(() => []),
-        fetchAllPaged<ApiAppointment>((page, pageSize) => adminApi.appointments<ApiAppointment>({ tenantId, page, pageSize })).catch(() => []),
+      if (!tenantId) return { items: [], total: 0 }
+      return adminApi.customers<ApiCustomer>({
+        tenantId,
+        page,
+        pageSize,
+        search: debouncedQ || undefined,
+        filter: tab === 'all' || tab === 'passive' ? undefined : tab,
+        sort,
+      })
+    },
+    [tenantId, page, pageSize, tab, sort, debouncedQ],
+    { initialData: { items: [], total: 0 } },
+  )
+
+  // ---- KARTLAR: tüm kurum için toplu sayaçlar (tek hafif sorgu, liste indirilmeden).
+  const { data: statsData, reload: reloadStats } = useApiQuery<ApiCustomerStats>(
+    async () => (tenantId ? adminApi.customersStats<ApiCustomerStats>(tenantId).catch(() => ({})) : {}),
+    [tenantId],
+    { initialData: {} },
+  )
+  const stats = statsData || {}
+
+  // ---- Randevu/satış modalları için küçük sabit listeler (tek sayfa, ~200 kayıt).
+  const { data: lookups } = useApiQuery<{ staff: ApiStaff[]; services: ApiService[]; packages: ApiServicePackage[] }>(
+    async () => {
+      if (!tenantId) return { staff: [], services: [], packages: [] }
+      const [staff, services, packages] = await Promise.all([
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
-      return { customers, accounts, appts, staff: apiItems(staff), services: apiItems(services), packages: apiItems(packages) }
+      return { staff: apiItems(staff), services: apiItems(services), packages: apiItems(packages) }
     },
     [tenantId],
-    { initialData: { customers: [], accounts: [], appts: [], staff: [], services: [], packages: [] } },
+    { initialData: { staff: [], services: [], packages: [] } },
   )
 
-  // Paket/hizmet/ürün satışı veya randevu sonrası: ana listeyi yenile + detay kartlarını tazele.
+  // Paket/hizmet/ürün satışı veya randevu sonrası: listeyi + sayaçları + detay kartlarını tazele.
   const reloadWithSessions = async () => {
     setSessRefresh((v) => v + 1)
-    await reload()
+    await Promise.all([reload(), reloadStats()])
   }
 
-  const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
-  const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
-  const staffList = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
-  const servicesList = useMemo(() => (data?.services || []).map((s, i) => normalizeService(s, i)), [data])
-  const packagesList = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
+  const staffList = useMemo(() => (lookups?.staff || []).map((s, i) => normalizeStaff(s, i)), [lookups])
+  const servicesList = useMemo(() => (lookups?.services || []).map((s, i) => normalizeService(s, i)), [lookups])
+  const packagesList = useMemo(() => (lookups?.packages || []).map((p, i) => normalizePackage(p, i)), [lookups])
 
-  const acctMap = useMemo(() => {
-    const m = new Map<string, { debt: number; spent: number; payments: { amount: number; date: string; time: number }[] }>()
-    for (const a of accounts) {
-      const e = m.get(a.customerId) ?? { debt: 0, spent: 0, payments: [] }
-      e.debt += a.remainingAmount; e.spent += a.paidAmount
-      for (const p of a.payments) e.payments.push({ amount: p.amount, date: (p.occurredAtUtc || '').slice(0, 10), time: new Date(p.occurredAtUtc).getTime() })
-      m.set(a.customerId, e)
-    }
-    return m
-  }, [accounts])
-
-  const apptMap = useMemo(() => {
-    const m = new Map<string, { count: number; list: typeof appts }>()
-    for (const a of appts) {
-      if (!a.customerId) continue
-      const e = m.get(a.customerId) ?? { count: 0, list: [] }
-      e.count++; e.list.push(a); m.set(a.customerId, e)
-    }
-    for (const e of m.values()) e.list.sort((x, y) => (y.date + y.time).localeCompare(x.date + x.time))
-    return m
-  }, [appts])
-
+  // Sayfadaki satırlar: borç / harcama / son ziyaret bilgisi SUNUCUDAN gelir.
   const enriched = useMemo<Enriched[]>(() => {
-    return (data?.customers || []).map((c, i) => normalizeCustomer(c, i)).map((c) => {
-      const acct = acctMap.get(c.id); const ap = apptMap.get(c.id)
-      const last = ap?.list[0]
-      const spent = acct?.spent ?? 0
+    return apiItems(data).map((c, i) => normalizeCustomer(c, i)).map((c) => {
+      const lastDate = (c.lastVisitUtc || '').slice(0, 10)
       const tags: string[] = []
       if (c.isVip) tags.push('VIP')
-      if (last?.islem) tags.push(last.islem)
+      if (c.lastServiceName) tags.push(c.lastServiceName)
       return {
-        ...c, debt: acct?.debt ?? 0, spent, apptCount: ap?.count ?? 0,
-        lastService: last?.islem || '—', lastDate: last?.date || '',
-        lastTime: last ? new Date(last.date).getTime() : 0, tags: tags.slice(0, 2),
+        ...c,
+        debt: c.debt,
+        spent: c.totalSpent,
+        apptCount: c.appointmentCount ?? 0,
+        lastService: c.lastServiceName || '—',
+        lastDate,
+        lastTime: lastDate ? new Date(lastDate).getTime() : 0,
+        tags: tags.slice(0, 2),
       }
     })
-  }, [data, acctMap, apptMap])
+  }, [data])
 
-  const total = enriched.length
-  const within = (date: string, days: number) => { if (!date) return false; const t = new Date(date).getTime(); return !Number.isNaN(t) && Date.now() - t <= days * 86_400_000 }
+  // Toplam müşteri sayısı sunucudan (sayfadaki satır sayısı değil).
+  const total = Number(stats.total ?? data?.total ?? data?.totalCount ?? enriched.length)
+  const filteredTotal = Number(data?.total ?? data?.totalCount ?? enriched.length)
 
-  const filtered = useMemo(() => {
-    let list = enriched
-    if (tab === 'vip') list = list.filter((c) => c.isVip)
-    else if (tab === 'kvkk') list = list.filter((c) => c.tier === 'KVKK Onaylı')
-    else if (tab === 'kvkk-pending') list = list.filter((c) => c.tier !== 'KVKK Onaylı')
-    else if (tab === 'debt') list = list.filter((c) => c.debt > 0)
-    else if (tab === 'recent') list = list.filter((c) => within(c.lastDate, 30) || c.apptCount === 0)
-    else if (tab === 'blacklist') list = list.filter((c) => c.isBlacklisted)
-    if (q.trim()) {
-      const s = q.trim().toLocaleLowerCase('tr')
-      list = list.filter((c) => c.name.toLocaleLowerCase('tr').includes(s) || c.phone.includes(s) || c.email.toLocaleLowerCase('tr').includes(s))
-    }
-    const sorted = [...list]
-    if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-    else if (sort === 'debt') sorted.sort((a, b) => b.debt - a.debt)
-    else if (sort === 'spent') sorted.sort((a, b) => b.spent - a.spent)
-    else sorted.sort((a, b) => b.lastTime - a.lastTime)
-    return sorted
-  }, [enriched, tab, q, sort])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
-  useEffect(() => { setPage(1) }, [tab, q, sort, pageSize])
+  // Filtre/sıralama/arama sunucuda uygulandı — satırlar olduğu gibi gösterilir.
+  const filtered = enriched
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / pageSize))
+  const pageRows = enriched
+  // Filtre/arama/sıralama değişince ilk sayfaya dön.
+  useEffect(() => { setPage(1) }, [tab, debouncedQ, sort, pageSize])
 
   const selected = useMemo(() => filtered.find((c) => c.id === selectedId) || filtered[0], [filtered, selectedId])
+
+  // ---- Seçili müşterinin randevu + cari kayıtları (yalnız modal açıkken, yalnız o müşteri için).
+  const { data: detailData } = useApiQuery<{ appts: ApiAppointment[]; accounts: ApiCustomerAccount[] }>(
+    async () => {
+      const cid = selected?.id
+      if (!cid || !tenantId || !modalOpen) return { appts: [], accounts: [] }
+      const [apptRes, accRes] = await Promise.all([
+        adminApi.appointments<ApiAppointment>({ tenantId, customerId: cid, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+        adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
+      ])
+      return { appts: apiItems(apptRes), accounts: apiItems(accRes) }
+    },
+    [tenantId, selected?.id, modalOpen, sessRefresh],
+    { initialData: { appts: [], accounts: [] } },
+  )
+  const appts = useMemo(() => (detailData?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [detailData])
+  const accounts = useMemo(() => (detailData?.accounts || []).map((a, i) => normalizeAccount(a, i)), [detailData])
   // Seçili müşterinin profil fotoğrafını tekil uçtan çek (liste artık fotoğraf taşımıyor — perf).
   useEffect(() => {
     let cancelled = false
@@ -252,43 +265,40 @@ function MusterilerPageInner() {
     return () => { cancelled = true }
   }, [selected?.id, tenantId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // stats
-  const debtTotal = enriched.reduce((s, c) => s + c.debt, 0)
-  // Takip edilmesi gereken sayı onay verenler değil, onayı EKSİK olanlar.
-  const kvkkMissing = enriched.filter((c) => c.tier !== 'KVKK Onaylı').length
-  // Son 90 günde kayda giren müşteriler (son ziyaret değil, kayıt tarihi).
-  const newIn90 = enriched.filter((c) => within(c.createdAt, 90)).length
-  const apptTimes = useMemo(() => appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t)), [appts])
-  const payTimes = useMemo(() => accounts.flatMap((a) => a.payments.map((p) => new Date(p.occurredAtUtc).getTime())).filter((t) => !Number.isNaN(t)), [accounts])
-  const apptSeries = useMemo(() => weeklySeries(apptTimes), [apptTimes])
-  const paySeries = useMemo(() => weeklySeries(payTimes), [payTimes])
+  // ---- Kartlar/özet: tamamı sunucudaki toplu sayaçlardan (liste indirilmeden).
+  const kvkkMissing = Number(stats.kvkkPending ?? 0)
+  const newIn90 = Number(stats.newLast90 ?? 0)
+  const debtTotal = Number(stats.totalDebt ?? 0)
+  // Sparkline: kayıt tarihine göre günlük yeni müşteri serisi (stats.newByDay).
+  const newSeries = useMemo(() => {
+    const times = (stats.newByDay || []).flatMap((d) => {
+      const t = new Date(`${d?.date}T00:00:00`).getTime()
+      return Number.isNaN(t) ? [] : Array.from({ length: d?.count || 0 }, () => t)
+    })
+    return weeklySeries(times)
+  }, [stats.newByDay])
 
   const statCards = [
-    { label: 'Toplam müşteri', value: total.toLocaleString('tr-TR'), icon: UserRound, series: apptSeries, stroke: '#d7839d' },
-    { label: 'KVKK onayı olmayan', value: kvkkMissing.toLocaleString('tr-TR'), icon: ShieldAlert, series: apptSeries, stroke: '#e0a33c' },
-    { label: 'Açık borç', value: formatTL(debtTotal), icon: Wallet, series: paySeries, stroke: '#e0617f' },
-    { label: 'Son 90 günde eklenen müşteri', value: newIn90.toLocaleString('tr-TR'), icon: UserPlus, series: apptSeries, stroke: '#9c70bb' },
+    { label: 'Toplam müşteri', value: total.toLocaleString('tr-TR'), icon: UserRound, series: newSeries, stroke: '#d7839d' },
+    { label: 'KVKK onayı olmayan', value: kvkkMissing.toLocaleString('tr-TR'), icon: ShieldAlert, series: newSeries, stroke: '#e0a33c' },
+    { label: 'Açık borç', value: formatTL(Math.round(debtTotal)), icon: Wallet, series: newSeries, stroke: '#e0617f' },
+    { label: 'Son 90 günde eklenen müşteri', value: newIn90.toLocaleString('tr-TR'), icon: UserPlus, series: newSeries, stroke: '#9c70bb' },
   ]
 
-  // summary
   const summary = useMemo(() => {
-    const segs = new Map<string, number>(); let withAge = 0
-    for (const c of enriched) { const a = ageOf(c.joined); if (a !== null) { segs.set(ageSegment(a), (segs.get(ageSegment(a)) ?? 0) + 1); withAge++ } }
-    let topSeg = '—'; let topSegCount = 0
-    for (const [s, n] of segs) if (n > topSegCount) { topSeg = s; topSegCount = n }
-    const spenders = enriched.filter((c) => c.spent > 0)
-    const avgSpent = spenders.length ? spenders.reduce((s, c) => s + c.spent, 0) / spenders.length : 0
-    const thisMonth = new Date(); const m0 = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1).getTime()
-    const prevM0 = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1).getTime()
-    const newThis = enriched.filter((c) => c.lastTime >= m0).length
-    const newPrev = enriched.filter((c) => c.lastTime >= prevM0 && c.lastTime < m0).length
-    const growth = newPrev > 0 ? Math.round(((newThis - newPrev) / newPrev) * 100) : null
-    const debtors = enriched.filter((c) => c.debt > 0).length
+    const newThis = Number(stats.newThisMonth ?? 0)
+    const newPrev = Number(stats.newPrevMonth ?? 0)
+    const debtors = Number(stats.debtorCount ?? 0)
     return {
-      topSeg, segPct: withAge ? Math.round((topSegCount / withAge) * 100) : 0,
-      avgSpent, newThis, growth, debtors, debtorPct: total ? Math.round((debtors / total) * 1000) / 10 : 0,
+      topSeg: stats.topAgeSegment || '—',
+      segPct: Number(stats.topAgeSegmentPercent ?? 0),
+      avgSpent: Number(stats.avgSpent ?? 0),
+      newThis,
+      growth: newPrev > 0 ? Math.round(((newThis - newPrev) / newPrev) * 100) : null,
+      debtors,
+      debtorPct: total ? Math.round((debtors / total) * 1000) / 10 : 0,
     }
-  }, [enriched, total])
+  }, [stats, total])
 
   const customerPayload = (values: CustomerFormValues): Record<string, unknown> => ({
     branchId: guidOrUndefined(values.branchId) || branchId, fullName: values.fullName, phone: values.phone,
@@ -449,8 +459,8 @@ function MusterilerPageInner() {
               </button>
             ))}
           </div>
-          {(tab !== 'all' || q || sort !== 'name') && (
-            <button type="button" onClick={() => { setTab('all'); setQ(''); setSort('name') }}
+          {(tab !== 'all' || q || sort !== 'recent') && (
+            <button type="button" onClick={() => { setTab('all'); setQ(''); setSort('recent') }}
               className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[11px] text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/40">
               <Sparkles className="h-3.5 w-3.5" /> Filtreleri Temizle
             </button>

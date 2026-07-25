@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -37,6 +38,7 @@ class AsyncListPage extends StatefulWidget {
     this.onItemTap,
     this.headerExtra,
     this.onBulkDelete,
+    this.remoteSearch,
     super.key,
   });
 
@@ -61,6 +63,11 @@ class AsyncListPage extends StatefulWidget {
   /// sonraki dokunuşlar seçer/kaldırır ve alt çubuktan seçilenler topluca silinir.
   final Future<void> Function(List<Map<String, dynamic>> items)? onBulkDelete;
 
+  /// SUNUCU-TARAFLI arama. Verilirse arama kutusu bellekte filtrelemez; terimi sunucuya
+  /// gönderir (350 ms debounce) ve dönen sayfayı gösterir. Ölçek kuralı: 12 bin / 1 milyon
+  /// müşteride tüm liste indirilmez — web müşteriler sayfasıyla aynı davranış.
+  final Future<dynamic> Function(String query)? remoteSearch;
+
   @override
   State<AsyncListPage> createState() => _AsyncListPageState();
 }
@@ -68,6 +75,7 @@ class AsyncListPage extends StatefulWidget {
 class _AsyncListPageState extends State<AsyncListPage> {
   late Future<dynamic> future;
   String query = '';
+  Timer? _searchDebounce;
   // Toplu seçim (web BulkSelectBar paritesi): id -> kayıt.
   final Map<String, Map<String, dynamic>> _selected = {};
   bool _bulkBusy = false;
@@ -81,6 +89,12 @@ class _AsyncListPageState extends State<AsyncListPage> {
   }
 
   void refresh() => setState(() => future = widget.loader());
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,8 +130,22 @@ class _AsyncListPageState extends State<AsyncListPage> {
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
                   sliver: SliverToBoxAdapter(
                     child: TextField(
-                      onChanged: (value) =>
-                          setState(() => query = value.trim().toLowerCase()),
+                      onChanged: (value) {
+                        final term = value.trim();
+                        if (widget.remoteSearch == null) {
+                          setState(() => query = term.toLowerCase());
+                          return;
+                        }
+                        // Sunucu araması: her tuşta istek atmamak için debounce.
+                        _searchDebounce?.cancel();
+                        _searchDebounce = Timer(
+                          const Duration(milliseconds: 350),
+                          () => setState(() {
+                            query = '';
+                            future = widget.remoteSearch!(term);
+                          }),
+                        );
+                      },
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.search_rounded),
                         hintText: 'Ara...',
