@@ -289,14 +289,27 @@ function MusterilerPageInner() {
     const newThis = Number(stats.newThisMonth ?? 0)
     const newPrev = Number(stats.newPrevMonth ?? 0)
     const debtors = Number(stats.debtorCount ?? 0)
+    const rawPct = total ? (debtors / total) * 100 : 0
     return {
       topSeg: stats.topAgeSegment || '—',
       segPct: Number(stats.topAgeSegmentPercent ?? 0),
+      // Yaş segmenti YALNIZCA doğum tarihi girilmiş müşterilerden hesaplanır — kaç kişilik
+      // veriye dayandığı kartta yazılır, aksi halde "%83" tüm müşterileri temsil ediyor sanılıyor.
+      ageKnown: Number(stats.ageKnownCount ?? 0),
       avgSpent: Number(stats.avgSpent ?? 0),
+      // Ortalama harcama, harcaması OLAN müşteriler üzerinden alınır (0 harcayanlar ortalamayı bozmasın).
+      spenders: Number(stats.spenderCount ?? 0),
       newThis,
+      newPrev,
       growth: newPrev > 0 ? Math.round(((newThis - newPrev) / newPrev) * 100) : null,
       debtors,
-      debtorPct: total ? Math.round((debtors / total) * 1000) / 10 : 0,
+      // 3/12568 gibi küçük oranlar "%0" görünmesin: %1'in altında iki ondalık gösterilir
+      // (0,02 gibi), tam sıfır değilse asla 0 yazılmaz. Kesin sayı alt satırda zaten var.
+      debtorPct: debtors === 0
+        ? '0'
+        : rawPct >= 1
+          ? String(Math.round(rawPct * 10) / 10).replace('.', ',')
+          : String(Math.max(0.01, Math.round(rawPct * 100) / 100)).replace('.', ','),
     }
   }, [stats, total])
 
@@ -638,12 +651,46 @@ function MusterilerPageInner() {
         {/* MÜŞTERİ ÖZETİ */}
         <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
           <div className="font-display text-xl tracking-tight">Müşteri Özeti</div>
-          <div className="text-[11px] text-[#352432]/45">Seçili filtreye göre özet bilgiler</div>
+          <div className="text-[11px] text-[#352432]/45">Kurum geneli — sekme/arama filtresinden bağımsız</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryTile icon={Users} tone="text-[#c85776] bg-[#fff1f6]" label="En Aktif Segment" value={summary.topSeg} sub={`%${summary.segPct} oran`} />
-            <SummaryTile icon={CreditCard} tone="text-sky-600 bg-sky-50" label="Ortalama Harcama" value={formatTL(summary.avgSpent)} sub="Tüm müşteriler" />
-            <SummaryTile icon={UserPlus} tone="text-emerald-600 bg-emerald-50" label="Bu Ay Yeni Müşteri" value={String(summary.newThis)} sub={summary.growth !== null ? `↑ %${summary.growth} artış geçen aya göre` : 'bu ay aktif'} subTone={summary.growth !== null && summary.growth >= 0 ? 'text-emerald-600' : undefined} />
-            <SummaryTile icon={PieChart} tone="text-violet-600 bg-violet-50" label="Borçlu Müşteri Oranı" value={`%${String(summary.debtorPct).replace('.', ',')}`} sub={`${summary.debtors} müşteri`} />
+            {/* Yaş aralığı: doğum tarihi OLAN müşterilerden hesaplanır — dayanak sayısı da yazılır. */}
+            <SummaryTile
+              icon={Users}
+              tone="text-[#c85776] bg-[#fff1f6]"
+              label="En Yaygın Yaş Aralığı"
+              value={summary.ageKnown > 0 ? summary.topSeg : '—'}
+              sub={summary.ageKnown > 0
+                ? `%${summary.segPct} · doğum tarihi girili ${summary.ageKnown.toLocaleString('tr-TR')} müşteri`
+                : 'Doğum tarihi girilmiş müşteri yok'}
+            />
+            <SummaryTile
+              icon={CreditCard}
+              tone="text-sky-600 bg-sky-50"
+              label="Ortalama Harcama"
+              value={summary.spenders > 0 ? formatTL(Math.round(summary.avgSpent)) : '—'}
+              sub={summary.spenders > 0
+                ? `Harcaması olan ${summary.spenders.toLocaleString('tr-TR')} müşteri`
+                : 'Henüz tahsilat yok'}
+            />
+            {/* "Yeni" değil "eklenen": toplu Excel aktarımı da kayıt tarihine göre buraya düşer. */}
+            <SummaryTile
+              icon={UserPlus}
+              tone="text-emerald-600 bg-emerald-50"
+              label="Bu Ay Eklenen Müşteri"
+              value={summary.newThis.toLocaleString('tr-TR')}
+              // Negatif değişimde "↑ %-50 artış" yazılmasın: yön ve kelime birlikte değişir.
+              sub={summary.growth !== null
+                ? `${summary.growth >= 0 ? '↑' : '↓'} %${Math.abs(summary.growth)} ${summary.growth >= 0 ? 'artış' : 'azalış'} · geçen ay ${summary.newPrev.toLocaleString('tr-TR')}`
+                : `Geçen ay ${summary.newPrev.toLocaleString('tr-TR')} müşteri eklendi`}
+              subTone={summary.growth === null ? undefined : summary.growth >= 0 ? 'text-emerald-600' : 'text-[#cf4d68]'}
+            />
+            <SummaryTile
+              icon={PieChart}
+              tone="text-violet-600 bg-violet-50"
+              label="Borçlu Müşteri Oranı"
+              value={`%${summary.debtorPct}`}
+              sub={`${summary.debtors.toLocaleString('tr-TR')} / ${total.toLocaleString('tr-TR')} müşteri`}
+            />
           </div>
         </div>
       </div>

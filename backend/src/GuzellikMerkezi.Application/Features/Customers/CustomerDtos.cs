@@ -68,4 +68,8 @@ public sealed record CustomerStatsDto(
     int DebtorCount = 0,
     decimal AvgSpent = 0m,
     string? TopAgeSegment = null,
-    int TopAgeSegmentPercent = 0);
+    int TopAgeSegmentPercent = 0,
+    /// <summary>Ortalama harcamanın hesaplandığı müşteri sayısı (harcaması olanlar) — kartın dayanağı.</summary>
+    int SpenderCount = 0,
+    /// <summary>Yaş segmentinin hesaplandığı müşteri sayısı (doğum tarihi girilmiş olanlar) — kartın dayanağı.</summary>
+    int AgeKnownCount = 0);

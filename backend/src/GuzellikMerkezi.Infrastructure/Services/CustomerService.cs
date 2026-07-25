@@ -412,7 +412,7 @@ WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}';";
                 .ToArray();
             return Result<CustomerStatsDto>.Success(new CustomerStatsDto(
                 total, birthdayThisMonth, kvkkPending, blacklisted, newByDayMemory,
-                vip, newLast90, newThisMonth, newPrevMonth, 0m, 0, 0m, null, 0));
+                vip, newLast90, newThisMonth, newPrevMonth, 0m, 0, 0m, null, 0, 0, 0));
         }
 
         await using (var command = _db.Database.GetDbConnection().CreateCommand())
@@ -480,13 +480,14 @@ GROUP BY Segment;";
 
         // Borç / harcama: TEK satır dönen toplu sorgu. (Eskiden müşteri başına satır belleğe alınıyordu;
         // 1M müşteride bu yüz binlerce satır demekti — sayaçlar artık veritabanında toplanıyor.)
-        decimal totalDebt = 0m; var debtorCount = 0; decimal avgSpent = 0m;
+        decimal totalDebt = 0m; var debtorCount = 0; decimal avgSpent = 0m; var spenderCount = 0;
         await using (var command = _db.Database.GetDbConnection().CreateCommand())
         {
             command.CommandText = $@"
 SELECT COALESCE(SUM(GREATEST(t.Debt, 0)), 0) AS TotalDebt,
        COALESCE(SUM(CASE WHEN t.Debt > 0 THEN 1 ELSE 0 END), 0) AS Debtors,
-       COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent
+       COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
+       COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders
 FROM (
   SELECT a.CustomerId,
          SUM(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0)) AS Debt,
@@ -505,6 +506,7 @@ FROM (
                 totalDebt = Convert.ToDecimal(reader.GetValue(0));
                 debtorCount = Convert.ToInt32(reader.GetValue(1));
                 avgSpent = Math.Round(Convert.ToDecimal(reader.GetValue(2)), 2);
+                spenderCount = Convert.ToInt32(reader.GetValue(3));
             }
         }
 
@@ -528,7 +530,9 @@ FROM (
             debtorCount,
             avgSpent,
             topSegment.Segment,
-            segmentTotal > 0 && topSegment.Segment is not null ? (int)Math.Round(topSegment.Count * 100.0 / segmentTotal) : 0));
+            segmentTotal > 0 && topSegment.Segment is not null ? (int)Math.Round(topSegment.Count * 100.0 / segmentTotal) : 0,
+            spenderCount,
+            segmentTotal));
     }
 
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)

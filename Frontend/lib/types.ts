@@ -586,6 +586,10 @@ export interface ApiCustomerStats {
   avgSpent?: number
   topAgeSegment?: string | null
   topAgeSegmentPercent?: number
+  /** Ortalama harcamanın dayandığı müşteri sayısı (harcaması olanlar). */
+  spenderCount?: number
+  /** Yaş segmentinin dayandığı müşteri sayısı (doğum tarihi girilmiş olanlar). */
+  ageKnownCount?: number
 }
 
 export interface ApiPassiveCustomer {
