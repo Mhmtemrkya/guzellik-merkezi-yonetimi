@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import { useApiQuery } from '@/hooks/useApiQuery'
+import { usePermission } from '@/hooks/usePermission'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeProduct, normalizeStockMovement, productCategoryLabels } from '@/lib/apiMappers'
@@ -64,6 +65,8 @@ export default function ProductLibrary({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Ürün silme ayrı yetki (Stock.Delete) — yetkisiz personelde buton görünmez.
+  const canDeleteProduct = usePermission().can('Stock.Delete')
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [moveDialog, setMoveDialog] = useState<{ type: 'Inbound' | 'Outbound'; qty: number; unitCost: number; notes: string } | null>(null)
@@ -386,9 +389,11 @@ export default function ProductLibrary({
                     className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-sky-300/40 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-700 hover:bg-sky-100">
                     <ArrowUpRight className="h-3.5 w-3.5" /> Stok Çıkışı
                   </button>
+                  {canDeleteProduct && (
                   <ConfirmDialog destructive title={`"${sel.name}" silinsin mi?`} description="Ürün pasifleştirilir. Geçmiş hareketler raporlarda kalır." confirmLabel="Sil"
                     onConfirm={async () => { await adminApi.deleteProduct(sel.id, tenantId); setSelectedId(null); await reload() }}
                     trigger={<button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" /> Sil</button>} />
+                  )}
                 </div>
 
                 {moveDialog && (

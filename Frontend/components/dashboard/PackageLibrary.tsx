@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
+import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import CampaignPanel from '@/components/dashboard/CampaignPanel'
@@ -90,6 +91,9 @@ export default function PackageLibrary({
   const [pageSize, setPageSize] = useState(10)
   const [draft, setDraft] = useState<Draft>(emptyDraft())
   // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
+  // Silme yetkisi olmayan personelde seçim hiç açılmaz.
+  const { can } = usePermission()
+  const canBulkDelete = can('Services.Delete')
   const bulk = useBulkSelect()
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -468,12 +472,12 @@ export default function PackageLibrary({
                   type="button"
                   onClick={() => {
                     // Seçim modunda satır tıklaması detay yerine seçim yapar.
-                    if (bulk.active) { bulk.toggle(p.id); return }
+                    if (canBulkDelete && bulk.active) { bulk.toggle(p.id); return }
                     selectPackage(p)
                   }}
                   className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] lg:items-center ${bulk.isSelected(p.id) ? 'bg-[#fff1f6]' : draft.id === p.id ? 'bg-[#fff1f6]/50' : ''}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <SelectBox checked={bulk.isSelected(p.id)} onToggle={() => bulk.toggle(p.id)} />
+                    {canBulkDelete && <SelectBox checked={bulk.isSelected(p.id)} onToggle={() => bulk.toggle(p.id)} />}
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={p.iconKey || suggestIcon(p.name || p.category)} className="h-5 w-5" /></span>
                     <span className="truncate text-[13px] font-medium text-[#352432]">{p.name}</span>
                   </div>
@@ -825,6 +829,7 @@ export default function PackageLibrary({
         onDone={() => void reload()}
       />
       {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      {canBulkDelete && (
       <BulkSelectBar
         api={bulk}
         itemLabel="paket"
@@ -832,6 +837,7 @@ export default function PackageLibrary({
         onDelete={(id) => adminApi.deletePackage(id, tenantId)}
         onDone={() => reload()}
       />
+      )}
 
     </>
   )

@@ -28,9 +28,15 @@ abstract final class Perm {
   static const appointmentsCreate = 'Appointments.Create';
   static const appointmentsStatus = 'Appointments.Status';
   static const waitlistManage = 'Waitlist.Manage';
+  /// Bekleme kaydını randevuya aktarma (gerçek randevu açar).
+  static const waitlistConvert = 'Waitlist.Convert';
   static const servicesManage = 'Services.Manage';
+  /// Hizmet / paket silme (toplu silme dahil).
+  static const servicesDelete = 'Services.Delete';
   static const giftCardsManage = 'GiftCards.Manage';
   static const stockManage = 'Stock.Manage';
+  /// Ürün silme (toplu silme dahil).
+  static const stockDelete = 'Stock.Delete';
   static const stockMovements = 'Stock.Movements';
   static const cashRegisterEntry = 'CashRegister.Entry';
   static const cashClosingClose = 'CashClosing.Close';

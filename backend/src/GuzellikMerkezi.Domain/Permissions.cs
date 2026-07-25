@@ -35,9 +35,15 @@ public static class Permissions
     public const string AppointmentsCreate = "Appointments.Create";
     public const string AppointmentsStatus = "Appointments.Status";
     public const string WaitlistManage = "Waitlist.Manage";
+    /// <summary>Bekleme kaydını randevuya çevirme — gerçek randevu açar, ayrı yetki.</summary>
+    public const string WaitlistConvert = "Waitlist.Convert";
     public const string ServicesManage = "Services.Manage";
+    /// <summary>Hizmet / paket / kategori / kampanya SİLME (toplu silme dahil).</summary>
+    public const string ServicesDelete = "Services.Delete";
     public const string GiftCardsManage = "GiftCards.Manage";
     public const string StockManage = "Stock.Manage";
+    /// <summary>Ürün SİLME (toplu silme dahil).</summary>
+    public const string StockDelete = "Stock.Delete";
     public const string StockMovements = "Stock.Movements";
     public const string CashRegisterEntry = "CashRegister.Entry";
     public const string CashClosingClose = "CashClosing.Close";
@@ -68,10 +74,12 @@ public static class Permissions
         new(Waitlist, "Bekleme Listesi", "Dolu güne talep listesini görme", new PermissionAction[]
         {
             new(WaitlistManage, "Talep ekleme / kapatma / slot teklifi"),
+            new(WaitlistConvert, "Bekleme kaydını randevuya aktarma"),
         }),
         new(Services, "Paket, Hizmet & Seans", "Hizmet/paket kataloğu, kampanyalar ve seans takibini görme", new PermissionAction[]
         {
             new(ServicesManage, "Hizmet / paket / kampanya tanımlama"),
+            new(ServicesDelete, "Hizmet / paket silme (toplu silme dahil)"),
         }),
         new(GiftCards, "Hediye Çeki & Kupon", "Hediye çeki ve kuponları görme", new PermissionAction[]
         {
@@ -80,6 +88,7 @@ public static class Permissions
         new(Stock, "Stok & Ürün", "Ürün listesi ve kritik stok uyarılarını görme", new PermissionAction[]
         {
             new(StockManage, "Ürün tanımlama / düzenleme"),
+            new(StockDelete, "Ürün silme (toplu silme dahil)"),
             new(StockMovements, "Stok giriş / çıkış hareketi"),
         }),
         new(CashRegister, "Günlük Kasa", "Kasa ve gelir-gider akışını görme", new PermissionAction[]

@@ -10,6 +10,7 @@ import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPi
 import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
+import { usePermission } from '@/hooks/usePermission'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, normalizeService, normalizeStaff, normalizeWaitlistEntry } from '@/lib/apiMappers'
 import type {
@@ -75,6 +76,7 @@ function formatSlotTime(iso: string | null): string | null {
 function WaitRow({
   entry,
   queueNo,
+  canConvert,
   name,
   service,
   staff,
@@ -90,6 +92,8 @@ function WaitRow({
 }: {
   entry: WaitlistEntry
   queueNo: number | null
+  /** Bekleme kaydını randevuya aktarma yetkisi (Waitlist.Convert). */
+  canConvert: boolean
   name: string
   service: string | null
   staff: string | null
@@ -172,6 +176,7 @@ function WaitRow({
           <>
             {/* Randevuya aktar: randevu modalını müşteri girili açar. Kayıt ancak randevu
                 oluşturulduğunda "Randevu yapıldı" olur; vazgeçilirse bekleme listesinde kalır. */}
+            {canConvert && (
             <button
               type="button"
               disabled={busy}
@@ -181,6 +186,7 @@ function WaitRow({
             >
               <CalendarPlus className="h-3.5 w-3.5" /> Randevuya aktar
             </button>
+            )}
             {hasSlot ? (
               <>
                 <button
@@ -250,6 +256,9 @@ function WaitRow({
 
 export default function BeklemeListesiPage() {
   const { selectedInstitutionId, selectedInstitution, selectedBranch } = useBranch()
+  // Randevuya aktarma ayrı yetki: sayfayı görebilen her personel randevu açamaz.
+  const { can } = usePermission()
+  const canConvert = can('Waitlist.Convert')
   const tenantId = guidOrUndefined(selectedInstitutionId)
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
 
@@ -583,6 +592,7 @@ export default function BeklemeListesiPage() {
                 key={w.id}
                 entry={w}
                 queueNo={queueNo}
+                canConvert={canConvert}
                 index={i}
                 name={w.customerName || customerName[w.customerId] || 'Müşteri'}
                 service={w.serviceName || (w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || null : null)}

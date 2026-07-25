@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
+import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
@@ -77,6 +78,9 @@ export default function ServiceLibrary({
   const [durFilter, setDurFilter] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
+  // Silme yetkisi olmayan personelde seçim hiç açılmaz.
+  const { can } = usePermission()
+  const canBulkDelete = can('Services.Delete')
   const bulk = useBulkSelect()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -323,12 +327,12 @@ export default function ServiceLibrary({
                     type="button"
                     onClick={() => {
                       // Seçim modunda satır tıklaması detay yerine seçim yapar.
-                      if (bulk.active) { bulk.toggle(s.id); return }
+                      if (canBulkDelete && bulk.active) { bulk.toggle(s.id); return }
                       setSelectedId(s.id)
                     }}
                     className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${bulk.isSelected(s.id) ? 'bg-[#fff1f6]' : sel?.id === s.id ? 'bg-[#fff1f6]/50' : ''}`}>
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <SelectBox checked={bulk.isSelected(s.id)} onToggle={() => bulk.toggle(s.id)} />
+                      {canBulkDelete && <SelectBox checked={bulk.isSelected(s.id)} onToggle={() => bulk.toggle(s.id)} />}
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
                       <span className="truncate text-[13px] font-medium text-[#352432]">{s.name}</span>
                     </div>
@@ -474,6 +478,7 @@ export default function ServiceLibrary({
         onDone={() => void reload()}
       />
       {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      {canBulkDelete && (
       <BulkSelectBar
         api={bulk}
         itemLabel="hizmet"
@@ -481,6 +486,7 @@ export default function ServiceLibrary({
         onDelete={(id) => adminApi.deleteService(id, tenantId)}
         onDone={() => reload()}
       />
+      )}
 
     </>
   )

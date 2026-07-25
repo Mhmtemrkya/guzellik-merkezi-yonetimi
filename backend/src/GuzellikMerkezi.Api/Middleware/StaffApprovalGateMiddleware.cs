@@ -143,11 +143,14 @@ public sealed class StaffApprovalGateMiddleware
             return Permissions.CustomersManage; // müşteri kartı + konsültasyon + tedavi günlüğü
         }
         if (Is("/api/admin/appointments")) return Permissions.AppointmentsCreate;
-        if (Is("/api/admin/waitlist")) return Permissions.WaitlistManage;
+        // Bekleme kaydını randevuya çevirmek gerçek randevu açar → ayrı (daha dar) yetki.
+        if (Is("/api/admin/waitlist"))
+            return Has("/schedule") || Has("/book") ? Permissions.WaitlistConvert : Permissions.WaitlistManage;
         if (Is("/api/admin/services") || Is("/api/admin/packages") || Is("/api/admin/service-categories")
-            || Is("/api/admin/campaigns") || Is("/api/admin/loyalty")) return Permissions.ServicesManage;
+            || Is("/api/admin/campaigns") || Is("/api/admin/loyalty"))
+            return HttpMethods.IsDelete(method) ? Permissions.ServicesDelete : Permissions.ServicesManage;
         if (Is("/api/admin/gift-cards")) return Permissions.GiftCardsManage;
-        if (Is("/api/admin/products")) return Permissions.StockManage;
+        if (Is("/api/admin/products")) return HttpMethods.IsDelete(method) ? Permissions.StockDelete : Permissions.StockManage;
         if (Is("/api/admin/stock-movements")) return Permissions.StockMovements;
         if (Is("/api/admin/cash/closing")) return Permissions.CashClosingClose;
         if (Is("/api/admin/cash-flow")) return Permissions.CashRegisterEntry;

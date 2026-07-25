@@ -18,6 +18,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
+import { usePermission } from '@/hooks/usePermission'
 import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -92,6 +93,9 @@ function MusterilerPageInner() {
   const [sort, setSort] = useState<SortKey>('name')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Toplu seçim: satırlara tıklayarak seç, alt çubuktan topluca sil.
+  // Silme yetkisi olmayan personelde seçim hiç açılmaz (buton da görünmez).
+  const { can } = usePermission()
+  const canBulkDelete = can('Customers.Delete')
   const bulk = useBulkSelect()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -492,13 +496,13 @@ function MusterilerPageInner() {
                   type="button"
                   onClick={() => {
                     // Seçim modundayken satır tıklaması detay açmaz, seçimi değiştirir.
-                    if (bulk.active) { bulk.toggle(c.id); return }
+                    if (canBulkDelete && bulk.active) { bulk.toggle(c.id); return }
                     setSelectedId(c.id); setModalOpen(true)
                   }}
                   className={`grid w-full grid-cols-1 gap-3 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.4fr_0.9fr_1.1fr_0.7fr_1fr_0.8fr] lg:items-center ${bulk.isSelected(c.id) ? 'bg-[#fff1f6]' : selected?.id === c.id ? 'bg-[#fff1f6]/50' : ''}`}>
                   {/* Müşteri */}
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <SelectBox checked={bulk.isSelected(c.id)} onToggle={() => bulk.toggle(c.id)} />
+                    {canBulkDelete && <SelectBox checked={bulk.isSelected(c.id)} onToggle={() => bulk.toggle(c.id)} />}
                     {c.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={c.photoUrl} alt={c.name} className="h-9 w-9 shrink-0 rounded-full border border-[#efbfd0]/50 object-cover" />
@@ -656,6 +660,7 @@ function MusterilerPageInner() {
       />
 
       {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      {canBulkDelete && (
       <BulkSelectBar
         api={bulk}
         itemLabel="müşteri"
@@ -663,6 +668,7 @@ function MusterilerPageInner() {
         onDelete={(id) => adminApi.deleteCustomer(id, tenantId)}
         onDone={() => reloadWithSessions()}
       />
+      )}
     </>
   )
 }

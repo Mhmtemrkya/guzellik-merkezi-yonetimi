@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
@@ -804,12 +805,14 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       children: [
         if (!resolved) ...[
           // Randevu modalını müşteri girili açar; kayıt ancak randevu oluşturulunca listeden düşer.
-          _actionBtn(
-            Icons.event_available_rounded,
-            'Randevuya aktar',
-            AppColors.primaryDark,
-            () => _transferToAppointment(e),
-          ),
+          // Randevuya aktarma gerçek randevu açtığı için ayrı yetkiye bağlı.
+          if (widget.api.auth?.user?.canAction(Perm.waitlistConvert) ?? true)
+            _actionBtn(
+              Icons.event_available_rounded,
+              'Randevuya aktar',
+              AppColors.primaryDark,
+              () => _transferToAppointment(e),
+            ),
           if (hasSlot) ...[
             _actionBtn(
               Icons.send_rounded,
