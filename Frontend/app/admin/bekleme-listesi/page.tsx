@@ -585,8 +585,8 @@ export default function BeklemeListesiPage() {
                 queueNo={queueNo}
                 index={i}
                 name={w.customerName || customerName[w.customerId] || 'Müşteri'}
-                service={w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || 'Hizmet' : null}
-                staff={w.staffMemberId ? staffName[w.staffMemberId] || 'Personel' : null}
+                service={w.serviceName || (w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || null : null)}
+                staff={w.staffName || (w.staffMemberId ? staffName[w.staffMemberId] || null : null)}
                 busy={busy}
                 onSchedule={() => setScheduleFor(w)}
                 onOffer={() => runAction(() => adminApi.offerWaitlist(w.id, tenantId))}

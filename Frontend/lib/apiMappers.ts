@@ -574,6 +574,8 @@ export function normalizeWaitlistEntry(w: ApiWaitlistEntry | null | undefined, i
     durationMinutes: w?.durationMinutes ?? null,
     customerName: w?.customerName || undefined,
     customerPhone: w?.customerPhone || undefined,
+    serviceName: w?.serviceName || undefined,
+    staffName: w?.staffName || undefined,
   }
 }
 
@@ -1170,7 +1172,7 @@ export function normalizeStockMovement(m: ApiStockMovement | null | undefined, i
     id: m?.id || `movement-${index}`,
     productId: m?.productId || '',
     productName: m?.productName || '',
-    productSku: m?.productSku || '',
+    productBarcode: m?.productBarcode || '',
     type: normalizeMovementType(m?.type),
     quantity: Number(m?.quantity || 0),
     unitCost: Number(m?.unitCost || 0),

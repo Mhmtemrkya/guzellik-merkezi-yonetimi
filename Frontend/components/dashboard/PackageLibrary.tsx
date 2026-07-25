@@ -808,9 +808,8 @@ export default function PackageLibrary({
         <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
           <div className="font-display text-xl tracking-tight">Paket Özeti</div>
           <div className="text-[11px] text-[#352432]/45">Paket satış performansınızı özet olarak inceleyin.</div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SummaryTile icon={Trophy} tone="text-amber-600 bg-amber-50" label="En çok satan paket" value={summary.top} />
-            <SummaryTile icon={Wallet} tone="text-sky-600 bg-sky-50" label="Ortalama paket tutarı" value={formatTL(summary.avg)} />
             <SummaryTile icon={ShoppingBag} tone="text-[#c85776] bg-[#fff1f6]" label="Satılan paket (cari)" value={String(summary.sold)} />
             <SummaryTile icon={Tag} tone="text-violet-600 bg-violet-50" label="Aktif kampanya oranı" value={`%${summary.campRate}`} />
           </div>

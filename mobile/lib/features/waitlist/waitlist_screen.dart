@@ -680,12 +680,19 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
     final name = '${e['customerName'] ?? ''}'.isNotEmpty
         ? '${e['customerName']}'
         : data.customerName('${e['customerId']}');
-    final service = e['serviceDefinitionId'] == null
-        ? null
-        : data.serviceName('${e['serviceDefinitionId']}');
-    final staff = e['staffMemberId'] == null
-        ? null
-        : data.staffName('${e['staffMemberId']}');
+    // Beklenen işlem/personel adı önce DTO'dan (backend çözer), yoksa yerel eşleştirmeden.
+    final dtoService = '${e['serviceName'] ?? ''}'.trim();
+    final service = dtoService.isNotEmpty
+        ? dtoService
+        : (e['serviceDefinitionId'] == null
+            ? null
+            : data.serviceName('${e['serviceDefinitionId']}'));
+    final dtoStaff = '${e['staffName'] ?? ''}'.trim();
+    final staff = dtoStaff.isNotEmpty
+        ? dtoStaff
+        : (e['staffMemberId'] == null
+            ? null
+            : data.staffName('${e['staffMemberId']}'));
     final wait = _waitDuration(e['createdAtUtc']);
 
     return Opacity(

@@ -654,6 +654,8 @@ export interface ApiWaitlistEntry {
   durationMinutes?: number | null
   customerName?: string | null
   customerPhone?: string | null
+  serviceName?: string | null
+  staffName?: string | null
 }
 
 export interface WaitlistEntry {
@@ -670,6 +672,9 @@ export interface WaitlistEntry {
   durationMinutes: number | null
   customerName?: string
   customerPhone?: string
+  /** Beklenen işlem (hizmet) adı — backend'den gelir; istemci eşleştirmesine gerek yok. */
+  serviceName?: string
+  staffName?: string
 }
 
 export interface ApiCashClosing {
@@ -1810,7 +1815,7 @@ export interface ApiStockMovement {
   tenantId?: string
   productId?: string
   productName?: string | null
-  productSku?: string | null
+  productBarcode?: string | null
   type?: StockMovementTypeKey | string | number
   quantity?: number
   unitCost?: number | null
@@ -1826,7 +1831,7 @@ export interface StockMovement {
   id: string
   productId: string
   productName: string
-  productSku: string
+  productBarcode: string
   type: StockMovementTypeKey
   quantity: number
   unitCost: number

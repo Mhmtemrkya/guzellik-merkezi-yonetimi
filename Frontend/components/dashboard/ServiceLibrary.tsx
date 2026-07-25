@@ -459,9 +459,8 @@ export default function ServiceLibrary({
         <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
           <div className="font-display text-xl tracking-tight">Hizmet Özeti</div>
           <div className="text-[11px] text-[#352432]/45">Hizmet performansınızı özet olarak inceleyin.</div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SummaryTile icon={Trophy} tone="text-amber-600 bg-amber-50" label="En çok tercih edilen" value={summary.topName} />
-            <SummaryTile icon={Clock} tone="text-sky-600 bg-sky-50" label="Ortalama hizmet süresi" value={`${summary.avgDur} dk`} />
             <SummaryTile icon={Sparkles} tone="text-[#c85776] bg-[#fff1f6]" label="Bu ay satılan hizmet" value={String(summary.soldThisMonth)} />
             <SummaryTile icon={UserCheck} tone="text-emerald-600 bg-emerald-50" label="Aktif uzman oranı" value={`%${summary.activeRate}`} />
           </div>

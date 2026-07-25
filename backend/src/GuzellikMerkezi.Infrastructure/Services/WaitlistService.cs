@@ -63,11 +63,33 @@ public sealed class WaitlistService : IWaitlistService
             if (c is not null) customerInfo[cid] = (c.FullName, c.Phone);
         }
 
+        // Beklenen işlem (hizmet) ve personel adı da satırda gösterilir — istemci ayrıca
+        // hizmet/personel listesi çekip eşleştirmek zorunda kalmasın (şube filtresi yüzünden
+        // eşleşmeyen kayıtlarda ad "Hizmet" fallback'ine düşüyordu).
+        var serviceNames = await _db.ServiceDefinitions.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tenantId && !s.IsDeleted)
+            .Select(s => new { s.Id, s.Name })
+            .ToListAsync(cancellationToken);
+        var serviceNameById = serviceNames.ToDictionary(x => x.Id, x => x.Name);
+        var staffNames = await _db.StaffMembers.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tenantId && !s.IsDeleted)
+            .Select(s => new { s.Id, s.FullName })
+            .ToListAsync(cancellationToken);
+        var staffNameById = staffNames.ToDictionary(x => x.Id, x => x.FullName);
+
         var dtos = rows.Select(w =>
         {
             var info = customerInfo.TryGetValue(w.CustomerId, out var i) ? i : default;
             var phone = IsStaffViewer ? PhoneMask.Mask(info.Phone) : info.Phone;
-            return ToDto(w) with { CustomerName = info.Name, CustomerPhone = phone };
+            var serviceName = w.ServiceDefinitionId is { } sid && serviceNameById.TryGetValue(sid, out var sn) ? sn : null;
+            var staffName = w.StaffMemberId is { } stid && staffNameById.TryGetValue(stid, out var stn) ? stn : null;
+            return ToDto(w) with
+            {
+                CustomerName = info.Name,
+                CustomerPhone = phone,
+                ServiceName = serviceName,
+                StaffName = staffName,
+            };
         }).ToArray();
         return Result<IReadOnlyCollection<WaitlistEntryDto>>.Success(dtos);
     }
