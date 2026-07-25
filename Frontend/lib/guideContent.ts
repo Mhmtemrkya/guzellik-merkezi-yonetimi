@@ -96,7 +96,7 @@ const guides: Record<string, PageGuide> = {
         icon: Zap,
         title: 'Hızlı menü',
         desc:
-          'Tek tıkla en sık kullanılan 6 işlemi başlatır: Yeni Randevu Oluştur, Danışan Ekle, Paket Satışı Yap, Ödeme Al, Stok Çıkışı Yap ve Kampanya Oluştur. İlgili sayfaya gitmeden işlemi buradan açabilirsiniz.',
+          'Tek tıkla en sık kullanılan 6 işlemi başlatır: Yeni Randevu Oluştur, Müşteri Ekle, Paket Satışı Yap, Ödeme Al, Stok Çıkışı Yap ve Kampanya Oluştur. İlgili sayfaya gitmeden işlemi buradan açabilirsiniz.',
       },
       {
         icon: PieChart,

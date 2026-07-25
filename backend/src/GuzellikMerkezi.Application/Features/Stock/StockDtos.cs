@@ -7,10 +7,8 @@ public sealed record ProductDto(
     Guid TenantId,
     Guid? BranchId,
     string Name,
-    string Sku,
     ProductCategory Category,
     string Unit,
-    string? Supplier,
     string? Location,
     decimal Cost,
     decimal SalePrice,
@@ -24,40 +22,29 @@ public sealed record ProductDto(
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc,
     string? Brand = null,
-    decimal? TaxRatePercent = null,
     DateOnly? ExpiryDate = null,
-    string? LotNumber = null,
-    decimal PendingInbound = 0,
-    int LeadTimeDays = 0);
+    string? LotNumber = null);
 
 public sealed record CreateProductRequest(
     Guid? BranchId,
     string Name,
-    string Sku,
     ProductCategory Category,
     string Unit,
-    string? Supplier,
     string? Location,
     decimal Cost,
     decimal SalePrice,
-    decimal CurrentStock,
     decimal MinStockLevel,
     bool IsActive,
     string? Barcode = null,
     string? ImageUrl = null,
     string? Brand = null,
-    decimal? TaxRatePercent = null,
     DateOnly? ExpiryDate = null,
-    string? LotNumber = null,
-    decimal? PendingInbound = null,
-    int? LeadTimeDays = null);
+    string? LotNumber = null);
 
 public sealed record UpdateProductRequest(
     string Name,
-    string Sku,
     ProductCategory Category,
     string Unit,
-    string? Supplier,
     string? Location,
     decimal Cost,
     decimal SalePrice,
@@ -66,18 +53,15 @@ public sealed record UpdateProductRequest(
     string? Barcode = null,
     string? ImageUrl = null,
     string? Brand = null,
-    decimal? TaxRatePercent = null,
     DateOnly? ExpiryDate = null,
-    string? LotNumber = null,
-    decimal? PendingInbound = null,
-    int? LeadTimeDays = null);
+    string? LotNumber = null);
 
 public sealed record StockMovementDto(
     Guid Id,
     Guid TenantId,
     Guid ProductId,
     string? ProductName,
-    string? ProductSku,
+    string? ProductBarcode,
     StockMovementType Type,
     decimal Quantity,
     decimal? UnitCost,

@@ -27,6 +27,9 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Banknote,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   Hash,
@@ -92,10 +95,80 @@ function isoDateOnly(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function getRange(scope: ScopeKey): { from: Date; to: Date } {
+/**
+ * Günlük kasa gün seçici: ileri/geri okları + takvim girişi + "Bugün" kısayolu.
+ * Seçilen gün sorguyu doğrudan sürükler (o günün hareketleri gelir).
+ */
+function DayPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const today = isoDateOnly(new Date())
+  const shift = (days: number): void => {
+    const d = parseIsoDate(value)
+    d.setDate(d.getDate() + days)
+    onChange(isoDateOnly(d))
+  }
+  const label = parseIsoDate(value).toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    weekday: 'long',
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#efe1e7] bg-white px-2 py-1.5">
+      <button
+        type="button"
+        onClick={() => shift(-1)}
+        aria-label="Önceki gün"
+        className="grid h-7 w-7 place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <label className="flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
+        <CalendarDays className="h-3.5 w-3.5 text-[#c85776]" />
+        <span className="hidden sm:inline">{label}</span>
+        <input
+          type="date"
+          value={value}
+          max={today}
+          onChange={(e) => onChange(e.target.value || today)}
+          className="w-[132px] cursor-pointer rounded-full bg-transparent px-1 text-[12px] font-semibold text-[#4a3a44] outline-none"
+        />
+      </label>
+      <button
+        type="button"
+        onClick={() => shift(1)}
+        disabled={value >= today}
+        aria-label="Sonraki gün"
+        className="grid h-7 w-7 place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+      {value !== today && (
+        <button
+          type="button"
+          onClick={() => onChange(today)}
+          className="rounded-full border border-[#efe1e7] px-2.5 py-1 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff1f6]"
+        >
+          Bugün
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** "2026-07-25" → yerel gün başlangıcı (UTC kayması olmadan). */
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  const parsed = new Date(y, (m || 1) - 1, d || 1)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+function getRange(scope: ScopeKey, dayIso: string): { from: Date; to: Date } {
   const now = new Date()
   if (scope === 'today') {
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+    // Günlük kasa seçilen güne göre süzülür (varsayılan bugün).
+    const from = parseIsoDate(dayIso)
+    from.setHours(0, 0, 0, 0)
     const to = new Date(from)
     to.setDate(to.getDate() + 1)
     return { from, to }
@@ -130,7 +203,9 @@ function KasaPageInner() {
   const { isStaff, performWrite } = useStaffApproval()
   const [staffActionMsg, setStaffActionMsg] = useState<string>('')
 
-  const { from, to } = useMemo(() => getRange(scope), [scope])
+  // Günlük kasada gün seçimi (yyyy-MM-dd, yerel). Diğer kapsamlar bunu kullanmaz.
+  const [dayIso, setDayIso] = useState<string>(() => isoDateOnly(new Date()))
+  const { from, to } = useMemo(() => getRange(scope, dayIso), [scope, dayIso])
 
   const { data, loading, error, reload } = useApiQuery<KasaData>(
     async () => {
@@ -174,8 +249,12 @@ function KasaPageInner() {
     [data],
   )
 
-  // Bugünün hızlı toplamı (scope ne olursa olsun başlık için bugün)
-  const todayIso = isoDateOnly(new Date())
+  // Günlük kasada seçilen günün, diğer kapsamlarda bugünün hızlı toplamı.
+  const todayIso = scope === 'today' ? dayIso : isoDateOnly(new Date())
+  // Geçmiş bir gün seçiliyse başlıklar "Bugün" yerine o tarihi gösterir.
+  const isToday = dayIso === isoDateOnly(new Date())
+  const dayLabel = parseIsoDate(dayIso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+  const scopeLabel = scope === 'today' && !isToday ? dayLabel : scopeInfo.label
   const todayEntries = useMemo(() => entries.filter((e) => e.date === todayIso), [entries, todayIso])
   const todayIncome = todayEntries.filter((e) => e.type === 'income').reduce((s, e) => s + e.amount, 0)
   const todayExpense = todayEntries.filter((e) => e.type === 'expense').reduce((s, e) => s + e.amount, 0)
@@ -258,17 +337,17 @@ function KasaPageInner() {
   const scopedNet = summary.netAmount
 
   const kpis: { label: string; value: number; money: boolean; delta: string; icon: typeof Wallet; chip: string; negative?: boolean }[] = [
-    { label: 'Bugünkü gelir', value: todayIncome, money: true, delta: `${todayIncomeCount} tahsilat`, icon: TrendingUp, chip: 'bg-[#e6f5ee] text-[#2f9e72]' },
-    { label: 'Bugünkü gider', value: todayExpense, money: true, delta: `${todayExpenseCount} gider`, icon: TrendingDown, chip: 'bg-[#fdeaef] text-[#cf4d68]' },
+    { label: scope === 'today' && !isToday ? `${dayLabel} geliri` : 'Bugünkü gelir', value: todayIncome, money: true, delta: `${todayIncomeCount} tahsilat`, icon: TrendingUp, chip: 'bg-[#e6f5ee] text-[#2f9e72]' },
+    { label: scope === 'today' && !isToday ? `${dayLabel} gideri` : 'Bugünkü gider', value: todayExpense, money: true, delta: `${todayExpenseCount} gider`, icon: TrendingDown, chip: 'bg-[#fdeaef] text-[#cf4d68]' },
     { label: 'Net kasa (bugün)', value: todayNet, money: true, delta: todayNet >= 0 ? 'pozitif' : 'negatif', icon: Wallet, chip: 'bg-[#f7eed9] text-[#b88938]', negative: todayNet < 0 },
-    { label: `${scopeInfo.label} işlem`, value: entries.length, money: false, delta: `${summary.incomeCount} gelir · ${summary.expenseCount} gider`, icon: Receipt, chip: 'bg-[#fbeaf1] text-[#c85776]' },
+    { label: `${scopeLabel} işlem`, value: entries.length, money: false, delta: `${summary.incomeCount} gelir · ${summary.expenseCount} gider`, icon: Receipt, chip: 'bg-[#fbeaf1] text-[#c85776]' },
   ]
 
   return (
     <>
       <Topbar
         title={isStaff ? 'Kasa / Tahsilat' : 'Günlük Kasa'}
-        subtitle={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeInfo.label}${isStaff ? ' · personel yetkisi' : ''}`}
+        subtitle={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeLabel}${isStaff ? ' · personel yetkisi' : ''}`}
         breadcrumbs={isStaff ? ['Personel', 'Finans', 'Günlük Kasa', scopeInfo.label] : ['Admin', 'Finans', 'Günlük Kasa', scopeInfo.label]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -294,7 +373,8 @@ function KasaPageInner() {
 
       <div className="relative space-y-7 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-center gap-3">
-          <ScopeBadge label={scopeInfo.label} description={scopeInfo.description} />
+          <ScopeBadge label={scopeLabel} description={scope === 'today' && !isToday ? 'Seçili günün kasa hareketleri' : scopeInfo.description} />
+          {scope === 'today' && <DayPicker value={dayIso} onChange={setDayIso} />}
         </div>
 
         <ApiStateNotice loading={loading} error={error} />
@@ -336,7 +416,7 @@ function KasaPageInner() {
         >
           <div className="flex items-center gap-2 text-[#241923]">
             <Banknote className="h-4 w-4 text-[#c85776]" />
-            <h2 className="font-display text-lg font-bold">Bugünün ödeme yöntemi dağılımı</h2>
+            <h2 className="font-display text-lg font-bold">{scope === 'today' && !isToday ? `${dayLabel} ödeme yöntemi dağılımı` : 'Bugünün ödeme yöntemi dağılımı'}</h2>
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             {(['cash', 'card', 'transfer'] as const).map((method) => {
@@ -379,7 +459,7 @@ function KasaPageInner() {
             className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
           >
             <div className="flex items-center justify-between gap-2 border-b border-[#f2e6eb] pb-4">
-              <h2 className="font-display text-lg font-bold text-[#241923]">{scopeInfo.label} · kasa hareketleri</h2>
+              <h2 className="font-display text-lg font-bold text-[#241923]">{scopeLabel} · kasa hareketleri</h2>
               <span className="rounded-full border border-[#efe1e7] bg-[#fffafc] px-3 py-1 text-[11px] font-semibold text-[#705a66]">{entries.length} işlem</span>
             </div>
             <motion.div
@@ -438,7 +518,7 @@ function KasaPageInner() {
               })}
               {!entries.length && (
                 <div className="px-5 py-10 text-center text-sm text-[#705a66]">
-                  {scopeInfo.label} kapsamında kasa hareketi yok. Üstten tahsilat veya gider ekleyebilirsin.
+                  {scopeLabel} kapsamında kasa hareketi yok. Üstten tahsilat veya gider ekleyebilirsin.
                 </div>
               )}
             </motion.div>
@@ -451,7 +531,7 @@ function KasaPageInner() {
             transition={{ duration: 0.45, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
             className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)]"
           >
-            <div className="font-display text-lg font-bold text-[#241923]">{scopeInfo.label} Özeti</div>
+            <div className="font-display text-lg font-bold text-[#241923]">{scopeLabel} Özeti</div>
 
             <div className="mt-4 space-y-2.5">
               <div className="flex items-center justify-between rounded-[14px] border border-emerald-200/70 bg-emerald-50/60 px-4 py-3">
@@ -491,7 +571,7 @@ function KasaPageInner() {
               const topPct = totalIn > 0 && topMethod ? Math.round((topMethod.incomeAmount / totalIn) * 100) : 0
               return (
                 <div className="mt-4 rounded-[16px] border border-[#efe1e7] bg-[#fffafc] p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#705a66]">Yöntem Dağılımı ({scopeInfo.label})</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#705a66]">Yöntem Dağılımı ({scopeLabel})</div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="space-y-1.5">
                       {methods.map((m) => (

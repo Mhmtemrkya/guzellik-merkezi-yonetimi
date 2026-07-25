@@ -232,7 +232,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         ReqIndexed(typeof(CustomServiceCategory), nameof(CustomServiceCategory.Name)); // indeks: { TenantId, Name }
 
         Req(typeof(Product), nameof(Product.Name), nameof(Product.Unit));
-        Opt(typeof(Product), nameof(Product.Supplier), nameof(Product.Location));
+        Opt(typeof(Product), nameof(Product.Location));
 
         Opt(typeof(StockMovement), nameof(StockMovement.Reference), nameof(StockMovement.Notes));
 
@@ -1039,24 +1039,20 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         product.ToTable("products");
         product.HasKey(x => x.Id);
         product.Property(x => x.Name).HasMaxLength(160).IsRequired();
-        product.Property(x => x.Sku).HasMaxLength(64).IsRequired();
         product.Property(x => x.Category).HasConversion<string>().HasMaxLength(40).IsRequired();
         product.Property(x => x.Unit).HasMaxLength(24).IsRequired();
-        product.Property(x => x.Supplier).HasMaxLength(160);
         product.Property(x => x.Location).HasMaxLength(120);
         product.Property(x => x.Barcode).HasMaxLength(64);
         // ImageUrl base64/data-URL olabildiğinden uzun metin.
         product.Property(x => x.ImageUrl).HasColumnType("LONGTEXT");
         product.Property(x => x.Brand).HasMaxLength(120);
-        product.Property(x => x.TaxRatePercent).HasPrecision(5, 2);
         product.Property(x => x.ExpiryDate).HasConversion(DateOnlyNullableConverter).HasColumnType("date");
         product.Property(x => x.LotNumber).HasMaxLength(80);
-        product.Property(x => x.PendingInbound).HasPrecision(18, 3);
         product.Property(x => x.Cost).HasPrecision(18, 2);
         product.Property(x => x.SalePrice).HasPrecision(18, 2);
         product.Property(x => x.CurrentStock).HasPrecision(18, 3);
         product.Property(x => x.MinStockLevel).HasPrecision(18, 3);
-        product.HasIndex(x => new { x.TenantId, x.Sku });
+        product.HasIndex(x => new { x.TenantId, x.Barcode });
         product.HasIndex(x => new { x.TenantId, x.Category });
         product.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         product.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));

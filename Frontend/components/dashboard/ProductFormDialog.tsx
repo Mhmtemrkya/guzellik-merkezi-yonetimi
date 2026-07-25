@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
-  Barcode as BarcodeIcon,
   Boxes,
   CheckCircle2,
   ChevronDown,
@@ -16,27 +15,22 @@ import {
   X,
 } from 'lucide-react'
 import { downscaleImage } from '@/lib/imageUtils'
+import BarcodeScanField from '@/components/dashboard/BarcodeScanField'
 import { productCategoryLabels } from '@/lib/apiMappers'
 import type { ProductCategoryKey } from '@/lib/types'
 
 export interface ProductFormValues {
   imageUrl: string
   name: string
-  sku: string
   barcode: string
   category: ProductCategoryKey
   unit: string
   brand: string
-  supplier: string
   location: string
   lotNumber: string
   expiryDate: string
-  taxRatePercent: number
-  leadTimeDays: number
-  pendingInbound: number
   cost: number
   salePrice: number
-  currentStock: number
   minStockLevel: number
   isActive: boolean
 }
@@ -60,10 +54,9 @@ const helperStyle = 'mt-1.5 text-[12px] text-[#705a66]'
 
 function defaults(): ProductFormValues {
   return {
-    imageUrl: '', name: '', sku: '', barcode: '', category: 'SkinCare', unit: 'adet',
-    brand: '', supplier: '', location: '', lotNumber: '', expiryDate: '',
-    taxRatePercent: 20, leadTimeDays: 0, pendingInbound: 0,
-    cost: 100, salePrice: 200, currentStock: 10, minStockLevel: 5, isActive: true,
+    imageUrl: '', name: '', barcode: '', category: 'SkinCare', unit: 'adet',
+    brand: '', location: '', lotNumber: '', expiryDate: '',
+    cost: 100, salePrice: 200, minStockLevel: 5, isActive: true,
   }
 }
 
@@ -125,7 +118,6 @@ export default function ProductFormDialog({
 
   const submit = async (): Promise<void> => {
     if (!values.name.trim()) { setError('Ürün adı zorunludur.'); return }
-    if (!values.sku.trim()) { setError('SKU zorunludur.'); return }
     setBusy(true)
     setError('')
     try {
@@ -202,11 +194,11 @@ export default function ProductFormDialog({
                 </span>
               </div>
               <div className="mt-2 font-display text-lg font-bold leading-tight text-[#241923]">{values.name.trim() || 'Ürün adı'}</div>
-              <div className="mt-1 font-mono text-[11px] text-[#705a66]">{values.sku.trim() || 'SKU—'}{values.barcode.trim() ? ` · ${values.barcode.trim()}` : ''}</div>
+              <div className="mt-1 font-mono text-[11px] text-[#705a66]">{values.barcode.trim() || 'Barkod otomatik üretilecek'}</div>
               <div className="mt-3 font-display text-2xl font-bold tabular-nums beautyasist-text-gradient">₺{(Number(values.salePrice) || 0).toLocaleString('tr-TR')}</div>
               <div className="mt-0.5 text-[11px] text-[#705a66]">Maliyet ₺{(Number(values.cost) || 0).toLocaleString('tr-TR')} · %{margin} kâr</div>
               <div className="mt-3 flex gap-2 border-t border-[#f3e1e9] pt-3">
-                <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><Boxes className="h-3 w-3 text-[#c85776]" /> {mode === 'create' ? `Açılış ${values.currentStock}` : 'Stok'}</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><Boxes className="h-3 w-3 text-[#c85776]" /> Stok</span>
                 <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><AlertTriangle className="h-3 w-3 text-[#b88938]" /> Min {values.minStockLevel}</span>
               </div>
             </div>
@@ -243,18 +235,10 @@ export default function ProductFormDialog({
                     <input value={values.name} onChange={(e) => set({ name: e.target.value })} placeholder="Örn. Yenileyici Gece Serumu" className={fieldStyle} />
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className={labelStyle}>SKU *</label>
-                      <input value={values.sku} onChange={(e) => set({ sku: e.target.value })} placeholder="Örn. YGS-001" className={`${fieldStyle} font-mono`} />
-                    </div>
-                    <div>
-                      <label className={labelStyle}>Barkod</label>
-                      <div className="relative">
-                        <BarcodeIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a98a98]" />
-                        <input value={values.barcode} onChange={(e) => set({ barcode: e.target.value })} placeholder="Boş → otomatik EAN-13" className={`${fieldStyle} pl-10 font-mono`} />
-                      </div>
-                    </div>
+                  <div>
+                    <label className={labelStyle}>Barkod</label>
+                    {/* Ürünün tekil kimliği barkod: okuyucudan okutulabilir, boş bırakılırsa otomatik üretilir. */}
+                    <BarcodeScanField value={values.barcode} onChange={(barcode) => set({ barcode })} inputClassName={fieldStyle} />
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -284,28 +268,9 @@ export default function ProductFormDialog({
               <Section title="DİĞER BİLGİLER">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div><label className={labelStyle}>Marka</label><input value={values.brand} onChange={(e) => set({ brand: e.target.value })} placeholder="opsiyonel" className={fieldStyle} /></div>
-                  <div><label className={labelStyle}>Tedarikçi</label><input value={values.supplier} onChange={(e) => set({ supplier: e.target.value })} placeholder="opsiyonel" className={fieldStyle} /></div>
                   <div><label className={labelStyle}>Raf / Dolap</label><input value={values.location} onChange={(e) => set({ location: e.target.value })} placeholder="örn. A1-Raf3" className={fieldStyle} /></div>
                   <div><label className={labelStyle}>Lot numarası</label><input value={values.lotNumber} onChange={(e) => set({ lotNumber: e.target.value })} placeholder="opsiyonel" className={`${fieldStyle} font-mono`} /></div>
                   <div><label className={labelStyle}>Son kullanma</label><input type="date" value={values.expiryDate} onChange={(e) => set({ expiryDate: e.target.value })} className={fieldStyle} /></div>
-                  <div>
-                    <label className={labelStyle}>Vergi oranı</label>
-                    <div className="relative">
-                      <input type="number" min={0} value={values.taxRatePercent} onChange={(e) => set({ taxRatePercent: num(e.target.value) })} className={`${fieldStyle} pr-9 tabular-nums`} />
-                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[#705a66]">%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelStyle}>Tedarik süresi</label>
-                    <div className="relative">
-                      <input type="number" min={0} value={values.leadTimeDays} onChange={(e) => set({ leadTimeDays: num(e.target.value) })} className={`${fieldStyle} pr-12 tabular-nums`} />
-                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[#705a66]">gün</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelStyle}>Bekleyen giriş</label>
-                    <input type="number" min={0} value={values.pendingInbound} onChange={(e) => set({ pendingInbound: num(e.target.value) })} className={`${fieldStyle} tabular-nums`} />
-                  </div>
                 </div>
               </Section>
 
@@ -329,15 +294,10 @@ export default function ProductFormDialog({
                     </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    {mode === 'create' && (
-                      <div>
-                        <label className={labelStyle}>Açılış stoğu</label>
-                        <input type="number" min={0} value={values.currentStock} onChange={(e) => set({ currentStock: num(e.target.value) })} className={`${fieldStyle} tabular-nums`} />
-                      </div>
-                    )}
                     <div>
                       <label className={labelStyle}>Minimum stok</label>
                       <input type="number" min={0} value={values.minStockLevel} onChange={(e) => set({ minStockLevel: num(e.target.value) })} className={`${fieldStyle} tabular-nums`} />
+                      {mode === 'create' && <div className={helperStyle}>Ürün stoğu, kaydettikten sonra &quot;Stok girişi&quot; hareketiyle oluşur.</div>}
                     </div>
                   </div>
                   {/* Aktif toggle */}

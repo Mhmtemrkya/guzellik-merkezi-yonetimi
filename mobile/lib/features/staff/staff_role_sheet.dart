@@ -95,7 +95,7 @@ class _StaffRoleSheetState extends State<StaffRoleSheet> {
     _phone = TextEditingController(text: '${s['phone'] ?? ''}');
     _email = TextEditingController();
     _commission = TextEditingController(
-        text: '${(s['commissionRate'] as num?) ?? (widget.isCreate ? 10 : 0)}');
+        text: '${(s['commissionRate'] as num?) ?? 0}');
     _isActive = s['isActive'] != false;
     final rawPhoto = '${s['photoUrl'] ?? ''}';
     _photoUrl = rawPhoto == 'null' ? '' : rawPhoto;

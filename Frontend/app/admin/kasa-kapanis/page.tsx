@@ -351,9 +351,11 @@ export default function KasaKapanisPage() {
                   <div key={e.id} className="flex items-center gap-3 rounded-[12px] px-2.5 py-2 transition-colors hover:bg-[#fffafc]">
                     <span className={`h-2 w-2 shrink-0 rounded-full ${income ? 'bg-emerald-500' : 'bg-[#cf4d68]'}`} />
                     <span className="w-11 shrink-0 text-[11px] font-semibold tabular-nums text-[#705a66]">{e.time || '—'}</span>
+                    {/* Müşteri adı başta: satırda önce kimin işlemi olduğu okunur. */}
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[#3d2f3a]">
+                      {e.customerName && <span className="font-semibold text-[#241923]">{e.customerName}</span>}
+                      {e.customerName ? ' · ' : ''}
                       {e.description || e.category || (income ? 'Tahsilat' : 'Gider')}
-                      {e.customerName ? ` · ${e.customerName}` : ''}
                     </span>
                     <span className="hidden shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 sm:inline">{cashFlowMethodLabel(e.method)}</span>
                     <span className={`w-24 shrink-0 text-right font-display text-[14px] font-bold tabular-nums ${income ? 'text-emerald-700' : 'text-[#cf4d68]'}`}>

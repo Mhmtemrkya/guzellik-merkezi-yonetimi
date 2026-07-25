@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
@@ -15,7 +16,7 @@ import { adminApi } from '@/lib/apiClient'
 import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, CreditCard, FileUp, Layers3, PauseCircle,
+  CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, FileUp, Layers3, PauseCircle,
   PencilLine, Search, Sparkles, Star, TrendingUp, Trophy, UploadCloud, UserCheck, Users, Wand2,
 } from 'lucide-react'
 import type { ApiAppointment, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
@@ -75,6 +76,8 @@ export default function ServiceLibrary({
   const [catFilter, setCatFilter] = useState('')
   const [durFilter, setDurFilter] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
+  const bulk = useBulkSelect()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [actionError, setActionError] = useState('')
@@ -155,7 +158,6 @@ export default function ServiceLibrary({
 
   const activeCount = services.filter((s) => s.status === 'Active').length
   const passiveCount = services.filter((s) => s.status !== 'Active').length
-  const avgPrice = services.length ? Math.round(services.reduce((a, s) => a + s.price, 0) / services.length) : 0
   const apptSeries = useMemo(() => bucketWeekly(appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t))), [appts])
 
   const buildPayload = (s: Service, over: Record<string, unknown>) => ({
@@ -253,12 +255,11 @@ export default function ServiceLibrary({
         {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
 
         {/* STAT CARDS */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { label: 'Toplam hizmet', value: String(services.length), icon: Layers3, stroke: '#d7839d' },
             { label: 'Aktif hizmet', value: String(activeCount), icon: CheckCircle2, stroke: '#3cae8d' },
             { label: 'Pasif hizmet', value: String(passiveCount), icon: Clock3, stroke: '#e0617f' },
-            { label: 'Ortalama hizmet fiyatı', value: formatTL(avgPrice), icon: CreditCard, stroke: '#9c70bb' },
           ].map((c) => (
             <div key={c.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
               <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><c.icon className="h-4 w-4" /></span>
@@ -317,9 +318,17 @@ export default function ServiceLibrary({
                 const st = statsByService.get(s.id)
                 const perfStaff = (st?.staffIds || []).map((id) => staffById.get(id)).filter(Boolean).slice(0, 3)
                 return (
-                  <button key={s.id} type="button" onClick={() => setSelectedId(s.id)}
-                    className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${sel?.id === s.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      // Seçim modunda satır tıklaması detay yerine seçim yapar.
+                      if (bulk.active) { bulk.toggle(s.id); return }
+                      setSelectedId(s.id)
+                    }}
+                    className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${bulk.isSelected(s.id) ? 'bg-[#fff1f6]' : sel?.id === s.id ? 'bg-[#fff1f6]/50' : ''}`}>
                     <div className="flex min-w-0 items-center gap-2.5">
+                      <SelectBox checked={bulk.isSelected(s.id)} onToggle={() => bulk.toggle(s.id)} />
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
                       <span className="truncate text-[13px] font-medium text-[#352432]">{s.name}</span>
                     </div>
@@ -465,6 +474,15 @@ export default function ServiceLibrary({
         entityType="service"
         onDone={() => void reload()}
       />
+      {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      <BulkSelectBar
+        api={bulk}
+        itemLabel="hizmet"
+        pageIds={pageRows.map((s) => s.id)}
+        onDelete={(id) => adminApi.deleteService(id, tenantId)}
+        onDone={() => reload()}
+      />
+
     </>
   )
 }

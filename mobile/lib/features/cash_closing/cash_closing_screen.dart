@@ -823,7 +823,8 @@ class _CashClosingScreenState extends State<CashClosingScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-                customer.isEmpty ? desc : '$desc · $customer',
+                // Müşteri adı başta (web paritesi).
+                customer.isEmpty ? desc : '$customer · $desc',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12.5, color: AppColors.ink)),

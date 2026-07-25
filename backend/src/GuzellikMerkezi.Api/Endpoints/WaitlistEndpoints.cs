@@ -55,6 +55,17 @@ public static class WaitlistEndpoints
             return res.ToHttpResult(http);
         });
 
+        // "Randevu oluştur": bekleme kaydını yöneticinin seçtiği gün/saate randevuya çevirir
+        // (teklif akışını beklemeden) + müşteriye "randevunuz oluşturuldu" WhatsApp mesajı (kalıcı kuyrukta).
+        group.MapPost("/{id:guid}/schedule", async (Guid id, ScheduleWaitlistRequest request, Guid? tenantId, ICurrentUser currentUser, IWaitlistService service, IDurableJobQueue jobs, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            var res = await service.ScheduleAsync(resolvedTenantId, id, request, ct);
+            if (res.IsSuccess && res.Value is { } appointmentId) await jobs.EnqueueAsync(DurableJobTypes.WaitlistActivated, new WaitlistActivatedJob(resolvedTenantId, appointmentId), ct);
+            return res.ToHttpResult(http);
+        });
+
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IWaitlistService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

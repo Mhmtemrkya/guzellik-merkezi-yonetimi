@@ -7,15 +7,17 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
+import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, formatTL, guidOrUndefined, normalizeService, normalizeWaitlistEntry } from '@/lib/apiMappers'
+import { apiItems, formatTL, guidOrUndefined, normalizeService, normalizeStaff, normalizeWaitlistEntry } from '@/lib/apiMappers'
 import type {
   ApiCustomer,
   ApiService,
   ApiStaff,
   ApiWaitlistEntry,
+  Customer,
   PagedResult,
   WaitlistEntry,
   WaitlistStatus,
@@ -43,20 +45,22 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toLocaleUpperCase('tr-TR')
 }
 
+/** Listeye alınma tarihi — "24 Tem 2026" (yerel). */
+function formatAddedDate(createdAt: string): string {
+  if (!createdAt) return '—'
+  const d = new Date(createdAt)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/** Listede geçen süre — "bugün eklendi" / "3 gündür bekliyor". */
 function waitDuration(createdAt: string): string | null {
   if (!createdAt) return null
   const then = new Date(createdAt).getTime()
   if (Number.isNaN(then)) return null
   const days = Math.floor((Date.now() - then) / 86_400_000)
   if (days <= 0) return 'bugün eklendi'
-  return `${days} gündür listede`
-}
-
-function formatPreferred(d: string): string {
-  if (!d) return '—'
-  const date = new Date(`${d}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return d
-  return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+  return `${days} gündür bekliyor`
 }
 
 /** İstenen slotun saatini (yerel) HH:mm döndürür; yoksa null. */
@@ -76,6 +80,7 @@ function WaitRow({
   staff,
   index,
   busy,
+  onSchedule,
   onOffer,
   onConvert,
   onMarkBooked,
@@ -90,6 +95,7 @@ function WaitRow({
   staff: string | null
   index: number
   busy: boolean
+  onSchedule: () => void
   onOffer: () => void
   onConvert: () => void
   onMarkBooked: () => void
@@ -140,12 +146,22 @@ function WaitRow({
             <StatusIcon className="h-3 w-3" /> {meta.label}
           </span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-medium text-[#705a66]">
-          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-[#c85776]" /> {formatPreferred(entry.preferredDate)}</span>
-          {slotTime && <span className="inline-flex items-center gap-1.5 font-semibold text-[#c85776]"><Clock className="h-3.5 w-3.5" /> {slotTime}</span>}
-          {service && <span className="inline-flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-[#c85776]" /> {service}</span>}
-          {staff && <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-[#c85776]" /> {staff}</span>}
-          {wait && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#c85776]" /> {wait}</span>}
+        {/* Beklenen işlem — kuyruktaki en kritik bilgi, ayrı bir rozet olarak. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f3d3de] bg-[#fff5f8] px-2.5 py-1 text-[11px] font-semibold text-[#a34a62]">
+            <Scissors className="h-3.5 w-3.5" /> {service || 'Herhangi bir işlem'}
+          </span>
+          {staff && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fffafc] px-2.5 py-1 text-[11px] font-semibold text-[#705a66]">
+              <UserRound className="h-3.5 w-3.5 text-[#c85776]" /> {staff}
+            </span>
+          )}
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-medium text-[#705a66]">
+          {/* Listeye alınma tarihi + kaç gündür beklediği (tercih edilen tarih yerine). */}
+          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-[#c85776]" /> Listeye alındı: {formatAddedDate(entry.createdAt)}</span>
+          {wait && <span className="inline-flex items-center gap-1.5 font-semibold text-[#a34a62]"><Hourglass className="h-3.5 w-3.5" /> {wait}</span>}
+          {slotTime && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#c85776]" /> İstenen slot: {slotTime}</span>}
           {entry.note && <span className="inline-flex items-center gap-1.5 text-[#9a6f22]"><Quote className="h-3.5 w-3.5" /> {entry.note}</span>}
         </div>
       </div>
@@ -154,6 +170,17 @@ function WaitRow({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         {!resolved ? (
           <>
+            {/* Randevuya aktar: randevu modalını müşteri girili açar. Kayıt ancak randevu
+                oluşturulduğunda "Randevu yapıldı" olur; vazgeçilirse bekleme listesinde kalır. */}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSchedule}
+              title="Randevu modalını bu müşteri seçili olarak aç"
+              className="inline-flex items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_10px_20px_-14px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+            >
+              <CalendarPlus className="h-3.5 w-3.5" /> Randevuya aktar
+            </button>
             {hasSlot ? (
               <>
                 <button
@@ -172,7 +199,7 @@ function WaitRow({
                   title="Bu slotta randevu oluştur (müşteri yüz yüze/telefonla teyit ettiyse)"
                   className="inline-flex items-center gap-1.5 rounded-[11px] bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                 >
-                  <CalendarPlus className="h-3.5 w-3.5" /> Randevuya çevir
+                  <CalendarCheck className="h-3.5 w-3.5" /> Teklifi onayla
                 </button>
               </>
             ) : (
@@ -295,6 +322,8 @@ export default function BeklemeListesiPage() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  // "Randevuya aktar" ile açılan randevu modalı — hangi bekleme kaydı için açıldığı.
+  const [scheduleFor, setScheduleFor] = useState<WaitlistEntry | null>(null)
 
   const handleCreate = async (): Promise<void> => {
     if (!customerId) { setActionError('Müşteri seçin.'); return }
@@ -332,6 +361,76 @@ export default function BeklemeListesiPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  // Randevu modalı için normalize listeler (paket satışı bu akışta kullanılmaz).
+  const staffList = useMemo(() => apiItems(data?.staff).map((s, i) => normalizeStaff(s, i)), [data])
+  const servicesList = useMemo(() => apiItems(data?.services).map((s, i) => normalizeService(s, i)), [data])
+
+  // Modal müşteri seçicisi için tek elemanlı liste: bekleme kaydındaki müşteri (seçili gelir).
+  const scheduleCustomers = useMemo<Customer[]>(() => {
+    if (!scheduleFor) return []
+    return [
+      {
+        id: scheduleFor.customerId,
+        branchId: undefined,
+        name: scheduleFor.customerName || customerName[scheduleFor.customerId] || 'Müşteri',
+        phone: scheduleFor.customerPhone || '',
+        email: '',
+        city: '',
+        tier: 'KVKK Bekliyor',
+        joined: '',
+        createdAt: '',
+        activePackages: 0,
+        totalSpent: 0,
+        debt: 0,
+        remainingSessions: 0,
+        lastVisit: '',
+        gender: 'Unspecified',
+        notes: '',
+        photoUrl: '',
+        isBlacklisted: false,
+        blacklistReason: null,
+        isVip: false,
+      } as Customer,
+    ]
+  }, [scheduleFor, customerName])
+
+  const scheduleInitialValues = useMemo<Partial<AppointmentEditorValues> | undefined>(() => {
+    if (!scheduleFor) return undefined
+    const slot = scheduleFor.preferredStartUtc ? new Date(scheduleFor.preferredStartUtc) : null
+    const valid = slot && !Number.isNaN(slot.getTime()) ? slot : null
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    return {
+      customerId: scheduleFor.customerId,
+      serviceDefinitionId: scheduleFor.serviceDefinitionId || '',
+      staffMemberId: scheduleFor.staffMemberId || '',
+      date: valid
+        ? `${valid.getFullYear()}-${pad(valid.getMonth() + 1)}-${pad(valid.getDate())}`
+        : scheduleFor.preferredDate || new Date().toISOString().slice(0, 10),
+      time: valid ? `${pad(valid.getHours())}:${pad(valid.getMinutes())}` : '',
+      durationMinutes: scheduleFor.durationMinutes && scheduleFor.durationMinutes > 0 ? scheduleFor.durationMinutes : 30,
+    }
+  }, [scheduleFor, customerName])
+
+  // Kaydet: backend tek işlemde randevuyu açar (kara liste/çakışma/mesai/yetki kontrolleriyle),
+  // bekleme kaydını "Randevu yapıldı" yapar ve müşteriye WhatsApp bilgisini kuyruğa alır.
+  const handleScheduleSubmit = async (values: AppointmentEditorValues): Promise<void> => {
+    if (!scheduleFor) return
+    const start = new Date(`${values.date}T${values.time || '00:00'}:00`)
+    if (Number.isNaN(start.getTime())) throw new Error('Tarih/saat geçersiz.')
+    await adminApi.scheduleWaitlist(
+      scheduleFor.id,
+      {
+        startUtc: start.toISOString(),
+        durationMinutes: values.durationMinutes || 30,
+        staffMemberId: values.staffMemberId || null,
+        serviceDefinitionId: values.serviceDefinitionId || null,
+      },
+      tenantId,
+    )
+    setScheduleFor(null)
+    await reload()
   }
 
   const runAction = async (fn: () => Promise<unknown>): Promise<void> => {
@@ -489,6 +588,7 @@ export default function BeklemeListesiPage() {
                 service={w.serviceDefinitionId ? serviceName[w.serviceDefinitionId] || 'Hizmet' : null}
                 staff={w.staffMemberId ? staffName[w.staffMemberId] || 'Personel' : null}
                 busy={busy}
+                onSchedule={() => setScheduleFor(w)}
                 onOffer={() => runAction(() => adminApi.offerWaitlist(w.id, tenantId))}
                 onConvert={() => runAction(() => adminApi.bookWaitlist(w.id, tenantId))}
                 onMarkBooked={() => runAction(() => adminApi.setWaitlistStatus(w.id, 'Booked', tenantId))}
@@ -500,6 +600,23 @@ export default function BeklemeListesiPage() {
           })}
         </div>
       </div>
+
+      {/* Randevu modalı — müşteri önceden seçili gelir. Kaydedilmezse bekleme kaydı listede kalır. */}
+      {scheduleFor && (
+        <AppointmentEditor
+          mode="create"
+          open
+          onOpenChange={(next) => { if (!next) setScheduleFor(null) }}
+          customers={scheduleCustomers}
+          staff={staffList}
+          services={servicesList}
+          packages={[]}
+          tenantId={tenantId}
+          customerLabel="Müşteri (bekleme listesinden)"
+          initialValues={scheduleInitialValues}
+          onSubmit={handleScheduleSubmit}
+        />
+      )}
     </>
   )
 }

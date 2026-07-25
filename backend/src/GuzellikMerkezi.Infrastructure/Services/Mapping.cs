@@ -52,10 +52,8 @@ internal static class Mapping
         product.TenantId,
         product.BranchId,
         product.Name,
-        product.Sku,
         product.Category,
         product.Unit,
-        product.Supplier,
         product.Location,
         product.Cost,
         product.SalePrice,
@@ -69,18 +67,15 @@ internal static class Mapping
         product.CreatedAtUtc,
         product.UpdatedAtUtc,
         product.Brand,
-        product.TaxRatePercent,
         product.ExpiryDate,
-        product.LotNumber,
-        product.PendingInbound,
-        product.LeadTimeDays);
+        product.LotNumber);
 
-    public static StockMovementDto ToDto(this StockMovement movement, string? productName = null, string? productSku = null, string? staffName = null) => new(
+    public static StockMovementDto ToDto(this StockMovement movement, string? productName = null, string? productBarcode = null, string? staffName = null) => new(
         movement.Id,
         movement.TenantId,
         movement.ProductId,
         productName,
-        productSku,
+        productBarcode,
         movement.Type,
         movement.Quantity,
         movement.UnitCost,

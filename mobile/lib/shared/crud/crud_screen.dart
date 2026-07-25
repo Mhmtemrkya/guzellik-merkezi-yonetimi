@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../person_name.dart';
+import '../widgets/barcode_scanner_sheet.dart';
 import '../widgets/async_list_page.dart';
 
 /// Schema-driven CRUD field kinds.
@@ -46,6 +48,8 @@ class CrudField {
     this.exactLength = false,
     this.searchable = false,
     this.searchLoader,
+    this.personName = false,
+    this.barcodeScan = false,
   });
 
   final String key;
@@ -80,6 +84,15 @@ class CrudField {
   /// Aramalı seçimde sunucu-taraflı arama — verilirse options/optionsLoader yerine
   /// her sorgu sunucudan ilk sayfayı getirir (sınırsız ölçek).
   final Future<List<CrudOption>> Function(String query)? searchLoader;
+
+  /// Kişi adı alanı: yazım standarda çekilir — ad "İlk harf büyük",
+  /// soyad TAMAMI BÜYÜK (alandan çıkınca ve kaydederken uygulanır).
+  final bool personName;
+
+  /// Barkod alanı: alanın yanında kamera ile okutma düğmesi çıkar.
+  /// El terminali / Bluetooth okuyucular klavye gibi davrandığından zaten
+  /// doğrudan alana yazar; bu bayrak kamerayla okumayı ekler.
+  final bool barcodeScan;
 
   /// For [CrudFieldType.multiSelect]. If true, selected values are joined as
   /// a string instead of being sent as an array. Useful for backend fields like
@@ -317,6 +330,14 @@ class _CrudListScreenState extends State<CrudListScreen> {
       emptyText: widget.emptyText,
       headerExtra: widget.headerExtra,
       onItemTap: widget.onItemTap ?? (_canOpenSheet ? _openEdit : null),
+      // Toplu silme: kartlara uzun basınca seçim modu açılır (web toplu silme paritesi).
+      onBulkDelete: widget.onDelete == null || !widget.canDelete
+          ? null
+          : (items) async {
+              for (final item in items) {
+                await widget.onDelete!(item);
+              }
+            },
       floatingAction: widget.onCreate == null || !widget.canCreate
           ? null
           : FloatingActionButton.extended(
@@ -673,7 +694,8 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
           break;
         case CrudFieldType.text:
         case CrudFieldType.multiline:
-          final text = _controllers[field.key]!.text.trim();
+          final raw = _controllers[field.key]!.text.trim();
+          final text = field.personName ? formatPersonName(raw) : raw;
           body[field.key] = text.isEmpty
               ? (field.sendNullWhenEmpty ? null : '')
               : text;
@@ -687,6 +709,13 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     Navigator.pop(context, CrudSheetResult(body: _buildBody()));
+  }
+
+  /// Kamerayla barkod okutur ve alanı doldurur (el terminalleri zaten klavye gibi yazar).
+  Future<void> _scanBarcode(CrudField field) async {
+    final code = await showBarcodeScannerSheet(context);
+    if (!mounted || code == null || code.isEmpty) return;
+    setState(() => _controllers[field.key]?.text = code);
   }
 
   Future<void> _pickDate(CrudField field) async {
@@ -1007,7 +1036,7 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
           if (field.maxLength != null)
             LengthLimitingTextInputFormatter(field.maxLength),
         ];
-        return TextFormField(
+        final input = TextFormField(
           controller: _controllers[field.key],
           maxLines: field.type == CrudFieldType.multiline ? 3 : 1,
           keyboardType: field.digitsOnly
@@ -1022,6 +1051,13 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
             hintText: field.hint,
             // maxLength sayaç balonunu gizle (alan zaten sınırlı).
             counterText: '',
+            suffixIcon: field.barcodeScan
+                ? IconButton(
+                    tooltip: 'Barkod okut',
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                    onPressed: () => _scanBarcode(field),
+                  )
+                : null,
           ),
           validator: (v) {
             final value = (v ?? '').trim();
@@ -1036,6 +1072,17 @@ class _CrudFormSheetState extends State<CrudFormSheet> {
             }
             return null;
           },
+        );
+        if (!field.personName) return input;
+        // Alandan çıkınca yazım standarda çekilir (Ad SOYAD).
+        return Focus(
+          onFocusChange: (hasFocus) {
+            if (hasFocus) return;
+            final controller = _controllers[field.key]!;
+            final formatted = formatPersonName(controller.text);
+            if (formatted != controller.text) controller.text = formatted;
+          },
+          child: input,
         );
     }
   }

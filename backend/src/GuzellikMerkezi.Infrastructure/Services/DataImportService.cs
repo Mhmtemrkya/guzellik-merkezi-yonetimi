@@ -60,7 +60,8 @@ public sealed class DataImportService : IDataImportService
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var name = (row.FullName ?? string.Empty).Trim();
+                    // Excel'den gelen yazım ne olursa olsun kurum standardına çevrilir: Ad SOYAD.
+                    var name = PersonNameFormatter.Format(row.FullName);
                     var phone = (row.Phone ?? string.Empty).Trim();
                     if (name.Length == 0)
                     {
@@ -198,13 +199,12 @@ public sealed class DataImportService : IDataImportService
         // ---- ÜRÜNLER (STOK) ----------------------------------------------------
         if (request.Products is { Count: > 0 })
         {
-            // Mükerrer ölçütü: stok kodu (SKU) → yoksa ürün adı. Barkod tek başına
-            // güvenilir değil (aynı ürünün farklı ambalajı aynı barkodu taşıyabiliyor).
+            // Mükerrer ölçütü: barkod (varsa) → her hâlükârda ürün adı.
             var existingProducts = await _db.Products.AsNoTracking()
                 .Where(x => x.TenantId == tenantId)
-                .Select(x => new { x.Name, x.Sku })
+                .Select(x => new { x.Name, x.Barcode })
                 .ToListAsync(cancellationToken);
-            var existingSkus = new HashSet<string>(existingProducts.Select(x => NormalizeName(x.Sku)).Where(s => s.Length > 0));
+            var existingBarcodes = new HashSet<string>(existingProducts.Select(x => NormalizeName(x.Barcode)).Where(s => s.Length > 0));
             var existingProdNames = new HashSet<string>(existingProducts.Select(x => NormalizeName(x.Name)));
 
             foreach (var row in request.Products)
@@ -215,8 +215,11 @@ public sealed class DataImportService : IDataImportService
                     var name = (row.Name ?? string.Empty).Trim();
                     if (name.Length == 0) { failed++; continue; }
 
-                    var sku = string.IsNullOrWhiteSpace(row.Sku) ? name : row.Sku!.Trim();
-                    if (!existingSkus.Add(NormalizeName(sku)) || !existingProdNames.Add(NormalizeName(name)))
+                    var barcode = NullIfBlank(row.Barcode);
+                    var duplicate = barcode is not null
+                        ? !existingBarcodes.Add(NormalizeName(barcode))
+                        : false;
+                    if (duplicate || !existingProdNames.Add(NormalizeName(name)))
                     {
                         prodSkipped++;
                         continue;
@@ -226,15 +229,14 @@ public sealed class DataImportService : IDataImportService
                         tenantId,
                         request.BranchId,
                         name,
-                        sku,
                         ParseProductCategory(row.Category),
                         string.IsNullOrWhiteSpace(row.Unit) ? "adet" : row.Unit!.Trim(),
                         row.Cost is >= 0 ? row.Cost.Value : 0,
                         row.SalePrice is >= 0 ? row.SalePrice.Value : 0,
                         row.CurrentStock is >= 0 ? row.CurrentStock.Value : 0,
                         row.MinStockLevel is >= 0 ? row.MinStockLevel.Value : 0);
-                    product.SetBarcode(NullIfBlank(row.Barcode));
-                    product.SetExtras(NullIfBlank(row.Brand), null, null, null, null, null);
+                    product.SetBarcode(barcode);
+                    product.SetExtras(NullIfBlank(row.Brand), null, null);
                     _db.Products.Add(product);
                     prodCreated++;
                 }
@@ -263,7 +265,7 @@ public sealed class DataImportService : IDataImportService
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var name = (row.FullName ?? string.Empty).Trim();
+                    var name = PersonNameFormatter.Format(row.FullName);
                     if (name.Length == 0) { failed++; continue; }
                     if (!existingStaff.Add(NormalizeName(name))) { staffSkipped++; continue; }
 

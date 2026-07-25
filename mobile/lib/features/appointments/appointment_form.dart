@@ -24,6 +24,8 @@ class AppointmentForm extends StatefulWidget {
     this.presetStart,
     this.presetStaffId,
     this.presetCustomerId,
+    this.presetServiceId,
+    this.waitlistEntryId,
     this.existing = const [],
     super.key,
   });
@@ -33,6 +35,13 @@ class AppointmentForm extends StatefulWidget {
 
   /// Müşteri kartından açıldığında müşteri ön-seçili gelir.
   final String? presetCustomerId;
+
+  /// Bekleme listesinden açıldığında beklenen hizmet ön-seçili gelir.
+  final String? presetServiceId;
+
+  /// Bekleme listesinden "Randevuya aktar" ile açıldıysa kaydın Id'si. Doluysa randevu
+  /// /waitlist/{id}/schedule ucundan açılır: kayıt Booked olur + müşteriye WhatsApp bilgisi gider.
+  final String? waitlistEntryId;
 
   /// Already-booked appointments for the viewed day, used to enforce the
   /// "max 2 appointments per staff per overlapping slot" rule.
@@ -93,8 +102,13 @@ class _AppointmentFormState extends State<AppointmentForm> {
         (preset != null && customers.isNotEmpty) ? preset : null;
     staffId = widget.presetStaffId ??
         (staff.isEmpty ? null : '${staff.first['id']}');
-    // Tek işlem/hizmet varsa otomatik seç; birden fazlaysa seçimi kullanıcı yapar.
-    serviceId = services.length == 1 ? '${services.first['id']}' : null;
+    // Ön-seçili hizmet (bekleme listesinden aktarım) varsa onu seç; yoksa tek hizmet
+    // varsa otomatik seç, birden fazlaysa seçimi kullanıcı yapar.
+    final presetService = widget.presetServiceId;
+    serviceId = presetService != null &&
+            services.any((x) => '${x['id']}' == presetService)
+        ? presetService
+        : (services.length == 1 ? '${services.first['id']}' : null);
   }
 
   @override
@@ -319,16 +333,30 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
     setState(() => saving = true);
     try {
-      await widget.api.post('/api/admin/appointments/', {
-        'branchId': widget.api.auth?.user?.branchId,
-        'customerId': customerId,
-        'staffMemberId': staffId,
-        'serviceDefinitionId': serviceId,
-        'startUtc': start.toUtc().toIso8601String(),
-        'endUtc': end.toUtc().toIso8601String(),
-        'price': service['price'] ?? 0,
-        'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
-      });
+      if (widget.waitlistEntryId != null) {
+        // Bekleme listesinden aktarım: tek uçta randevu açılır, kayıt "Randevu yapıldı"
+        // olur ve müşteriye "randevunuz oluşturuldu" WhatsApp mesajı kuyruğa alınır.
+        await widget.api.post(
+          '/api/admin/waitlist/${widget.waitlistEntryId}/schedule',
+          {
+            'startUtc': start.toUtc().toIso8601String(),
+            'durationMinutes': duration,
+            'staffMemberId': staffId,
+            'serviceDefinitionId': serviceId,
+          },
+        );
+      } else {
+        await widget.api.post('/api/admin/appointments/', {
+          'branchId': widget.api.auth?.user?.branchId,
+          'customerId': customerId,
+          'staffMemberId': staffId,
+          'serviceDefinitionId': serviceId,
+          'startUtc': start.toUtc().toIso8601String(),
+          'endUtc': end.toUtc().toIso8601String(),
+          'price': service['price'] ?? 0,
+          'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
+        });
+      }
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       // Sunucu da slotu dolu bulursa (SlotFull) aynı teklifi göster (fallback).

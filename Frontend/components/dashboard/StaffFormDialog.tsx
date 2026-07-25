@@ -129,7 +129,7 @@ export default function StaffFormDialog({
     title: 'Estetisyen',
     phone: '',
     specialties: '',
-    commissionRate: 10,
+    commissionRate: 0,
     isActive: true,
     branchId: branches[0]?.id || '',
     email: '',

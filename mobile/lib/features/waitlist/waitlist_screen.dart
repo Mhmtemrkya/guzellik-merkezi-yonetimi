@@ -7,6 +7,7 @@ import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
 import '../../shared/widgets/page_header.dart';
+import '../appointments/appointment_form.dart';
 import '../customers/customer_picker.dart';
 
 /// Bekleme Listesi — web `bekleme-listesi` sayfasının mobil karşılığı.
@@ -747,22 +748,25 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
                           spacing: 12,
                           runSpacing: 5,
                           children: [
+                            // Beklenen işlem + listeye alınma tarihi ve kaç gündür beklediği.
+                            _metaItem(
+                              Icons.content_cut_rounded,
+                              service ?? 'Herhangi bir işlem',
+                              color: AppColors.primary,
+                            ),
+                            if (staff != null)
+                              _metaItem(Icons.person_rounded, staff),
                             _metaItem(
                               Icons.calendar_today_rounded,
-                              _formatPreferred('${e['preferredDate'] ?? ''}'),
+                              'Listeye alındı: ${_formatAdded(e['createdAtUtc'])}',
                             ),
+                            if (wait != null)
+                              _metaItem(Icons.hourglass_bottom_rounded, wait),
                             if ('${e['preferredStartUtc'] ?? ''}'.isNotEmpty)
                               _metaItem(
                                 Icons.access_time_rounded,
-                                _formatSlotTime(e['preferredStartUtc']),
-                                color: AppColors.primary,
+                                'İstenen slot: ${_formatSlotTime(e['preferredStartUtc'])}',
                               ),
-                            if (service != null)
-                              _metaItem(Icons.content_cut_rounded, service),
-                            if (staff != null)
-                              _metaItem(Icons.person_rounded, staff),
-                            if (wait != null)
-                              _metaItem(Icons.schedule_rounded, wait),
                             if ('${e['note'] ?? ''}'.trim().isNotEmpty)
                               _metaItem(
                                 Icons.format_quote_rounded,
@@ -792,6 +796,13 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
       runSpacing: 8,
       children: [
         if (!resolved) ...[
+          // Randevu modalını müşteri girili açar; kayıt ancak randevu oluşturulunca listeden düşer.
+          _actionBtn(
+            Icons.event_available_rounded,
+            'Randevuya aktar',
+            AppColors.primaryDark,
+            () => _transferToAppointment(e),
+          ),
           if (hasSlot) ...[
             _actionBtn(
               Icons.send_rounded,
@@ -801,7 +812,7 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
             ),
             _actionBtn(
               Icons.event_available_rounded,
-              'Randevuya çevir',
+              'Teklifi onayla',
               AppColors.success,
               () => _book(e),
             ),
@@ -974,11 +985,33 @@ class _WaitlistScreenState extends State<WaitlistScreen> {
     ],
   );
 
-  String _formatPreferred(String d) {
-    if (d.isEmpty) return '—';
-    final date = DateTime.tryParse(d);
-    if (date == null) return d;
-    return DateFormat('d MMMM yyyy', 'tr_TR').format(date);
+  /// Listeye alınma tarihi — "24 Tem 2026".
+  String _formatAdded(dynamic createdAtUtc) {
+    final d = parseUtcToLocal(createdAtUtc);
+    if (d == null) return '—';
+    return DateFormat('d MMM yyyy', 'tr_TR').format(d);
+  }
+
+  /// "Randevuya aktar": randevu formunu müşteri/hizmet ön-seçili açar. Kaydedilirse
+  /// backend randevuyu açar, kaydı Booked yapar ve WhatsApp bilgisi gönderir.
+  Future<void> _transferToAppointment(Map<String, dynamic> e) async {
+    final slot = parseUtcToLocal(e['preferredStartUtc']);
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AppointmentForm(
+        api: widget.api,
+        presetCustomerId: '${e['customerId']}',
+        presetServiceId: e['serviceDefinitionId'] == null
+            ? null
+            : '${e['serviceDefinitionId']}',
+        presetStaffId:
+            e['staffMemberId'] == null ? null : '${e['staffMemberId']}',
+        presetStart: slot,
+        waitlistEntryId: '${e['id']}',
+      ),
+    );
+    if (ok == true && mounted) _reload();
   }
 
   String _formatSlotTime(dynamic iso) {

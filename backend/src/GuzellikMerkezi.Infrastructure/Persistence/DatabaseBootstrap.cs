@@ -575,7 +575,7 @@ public static class DatabaseBootstrap
             ("business_expenses", new[] { "Description", "Reference", "PeriodLabel" }),
             ("custom_expense_categories", new[] { "Name" }),
             ("custom_service_categories", new[] { "Name" }),
-            ("products", new[] { "Name", "Unit", "Supplier", "Location" }),
+            ("products", new[] { "Name", "Unit", "Location" }),
             ("stock_movements", new[] { "Reference", "Notes" }),
             ("pending_operations", new[] { "RequestedByName", "Title", "Summary", "PayloadJson", "RejectionReason" }),
             ("notification_templates", new[] { "Name", "Body" }),

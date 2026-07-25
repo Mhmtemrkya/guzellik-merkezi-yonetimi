@@ -29,3 +29,10 @@ public sealed record CreateWaitlistRequest(
     int? DurationMinutes = null);
 
 public sealed record UpdateWaitlistStatusRequest(WaitlistStatus Status);
+
+/// <summary>Bekleme kaydını belirli bir gün/saate randevuya çevirme isteği (yönetici "Randevu oluştur" akışı).</summary>
+public sealed record ScheduleWaitlistRequest(
+    DateTime StartUtc,
+    int? DurationMinutes = null,
+    Guid? StaffMemberId = null,
+    Guid? ServiceDefinitionId = null);

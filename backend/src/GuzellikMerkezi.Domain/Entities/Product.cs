@@ -14,19 +14,17 @@ public sealed class Product : Entity
         Guid tenantId,
         Guid? branchId,
         string name,
-        string sku,
         ProductCategory category,
         string unit,
         decimal cost,
         decimal salePrice,
         decimal currentStock,
         decimal minStockLevel,
-        string? supplier = null,
         string? location = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
-        UpdateInfo(name, sku, category, unit, supplier, location);
+        UpdateInfo(name, category, unit, location);
         ChangePricing(cost, salePrice);
         InitStock(currentStock, minStockLevel);
     }
@@ -36,27 +34,19 @@ public sealed class Product : Entity
     public Branch? Branch { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
-    public string Sku { get; private set; } = string.Empty;
     public ProductCategory Category { get; private set; }
     public string Unit { get; private set; } = "adet";
-    public string? Supplier { get; private set; }
     public string? Location { get; private set; }
-    /// <summary>Barkod — kullanıcı elle girer veya boşsa otomatik üretilir (tenant içinde benzersiz).</summary>
+    /// <summary>Barkod — okuyucudan/elle girilir, boşsa otomatik üretilir (tenant içinde benzersiz). Ürünün tekil kimliği budur.</summary>
     public string? Barcode { get; private set; }
     /// <summary>Ürün görseli (data-URL/base64 veya dosya yolu).</summary>
     public string? ImageUrl { get; private set; }
-    /// <summary>Marka adı (tedarikçiden ayrı).</summary>
+    /// <summary>Marka adı.</summary>
     public string? Brand { get; private set; }
-    /// <summary>KDV / vergi oranı (%).</summary>
-    public decimal? TaxRatePercent { get; private set; }
     /// <summary>Son kullanma tarihi.</summary>
     public DateOnly? ExpiryDate { get; private set; }
     /// <summary>Lot / parti numarası.</summary>
     public string? LotNumber { get; private set; }
-    /// <summary>Sipariş verilmiş, henüz teslim alınmamış miktar.</summary>
-    public decimal PendingInbound { get; private set; }
-    /// <summary>Tedarik süresi (gün).</summary>
-    public int LeadTimeDays { get; private set; }
 
     public decimal Cost { get; private set; }
     public decimal SalePrice { get; private set; }
@@ -69,16 +59,13 @@ public sealed class Product : Entity
     public bool IsOutOfStock => CurrentStock <= 0;
     public bool IsCritical => CurrentStock > 0 && CurrentStock <= MinStockLevel;
 
-    public void UpdateInfo(string name, string sku, ProductCategory category, string unit, string? supplier, string? location)
+    public void UpdateInfo(string name, ProductCategory category, string unit, string? location)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Ürün adı boş olamaz.");
-        if (string.IsNullOrWhiteSpace(sku)) throw new DomainException("SKU boş olamaz.");
         if (string.IsNullOrWhiteSpace(unit)) unit = "adet";
         Name = name.Trim();
-        Sku = sku.Trim().ToUpperInvariant();
         Category = category;
         Unit = unit.Trim();
-        Supplier = string.IsNullOrWhiteSpace(supplier) ? null : supplier.Trim();
         Location = string.IsNullOrWhiteSpace(location) ? null : location.Trim();
         Touch();
     }
@@ -151,17 +138,11 @@ public sealed class Product : Entity
         Touch();
     }
 
-    public void SetExtras(string? brand, decimal? taxRatePercent, DateOnly? expiryDate, string? lotNumber, decimal? pendingInbound, int? leadTimeDays)
+    public void SetExtras(string? brand, DateOnly? expiryDate, string? lotNumber)
     {
-        if (taxRatePercent is < 0 or > 100) throw new DomainException("Vergi oranı 0-100 aralığında olmalı.");
-        if (pendingInbound is < 0) throw new DomainException("Bekleyen giriş negatif olamaz.");
-        if (leadTimeDays is < 0) throw new DomainException("Tedarik süresi negatif olamaz.");
         Brand = string.IsNullOrWhiteSpace(brand) ? null : brand.Trim();
-        TaxRatePercent = taxRatePercent;
         ExpiryDate = expiryDate;
         LotNumber = string.IsNullOrWhiteSpace(lotNumber) ? null : lotNumber.Trim();
-        PendingInbound = pendingInbound ?? PendingInbound;
-        LeadTimeDays = leadTimeDays ?? LeadTimeDays;
         Touch();
     }
 

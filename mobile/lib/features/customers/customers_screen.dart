@@ -163,7 +163,12 @@ class CustomersScreen extends StatelessWidget {
       },
       createLabel: 'Yeni müşteri',
       fields: const [
-        CrudField(key: 'fullName', label: 'Ad soyad', required: true),
+        CrudField(
+          key: 'fullName',
+          label: 'Ad soyad',
+          required: true,
+          personName: true,
+        ),
         CrudField(
           key: 'phone',
           label: 'Telefon',

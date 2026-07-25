@@ -159,14 +159,14 @@ public static class DevelopmentDataSeeder
             expRent, expElectric, expSupplies, expInventory, expMarketing, expAccountant);
 
         // --- Örnek ürünler ---
-        var hydrafacialSerum = new Product(tenant.Id, nisantasi.Id, "BeautyLab Vit-C Serum", "BL-SRM-001", ProductCategory.SkinCare, "adet", 380m, 750m, 24m, 8m, "BeautyLab", "Depo A · Raf 1");
-        var hydrafacialMaske = new Product(tenant.Id, nisantasi.Id, "Hydrafacial Hidrasyon Maskesi", "BL-MSK-002", ProductCategory.SkinCare, "adet", 220m, 480m, 6m, 10m, "BeautyLab", "Depo A · Raf 1");
-        var eldiven = new Product(tenant.Id, nisantasi.Id, "Nitril Eldiven (100'lü)", "SRF-ELD-001", ProductCategory.Consumable, "kutu", 95m, 0m, 18m, 6m, "MediKit", "Depo B · Raf 3");
-        var dezenfektan = new Product(tenant.Id, nisantasi.Id, "Yüzey Dezenfektanı 5L", "SRF-DZN-001", ProductCategory.Consumable, "bidon", 145m, 0m, 4m, 3m, "CleanLine", "Depo B · Raf 4");
-        var kagit = new Product(tenant.Id, nisantasi.Id, "Kağıt Havlu (12 rulo)", "SRF-KGT-001", ProductCategory.Consumable, "paket", 85m, 0m, 2m, 4m, "PaperCo", "Depo B · Raf 4");
-        var satisKrem = new Product(tenant.Id, nisantasi.Id, "Anti-Aging Krem 50ml", "STS-AAG-001", ProductCategory.Sale, "adet", 320m, 690m, 15m, 5m, "BeautyLab", "Vitrin");
-        var satisGunesKremi = new Product(tenant.Id, kadikoy.Id, "Güneş Koruyucu SPF50 100ml", "STS-SPF-002", ProductCategory.Sale, "adet", 180m, 380m, 22m, 6m, "BeautyLab", "Vitrin");
-        var sacBakim = new Product(tenant.Id, nisantasi.Id, "Argan Yağı Saç Bakım Yağı", "HC-ARG-001", ProductCategory.HairCare, "adet", 240m, 520m, 8m, 4m, "HairLab", "Depo A · Raf 2");
+        var hydrafacialSerum = new Product(tenant.Id, nisantasi.Id, "BeautyLab Vit-C Serum", ProductCategory.SkinCare, "adet", 380m, 750m, 24m, 8m, "Depo A · Raf 1");
+        var hydrafacialMaske = new Product(tenant.Id, nisantasi.Id, "Hydrafacial Hidrasyon Maskesi", ProductCategory.SkinCare, "adet", 220m, 480m, 6m, 10m, "Depo A · Raf 1");
+        var eldiven = new Product(tenant.Id, nisantasi.Id, "Nitril Eldiven (100'lü)", ProductCategory.Consumable, "kutu", 95m, 0m, 18m, 6m, "Depo B · Raf 3");
+        var dezenfektan = new Product(tenant.Id, nisantasi.Id, "Yüzey Dezenfektanı 5L", ProductCategory.Consumable, "bidon", 145m, 0m, 4m, 3m, "Depo B · Raf 4");
+        var kagit = new Product(tenant.Id, nisantasi.Id, "Kağıt Havlu (12 rulo)", ProductCategory.Consumable, "paket", 85m, 0m, 2m, 4m, "Depo B · Raf 4");
+        var satisKrem = new Product(tenant.Id, nisantasi.Id, "Anti-Aging Krem 50ml", ProductCategory.Sale, "adet", 320m, 690m, 15m, 5m, "Vitrin");
+        var satisGunesKremi = new Product(tenant.Id, kadikoy.Id, "Güneş Koruyucu SPF50 100ml", ProductCategory.Sale, "adet", 180m, 380m, 22m, 6m, "Vitrin");
+        var sacBakim = new Product(tenant.Id, nisantasi.Id, "Argan Yağı Saç Bakım Yağı", ProductCategory.HairCare, "adet", 240m, 520m, 8m, 4m, "Depo A · Raf 2");
 
         db.Products.AddRange(hydrafacialSerum, hydrafacialMaske, eldiven, dezenfektan, kagit, satisKrem, satisGunesKremi, sacBakim);
 

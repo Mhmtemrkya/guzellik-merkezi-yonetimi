@@ -781,7 +781,7 @@ class _QuickActions extends StatelessWidget {
   // (web'de navbar'daki "Paket Sat" butonunun karşılığı — paket listesinde dolaşmaya gerek yok).
   static const _actions = <(String, IconData, String)>[
     ('Yeni Randevu', Icons.event_available_rounded, '/appointments'),
-    ('Yeni Danışan', Icons.person_add_alt_1_rounded, '/customers'),
+    ('Müşteri Ekle', Icons.person_add_alt_1_rounded, '/customers'),
     ('Paket Sat', Icons.workspaces_rounded, 'sale'),
     ('Ödeme Al', Icons.account_balance_wallet_rounded, '/accounting'),
     ('Stok', Icons.inventory_2_rounded, '/stock'),
@@ -902,9 +902,23 @@ class _PackageReportCard extends StatelessWidget {
       ),
       ('Vadesi Geçmiş', _compactMoney(overdue), overdue > 0),
     ];
+    final categories = apiItems(report['categories']);
+    final customers = apiItems(report['customers']);
     return _DashCard(
       icon: Icons.workspaces_rounded,
       title: 'Paket Raporu',
+      // Kart tıklanınca kategori/hizmet ve müşteri kırılımı açılır (web 'Satış Detayı').
+      onTap: (categories.isEmpty && customers.isEmpty)
+          ? null
+          : () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => _PackageBreakdownSheet(
+                  categories: categories,
+                  customers: customers,
+                ),
+              ),
       child: AdaptiveStatGrid(
         phoneCols: 3,
         height: 78,
@@ -949,6 +963,408 @@ class _PackageReportCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Paket Raporu detayı (web 'Satış Detayı'): kategori → hizmet kırılımı ve
+/// müşteri bazlı taksit / tahsilat / seans durumu.
+class _PackageBreakdownSheet extends StatefulWidget {
+  const _PackageBreakdownSheet({
+    required this.categories,
+    required this.customers,
+  });
+  final List<Map<String, dynamic>> categories;
+  final List<Map<String, dynamic>> customers;
+
+  @override
+  State<_PackageBreakdownSheet> createState() => _PackageBreakdownSheetState();
+}
+
+class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
+  int _tab = 0;
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final customers = _query.trim().isEmpty
+        ? widget.customers
+        : widget.customers.where((c) {
+            final q = _query.trim().toLowerCase();
+            return valueOf(c, const ['customerName']).toLowerCase().contains(q);
+          }).toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Satış Detayı',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Kategori · hizmet · müşteri kırılımı',
+              style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Kategori')),
+                ButtonSegment(value: 1, label: Text('Müşteri')),
+              ],
+              selected: {_tab},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _tab = s.first),
+            ),
+            if (_tab == 1) ...[
+              const SizedBox(height: 10),
+              TextField(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded, size: 18),
+                  hintText: 'Müşteri ara',
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Expanded(
+              child: _tab == 0
+                  ? _categoryList(scrollController)
+                  : _customerList(scrollController, customers),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryList(ScrollController controller) {
+    if (widget.categories.isEmpty) return const _EmptyDetail();
+    final total = widget.categories.fold<double>(
+      0,
+      (s, c) => s + numberOf(c, const ['amount']),
+    );
+    return ListView.separated(
+      controller: controller,
+      itemCount: widget.categories.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final cat = widget.categories[i];
+        final amount = numberOf(cat, const ['amount']);
+        final services = apiItems(cat['services']);
+        final share = total > 0 ? (amount / total * 100).round() : 0;
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              initiallyExpanded: i == 0,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              title: Text(
+                valueOf(cat, const ['category'], fallback: 'Kategorisiz'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
+              ),
+              subtitle: Text(
+                '${services.length} hizmet · ${numberOf(cat, const ['soldCount']).toInt()} satış · '
+                '${numberOf(cat, const ['sessionsUsed']).toInt()}/${numberOf(cat, const ['sessionsTotal']).toInt()} seans',
+                style: const TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _compactMoney(amount),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    '%$share pay',
+                    style: const TextStyle(
+                      color: AppColors.primaryDark,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              children: services
+                  .map(
+                    (svc) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  valueOf(svc, const ['serviceName']),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                                Text(
+                                  '${numberOf(svc, const ['soldCount']).toInt()} satış · '
+                                  '${numberOf(svc, const ['customerCount']).toInt()} müşteri · '
+                                  '${numberOf(svc, const ['sessionsRemaining']).toInt()} seans kaldı',
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _compactMoney(numberOf(svc, const ['amount'])),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _customerList(
+    ScrollController controller,
+    List<Map<String, dynamic>> customers,
+  ) {
+    if (customers.isEmpty) return const _EmptyDetail();
+    return ListView.separated(
+      controller: controller,
+      itemCount: customers.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final c = customers[i];
+        final total = numberOf(c, const ['totalAmount']);
+        final paid = numberOf(c, const ['paidAmount']);
+        final overdue = numberOf(c, const ['overdueAmount']);
+        final sessionsTotal = numberOf(c, const ['sessionsTotal']).toInt();
+        final sessionsUsed = numberOf(c, const ['sessionsUsed']).toInt();
+        final nextDue = c['nextDueDate'];
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              title: Text(
+                valueOf(c, const ['customerName']),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
+              ),
+              subtitle: Text(
+                '${numberOf(c, const ['paidInstallmentCount']).toInt()}/${numberOf(c, const ['installmentCount']).toInt()} taksit · '
+                '${_compactMoney(paid)} ödendi · ${numberOf(c, const ['sessionsRemaining']).toInt()} seans kaldı',
+                style: const TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
+              trailing: Text(
+                _compactMoney(numberOf(c, const ['remainingAmount'])),
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: overdue > 0 ? AppColors.danger : AppColors.ink,
+                ),
+              ),
+              children: [
+                _DetailProgress(
+                  label: 'Tahsilat',
+                  value:
+                      '${_compactMoney(paid)} / ${_compactMoney(total)}',
+                  pct: total > 0 ? (paid / total).clamp(0, 1).toDouble() : 0,
+                ),
+                const SizedBox(height: 8),
+                _DetailProgress(
+                  label: 'Seans kullanımı',
+                  value:
+                      '$sessionsUsed / $sessionsTotal · ${numberOf(c, const ['sessionsRemaining']).toInt()} kaldı',
+                  pct: sessionsTotal > 0
+                      ? (sessionsUsed / sessionsTotal).clamp(0, 1).toDouble()
+                      : 0,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _DetailChip(
+                      text:
+                          '${numberOf(c, const ['accountCount']).toInt()} satış',
+                    ),
+                    if (nextDue != null)
+                      _DetailChip(
+                        text:
+                            'Sıradaki vade ${_shortDate(nextDue)} · ${_compactMoney(numberOf(c, const ['nextDueAmount']))}',
+                      ),
+                    if (overdue > 0)
+                      _DetailChip(
+                        danger: true,
+                        text:
+                            '${numberOf(c, const ['overdueInstallmentCount']).toInt()} gecikmiş · ${_compactMoney(overdue)}',
+                      ),
+                    ...((c['packageNames'] as List?) ?? const [])
+                        .map((p) => _DetailChip(text: '$p')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EmptyDetail extends StatelessWidget {
+  const _EmptyDetail();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: Text(
+          'Seçili dönemde paket satışı bulunmuyor.',
+          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+        ),
+      );
+}
+
+class _DetailProgress extends StatelessWidget {
+  const _DetailProgress({
+    required this.label,
+    required this.value,
+    required this.pct,
+  });
+  final String label;
+  final String value;
+  final double pct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5,
+                ),
+              ),
+            ),
+            Text(
+              '%${(pct * 100).round()}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: pct,
+            minHeight: 6,
+            backgroundColor: AppColors.surface,
+            valueColor: const AlwaysStoppedAnimation(AppColors.primaryDark),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailChip extends StatelessWidget {
+  const _DetailChip({required this.text, this.danger = false});
+  final String text;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: danger ? const Color(0xFFFFF4F4) : AppColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: danger ? AppColors.danger : AppColors.surfaceSoft,
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: danger ? AppColors.danger : AppColors.muted,
+        ),
+      ),
+    );
+  }
+}
+
+/// "2026-08-15" → "15 Ağu 2026" (vade etiketleri için).
+String _shortDate(dynamic value) {
+  final d = DateTime.tryParse('$value');
+  if (d == null) return '$value';
+  return DateFormat('d MMM yyyy', 'tr_TR').format(d);
 }
 
 /// Dönemdeki en yoğun 3 personel (web 'Personel Performansı').

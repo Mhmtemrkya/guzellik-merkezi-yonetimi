@@ -1,4 +1,5 @@
 import type { ImportedRow, ImportResult } from './excel'
+import { formatPersonName } from './utils'
 
 // ---------------------------------------------------------------------------
 // Genel Excel içeri aktarma analizörü.
@@ -48,7 +49,6 @@ export interface ImportPackageRow {
 
 export interface ImportProductRow {
   name: string
-  sku: string | null
   barcode: string | null
   brand: string | null
   category: string | null
@@ -115,7 +115,6 @@ export const FIELD_LABELS: Record<string, string> = {
   title: 'Unvan',
   specialties: 'Uzmanlık',
   commission: 'Komisyon %',
-  sku: 'Stok Kodu',
   barcode: 'Barkod',
   brand: 'Marka',
   unit: 'Birim',
@@ -169,9 +168,8 @@ const FIELD_SYNONYMS: Record<string, string[]> = {
   installment: ['taksit', 'taksitsayisi', 'installment', 'installmentcount'],
   // --- ürün / stok ---
   // NOT: en uzun eşleşme kazandığı için çakışmalar kendiliğinden çözülür:
-  // "Stok Kodu" → sku ('stokkodu' 8 > 'stok' 4), "Barkod" → barcode ('barkod' 6 > 'kod'),
+  // "Barkod" → barcode ('barkod' 6 > 'kod'),
   // "Min. Stok" → minStock ('minstok' 7 > 'stok' 4), "Birim Fiyat" → price ('birimfiyat' 10 > 'birim' 5).
-  sku: ['sku', 'stokkodu', 'urunkodu', 'productcode', 'stokkod'],
   barcode: ['barkod', 'barcode', 'ean'],
   brand: ['marka', 'brand'],
   unit: ['birim', 'unit', 'olcubirimi'],
@@ -344,7 +342,6 @@ function detectEntityType(headers: string[], rows: ImportedRow[], mappedFields: 
 
   // Ürün/stok: barkod ve stok kodu neredeyse yalnız ürün listelerinde bulunur.
   if (mappedFields.has('barcode')) product += 4
-  if (mappedFields.has('sku')) product += 3
   if (mappedFields.has('stock') || mappedFields.has('minStock')) product += 3
   if (mappedFields.has('cost')) product += 2
   if (mappedFields.has('brand')) product += 2
@@ -429,7 +426,8 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
         primary
       if (!fullName) continue
       customers.push({
-        fullName,
+        // Yazım standardı: ad "İlk harf büyük", soyad TAMAMI BÜYÜK (önizlemede de görünsün).
+        fullName: formatPersonName(fullName),
         phone: bestPhone(getAll(row, 'phone')),
         email: get(row, 'email') || null,
         birthDate: parseDate(get(row, 'birthDate')),
@@ -455,7 +453,7 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
       if (!fullName) continue
       // E-posta bilerek okunmaz: aktarım giriş hesabı AÇMAZ (bkz. backend ImportStaffRow notu).
       staffRows.push({
-        fullName,
+        fullName: formatPersonName(fullName),
         title: get(row, 'title') || null,
         phone: bestPhone(getAll(row, 'phone')) || null,
         specialties: get(row, 'specialties') || null,
@@ -466,7 +464,6 @@ export function analyzeSheet(sheet: ImportResult, forcedType?: ImportEntityType)
       if (!name) continue
       products.push({
         name,
-        sku: get(row, 'sku') || null,
         barcode: get(row, 'barcode') || null,
         brand: get(row, 'brand') || null,
         category: get(row, 'category') || null,

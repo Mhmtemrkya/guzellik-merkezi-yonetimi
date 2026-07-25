@@ -50,42 +50,28 @@ public sealed class StockService : IStockService
 
     public async Task<Result<ProductDto>> CreateAsync(Guid tenantId, CreateProductRequest request, CancellationToken cancellationToken = default)
     {
-        // SKU duplicate kontrolü (case-insensitive)
-        var sku = (request.Sku ?? string.Empty).Trim().ToUpperInvariant();
-        if (!string.IsNullOrWhiteSpace(sku))
-        {
-            var existingSkus = await _db.Products
-                .AsNoTracking()
-                .Where(p => p.TenantId == tenantId)
-                .Select(p => p.Sku)
-                .ToListAsync(cancellationToken);
-            if (existingSkus.Any(s => string.Equals(s, sku, StringComparison.OrdinalIgnoreCase)))
-                return Result<ProductDto>.Failure(Error.Conflict("Bu SKU ile başka bir ürün var."));
-        }
-
+        // Ürün açılış stoğu tutmaz: stok yalnızca stok hareketleriyle (giriş/çıkış) oluşur.
         var product = new Product(
             tenantId,
             request.BranchId,
             request.Name,
-            sku, // normalize edilmiş (trim + upper, non-null) SKU — duplicate kontrolüyle tutarlı
             request.Category,
             request.Unit,
             request.Cost,
             request.SalePrice,
-            request.CurrentStock,
+            0m,
             request.MinStockLevel,
-            request.Supplier,
             request.Location);
         if (!request.IsActive) product.Deactivate();
         product.SetImage(request.ImageUrl);
-        product.SetExtras(request.Brand, request.TaxRatePercent, request.ExpiryDate, request.LotNumber, request.PendingInbound, request.LeadTimeDays);
-        // Barkod: kullanıcı girdiyse benzersizlik kontrolü, boşsa otomatik üret.
+        product.SetExtras(request.Brand, request.ExpiryDate, request.LotNumber);
+        // Barkod ürünün tekil kimliği: okuyucudan/elle girildiyse benzersizlik kontrolü, boşsa otomatik üretilir.
         product.SetBarcode(await ResolveBarcodeAsync(tenantId, request.Barcode, null, cancellationToken));
         _db.Products.Add(product);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, product.BranchId, "Create", "Product", product.Id,
-            $"Ürün eklendi: {product.Name} ({product.Sku})",
-            new { product.Name, product.Sku, product.CurrentStock, product.Barcode }, cancellationToken);
+            $"Ürün eklendi: {product.Name} ({product.Barcode})",
+            new { product.Name, product.CurrentStock, product.Barcode }, cancellationToken);
         return Result<ProductDto>.Success(product.ToDto());
     }
 
@@ -94,11 +80,11 @@ public sealed class StockService : IStockService
         var product = await _db.Products.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, cancellationToken);
         if (product is null) return Result<ProductDto>.Failure(Error.NotFound("Ürün bulunamadı."));
 
-        product.UpdateInfo(request.Name, request.Sku, request.Category, request.Unit, request.Supplier, request.Location);
+        product.UpdateInfo(request.Name, request.Category, request.Unit, request.Location);
         product.ChangePricing(request.Cost, request.SalePrice);
         product.ChangeMinLevel(request.MinStockLevel);
         if (request.IsActive) product.Activate(); else product.Deactivate();
-        product.SetExtras(request.Brand, request.TaxRatePercent, request.ExpiryDate, request.LotNumber, request.PendingInbound, request.LeadTimeDays);
+        product.SetExtras(request.Brand, request.ExpiryDate, request.LotNumber);
         if (request.ImageUrl is not null) product.SetImage(request.ImageUrl);
         // Barkod boş gelirse mevcut korunur; doluysa benzersizlik kontrolüyle güncellenir.
         if (!string.IsNullOrWhiteSpace(request.Barcode))
@@ -161,7 +147,7 @@ public sealed class StockService : IStockService
     {
         var product = await _db.Products.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, cancellationToken);
         if (product is null) return Result.Failure(Error.NotFound("Ürün bulunamadı."));
-        var snapshot = new { product.Name, product.Sku, product.CurrentStock };
+        var snapshot = new { product.Name, product.Barcode, product.CurrentStock };
         product.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, product.BranchId, "Delete", "Product", product.Id,
@@ -200,7 +186,7 @@ public sealed class StockService : IStockService
         var productList = await _db.Products
             .AsNoTracking()
             .Where(p => p.TenantId == tenantId)
-            .Select(p => new { p.Id, p.Name, p.Sku })
+            .Select(p => new { p.Id, p.Name, p.Barcode })
             .ToListAsync(cancellationToken);
         var productMap = productList.Where(p => productIds.Contains(p.Id)).ToDictionary(p => p.Id);
 
@@ -217,7 +203,7 @@ public sealed class StockService : IStockService
             m.TenantId,
             m.ProductId,
             productMap.TryGetValue(m.ProductId, out var p) ? p.Name : null,
-            productMap.TryGetValue(m.ProductId, out var p2) ? p2.Sku : null,
+            productMap.TryGetValue(m.ProductId, out var p2) ? p2.Barcode : null,
             m.Type,
             m.Quantity,
             m.UnitCost,
@@ -279,7 +265,7 @@ public sealed class StockService : IStockService
             ? await _db.StaffMembers.AsNoTracking().Where(s => s.Id == movement.StaffMemberId.Value).Select(s => s.FullName).FirstOrDefaultAsync(cancellationToken)
             : null;
 
-        return Result<StockMovementDto>.Success(movement.ToDto(product.Name, product.Sku, staffName));
+        return Result<StockMovementDto>.Success(movement.ToDto(product.Name, product.Barcode, staffName));
     }
 
     public async Task<Result<StockSummaryDto>> SummaryAsync(Guid tenantId, CancellationToken cancellationToken = default)

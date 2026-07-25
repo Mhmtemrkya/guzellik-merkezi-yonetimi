@@ -262,6 +262,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var accounts = await accountsQuery
             .Include(a => a.Installments)
             .Include(a => a.Payments)
+            .Include(a => a.Customer)   // müşteri kırılımı için ad (şifreli kolon → bellekte çözülür)
             .ToListAsync(cancellationToken);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -306,8 +307,18 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // Ay → (vade tutarı, dağıtılan tahsilat)
         var monthBuckets = new Dictionary<(int Year, int Month), (decimal Due, decimal Collected)>();
 
+        // Müşteri kırılımı için cari bazında biriktirilen değerler (aşağıda müşteriye göre toplanır).
+        var customerAgg = new Dictionary<Guid, CustomerBreakdownAccumulator>();
+
         foreach (var acc in accounts)
         {
+            var bucket = customerAgg.TryGetValue(acc.CustomerId, out var existingBucket)
+                ? existingBucket
+                : customerAgg[acc.CustomerId] = new CustomerBreakdownAccumulator(acc.Customer?.FullName ?? "Müşteri");
+            bucket.AccountCount++;
+            bucket.TotalAmount += acc.TotalAmount;
+            if (!string.IsNullOrWhiteSpace(acc.Name) && !bucket.PackageNames.Contains(acc.Name)) bucket.PackageNames.Add(acc.Name);
+
             // Ödenen/kalan, ToDto ile aynı mantık: tahsilatlar vade sırasına dağıtılır.
             var allocation = acc.AllocatePayments();
             foreach (var inst in acc.Installments)
@@ -322,6 +333,28 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 var key = (inst.DueDate.Year, inst.DueDate.Month);
                 var agg = monthBuckets.TryGetValue(key, out var cur) ? cur : (Due: 0m, Collected: 0m);
                 monthBuckets[key] = (agg.Due + inst.Amount, agg.Collected + paid);
+
+                bucket.InstallmentCount++;
+                bucket.PaidAmount += paid;
+                bucket.RemainingAmount += remaining;
+                if (remaining <= 0m)
+                {
+                    bucket.PaidInstallmentCount++;
+                }
+                else
+                {
+                    if (inst.DueDate < today)
+                    {
+                        bucket.OverdueInstallmentCount++;
+                        bucket.OverdueAmount += remaining;
+                    }
+                    // Sıradaki ödeme: en erken vadeli, kapanmamış taksit (gecikmişler dahil).
+                    if (bucket.NextDueDate is null || inst.DueDate < bucket.NextDueDate)
+                    {
+                        bucket.NextDueDate = inst.DueDate;
+                        bucket.NextDueAmount = remaining;
+                    }
+                }
             }
         }
 
@@ -370,11 +403,133 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var sessionRows = await _db.CustomerPackageSessions
             .AsNoTracking()
             .Where(s => s.TenantId == tenantId)
-            .Select(s => new { s.CustomerAccountId, s.TotalSessions, s.UsedSessions })
+            .Select(s => new
+            {
+                s.CustomerAccountId,
+                s.CustomerId,
+                s.ServicePackageId,
+                s.ServiceDefinitionId,
+                ServiceName = s.ServiceDefinition!.Name,
+                Category = s.ServiceDefinition!.Category,
+                s.TotalSessions,
+                s.UsedSessions,
+            })
             .ToListAsync(cancellationToken);
         var scopedSessions = sessionRows.Where(s => inScopeAccountIds.Contains(s.CustomerAccountId)).ToList();
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
+
+        // --- Kategori kırılımı --------------------------------------------------
+        // Seans satırında tutar yok; satışın toplamı (cari TotalAmount, indirim dahil) paket
+        // kalemlerinin birim fiyatına göre hizmetlere dağıtılır. Fiyat bulunamazsa seans
+        // sayısı ağırlık olur — böylece iskontolu satışlar da gerçek tutarla raporlanır.
+        var packageItemPrices = await _db.ServicePackages
+            .AsNoTracking()
+            .Where(p => p.TenantId == tenantId)
+            .SelectMany(p => p.Items.Select(i => new { i.ServicePackageId, i.ServiceDefinitionId, i.UnitPrice }))
+            .ToListAsync(cancellationToken);
+        var unitPriceLookup = packageItemPrices
+            .GroupBy(x => (x.ServicePackageId, x.ServiceDefinitionId))
+            .ToDictionary(g => g.Key, g => g.First().UnitPrice);
+        var accountTotals = accounts.ToDictionary(a => a.Id, a => a.TotalAmount);
+
+        var serviceAgg = new Dictionary<(string Category, Guid ServiceId), CategoryServiceAccumulator>();
+        foreach (var group in scopedSessions.GroupBy(s => s.CustomerAccountId))
+        {
+            var rows = group.ToList();
+            var weights = rows
+                .Select(r => unitPriceLookup.TryGetValue((r.ServicePackageId, r.ServiceDefinitionId), out var price) && price > 0m
+                    ? price * Math.Max(1, r.TotalSessions)
+                    : 0m)
+                .ToArray();
+            if (weights.All(w => w <= 0m))
+            {
+                for (var i = 0; i < weights.Length; i++) weights[i] = Math.Max(1, rows[i].TotalSessions);
+            }
+            var weightSum = weights.Sum();
+            var accountTotal = accountTotals.TryGetValue(group.Key, out var t) ? t : 0m;
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                var category = string.IsNullOrWhiteSpace(row.Category) ? "Kategorisiz" : row.Category!.Trim();
+                var key = (category, row.ServiceDefinitionId);
+                if (!serviceAgg.TryGetValue(key, out var acc))
+                {
+                    acc = new CategoryServiceAccumulator(row.ServiceName);
+                    serviceAgg[key] = acc;
+                }
+                acc.SessionsTotal += row.TotalSessions;
+                acc.SessionsUsed += row.UsedSessions;
+                acc.Accounts.Add(row.CustomerAccountId);
+                acc.Customers.Add(row.CustomerId);
+                acc.Amount += weightSum > 0m ? accountTotal * weights[i] / weightSum : 0m;
+            }
+        }
+
+        var categories = serviceAgg
+            .GroupBy(kv => kv.Key.Category)
+            .Select(g =>
+            {
+                var services = g
+                    .Select(kv => new PackageCategoryServiceDto(
+                        kv.Key.ServiceId,
+                        kv.Value.ServiceName,
+                        kv.Value.Accounts.Count,
+                        kv.Value.Customers.Count,
+                        kv.Value.SessionsTotal,
+                        kv.Value.SessionsUsed,
+                        Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed),
+                        Math.Round(kv.Value.Amount, 2)))
+                    .OrderByDescending(s => s.Amount)
+                    .ThenByDescending(s => s.SessionsTotal)
+                    .ToList();
+
+                return new PackageCategoryBreakdownDto(
+                    g.Key,
+                    g.SelectMany(kv => kv.Value.Accounts).Distinct().Count(),
+                    g.SelectMany(kv => kv.Value.Customers).Distinct().Count(),
+                    services.Sum(s => s.SessionsTotal),
+                    services.Sum(s => s.SessionsUsed),
+                    services.Sum(s => s.SessionsRemaining),
+                    Math.Round(services.Sum(s => s.Amount), 2),
+                    services);
+            })
+            .OrderByDescending(c => c.Amount)
+            .ThenByDescending(c => c.SessionsTotal)
+            .ToList();
+
+        // --- Müşteri kırılımı ---------------------------------------------------
+        foreach (var group in scopedSessions.GroupBy(s => s.CustomerId))
+        {
+            if (!customerAgg.TryGetValue(group.Key, out var bucket)) continue;
+            bucket.SessionsTotal += group.Sum(s => s.TotalSessions);
+            bucket.SessionsUsed += group.Sum(s => s.UsedSessions);
+        }
+
+        // Liste 200 satırla sınırlanır (pano özeti) — en yüksek kalan borçtan başlar.
+        var customerBreakdown = customerAgg
+            .Select(kv => new PackageCustomerBreakdownDto(
+                kv.Key,
+                kv.Value.CustomerName,
+                kv.Value.AccountCount,
+                kv.Value.PackageNames,
+                kv.Value.InstallmentCount,
+                kv.Value.PaidInstallmentCount,
+                kv.Value.OverdueInstallmentCount,
+                Math.Round(kv.Value.TotalAmount, 2),
+                Math.Round(kv.Value.PaidAmount, 2),
+                Math.Round(kv.Value.RemainingAmount, 2),
+                Math.Round(kv.Value.OverdueAmount, 2),
+                kv.Value.NextDueDate,
+                Math.Round(kv.Value.NextDueAmount, 2),
+                kv.Value.SessionsTotal,
+                kv.Value.SessionsUsed,
+                Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed)))
+            .OrderByDescending(c => c.RemainingAmount)
+            .ThenByDescending(c => c.TotalAmount)
+            .Take(200)
+            .ToList();
 
         var report = new AccountReportDto(
             packageSalesCount,
@@ -388,9 +543,41 @@ public sealed class CustomerAccountService : ICustomerAccountService
             totalCollected,
             overdueAmount,
             collectedThisMonth,
-            monthly);
+            monthly,
+            categories,
+            customerBreakdown);
 
         return Result<AccountReportDto>.Success(report);
+    }
+
+    /// <summary>Rapor hesabı sırasında müşteri bazında biriktirilen değerler (DTO'ya çevrilmeden önce).</summary>
+    private sealed class CustomerBreakdownAccumulator(string customerName)
+    {
+        public string CustomerName { get; } = customerName;
+        public List<string> PackageNames { get; } = [];
+        public int AccountCount { get; set; }
+        public int InstallmentCount { get; set; }
+        public int PaidInstallmentCount { get; set; }
+        public int OverdueInstallmentCount { get; set; }
+        public decimal TotalAmount { get; set; }
+        public decimal PaidAmount { get; set; }
+        public decimal RemainingAmount { get; set; }
+        public decimal OverdueAmount { get; set; }
+        public DateOnly? NextDueDate { get; set; }
+        public decimal NextDueAmount { get; set; }
+        public int SessionsTotal { get; set; }
+        public int SessionsUsed { get; set; }
+    }
+
+    /// <summary>Kategori kırılımında hizmet bazında biriktirilen değerler.</summary>
+    private sealed class CategoryServiceAccumulator(string serviceName)
+    {
+        public string ServiceName { get; } = serviceName;
+        public HashSet<Guid> Accounts { get; } = [];
+        public HashSet<Guid> Customers { get; } = [];
+        public int SessionsTotal { get; set; }
+        public int SessionsUsed { get; set; }
+        public decimal Amount { get; set; }
     }
 
     private Task<CustomerAccount?> LoadAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

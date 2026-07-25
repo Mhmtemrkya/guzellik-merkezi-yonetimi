@@ -97,4 +97,47 @@ public sealed record AccountReportDto(
     decimal TotalCollected,     // Taksitlere dağıtılan toplam tahsilat (= takvimdeki "tahsil edildi" toplamı)
     decimal OverdueAmount,      // Vadesi geçmiş kalan taksit toplamı
     decimal CollectedThisMonth, // Bu takvim ayında alınan tahsilat
-    IReadOnlyList<AccountMonthlyInstallmentDto> MonthlyInstallments);
+    IReadOnlyList<AccountMonthlyInstallmentDto> MonthlyInstallments,
+    IReadOnlyList<PackageCategoryBreakdownDto> Categories,   // Kategori → hizmet kırılımı
+    IReadOnlyList<PackageCustomerBreakdownDto> Customers);   // Müşteri bazlı taksit/ödeme/seans kırılımı
+
+/// <summary>Kategori kırılımındaki tek hizmet satırı (satılan seans ve tutar payı).</summary>
+public sealed record PackageCategoryServiceDto(
+    Guid ServiceDefinitionId,
+    string ServiceName,
+    int SoldCount,          // Bu hizmeti içeren satış (cari) adedi
+    int CustomerCount,      // Bu hizmeti satın alan benzersiz müşteri
+    int SessionsTotal,
+    int SessionsUsed,
+    int SessionsRemaining,
+    decimal Amount);        // Satış tutarından bu hizmete düşen pay
+
+/// <summary>Paket satışlarının hizmet kategorisine göre kırılımı.</summary>
+public sealed record PackageCategoryBreakdownDto(
+    string Category,        // "Kategorisiz" = hizmette kategori tanımlı değil
+    int SoldCount,
+    int CustomerCount,
+    int SessionsTotal,
+    int SessionsUsed,
+    int SessionsRemaining,
+    decimal Amount,
+    IReadOnlyList<PackageCategoryServiceDto> Services);
+
+/// <summary>Bir müşterinin dönemdeki paket satışları: taksit, tahsilat ve seans durumu.</summary>
+public sealed record PackageCustomerBreakdownDto(
+    Guid CustomerId,
+    string CustomerName,
+    int AccountCount,           // Cari (satış) adedi
+    IReadOnlyList<string> PackageNames,
+    int InstallmentCount,       // İptal edilmemiş taksit adedi
+    int PaidInstallmentCount,   // Tamamı tahsil edilmiş taksit adedi
+    int OverdueInstallmentCount,
+    decimal TotalAmount,        // Satış toplamı
+    decimal PaidAmount,         // Taksitlere dağıtılan tahsilat
+    decimal RemainingAmount,    // Kalan taksit borcu
+    decimal OverdueAmount,
+    DateOnly? NextDueDate,      // Sıradaki ödenmemiş taksit vadesi
+    decimal NextDueAmount,
+    int SessionsTotal,
+    int SessionsUsed,
+    int SessionsRemaining);

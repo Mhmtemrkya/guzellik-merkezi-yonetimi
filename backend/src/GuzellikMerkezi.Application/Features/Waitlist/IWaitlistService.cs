@@ -24,6 +24,12 @@ public interface IWaitlistService
     Task<Result<Guid?>> AcceptOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Bekleme kaydını yönetici tarafından seçilen gün/saate randevuya çevirir (teklif akışı beklenmeden).
+    /// Personel/hizmet verilmezse kayıttaki değerler kullanılır. Oluşan randevunun Id'sini döner.
+    /// </summary>
+    Task<Result<Guid?>> ScheduleAsync(Guid tenantId, Guid waitlistEntryId, ScheduleWaitlistRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Teklif reddedildi → kaydı Cancelled yapar; aynı slot için sıradaki bekleyene teklif işaretler.
     /// Sıradaki kaydın Id'sini döner (yoksa null).
     /// </summary>

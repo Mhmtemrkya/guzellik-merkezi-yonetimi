@@ -49,10 +49,10 @@ String _categoryLabel(String key) => _productCategories
     .label;
 
 /// Ürün ekle/düzenle formu alanları (web ProductFormDialog ile aynı set).
-/// Düzenlemede "başlangıç stok" gizlenir — stok yalnızca hareketle değişir.
+/// Stok yalnızca stok hareketiyle oluşur; üründe açılış stoğu alanı yoktur.
+/// Barkod ürünün tekil kimliğidir — okuyucudan okutulabilir, boşsa backend üretir.
 List<CrudField> _productFields({required bool isEdit}) => [
       const CrudField(key: 'name', label: 'Ürün adı', required: true),
-      const CrudField(key: 'sku', label: 'Stok kodu (SKU)', required: true),
       const CrudField(
         key: 'category',
         label: 'Kategori',
@@ -62,30 +62,18 @@ List<CrudField> _productFields({required bool isEdit}) => [
       ),
       const CrudField(key: 'unit', label: 'Birim', defaultValue: 'Adet'),
       const CrudField(key: 'brand', label: 'Marka'),
-      const CrudField(key: 'supplier', label: 'Tedarikçi'),
       const CrudField(key: 'location', label: 'Konum / Depo'),
-      const CrudField(key: 'barcode', label: 'Barkod'),
+      const CrudField(key: 'barcode', label: 'Barkod', barcodeScan: true),
       const CrudField(key: 'cost', label: 'Alış fiyatı', type: CrudFieldType.decimal),
       const CrudField(
           key: 'salePrice', label: 'Satış fiyatı', type: CrudFieldType.decimal),
-      if (!isEdit)
-        const CrudField(
-            key: 'currentStock',
-            label: 'Başlangıç stok',
-            type: CrudFieldType.decimal),
       const CrudField(
           key: 'minStockLevel',
           label: 'Kritik stok seviyesi',
           type: CrudFieldType.decimal),
-      const CrudField(
-          key: 'taxRatePercent', label: 'Vergi oranı (%)', type: CrudFieldType.number),
       const CrudField(key: 'lotNumber', label: 'Lot numarası'),
       const CrudField(
           key: 'expiryDate', label: 'Son kullanma tarihi', type: CrudFieldType.date),
-      const CrudField(
-          key: 'leadTimeDays', label: 'Tedarik süresi (gün)', type: CrudFieldType.number),
-      const CrudField(
-          key: 'pendingInbound', label: 'Bekleyen giriş', type: CrudFieldType.number),
       const CrudField(
         key: 'isActive',
         label: 'Aktif',
@@ -171,7 +159,7 @@ class _StockScreenState extends State<StockScreen> {
     if (_query.isNotEmpty) {
       list = list.where((p) {
         final hay =
-            '${p['name'] ?? ''} ${p['barcode'] ?? ''} ${p['sku'] ?? ''}'
+            '${p['name'] ?? ''} ${p['barcode'] ?? ''}'
                 .toLowerCase();
         return hay.contains(_query);
       }).toList();
@@ -1009,9 +997,6 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
               _infoCard('Stok Özeti', [
                 ('Mevcut Stok', '${_trimNum(_n('currentStock'))} $unit', statusColor),
                 ('Min. Stok', '${_trimNum(_n('minStockLevel'))} $unit', null),
-                ('Bekleyen Giriş', '${_trimNum(_n('pendingInbound'))} $unit', null),
-                ('Tedarik Süresi',
-                    _n('leadTimeDays') > 0 ? '${_trimNum(_n('leadTimeDays'))} gün' : '—', null),
               ]),
               _infoCard('Fiyat Bilgileri', [
                 ('Maliyet', CalendarText.tl(cost), null),
@@ -1020,15 +1005,12 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
                     marginPct != null ? AppColors.success : null),
               ]),
               _infoCard('Diğer Bilgiler', [
-                ('Marka / Tedarikçi',
-                    valueOf(p, const ['brand', 'supplier'], fallback: '—'), null),
+                ('Marka', valueOf(p, const ['brand'], fallback: '—'), null),
                 ('Raf / Dolap', valueOf(p, const ['location'], fallback: '—'), null),
                 ('Son Kullanma',
                     expiry != null ? DateFormat('d MMM yyyy', 'tr_TR').format(expiry) : '—', null),
                 ('Lot Numarası', valueOf(p, const ['lotNumber'], fallback: '—'), null),
                 ('Birim', unit, null),
-                ('Vergi Oranı',
-                    p['taxRatePercent'] != null ? '%${_trimNum(_n('taxRatePercent'))}' : '—', null),
               ]),
               const SizedBox(height: 14),
               Row(

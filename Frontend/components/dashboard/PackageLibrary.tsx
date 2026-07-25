@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
 import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import CampaignPanel from '@/components/dashboard/CampaignPanel'
@@ -88,6 +89,8 @@ export default function PackageLibrary({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [draft, setDraft] = useState<Draft>(emptyDraft())
+  // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
+  const bulk = useBulkSelect()
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
@@ -404,12 +407,11 @@ export default function PackageLibrary({
         {savedMsg && <div className="rounded-[12px] border border-emerald-300/30 bg-emerald-50 px-4 py-2.5 text-[12px] text-emerald-700"><CheckCircle2 className="mr-1.5 inline h-3.5 w-3.5" />{savedMsg}</div>}
 
         {/* STAT CARDS */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { label: 'Toplam paket', value: String(packages.length), icon: ShoppingBag, stroke: '#d7839d' },
             { label: 'Aktif paket', value: String(activeCount), icon: CheckCircle2, stroke: '#3cae8d' },
             { label: 'Taslak', value: String(draftCount), icon: FileText, stroke: '#e6a14f' },
-            { label: 'Ortalama paket fiyatı', value: formatTL(avgPrice), icon: Tag, stroke: '#9c70bb' },
           ].map((c) => (
             <div key={c.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
               <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><c.icon className="h-4 w-4" /></span>
@@ -461,9 +463,17 @@ export default function PackageLibrary({
 
             <div className="divide-y divide-[#f1e5ea]">
               {pageRows.map((p) => (
-                <button key={p.id} type="button" onClick={() => selectPackage(p)}
-                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] lg:items-center ${draft.id === p.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    // Seçim modunda satır tıklaması detay yerine seçim yapar.
+                    if (bulk.active) { bulk.toggle(p.id); return }
+                    selectPackage(p)
+                  }}
+                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] lg:items-center ${bulk.isSelected(p.id) ? 'bg-[#fff1f6]' : draft.id === p.id ? 'bg-[#fff1f6]/50' : ''}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
+                    <SelectBox checked={bulk.isSelected(p.id)} onToggle={() => bulk.toggle(p.id)} />
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={p.iconKey || suggestIcon(p.name || p.category)} className="h-5 w-5" /></span>
                     <span className="truncate text-[13px] font-medium text-[#352432]">{p.name}</span>
                   </div>
@@ -815,6 +825,15 @@ export default function PackageLibrary({
         entityType="package"
         onDone={() => void reload()}
       />
+      {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      <BulkSelectBar
+        api={bulk}
+        itemLabel="paket"
+        pageIds={pageRows.map((p) => p.id)}
+        onDelete={(id) => adminApi.deletePackage(id, tenantId)}
+        onDone={() => reload()}
+      />
+
     </>
   )
 }

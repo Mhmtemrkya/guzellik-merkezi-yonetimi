@@ -104,7 +104,7 @@ export default function ProductLibrary({
     else if (tab === 'consumable') list = list.filter((p) => p.category === 'Consumable' || p.salePrice <= 0)
     if (catFilter) list = list.filter((p) => p.category === catFilter)
     if (statusFilter) list = list.filter((p) => p.status === statusFilter)
-    if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((p) => p.name.toLocaleLowerCase('tr').includes(t) || p.barcode.includes(t) || p.sku.toLocaleLowerCase('tr').includes(t)) }
+    if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((p) => p.name.toLocaleLowerCase('tr').includes(t) || p.barcode.includes(t)) }
     return list
   }, [products, tab, catFilter, statusFilter, q])
   useEffect(() => { setPage(1) }, [tab, catFilter, statusFilter, q, pageSize])
@@ -133,19 +133,15 @@ export default function ProductLibrary({
   type FV = Record<string, unknown>
   const productPayload = (v: FV, p?: Product): Record<string, unknown> => ({
     branchId: p?.branchId || branchId || null,
-    name: v.name, sku: v.sku, category: v.category || 'SkinCare', unit: v.unit || 'adet',
-    supplier: (v.supplier as string) || null, location: (v.location as string) || null,
+    name: v.name, category: v.category || 'SkinCare', unit: v.unit || 'adet',
+    location: (v.location as string) || null,
     cost: Number(v.cost || 0), salePrice: Number(v.salePrice || 0),
-    ...(p ? {} : { currentStock: Number(v.currentStock || 0) }),
     minStockLevel: Number(v.minStockLevel || 0), isActive: v.isActive !== false,
     barcode: (v.barcode as string)?.trim() || p?.barcode || null,
     imageUrl: typeof v.imageUrl === 'string' ? v.imageUrl : (p?.imageUrl ?? null),
     brand: (v.brand as string) || null,
-    taxRatePercent: v.taxRatePercent === '' || v.taxRatePercent === undefined ? null : Number(v.taxRatePercent),
     expiryDate: (v.expiryDate as string) || null,
     lotNumber: (v.lotNumber as string) || null,
-    pendingInbound: Number(v.pendingInbound || 0),
-    leadTimeDays: Number(v.leadTimeDays || 0),
   })
 
   const submitMove = async () => {
@@ -347,8 +343,6 @@ export default function ProductLibrary({
                 <Section title="Stok Özeti">
                   <Cell k="Mevcut Stok" v={`${sel.currentStock} ${sel.unit}`} tone={stockTone(sel)} />
                   <Cell k="Min. Stok" v={`${sel.minStockLevel} ${sel.unit}`} />
-                  <Cell k="Bekleyen Giriş" v={`${sel.pendingInbound} ${sel.unit}`} />
-                  <Cell k="Tedarik Süresi" v={sel.leadTimeDays ? `${sel.leadTimeDays} gün` : '—'} />
                 </Section>
 
                 <Section title="Fiyat Bilgileri">
@@ -358,12 +352,11 @@ export default function ProductLibrary({
                 </Section>
 
                 <Section title="Diğer Bilgiler">
-                  <Cell k="Marka / Tedarikçi" v={sel.brand || sel.supplier || '—'} />
+                  <Cell k="Marka" v={sel.brand || '—'} />
                   <Cell k="Raf / Dolap" v={sel.location || '—'} />
                   <Cell k="Son Kullanma" v={sel.expiryDate ? sel.expiryDate.split('-').reverse().join('.') : '—'} />
                   <Cell k="Lot Numarası" v={sel.lotNumber || '—'} />
                   <Cell k="Birim" v={sel.unit} />
-                  <Cell k="Vergi Oranı" v={sel.taxRatePercent !== null ? `%${sel.taxRatePercent}` : '—'} />
                 </Section>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
@@ -372,11 +365,10 @@ export default function ProductLibrary({
                     title={`${sel.name} · düzenle`}
                     submitLabel="Güncelle"
                     initial={{
-                      imageUrl: sel.imageUrl || '', name: sel.name, sku: sel.sku, barcode: sel.barcode || '',
+                      imageUrl: sel.imageUrl || '', name: sel.name, barcode: sel.barcode || '',
                       category: sel.category, unit: sel.unit || 'adet',
-                      brand: sel.brand || '', supplier: sel.supplier || '', location: sel.location || '',
+                      brand: sel.brand || '', location: sel.location || '',
                       lotNumber: sel.lotNumber || '', expiryDate: sel.expiryDate || '',
-                      taxRatePercent: sel.taxRatePercent ?? 20, leadTimeDays: sel.leadTimeDays ?? 0, pendingInbound: sel.pendingInbound ?? 0,
                       cost: sel.cost, salePrice: sel.salePrice, minStockLevel: sel.minStockLevel, isActive: sel.isActive,
                     }}
                     onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as unknown as FV, sel), tenantId); await reload() }}

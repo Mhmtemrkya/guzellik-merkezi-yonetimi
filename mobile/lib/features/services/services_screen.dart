@@ -46,6 +46,12 @@ class _ServicesScreenState extends State<ServicesScreen> {
       trailingKeys: const ['price'],
       statusKeys: const ['status', 'isActive'],
       onItemTap: _openForm,
+      // Toplu silme: karta uzun basınca seçim modu açılır (web paritesi).
+      onBulkDelete: (items) async {
+        for (final item in items) {
+          await widget.api.delete('/api/admin/services/${item['id']}');
+        }
+      },
       floatingAction: (widget.api.auth?.user?.canAction(Perm.servicesManage) ?? true)
           ? FloatingActionButton.extended(
               onPressed: () => _openForm(),

@@ -24,11 +24,13 @@ public sealed class WhatsAppService : IWhatsAppService
         "Onaylıyorsanız EVET, iptal için HAYIR, ertelemek için ERTELE yazın. — {salon}";
 
     // Bekleme listesi otomasyonu şablonları (sabit — hatırlatma şablonundan bağımsız).
+    // {hizmet} boş gelebildiğinden şablonlarda "{hizmet}" yerine hizmet cümleciği ({hizmetcumle})
+    // kullanılır: hizmet varsa "Lazer Epilasyon randevusu", yoksa sadece "randevu" yazılır.
     private const string WaitlistOfferTemplate =
-        "Merhaba {ad}, {tarih} {saat} için yer açıldı! {hizmet} randevusunu istiyorsanız EVET, " +
-        "vazgeçmek için HAYIR yazın. — {salon}";
+        "Merhaba {ad}, bekleme listesinde olduğunuz {tarih} {saat} için yer açıldı! " +
+        "{hizmetcumlei} istiyorsanız EVET, vazgeçmek için HAYIR yazın.{salonimza}";
     private const string WaitlistActivatedTemplate =
-        "Merhaba {ad}, {tarih} {saat} {hizmet} randevunuz aktifleşti. Sizi bekliyoruz! — {salon}";
+        "Merhaba {ad}, {tarih} {saat} için {hizmetcumlen} oluşturuldu. Sizi bekliyoruz!{salonimza}";
     private const string RatingLinkTemplate =
         "Merhaba {ad}! {salon} ziyaretiniz için teşekkür ederiz 💐 Deneyiminizi 1 dakikada değerlendirir misiniz? " +
         "Hem personelimizi hem salonumuzu puanlayabilirsiniz: {link} (Bağlantı 24 saat geçerlidir.)";
@@ -242,9 +244,12 @@ public sealed class WhatsAppService : IWhatsAppService
             var serviceName = entry.ServiceDefinitionId is { } sid
                 ? await _db.ServiceDefinitions.IgnoreQueryFilters().AsNoTracking().Where(s => s.Id == sid).Select(s => s.Name).FirstOrDefaultAsync(ct) ?? string.Empty
                 : string.Empty;
+            // Şube adı yoksa kurum adına düş — imzasız mesaj gitmesin.
             var salonName = entry.BranchId is { } bid
                 ? await _db.Branches.IgnoreQueryFilters().AsNoTracking().Where(b => b.Id == bid).Select(b => b.Name).FirstOrDefaultAsync(ct) ?? string.Empty
                 : string.Empty;
+            if (string.IsNullOrWhiteSpace(salonName))
+                salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? string.Empty;
 
             var body = RenderSlotTemplate(WaitlistOfferTemplate, customer.FullName, startUtc, serviceName, salonName);
             await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct);
@@ -289,8 +294,11 @@ public sealed class WhatsAppService : IWhatsAppService
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == appointmentId, ct);
             if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return;
 
+            var salonName = appt.Branch?.Name;
+            if (string.IsNullOrWhiteSpace(salonName))
+                salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct);
             var body = RenderSlotTemplate(WaitlistActivatedTemplate, appt.Customer.FullName, appt.StartUtc,
-                appt.ServiceDefinition?.Name ?? string.Empty, appt.Branch?.Name ?? string.Empty);
+                appt.ServiceDefinition?.Name ?? string.Empty, salonName ?? string.Empty);
             await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct);
         }
         catch (Exception ex)
@@ -666,16 +674,28 @@ public sealed class WhatsAppService : IWhatsAppService
     private static string FirstName(string? fullName) =>
         string.IsNullOrWhiteSpace(fullName) ? "Değerli müşterimiz" : fullName.Trim().Split(' ')[0];
 
+    /// <summary>
+    /// Bekleme/slot mesajlarını yazar. Hizmet ya da salon adı boş olabildiğinden metin
+    /// boşluklu/asılı kalmasın diye cümlecik olarak üretilir:
+    ///  {hizmetcumlei} → "Lazer Epilasyon randevusunu" / "randevuyu"  (belirtme hâli)
+    ///  {hizmetcumlen} → "Lazer Epilasyon randevunuz" / "randevunuz"  (iyelik)
+    ///  {salonimza}    → " — Salon Adı" / ""  (ad yoksa hiç yazılmaz)
+    /// </summary>
     private static string RenderSlotTemplate(string template, string? name, DateTime startUtc, string serviceName, string salonName)
     {
         var local = startUtc.AddHours(3); // Türkiye UTC+3
+        var service = (serviceName ?? string.Empty).Trim();
+        var salon = (salonName ?? string.Empty).Trim();
         return template
-            .Replace("{ad}", name ?? string.Empty)
+            .Replace("{ad}", FirstName(name))
             .Replace("{tarih}", local.ToString("dd.MM.yyyy"))
             .Replace("{saat}", local.ToString("HH:mm"))
-            .Replace("{hizmet}", serviceName)
+            .Replace("{hizmetcumlei}", service.Length > 0 ? $"{service} randevusunu" : "randevuyu")
+            .Replace("{hizmetcumlen}", service.Length > 0 ? $"{service} randevunuz" : "randevunuz")
+            .Replace("{hizmet}", service)
             .Replace("{personel}", string.Empty)
-            .Replace("{salon}", salonName);
+            .Replace("{salonimza}", salon.Length > 0 ? $" — {salon}" : string.Empty)
+            .Replace("{salon}", salon);
     }
 
     private static string RenderTemplate(string template, Appointment appt)

@@ -17,6 +17,7 @@ import PassiveCustomersPanel from '@/components/dashboard/PassiveCustomersPanel'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -26,7 +27,7 @@ import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppoint
 import { downscaleImage } from '@/lib/imageUtils'
 import {
   ChevronLeft, ChevronRight, CreditCard, FileUp,
-  Mail, Phone, PenLine, PieChart, Search, Sparkles,
+  Mail, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
   UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
 import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
@@ -90,6 +91,8 @@ function MusterilerPageInner() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('name')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Toplu seçim: satırlara tıklayarak seç, alt çubuktan topluca sil.
+  const bulk = useBulkSelect()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [actionError, setActionError] = useState('')
@@ -247,8 +250,10 @@ function MusterilerPageInner() {
 
   // stats
   const debtTotal = enriched.reduce((s, c) => s + c.debt, 0)
-  const kvkkApproved = enriched.filter((c) => c.tier === 'KVKK Onaylı').length
-  const active90 = enriched.filter((c) => within(c.lastDate, 90)).length
+  // Takip edilmesi gereken sayı onay verenler değil, onayı EKSİK olanlar.
+  const kvkkMissing = enriched.filter((c) => c.tier !== 'KVKK Onaylı').length
+  // Son 90 günde kayda giren müşteriler (son ziyaret değil, kayıt tarihi).
+  const newIn90 = enriched.filter((c) => within(c.createdAt, 90)).length
   const apptTimes = useMemo(() => appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t)), [appts])
   const payTimes = useMemo(() => accounts.flatMap((a) => a.payments.map((p) => new Date(p.occurredAtUtc).getTime())).filter((t) => !Number.isNaN(t)), [accounts])
   const apptSeries = useMemo(() => weeklySeries(apptTimes), [apptTimes])
@@ -256,9 +261,9 @@ function MusterilerPageInner() {
 
   const statCards = [
     { label: 'Toplam müşteri', value: total.toLocaleString('tr-TR'), icon: UserRound, series: apptSeries, stroke: '#d7839d' },
-    { label: 'KVKK onaylı', value: kvkkApproved.toLocaleString('tr-TR'), icon: Sparkles, series: apptSeries, stroke: '#3cae8d' },
+    { label: 'KVKK onayı olmayan', value: kvkkMissing.toLocaleString('tr-TR'), icon: ShieldAlert, series: apptSeries, stroke: '#e0a33c' },
     { label: 'Açık borç', value: formatTL(debtTotal), icon: Wallet, series: paySeries, stroke: '#e0617f' },
-    { label: 'Son 90 gün', value: active90.toLocaleString('tr-TR'), icon: Phone, series: apptSeries, stroke: '#9c70bb' },
+    { label: 'Son 90 günde eklenen müşteri', value: newIn90.toLocaleString('tr-TR'), icon: UserPlus, series: apptSeries, stroke: '#9c70bb' },
   ]
 
   // summary
@@ -482,10 +487,18 @@ function MusterilerPageInner() {
 
             <div className="divide-y divide-[#f1e5ea]">
               {pageRows.map((c) => (
-                <button key={c.id} type="button" onClick={() => { setSelectedId(c.id); setModalOpen(true) }}
-                  className={`grid w-full grid-cols-1 gap-3 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.4fr_0.9fr_1.1fr_0.7fr_1fr_0.8fr] lg:items-center ${selected?.id === c.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    // Seçim modundayken satır tıklaması detay açmaz, seçimi değiştirir.
+                    if (bulk.active) { bulk.toggle(c.id); return }
+                    setSelectedId(c.id); setModalOpen(true)
+                  }}
+                  className={`grid w-full grid-cols-1 gap-3 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.4fr_0.9fr_1.1fr_0.7fr_1fr_0.8fr] lg:items-center ${bulk.isSelected(c.id) ? 'bg-[#fff1f6]' : selected?.id === c.id ? 'bg-[#fff1f6]/50' : ''}`}>
                   {/* Müşteri */}
                   <div className="flex min-w-0 items-center gap-2.5">
+                    <SelectBox checked={bulk.isSelected(c.id)} onToggle={() => bulk.toggle(c.id)} />
                     {c.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={c.photoUrl} alt={c.name} className="h-9 w-9 shrink-0 rounded-full border border-[#efbfd0]/50 object-cover" />
@@ -640,6 +653,15 @@ function MusterilerPageInner() {
         onClose={() => setImportOpen(false)}
         entityType="customer"
         onDone={() => void reloadWithSessions()}
+      />
+
+      {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
+      <BulkSelectBar
+        api={bulk}
+        itemLabel="müşteri"
+        pageIds={pageRows.map((c) => c.id)}
+        onDelete={(id) => adminApi.deleteCustomer(id, tenantId)}
+        onDone={() => reloadWithSessions()}
       />
     </>
   )

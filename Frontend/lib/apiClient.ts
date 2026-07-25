@@ -1044,6 +1044,9 @@ export const adminApi = {
   // Manuel "Randevuya çevir": teklifi randevuya dönüştürür (yeni randevu id'si döner).
   bookWaitlist: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/waitlist/${id}/book`, { method: 'POST', query: { tenantId } }),
+  // "Randevu oluştur": bekleme kaydını seçilen gün/saate randevuya çevirir (body: startUtc, durationMinutes, staffMemberId, serviceDefinitionId).
+  scheduleWaitlist: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/waitlist/${id}/schedule`, { method: 'POST', query: { tenantId }, body }),
   deleteWaitlist: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/waitlist/${id}`, { method: 'DELETE', query: { tenantId } }),
 

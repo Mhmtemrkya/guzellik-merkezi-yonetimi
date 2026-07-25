@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { downscaleImage } from '@/lib/imageUtils'
+import { formatPersonName } from '@/lib/utils'
 import KvkkConsentModal from '@/components/dashboard/KvkkConsentModal'
 import type { CustomerGender } from '@/lib/types'
 
@@ -131,7 +132,7 @@ export default function CustomerFormDialog({
     setSaving(true)
     setError('')
     try {
-      await onSubmit(values)
+      await onSubmit({ ...values, fullName: formatPersonName(values.fullName) })
       setSaved(true)
       setTimeout(() => setOpen(false), 1100)
     } catch (e) {
@@ -200,7 +201,14 @@ export default function CustomerFormDialog({
                 <div className="flex flex-1 flex-col gap-3">
                   <div>
                     <label className={LABEL}>Ad soyad *</label>
-                    <input value={values.fullName || ''} onChange={(e) => set({ fullName: e.target.value })} placeholder="Örn. Ayşe Yılmaz" className={INPUT} />
+                    {/* Yazım standardı: ad "İlk harf büyük", soyad TAMAMI BÜYÜK — alandan çıkınca uygulanır. */}
+                    <input
+                      value={values.fullName || ''}
+                      onChange={(e) => set({ fullName: e.target.value })}
+                      onBlur={(e) => set({ fullName: formatPersonName(e.target.value) })}
+                      placeholder="Örn. Ayşe YILMAZ"
+                      className={INPUT}
+                    />
                   </div>
                   <div>
                     <label className={LABEL}>Telefon *</label>

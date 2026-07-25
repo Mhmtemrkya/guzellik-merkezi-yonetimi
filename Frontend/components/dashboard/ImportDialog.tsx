@@ -222,7 +222,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
     if (analyzed.entityType === 'staff')
       return analyzed.staff.slice(0, 6).map((p) => [p.fullName, p.title || '—', p.phone || '—', p.commissionRate != null ? `%${p.commissionRate}` : '—'])
     if (analyzed.entityType === 'product')
-      return analyzed.products.slice(0, 6).map((p) => [p.name, p.barcode || p.sku || '—', p.currentStock != null ? `${p.currentStock}` : '—', p.salePrice != null ? `₺${p.salePrice}` : '—'])
+      return analyzed.products.slice(0, 6).map((p) => [p.name, p.barcode || '—', p.currentStock != null ? `${p.currentStock}` : '—', p.salePrice != null ? `₺${p.salePrice}` : '—'])
     // Pakette içerik önizlemesi önemli: hizmet kalemleri doğru çözüldü mü kullanıcı burada görür.
     return analyzed.packages.slice(0, 6).map((p) => [
       p.name,

@@ -5,6 +5,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
+import PackageReportBreakdown from '@/components/dashboard/PackageReportBreakdown'
 import { motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -155,7 +156,7 @@ const statusBadge: Record<AppointmentStatusKey, StatusBadgeMeta> = {
 
 const quickActions: QuickAction[] = [
   { label: 'Yeni Randevu\nOluştur', href: '/admin/randevular', icon: CalendarPlus, tone: 'rose' },
-  { label: 'Danışan\nEkle', href: '/admin/musteriler', icon: UserPlus, tone: 'peach' },
+  { label: 'Müşteri\nEkle', href: '/admin/musteriler', icon: UserPlus, tone: 'peach' },
   { label: 'Paket Satışı\nYap', href: '/admin/paketler', icon: ShoppingBag, tone: 'cream' },
   { label: 'Ödeme\nAl', href: '/admin/on-muhasebe?scope=accounts', icon: CreditCard, tone: 'mint' },
   { label: 'Stok Çıkışı\nYap', href: '/admin/stok', icon: Boxes, tone: 'violet' },
@@ -1535,6 +1536,13 @@ export default function AdminDashboard() {
                 </div>
 
                 <InstallmentCalendar months={reportMonths} period={packagePeriod} />
+
+                {/* Kategori → hizmet ve müşteri bazlı taksit/ödeme/seans kırılımı (dönem filtresine uyar). */}
+                <PackageReportBreakdown
+                  categories={packageReport.categories}
+                  customers={packageReport.customers}
+                  loading={packageLoading}
+                />
               </div>
             </SectionCard>
 

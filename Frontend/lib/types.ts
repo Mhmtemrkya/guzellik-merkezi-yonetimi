@@ -1065,6 +1065,49 @@ export interface ApiAccountReport {
   overdueAmount?: number
   collectedThisMonth?: number
   monthlyInstallments?: ApiAccountMonthlyInstallment[]
+  categories?: ApiPackageCategoryBreakdown[]
+  customers?: ApiPackageCustomerBreakdown[]
+}
+
+export interface ApiPackageCategoryService {
+  serviceDefinitionId?: string
+  serviceName?: string
+  soldCount?: number
+  customerCount?: number
+  sessionsTotal?: number
+  sessionsUsed?: number
+  sessionsRemaining?: number
+  amount?: number
+}
+
+export interface ApiPackageCategoryBreakdown {
+  category?: string
+  soldCount?: number
+  customerCount?: number
+  sessionsTotal?: number
+  sessionsUsed?: number
+  sessionsRemaining?: number
+  amount?: number
+  services?: ApiPackageCategoryService[]
+}
+
+export interface ApiPackageCustomerBreakdown {
+  customerId?: string
+  customerName?: string
+  accountCount?: number
+  packageNames?: string[]
+  installmentCount?: number
+  paidInstallmentCount?: number
+  overdueInstallmentCount?: number
+  totalAmount?: number
+  paidAmount?: number
+  remainingAmount?: number
+  overdueAmount?: number
+  nextDueDate?: string | null
+  nextDueAmount?: number
+  sessionsTotal?: number
+  sessionsUsed?: number
+  sessionsRemaining?: number
 }
 
 export interface AccountMonthlyInstallment {
@@ -1090,6 +1133,50 @@ export interface AccountReport {
   overdueAmount: number
   collectedThisMonth: number
   monthlyInstallments: AccountMonthlyInstallment[]
+  categories: PackageCategoryBreakdown[]
+  customers: PackageCustomerBreakdown[]
+}
+
+export interface PackageCategoryService {
+  serviceDefinitionId: string
+  serviceName: string
+  soldCount: number
+  customerCount: number
+  sessionsTotal: number
+  sessionsUsed: number
+  sessionsRemaining: number
+  amount: number
+}
+
+export interface PackageCategoryBreakdown {
+  category: string
+  soldCount: number
+  customerCount: number
+  sessionsTotal: number
+  sessionsUsed: number
+  sessionsRemaining: number
+  amount: number
+  services: PackageCategoryService[]
+}
+
+export interface PackageCustomerBreakdown {
+  customerId: string
+  customerName: string
+  accountCount: number
+  packageNames: string[]
+  installmentCount: number
+  paidInstallmentCount: number
+  overdueInstallmentCount: number
+  totalAmount: number
+  paidAmount: number
+  remainingAmount: number
+  overdueAmount: number
+  /** ISO tarih (yyyy-MM-dd) ya da null. */
+  nextDueDate: string | null
+  nextDueAmount: number
+  sessionsTotal: number
+  sessionsUsed: number
+  sessionsRemaining: number
 }
 
 export type TreatmentPhotoKind = 'Before' | 'After' | 'Progress'
@@ -1670,10 +1757,8 @@ export interface ApiProduct {
   tenantId?: string
   branchId?: string | null
   name?: string
-  sku?: string
   category?: ProductCategoryKey | string
   unit?: string
-  supplier?: string | null
   location?: string | null
   cost?: number
   salePrice?: number
@@ -1687,11 +1772,8 @@ export interface ApiProduct {
   createdAtUtc?: string
   updatedAtUtc?: string | null
   brand?: string | null
-  taxRatePercent?: number | null
   expiryDate?: string | null
   lotNumber?: string | null
-  pendingInbound?: number
-  leadTimeDays?: number
 }
 
 export interface Product {
@@ -1699,11 +1781,9 @@ export interface Product {
   tenantId?: string
   branchId: string | null
   name: string
-  sku: string
   category: ProductCategoryKey
   categoryLabel: string
   unit: string
-  supplier: string
   location: string
   cost: number
   salePrice: number
@@ -1715,11 +1795,8 @@ export interface Product {
   barcode: string
   imageUrl: string
   brand: string
-  taxRatePercent: number | null
   expiryDate: string
   lotNumber: string
-  pendingInbound: number
-  leadTimeDays: number
   updatedAt: string
   status: ProductStatusKey
   margin: number

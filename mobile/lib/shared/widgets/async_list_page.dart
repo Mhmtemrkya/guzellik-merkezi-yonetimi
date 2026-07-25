@@ -36,6 +36,7 @@ class AsyncListPage extends StatefulWidget {
     this.itemActionIcon,
     this.onItemTap,
     this.headerExtra,
+    this.onBulkDelete,
     super.key,
   });
 
@@ -56,6 +57,10 @@ class AsyncListPage extends StatefulWidget {
   final void Function(Map<String, dynamic> item)? onItemTap;
   final Widget? headerExtra;
 
+  /// Verilirse listede toplu seçim açılır: karta uzun basınca seçim modu başlar,
+  /// sonraki dokunuşlar seçer/kaldırır ve alt çubuktan seçilenler topluca silinir.
+  final Future<void> Function(List<Map<String, dynamic>> items)? onBulkDelete;
+
   @override
   State<AsyncListPage> createState() => _AsyncListPageState();
 }
@@ -63,6 +68,9 @@ class AsyncListPage extends StatefulWidget {
 class _AsyncListPageState extends State<AsyncListPage> {
   late Future<dynamic> future;
   String query = '';
+  // Toplu seçim (web BulkSelectBar paritesi): id -> kayıt.
+  final Map<String, Map<String, dynamic>> _selected = {};
+  bool _bulkBusy = false;
   // -1 = Tümü; aksi halde widget.filters index'i.
   int filterIndex = -1;
 
@@ -79,7 +87,8 @@ class _AsyncListPageState extends State<AsyncListPage> {
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        floatingActionButton: widget.floatingAction,
+        floatingActionButton: _selected.isEmpty ? widget.floatingAction : null,
+        bottomNavigationBar: _selected.isEmpty ? null : _bulkBar(),
         body: SafeArea(
           child: RefreshIndicator(
             color: AppColors.primary,
@@ -234,14 +243,146 @@ class _AsyncListPageState extends State<AsyncListPage> {
     );
   }
 
+  /// Toplu seçim çubuğu: seçili sayısı + temizle + sil (web BulkSelectBar paritesi).
+  Widget _bulkBar() {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryDark.withValues(alpha: .12),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${_selected.length} kayıt seçildi',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _bulkBusy ? null : () => setState(_selected.clear),
+              child: const Text('Temizle'),
+            ),
+            const SizedBox(width: 4),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: _bulkBusy ? null : _runBulkDelete,
+              icon: _bulkBusy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.delete_outline_rounded, size: 17),
+              label: const Text('Sil'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runBulkDelete() async {
+    final handler = widget.onBulkDelete;
+    if (handler == null || _selected.isEmpty) return;
+    final count = _selected.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Seçilenler silinsin mi?'),
+        content: Text('$count kayıt kalıcı olarak silinecek.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _bulkBusy = true);
+    try {
+      await handler(_selected.values.toList());
+      if (!mounted) return;
+      setState(() {
+        _selected.clear();
+        _bulkBusy = false;
+      });
+      refresh();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$count kayıt silindi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _bulkBusy = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   /// Ortak liste kartı. [compact] tablet grid'inde: alt yazı tek satır,
   /// durum rozeti sağa alınır ki kart yüksekliği sabit kalsın.
   Widget _itemCard(Map<String, dynamic> item, {required bool compact}) {
+    final selected = _selected.containsKey('${item['id'] ?? ''}');
     return Card(
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
+      color: selected ? AppColors.surfaceSoft : null,
+      shape: selected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: const BorderSide(color: AppColors.primaryDark, width: 1.4),
+            )
+          : null,
       child: InkWell(
-        onTap: widget.onItemTap == null ? null : () => widget.onItemTap!(item),
+        onTap: () {
+          final id = '${item['id'] ?? ''}';
+          if (_selected.isNotEmpty && widget.onBulkDelete != null && id.isNotEmpty) {
+            setState(() {
+              if (_selected.containsKey(id)) {
+                _selected.remove(id);
+              } else {
+                _selected[id] = item;
+              }
+            });
+            return;
+          }
+          widget.onItemTap?.call(item);
+        },
+        onLongPress: widget.onBulkDelete == null
+            ? null
+            : () {
+                final id = '${item['id'] ?? ''}';
+                if (id.isEmpty) return;
+                setState(() {
+                  if (_selected.containsKey(id)) {
+                    _selected.remove(id);
+                  } else {
+                    _selected[id] = item;
+                  }
+                });
+              },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(

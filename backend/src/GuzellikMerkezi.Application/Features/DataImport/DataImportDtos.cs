@@ -29,7 +29,6 @@ public sealed record ImportPackageRow(
 /// <summary>Excel'den analiz edilip normalize edilmiş ürün (stok) satırı.</summary>
 public sealed record ImportProductRow(
     string Name,
-    string? Sku,
     string? Barcode,
     string? Brand,
     string? Category,

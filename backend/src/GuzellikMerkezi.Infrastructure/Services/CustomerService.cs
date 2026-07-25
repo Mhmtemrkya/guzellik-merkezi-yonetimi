@@ -223,7 +223,8 @@ public sealed class CustomerService : ICustomerService
             return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı bir müşteri zaten var."));
         }
 
-        var customer = new Customer(tenantId, request.BranchId, request.FullName, request.Phone, request.Email);
+        // Ad yazımı tek standarda çekilir: Ad SOYAD (bkz. PersonNameFormatter).
+        var customer = new Customer(tenantId, request.BranchId, PersonNameFormatter.Format(request.FullName), request.Phone, request.Email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         customer.SetPhoto(request.PhotoUrl);
 
@@ -255,7 +256,7 @@ public sealed class CustomerService : ICustomerService
             return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı başka bir müşteri var."));
         }
 
-        customer.UpdateContact(request.FullName, phone, email);
+        customer.UpdateContact(PersonNameFormatter.Format(request.FullName), phone, email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
         if (request.PhotoUrl is not null) customer.SetPhoto(request.PhotoUrl);
 

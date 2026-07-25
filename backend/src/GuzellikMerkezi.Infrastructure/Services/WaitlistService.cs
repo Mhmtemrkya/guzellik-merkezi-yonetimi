@@ -200,6 +200,43 @@ public sealed class WaitlistService : IWaitlistService
         return Result<Guid?>.Success(appointment.Id);
     }
 
+    public async Task<Result<Guid?>> ScheduleAsync(Guid tenantId, Guid waitlistEntryId, ScheduleWaitlistRequest request, CancellationToken cancellationToken = default)
+    {
+        var entry = await _db.WaitlistEntries
+            .FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Id == waitlistEntryId, cancellationToken);
+        if (entry is null) return Result<Guid?>.Failure(Error.NotFound("Bekleme kaydı bulunamadı."));
+        if (entry.Status == WaitlistStatus.Booked) return Result<Guid?>.Failure(Error.Conflict("Bu kayıt zaten randevuya dönmüş."));
+
+        var staffId = request.StaffMemberId ?? entry.StaffMemberId;
+        if (staffId is not { } staff || staff == Guid.Empty)
+            return Result<Guid?>.Failure(Error.Validation("Randevu için personel seçilmeli."));
+        var serviceId = request.ServiceDefinitionId ?? entry.ServiceDefinitionId;
+        if (serviceId is not { } service || service == Guid.Empty)
+            return Result<Guid?>.Failure(Error.Validation("Randevu için hizmet seçilmeli."));
+
+        // Süre: istek → kayıt → hizmetin varsayılan süresi → 30 dk.
+        var duration = request.DurationMinutes is > 0
+            ? request.DurationMinutes!.Value
+            : entry.DurationMinutes is > 0
+                ? entry.DurationMinutes!.Value
+                : await _db.ServiceDefinitions.AsNoTracking().Where(s => s.TenantId == tenantId && s.Id == service)
+                      .Select(s => (int?)s.DurationMinutes).FirstOrDefaultAsync(cancellationToken) ?? 30;
+
+        var startUtc = DateTime.SpecifyKind(request.StartUtc, DateTimeKind.Utc);
+        // Slot/personel/hizmet yalnızca BELLEKTE işaretlenir — kaydetmeden AcceptOfferAsync'e
+        // devredilir (kontroller orada tek yerde). Randevu açılamazsa hiçbir şey kaydedilmez,
+        // kayıt bekleme listesinde olduğu gibi kalır.
+        entry.MarkOffered(startUtc, duration, staff, service, entry.BranchId);
+
+        var result = await AcceptOfferAsync(tenantId, waitlistEntryId, cancellationToken);
+        if (result.IsFailure)
+        {
+            // Değişiklikleri geri al: takip edilen varlık istek sonunda yazılmasın.
+            await _db.Entry(entry).ReloadAsync(cancellationToken);
+        }
+        return result;
+    }
+
     public async Task<Result<Guid?>> DeclineOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default)
     {
         var entry = await _db.WaitlistEntries.IgnoreQueryFilters()
