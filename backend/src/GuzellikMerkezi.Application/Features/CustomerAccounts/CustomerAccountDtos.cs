@@ -203,4 +203,5 @@ public sealed record PackageCustomerBreakdownDto(
     decimal NextDueAmount,
     int SessionsTotal,
     int SessionsUsed,
-    int SessionsRemaining);
+    int SessionsRemaining,
+    IReadOnlyList<PackageSellerDto> Sellers);   // Bu müşteriye kim satmış

@@ -421,19 +421,38 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                     ],
 
                     const SizedBox(height: 14),
-                    // Özet kutuları
-                    Row(
-                      children: [
-                        Expanded(child: _stat('Tutar', _money(total))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _stat('Tahsil', _money(paid), color: AppColors.success)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _stat('Kalan', _money(remaining),
-                            color: remaining > 0.005 ? AppColors.danger : AppColors.success)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _stat('Seans', st > 0 ? '${st - su}/$st' : '—',
-                            hint: st > 0 ? '$su kullanıldı' : null)),
+                    // SATIŞ ÖZETİ — web paritesi: kutular değil, başlıklı tablo.
+                    _sectionTitle('Satış özeti', Icons.account_balance_wallet_rounded),
+                    const SizedBox(height: 6),
+                    _TableShell(
+                      header: const ['TUTAR', 'TAHSİL', 'KALAN', 'SEANS'],
+                      aligns: const [TextAlign.left, TextAlign.right, TextAlign.right, TextAlign.right],
+                      flex: const [4, 3, 3, 3],
+                      rows: [
+                        _TableRowData(
+                          cells: [
+                            _money(total),
+                            _money(paid),
+                            _money(remaining),
+                            st > 0 ? '${st - su}/$st' : '—',
+                          ],
+                          colors: [
+                            null,
+                            AppColors.success,
+                            remaining > 0.005 ? AppColors.danger : AppColors.success,
+                            null,
+                          ],
+                          bold: true,
+                        ),
                       ],
+                      footer: LinearProgressIndicator(
+                        value: total > 0 ? (paid / total).clamp(0, 1).toDouble() : 1,
+                        minHeight: 5,
+                        backgroundColor: AppColors.surfaceSoft,
+                        valueColor: AlwaysStoppedAnimation(
+                          remaining > 0.005 ? AppColors.primary : AppColors.success,
+                        ),
+                      ),
                     ),
 
                     const SizedBox(height: 16),
@@ -442,39 +461,32 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                     if (items.isEmpty)
                       _emptyBox('Kalem bilgisi yok.')
                     else
-                      for (final item in items)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceSoft,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(valueOf(item, const ['name']),
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w700, fontSize: 12.5)),
-                                    if (numberOf(item, const ['sessionsTotal']) > 0)
-                                      Text(
-                                        '${numberOf(item, const ['sessionsUsed']).toInt()}/'
-                                        '${numberOf(item, const ['sessionsTotal']).toInt()} seans kullanıldı',
-                                        style: const TextStyle(
-                                            fontSize: 10.5, color: AppColors.muted),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              Text(_money(numberOf(item, const ['amount'])),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800, fontSize: 12.5)),
-                            ],
-                          ),
-                        ),
+                      _TableShell(
+                        header: const ['HİZMET', 'SEANS', 'KALAN', 'TUTAR'],
+                        aligns: const [TextAlign.left, TextAlign.right, TextAlign.right, TextAlign.right],
+                        flex: const [5, 2, 2, 3],
+                        rows: [
+                          for (final item in items)
+                            _TableRowData(cells: [
+                              valueOf(item, const ['name']),
+                              numberOf(item, const ['sessionsTotal']) > 0
+                                  ? '${numberOf(item, const ['sessionsUsed']).toInt()}/${numberOf(item, const ['sessionsTotal']).toInt()}'
+                                  : '—',
+                              numberOf(item, const ['sessionsTotal']) > 0
+                                  ? '${(numberOf(item, const ['sessionsTotal']) - numberOf(item, const ['sessionsUsed'])).toInt()}'
+                                  : '—',
+                              _money(numberOf(item, const ['amount'])),
+                            ], colors: const [null, null, AppColors.success, null]),
+                        ],
+                        totalRow: items.length > 1
+                            ? _TableRowData(cells: [
+                                'TOPLAM',
+                                st > 0 ? '$su/$st' : '—',
+                                st > 0 ? '${st - su}' : '—',
+                                _money(total),
+                              ], bold: true)
+                            : null,
+                      ),
 
                     const SizedBox(height: 14),
                     _sectionTitle('Aylık Taksitler', Icons.credit_card_rounded),
@@ -482,7 +494,7 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                     if (installments.isEmpty)
                       _emptyBox('Taksit planı yok — satış peşin kaydedilmiş.')
                     else
-                      for (final inst in installments) _installmentTile(inst),
+                      _installmentTable(installments),
 
                     if ('${_a['notes'] ?? ''}'.trim().isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -537,7 +549,61 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     );
   }
 
-  Widget _installmentTile(Map<String, dynamic> inst) {
+  /// Taksitler tablosu — başlık satırı + sıkı satırlar; satıra dokununca tahsilat şeridi açılır.
+  Widget _installmentTable(List<Map<String, dynamic>> installments) {
+    final totalAmount = installments.fold<double>(0, (a, i) => a + numberOf(i, const ['amount']));
+    final totalPaid = installments.fold<double>(0, (a, i) => a + numberOf(i, const ['paidAmount']));
+    final totalRemaining = (totalAmount - totalPaid).clamp(0, double.infinity).toDouble();
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          const _TableHeader(
+            labels: ['#', 'VADE', 'TUTAR', 'KALAN', ''],
+            flex: [1, 4, 3, 3, 1],
+            aligns: [TextAlign.left, TextAlign.left, TextAlign.right, TextAlign.right, TextAlign.right],
+          ),
+          for (final inst in installments) _installmentRow(inst),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: const BoxDecoration(
+              color: AppColors.surfaceSoft,
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  flex: 5,
+                  child: Text('TOPLAM', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(_money(totalAmount),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(_money(totalRemaining),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.danger)),
+                ),
+                const Expanded(flex: 1, child: SizedBox()),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _installmentRow(Map<String, dynamic> inst) {
     final id = '${inst['id']}';
     final isOpen = _openInstallment == id;
     final amount = numberOf(inst, const ['amount']);
@@ -548,125 +614,107 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     final dueDate = DateTime.tryParse(due);
     final overdue = !paid && dueDate != null && dueDate.isBefore(DateTime.now());
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: paid
-            ? AppColors.success.withValues(alpha: .06)
-            : overdue
-                ? AppColors.danger.withValues(alpha: .06)
-                : AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: paid
-              ? AppColors.success.withValues(alpha: .3)
-              : overdue
-                  ? AppColors.danger.withValues(alpha: .3)
-                  : AppColors.border,
-        ),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => setState(() => _openInstallment = isOpen ? null : id),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceSoft,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          dueDate != null ? DateFormat('MMM', 'tr_TR').format(dueDate) : '—',
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-                        ),
-                        Text(
-                          dueDate != null ? '${dueDate.year}' : '',
-                          style: const TextStyle(fontSize: 8.5, color: AppColors.muted),
-                        ),
-                      ],
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => setState(() => _openInstallment = isOpen ? null : id),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: paid
+                  ? AppColors.success.withValues(alpha: .05)
+                  : overdue
+                      ? AppColors.danger.withValues(alpha: .05)
+                      : Colors.transparent,
+              border: const Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: Text('${numberOf(inst, const ['no']).toInt()}',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    dueDate != null ? DateFormat('dd.MM.yyyy').format(dueDate) : '—',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: overdue ? FontWeight.w700 : FontWeight.w500,
+                      color: overdue ? AppColors.danger : AppColors.ink,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${numberOf(inst, const ['no']).toInt()}. taksit · ${_money(amount)}',
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                        Text(
-                          paid
-                              ? 'Ödendi'
-                              : overdue
-                                  ? 'Gecikti · vade ${_fmtDate(due)}'
-                                  : 'Vade ${_fmtDate(due)}',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: overdue ? FontWeight.w700 : FontWeight.w400,
-                            color: overdue ? AppColors.danger : AppColors.muted,
-                          ),
-                        ),
-                      ],
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(_money(amount),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    paid ? 'Ödendi' : _money(remaining),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: paid ? AppColors.success : AppColors.danger,
                     ),
                   ),
-                  Icon(
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Icon(
                     paid ? Icons.check_circle_rounded : (isOpen ? Icons.expand_less : Icons.expand_more),
-                    size: 18,
+                    size: 16,
                     color: paid ? AppColors.success : AppColors.muted,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          if (isOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: _stat('Taksit', _money(amount))),
-                      const SizedBox(width: 6),
-                      Expanded(child: _stat('Tahsil', _money(paidAmount), color: AppColors.success)),
-                      const SizedBox(width: 6),
-                      Expanded(child: _stat('Kalan', _money(remaining),
-                          color: remaining > 0.005 ? AppColors.danger : AppColors.success)),
-                    ],
-                  ),
-                  if (!paid && widget.canManage && _saleStatus(_a) != 'Cancelled') ...[
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        minimumSize: const Size.fromHeight(40),
-                      ),
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() => widget.api.post(
-                                '/api/admin/accounts/${_a['id']}/payments',
-                                {
-                                  'amount': remaining,
-                                  'method': 'cash',
-                                  'reference': null,
-                                  'occurredAtUtc': DateTime.now().toUtc().toIso8601String(),
-                                },
-                              )),
-                      icon: const Icon(Icons.account_balance_wallet_rounded, size: 17),
-                      label: Text('Bu taksiti tahsil et (${_money(remaining)})'),
+        ),
+        if (isOpen)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            decoration: const BoxDecoration(color: AppColors.surfaceSoft),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tahsil edilen: ${_money(paidAmount)}'
+                  '${overdue ? ' · vadesi geçti' : ''}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+                if (!paid && widget.canManage && _saleStatus(_a) != 'Cancelled') ...[
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      minimumSize: const Size.fromHeight(38),
                     ),
-                  ],
+                    onPressed: _busy
+                        ? null
+                        : () => _run(() => widget.api.post(
+                              '/api/admin/accounts/${_a['id']}/payments',
+                              {
+                                'amount': remaining,
+                                'method': 'cash',
+                                'reference': null,
+                                'occurredAtUtc': DateTime.now().toUtc().toIso8601String(),
+                              },
+                            )),
+                    icon: const Icon(Icons.account_balance_wallet_rounded, size: 16),
+                    label: Text('Bu taksiti tahsil et (${_money(remaining)})'),
+                  ),
                 ],
-              ),
+              ],
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -716,29 +764,6 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
               style: const TextStyle(
                   fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
         ],
-      );
-
-  Widget _stat(String label, String value, {Color? color, String? hint}) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceSoft,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Column(
-          children: [
-            Text(label.toUpperCase(),
-                style: const TextStyle(
-                    fontSize: 8.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
-            const SizedBox(height: 2),
-            Text(value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w900, color: color ?? AppColors.ink)),
-            if (hint != null)
-              Text(hint, style: const TextStyle(fontSize: 8.5, color: AppColors.muted)),
-          ],
-        ),
       );
 
   Widget _metaRow(IconData icon, String text) => Row(
@@ -1257,6 +1282,123 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
             color: value == null ? AppColors.muted : AppColors.ink,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------ tablo parçaları ---
+
+/// Tablo başlık satırı (küçük, harf aralıklı, gri).
+class _TableHeader extends StatelessWidget {
+  const _TableHeader({required this.labels, required this.flex, required this.aligns});
+
+  final List<String> labels;
+  final List<int> flex;
+  final List<TextAlign> aligns;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      color: AppColors.primary.withValues(alpha: .06),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              flex: flex[i],
+              child: Text(
+                labels[i],
+                textAlign: aligns[i],
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .7,
+                  color: AppColors.muted,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tek tablo satırının verisi (hücre metinleri + isteğe bağlı renkler).
+class _TableRowData {
+  const _TableRowData({required this.cells, this.colors, this.bold = false});
+
+  final List<String> cells;
+  final List<Color?>? colors;
+  final bool bold;
+}
+
+/// Başlıklı, çerçeveli basit tablo — satış detayında özet ve kapsam blokları için.
+class _TableShell extends StatelessWidget {
+  const _TableShell({
+    required this.header,
+    required this.rows,
+    required this.flex,
+    required this.aligns,
+    this.totalRow,
+    this.footer,
+  });
+
+  final List<String> header;
+  final List<_TableRowData> rows;
+  final List<int> flex;
+  final List<TextAlign> aligns;
+  final _TableRowData? totalRow;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line(_TableRowData row, {bool total = false}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: total ? AppColors.surfaceSoft : Colors.transparent,
+            border: const Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < row.cells.length; i++)
+                Expanded(
+                  flex: flex[i],
+                  child: Text(
+                    row.cells[i],
+                    textAlign: aligns[i],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: row.bold ? FontWeight.w900 : FontWeight.w600,
+                      color: row.colors != null && i < row.colors!.length
+                          ? (row.colors![i] ?? AppColors.ink)
+                          : AppColors.ink,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          _TableHeader(labels: header, flex: flex, aligns: aligns),
+          for (final row in rows) line(row),
+          if (totalRow != null) line(totalRow!, total: true),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: ClipRRect(borderRadius: BorderRadius.circular(4), child: footer),
+            ),
+        ],
       ),
     );
   }

@@ -325,6 +325,15 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
                     {c.accountCount} satış · {c.packageNames[0] || 'Paket'}
                     {c.packageNames.length > 1 ? ` +${c.packageNames.length - 1}` : ''}
                   </span>
+                  {c.sellers.length > 0 && (
+                    <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#a34a62]">
+                      <UserCheck className="h-3 w-3 shrink-0" strokeWidth={2} />
+                      <span className="truncate">
+                        Satan: {c.sellers[0].staffName}
+                        {c.sellers.length > 1 ? ` +${c.sellers.length - 1}` : ''}
+                      </span>
+                    </span>
+                  )}
                 </span>
                 <MiniStat label="Taksit" value={`${c.paidInstallmentCount}/${c.installmentCount}`} tone="rose" />
                 <MiniStat label="Ödenen" value={formatTL(Math.round(c.paidAmount))} tone="mint" />
@@ -358,6 +367,9 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
                           barClass="bg-[linear-gradient(90deg,#b79ae0,#7b52ba)]"
                         />
                       </div>
+
+                      {/* Kim sattı — kategori kırılımıyla aynı şerit, müşteri kapsamında. */}
+                      <SellerStrip sellers={c.sellers} />
 
                       <div className="flex flex-wrap gap-2">
                         <Chip icon={Users} text={`${c.installmentCount} taksit · ${c.paidInstallmentCount} ödendi`} />

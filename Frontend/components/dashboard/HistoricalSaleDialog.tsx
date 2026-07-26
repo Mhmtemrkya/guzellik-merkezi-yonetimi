@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Archive, CalendarClock, CheckCircle2, Loader2, Package, Scissors, User, Wallet, X } from 'lucide-react'
 import { formatTL } from '@/lib/apiMappers'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 
 /**
@@ -146,7 +147,8 @@ export default function HistoricalSaleDialog({
   const working = saving || busy
 
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" onClick={onClose}>
+    <ModalPortal>
+    <div className="fixed inset-0 z-[135] grid place-items-center bg-black/50 p-3 sm:p-4" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -337,5 +339,6 @@ export default function HistoricalSaleDialog({
         </footer>
       </motion.div>
     </div>
+    </ModalPortal>
   )
 }

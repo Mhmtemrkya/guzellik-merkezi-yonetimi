@@ -542,6 +542,13 @@ public sealed class CustomerAccountService : ICustomerAccountService
             bucket.TotalAmount += acc.TotalAmount;
             if (!string.IsNullOrWhiteSpace(acc.Name) && !bucket.PackageNames.Contains(acc.Name)) bucket.PackageNames.Add(acc.Name);
 
+            // "Kim sattı" — müşteri kırılımında da satışı yapan personel görünsün.
+            var sellerKey = acc.SoldByStaffMemberId ?? Guid.Empty;
+            if (!bucket.Sellers.TryGetValue(sellerKey, out var sellerAcc)) bucket.Sellers[sellerKey] = sellerAcc = new SellerAccumulator();
+            sellerAcc.Accounts.Add(acc.Id);
+            sellerAcc.Customers.Add(acc.CustomerId);
+            sellerAcc.Amount += acc.TotalAmount;
+
             // Ödenen/kalan, ToDto ile aynı mantık: tahsilatlar vade sırasına dağıtılır.
             var allocation = acc.AllocatePayments();
             foreach (var inst in acc.Installments)
@@ -766,7 +773,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 Math.Round(kv.Value.NextDueAmount, 2),
                 kv.Value.SessionsTotal,
                 kv.Value.SessionsUsed,
-                Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed)))
+                Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed),
+                BuildSellers(kv.Value.Sellers, staffNames)))
             .OrderByDescending(c => c.RemainingAmount)
             .ThenByDescending(c => c.TotalAmount)
             .Take(200)
@@ -808,6 +816,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
         public decimal NextDueAmount { get; set; }
         public int SessionsTotal { get; set; }
         public int SessionsUsed { get; set; }
+        /// <summary>Bu müşteriye satış yapan personel bazında pay (Guid.Empty = atanmamış).</summary>
+        public Dictionary<Guid, SellerAccumulator> Sellers { get; } = [];
     }
 
     /// <summary>Kategori kırılımında hizmet bazında biriktirilen değerler.</summary>

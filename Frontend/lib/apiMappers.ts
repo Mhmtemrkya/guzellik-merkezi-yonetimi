@@ -544,6 +544,7 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
       sessionsTotal: Number(c?.sessionsTotal ?? 0),
       sessionsUsed: Number(c?.sessionsUsed ?? 0),
       sessionsRemaining: Number(c?.sessionsRemaining ?? 0),
+      sellers: mapPackageSellers(c?.sellers),
     })),
   }
 }

@@ -14,6 +14,7 @@ import ConsultationForm from '@/components/dashboard/ConsultationForm'
 import CustomerBlacklistCard from '@/components/dashboard/CustomerBlacklistCard'
 import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import { formatTL } from '@/lib/apiMappers'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 import type { Appointment, CustomerAccount } from '@/lib/types'
 
 export interface CustomerModalData {
@@ -142,11 +143,13 @@ function MiniDonut({ segments, centerLabel, centerValue, formatValue }: { segmen
           const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
           return (
             <div key={i}>
-              <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="flex min-w-0 items-center gap-1.5 text-[#352432]/75">
+              {/* Dar sütunda (müşteri modali orta kolonu) satır taşıp üst üste binmesin:
+                  sol taraf kısalır, sağdaki tutar/yüzde satır sonuna sarar. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px]">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[#352432]/75">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ backgroundColor: seg.color }} />
                   <span className="truncate">{seg.label}</span>
-                  {seg.sub && <span className="shrink-0 text-[9px] text-[#352432]/40">· {seg.sub}</span>}
+                  {seg.sub && <span className="truncate text-[9px] text-[#352432]/40">· {seg.sub}</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5 font-mono tabular-nums">
                   {formatValue && <span className="text-[#352432]/55">{formatValue(seg.value)}</span>}
@@ -349,10 +352,11 @@ export default function CustomerDetailModal({
   ]
 
   return (
+    <ModalPortal>
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-6"
+          className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-2.5 sm:items-center sm:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -391,7 +395,7 @@ export default function CustomerDetailModal({
 
               <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:pr-12">
                 {/* Kimlik */}
-                <div className="flex items-center gap-3.5 pr-10">
+                <div className="flex min-w-0 items-center gap-3.5 pr-10">
                   <label title="Fotoğraf yükle" className="group relative grid h-16 w-16 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#efbfd0]/70 bg-gradient-to-br from-[#3a1a2a] to-[#c85776] font-display text-xl text-white">
                     {detailPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -402,7 +406,7 @@ export default function CustomerDetailModal({
                   </label>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-display text-2xl leading-tight tracking-tight text-[#352432]">{customer.name}</h2>
+                      <h2 className="max-w-full truncate font-display text-xl leading-tight tracking-tight text-[#352432] sm:text-2xl">{customer.name}</h2>
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${active90 ? 'border-emerald-200/70 bg-emerald-50 text-emerald-700' : 'border-[#ead8df] bg-white text-[#352432]/45'}`}>
                         {active90 ? 'Aktif Müşteri' : 'Pasif'}
                       </span>
@@ -416,14 +420,16 @@ export default function CustomerDetailModal({
                       )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#352432]/60">
-                      <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-[#c85776]/70" /> {customer.email || '—'}</span>
-                      <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-[#c85776]/70" /> {customer.phone}</span>
+                      <span className="flex min-w-0 max-w-full items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> <span className="truncate">{customer.email || '—'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> {customer.phone}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* KPI şeridi */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:gap-3">
+                {/* KPI şeridi — dar ekranda 2 sütun, geniş ekranda 4; kimlik bloğunu ezmez. */}
+                <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 lg:w-auto lg:gap-3">
                   {kpis.map((k) => (
                     <div key={k.label} className="rounded-[14px] border border-[#ead8df]/70 bg-white/70 px-3 py-2">
                       <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{k.label}</div>
@@ -638,5 +644,6 @@ export default function CustomerDetailModal({
         </motion.div>
       )}
     </AnimatePresence>
+    </ModalPortal>
   )
 }

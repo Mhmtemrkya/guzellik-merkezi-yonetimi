@@ -1246,10 +1246,30 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
                   fontSize: 13.5,
                 ),
               ),
-              subtitle: Text(
-                '${numberOf(c, const ['paidInstallmentCount']).toInt()}/${numberOf(c, const ['installmentCount']).toInt()} taksit · '
-                '${_compactMoney(paid)} ödendi · ${numberOf(c, const ['sessionsRemaining']).toInt()} seans kaldı',
-                style: const TextStyle(color: AppColors.muted, fontSize: 11),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${numberOf(c, const ['paidInstallmentCount']).toInt()}/${numberOf(c, const ['installmentCount']).toInt()} taksit · '
+                    '${_compactMoney(paid)} ödendi · ${numberOf(c, const ['sessionsRemaining']).toInt()} seans kaldı',
+                    style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                  // "Kim sattı" — kategori kırılımıyla aynı bilgi, müşteri kapsamında (web paritesi).
+                  if (apiItems(c['sellers']).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Satan: ${_sellerSummary(apiItems(c['sellers']))}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.primaryDark,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               trailing: Text(
                 _compactMoney(numberOf(c, const ['remainingAmount'])),
@@ -1260,6 +1280,9 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
                 ),
               ),
               children: [
+                if (apiItems(c['sellers']).isNotEmpty) ...[
+                  _SellerStrip(sellers: apiItems(c['sellers']), total: total),
+                ],
                 _DetailProgress(
                   label: 'Tahsilat',
                   value:

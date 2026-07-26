@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { formatTL } from '@/lib/apiMappers'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 import type { CustomerAccount, SaleStatusKey } from '@/lib/types'
 
 /**
@@ -95,7 +96,8 @@ export default function SaleDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[85] grid place-items-center bg-black/50 p-4" onClick={onClose}>
+    <ModalPortal>
+    <div className="fixed inset-0 z-[130] grid place-items-center bg-black/50 p-3 sm:p-4" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -138,66 +140,108 @@ export default function SaleDetailModal({
           )}
         </header>
 
-        {/* BODY */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {/* Özet kutuları */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <Stat label="Tutar" value={formatTL(Math.round(account.totalAmount))} />
-            <Stat label="Tahsil edilen" value={formatTL(Math.round(account.paidAmount))} tone="text-[#2c7d63]" />
-            <Stat label="Kalan" value={formatTL(Math.round(account.remainingAmount))} tone={account.remainingAmount > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'} />
-            <Stat
-              label="Seans"
-              value={account.sessionsTotal > 0 ? `${account.sessionsRemaining}/${account.sessionsTotal}` : '—'}
-              hint={account.sessionsTotal > 0 ? `${account.sessionsUsed} kullanıldı` : 'seanssız satış'}
-            />
-          </div>
-
-          {/* Ödeme durumu */}
-          <div className="rounded-[14px] border border-[#f2e6eb] bg-[#fffafc] px-3.5 py-3">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-[#4a3a44]">
-              <span className="inline-flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5 text-[#c85776]" /> Ödeme durumu</span>
-              <span>%{paidPct}</span>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f2e6eb]">
-              <div className={`h-full rounded-full ${account.remainingAmount > 0.005 ? 'bg-[linear-gradient(90deg,#e78ba8,#c05277)]' : 'bg-[linear-gradient(90deg,#7fc7ad,#2c7d63)]'}`} style={{ width: `${Math.max(2, paidPct)}%` }} />
-            </div>
-            <div className="mt-1.5 text-[11px] text-[#705a66]">
-              {formatTL(Math.round(account.paidAmount))} / {formatTL(Math.round(account.totalAmount))}
-              {account.creditBalance > 0 && <span className="ml-1 text-[#2c7d63]">· {formatTL(Math.round(account.creditBalance))} fazla ödeme</span>}
-            </div>
-          </div>
-
-          {/* Hizmet kalemleri: adı karşısında tutarı */}
+        {/* BODY — her blok gerçek bir tablo; dar ekranda tablolar kendi içinde yatay kayar. */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+          {/* SATIŞ ÖZETİ */}
           <section>
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#c85776]">
-              <Scissors className="h-3.5 w-3.5" /> Kapsam
-            </div>
-            <div className="overflow-hidden rounded-[14px] border border-[#f2e6eb]">
-              {items.map((item, i) => (
-                <div
-                  key={`${item.serviceDefinitionId ?? 'item'}-${i}`}
-                  className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${i % 2 === 0 ? 'bg-white' : 'bg-[#fffafc]'}`}
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-medium text-[#352432]">{item.name}</div>
-                    {item.sessionsTotal > 0 && (
-                      <div className="mt-0.5 text-[10px] text-[#705a66]">
-                        {item.sessionsUsed}/{item.sessionsTotal} seans kullanıldı · {Math.max(0, item.sessionsTotal - item.sessionsUsed)} kaldı
+            <SectionTitle icon={Wallet} text="Satış özeti" />
+            <TableShell>
+              <table className="w-full min-w-[440px] border-collapse text-left">
+                <thead>
+                  <tr className="bg-[#fff5f8] text-[9.5px] font-semibold uppercase tracking-wide text-[#8a7480]">
+                    <th className="px-3 py-2">Tutar</th>
+                    <th className="px-3 py-2 text-right">Tahsil edilen</th>
+                    <th className="px-3 py-2 text-right">Kalan</th>
+                    <th className="px-3 py-2 text-right">Seans</th>
+                    <th className="px-3 py-2 text-right">Ödeme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="text-[13px] font-bold tabular-nums text-[#241923]">
+                    <td className="px-3 py-2.5">{formatTL(Math.round(account.totalAmount))}</td>
+                    <td className="px-3 py-2.5 text-right text-[#2c7d63]">{formatTL(Math.round(account.paidAmount))}</td>
+                    <td className={`px-3 py-2.5 text-right ${account.remainingAmount > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'}`}>
+                      {formatTL(Math.round(account.remainingAmount))}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {account.sessionsTotal > 0 ? `${account.sessionsRemaining}/${account.sessionsTotal}` : '—'}
+                      {account.sessionsTotal > 0 && (
+                        <span className="ml-1 text-[9.5px] font-medium text-[#705a66]">({account.sessionsUsed} kullanıldı)</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">%{paidPct}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan={5} className="px-3 pb-2.5">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#f2e6eb]">
+                        <div
+                          className={`h-full rounded-full ${account.remainingAmount > 0.005 ? 'bg-[linear-gradient(90deg,#e78ba8,#c05277)]' : 'bg-[linear-gradient(90deg,#7fc7ad,#2c7d63)]'}`}
+                          style={{ width: `${Math.max(2, paidPct)}%` }}
+                        />
                       </div>
-                    )}
-                  </div>
-                  <div className="shrink-0 font-display text-[13px] font-bold tabular-nums text-[#352432]">{formatTL(Math.round(item.amount))}</div>
-                </div>
-              ))}
-            </div>
+                      {account.creditBalance > 0 && (
+                        <div className="mt-1 text-[10px] font-semibold text-[#2c7d63]">
+                          {formatTL(Math.round(account.creditBalance))} fazla ödeme (kredi)
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </TableShell>
           </section>
 
-          {/* Aylık taksitler — aya tıklayınca ayrıntı açılır */}
+          {/* KAPSAM — hizmet / seans / tutar tablosu */}
           <section>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#c85776]">
-                <CreditCard className="h-3.5 w-3.5" /> Aylık Taksitler
-              </span>
+            <SectionTitle icon={Scissors} text="Kapsam" />
+            <TableShell>
+              <table className="w-full min-w-[440px] border-collapse text-left">
+                <thead>
+                  <tr className="bg-[#fff5f8] text-[9.5px] font-semibold uppercase tracking-wide text-[#8a7480]">
+                    <th className="px-3 py-2">Hizmet</th>
+                    <th className="px-3 py-2 text-right">Seans</th>
+                    <th className="px-3 py-2 text-right">Kalan</th>
+                    <th className="px-3 py-2 text-right">Tutar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f6ecf0]">
+                  {items.map((item, i) => (
+                    <tr key={`${item.serviceDefinitionId ?? 'item'}-${i}`} className="text-[12px] text-[#4a3a44]">
+                      <td className="px-3 py-2.5">
+                        <span className="block max-w-[220px] truncate font-medium text-[#352432]">{item.name}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {item.sessionsTotal > 0 ? `${item.sessionsUsed}/${item.sessionsTotal}` : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#2c7d63]">
+                        {item.sessionsTotal > 0 ? Math.max(0, item.sessionsTotal - item.sessionsUsed) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold tabular-nums text-[#352432]">{formatTL(Math.round(item.amount))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {items.length > 1 && (
+                  <tfoot>
+                    <tr className="border-t border-[#efe1e7] bg-[#fffafc] text-[12px] font-bold text-[#352432]">
+                      <td className="px-3 py-2">TOPLAM</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {account.sessionsTotal > 0 ? `${account.sessionsUsed}/${account.sessionsTotal}` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#2c7d63]">
+                        {account.sessionsTotal > 0 ? account.sessionsRemaining : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatTL(Math.round(account.totalAmount))}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </TableShell>
+          </section>
+
+          {/* AYLIK TAKSİTLER — satıra tıklayınca ayrıntı satırı açılır */}
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <SectionTitle icon={CreditCard} text="Aylık taksitler" bare />
               {account.installments.length > 0 && (
                 <span className="text-[10px] text-[#705a66]">
                   {account.installments.filter((i) => i.status === 'Paid').length}/{account.installments.length} ödendi
@@ -210,57 +254,101 @@ export default function SaleDetailModal({
                 Taksit planı yok — satış peşin kaydedilmiş.
               </div>
             ) : (
-              <div className="space-y-1.5">
-                {account.installments.map((inst) => {
-                  const due = parseDue(inst.dueDate)
-                  const isOpen = openInstallment === inst.id
-                  const paid = inst.status === 'Paid' || inst.remaining <= 0.005
-                  return (
-                    <div key={inst.id} className={`overflow-hidden rounded-[12px] border ${inst.overdue ? 'border-rose-200 bg-rose-50/40' : paid ? 'border-emerald-200/70 bg-emerald-50/30' : 'border-[#f2e6eb] bg-white'}`}>
-                      <button
-                        type="button"
-                        onClick={() => setOpenInstallment(isOpen ? null : inst.id)}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-[#fffafc]"
-                      >
-                        <span className={`grid h-9 w-11 shrink-0 place-items-center rounded-[9px] border text-center ${paid ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : inst.overdue ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-[#efe1e7] bg-[#fffafc] text-[#705a66]'}`}>
-                          <span className="leading-tight">
-                            <span className="block text-[11px] font-bold">{due.month}</span>
-                            <span className="block text-[8px] opacity-70">{due.year}</span>
-                          </span>
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[#352432]">{inst.no}. taksit · {formatTL(Math.round(inst.amount))}</span>
-                          <span className={`block text-[10px] ${inst.overdue ? 'font-semibold text-rose-600' : 'text-[#705a66]'}`}>
-                            {paid ? 'Ödendi' : inst.overdue ? `Gecikti · vade ${due.full}` : `Vade ${due.full}`}
-                          </span>
-                        </span>
-                        {paid ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <ChevronDown className={`h-4 w-4 shrink-0 text-[#c9b3bd] transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
-                      </button>
+              <TableShell>
+                <table className="w-full min-w-[520px] border-collapse text-left">
+                  <thead>
+                    <tr className="bg-[#fff5f8] text-[9.5px] font-semibold uppercase tracking-wide text-[#8a7480]">
+                      <th className="px-3 py-2">#</th>
+                      <th className="px-3 py-2">Vade</th>
+                      <th className="px-3 py-2 text-right">Tutar</th>
+                      <th className="px-3 py-2 text-right">Tahsil</th>
+                      <th className="px-3 py-2 text-right">Kalan</th>
+                      <th className="px-3 py-2">Durum</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#f6ecf0]">
+                    {account.installments.map((inst) => {
+                      const due = parseDue(inst.dueDate)
+                      const isOpen = openInstallment === inst.id
+                      const paid = inst.status === 'Paid' || inst.remaining <= 0.005
+                      const collectable = !paid && canManage && !!onCollectInstallment && account.saleStatus !== 'Cancelled'
+                      return (
+                        <Fragment key={inst.id}>
+                          <tr
+                            onClick={() => setOpenInstallment(isOpen ? null : inst.id)}
+                            className={`cursor-pointer text-[12px] transition-colors ${
+                              inst.overdue ? 'bg-rose-50/50 hover:bg-rose-50' : paid ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-[#fffafc]'
+                            }`}
+                          >
+                            <td className="px-3 py-2.5 font-semibold text-[#352432] tabular-nums">{inst.no}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-[#4a3a44]">
+                              {due.full}
+                              <span className="ml-1 text-[10px] text-[#705a66]">{due.month}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#352432]">{formatTL(Math.round(inst.amount))}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums text-[#2c7d63]">{formatTL(Math.round(inst.paidAmount))}</td>
+                            <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${inst.remaining > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'}`}>
+                              {formatTL(Math.round(inst.remaining))}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5">
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9.5px] font-bold ${
+                                paid ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : inst.overdue ? 'border-rose-200 bg-rose-50 text-rose-600'
+                                  : 'border-[#efe1e7] bg-[#fffafc] text-[#705a66]'
+                              }`}>
+                                {paid ? 'Ödendi' : inst.overdue ? 'Gecikti' : 'Bekliyor'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <ChevronDown className={`inline h-3.5 w-3.5 text-[#c9b3bd] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            </td>
+                          </tr>
 
-                      {isOpen && (
-                        <div className="space-y-2 border-t border-[#f2e6eb] bg-[#fffafc] px-3 py-2.5">
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            <MiniCell label="Taksit" value={formatTL(Math.round(inst.amount))} />
-                            <MiniCell label="Tahsil" value={formatTL(Math.round(inst.paidAmount))} tone="text-[#2c7d63]" />
-                            <MiniCell label="Kalan" value={formatTL(Math.round(inst.remaining))} tone={inst.remaining > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'} />
-                          </div>
-                          {inst.paidAtUtc && <div className="text-[10px] text-[#705a66]">Ödeme tarihi: {formatLongDate(inst.paidAtUtc)}</div>}
-                          {!paid && canManage && onCollectInstallment && account.saleStatus !== 'Cancelled' && (
-                            <button
-                              type="button"
-                              disabled={working || busy}
-                              onClick={() => run(() => onCollectInstallment(account.id, inst.remaining))}
-                              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#2c7d63] px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#24664f] disabled:opacity-60"
-                            >
-                              <Wallet className="h-3.5 w-3.5" /> Bu taksiti tahsil et ({formatTL(Math.round(inst.remaining))})
-                            </button>
+                          {isOpen && (
+                            <tr className="bg-[#fffafc]">
+                              <td colSpan={7} className="px-3 py-2.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-[10.5px] text-[#705a66]">
+                                    {inst.paidAtUtc ? `Ödeme tarihi: ${formatLongDate(inst.paidAtUtc)}` : `Vade: ${due.full}`}
+                                    {inst.overdue && <span className="ml-1 font-semibold text-rose-600">· vadesi geçti</span>}
+                                  </span>
+                                  {collectable && (
+                                    <button
+                                      type="button"
+                                      disabled={working || busy}
+                                      onClick={(e) => { e.stopPropagation(); void run(() => onCollectInstallment!(account.id, inst.remaining)) }}
+                                      className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#2c7d63] px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#24664f] disabled:opacity-60"
+                                    >
+                                      {working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}
+                                      Bu taksiti tahsil et ({formatTL(Math.round(inst.remaining))})
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-[#efe1e7] bg-[#fffafc] text-[12px] font-bold text-[#352432]">
+                      <td className="px-3 py-2" colSpan={2}>TOPLAM</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatTL(Math.round(account.installments.reduce((s, i) => s + i.amount, 0)))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#2c7d63]">
+                        {formatTL(Math.round(account.installments.reduce((s, i) => s + i.paidAmount, 0)))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-[#cf4d68]">
+                        {formatTL(Math.round(account.installments.reduce((s, i) => s + i.remaining, 0)))}
+                      </td>
+                      <td className="px-3 py-2" colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </TableShell>
             )}
           </section>
 
@@ -328,24 +416,23 @@ export default function SaleDetailModal({
         )}
       </motion.div>
     </div>
+    </ModalPortal>
   )
 }
 
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
+function SectionTitle({ icon: Icon, text, bare = false }: { icon: typeof Wallet; text: string; bare?: boolean }) {
   return (
-    <div className="rounded-[12px] border border-[#f2e6eb] bg-[#fffafc] px-2.5 py-2 text-center">
-      <div className="text-[9px] font-semibold uppercase tracking-wide text-[#705a66]">{label}</div>
-      <div className={`mt-0.5 font-display text-[14px] font-bold tabular-nums ${tone || 'text-[#241923]'}`}>{value}</div>
-      {hint && <div className="mt-0.5 text-[9px] text-[#705a66]">{hint}</div>}
-    </div>
+    <span className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#c85776] ${bare ? '' : 'mb-2'}`}>
+      <Icon className="h-3.5 w-3.5 shrink-0" /> {text}
+    </span>
   )
 }
 
-function MiniCell({ label, value, tone }: { label: string; value: string; tone?: string }) {
+/** Tabloyu çerçeveler ve dar ekranda YALNIZ tabloyu yatay kaydırır (modal gövdesi kaymaz). */
+function TableShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-[10px] border border-[#f2e6eb] bg-white px-2 py-1.5">
-      <div className="text-[9px] font-semibold uppercase tracking-wide text-[#705a66]">{label}</div>
-      <div className={`text-[12px] font-bold tabular-nums ${tone || 'text-[#352432]'}`}>{value}</div>
+    <div className="overflow-hidden rounded-[14px] border border-[#f2e6eb]">
+      <div className="overflow-x-auto">{children}</div>
     </div>
   )
 }

@@ -1200,6 +1200,7 @@ export interface ApiPackageCustomerBreakdown {
   sessionsTotal?: number
   sessionsUsed?: number
   sessionsRemaining?: number
+  sellers?: ApiPackageSeller[]
 }
 
 export interface AccountMonthlyInstallment {
@@ -1281,6 +1282,8 @@ export interface PackageCustomerBreakdown {
   sessionsTotal: number
   sessionsUsed: number
   sessionsRemaining: number
+  /** Bu müşteriye satışı kim yaptı — personel bazlı adet/tutar payı. */
+  sellers: PackageSeller[]
 }
 
 export type TreatmentPhotoKind = 'Before' | 'After' | 'Progress'
