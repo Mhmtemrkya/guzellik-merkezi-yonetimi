@@ -145,6 +145,7 @@ class CrudListScreen extends StatefulWidget {
     this.onUpdate,
     this.onDelete,
     this.rowActions = const [],
+    this.bulkActions = const [],
     this.createLabel = 'Yeni kayıt',
     this.deleteLabel = 'Sil',
     this.deleteConfirm = 'Bu kaydı silmek istediğinize emin misiniz?',
@@ -177,6 +178,9 @@ class CrudListScreen extends StatefulWidget {
   final CrudUpdate? onUpdate;
   final CrudDelete? onDelete;
   final List<CrudRowAction> rowActions;
+
+  /// Silme dışı toplu işlemler (seçim çubuğunda çıkar) — bkz. [BulkListAction].
+  final List<BulkListAction> bulkActions;
   final String createLabel;
   final String deleteLabel;
   final String deleteConfirm;
@@ -344,6 +348,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
                 await widget.onDelete!(item);
               }
             },
+      bulkActions: widget.bulkActions,
       floatingAction: widget.onCreate == null || !widget.canCreate
           ? null
           : FloatingActionButton.extended(

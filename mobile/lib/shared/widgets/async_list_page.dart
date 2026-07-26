@@ -19,6 +19,20 @@ class ListFilterOption {
   final bool Function(Map<String, dynamic> item) test;
 }
 
+/// Listede seçili kayıtlar üzerinde çalışan, silme dışı toplu işlem
+/// (ör. "KVKK onay mesajı gönder"). Kullanıcıya gösterilecek sonuç metnini döner.
+class BulkListAction {
+  const BulkListAction({
+    required this.label,
+    required this.icon,
+    required this.run,
+  });
+
+  final String label;
+  final IconData icon;
+  final Future<String> Function(List<Map<String, dynamic>> items) run;
+}
+
 class AsyncListPage extends StatefulWidget {
   const AsyncListPage({
     required this.eyebrow,
@@ -38,6 +52,7 @@ class AsyncListPage extends StatefulWidget {
     this.onItemTap,
     this.headerExtra,
     this.onBulkDelete,
+    this.bulkActions = const [],
     this.remoteSearch,
     super.key,
   });
@@ -62,6 +77,10 @@ class AsyncListPage extends StatefulWidget {
   /// Verilirse listede toplu seçim açılır: karta uzun basınca seçim modu başlar,
   /// sonraki dokunuşlar seçer/kaldırır ve alt çubuktan seçilenler topluca silinir.
   final Future<void> Function(List<Map<String, dynamic>> items)? onBulkDelete;
+
+  /// Silme dışındaki toplu işlemler (ör. "KVKK onay mesajı gönder"). Dolu ise
+  /// silme yetkisi olmasa bile seçim modu açılır.
+  final List<BulkListAction> bulkActions;
 
   /// SUNUCU-TARAFLI arama. Verilirse arama kutusu bellekte filtrelemez; terimi sunucuya
   /// gönderir (350 ms debounce) ve dönen sayfayı gösterir. Ölçek kuralı: 12 bin / 1 milyon
@@ -304,26 +323,61 @@ class _AsyncListPageState extends State<AsyncListPage> {
               onPressed: _bulkBusy ? null : () => setState(_selected.clear),
               child: const Text('Temizle'),
             ),
-            const SizedBox(width: 4),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-              onPressed: _bulkBusy ? null : _runBulkDelete,
-              icon: _bulkBusy
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.delete_outline_rounded, size: 17),
-              label: const Text('Sil'),
-            ),
+            for (final action in widget.bulkActions) ...[
+              const SizedBox(width: 4),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                onPressed: _bulkBusy ? null : () => _runBulkAction(action),
+                icon: Icon(action.icon, size: 17),
+                label: Text(action.label),
+              ),
+            ],
+            if (widget.onBulkDelete != null) ...[
+              const SizedBox(width: 4),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+                onPressed: _bulkBusy ? null : _runBulkDelete,
+                icon: _bulkBusy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.delete_outline_rounded, size: 17),
+                label: const Text('Sil'),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// Seçim modu silme YA DA en az bir ek toplu işlem varsa açılır.
+  bool get _selectionEnabled =>
+      widget.onBulkDelete != null || widget.bulkActions.isNotEmpty;
+
+  /// Silme dışı toplu işlem — sonuç metni kullanıcıya snackbar ile bildirilir.
+  Future<void> _runBulkAction(BulkListAction action) async {
+    if (_selected.isEmpty) return;
+    final items = _selected.values.toList();
+    setState(() => _bulkBusy = true);
+    String message;
+    try {
+      message = await action.run(items);
+    } catch (e) {
+      message = '$e';
+    }
+    if (!mounted) return;
+    setState(() {
+      _selected.clear();
+      _bulkBusy = false;
+    });
+    refresh();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _runBulkDelete() async {
@@ -386,7 +440,7 @@ class _AsyncListPageState extends State<AsyncListPage> {
       child: InkWell(
         onTap: () {
           final id = '${item['id'] ?? ''}';
-          if (_selected.isNotEmpty && widget.onBulkDelete != null && id.isNotEmpty) {
+          if (_selected.isNotEmpty && _selectionEnabled && id.isNotEmpty) {
             setState(() {
               if (_selected.containsKey(id)) {
                 _selected.remove(id);
@@ -398,7 +452,7 @@ class _AsyncListPageState extends State<AsyncListPage> {
           }
           widget.onItemTap?.call(item);
         },
-        onLongPress: widget.onBulkDelete == null
+        onLongPress: !_selectionEnabled
             ? null
             : () {
                 final id = '${item['id'] ?? ''}';

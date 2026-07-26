@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Archive, CalendarClock, CheckCircle2, Loader2, Package, Scissors, User, Wallet, X } from 'lucide-react'
 import { formatTL } from '@/lib/apiMappers'
+import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 
 /**
  * GEÇMİŞ SATIŞ girişi — yazılıma yeni geçen kurumlar, önceki yıllarda sattıkları paket/hizmetleri
@@ -12,6 +13,8 @@ import { formatTL } from '@/lib/apiMappers'
  */
 
 export interface HistoricalSaleValues {
+  /** Katalog tarafından açıldığında müşteri burada seçilir; müşteri kartından açılışta boş kalır. */
+  customerId?: string
   name: string
   soldAt: string
   soldByStaffMemberId: string | null
@@ -35,6 +38,9 @@ export default function HistoricalSaleDialog({
   packageOptions,
   serviceOptions,
   busy = false,
+  needsCustomer = false,
+  tenantId,
+  preset,
   onClose,
   onSubmit,
 }: {
@@ -43,18 +49,27 @@ export default function HistoricalSaleDialog({
   packageOptions: { id: string; name: string; price: number }[]
   serviceOptions: { id: string; name: string; price: number }[]
   busy?: boolean
+  /** Katalog (paket/hizmet) tarafından açıldığında müşteri bu modalda seçilir. */
+  needsCustomer?: boolean
+  /** Müşteri araması sunucuda yapılır — 12 bin+ kayıtta liste indirilmez. */
+  tenantId?: string
+  /** Katalog kartından açılışta satılan paket/hizmet peşin seçilir ve değiştirilmez. */
+  preset?: { kind: 'package' | 'service'; id: string; name: string; price: number }
   onClose: () => void
   onSubmit: (values: HistoricalSaleValues) => Promise<void>
 }) {
   // Katalogdan seçim: paket ya da tek hizmet. "Serbest" seçilirse ad elle yazılır
   // (kataloğa hiç girilmemiş eski paketler için).
-  const [kind, setKind] = useState<'package' | 'service' | 'free'>('package')
-  const [packageId, setPackageId] = useState('')
-  const [serviceId, setServiceId] = useState('')
-  const [name, setName] = useState('')
+  const [kind, setKind] = useState<'package' | 'service' | 'free'>(preset?.kind ?? 'package')
+  const [packageId, setPackageId] = useState(preset?.kind === 'package' ? preset.id : '')
+  const [serviceId, setServiceId] = useState(preset?.kind === 'service' ? preset.id : '')
+  const [name, setName] = useState(preset?.name ?? '')
+  const [customerId, setCustomerId] = useState('')
+  const [customerLabel, setCustomerLabel] = useState('')
+  const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const [soldAt, setSoldAt] = useState('')
   const [staffId, setStaffId] = useState('')
-  const [total, setTotal] = useState('')
+  const [total, setTotal] = useState(preset ? String(preset.price) : '')
   const [paid, setPaid] = useState('')
   const [sessionsTotal, setSessionsTotal] = useState('')
   const [sessionsUsed, setSessionsUsed] = useState('')
@@ -91,6 +106,7 @@ export default function HistoricalSaleDialog({
   }, [kind, packageId, serviceId, name, packageOptions, serviceOptions])
 
   const submit = async (): Promise<void> => {
+    if (needsCustomer && !customerId) { setError('Müşteri seçin.'); return }
     if (!effectiveName.trim()) { setError('Paket / hizmet adı zorunludur.'); return }
     if (!soldAt) { setError('Satış tarihi zorunludur.'); return }
     if (soldAt > todayIso) { setError('Satış tarihi bugünden ileri olamaz.'); return }
@@ -105,6 +121,7 @@ export default function HistoricalSaleDialog({
     setError('')
     try {
       await onSubmit({
+        customerId: customerId || undefined,
         name: effectiveName.trim(),
         // Girilen gün yerel; günün başlangıcı UTC'ye çevrilir.
         soldAt: new Date(`${soldAt}T12:00:00`).toISOString(),
@@ -153,9 +170,32 @@ export default function HistoricalSaleDialog({
         </header>
 
         <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
+          {/* Katalogdan açıldığında müşteri burada seçilir (sunucu-taraflı arama). */}
+          {needsCustomer && (
+            <div>
+              <span className={LABEL}><User className="mr-1 inline h-3 w-3 text-[#c85776]" />Müşteri *</span>
+              <CustomerPicker
+                items={[]}
+                value={customerId}
+                onChange={setCustomerId}
+                onSelectItem={(c: CustomerPickerItem) => setCustomerLabel(c.name)}
+                onSearch={customerSearch}
+                placeholder="İsim veya telefonla ara…"
+              />
+              {customerLabel && <p className="mt-1 text-[10px] text-[#705a66]">Seçili: <b className="text-[#4a3a44]">{customerLabel}</b></p>}
+            </div>
+          )}
+
           {/* Ne satıldı? */}
           <div>
             <span className={LABEL}>Ne satıldı? *</span>
+            {preset ? (
+              <div className="flex items-center gap-2 rounded-[11px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2">
+                {preset.kind === 'package' ? <Package className="h-4 w-4 shrink-0 text-[#c85776]" /> : <Scissors className="h-4 w-4 shrink-0 text-[#c85776]" />}
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#352432]">{preset.name}</span>
+                <span className="shrink-0 text-[11px] font-semibold text-[#a34a62]">{formatTL(preset.price)}</span>
+              </div>
+            ) : (
             <div className="mb-2 inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
               {([['package', 'Paket', Package], ['service', 'Hizmet', Scissors], ['free', 'Elle yaz', Archive]] as const).map(([k, label, Icon]) => (
                 <button
@@ -168,20 +208,21 @@ export default function HistoricalSaleDialog({
                 </button>
               ))}
             </div>
+            )}
 
-            {kind === 'package' && (
+            {!preset && kind === 'package' && (
               <select value={packageId} onChange={(e) => applyPackage(e.target.value)} className={FIELD}>
                 <option value="">Paket seçin…</option>
                 {packageOptions.map((p) => <option key={p.id} value={p.id}>{p.name} · {formatTL(p.price)}</option>)}
               </select>
             )}
-            {kind === 'service' && (
+            {!preset && kind === 'service' && (
               <select value={serviceId} onChange={(e) => applyService(e.target.value)} className={FIELD}>
                 <option value="">Hizmet seçin…</option>
                 {serviceOptions.map((s) => <option key={s.id} value={s.id}>{s.name} · {formatTL(s.price)}</option>)}
               </select>
             )}
-            {(kind === 'free' || (kind === 'package' && !packageId) || (kind === 'service' && !serviceId)) && (
+            {!preset && (kind === 'free' || (kind === 'package' && !packageId) || (kind === 'service' && !serviceId)) && (
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -189,7 +230,7 @@ export default function HistoricalSaleDialog({
                 className={`${FIELD} ${kind === 'free' ? '' : 'mt-2'}`}
               />
             )}
-            {kind === 'free' && <p className="mt-1 text-[10px] text-[#705a66]">Katalogda olmayan eski paketler için adı elle yazın.</p>}
+            {!preset && kind === 'free' && <p className="mt-1 text-[10px] text-[#705a66]">Katalogda olmayan eski paketler için adı elle yazın.</p>}
           </div>
 
           {/* Tarih + personel */}

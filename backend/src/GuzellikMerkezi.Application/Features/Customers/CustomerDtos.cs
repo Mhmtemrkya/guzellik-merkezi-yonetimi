@@ -31,6 +31,15 @@ public sealed record UpsertCustomerRequest(Guid BranchId, string FullName, strin
 
 public sealed record SetBlacklistRequest(bool Blacklisted, string? Reason);
 
+/// <summary>Seçili müşterilere KVKK açık rıza mesajı gönderme isteği (toplu).</summary>
+public sealed record SendKvkkRequestRequest(IReadOnlyCollection<Guid> CustomerIds);
+
+/// <summary>
+/// KVKK mesaj gönderim sonucu. Gönderim kalıcı kuyruğa yazıldığı için "Queued" istek anında
+/// kesinleşir; zaten onaylı ya da telefonsuz kayıtlar sessizce atlanır ve burada raporlanır.
+/// </summary>
+public sealed record KvkkRequestResultDto(int Queued, int AlreadyApproved, int NoPhone);
+
 public sealed record SetVipRequest(bool Vip);
 
 /// <summary>Pasif müşteri — uzun süredir randevu/paket işlemi olmayan.</summary>

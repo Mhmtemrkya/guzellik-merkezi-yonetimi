@@ -27,7 +27,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
     private CustomerAccountDto Mask(CustomerAccountDto dto) =>
         IsStaffViewer ? dto with { CustomerPhone = PhoneMask.Mask(dto.CustomerPhone) } : dto;
 
-    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null)
+    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null)
     {
         var query = _db.CustomerAccounts
             .AsNoTracking()
@@ -42,6 +42,22 @@ public sealed class CustomerAccountService : ICustomerAccountService
 
         // Müşteri kartı: yalnız o müşterinin carileri (tüm liste çekilmesin).
         if (customerId is { } cid && cid != Guid.Empty) query = query.Where(x => x.CustomerId == cid);
+
+        // Katalog kartı (hizmet/paket satış paneli): satış, seans satırları üzerinden eşlenir.
+        // EXISTS alt sorgusu kullanılır — Guid listesi .Contains() MySQL'de çevrilemiyor.
+        if (serviceDefinitionId is { } svcId && svcId != Guid.Empty)
+        {
+            query = query.Where(x => _db.CustomerPackageSessions
+                .Any(s => s.CustomerAccountId == x.Id && s.ServiceDefinitionId == svcId));
+        }
+        if (servicePackageId is { } pkgId && pkgId != Guid.Empty)
+        {
+            // Doğrudan cari satışı (ServicePackageId dolu) VEYA adisyon satışı (paket yalnız seansta).
+            query = query.Where(x => x.ServicePackageId == pkgId || _db.CustomerPackageSessions
+                .Any(s => s.CustomerAccountId == x.Id && s.ServicePackageId == pkgId));
+        }
+        var catalogScoped = (serviceDefinitionId is { } s1 && s1 != Guid.Empty)
+                            || (servicePackageId is { } s2 && s2 != Guid.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
@@ -70,9 +86,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
             return Mask(a.ToDto(stats?.Revenue ?? 0m, stats?.Count ?? 0));
         }).ToArray();
 
-        // Müşteri kartındaki satış paneli: seans durumu + kalemler + Aktif/Tamamlandı/İptal rozeti.
-        // Yalnızca tek müşteri süzüldüğünde hesaplanır (genel liste hafif kalsın).
-        if (customerId is { } scoped && scoped != Guid.Empty)
+        // Satış paneli (müşteri kartı ya da katalog kartı): seans durumu + kalemler +
+        // Aktif/Tamamlandı/İptal rozeti. Yalnızca süzülmüş listede hesaplanır (genel liste hafif kalsın).
+        if ((customerId is { } scoped && scoped != Guid.Empty) || catalogScoped)
             items = await EnrichSalesAsync(tenantId, accounts, items, cancellationToken);
 
         return Result<PagedResult<CustomerAccountDto>>.Success(new PagedResult<CustomerAccountDto>(items, total, request.SafePage, request.SafePageSize));
@@ -461,8 +477,11 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var accountsQuery = _db.CustomerAccounts
             .AsNoTracking()
             .Where(a => a.TenantId == tenantId);
-        if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.CreatedAtUtc >= fromUtc.Value);
-        if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.CreatedAtUtc < toUtc.Value);
+        // Dönem, satışın GERÇEK tarihine (SoldAtUtc) göre süzülür. Normal satışta SoldAtUtc =
+        // oluşturma anı; geçmiş satış girişinde ise geçmiş bir tarihtir — böylece 2024 satışı
+        // bugünün cirosunda görünmez.
+        if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.SoldAtUtc >= fromUtc.Value);
+        if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.SoldAtUtc < toUtc.Value);
         var accounts = await accountsQuery
             .Include(a => a.Installments)
             .Include(a => a.Payments)
@@ -636,6 +655,14 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .GroupBy(x => (x.ServicePackageId, x.ServiceDefinitionId))
             .ToDictionary(g => g.Key, g => g.First().UnitPrice);
         var accountTotals = accounts.ToDictionary(a => a.Id, a => a.TotalAmount);
+        // "Kim sattı": cari → satışı yapan personel. Adı şifreli kolondan geldiği için bellekte çözülür.
+        var accountSellers = accounts.ToDictionary(a => a.Id, a => a.SoldByStaffMemberId);
+        var staffNames = (await _db.StaffMembers.AsNoTracking()
+                .Where(s => s.TenantId == tenantId)
+                .Select(s => new { s.Id, s.FullName })
+                .ToListAsync(cancellationToken))
+            .GroupBy(s => s.Id)
+            .ToDictionary(g => g.Key, g => g.First().FullName);
 
         var serviceAgg = new Dictionary<(string Category, Guid ServiceId), CategoryServiceAccumulator>();
         foreach (var group in scopedSessions.GroupBy(s => s.CustomerAccountId))
@@ -667,7 +694,15 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 acc.SessionsUsed += row.UsedSessions;
                 acc.Accounts.Add(row.CustomerAccountId);
                 acc.Customers.Add(row.CustomerId);
-                acc.Amount += weightSum > 0m ? accountTotal * weights[i] / weightSum : 0m;
+                var share = weightSum > 0m ? accountTotal * weights[i] / weightSum : 0m;
+                acc.Amount += share;
+
+                var sellerId = accountSellers.TryGetValue(row.CustomerAccountId, out var sid) ? sid ?? Guid.Empty : Guid.Empty;
+                if (!acc.Sellers.TryGetValue(sellerId, out var seller)) acc.Sellers[sellerId] = seller = new SellerAccumulator();
+                seller.Accounts.Add(row.CustomerAccountId);
+                seller.Customers.Add(row.CustomerId);
+                seller.SessionsTotal += row.TotalSessions;
+                seller.Amount += share;
             }
         }
 
@@ -684,7 +719,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
                         kv.Value.SessionsTotal,
                         kv.Value.SessionsUsed,
                         Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed),
-                        Math.Round(kv.Value.Amount, 2)))
+                        Math.Round(kv.Value.Amount, 2),
+                        BuildSellers(kv.Value.Sellers, staffNames)))
                     .OrderByDescending(s => s.Amount)
                     .ThenByDescending(s => s.SessionsTotal)
                     .ToList();
@@ -697,7 +733,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
                     services.Sum(s => s.SessionsUsed),
                     services.Sum(s => s.SessionsRemaining),
                     Math.Round(services.Sum(s => s.Amount), 2),
-                    services);
+                    services,
+                    BuildSellers(g.SelectMany(kv => kv.Value.Sellers), staffNames));
             })
             .OrderByDescending(c => c.Amount)
             .ThenByDescending(c => c.SessionsTotal)
@@ -782,6 +819,45 @@ public sealed class CustomerAccountService : ICustomerAccountService
         public int SessionsTotal { get; set; }
         public int SessionsUsed { get; set; }
         public decimal Amount { get; set; }
+        /// <summary>Satışı yapan personel bazında pay (Guid.Empty = personel atanmamış satış).</summary>
+        public Dictionary<Guid, SellerAccumulator> Sellers { get; } = [];
+    }
+
+    /// <summary>Tek personelin bir hizmet/kategori içindeki satış payı.</summary>
+    private sealed class SellerAccumulator
+    {
+        public HashSet<Guid> Accounts { get; } = [];
+        public HashSet<Guid> Customers { get; } = [];
+        public int SessionsTotal { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    /// <summary>Satıcı sözlüklerini birleştirip DTO listesine çevirir (tutar → azalan).</summary>
+    private static List<PackageSellerDto> BuildSellers(
+        IEnumerable<KeyValuePair<Guid, SellerAccumulator>> entries,
+        IReadOnlyDictionary<Guid, string> staffNames)
+    {
+        var merged = new Dictionary<Guid, SellerAccumulator>();
+        foreach (var (key, value) in entries)
+        {
+            if (!merged.TryGetValue(key, out var acc)) merged[key] = acc = new SellerAccumulator();
+            foreach (var a in value.Accounts) acc.Accounts.Add(a);
+            foreach (var c in value.Customers) acc.Customers.Add(c);
+            acc.SessionsTotal += value.SessionsTotal;
+            acc.Amount += value.Amount;
+        }
+
+        return merged
+            .Select(kv => new PackageSellerDto(
+                kv.Key == Guid.Empty ? null : kv.Key,
+                kv.Key != Guid.Empty && staffNames.TryGetValue(kv.Key, out var name) ? name : "Belirtilmemiş",
+                kv.Value.Accounts.Count,
+                kv.Value.Customers.Count,
+                kv.Value.SessionsTotal,
+                Math.Round(kv.Value.Amount, 2)))
+            .OrderByDescending(s => s.Amount)
+            .ThenByDescending(s => s.SoldCount)
+            .ToList();
     }
 
     private Task<CustomerAccount?> LoadAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

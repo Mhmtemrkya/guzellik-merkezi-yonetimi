@@ -14,6 +14,7 @@ import {
   ImagePlus,
   Loader2,
   Mail,
+  MessageCircle,
   Save,
   ShieldCheck,
   User,
@@ -260,6 +261,25 @@ export default function CustomerFormDialog({
                   <motion.span animate={{ x: values.kvkkConsent ? 24 : 4 }} transition={{ type: 'spring', stiffness: 360, damping: 24 }} className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
                 </span>
               </button>
+              {/* Onay işaretlenmediyse kayıt sonrası müşteriye WhatsApp'tan otomatik istek gider. */}
+              <AnimatePresence initial={false}>
+                {!values.kvkkConsent && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-2 flex items-start gap-2 rounded-[12px] border border-[#cfe3d8] bg-[#f2fbf7] px-3 py-2.5">
+                      <MessageCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2c7d63]" strokeWidth={2} />
+                      <span className="text-[11px] leading-relaxed text-[#2c6b57]">
+                        Onay işaretli değil: kayıt sonrası müşteriye WhatsApp&apos;tan KVKK açık rıza mesajı gönderilir.
+                        Müşteri <strong>ONAYLIYORUM</strong> yazdığında onay otomatik işlenir.
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 px-1">
                 <KvkkConsentModal />
                 <span className="text-[10.5px] text-[#9d7386]">Metni Ayarlar sayfasından düzenleyebilirsiniz.</span>

@@ -808,6 +808,13 @@ export const adminApi = {
   customersWithBookableSessions: (tenantId?: string): Promise<string[]> =>
     apiRequest<string[]>('/api/admin/customers/with-bookable-sessions', { query: { tenantId } }),
 
+  /**
+   * Seçili müşterilere WhatsApp'tan KVKK açık rıza mesajı gönderir.
+   * Müşteri "ONAYLIYORUM" yazarsa onay webhook'ta otomatik işlenir.
+   */
+  sendKvkkRequest: <T = unknown>(customerIds: string[], tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/customers/kvkk-request', { method: 'POST', query: { tenantId }, body: { customerIds } }),
+
   /** Kara liste — müşteriyi al/çıkar; kara listedekiye randevu verilemez. */
   setCustomerBlacklist: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/customers/${id}/blacklist`, { method: 'POST', query: { tenantId }, body }),

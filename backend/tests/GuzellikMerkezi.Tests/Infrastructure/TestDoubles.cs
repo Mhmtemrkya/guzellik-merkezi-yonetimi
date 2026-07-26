@@ -37,6 +37,18 @@ internal sealed class AlwaysAllowUsageService : IUsageService
         Task.FromResult(Result.Success());
 }
 
+/// <summary>Kuyruğa yazılan işleri bellekte tutar — testte gerçek arka plan işi çalışmasın.</summary>
+internal sealed class CapturingJobQueue : IDurableJobQueue
+{
+    public List<(string JobType, object Payload)> Jobs { get; } = [];
+
+    public Task EnqueueAsync(string jobType, object payload, CancellationToken ct = default)
+    {
+        Jobs.Add((jobType, payload));
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class NoopAuditLogger : IAuditLogger
 {
     public Task LogAsync(

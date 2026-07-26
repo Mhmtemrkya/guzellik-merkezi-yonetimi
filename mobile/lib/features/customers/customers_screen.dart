@@ -6,6 +6,7 @@ import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/json_helpers.dart';
 import '../../shared/kvkk/kvkk_view_sheet.dart';
 import '../../shared/widgets/async_list_page.dart';
 
@@ -229,6 +230,29 @@ class CustomersScreen extends StatelessWidget {
               child: Text('Metni Ayarlar ekranından düzenleyebilirsiniz.',
                   style: TextStyle(fontSize: 11, color: AppColors.muted)),
             ),
+            // KVKK onayı işaretlenmeden kaydedilirse müşteriye otomatik WhatsApp isteği gider.
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.chat_rounded, size: 15, color: AppColors.success),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'KVKK onayı işaretli değilse kayıt sonrası müşteriye WhatsApp\'tan '
+                      'onay mesajı gönderilir; "ONAYLIYORUM" yanıtı otomatik işlenir.',
+                      style: TextStyle(fontSize: 11, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -241,6 +265,43 @@ class CustomersScreen extends StatelessWidget {
         await api.put('/api/admin/customers/${item['id']}', body);
       },
       onDelete: (item) => api.delete('/api/admin/customers/${item['id']}'),
+      // Toplu işlem: seçili müşterilere WhatsApp'tan KVKK açık rıza mesajı gönder.
+      // Müşteri "ONAYLIYORUM" yazınca onay webhook'ta otomatik işlenir (web paritesi).
+      bulkActions: [
+        if (me?.canAction(Perm.customersManage) ?? true)
+          BulkListAction(
+            label: 'KVKK mesajı',
+            icon: Icons.chat_rounded,
+            run: (items) async {
+              final ids = items
+                  .map((e) => _cleanId(e['id']))
+                  .whereType<String>()
+                  .toList();
+              if (ids.isEmpty) return 'Geçerli müşteri seçilmedi.';
+              final res = await api.post(
+                '/api/admin/customers/kvkk-request',
+                {'customerIds': ids},
+              );
+              final map = res is Map ? res.cast<String, dynamic>() : const <String, dynamic>{};
+              if (map['pendingApproval'] == true) {
+                return 'KVKK mesaj gönderimi onaya gönderildi.';
+              }
+              final queued = numberOf(map, const ['queued']).toInt();
+              final approved = numberOf(map, const ['alreadyApproved']).toInt();
+              final noPhone = numberOf(map, const ['noPhone']).toInt();
+              final extra = [
+                if (approved > 0) '$approved kayıt zaten onaylı',
+                if (noPhone > 0) '$noPhone kayıtta telefon yok',
+              ].join(' · ');
+              if (queued == 0) {
+                return extra.isEmpty ? 'Mesaj gönderilmedi.' : 'Mesaj gönderilmedi — $extra.';
+              }
+              return extra.isEmpty
+                  ? '$queued müşteriye KVKK onay mesajı gönderiliyor.'
+                  : '$queued müşteriye KVKK onay mesajı gönderiliyor · $extra.';
+            },
+          ),
+      ],
       rowActions: [
         CrudRowAction(
           label: 'Müşteri Bilgi ve Onay Formu',

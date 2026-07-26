@@ -31,6 +31,16 @@ public sealed class WhatsAppService : IWhatsAppService
         "{hizmetcumlei} istiyorsanız EVET, vazgeçmek için HAYIR yazın.{salonimza}";
     private const string WaitlistActivatedTemplate =
         "Merhaba {ad}, {tarih} {saat} için {hizmetcumlen} oluşturuldu. Sizi bekliyoruz!{salonimza}";
+    /// <summary>KVKK açık rıza isteği. Müşteri ONAYLIYORUM yazınca kayıt otomatik onaylanır.</summary>
+    /// <summary>KVKK isteği mesajının şablon adı — gelen yanıt bununla eşleştirilir.</summary>
+    private const string KvkkTemplateName = "kvkk-consent";
+    private const string KvkkConsentTemplate =
+        "Merhaba {ad}, {salon} olarak kişisel verilerinizi (ad, telefon, işlem geçmişi) randevu ve " +
+        "hizmet süreçlerinizi yürütmek için işliyoruz. KVKK kapsamında açık rızanızı veriyorsanız " +
+        "ONAYLIYORUM yazmanız yeterlidir. Dilediğiniz zaman geri çekebilirsiniz.";
+    /// <summary>Onay alındıktan sonra müşteriye gönderilen teşekkür/bilgi mesajı.</summary>
+    private const string KvkkThanksTemplate =
+        "Teşekkürler {ad}, KVKK onayınız kaydedildi. İyi günler dileriz! — {salon}";
     private const string RatingLinkTemplate =
         "Merhaba {ad}! {salon} ziyaretiniz için teşekkür ederiz 💐 Deneyiminizi 1 dakikada değerlendirir misiniz? " +
         "Hem personelimizi hem salonumuzu puanlayabilirsiniz: {link} (Bağlantı 24 saat geçerlidir.)";
@@ -258,6 +268,39 @@ public sealed class WhatsAppService : IWhatsAppService
         {
             _logger.LogWarning(ex, "Bekleme teklifi gönderilemedi: {Entry}", waitlistEntryId);
         }
+    }
+
+    public async Task SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
+    {
+        try
+        {
+            var customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId && !c.IsDeleted, ct);
+            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return;
+            // Zaten onaylıysa tekrar rahatsız etme.
+            if (customer.KvkkConsent) return;
+
+            var salonName = await SalonNameAsync(tenantId, customer.BranchId, ct);
+            var body = KvkkConsentTemplate
+                .Replace("{ad}", FirstName(customer.FullName))
+                .Replace("{salon}", salonName);
+            await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id, waitlistEntryId: null,
+                customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: KvkkTemplateName, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "KVKK onay isteği gönderilemedi: {Customer}", customerId);
+        }
+    }
+
+    /// <summary>Şube adı yoksa kurum adına düşer — imzasız mesaj gitmesin.</summary>
+    private async Task<string> SalonNameAsync(Guid tenantId, Guid? branchId, CancellationToken ct)
+    {
+        var name = branchId is { } bid
+            ? await _db.Branches.IgnoreQueryFilters().AsNoTracking().Where(b => b.Id == bid).Select(b => b.Name).FirstOrDefaultAsync(ct)
+            : null;
+        if (!string.IsNullOrWhiteSpace(name)) return name!;
+        return await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
     }
 
     public async Task SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken ct = default)
@@ -545,6 +588,38 @@ public sealed class WhatsAppService : IWhatsAppService
         await _db.SaveChangesAsync(ct);
 
         if (match is null || intent == WhatsAppReplyIntent.Unknown) return;
+
+        // 0) KVKK açık rıza isteğine yanıt: son giden mesaj KVKK şablonuysa ve müşteri onayladıysa
+        //    kayıt otomatik onaylanır (yönetici elle işaretlemek zorunda kalmaz).
+        if (match.TemplateName == KvkkTemplateName && match.CustomerId is { } kvkkCustomerId)
+        {
+            if (intent == WhatsAppReplyIntent.Confirm)
+            {
+                var customer = await _db.Customers.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == kvkkCustomerId && !c.IsDeleted, ct);
+                if (customer is not null && !customer.KvkkConsent)
+                {
+                    customer.UpdateProfile(customer.BirthDate, customer.Gender, kvkkConsent: true, customer.Notes);
+                    await _db.SaveChangesAsync(ct);
+
+                    var salon = await SalonNameAsync(tenantId, customer.BranchId, ct);
+                    await DispatchAsync(tenantId, customer.BranchId, null, customer.Id, null, customer.Phone!,
+                        KvkkThanksTemplate.Replace("{ad}", FirstName(customer.FullName)).Replace("{salon}", salon),
+                        WhatsAppMessageCategory.Utility, templateName: "kvkk-thanks", ct);
+
+                    await _notifications.NotifyRolesAsync(
+                        tenantId, customer.BranchId,
+                        new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+                        AppNotificationType.WhatsAppReply, AppNotificationSeverity.Success,
+                        "KVKK onayı alındı",
+                        $"{customer.FullName} WhatsApp üzerinden KVKK açık rızasını verdi.",
+                        data: new { route = "/customers", id = customer.Id.ToString() },
+                        dedupeKey: $"kvkk-consent:{customer.Id}",
+                        ct: ct);
+                }
+            }
+            return;
+        }
 
         // 1) Bekleme listesi teklifine yanıt.
         if (match.WaitlistEntryId is { } waitlistId)

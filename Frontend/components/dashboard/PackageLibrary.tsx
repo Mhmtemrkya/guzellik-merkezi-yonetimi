@@ -11,16 +11,18 @@ import CampaignPanel from '@/components/dashboard/CampaignPanel'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
+import CatalogSalesPanel from '@/components/dashboard/CatalogSalesPanel'
+import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
+import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Gift, Loader2, Minus, PackagePlus, PencilLine,
   PauseCircle, Plus, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud, Wallet, X,
 } from 'lucide-react'
 import type {
-  ApiCampaign, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage,
+  ApiCampaign, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff,
   CatalogStatusKey, Service, ServicePackage,
 } from '@/lib/types'
 
@@ -105,22 +107,23 @@ export default function PackageLibrary({
 
   const { data, loading, error, reload } = useApiQuery<{
     packages: ApiServicePackage[]; services: ApiService[]; cats: ApiCustomServiceCategory[]
-    accounts: ApiCustomerAccount[]; campaigns: ApiCampaign[]
+    accounts: ApiCustomerAccount[]; campaigns: ApiCampaign[]; staff: ApiStaff[]
   }>(
     async () => {
-      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [] }
-      const [packages, services, cats, accounts, campaigns] = await Promise.all([
+      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [] }
+      const [packages, services, cats, accounts, campaigns, staff] = await Promise.all([
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         // TÜM hizmetleri çek (tek sayfa 200 tavanına takılıp hizmetler eksik görünmesin).
         fetchAllPaged<ApiService>((page, size) => adminApi.services<ApiService>({ tenantId, page, pageSize: size })).catch(() => [] as ApiService[]),
         adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.campaigns<ApiCampaign>({ tenantId }).catch(() => []),
+        adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
-      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [] }
+      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [], staff: apiItems(staff) }
     },
     [tenantId],
-    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [] } },
+    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [] } },
   )
 
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
@@ -129,6 +132,45 @@ export default function PackageLibrary({
   const customCategories = useMemo(() => (data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i)), [data])
   const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
   const campaigns = useMemo(() => (data?.campaigns || []).map((c, i) => normalizeCampaign(c, i)), [data])
+  const staff = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
+
+  // --- Satış paneli (paket kartı) -------------------------------------------------
+  // Satışlar panelin kendi içinde, seçili pakete göre SUNUCUDA süzülerek çekilir
+  // (doğrudan cari + adisyon satışı; bkz. CatalogSalesPanel).
+  const staffOptions = useMemo(() => staff.map((s) => ({ id: s.id, name: s.name })), [staff])
+  const packageOptions = useMemo(() => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice })), [packages])
+  const serviceOptions = useMemo(() => services.map((s) => ({ id: s.id, name: s.name, price: s.price })), [services])
+
+  const [salesBusy, setSalesBusy] = useState(false)
+  const runSaleAction = async (fn: () => Promise<unknown>): Promise<void> => {
+    setSalesBusy(true)
+    try { await fn(); await reload() } finally { setSalesBusy(false) }
+  }
+  const handleCreateHistoricalSale = (values: HistoricalSaleValues): Promise<void> =>
+    runSaleAction(() => adminApi.createHistoricalSale({
+      customerId: values.customerId,
+      name: values.name,
+      soldAtUtc: values.soldAt,
+      totalAmount: values.totalAmount,
+      paidAmount: values.paidAmount,
+      soldByStaffMemberId: values.soldByStaffMemberId,
+      servicePackageId: values.servicePackageId,
+      serviceDefinitionId: values.serviceDefinitionId,
+      sessionsTotal: values.sessionsTotal,
+      sessionsUsed: values.sessionsUsed,
+      installmentCount: values.installmentCount,
+      firstDueDate: values.firstDueDate,
+      notes: values.notes,
+      branchId: branchId ?? null,
+    }, tenantId))
+  const handleCancelSale = (accountId: string, reason: string): Promise<void> =>
+    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, tenantId))
+  const handleRestoreSale = (accountId: string): Promise<void> =>
+    runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
+  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+    runSaleAction(() => adminApi.registerAccountPayment(accountId, {
+      amount, method: 'cash', reference: null, occurredAtUtc: new Date().toISOString(),
+    }, tenantId))
 
   // ---- istatistikler
   const activeCount = packages.filter((p) => p.status === 'Active').length
@@ -676,6 +718,25 @@ export default function PackageLibrary({
                 <div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Tahmini kâr</div><div className="font-display text-xl tabular-nums">%{tahminiKar}</div></div>
               </div>
             </div>
+
+            {/* Satış performansı — bu paketi kim, kime, ne zaman satmış (kayıtlı paketlerde). */}
+            {draft.id && (
+              <div className="mt-3">
+                <CatalogSalesPanel
+                  item={{ id: draft.id, name: draft.name || 'Paket', price: draft.salePrice || 0 }}
+                  kind="package"
+                  tenantId={tenantId}
+                  staffOptions={staffOptions}
+                  packageOptions={packageOptions}
+                  serviceOptions={serviceOptions}
+                  busy={salesBusy}
+                  onCreateHistorical={handleCreateHistoricalSale}
+                  onCancelSale={handleCancelSale}
+                  onRestoreSale={handleRestoreSale}
+                  onCollectInstallment={handleCollectInstallment}
+                />
+              </div>
+            )}
 
             {/* Aksiyonlar */}
             <div className="mt-4 grid grid-cols-3 gap-2">

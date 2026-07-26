@@ -26,7 +26,7 @@ public sealed class CustomerSearchIndexTests
         new(options, tenant, new TestCurrentUser(), null, null, search);
 
     private static CustomerService NewService(GuzellikDbContext db, ISearchIndexService search, UserRole role = UserRole.InstitutionOwner) =>
-        new(db, new AlwaysAllowUsageService(), new NoopAuditLogger(), new TestCurrentUser(role), new AllowAllFeatureService(), search);
+        new(db, new AlwaysAllowUsageService(), new NoopAuditLogger(), new TestCurrentUser(role), new AllowAllFeatureService(), search, new CapturingJobQueue());
 
     private static async Task<(Guid TenantId, Guid BranchId)> SeedTenantAsync(DbContextOptions<GuzellikDbContext> options, ISearchIndexService search, string slug = "qa-beauty")
     {

@@ -86,6 +86,22 @@ public static class CustomerEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SetPassiveThresholdAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
         });
 
+        // Seçili müşterilere KVKK açık rıza mesajı gönder (WhatsApp). Yanıt "ONAYLIYORUM" ise
+        // onay webhook'ta otomatik işlenir.
+        group.MapPost("/kvkk-request", async (SendKvkkRequestRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SendKvkkRequestAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
+        });
+
+        group.MapPost("/{id:guid}/kvkk-request", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty
+                ? EndpointHelpers.MissingTenant(http)
+                : (await service.SendKvkkRequestAsync(resolvedTenantId, new SendKvkkRequestRequest(new[] { id }), ct)).ToHttpResult(http);
+        });
+
         group.MapPost("/{id:guid}/blacklist", async (Guid id, SetBlacklistRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

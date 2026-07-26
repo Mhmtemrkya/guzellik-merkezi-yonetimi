@@ -17,7 +17,7 @@ import PassiveCustomersPanel from '@/components/dashboard/PassiveCustomersPanel'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
-import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
+import BulkSelectBar, { SelectBox, useBulkSelect, type BulkAction } from '@/components/dashboard/BulkSelectBar'
 import CustomerSalesPanel from '@/components/dashboard/CustomerSalesPanel'
 import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import { usePermission } from '@/hooks/usePermission'
@@ -30,7 +30,7 @@ import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppoint
 import { downscaleImage } from '@/lib/imageUtils'
 import {
   ChevronLeft, ChevronRight, CreditCard, FileUp,
-  Mail, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
+  Mail, MessageCircle, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
   UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
 import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiCustomerStats, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
@@ -101,6 +101,9 @@ function MusterilerPageInner() {
   // Silme yetkisi olmayan personelde seçim hiç açılmaz (buton da görünmez).
   const { can } = usePermission()
   const canBulkDelete = can('Customers.Delete')
+  // KVKK onay mesajı gönderme müşteri düzenleme yetkisine bağlı — silme yetkisi gerekmez.
+  const canSendKvkk = can('Customers.Manage')
+  const canSelectRows = canBulkDelete || canSendKvkk
   const bulk = useBulkSelect()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -200,6 +203,34 @@ function MusterilerPageInner() {
     setSessRefresh((v) => v + 1)
     await Promise.all([reload(), reloadStats()])
   }
+
+  // Toplu işlem: seçili müşterilere WhatsApp'tan KVKK açık rıza mesajı gönder.
+  // Müşteri "ONAYLIYORUM" yazınca onay webhook'ta otomatik işlenir; liste bir sonraki
+  // yenilemede "KVKK Onaylı" olarak görünür.
+  const bulkActions = useMemo<BulkAction[]>(() => {
+    if (!canSendKvkk) return []
+    return [
+      {
+        key: 'kvkk',
+        label: 'KVKK onay mesajı gönder',
+        icon: MessageCircle,
+        run: async (ids: string[]) => {
+          const res = await adminApi.sendKvkkRequest<{ queued?: number; alreadyApproved?: number; noPhone?: number; pendingApproval?: boolean }>(ids, tenantId)
+          if (res?.pendingApproval) return 'KVKK mesaj gönderimi onaya gönderildi.'
+          const queued = Number(res?.queued ?? 0)
+          const approved = Number(res?.alreadyApproved ?? 0)
+          const noPhone = Number(res?.noPhone ?? 0)
+          const extra = [
+            approved > 0 ? `${approved} kayıt zaten onaylı` : '',
+            noPhone > 0 ? `${noPhone} kayıtta telefon yok` : '',
+          ].filter(Boolean).join(' · ')
+          return queued === 0
+            ? `Mesaj gönderilmedi${extra ? ` — ${extra}` : ''}.`
+            : `${queued} müşteriye KVKK onay mesajı gönderiliyor${extra ? ` · ${extra}` : ''}.`
+        },
+      },
+    ]
+  }, [canSendKvkk, tenantId])
 
   const staffList = useMemo(() => (lookups?.staff || []).map((s, i) => normalizeStaff(s, i)), [lookups])
   const servicesList = useMemo(() => (lookups?.services || []).map((s, i) => normalizeService(s, i)), [lookups])
@@ -566,13 +597,13 @@ function MusterilerPageInner() {
                   type="button"
                   onClick={() => {
                     // Seçim modundayken satır tıklaması detay açmaz, seçimi değiştirir.
-                    if (canBulkDelete && bulk.active) { bulk.toggle(c.id); return }
+                    if (canSelectRows && bulk.active) { bulk.toggle(c.id); return }
                     setSelectedId(c.id); setModalOpen(true)
                   }}
                   className={`grid w-full grid-cols-1 gap-3 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.4fr_0.9fr_1.1fr_0.7fr_1fr_0.8fr] lg:items-center ${bulk.isSelected(c.id) ? 'bg-[#fff1f6]' : selected?.id === c.id ? 'bg-[#fff1f6]/50' : ''}`}>
                   {/* Müşteri */}
                   <div className="flex min-w-0 items-center gap-2.5">
-                    {canBulkDelete && <SelectBox checked={bulk.isSelected(c.id)} onToggle={() => bulk.toggle(c.id)} />}
+                    {canSelectRows && <SelectBox checked={bulk.isSelected(c.id)} onToggle={() => bulk.toggle(c.id)} />}
                     {c.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={c.photoUrl} alt={c.name} className="h-9 w-9 shrink-0 rounded-full border border-[#efbfd0]/50 object-cover" />
@@ -777,12 +808,14 @@ function MusterilerPageInner() {
         onDone={() => void reloadWithSessions()}
       />
 
-      {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
-      {canBulkDelete && (
+      {/* Toplu işlem çubuğu — seçim yapılınca ekranın altında belirir (silme + KVKK mesajı). */}
+      {canSelectRows && (
       <BulkSelectBar
         api={bulk}
         itemLabel="müşteri"
         pageIds={pageRows.map((c) => c.id)}
+        allowDelete={canBulkDelete}
+        actions={bulkActions}
         onDelete={(id) => adminApi.deleteCustomer(id, tenantId)}
         onDone={() => reloadWithSessions()}
       />

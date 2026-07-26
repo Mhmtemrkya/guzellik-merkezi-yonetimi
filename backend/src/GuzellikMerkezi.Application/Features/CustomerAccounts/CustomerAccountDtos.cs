@@ -150,6 +150,18 @@ public sealed record AccountReportDto(
     IReadOnlyList<PackageCategoryBreakdownDto> Categories,   // Kategori → hizmet kırılımı
     IReadOnlyList<PackageCustomerBreakdownDto> Customers);   // Müşteri bazlı taksit/ödeme/seans kırılımı
 
+/// <summary>
+/// "Kim sattı" kırılımı — satışı yapan personel bazında adet/seans/tutar.
+/// Personel atanmamış (eski/otomatik) satışlar StaffMemberId null ile "Belirtilmemiş" altında toplanır.
+/// </summary>
+public sealed record PackageSellerDto(
+    Guid? StaffMemberId,
+    string StaffName,
+    int SoldCount,
+    int CustomerCount,
+    int SessionsTotal,
+    decimal Amount);
+
 /// <summary>Kategori kırılımındaki tek hizmet satırı (satılan seans ve tutar payı).</summary>
 public sealed record PackageCategoryServiceDto(
     Guid ServiceDefinitionId,
@@ -159,7 +171,8 @@ public sealed record PackageCategoryServiceDto(
     int SessionsTotal,
     int SessionsUsed,
     int SessionsRemaining,
-    decimal Amount);        // Satış tutarından bu hizmete düşen pay
+    decimal Amount,         // Satış tutarından bu hizmete düşen pay
+    IReadOnlyList<PackageSellerDto> Sellers);
 
 /// <summary>Paket satışlarının hizmet kategorisine göre kırılımı.</summary>
 public sealed record PackageCategoryBreakdownDto(
@@ -170,7 +183,8 @@ public sealed record PackageCategoryBreakdownDto(
     int SessionsUsed,
     int SessionsRemaining,
     decimal Amount,
-    IReadOnlyList<PackageCategoryServiceDto> Services);
+    IReadOnlyList<PackageCategoryServiceDto> Services,
+    IReadOnlyList<PackageSellerDto> Sellers);   // Bu kategoriyi kim sattı
 
 /// <summary>Bir müşterinin dönemdeki paket satışları: taksit, tahsilat ve seans durumu.</summary>
 public sealed record PackageCustomerBreakdownDto(

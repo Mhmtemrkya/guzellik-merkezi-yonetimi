@@ -9,11 +9,12 @@ import {
   ChevronDown,
   Layers,
   Search,
+  UserCheck,
   Users,
   Wallet,
 } from 'lucide-react'
 import { formatTL } from '@/lib/apiMappers'
-import type { PackageCategoryBreakdown, PackageCustomerBreakdown } from '@/lib/types'
+import type { PackageCategoryBreakdown, PackageCustomerBreakdown, PackageSeller } from '@/lib/types'
 
 /**
  * Paket Raporu detay bloğu: KPI kartlarının altında iki görünüm sunar.
@@ -115,6 +116,13 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                 <span className="mt-1 block text-[11px] text-[#705a66]">
                   {cat.services.length} hizmet · {cat.soldCount} satış · {cat.customerCount} müşteri · {cat.sessionsUsed}/{cat.sessionsTotal} seans
                 </span>
+                {cat.sellers.length > 0 && (
+                  <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#a34a62]">
+                    <UserCheck className="h-3 w-3" strokeWidth={2} />
+                    {cat.sellers[0].staffName}
+                    {cat.sellers.length > 1 ? ` +${cat.sellers.length - 1} personel` : ''}
+                  </span>
+                )}
                 <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-[#f6e3ea]">
                   <span
                     className="block h-full rounded-full bg-[linear-gradient(90deg,#e78ba8,#c05277)]"
@@ -137,35 +145,64 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="overflow-x-auto border-t border-[#f2e6eb] bg-white px-3.5 pb-3 pt-2">
-                    <table className="w-full min-w-[560px] border-collapse text-left">
-                      <thead>
-                        <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7480]">
-                          <th className="py-2 pr-3">Hizmet</th>
-                          <th className="py-2 pr-3 text-right">Satış</th>
-                          <th className="py-2 pr-3 text-right">Müşteri</th>
-                          <th className="py-2 pr-3 text-right">Seans</th>
-                          <th className="py-2 pr-3 text-right">Kalan</th>
-                          <th className="py-2 text-right">Tutar</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#f6ecf0]">
-                        {cat.services.map((svc) => (
-                          <tr key={`${cat.category}-${svc.serviceDefinitionId}-${svc.serviceName}`} className="text-[12px] text-[#4a3a44]">
-                            <td className="py-2 pr-3">
-                              <span className="block max-w-[220px] truncate font-medium text-[#2f2230]">{svc.serviceName}</span>
-                            </td>
-                            <td className="py-2 pr-3 text-right">{svc.soldCount}</td>
-                            <td className="py-2 pr-3 text-right">{svc.customerCount}</td>
-                            <td className="py-2 pr-3 text-right">
-                              {svc.sessionsUsed}/{svc.sessionsTotal}
-                            </td>
-                            <td className="py-2 pr-3 text-right font-semibold text-[#2c7d63]">{svc.sessionsRemaining}</td>
-                            <td className="py-2 text-right font-semibold text-[#2f2230]">{formatTL(Math.round(svc.amount))}</td>
+                  <div className="border-t border-[#f2e6eb] bg-white px-3.5 pb-3 pt-3">
+                    <SellerStrip sellers={cat.sellers} />
+
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full min-w-[680px] border-collapse text-left">
+                        <thead>
+                          <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7480]">
+                            <th className="py-2 pr-3">Hizmet</th>
+                            <th className="py-2 pr-3">Satan personel</th>
+                            <th className="py-2 pr-3 text-right">Satış</th>
+                            <th className="py-2 pr-3 text-right">Müşteri</th>
+                            <th className="py-2 pr-3 text-right">Seans</th>
+                            <th className="py-2 pr-3 text-right">Kalan</th>
+                            <th className="py-2 text-right">Tutar</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-[#f6ecf0]">
+                          {cat.services.map((svc) => (
+                            <tr key={`${cat.category}-${svc.serviceDefinitionId}-${svc.serviceName}`} className="text-[12px] text-[#4a3a44]">
+                              <td className="py-2 pr-3">
+                                <span className="block max-w-[220px] truncate font-medium text-[#2f2230]">{svc.serviceName}</span>
+                              </td>
+                              <td className="py-2 pr-3">
+                                <span className="flex flex-wrap gap-1">
+                                  {svc.sellers.length === 0 ? (
+                                    <span className="text-[11px] text-[#705a66]">—</span>
+                                  ) : (
+                                    svc.sellers.slice(0, 3).map((s) => (
+                                      <span
+                                        key={`${svc.serviceDefinitionId}-${s.staffMemberId ?? 'none'}`}
+                                        title={`${s.staffName} · ${s.soldCount} satış · ${formatTL(Math.round(s.amount))}`}
+                                        className="inline-flex items-center gap-1 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2 py-0.5 text-[10px] font-semibold text-[#a34a62]"
+                                      >
+                                        <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-[#c05277] text-[8px] font-bold text-white">
+                                          {initials(s.staffName)}
+                                        </span>
+                                        {s.staffName}
+                                        <span className="text-[#705a66]">×{s.soldCount}</span>
+                                      </span>
+                                    ))
+                                  )}
+                                  {svc.sellers.length > 3 && (
+                                    <span className="text-[10px] font-semibold text-[#705a66]">+{svc.sellers.length - 3}</span>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right">{svc.soldCount}</td>
+                              <td className="py-2 pr-3 text-right">{svc.customerCount}</td>
+                              <td className="py-2 pr-3 text-right">
+                                {svc.sessionsUsed}/{svc.sessionsTotal}
+                              </td>
+                              <td className="py-2 pr-3 text-right font-semibold text-[#2c7d63]">{svc.sessionsRemaining}</td>
+                              <td className="py-2 text-right font-semibold text-[#2f2230]">{formatTL(Math.round(svc.amount))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -175,6 +212,64 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
       })}
     </div>
   )
+}
+
+/**
+ * "Kim sattı" şeridi — kategorideki satışların personel bazlı payı.
+ * Satış personeli atanmamış (eski / otomatik onaylanmış) kayıtlar "Belirtilmemiş" altında toplanır.
+ */
+function SellerStrip({ sellers }: { sellers: PackageSeller[] }) {
+  if (sellers.length === 0) return null
+  const total = sellers.reduce((s, x) => s + x.amount, 0)
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a7480]">
+        <UserCheck className="h-3.5 w-3.5 text-[#c05277]" strokeWidth={1.9} /> Kim sattı
+      </div>
+      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+        {sellers.map((s, i) => {
+          const share = total > 0 ? Math.round((s.amount / total) * 100) : 0
+          return (
+            <div
+              key={s.staffMemberId ?? `none-${i}`}
+              className="min-w-[168px] shrink-0 rounded-[14px] border border-[#f2e6eb] bg-[#fffafc] px-3 py-2.5"
+            >
+              <div className="flex items-center gap-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(140deg,#e78ba8,#c05277)] text-[10px] font-bold text-white">
+                  {initials(s.staffName)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-semibold text-[#2f2230]">{s.staffName}</span>
+                  <span className="block text-[10px] text-[#705a66]">
+                    {s.soldCount} satış · {s.customerCount} müşteri
+                  </span>
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between gap-2">
+                <span className="font-display text-[13px] font-bold text-[#2f2230]">{formatTL(Math.round(s.amount))}</span>
+                <span className="text-[10px] font-semibold text-[#a34a62]">%{share}</span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#f6e3ea]">
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#e78ba8,#c05277)]"
+                  style={{ width: `${Math.max(4, share)}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** "Ayşe YILMAZ" → "AY" (avatar rozeti). */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toLocaleUpperCase('tr')
+  return (parts[0][0] + parts[parts.length - 1][0]).toLocaleUpperCase('tr')
 }
 
 // ----------------------------------------------------------------- müşteri ---

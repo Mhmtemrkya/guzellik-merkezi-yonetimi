@@ -20,6 +20,12 @@ public interface IWhatsAppService
     /// <summary>Bekleme listesindeki müşteriye boşalan slot için "yer açıldı, ister misiniz? EVET/HAYIR" teklifi gönderir. Best-effort (feature/kota kapalıysa sessizce atlar).</summary>
     Task SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// KVKK açık rıza isteği gönderir. Müşteri "ONAYLIYORUM" yazarsa gelen mesaj webhook'unda
+    /// onay otomatik işlenir (bkz. ProcessInboundMessageAsync → kvkk-consent).
+    /// </summary>
+    Task SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default);
+
     /// <summary>Bekleme teklifi kabul edilip randevu açılınca "randevunuz aktifleşti" mesajı gönderir. Best-effort.</summary>
     Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
 

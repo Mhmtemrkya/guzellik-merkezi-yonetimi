@@ -1059,6 +1059,16 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
     );
   }
 
+  /// "Ayşe YILMAZ ×3 · Mert KAYA ×1" — satıcı özeti (ilk 2 personel).
+  String _sellerSummary(List<Map<String, dynamic>> sellers) {
+    final parts = sellers
+        .take(2)
+        .map((s) =>
+            '${valueOf(s, const ['staffName'], fallback: 'Belirtilmemiş')} ×${numberOf(s, const ['soldCount']).toInt()}')
+        .join(' · ');
+    return sellers.length > 2 ? '$parts +${sellers.length - 2}' : parts;
+  }
+
   Widget _categoryList(ScrollController controller) {
     if (widget.categories.isEmpty) return const _EmptyDetail();
     final total = widget.categories.fold<double>(
@@ -1092,10 +1102,29 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
                   fontSize: 13.5,
                 ),
               ),
-              subtitle: Text(
-                '${services.length} hizmet · ${numberOf(cat, const ['soldCount']).toInt()} satış · '
-                '${numberOf(cat, const ['sessionsUsed']).toInt()}/${numberOf(cat, const ['sessionsTotal']).toInt()} seans',
-                style: const TextStyle(color: AppColors.muted, fontSize: 11),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${services.length} hizmet · ${numberOf(cat, const ['soldCount']).toInt()} satış · '
+                    '${numberOf(cat, const ['sessionsUsed']).toInt()}/${numberOf(cat, const ['sessionsTotal']).toInt()} seans',
+                    style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                  if (apiItems(cat['sellers']).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _sellerSummary(apiItems(cat['sellers'])),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.primaryDark,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1118,50 +1147,64 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
                   ),
                 ],
               ),
-              children: services
-                  .map(
-                    (svc) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+              children: [
+                // "Kim sattı" — kategorideki satışların personel bazlı payı (web paritesi).
+                if (apiItems(cat['sellers']).isNotEmpty)
+                  _SellerStrip(sellers: apiItems(cat['sellers']), total: amount),
+                ...services.map(
+                  (svc) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                valueOf(svc, const ['serviceName']),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              Text(
+                                '${numberOf(svc, const ['soldCount']).toInt()} satış · '
+                                '${numberOf(svc, const ['customerCount']).toInt()} müşteri · '
+                                '${numberOf(svc, const ['sessionsRemaining']).toInt()} seans kaldı',
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 10.5,
+                                ),
+                              ),
+                              if (apiItems(svc['sellers']).isNotEmpty)
                                 Text(
-                                  valueOf(svc, const ['serviceName']),
+                                  'Satan: ${_sellerSummary(apiItems(svc['sellers']))}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12.5,
+                                    color: AppColors.primaryDark,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                Text(
-                                  '${numberOf(svc, const ['soldCount']).toInt()} satış · '
-                                  '${numberOf(svc, const ['customerCount']).toInt()} müşteri · '
-                                  '${numberOf(svc, const ['sessionsRemaining']).toInt()} seans kaldı',
-                                  style: const TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 10.5,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _compactMoney(numberOf(svc, const ['amount'])),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _compactMoney(numberOf(svc, const ['amount'])),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  )
-                  .toList(),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -1261,6 +1304,68 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Kategori kırılımında "Kim sattı" şeridi — personel bazlı adet/tutar/pay.
+/// Satış personeli atanmamış kayıtlar "Belirtilmemiş" altında toplanır.
+class _SellerStrip extends StatelessWidget {
+  const _SellerStrip({required this.sellers, required this.total});
+
+  final List<Map<String, dynamic>> sellers;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.how_to_reg_rounded, size: 13, color: AppColors.primaryDark),
+              SizedBox(width: 4),
+              Text(
+                'KİM SATTI',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: sellers.map((s) {
+              final amount = numberOf(s, const ['amount']);
+              final share = total > 0 ? (amount / total * 100).round() : 0;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${valueOf(s, const ['staffName'], fallback: 'Belirtilmemiş')} · '
+                  '${numberOf(s, const ['soldCount']).toInt()} satış · %$share',
+                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 }

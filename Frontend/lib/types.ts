@@ -1150,6 +1150,15 @@ export interface ApiAccountReport {
   customers?: ApiPackageCustomerBreakdown[]
 }
 
+export interface ApiPackageSeller {
+  staffMemberId?: string | null
+  staffName?: string
+  soldCount?: number
+  customerCount?: number
+  sessionsTotal?: number
+  amount?: number
+}
+
 export interface ApiPackageCategoryService {
   serviceDefinitionId?: string
   serviceName?: string
@@ -1159,6 +1168,7 @@ export interface ApiPackageCategoryService {
   sessionsUsed?: number
   sessionsRemaining?: number
   amount?: number
+  sellers?: ApiPackageSeller[]
 }
 
 export interface ApiPackageCategoryBreakdown {
@@ -1170,6 +1180,7 @@ export interface ApiPackageCategoryBreakdown {
   sessionsRemaining?: number
   amount?: number
   services?: ApiPackageCategoryService[]
+  sellers?: ApiPackageSeller[]
 }
 
 export interface ApiPackageCustomerBreakdown {
@@ -1218,6 +1229,16 @@ export interface AccountReport {
   customers: PackageCustomerBreakdown[]
 }
 
+/** "Kim sattı" satırı — satışı yapan personelin adet/seans/tutar payı. */
+export interface PackageSeller {
+  staffMemberId: string | null
+  staffName: string
+  soldCount: number
+  customerCount: number
+  sessionsTotal: number
+  amount: number
+}
+
 export interface PackageCategoryService {
   serviceDefinitionId: string
   serviceName: string
@@ -1227,6 +1248,7 @@ export interface PackageCategoryService {
   sessionsUsed: number
   sessionsRemaining: number
   amount: number
+  sellers: PackageSeller[]
 }
 
 export interface PackageCategoryBreakdown {
@@ -1238,6 +1260,7 @@ export interface PackageCategoryBreakdown {
   sessionsRemaining: number
   amount: number
   services: PackageCategoryService[]
+  sellers: PackageSeller[]
 }
 
 export interface PackageCustomerBreakdown {

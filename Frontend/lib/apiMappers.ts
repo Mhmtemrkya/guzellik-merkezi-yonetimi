@@ -18,6 +18,7 @@ import type {
   ApiNotificationSummary,
   ApiNotificationTemplate,
   ApiPendingOperation,
+  ApiPackageSeller,
   ApiPlanUsageBreakdown,
   ApiPlatformUsageSummary,
   ApiSubscriptionPlan,
@@ -66,6 +67,7 @@ import type {
   PendingOperation,
   PendingOperationStatusKey,
   PendingOperationTypeKey,
+  PackageSeller,
   Product,
   ProductCategoryKey,
   ProductStatusKey,
@@ -467,6 +469,18 @@ export function normalizeCustomer(customer: ApiCustomer | null | undefined, inde
 
 const MONTH_LABELS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 
+/** "Kim sattı" kırılımı — personel atanmamış satışlar staffMemberId null ile gelir. */
+function mapPackageSellers(sellers: ApiPackageSeller[] | null | undefined): PackageSeller[] {
+  return (sellers ?? []).map((s) => ({
+    staffMemberId: s?.staffMemberId ?? null,
+    staffName: s?.staffName || 'Belirtilmemiş',
+    soldCount: Number(s?.soldCount ?? 0),
+    customerCount: Number(s?.customerCount ?? 0),
+    sessionsTotal: Number(s?.sessionsTotal ?? 0),
+    amount: Number(s?.amount ?? 0),
+  }))
+}
+
 export function normalizeAccountReport(report: ApiAccountReport | null | undefined): AccountReport {
   const months: AccountMonthlyInstallment[] = (report?.monthlyInstallments ?? []).map((m) => {
     const month = Number(m?.month ?? 0)
@@ -500,6 +514,7 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
       sessionsUsed: Number(c?.sessionsUsed ?? 0),
       sessionsRemaining: Number(c?.sessionsRemaining ?? 0),
       amount: Number(c?.amount ?? 0),
+      sellers: mapPackageSellers(c?.sellers),
       services: (c?.services ?? []).map((s) => ({
         serviceDefinitionId: s?.serviceDefinitionId || '',
         serviceName: s?.serviceName || 'Hizmet',
@@ -509,6 +524,7 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
         sessionsUsed: Number(s?.sessionsUsed ?? 0),
         sessionsRemaining: Number(s?.sessionsRemaining ?? 0),
         amount: Number(s?.amount ?? 0),
+        sellers: mapPackageSellers(s?.sellers),
       })),
     })),
     customers: (report?.customers ?? []).map((c) => ({

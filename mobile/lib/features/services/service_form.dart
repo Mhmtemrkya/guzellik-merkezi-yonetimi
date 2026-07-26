@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../catalog/catalog_sales_panel.dart';
 import 'service_category_field.dart';
 
 const _statusOptions = [
@@ -253,6 +254,15 @@ class _ServiceFormState extends State<ServiceForm> {
                   style: TextButton.styleFrom(foregroundColor: Colors.red),
                   icon: const Icon(Icons.delete_outline_rounded),
                   label: const Text('Hizmeti sil'),
+                ),
+                const Divider(height: 26),
+                // Bu hizmeti kim, kime, ne zaman satmış (web katalog paneli paritesi).
+                CatalogSalesPanel(
+                  api: widget.api,
+                  kind: 'service',
+                  itemId: '${widget.item?['id'] ?? ''}',
+                  itemName: _name.text.trim(),
+                  itemPrice: double.tryParse(_price.text.replaceAll(',', '.')) ?? 0,
                 ),
               ],
             ],

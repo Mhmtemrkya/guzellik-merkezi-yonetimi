@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckSquare, Loader2, Square, Trash2, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 /**
  * Toplu seçim + toplu silme altyapısı (müşteri / hizmet / paket listelerinde ortak).
@@ -89,12 +90,26 @@ export function SelectBox({ checked, onToggle }: { checked: boolean; onToggle: (
   )
 }
 
+/**
+ * Silme dışında, seçili kayıtlar üzerinde çalışan ek toplu işlem
+ * (ör. "KVKK onay mesajı gönder"). Tek çağrıda tüm Id'leri alır ve
+ * kullanıcıya gösterilecek sonuç metnini döner.
+ */
+export interface BulkAction {
+  key: string
+  label: string
+  icon: LucideIcon
+  run: (ids: string[]) => Promise<string>
+}
+
 export default function BulkSelectBar({
   api,
   itemLabel,
   onDelete,
   onDone,
   pageIds,
+  actions = [],
+  allowDelete = true,
 }: {
   api: BulkSelectApi
   /** "müşteri" / "hizmet" / "paket" — mesajlarda kullanılır. */
@@ -105,11 +120,32 @@ export default function BulkSelectBar({
   onDone: () => Promise<unknown> | unknown
   /** Sayfadaki tüm kayıtlar ("tümünü seç" için). */
   pageIds: string[]
+  /** Silme dışındaki toplu işlemler (silme butonunun solunda çıkar). */
+  actions?: BulkAction[]
+  /** false ise silme butonu hiç çizilmez — seçim yalnızca ek işlemler için açılır. */
+  allowDelete?: boolean
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<string>('')
+  const [runningAction, setRunningAction] = useState<string | null>(null)
+
+  const runAction = async (action: BulkAction): Promise<void> => {
+    const ids = Array.from(api.selected)
+    setRunningAction(action.key)
+    setResult('')
+    try {
+      const message = await action.run(ids)
+      api.clear()
+      setResult(message)
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : 'İşlem tamamlanamadı.')
+    } finally {
+      setRunningAction(null)
+      setTimeout(() => setResult(''), 6000)
+    }
+  }
 
   const runDelete = async (): Promise<void> => {
     const ids = Array.from(api.selected)
@@ -183,13 +219,30 @@ export default function BulkSelectBar({
               <X className="h-3.5 w-3.5" /> Seçimi temizle
             </button>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {!confirming &&
+                actions.map((action) => {
+                  const Icon = action.icon
+                  const running = runningAction === action.key
+                  return (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={() => runAction(action)}
+                      disabled={busy || runningAction !== null}
+                      className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#cfe3d8] bg-[#f2fbf7] px-3 py-1.5 text-[11px] font-bold text-[#2c7d63] transition-colors hover:border-[#9bd0ba] hover:bg-[#e7f7f0] disabled:opacity-60"
+                    >
+                      {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+                      {action.label}
+                    </button>
+                  )
+                })}
               {busy && (
                 <span className="text-[11px] font-semibold text-[#705a66] tabular-nums">
                   {progress}/{api.count}
                 </span>
               )}
-              {confirming ? (
+              {!allowDelete ? null : confirming ? (
                 <>
                   <span className="text-[11px] font-semibold text-[#b3453f]">Emin misiniz?</span>
                   <button
@@ -214,7 +267,8 @@ export default function BulkSelectBar({
                 <button
                   type="button"
                   onClick={() => setConfirming(true)}
-                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#cf4d68] px-3.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#b8405a]"
+                  disabled={runningAction !== null}
+                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#cf4d68] px-3.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#b8405a] disabled:opacity-60"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Seçilenleri sil
                 </button>

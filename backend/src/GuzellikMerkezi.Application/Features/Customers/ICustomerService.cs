@@ -30,6 +30,12 @@ public interface ICustomerService
     Task<Result<PassiveThresholdDto>> SetPassiveThresholdAsync(Guid tenantId, SetPassiveThresholdRequest request, CancellationToken cancellationToken = default);
     /// <summary>Arama başlatmak için ham telefon — personelde bile maskesiz döner, her erişim audit log'a yazılır.</summary>
     Task<Result<CustomerDialDto>> GetDialPhoneAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Seçili müşterilere WhatsApp'tan KVKK açık rıza isteği gönderir (kalıcı kuyruk üzerinden).
+    /// Müşteri "ONAYLIYORUM" yazarsa onay webhook'ta otomatik işlenir.
+    /// </summary>
+    Task<Result<KvkkRequestResultDto>> SendKvkkRequestAsync(Guid tenantId, SendKvkkRequestRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Dashboard sayaç/trendleri — tüm listeyi çekmeden sunucuda hesaplanır (sınırsız ölçek).</summary>
     Task<Result<CustomerStatsDto>> GetStatsAsync(Guid tenantId, CancellationToken cancellationToken = default);
 }

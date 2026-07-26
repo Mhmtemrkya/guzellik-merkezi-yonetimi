@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../catalog/catalog_sales_panel.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../services/service_category_field.dart';
@@ -379,6 +380,16 @@ class _PackageFormState extends State<PackageForm> {
                       style: TextButton.styleFrom(foregroundColor: Colors.red),
                       icon: const Icon(Icons.delete_outline_rounded),
                       label: const Text('Paketi sil'),
+                    ),
+                    const Divider(height: 26),
+                    // Bu paketi kim, kime, ne zaman satmış (web katalog paneli paritesi).
+                    CatalogSalesPanel(
+                      api: widget.api,
+                      kind: 'package',
+                      itemId: '${widget.item?['id'] ?? ''}',
+                      itemName: _name.text.trim(),
+                      itemPrice:
+                          double.tryParse(_totalPrice.text.replaceAll(',', '.')) ?? 0,
                     ),
                   ],
                 ],

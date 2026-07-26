@@ -6,6 +6,7 @@ using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Background;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,8 +20,9 @@ public sealed class CustomerService : ICustomerService
     private readonly ICurrentUser _currentUser;
     private readonly IFeatureService _features;
     private readonly ISearchIndexService _search;
+    private readonly IDurableJobQueue _jobs;
 
-    public CustomerService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, ICurrentUser currentUser, IFeatureService features, ISearchIndexService search)
+    public CustomerService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, ICurrentUser currentUser, IFeatureService features, ISearchIndexService search, IDurableJobQueue jobs)
     {
         _db = db;
         _usage = usage;
@@ -28,6 +30,7 @@ public sealed class CustomerService : ICustomerService
         _currentUser = currentUser;
         _features = features;
         _search = search;
+        _jobs = jobs;
     }
 
     /// <summary>
@@ -563,7 +566,54 @@ FROM (
         await _audit.LogAsync(tenantId, customer.BranchId, "Create", "Customer", customer.Id,
             $"Müşteri oluşturuldu: {customer.FullName}",
             new { customer.FullName, customer.Phone, customer.Email }, cancellationToken);
+
+        // KVKK açık rızası kayıt sırasında işaretlenmediyse müşteriye WhatsApp'tan onay isteği gider;
+        // "ONAYLIYORUM" yanıtı webhook'ta otomatik işlenir (bkz. WhatsAppService → kvkk-consent).
+        // Yalnızca TEK müşteri ekleme yolunda çalışır — Excel içeri aktarma Customer'ı doğrudan
+        // oluşturduğu için binlerce mesaj atılmaz.
+        if (!customer.KvkkConsent && !string.IsNullOrWhiteSpace(customer.Phone))
+        {
+            await _jobs.EnqueueAsync(DurableJobTypes.KvkkConsent,
+                new KvkkConsentJob(tenantId, customer.Id), cancellationToken);
+        }
+
         return Result<CustomerDto>.Success(Mask(customer.ToDto()));
+    }
+
+    /// <summary>
+    /// Seçili müşterilere KVKK açık rıza mesajı kuyruklar. Zaten onaylı ya da telefonsuz kayıtlar
+    /// atlanır; sonuç kaç mesajın kuyruğa girdiğini raporlar.
+    /// </summary>
+    public async Task<Result<KvkkRequestResultDto>> SendKvkkRequestAsync(Guid tenantId, SendKvkkRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        var ids = (request.CustomerIds ?? Array.Empty<Guid>()).Distinct().ToList();
+        if (ids.Count == 0) return Result<KvkkRequestResultDto>.Failure(Error.Validation("Müşteri seçilmedi."));
+        if (ids.Count > 500) return Result<KvkkRequestResultDto>.Failure(Error.Validation("Tek seferde en fazla 500 müşteriye gönderilebilir."));
+
+        // MySql sağlayıcısı Guid listesi .Contains()'i sunucuda çeviremez → bellekte süz.
+        var all = await _db.Customers.AsNoTracking()
+            .Where(c => c.TenantId == tenantId)
+            .Select(c => new { c.Id, c.KvkkConsent, c.Phone })
+            .ToListAsync(cancellationToken);
+        var wanted = ids.ToHashSet();
+        var rows = all.Where(c => wanted.Contains(c.Id)).ToList();
+
+        int queued = 0, approved = 0, noPhone = 0;
+        foreach (var row in rows)
+        {
+            if (row.KvkkConsent) { approved++; continue; }
+            if (string.IsNullOrWhiteSpace(row.Phone)) { noPhone++; continue; }
+            await _jobs.EnqueueAsync(DurableJobTypes.KvkkConsent, new KvkkConsentJob(tenantId, row.Id), cancellationToken);
+            queued++;
+        }
+
+        if (queued > 0)
+        {
+            await _audit.LogAsync(tenantId, null, "KvkkRequest", "Customer", null,
+                $"{queued} müşteriye KVKK onay mesajı gönderildi.", new { queued, approved, noPhone }, cancellationToken);
+        }
+
+        return Result<KvkkRequestResultDto>.Success(new KvkkRequestResultDto(queued, approved, noPhone));
     }
 
     public async Task<Result<CustomerDto>> UpdateAsync(Guid tenantId, Guid id, UpsertCustomerRequest request, CancellationToken cancellationToken = default)

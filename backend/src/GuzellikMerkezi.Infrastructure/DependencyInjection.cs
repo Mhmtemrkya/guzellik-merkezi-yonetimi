@@ -130,6 +130,7 @@ public static class DependencyInjection
         services.AddScoped<IDurableJobHandler, Background.WaitlistActivatedJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.PushSendJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.RatingLinkJobHandler>();
+        services.AddScoped<IDurableJobHandler, Background.KvkkConsentJobHandler>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IRatingService, RatingService>();
         services.AddScoped<Application.Features.PublicSalons.IPublicSalonService, PublicSalonService>();

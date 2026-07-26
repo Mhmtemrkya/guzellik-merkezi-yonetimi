@@ -15,10 +15,11 @@ public static class CustomerAccountEndpoints
         // (Yazma işlemleri ayrıca onay kapısında Accounting.Accounts/Collect aksiyon iznine tabidir.)
         var group = app.MapGroup("/api/admin/accounts").WithTags("CustomerAccounts").RequireAuthorization().RequirePermission(Permissions.Accounting);
 
-        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, Guid? customerId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        // serviceDefinitionId / servicePackageId → katalog kartındaki satış paneli (sunucuda süzülür).
+        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, Guid? customerId, Guid? serviceDefinitionId, Guid? servicePackageId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct, customerId)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct, customerId, serviceDefinitionId, servicePackageId)).ToHttpResult(http);
         });
 
         // Geçmiş satış: yazılıma geçmeden önce yapılmış paket/hizmet satışını sisteme işler.

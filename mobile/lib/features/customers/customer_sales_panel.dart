@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import 'customer_picker.dart';
 
 /// Müşteri kartındaki "Paket & Hizmet Satışları" paneli (web paritesi).
 ///
@@ -781,19 +782,32 @@ class HistoricalSaleSheet extends StatefulWidget {
     required this.api,
     required this.customerId,
     required this.customerName,
+    this.needsCustomer = false,
+    this.preset,
     super.key,
   });
 
   final ApiClient api;
+
+  /// Müşteri kartından açılışta dolu; katalog kartından açılışta boş bırakılır
+  /// ve müşteri bu sayfadan aranarak seçilir.
   final String customerId;
   final String customerName;
+
+  /// true → müşteri bu sayfada seçilir (katalog/hizmet-paket kartı akışı).
+  final bool needsCustomer;
+
+  /// Katalogdan açılışta satılan paket/hizmet peşin seçilir ve değiştirilmez.
+  final ({String kind, String id, String name, double price})? preset;
 
   @override
   State<HistoricalSaleSheet> createState() => _HistoricalSaleSheetState();
 }
 
 class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
-  String _kind = 'package'; // package | service | free
+  late String _kind; // package | service | free
+  String? _pickedCustomerId;
+  String? _pickedCustomerName;
   List<Map<String, dynamic>> _packages = const [];
   List<Map<String, dynamic>> _services = const [];
   List<Map<String, dynamic>> _staff = const [];
@@ -816,6 +830,17 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   @override
   void initState() {
     super.initState();
+    final preset = widget.preset;
+    _kind = preset?.kind ?? 'package';
+    if (preset != null) {
+      if (preset.kind == 'package') {
+        _packageId = preset.id;
+      } else {
+        _serviceId = preset.id;
+      }
+      _name.text = preset.name;
+      _total.text = '${preset.price.toInt()}';
+    }
     _loadLookups();
   }
 
@@ -850,6 +875,11 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   double get _remaining => (_totalNum - _paidNum.clamp(0, _totalNum)).clamp(0, double.infinity);
 
   Future<void> _save() async {
+    final customerId = widget.needsCustomer ? _pickedCustomerId : widget.customerId;
+    if (customerId == null || customerId.isEmpty) {
+      setState(() => _error = 'Müşteri seçin.');
+      return;
+    }
     final name = _name.text.trim();
     if (name.isEmpty) { setState(() => _error = 'Paket / hizmet adı zorunludur.'); return; }
     if (_soldAt == null) { setState(() => _error = 'Satış tarihi zorunludur.'); return; }
@@ -867,7 +897,7 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
     setState(() { _saving = true; _error = null; });
     try {
       await widget.api.post('/api/admin/accounts/historical', {
-        'customerId': widget.customerId,
+        'customerId': customerId,
         'name': name,
         'soldAtUtc': DateTime.utc(_soldAt!.year, _soldAt!.month, _soldAt!.day, 12).toIso8601String(),
         'totalAmount': _totalNum,
@@ -930,19 +960,69 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                         ),
                         const SizedBox(height: 14),
 
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(value: 'package', label: Text('Paket')),
-                            ButtonSegment(value: 'service', label: Text('Hizmet')),
-                            ButtonSegment(value: 'free', label: Text('Elle yaz')),
-                          ],
-                          selected: {_kind},
-                          showSelectedIcon: false,
-                          onSelectionChanged: (s) => setState(() => _kind = s.first),
-                        ),
+                        // Katalogdan açıldığında müşteri burada aranarak seçilir.
+                        if (widget.needsCustomer) ...[
+                          CustomerSelectField(
+                            api: widget.api,
+                            onSelected: (picked) => setState(() {
+                              _pickedCustomerId = picked.id;
+                              _pickedCustomerName = picked.name;
+                            }),
+                          ),
+                          if (_pickedCustomerName != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text('Seçili: $_pickedCustomerName',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                            ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Katalogdan açılışta satılan kayıt sabittir; seçim gösterilmez.
+                        if (widget.preset != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: .08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  widget.preset!.kind == 'package'
+                                      ? Icons.inventory_2_rounded
+                                      : Icons.spa_rounded,
+                                  size: 17,
+                                  color: AppColors.primaryDark,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(widget.preset!.name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                                ),
+                                Text(_money(widget.preset!.price),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                        color: AppColors.primaryDark)),
+                              ],
+                            ),
+                          )
+                        else
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'package', label: Text('Paket')),
+                              ButtonSegment(value: 'service', label: Text('Hizmet')),
+                              ButtonSegment(value: 'free', label: Text('Elle yaz')),
+                            ],
+                            selected: {_kind},
+                            showSelectedIcon: false,
+                            onSelectionChanged: (s) => setState(() => _kind = s.first),
+                          ),
                         const SizedBox(height: 10),
 
-                        if (_kind == 'package')
+                        if (widget.preset == null && _kind == 'package')
                           DropdownButtonFormField<String>(
                             initialValue: _packageId,
                             isExpanded: true,
@@ -967,7 +1047,7 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                               }
                             }),
                           ),
-                        if (_kind == 'service')
+                        if (widget.preset == null && _kind == 'service')
                           DropdownButtonFormField<String>(
                             initialValue: _serviceId,
                             isExpanded: true,
@@ -992,14 +1072,16 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                               }
                             }),
                           ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _name,
-                          decoration: const InputDecoration(
-                            labelText: 'Paket / hizmet adı *',
-                            hintText: 'örn. 2023 Lazer Epilasyon Paketi',
+                        if (widget.preset == null) ...[
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _name,
+                            decoration: const InputDecoration(
+                              labelText: 'Paket / hizmet adı *',
+                              hintText: 'örn. 2023 Lazer Epilasyon Paketi',
+                            ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 10),
 
                         _dateField('Satış tarihi *', _soldAt, (d) => setState(() => _soldAt = d),

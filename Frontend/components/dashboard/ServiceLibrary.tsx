@@ -10,17 +10,19 @@ import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
+import CatalogSalesPanel from '@/components/dashboard/CatalogSalesPanel'
+import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import ServiceFormDialog, { type ServiceFormDialogValues } from '@/components/dashboard/ServiceFormDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, FileUp, Layers3, PauseCircle,
   PencilLine, Search, Sparkles, Star, TrendingUp, Trophy, UploadCloud, UserCheck, Users, Wand2,
 } from 'lucide-react'
-import type { ApiAppointment, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
+import type { ApiAppointment, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
 
 type TabKey = 'all' | 'Active' | 'Passive' | 'Draft' | 'Archived'
 const TABS: { key: TabKey; label: string }[] = [
@@ -87,20 +89,21 @@ export default function ServiceLibrary({
   const [actionError, setActionError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const { data, loading, error, reload } = useApiQuery<{ services: ApiService[]; staff: ApiStaff[]; appts: ApiAppointment[]; accounts: ApiCustomerAccount[]; cats: ApiCustomServiceCategory[] }>(
+  const { data, loading, error, reload } = useApiQuery<{ services: ApiService[]; staff: ApiStaff[]; appts: ApiAppointment[]; accounts: ApiCustomerAccount[]; cats: ApiCustomServiceCategory[]; packages: ApiServicePackage[] }>(
     async () => {
-      if (!tenantId) return { services: [], staff: [], appts: [], accounts: [], cats: [] }
-      const [services, staff, appts, accounts, cats] = await Promise.all([
+      if (!tenantId) return { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [] }
+      const [services, staff, appts, accounts, cats, packages] = await Promise.all([
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
       ])
-      return { services: apiItems(services), staff: apiItems(staff), appts: apiItems(appts), accounts: apiItems(accounts), cats: Array.isArray(cats) ? cats : [] }
+      return { services: apiItems(services), staff: apiItems(staff), appts: apiItems(appts), accounts: apiItems(accounts), cats: Array.isArray(cats) ? cats : [], packages: apiItems(packages) }
     },
     [tenantId],
-    { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [] } },
+    { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [] } },
   )
 
   const services = useMemo(() => (data?.services || []).map((s, i) => normalizeService(s, i)), [data])
@@ -109,6 +112,45 @@ export default function ServiceLibrary({
   const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
   const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
   const customCategories = useMemo(() => (data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i)), [data])
+  const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
+
+  // --- Satış paneli (hizmet kartı) ------------------------------------------------
+  // Satışlar panelin kendi içinde, seçili hizmete göre SUNUCUDA süzülerek çekilir
+  // (bkz. CatalogSalesPanel) — burada tüm cari listesi tutulmaz.
+  const staffOptions = useMemo(() => staff.map((s) => ({ id: s.id, name: s.name })), [staff])
+  const packageOptions = useMemo(() => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice })), [packages])
+  const serviceOptions = useMemo(() => services.map((s) => ({ id: s.id, name: s.name, price: s.price })), [services])
+
+  const [salesBusy, setSalesBusy] = useState(false)
+  const runSaleAction = async (fn: () => Promise<unknown>): Promise<void> => {
+    setSalesBusy(true)
+    try { await fn(); await reload() } finally { setSalesBusy(false) }
+  }
+  const handleCreateHistoricalSale = (values: HistoricalSaleValues): Promise<void> =>
+    runSaleAction(() => adminApi.createHistoricalSale({
+      customerId: values.customerId,
+      name: values.name,
+      soldAtUtc: values.soldAt,
+      totalAmount: values.totalAmount,
+      paidAmount: values.paidAmount,
+      soldByStaffMemberId: values.soldByStaffMemberId,
+      servicePackageId: values.servicePackageId,
+      serviceDefinitionId: values.serviceDefinitionId,
+      sessionsTotal: values.sessionsTotal,
+      sessionsUsed: values.sessionsUsed,
+      installmentCount: values.installmentCount,
+      firstDueDate: values.firstDueDate,
+      notes: values.notes,
+      branchId: branchId ?? null,
+    }, tenantId))
+  const handleCancelSale = (accountId: string, reason: string): Promise<void> =>
+    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, tenantId))
+  const handleRestoreSale = (accountId: string): Promise<void> =>
+    runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
+  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+    runSaleAction(() => adminApi.registerAccountPayment(accountId, {
+      amount, method: 'cash', reference: null, occurredAtUtc: new Date().toISOString(),
+    }, tenantId))
 
   const statsByService = useMemo(() => {
     const m = new Map<string, ServiceStats>()
@@ -430,6 +472,23 @@ export default function ServiceLibrary({
                     <div className="flex items-center gap-2 rounded-[10px] border border-[#f0d5e0] bg-[#fff1f6]/60 px-3 py-2"><Star className="h-4 w-4 text-[#c85776]" /><div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Toplam rezervasyon</div><div className="font-display text-lg">{selStats?.total ?? 0}</div></div></div>
                     <div className="flex items-center gap-2 rounded-[10px] border border-emerald-200/60 bg-emerald-50/60 px-3 py-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Kâr marjı</div><div className="font-display text-lg text-emerald-700">%{marginOf(sel)}</div></div></div>
                   </div>
+                </div>
+
+                {/* Satış performansı — bu hizmeti kim, kime, ne zaman satmış. */}
+                <div className="mt-3">
+                  <CatalogSalesPanel
+                    item={{ id: sel.id, name: sel.name, price: sel.price }}
+                    kind="service"
+                    tenantId={tenantId}
+                    staffOptions={staffOptions}
+                    packageOptions={packageOptions}
+                    serviceOptions={serviceOptions}
+                    busy={salesBusy}
+                    onCreateHistorical={handleCreateHistoricalSale}
+                    onCancelSale={handleCancelSale}
+                    onRestoreSale={handleRestoreSale}
+                    onCollectInstallment={handleCollectInstallment}
+                  />
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">

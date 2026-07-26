@@ -11,12 +11,33 @@ public static class DurableJobTypes
     public const string WaitlistActivated = "whatsapp.waitlist-activated";
     public const string PushSend = "push.send";
     public const string RatingLink = "whatsapp.rating-link";
+    public const string KvkkConsent = "whatsapp.kvkk-consent";
 }
 
 public sealed record WaitlistOfferJob(Guid TenantId, Guid WaitlistId);
 public sealed record WaitlistActivatedJob(Guid TenantId, Guid AppointmentId);
 public sealed record PushSendJob(List<PushMessage> Messages);
 public sealed record RatingLinkJob(Guid TenantId, Guid AppointmentId);
+public sealed record KvkkConsentJob(Guid TenantId, Guid CustomerId);
+
+/// <summary>
+/// KVKK açık rıza isteğini WhatsApp'tan gönderir. İstek yolundan ayrıldığı için müşteri
+/// kaydetme işlemi WhatsApp yavaşlığından/kesintisinden etkilenmez; gönderim başarısız olursa
+/// kuyruk otomatik yeniden dener.
+/// </summary>
+public sealed class KvkkConsentJobHandler : IDurableJobHandler
+{
+    private readonly IWhatsAppService _whatsApp;
+    public KvkkConsentJobHandler(IWhatsAppService whatsApp) => _whatsApp = whatsApp;
+    public string JobType => DurableJobTypes.KvkkConsent;
+
+    public async Task ExecuteAsync(string payloadJson, CancellationToken ct)
+    {
+        var job = JsonSerializer.Deserialize<KvkkConsentJob>(payloadJson)
+                  ?? throw new InvalidOperationException("KvkkConsent payload çözülemedi.");
+        await _whatsApp.SendKvkkConsentRequestAsync(job.TenantId, job.CustomerId, ct);
+    }
+}
 
 public sealed class WaitlistOfferJobHandler : IDurableJobHandler
 {
