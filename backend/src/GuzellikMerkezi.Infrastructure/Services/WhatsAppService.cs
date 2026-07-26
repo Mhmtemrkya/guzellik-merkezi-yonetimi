@@ -36,8 +36,9 @@ public sealed class WhatsAppService : IWhatsAppService
     private const string KvkkTemplateName = "kvkk-consent";
     private const string KvkkConsentTemplate =
         "Merhaba {ad}, {salon} olarak kişisel verilerinizi (ad, telefon, işlem geçmişi) randevu ve " +
-        "hizmet süreçlerinizi yürütmek için işliyoruz. KVKK kapsamında açık rızanızı veriyorsanız " +
-        "ONAYLIYORUM yazmanız yeterlidir. Dilediğiniz zaman geri çekebilirsiniz.";
+        "hizmet süreçlerinizi yürütmek için işliyoruz. Aydınlatma metnimiz ekteki PDF'tedir. " +
+        "KVKK kapsamında açık rızanızı veriyorsanız ONAYLIYORUM yazmanız yeterlidir; dilediğiniz " +
+        "zaman geri çekebilirsiniz.{link}";
     /// <summary>Onay alındıktan sonra müşteriye gönderilen teşekkür/bilgi mesajı.</summary>
     private const string KvkkThanksTemplate =
         "Teşekkürler {ad}, KVKK onayınız kaydedildi. İyi günler dileriz! — {salon}";
@@ -55,8 +56,9 @@ public sealed class WhatsAppService : IWhatsAppService
     private readonly ICurrentUser _currentUser;
     private readonly IWaitlistService _waitlist;
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
+    private readonly Application.Features.PublicSalons.IKvkkDocumentService _kvkkDocuments;
 
-    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications)
+    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications, Application.Features.PublicSalons.IKvkkDocumentService kvkkDocuments)
     {
         _db = db;
         _encryption = encryption;
@@ -68,6 +70,7 @@ public sealed class WhatsAppService : IWhatsAppService
         _currentUser = currentUser;
         _waitlist = waitlist;
         _notifications = notifications;
+        _kvkkDocuments = kvkkDocuments;
     }
 
     // Personel müşteri telefonunu yalnızca son 4 hane görür; ham numara API'den hiç çıkmaz.
@@ -91,6 +94,7 @@ public sealed class WhatsAppService : IWhatsAppService
         }
         s.UpdateContent(request.ReminderTemplate);
         s.UpdateBillingPreferences(request.MarketingEnabled, request.AllowWalletOverage, request.MonthlySpendCapTry);
+        s.UpdateTemplateBindings(request.KvkkTemplateName, request.ReminderTemplateName, request.TemplateLanguageCode);
         await _db.SaveChangesAsync(ct);
         return Result<WhatsAppSettingsDto>.Success(BuildSettingsDto(s));
     }
@@ -281,16 +285,67 @@ public sealed class WhatsAppService : IWhatsAppService
             if (customer.KvkkConsent) return;
 
             var salonName = await SalonNameAsync(tenantId, customer.BranchId, ct);
+            var firstName = FirstName(customer.FullName);
+
+            // KURUMA ÖZEL aydınlatma metni: PDF olarak eklenir, ayrıca herkese açık sayfa
+            // linki mesaja konur (PDF'i açamayan müşteri metni tarayıcıda okuyabilsin).
+            var link = await KvkkLinkAsync(tenantId, ct);
+            byte[]? pdf = null;
+            try { pdf = await _kvkkDocuments.BuildPdfAsync(tenantId, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "KVKK PDF üretilemedi, mesaj eksiz gönderilecek: {Tenant}", tenantId); }
+
             var body = KvkkConsentTemplate
-                .Replace("{ad}", FirstName(customer.FullName))
-                .Replace("{salon}", salonName);
+                .Replace("{ad}", firstName)
+                .Replace("{salon}", salonName)
+                // Link EN SONDA durur: hem cümleleri bölmez hem WhatsApp önizlemesi doğru çalışır.
+                .Replace("{link}", string.IsNullOrEmpty(link) ? string.Empty : $"\n\nMetnin tamamı: {link}");
+
+            var attachment = pdf is null
+                ? null
+                : new OutboundAttachment(pdf, $"KVKK-Aydinlatma-Metni-{Slugify(salonName)}.pdf");
+
             await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id, waitlistEntryId: null,
-                customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: KvkkTemplateName, ct);
+                customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: KvkkTemplateName, ct,
+                attachment,
+                // 24 saat penceresi kapalıysa Meta yalnızca onaylı şablon kabul eder.
+                settings => string.IsNullOrWhiteSpace(settings?.KvkkTemplateName)
+                    ? null
+                    : new TemplateFallback(settings.KvkkTemplateName!, settings.TemplateLanguageCode,
+                        new[] { firstName, salonName, link ?? string.Empty }));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "KVKK onay isteği gönderilemedi: {Customer}", customerId);
         }
+    }
+
+    /// <summary>
+    /// Herkese açık KVKK metni sayfasının adresi (WhatsApp mesajındaki link).
+    /// Taban adres <c>App:PublicBaseUrl</c> ayarından gelir; tanımlı değilse link konmaz —
+    /// çalışmayan bir link göndermek, hiç link göndermemekten kötüdür.
+    /// </summary>
+    private async Task<string?> KvkkLinkAsync(Guid tenantId, CancellationToken ct)
+    {
+        var baseUrl = _config["App:PublicBaseUrl"]?.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl)) return null;
+        var slug = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.Id == tenantId).Select(t => t.Slug).FirstOrDefaultAsync(ct);
+        return string.IsNullOrWhiteSpace(slug) ? null : $"{baseUrl}/kvkk/{slug}";
+    }
+
+    /// <summary>Dosya adı için güvenli sadeleştirme (Türkçe karakterler dosya adında sorun çıkarır).</summary>
+    private static string Slugify(string value)
+    {
+        var map = new Dictionary<char, char> { ['ç'] = 'c', ['ğ'] = 'g', ['ı'] = 'i', ['ö'] = 'o', ['ş'] = 's', ['ü'] = 'u', ['Ç'] = 'C', ['Ğ'] = 'G', ['İ'] = 'I', ['Ö'] = 'O', ['Ş'] = 'S', ['Ü'] = 'U' };
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            var c = map.TryGetValue(ch, out var m) ? m : ch;
+            if (char.IsLetterOrDigit(c)) sb.Append(c);
+            else if (c is ' ' or '-' or '_') sb.Append('-');
+        }
+        var slug = sb.ToString().Trim('-');
+        return slug.Length == 0 ? "kurum" : slug;
     }
 
     /// <summary>Şube adı yoksa kurum adına düşer — imzasız mesaj gitmesin.</summary>
@@ -368,7 +423,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 token = _encryption.Decrypt(platform.WhatsAppAccessTokenEncrypted);
         }
         if (string.IsNullOrWhiteSpace(token)) return SendContext.Offline;
-        return new SendContext(true, settings.PhoneNumberId, token!);
+        return new SendContext(true, settings.PhoneNumberId, token!, settings);
     }
 
     /// <summary>
@@ -378,7 +433,8 @@ public sealed class WhatsAppService : IWhatsAppService
     /// </summary>
     private async Task<DispatchResult> DispatchAsync(
         Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId, Guid? waitlistEntryId,
-        string phone, string body, WhatsAppMessageCategory category, string? templateName, CancellationToken ct)
+        string phone, string body, WhatsAppMessageCategory category, string? templateName, CancellationToken ct,
+        OutboundAttachment? attachment = null, Func<WhatsAppSettings?, TemplateFallback?>? templateFallback = null)
     {
         var toPhone = NormalizePhone(phone);
         if (toPhone.Length == 0) return DispatchResult.Skipped;
@@ -400,12 +456,20 @@ public sealed class WhatsAppService : IWhatsAppService
         bool simulated;
         if (ctx.Live)
         {
-            outcome = await SendViaMetaAsync(ctx.PhoneNumberId!, ctx.Token, toPhone, body, ct);
+            // Meta kuralı: müşteri son 24 saatte yazmadıysa serbest metin İLETİLMEZ; yalnızca
+            // önceden onaylanmış şablonla gönderilebilir. Pencere kapalıysa (ve şablon
+            // tanımlıysa) şablon yoluna geçilir.
+            var template = await IsSessionOpenAsync(tenantId, toPhone, ct)
+                ? null
+                : templateFallback?.Invoke(ctx.Settings);
+
+            outcome = await SendViaMetaAsync(ctx.PhoneNumberId!, ctx.Token, toPhone, body, ct, attachment, template);
             simulated = false;
         }
         else
         {
-            _logger.LogInformation("[WhatsApp SIM] {Tenant} -> {Phone}: {Body}", tenantId, toPhone, body);
+            var extra = attachment is null ? string.Empty : $" [ek: {attachment.FileName}, {attachment.Content.Length} bayt]";
+            _logger.LogInformation("[WhatsApp SIM] {Tenant} -> {Phone}: {Body}{Extra}", tenantId, toPhone, body, extra);
             outcome = new WhatsAppSendOutcome(true, $"sim-{Guid.NewGuid():N}", null);
             simulated = true;
         }
@@ -689,13 +753,125 @@ public sealed class WhatsAppService : IWhatsAppService
         }
     }
 
-    private async Task<WhatsAppSendOutcome> SendViaMetaAsync(string phoneNumberId, string accessToken, string toPhone, string body, CancellationToken ct)
+    /// <summary>
+    /// Son 24 saatte müşteriden gelen mesaj var mı? (Meta "customer service window").
+    /// Açıksa serbest metin gönderilebilir; kapalıysa yalnızca onaylı şablon iletilir.
+    /// </summary>
+    private async Task<bool> IsSessionOpenAsync(Guid tenantId, string toPhone, CancellationToken ct)
+    {
+        var since = DateTime.UtcNow.AddHours(-24);
+        var digits = SearchText.NormalizePhone(toPhone);
+        if (digits.Length == 0) return false;
+
+        // Telefon şifreli saklandığı için karşılaştırma bellekte yapılır; pencere zaten dar (24 saat).
+        var recent = await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == tenantId && !m.IsDeleted
+                        && m.Direction == WhatsAppMessageDirection.Inbound
+                        && m.CreatedAtUtc >= since)
+            .Select(m => m.Phone)
+            .ToListAsync(ct);
+
+        return recent.Any(p => SearchText.NormalizePhone(p) == digits);
+    }
+
+    /// <summary>
+    /// PDF'i Meta medya deposuna yükler ve media id döner. Başarısızsa null — çağıran
+    /// eksiz gönderime düşer (onay isteği hiç gitmemektense eksiz gitsin).
+    /// </summary>
+    private async Task<string?> UploadMediaAsync(string phoneNumberId, string accessToken, OutboundAttachment attachment, CancellationToken ct)
+    {
+        try
+        {
+            var client = _httpFactory.CreateClient("WhatsApp");
+            using var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(attachment.Content);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(attachment.MimeType);
+            form.Add(file, "file", attachment.FileName);
+            form.Add(new StringContent("whatsapp"), "messaging_product");
+            form.Add(new StringContent(attachment.MimeType), "type");
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"https://graph.facebook.com/v21.0/{phoneNumberId}/media") { Content = form };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            using var resp = await client.SendAsync(req, ct);
+            var raw = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[WhatsApp] Medya yüklenemedi ({Status}): {Body}", (int)resp.StatusCode, raw.Length > 200 ? raw[..200] : raw);
+                return null;
+            }
+            using var doc = JsonDocument.Parse(raw);
+            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[WhatsApp] Medya yükleme hatası.");
+            return null;
+        }
+    }
+
+    private async Task<WhatsAppSendOutcome> SendViaMetaAsync(string phoneNumberId, string accessToken, string toPhone, string body, CancellationToken ct,
+        OutboundAttachment? attachment = null, TemplateFallback? template = null)
     {
         try
         {
             var client = _httpFactory.CreateClient("WhatsApp");
             var url = $"https://graph.facebook.com/v21.0/{phoneNumberId}/messages";
-            var payload = new { messaging_product = "whatsapp", recipient_type = "individual", to = toPhone, type = "text", text = new { preview_url = false, body } };
+
+            // Ek varsa önce medya deposuna yüklenir; id hem serbest belge mesajında hem
+            // şablonun belge başlığında kullanılır.
+            string? mediaId = null;
+            if (attachment is not null)
+                mediaId = await UploadMediaAsync(phoneNumberId, accessToken, attachment, ct);
+
+            object payload;
+            if (template is not null)
+            {
+                var components = new List<object>();
+                if (mediaId is not null && attachment is not null)
+                {
+                    components.Add(new
+                    {
+                        type = "header",
+                        parameters = new object[] { new { type = "document", document = new { id = mediaId, filename = attachment.FileName } } },
+                    });
+                }
+                if (template.BodyParameters.Count > 0)
+                {
+                    components.Add(new
+                    {
+                        type = "body",
+                        parameters = template.BodyParameters.Select(v => new { type = "text", text = v }).ToArray(),
+                    });
+                }
+                payload = new
+                {
+                    messaging_product = "whatsapp",
+                    recipient_type = "individual",
+                    to = toPhone,
+                    type = "template",
+                    template = new
+                    {
+                        name = template.Name,
+                        language = new { code = template.LanguageCode },
+                        components = components.ToArray(),
+                    },
+                };
+            }
+            else if (mediaId is not null && attachment is not null)
+            {
+                payload = new
+                {
+                    messaging_product = "whatsapp",
+                    recipient_type = "individual",
+                    to = toPhone,
+                    type = "document",
+                    document = new { id = mediaId, filename = attachment.FileName, caption = Truncate(body, 1024) },
+                };
+            }
+            else
+            {
+                payload = new { messaging_product = "whatsapp", recipient_type = "individual", to = toPhone, type = "text", text = new { preview_url = true, body } };
+            }
             using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             using var resp = await client.SendAsync(req, ct);
@@ -727,11 +903,12 @@ public sealed class WhatsAppService : IWhatsAppService
     {
         var webhookUrl = BuildWebhookUrl();
         if (s is null)
-            return new WhatsAppSettingsDto(false, null, null, WhatsAppConnectionStatus.NotConnected.ToString(), false, null, null, "Meta", webhookUrl, false, false, null);
+            return new WhatsAppSettingsDto(false, null, null, WhatsAppConnectionStatus.NotConnected.ToString(), false, null, null, "Meta", webhookUrl, false, false, null, null, null, "tr");
         return new WhatsAppSettingsDto(
             s.Enabled, s.PhoneNumberId, s.DisplayPhoneNumber, s.ConnectionStatus.ToString(), s.IsConnected,
             s.BusinessAccountId, s.ReminderTemplate, s.Provider, webhookUrl,
-            s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapTry);
+            s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapTry,
+            s.KvkkTemplateName, s.ReminderTemplateName, s.TemplateLanguageCode);
     }
 
     private string BuildWebhookUrl()
@@ -830,10 +1007,23 @@ public sealed class WhatsAppService : IWhatsAppService
         return sb.ToString();
     }
 
-    private readonly record struct SendContext(bool Live, string? PhoneNumberId, string Token)
+    private readonly record struct SendContext(bool Live, string? PhoneNumberId, string Token, WhatsAppSettings? Settings = null)
     {
         public static readonly SendContext Offline = new(false, null, string.Empty);
     }
+
+    /// <summary>Mesaja iliştirilecek belge (KVKK aydınlatma metni PDF'i).</summary>
+    private sealed record OutboundAttachment(byte[] Content, string FileName, string MimeType = "application/pdf");
+
+    /// <summary>Meta belge açıklaması (caption) 1024 karakterle sınırlıdır.</summary>
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..(max - 1)] + "…";
+
+    /// <summary>
+    /// 24 saat penceresi kapalıyken kullanılacak Meta onaylı şablon.
+    /// <paramref name="BodyParameters"/> şablondaki {{1}}, {{2}}… sırasıyla eşlenir.
+    /// </summary>
+    private sealed record TemplateFallback(string Name, string LanguageCode, IReadOnlyList<string> BodyParameters);
 
     private sealed record DispatchResult(bool Blocked, string? BlockReason, WhatsAppMessage? Message, bool Success, bool Simulated, string ToPhone, string Body, string? ProviderMessageId, string? Error)
     {

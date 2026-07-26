@@ -755,6 +755,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         s.Property(x => x.PhoneNumberId).HasMaxLength(64);
         s.Property(x => x.AccessTokenEncrypted).HasColumnType("TEXT");
         s.Property(x => x.BusinessAccountId).HasMaxLength(64);
+        // Meta onayli sablon adlari — kisa metin, longtext gereksiz.
+        s.Property(x => x.KvkkTemplateName).HasMaxLength(128);
+        s.Property(x => x.ReminderTemplateName).HasMaxLength(128);
+        s.Property(x => x.TemplateLanguageCode).HasMaxLength(16).HasDefaultValue("tr");
         s.Property(x => x.DisplayPhoneNumber).HasMaxLength(32);
         s.Property(x => x.ConnectionStatus).HasConversion<string>().HasMaxLength(16).IsRequired()
             .HasDefaultValue(WhatsAppConnectionStatus.NotConnected); // eski satırlar bağlantısız başlar (seed'de taşınır)

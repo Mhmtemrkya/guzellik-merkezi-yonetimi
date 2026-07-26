@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.PublicSalons;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -21,6 +22,29 @@ public static class PublicSalonEndpoints
 
         pub.MapGet("/{slug}/reviews", async (string slug, Guid? branchId, int? page, int? pageSize, IPublicSalonService service, HttpContext http, CancellationToken ct) =>
             (await service.GetReviewsAsync(slug, branchId, page ?? 1, pageSize ?? 10, ct)).ToHttpResult(http));
+
+        // KVKK aydınlatma metni — WhatsApp'la gönderilen linkin ve "PDF indir" bağlantısının hedefi.
+        // Anonimdir: müşteri onay vermeden önce metni okuyabilmeli, giriş yapması beklenemez.
+        // İçerik KURUMA ÖZELDİR (Ayarlar'dan düzenlenen metin), yayın anahtarına bağlı değildir —
+        // vitrini kapalı kurumun müşterisi de kendi aydınlatma metnine erişebilmelidir.
+        pub.MapGet("/{slug}/kvkk", async (string slug, IKvkkDocumentService service, HttpContext http, CancellationToken ct) =>
+        {
+            var tenantId = await service.ResolveTenantIdBySlugAsync(slug, ct);
+            var content = tenantId is null ? null : await service.GetContentAsync(tenantId.Value, ct);
+            // Diğer uçlarla aynı ApiResponse zarfı — istemci publicRequest zarf bekler.
+            var result = content is null
+                ? Result<KvkkContentDto>.Failure(Error.NotFound("Kurum bulunamadı."))
+                : Result<KvkkContentDto>.Success(content);
+            return result.ToHttpResult(http);
+        });
+
+        pub.MapGet("/{slug}/kvkk.pdf", async (string slug, IKvkkDocumentService service, CancellationToken ct) =>
+        {
+            var tenantId = await service.ResolveTenantIdBySlugAsync(slug, ct);
+            if (tenantId is null) return Results.NotFound();
+            var pdf = await service.BuildPdfAsync(tenantId.Value, ct);
+            return pdf is null ? Results.NotFound() : Results.File(pdf, "application/pdf", $"KVKK-Aydinlatma-Metni-{slug}.pdf");
+        });
 
         return app;
     }

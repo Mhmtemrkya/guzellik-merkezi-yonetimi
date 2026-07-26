@@ -15,14 +15,21 @@ public sealed record WhatsAppSettingsDto(
     string WebhookUrl,
     bool MarketingEnabled,
     bool AllowWalletOverage,
-    decimal? MonthlySpendCapTry);
+    decimal? MonthlySpendCapTry,
+    // Meta onaylı şablon adları — 24 saat penceresi kapalıyken serbest metin İLETİLMEZ.
+    string? KvkkTemplateName = null,
+    string? ReminderTemplateName = null,
+    string TemplateLanguageCode = "tr");
 
 /// <summary>Kurum yöneticisi yalnızca içeriği ve faturalama tercihlerini kaydeder (bağlantıyı platform yönetir).</summary>
 public sealed record SaveWhatsAppSettingsRequest(
     string? ReminderTemplate,
     bool MarketingEnabled = false,
     bool AllowWalletOverage = false,
-    decimal? MonthlySpendCapTry = null);
+    decimal? MonthlySpendCapTry = null,
+    string? KvkkTemplateName = null,
+    string? ReminderTemplateName = null,
+    string? TemplateLanguageCode = null);
 
 public sealed record ReminderResultDto(
     bool Sent,

@@ -35,6 +35,17 @@ public sealed class WhatsAppSettings : Entity
     // --- İçerik (KURUM yönetir) ---
     public string? ReminderTemplate { get; private set; }
 
+    // --- Meta onaylı şablonlar (24 saat penceresi kapalıyken zorunlu) ---
+    // Meta kuralı: müşteri son 24 saatte yazmadıysa serbest metin İLETİLMEZ; yalnızca önceden
+    // onaylanmış şablonla mesaj gönderilebilir. Aşağıdaki adlar Meta panelinde oluşturulan
+    // şablonların adıdır; boşsa serbest metin denenir (pencere açıksa sorunsuz çalışır).
+    /// <summary>KVKK açık rıza isteği şablonu. Gövde: {{1}}=müşteri adı, {{2}}=kurum adı, {{3}}=metin linki.</summary>
+    public string? KvkkTemplateName { get; private set; }
+    /// <summary>Randevu hatırlatma şablonu. Gövde: {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum.</summary>
+    public string? ReminderTemplateName { get; private set; }
+    /// <summary>Şablon dil kodu (Meta'da şablonun kayıtlı olduğu dil). Varsayılan "tr".</summary>
+    public string TemplateLanguageCode { get; private set; } = "tr";
+
     // --- Faturalama tercihleri (KURUM yönetir, platform tavan koyar) ---
     /// <summary>Kampanya (Marketing) mesajları açık mı? Varsayılan KAPALI — pahalı kategori istenmeden çalışmaz.</summary>
     public bool MarketingEnabled { get; private set; }
@@ -79,6 +90,15 @@ public sealed class WhatsAppSettings : Entity
     public void UpdateContent(string? reminderTemplate)
     {
         ReminderTemplate = Clean(reminderTemplate);
+        Touch();
+    }
+
+    /// <summary>KURUM: Meta'da onaylanmış şablon adları ve dil kodu (boş = serbest metin denenir).</summary>
+    public void UpdateTemplateBindings(string? kvkkTemplateName, string? reminderTemplateName, string? languageCode)
+    {
+        KvkkTemplateName = Clean(kvkkTemplateName);
+        ReminderTemplateName = Clean(reminderTemplateName);
+        TemplateLanguageCode = Clean(languageCode) ?? "tr";
         Touch();
     }
 

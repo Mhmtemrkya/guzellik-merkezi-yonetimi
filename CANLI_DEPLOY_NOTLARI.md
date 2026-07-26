@@ -36,6 +36,11 @@
     (yavaş ama doğru). Kazanç yalnızca migration + backfill tamamlandıktan sonra devreye girer.
   - ⚠️ İndeks `Encryption:MasterKeyBase64`'ten türetilir. **Anahtar değişirse indeks anlamsızlaşır** — o durumda
     `UPDATE customers SET SearchIndex = NULL;` çalıştırıp uygulamayı yeniden başlat (backfill yeniden üretir).
+- [ ] **WhatsApp şablon bağlama migration'ını uygula:** `WhatsAppTemplateBindings` (`20260726130427`).
+  - `whatsapp_settings` tablosuna `KvkkTemplateName`, `ReminderTemplateName`, `TemplateLanguageCode` ekler.
+  - Meta kuralı: müşteri son **24 saat** içinde yazmadıysa serbest metin iletilmez, yalnızca onaylı şablon geçer.
+    Yeni müşteriye giden KVKK isteği her zaman bu durumdadır → Meta panelinde şablonu oluşturup adını
+    **Ayarlar → WhatsApp** ekranına yazın. Boş bırakılırsa serbest metin denenir (pencere açıksa çalışır).
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
@@ -52,6 +57,7 @@
 - [ ] `Cors:AllowedOrigins` — yalnızca proxy mimarisi kullanılıyorsa önemsiz (tarayıcı backend'e doğrudan gitmez). Doğrudan erişim varsa gerçek domain(ler) yazılmalı.
 - [ ] **`WhatsApp__AppSecret`** = Meta App Secret (env). WhatsApp webhook imza doğrulaması için. **Tanımsızsa canlıda gelen webhook'lar işlenmez** (fail-closed) — gerçek 2 yönlü hatırlatma kullanılıyorsa mutlaka ver. (Meta App Dashboard → Settings → Basic → App Secret.)
 - [ ] **Reverse proxy arkasındaysan gerçek istemci IP'sini aç:** aynı sunucudaki nginx/IIS için ek ayar gerekmez; **cloud LB için** `ForwardedHeaders__TrustAll=true` (LB dış `X-Forwarded-For`'u ezmeli) **veya** `ForwardedHeaders__KnownProxies__0=<lb-ip>`. Yoksa login rate-limit ve audit/güvenlik logları proxy IP'sini görür (tüm kullanıcılar tek kovaya düşer).
+- [ ] **`App__PublicBaseUrl`** = panelin herkese açık adresi (örn. `https://panel.beautyasist.com`). KVKK onay mesajındaki "Metnin tamamı" linki buradan üretilir (`{PublicBaseUrl}/kvkk/{slug}`). **Tanımsızsa mesaja link konmaz** — PDF eki yine gider, sadece link satırı çıkmaz (kırık link göndermektense hiç göndermemek tercih edildi).
 
 ### Frontend env
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api/proxy` (değişmemeli).

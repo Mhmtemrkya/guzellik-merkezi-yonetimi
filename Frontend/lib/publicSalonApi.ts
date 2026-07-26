@@ -145,6 +145,22 @@ export interface PublicSalonFacets {
   cities: string[]
 }
 
+/** Kuruma özel KVKK aydınlatma metni — WhatsApp'la gönderilen linkin hedefi (anonim). */
+export interface PublicKvkkContent {
+  salonName: string
+  text: string
+  logoData: string | null
+}
+
+export function getPublicKvkkText(slug: string): Promise<PublicKvkkContent> {
+  return publicRequest<PublicKvkkContent>(`/api/public/salons/${encodeURIComponent(slug)}/kvkk`)
+}
+
+/** Aynı metnin logolu PDF adresi — "PDF indir" ve WhatsApp eki bu dosyayı kullanır. */
+export function publicKvkkPdfUrl(slug: string): string {
+  return `${API_BASE_URL}/api/public/salons/${encodeURIComponent(slug)}/kvkk.pdf`
+}
+
 /** Filtre seçenekleri — yayındaki kurumların gerçek hizmet kategorileri ve şehirleri. */
 export function getPublicSalonFacets(): Promise<PublicSalonFacets> {
   return publicRequest<PublicSalonFacets>('/api/public/salons/facets')

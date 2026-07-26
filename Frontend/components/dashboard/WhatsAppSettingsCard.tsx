@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageCircle, Loader2, Check, Clock3, Info, ShieldCheck, PhoneCall, Megaphone, Wallet } from 'lucide-react'
+import { MessageCircle, Loader2, Check, Clock3, Info, ShieldCheck, PhoneCall, Megaphone, Wallet, FileCheck2 } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import type { ApiWhatsAppSettings } from '@/lib/types'
@@ -27,6 +27,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
   const [marketingEnabled, setMarketingEnabled] = useState(false)
   const [allowOverage, setAllowOverage] = useState(false)
   const [spendCap, setSpendCap] = useState('')
+  const [kvkkTemplateName, setKvkkTemplateName] = useState('')
+  const [reminderTemplateName, setReminderTemplateName] = useState('')
+  const [templateLanguage, setTemplateLanguage] = useState('tr')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [pending, setPending] = useState(false)
@@ -37,6 +40,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
     setMarketingEnabled(Boolean(data.marketingEnabled))
     setAllowOverage(Boolean(data.allowWalletOverage))
     setSpendCap(data.monthlySpendCapTry != null ? String(data.monthlySpendCapTry) : '')
+    setKvkkTemplateName(data.kvkkTemplateName ?? '')
+    setReminderTemplateName(data.reminderTemplateName ?? '')
+    setTemplateLanguage(data.templateLanguageCode || 'tr')
   }, [data])
 
   const save = async () => {
@@ -48,6 +54,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
         marketingEnabled,
         allowWalletOverage: allowOverage,
         monthlySpendCapTry: cap != null && Number.isFinite(cap) ? cap : null,
+        kvkkTemplateName: kvkkTemplateName.trim() || null,
+        reminderTemplateName: reminderTemplateName.trim() || null,
+        templateLanguageCode: templateLanguage.trim() || 'tr',
       }
       const res = await adminApi.saveWhatsappSettings(body, tenantId)
       if (isPendingApprovalResult(res)) setPending(true)
@@ -144,6 +153,61 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
                 className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
               />
               <p className="mt-1 text-[10px] text-[#352432]/45">Bu tutarı aşan gönderim yapılmaz — Meta faturanız bu tavanı geçemez.</p>
+            </div>
+          </div>
+
+          {/* Meta onaylı şablonlar — 24 saat penceresi kapalıyken zorunlu */}
+          <div className="space-y-2 rounded-xl border border-[#ead8df] bg-[#fffafb] p-3">
+            <div className="flex items-center gap-1.5">
+              <FileCheck2 className="h-3.5 w-3.5 text-[#c85776]" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Meta onaylı şablonlar</span>
+            </div>
+            <div className="flex items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-sky-900">
+              <Info className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                Meta kuralı: müşteri size son <b>24 saat</b> içinde yazmadıysa serbest metin iletilmez.
+                Yeni eklenen müşteriye giden KVKK isteği her zaman bu duruma girer. Meta panelinde
+                şablonu oluşturup adını buraya yazın; pencere kapalıyken sistem otomatik olarak
+                şablonla gönderir. Boş bırakılırsa serbest metin denenir.
+              </span>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">KVKK onay isteği şablon adı</label>
+              <input
+                value={kvkkTemplateName}
+                onChange={(e) => setKvkkTemplateName(e.target.value)}
+                placeholder="örn. kvkk_acik_riza"
+                className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+              />
+              <p className="mt-1 text-[10px] leading-relaxed text-[#352432]/55">
+                Meta&apos;da <b>Utility</b> kategorisinde, <b>belge (document) başlıklı</b> ve gövdesi şu 3 değişkenli olacak şekilde oluşturun:
+                <span className="mt-0.5 block rounded border border-[#ead8df] bg-white px-2 py-1 font-mono text-[10px] text-[#4a3a44]">
+                  Merhaba &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; olarak kişisel verilerinizi işliyoruz. Aydınlatma metni ekte ve &#123;&#123;3&#125;&#125; adresinde. Onaylıyorsanız ONAYLIYORUM yazın.
+                </span>
+                <span className="mt-0.5 block">1 = müşteri adı · 2 = kurum adı · 3 = metin linki. KVKK PDF&apos;i belge başlığına otomatik eklenir.</span>
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
+              <div>
+                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Hatırlatma şablon adı</label>
+                <input
+                  value={reminderTemplateName}
+                  onChange={(e) => setReminderTemplateName(e.target.value)}
+                  placeholder="örn. randevu_hatirlatma"
+                  className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Dil kodu</label>
+                <input
+                  value={templateLanguage}
+                  onChange={(e) => setTemplateLanguage(e.target.value)}
+                  placeholder="tr"
+                  className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                />
+              </div>
             </div>
           </div>
 

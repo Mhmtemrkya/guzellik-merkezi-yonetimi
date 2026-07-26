@@ -67,6 +67,19 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
           CrudField(key: 'allowWalletOverage', label: 'Kota bitince kontörden devam et', type: CrudFieldType.toggle),
           CrudField(key: 'marketingEnabled', label: 'Pazarlama (kampanya) mesajlarına izin ver', type: CrudFieldType.toggle),
           CrudField(key: 'monthlySpendCapTry', label: 'Aylık kontör harcama tavanı (₺)', type: CrudFieldType.decimal),
+          // Meta kuralı: müşteri son 24 saatte yazmadıysa serbest metin İLETİLMEZ.
+          // Yeni müşteriye giden KVKK isteği hep bu durumdadır; onaylı şablon adı buraya girilir.
+          CrudField(
+            key: 'kvkkTemplateName',
+            label: 'KVKK şablon adı (Meta onaylı)',
+            hint: 'örn. kvkk_acik_riza · boş = serbest metin denenir',
+          ),
+          CrudField(
+            key: 'reminderTemplateName',
+            label: 'Hatırlatma şablon adı (Meta onaylı)',
+            hint: 'örn. randevu_hatirlatma',
+          ),
+          CrudField(key: 'templateLanguageCode', label: 'Şablon dil kodu', hint: 'tr', defaultValue: 'tr'),
         ],
       ),
     );

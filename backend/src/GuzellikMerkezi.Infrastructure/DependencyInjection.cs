@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<IRatingService, RatingService>();
         services.AddScoped<Application.Features.PublicSalons.IPublicSalonService, PublicSalonService>();
         services.AddScoped<Application.Features.PublicSalons.ITenantProfileService, TenantProfileService>();
+        services.AddScoped<Application.Features.PublicSalons.IKvkkDocumentService, KvkkDocumentService>();
         services.AddScoped<ITreatmentPhotoService, TreatmentPhotoService>();
         services.AddScoped<IConsultationService, ConsultationService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();

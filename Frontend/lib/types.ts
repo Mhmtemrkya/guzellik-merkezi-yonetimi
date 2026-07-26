@@ -1346,6 +1346,10 @@ export interface ApiWhatsAppSettings {
   marketingEnabled?: boolean
   allowWalletOverage?: boolean
   monthlySpendCapTry?: number | null
+  /** Meta onaylı şablon adları — 24 saat penceresi kapalıyken serbest metin iletilmez. */
+  kvkkTemplateName?: string | null
+  reminderTemplateName?: string | null
+  templateLanguageCode?: string
 }
 
 // --- WhatsApp kontör/faturalama ---
