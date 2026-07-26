@@ -172,9 +172,10 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                                   {svc.sellers.length === 0 ? (
                                     <span className="text-[11px] text-[#705a66]">—</span>
                                   ) : (
-                                    svc.sellers.slice(0, 3).map((s) => (
+                                    svc.sellers.slice(0, 3).map((s, i) => (
                                       <span
-                                        key={`${svc.serviceDefinitionId}-${s.staffMemberId ?? 'none'}`}
+                                        // Yönetici satışlarında staffMemberId null gelir (personel kaydı yok) — sıra ekle.
+                                        key={`${svc.serviceDefinitionId}-${s.staffMemberId ?? 'none'}-${i}`}
                                         title={`${s.staffName} · ${s.soldCount} satış · ${formatTL(Math.round(s.amount))}`}
                                         className="inline-flex items-center gap-1 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2 py-0.5 text-[10px] font-semibold text-[#a34a62]"
                                       >

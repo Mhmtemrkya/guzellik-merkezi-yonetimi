@@ -87,7 +87,8 @@ internal sealed class TestCurrentUser : ICurrentUser
         Permissions = permissions;
     }
 
-    public Guid? UserId { get; } = Guid.NewGuid();
+    /// <summary>CreatedBy damgasını belirli bir kullanıcıya bağlamak isteyen testler için ezilebilir.</summary>
+    public Guid? UserId { get; init; } = Guid.NewGuid();
     public string? Email => "test@qa.test";
     public UserRole? Role { get; }
     public Guid? TenantId { get; }

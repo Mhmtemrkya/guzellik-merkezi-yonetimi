@@ -27,6 +27,118 @@ public sealed class CustomerAccountService : ICustomerAccountService
     private CustomerAccountDto Mask(CustomerAccountDto dto) =>
         IsStaffViewer ? dto with { CustomerPhone = PhoneMask.Mask(dto.CustomerPhone) } : dto;
 
+    /// <summary>Tekil satış yanıtı: telefon maskesi + "kim sattı" düşümü tek yerden uygulanır.</summary>
+    private async Task<CustomerAccountDto> PresentAsync(
+        Guid tenantId, CustomerAccount account, decimal revenue, int completedCount, CancellationToken cancellationToken) =>
+        Mask(await WithSellerFallbackAsync(tenantId, account, account.ToDto(revenue, completedCount), cancellationToken));
+
+    // --- "Kim sattı" düşümü -------------------------------------------------------------------
+    // Satışta personel seçilmemiş olabilir: adisyondan açılan cariler seçim taşımaz ve kurum
+    // yöneticisi personel listesinde olmadığı için kendi yaptığı satışta alan hep boş kalır.
+    // Bu durumda satır, kaydı OLUŞTURAN kullanıcıya (Entity.CreatedBy) düşürülür — yönetici ise
+    // "Kurum Yöneticisi (Ad Soyad)", personel hesabıysa personelin kendi adı yazılır. Kullanıcı da
+    // bilinmiyorsa alan boş bırakılır; arayüz "Belirtilmemiş" gösterir — isim UYDURULMAZ.
+
+    /// <summary>Satıcı çözümlemesi için kurumun personel + kullanıcı adları (adlar şifreli kolon → bellekte eşlenir).</summary>
+    private sealed record SellerLookup(
+        Dictionary<Guid, string> StaffNames,        // StaffMember.Id → personel adı
+        Dictionary<Guid, Guid> StaffIdByUserId,     // TenantUser.Id → bağlı olduğu StaffMember.Id
+        Dictionary<Guid, string> UserLabels)        // TenantUser.Id → "Kurum Yöneticisi (Ad Soyad)"
+    {
+        /// <summary>Satırın satıcı anahtarı: seçilen personel → oluşturanın personel kaydı → oluşturan kullanıcı.</summary>
+        public Guid KeyFor(Guid? soldByStaffMemberId, Guid? createdBy)
+        {
+            if (soldByStaffMemberId is { } staffId && staffId != Guid.Empty) return staffId;
+            if (createdBy is not { } userId || userId == Guid.Empty) return Guid.Empty;
+            // Personel hesabından yapılan satış, o personelin kendi satışlarıyla aynı kovaya düşsün.
+            return StaffIdByUserId.TryGetValue(userId, out var mapped) ? mapped : userId;
+        }
+
+        /// <summary>Anahtarın görünen adı; çözülemezse null (çağıran "Belirtilmemiş" der).</summary>
+        public string? NameFor(Guid key) =>
+            key == Guid.Empty ? null
+            : StaffNames.TryGetValue(key, out var staffName) ? staffName
+            : UserLabels.TryGetValue(key, out var label) ? label
+            : null;
+
+        /// <summary>Anahtar gerçek bir personel kaydı mı (değilse DTO'da StaffMemberId null kalır).</summary>
+        public bool IsStaff(Guid key) => StaffNames.ContainsKey(key);
+    }
+
+    private async Task<SellerLookup> LoadSellerLookupAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var staff = await _db.StaffMembers.AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .Select(s => new { s.Id, s.FullName, s.TenantUserId })
+            .ToListAsync(cancellationToken);
+        // Müşteri portalı kullanıcıları (Role=Customer) hariç — binlerce satır olabilir.
+        var users = await _db.TenantUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId
+                        && (u.Role == UserRole.InstitutionOwner || u.Role == UserRole.BranchManager || u.Role == UserRole.Staff))
+            .Select(u => new { u.Id, u.FullName, u.Role })
+            .ToListAsync(cancellationToken);
+
+        var staffNames = staff.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().FullName);
+        var staffIdByUserId = staff
+            .Where(s => s.TenantUserId is { } uid && uid != Guid.Empty)
+            .GroupBy(s => s.TenantUserId!.Value)
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
+        var userLabels = new Dictionary<Guid, string>();
+        foreach (var user in users)
+        {
+            var label = SellerLabel(user.Role, user.FullName);
+            if (label is not null) userLabels[user.Id] = label;
+        }
+        return new SellerLookup(staffNames, staffIdByUserId, userLabels);
+    }
+
+    /// <summary>
+    /// Yönetici satışının etiketi. Bir kurumda birden fazla yönetici olabildiği için ad parantez
+    /// içinde verilir: "Kurum Yöneticisi (Ayşe Yılmaz)". Adı tanımlı değilse yalnız unvan yazılır.
+    /// </summary>
+    private static string? SellerLabel(UserRole role, string? fullName)
+    {
+        var name = string.IsNullOrWhiteSpace(fullName) ? null : fullName.Trim();
+        var title = role switch
+        {
+            UserRole.InstitutionOwner => "Kurum Yöneticisi",
+            UserRole.BranchManager => "Şube Yöneticisi",
+            _ => null,   // Personel hesabı: unvan değil, yalnız adı yazılır.
+        };
+        if (title is null) return name;
+        return name is null ? title : $"{title} ({name})";
+    }
+
+    /// <summary>Tek satırda satıcı adı boşsa oluşturana düşer (gerekmiyorsa ek sorgu yapılmaz).</summary>
+    private async Task<CustomerAccountDto> WithSellerFallbackAsync(
+        Guid tenantId, CustomerAccount account, CustomerAccountDto dto, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.SoldByStaffName) || account.CreatedBy is null) return dto;
+        var lookup = await LoadSellerLookupAsync(tenantId, cancellationToken);
+        var name = lookup.NameFor(lookup.KeyFor(account.SoldByStaffMemberId, account.CreatedBy));
+        return name is null ? dto : dto with { SoldByStaffName = name };
+    }
+
+    /// <summary>Liste için aynı düşüm — adlar tek seferde yüklenir.</summary>
+    private async Task<CustomerAccountDto[]> WithSellerFallbackAsync(
+        Guid tenantId, CustomerAccount[] accounts, CustomerAccountDto[] dtos, CancellationToken cancellationToken)
+    {
+        if (dtos.Length == 0) return dtos;
+        var byId = accounts.GroupBy(a => a.Id).ToDictionary(g => g.Key, g => g.First());
+        var needed = dtos.Any(d => string.IsNullOrWhiteSpace(d.SoldByStaffName)
+                                   && byId.TryGetValue(d.Id, out var a) && a.CreatedBy is not null);
+        if (!needed) return dtos;
+
+        var lookup = await LoadSellerLookupAsync(tenantId, cancellationToken);
+        return dtos.Select(dto =>
+        {
+            if (!string.IsNullOrWhiteSpace(dto.SoldByStaffName) || !byId.TryGetValue(dto.Id, out var account)) return dto;
+            var name = lookup.NameFor(lookup.KeyFor(account.SoldByStaffMemberId, account.CreatedBy));
+            return name is null ? dto : dto with { SoldByStaffName = name };
+        }).ToArray();
+    }
+
     public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null, string? category = null)
     {
         var query = _db.CustomerAccounts
@@ -133,6 +245,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
             var stats = revenueByCustomer.TryGetValue(a.CustomerId, out var s) ? s : null;
             return Mask(a.ToDto(stats?.Revenue ?? 0m, stats?.Count ?? 0));
         }).ToArray();
+
+        // "Kim sattı": personel seçilmemiş satışlarda kaydı oluşturan kullanıcıya düşülür.
+        items = await WithSellerFallbackAsync(tenantId, accounts, items, cancellationToken);
 
         // Satış paneli (müşteri kartı ya da katalog kartı): seans durumu + kalemler +
         // Aktif/Tamamlandı/İptal rozeti. Yalnızca süzülmüş listede hesaplanır (genel liste hafif kalsın).
@@ -312,7 +427,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             new { account.Name, account.TotalAmount, paid, soldAtUtc, request.SessionsTotal, request.SessionsUsed }, cancellationToken);
 
         var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(hydrated!.ToDto()));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, 0m, 0, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default)
@@ -323,7 +438,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, account.BranchId, "Cancel", "CustomerAccount", account.Id,
             $"Satış iptal edildi: {account.Name}", new { request.Reason }, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(account.ToDto()));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, account, 0m, 0, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
@@ -334,7 +449,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, account.BranchId, "Restore", "CustomerAccount", account.Id,
             $"Satış iptali geri alındı: {account.Name}", null, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(account.ToDto()));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, account, 0m, 0, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
@@ -342,7 +457,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var account = await LoadAsync(tenantId, id, cancellationToken);
         if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
         var (revenue, count) = await GetAppointmentStatsAsync(tenantId, account.CustomerId, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(account.ToDto(revenue, count)));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, account, revenue, count, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> CreateAsync(Guid tenantId, CreateCustomerAccountRequest request, CancellationToken cancellationToken = default)
@@ -382,7 +497,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
 
         var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
         var (revenue, count) = await GetAppointmentStatsAsync(tenantId, account.CustomerId, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(hydrated!.ToDto(revenue, count)));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, revenue, count, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> UpdateAsync(Guid tenantId, Guid id, UpdateCustomerAccountRequest request, CancellationToken cancellationToken = default)
@@ -400,7 +515,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         if (request.IsActive) account.Activate(); else account.Deactivate();
         await _db.SaveChangesAsync(cancellationToken);
         var (revenue, count) = await GetAppointmentStatsAsync(tenantId, account.CustomerId, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(account.ToDto(revenue, count)));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, account, revenue, count, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAccountRequest request, CancellationToken cancellationToken = default)
@@ -452,7 +567,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // Return hydrated
         var hydrated = await LoadAsync(tenantId, id, cancellationToken);
         var (revenue, completedCount) = await GetAppointmentStatsAsync(tenantId, accountInfo.CustomerId, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(hydrated!.ToDto(revenue, completedCount)));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, revenue, completedCount, cancellationToken));
     }
 
     public async Task<Result<CustomerAccountDto>> RegisterPaymentAsync(Guid tenantId, Guid id, RegisterAccountPaymentRequest request, CancellationToken cancellationToken = default)
@@ -502,7 +617,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // Return hydrated
         var hydrated = await LoadAsync(tenantId, id, cancellationToken);
         var (revenue, completedCount) = await GetAppointmentStatsAsync(tenantId, accountInfo.CustomerId, cancellationToken);
-        return Result<CustomerAccountDto>.Success(Mask(hydrated!.ToDto(revenue, completedCount)));
+        return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, revenue, completedCount, cancellationToken));
     }
 
     public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
@@ -599,6 +714,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // Müşteri kırılımı için cari bazında biriktirilen değerler (aşağıda müşteriye göre toplanır).
         var customerAgg = new Dictionary<Guid, CustomerBreakdownAccumulator>();
 
+        // "Kim sattı" adları: personel + (personel seçilmemiş satışlar için) kaydı oluşturan kullanıcı.
+        var sellers = await LoadSellerLookupAsync(tenantId, cancellationToken);
+
         foreach (var acc in accounts)
         {
             var bucket = customerAgg.TryGetValue(acc.CustomerId, out var existingBucket)
@@ -609,7 +727,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             if (!string.IsNullOrWhiteSpace(acc.Name) && !bucket.PackageNames.Contains(acc.Name)) bucket.PackageNames.Add(acc.Name);
 
             // "Kim sattı" — müşteri kırılımında da satışı yapan personel görünsün.
-            var sellerKey = acc.SoldByStaffMemberId ?? Guid.Empty;
+            var sellerKey = sellers.KeyFor(acc.SoldByStaffMemberId, acc.CreatedBy);
             if (!bucket.Sellers.TryGetValue(sellerKey, out var sellerAcc)) bucket.Sellers[sellerKey] = sellerAcc = new SellerAccumulator();
             sellerAcc.Accounts.Add(acc.Id);
             sellerAcc.Customers.Add(acc.CustomerId);
@@ -728,14 +846,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .GroupBy(x => (x.ServicePackageId, x.ServiceDefinitionId))
             .ToDictionary(g => g.Key, g => g.First().UnitPrice);
         var accountTotals = accounts.ToDictionary(a => a.Id, a => a.TotalAmount);
-        // "Kim sattı": cari → satışı yapan personel. Adı şifreli kolondan geldiği için bellekte çözülür.
-        var accountSellers = accounts.ToDictionary(a => a.Id, a => a.SoldByStaffMemberId);
-        var staffNames = (await _db.StaffMembers.AsNoTracking()
-                .Where(s => s.TenantId == tenantId)
-                .Select(s => new { s.Id, s.FullName })
-                .ToListAsync(cancellationToken))
-            .GroupBy(s => s.Id)
-            .ToDictionary(g => g.Key, g => g.First().FullName);
+        // "Kim sattı": cari → satıcı anahtarı (personel seçilmemişse oluşturan kullanıcı).
+        var accountSellers = accounts.ToDictionary(a => a.Id, a => sellers.KeyFor(a.SoldByStaffMemberId, a.CreatedBy));
 
         var serviceAgg = new Dictionary<(string Category, Guid ServiceId), CategoryServiceAccumulator>();
         foreach (var group in scopedSessions.GroupBy(s => s.CustomerAccountId))
@@ -770,7 +882,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 var share = weightSum > 0m ? accountTotal * weights[i] / weightSum : 0m;
                 acc.Amount += share;
 
-                var sellerId = accountSellers.TryGetValue(row.CustomerAccountId, out var sid) ? sid ?? Guid.Empty : Guid.Empty;
+                var sellerId = accountSellers.TryGetValue(row.CustomerAccountId, out var sid) ? sid : Guid.Empty;
                 if (!acc.Sellers.TryGetValue(sellerId, out var seller)) acc.Sellers[sellerId] = seller = new SellerAccumulator();
                 seller.Accounts.Add(row.CustomerAccountId);
                 seller.Customers.Add(row.CustomerId);
@@ -793,7 +905,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
                         kv.Value.SessionsUsed,
                         Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed),
                         Math.Round(kv.Value.Amount, 2),
-                        BuildSellers(kv.Value.Sellers, staffNames)))
+                        BuildSellers(kv.Value.Sellers, sellers)))
                     .OrderByDescending(s => s.Amount)
                     .ThenByDescending(s => s.SessionsTotal)
                     .ToList();
@@ -807,7 +919,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
                     services.Sum(s => s.SessionsRemaining),
                     Math.Round(services.Sum(s => s.Amount), 2),
                     services,
-                    BuildSellers(g.SelectMany(kv => kv.Value.Sellers), staffNames));
+                    BuildSellers(g.SelectMany(kv => kv.Value.Sellers), sellers));
             })
             .OrderByDescending(c => c.Amount)
             .ThenByDescending(c => c.SessionsTotal)
@@ -840,7 +952,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 kv.Value.SessionsTotal,
                 kv.Value.SessionsUsed,
                 Math.Max(0, kv.Value.SessionsTotal - kv.Value.SessionsUsed),
-                BuildSellers(kv.Value.Sellers, staffNames)))
+                BuildSellers(kv.Value.Sellers, sellers)))
             .OrderByDescending(c => c.RemainingAmount)
             .ThenByDescending(c => c.TotalAmount)
             .Take(200)
@@ -911,7 +1023,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
     /// <summary>Satıcı sözlüklerini birleştirip DTO listesine çevirir (tutar → azalan).</summary>
     private static List<PackageSellerDto> BuildSellers(
         IEnumerable<KeyValuePair<Guid, SellerAccumulator>> entries,
-        IReadOnlyDictionary<Guid, string> staffNames)
+        SellerLookup sellers)
     {
         var merged = new Dictionary<Guid, SellerAccumulator>();
         foreach (var (key, value) in entries)
@@ -925,8 +1037,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
 
         return merged
             .Select(kv => new PackageSellerDto(
-                kv.Key == Guid.Empty ? null : kv.Key,
-                kv.Key != Guid.Empty && staffNames.TryGetValue(kv.Key, out var name) ? name : "Belirtilmemiş",
+                // Anahtar bir kullanıcı (yönetici) olabilir; StaffMemberId yalnız gerçek personelde dolar.
+                sellers.IsStaff(kv.Key) ? kv.Key : null,
+                sellers.NameFor(kv.Key) ?? "Belirtilmemiş",
                 kv.Value.Accounts.Count,
                 kv.Value.Customers.Count,
                 kv.Value.SessionsTotal,
