@@ -1621,8 +1621,10 @@ class _CustomerReviewsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final recent = apiItems(data['recent']);
     final total = numberOf(data, const ['totalCount']).toInt();
-    // Personelde uç 403 döner → veri boş; kartı hiç gösterme.
-    if (total == 0 && recent.isEmpty) return const SizedBox.shrink();
+    // Personelde uç 403 döner → yanıt hiç gelmez (boş map) → kart gizlenir.
+    // Yöneticide yorum yoksa 'totalCount: 0' ile BAŞARILI yanıt gelir; bu durumda kart
+    // web'deki gibi "henüz yorum yok" mesajıyla görünür (anahtarın varlığı ikisini ayırır).
+    if (!data.containsKey('totalCount')) return const SizedBox.shrink();
 
     final salonAvg = data['salonAverage'] as num?;
     final staffAvg = data['staffAverage'] as num?;
@@ -1659,6 +1661,12 @@ class _CustomerReviewsCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 10),
+          if (recent.isEmpty)
+            const Text(
+              'Henüz müşteri yorumu yok. Randevu tamamlandığında müşteriye '
+              'değerlendirme bağlantısı gider.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.muted, height: 1.35),
+            ),
           for (final r in recent)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
