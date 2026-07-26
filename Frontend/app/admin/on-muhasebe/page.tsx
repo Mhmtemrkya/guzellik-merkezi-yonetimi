@@ -874,8 +874,16 @@ function OnMuhasebePageInner() {
                       )}
                     </AnimatePresence>
 
-                    {/* Aksiyonlar */}
+                    {/* Aksiyonlar — iptal edilmiş satışta tahsilat/taksit değişikliği kapalıdır.
+                        (Sunucu da reddeder; buradaki gizleme yalnız kullanıcıyı boş yere uğraştırmamak için.) */}
                     <div className="mt-4 grid grid-cols-2 gap-2">
+                      {selAccount.saleStatus === 'Cancelled' ? (
+                        <div className="col-span-2 rounded-[12px] border border-dashed border-rose-200 bg-rose-50/60 px-3 py-3 text-center text-[11.5px] text-rose-700">
+                          Satış iptal edildiği için tahsilat alınamaz ve taksit planı değiştirilemez.
+                          <span className="mt-0.5 block text-[10.5px] text-rose-600/80">Yanlışlıkla iptal edildiyse müşteri kartındaki satış detayından &quot;İptali geri al&quot; yapın.</span>
+                        </div>
+                      ) : (
+                      <>
                       <CollectionDialog
                         accounts={accounts}
                         initialAccountId={selAccount.id}
@@ -908,6 +916,8 @@ function OnMuhasebePageInner() {
                           { label: 'İlk vade', name: 'firstDueDate', type: 'date', value: todayIso, icon: CalendarDays },
                         ]}
                       />
+                      </>
+                      )}
                       <ConfirmDialog destructive title={`"${selAccount.customerName || selAccount.name}" carisi silinsin mi?`} description="Cari pasifleştirilir; ödeme geçmişi raporlarda kalır." confirmLabel="Cariyi sil"
                         onConfirm={async () => { await adminApi.deleteAccount(selAccount.id, tenantId); setSelectedAccountId(null); await reload() }}
                         trigger={<button type="button" className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" /> Cariyi Sil</button>} />

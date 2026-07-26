@@ -1013,6 +1013,24 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
                   ),
                 ),
             const SizedBox(height: 16),
+            // İptal edilmiş satışa tahsilat girilemez. ASIL KAPI SUNUCUDA (409 döner);
+            // buradaki gizleme yalnız kullanıcıyı boş yere uğraştırmamak için.
+            if ('${a['saleStatus']}' == 'Cancelled')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: .07),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Satış iptal edildiği için tahsilat alınamaz. '
+                  'Yanlışlıkla iptal edildiyse önce "İptali geri al" yapın.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11.5, color: AppColors.danger),
+                ),
+              )
+            else
             FilledButton.icon(
               onPressed: _payment,
               icon: const Icon(Icons.payments_rounded),

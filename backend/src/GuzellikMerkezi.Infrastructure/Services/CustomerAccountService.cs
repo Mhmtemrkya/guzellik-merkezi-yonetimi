@@ -390,6 +390,10 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var account = await LoadAsync(tenantId, id, cancellationToken);
         if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
 
+        // İptal edilmiş satışın tutarı/taksiti değiştirilemez — önce iptal geri alınmalı.
+        if (account.CancelledAtUtc is not null)
+            return Result<CustomerAccountDto>.Failure(Error.Conflict("Bu satış iptal edilmiş; değişiklik yapılamaz. Gerekiyorsa önce iptali geri alın."));
+
         account.Rename(request.Name);
         account.ChangeTotal(request.TotalAmount, request.DepositAmount);
         account.SetNotes(request.Notes);
@@ -458,9 +462,15 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var accountInfo = await _db.CustomerAccounts
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == id)
-            .Select(x => new { x.CustomerId })
+            .Select(x => new { x.CustomerId, x.CancelledAtUtc })
             .FirstOrDefaultAsync(cancellationToken);
         if (accountInfo is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
+
+        // İPTAL EDİLMİŞ SATIŞA TAHSİLAT GİRİLEMEZ. Arayüzdeki buton gizlemesi güvenlik sınırı
+        // değildir (Ön Muhasebe "Tahsilat Al" yolu ve doğrudan API çağrısı bu kapıdan geçer).
+        // Yanlışlıkla iptal edildiyse önce "İptali geri al" yapılmalı.
+        if (accountInfo.CancelledAtUtc is not null)
+            return Result<CustomerAccountDto>.Failure(Error.Conflict("Bu satış iptal edilmiş; tahsilat alınamaz. Gerekiyorsa önce iptali geri alın."));
 
         var occurredAt = request.OccurredAtUtc ?? DateTime.UtcNow;
         if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
@@ -475,11 +485,19 @@ public sealed class CustomerAccountService : ICustomerAccountService
             $"Tahsilat alındı: {request.Amount:N2} ({request.Method ?? "—"})",
             new { Amount = request.Amount, request.Method, request.Reference, OccurredAt = occurredAt, AccountId = id }, cancellationToken);
 
-        // Parent Touch
+        // Parent Touch — ExecuteUpdate yalnız ilişkisel sağlayıcıda var (birim testleri InMemory kullanır).
         var nowUtc = DateTime.UtcNow;
-        await _db.CustomerAccounts
-            .Where(x => x.Id == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
+        if (_db.Database.IsRelational())
+        {
+            await _db.CustomerAccounts
+                .Where(x => x.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
+        }
+        else
+        {
+            var parent = await _db.CustomerAccounts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (parent is not null) { parent.Touch(); await _db.SaveChangesAsync(cancellationToken); }
+        }
 
         // Return hydrated
         var hydrated = await LoadAsync(tenantId, id, cancellationToken);
