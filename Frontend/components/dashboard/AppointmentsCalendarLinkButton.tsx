@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CalendarPlus, Check, Copy, Loader2, X } from 'lucide-react'
 import { adminApi } from '@/lib/apiClient'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 
 /**
  * Kurum geneli randevu ICS takvim aboneliği — Google Takvim / Apple Takvim / Outlook'un
@@ -50,7 +51,8 @@ export default function AppointmentsCalendarLinkButton({ tenantId }: { tenantId?
         <CalendarPlus className="h-3.5 w-3.5" /> Takvim Aboneliği
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={() => setOpen(false)}>
+        <ModalPortal>
+        <div className="fixed inset-0 z-[145] grid place-items-center bg-black/30 p-4" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-[18px] border border-[#efe1e7] bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
@@ -84,6 +86,7 @@ export default function AppointmentsCalendarLinkButton({ tenantId }: { tenantId?
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   )

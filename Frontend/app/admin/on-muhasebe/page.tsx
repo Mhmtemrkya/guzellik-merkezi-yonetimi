@@ -80,7 +80,7 @@ function OnMuhasebePageInner() {
   const [accountDetailsOpen, setAccountDetailsOpen] = useState(false)
   const [selectedAdisyonId, setSelectedAdisyonId] = useState<string | null>(null)
   const [adisyonFilter, setAdisyonFilter] = useState<'all' | 'Open' | 'Approved' | 'Cancelled'>('all')
-  const [accountFilter, setAccountFilter] = useState<'all' | 'upcoming' | 'overdue'>(scope === 'upcoming' ? 'upcoming' : scope === 'overdue' ? 'overdue' : 'all')
+  const [accountFilter, setAccountFilter] = useState<'all' | 'upcoming' | 'overdue' | 'cancelled'>(scope === 'upcoming' ? 'upcoming' : scope === 'overdue' ? 'overdue' : 'all')
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -163,7 +163,8 @@ function OnMuhasebePageInner() {
   const activeAccountCount = accounts.filter((a) => a.isActive && a.remainingAmount > 0).length
   const overdue = useMemo(() => {
     let sum = 0; let count = 0
-    for (const a of accounts) for (const i of a.installments) if (i.overdue) { sum += i.remaining; count++ }
+    // İptal edilmiş satışın taksiti "geciken bakiye" değildir — tahsil edilmeyecek.
+    for (const a of accounts) { if (a.saleStatus === 'Cancelled') continue; for (const i of a.installments) if (i.overdue) { sum += i.remaining; count++ } }
     return { sum, count }
   }, [accounts, todayIso])
 
@@ -200,10 +201,24 @@ function OnMuhasebePageInner() {
   useEffect(() => { setForceDeleteAdisyon(false) }, [selAdisyon?.id])
 
   // ---------- cari hesaplar ----------
+  // Adisyondan açılan cari sonradan iptal edilmiş olabilir. Adisyon kaydı "Onaylandı"
+  // kalır ama satışın iptal edildiği fişte de görünmeli (kullanıcı isteği).
+  const cancelledSaleByAccountId = useMemo(() => {
+    const m = new Map<string, { at: string | null; reason: string }>()
+    for (const a of accounts) {
+      if (a.saleStatus === 'Cancelled') m.set(a.id, { at: a.cancelledAtUtc, reason: a.cancellationReason })
+    }
+    return m
+  }, [accounts])
+
+  const cancelledCount = useMemo(() => accounts.filter((a) => a.saleStatus === 'Cancelled').length, [accounts])
+
   const filteredAccounts = useMemo(() => {
     let list = accounts
-    if (accountFilter === 'upcoming') list = list.filter((a) => a.installments.some((i) => i.status !== 'Paid' && i.remaining > 0 && !i.overdue))
-    else if (accountFilter === 'overdue') list = list.filter((a) => a.installments.some((i) => i.overdue))
+    // İptal edilen satışlar borç/vade akışının dışındadır: yalnız "Tümü" ve "İptal" sekmelerinde görünür.
+    if (accountFilter === 'cancelled') list = list.filter((a) => a.saleStatus === 'Cancelled')
+    else if (accountFilter === 'upcoming') list = list.filter((a) => a.saleStatus !== 'Cancelled' && a.installments.some((i) => i.status !== 'Paid' && i.remaining > 0 && !i.overdue))
+    else if (accountFilter === 'overdue') list = list.filter((a) => a.saleStatus !== 'Cancelled' && a.installments.some((i) => i.overdue))
     return list
   }, [accounts, accountFilter, todayIso])
   const selAccount = useMemo(() => filteredAccounts.find((a) => a.id === selectedAccountId) || filteredAccounts[0], [filteredAccounts, selectedAccountId])
@@ -542,12 +557,25 @@ function OnMuhasebePageInner() {
                   </div>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {filteredAdisyonlar.map((a) => (
+                  {filteredAdisyonlar.map((a) => {
+                    const saleCancelled = a.customerAccountId ? cancelledSaleByAccountId.get(a.customerAccountId) : undefined
+                    return (
                     <button key={a.id} type="button" onClick={() => setSelectedAdisyonId(a.id)}
-                      className={`flex w-full items-center gap-3 rounded-[14px] border p-3.5 text-left transition-colors ${selAdisyon?.id === a.id ? 'border-[#c85776]/60 bg-[#fff1f6]/50' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}>
+                      className={`flex w-full flex-wrap items-center gap-3 rounded-[14px] border p-3.5 text-left transition-colors ${selAdisyon?.id === a.id ? 'border-[#c85776]/60 bg-[#fff1f6]/50' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[14px] font-medium text-[#352432]">{a.customerName || 'Müşteri'}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate text-[14px] font-medium text-[#352432]">{a.customerName || 'Müşteri'}</span>
+                          {saleCancelled && (
+                            <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">SATIŞ İPTAL</span>
+                          )}
+                        </div>
                         <div className="text-[10px] font-mono text-[#352432]/45">{(a.openedAtUtc || '').slice(0, 10)} · {a.items.length} kalem</div>
+                        {saleCancelled && (
+                          <div className="mt-1 text-[10px] italic text-rose-600">
+                            Gerekçe: {saleCancelled.reason || 'belirtilmemiş'}
+                            {saleCancelled.at ? ` · ${saleCancelled.at.slice(0, 10)}` : ''}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className="font-display text-[16px] tabular-nums text-[#c85776]">{formatTL(a.chargeTotal)}</div>
@@ -561,7 +589,8 @@ function OnMuhasebePageInner() {
                         ● {a.status === 'Approved' ? 'ONAYLANDI' : a.status === 'Open' ? 'AÇIK' : 'İPTAL'}
                       </span>
                     </button>
-                  ))}
+                    )
+                  })}
                   {filteredAdisyonlar.length === 0 && <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#352432]/45">Bu dönemde adisyon yok. Üstten "Yeni Adisyon" ile açabilirsin.</div>}
                 </div>
               </div>
@@ -680,7 +709,7 @@ function OnMuhasebePageInner() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div><div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Cari Hesaplar</div><div className="font-display text-2xl tracking-tight">{filteredAccounts.length} kayıt</div></div>
                   <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
-                    {([['all', 'Tümü'], ['upcoming', 'Bekleyen'], ['overdue', 'Geciken']] as const).map(([k, l]) => (
+                    {([['all', 'Tümü'], ['upcoming', 'Bekleyen'], ['overdue', 'Geciken'], ['cancelled', `İptal${cancelledCount ? ` ${cancelledCount}` : ''}`]] as const).map(([k, l]) => (
                       <button key={k} type="button" onClick={() => setAccountFilter(k)}
                         className={`rounded-[8px] px-2.5 py-1 text-[10px] font-medium transition-colors ${accountFilter === k ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{l}</button>
                     ))}
@@ -689,7 +718,8 @@ function OnMuhasebePageInner() {
                 <div className="mt-3 space-y-2">
                   {filteredAccounts.map((a) => {
                     const pct = a.totalAmount > 0 ? Math.round((a.paidAmount / a.totalAmount) * 100) : 0
-                    const isOverdue = a.installments.some((i) => i.overdue)
+                    const isCancelled = a.saleStatus === 'Cancelled'
+                    const isOverdue = !isCancelled && a.installments.some((i) => i.overdue)
                     return (
                       <button key={a.id} type="button" onClick={() => setSelectedAccountId(a.id)}
                         className={`w-full rounded-[14px] border p-3.5 text-left transition-colors ${selAccount?.id === a.id ? 'border-[#c85776]/60 bg-[#fff1f6]/50' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}>
@@ -702,11 +732,18 @@ function OnMuhasebePageInner() {
                             <div className="font-display text-[16px] tabular-nums text-[#c85776]">{formatTL(a.remainingAmount)}</div>
                             <div className="text-[9px] font-mono text-[#352432]/40">{a.nextDueDate ? `Vade: ${a.nextDueDate}` : 'Vade yok'}</div>
                           </div>
-                          <span className={`shrink-0 rounded-md border px-2 py-1 text-[9px] font-mono uppercase ${a.remainingAmount > 0 ? (isOverdue ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700') : 'border-emerald-300/40 bg-emerald-50 text-emerald-700'}`}>
-                            {a.remainingAmount > 0 ? (isOverdue ? 'GECİKEN' : 'AÇIK') : 'KAPALI'}
+                          <span className={`shrink-0 rounded-md border px-2 py-1 text-[9px] font-mono uppercase ${isCancelled ? 'border-rose-300/60 bg-rose-100 text-rose-700' : a.remainingAmount > 0 ? (isOverdue ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700') : 'border-emerald-300/40 bg-emerald-50 text-emerald-700'}`}>
+                            {isCancelled ? 'İPTAL' : a.remainingAmount > 0 ? (isOverdue ? 'GECİKEN' : 'AÇIK') : 'KAPALI'}
                           </span>
                         </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]"><span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} /></div>
+                        {/* İptal edilen satış: gerekçe ön muhasebede de görünür (satış paneliyle aynı bilgi). */}
+                        {isCancelled && (
+                          <div className="mt-1.5 rounded-[10px] border border-rose-200 bg-rose-50/70 px-2.5 py-1.5 text-[10px] text-rose-700">
+                            <b>İptal edildi</b>{a.cancelledAtUtc ? ` · ${a.cancelledAtUtc.slice(0, 10)}` : ''}
+                            {a.cancellationReason ? ` — ${a.cancellationReason}` : ' — gerekçe belirtilmemiş'}
+                          </div>
+                        )}
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]"><span className={`block h-full rounded-full ${isCancelled ? 'bg-[#d9b7c3]' : 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]'}`} style={{ width: `${pct}%` }} /></div>
                         <div className="mt-1 text-[9px] font-mono uppercase text-[#352432]/40">%{pct} ÖDENDİ · {formatTL(a.paidAmount)} / {formatTL(a.totalAmount)}</div>
                       </button>
                     )
@@ -724,7 +761,17 @@ function OnMuhasebePageInner() {
                     <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-[#352432]/55">
                       {selAccount.customerPhone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-[#c85776]" /> {selAccount.customerPhone}</span>}
                       <span className="truncate">{[selAccount.name, selAccount.servicePackageName].filter(Boolean).join(' • ')}</span>
+                      {selAccount.soldByStaffName && <span className="truncate">Satan: <b className="text-[#4a3a44]">{selAccount.soldByStaffName}</b></span>}
                     </div>
+
+                    {selAccount.saleStatus === 'Cancelled' && (
+                      <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[11.5px] text-rose-700">
+                        <b>Bu satış iptal edildi</b>
+                        {selAccount.cancelledAtUtc ? ` · ${selAccount.cancelledAtUtc.slice(0, 10)}` : ''}
+                        {selAccount.cancellationReason ? ` — ${selAccount.cancellationReason}` : ' — gerekçe belirtilmemiş'}
+                        <div className="mt-0.5 text-[10.5px] text-rose-600/80">Kalan taksitler tahsil edilmez; geçmiş tahsilat kaydı korunur.</div>
+                      </div>
+                    )}
 
                     <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#ead8df]/65 bg-[#f1e5ea]">
                       <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Toplam</div><div className="font-display text-xl tabular-nums">{formatTL(selAccount.totalAmount)}</div></div>

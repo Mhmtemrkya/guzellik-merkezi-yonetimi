@@ -169,7 +169,7 @@ internal static class Mapping
             .OrderByDescending(p => p.OccurredAtUtc)
             .Select(p => new AccountPaymentDto(p.Id, p.Amount, p.Method, p.Reference, p.OccurredAtUtc))
             .ToArray();
-        return new CustomerAccountDto(
+        var dto = new CustomerAccountDto(
             account.Id,
             account.TenantId,
             account.BranchId,
@@ -198,6 +198,11 @@ internal static class Mapping
             account.IsHistorical,
             account.CancelledAtUtc,
             account.CancellationReason);
+
+        // İPTAL durumu zenginleştirmeye BAĞLI OLMAMALI: cari listesi (ön muhasebe) ve adisyon
+        // ekranları EnrichSalesAsync'ten geçmez; iptal edilmiş satış oralarda da "İptal" görünsün.
+        // Aktif/Tamamlandı ayrımı seans bilgisi gerektirdiği için zenginleştirmede belirlenir.
+        return account.CancelledAtUtc is null ? dto : dto with { SaleStatus = "Cancelled" };
     }
 
     public static ServicePackageDto ToDto(this ServicePackage package)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Barcode as BarcodeIcon, Camera, ScanLine, X } from 'lucide-react'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 
 /**
  * Barkod alanı + okuyucu entegrasyonu.
@@ -179,11 +180,12 @@ function CameraScanner({ onClose, onResult }: { onClose: () => void; onResult: (
   }, [onResult])
 
   return (
+<ModalPortal>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4"
+      className="fixed inset-0 z-[155] grid place-items-center bg-black/70 p-4"
       onClick={onClose}
     >
       <motion.div
@@ -212,5 +214,6 @@ function CameraScanner({ onClose, onResult }: { onClose: () => void; onResult: (
         )}
       </motion.div>
     </motion.div>
+    </ModalPortal>
   )
 }

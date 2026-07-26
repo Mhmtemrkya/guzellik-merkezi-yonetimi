@@ -10,7 +10,7 @@ public interface ICustomerAccountService
     /// (hizmet / paket) kartındaki satış paneli için süzer. Süzgeç verildiğinde satırlar seans,
     /// kalem ve satış durumu ile zenginleştirilir.
     /// </summary>
-    Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null);
+    Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null, string? category = null);
     Task<Result<CustomerAccountDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> CreateAsync(Guid tenantId, CreateCustomerAccountRequest request, CancellationToken cancellationToken = default);
 

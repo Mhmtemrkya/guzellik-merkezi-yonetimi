@@ -761,6 +761,43 @@ export default function PackageLibrary({
           </div>
         </div>
 
+
+        {/* KATEGORİ SATIŞLARI — kategori rayından bir kategori seçilince, o kategorideki
+            TÜM satışlar (hangi müşteri, ne aldı, kim sattı, iptal edildiyse gerekçesi)
+            tek listede görünür. Geçmiş yıllara ait satışlar da buraya düşer. */}
+        {catFilter && (
+          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-display text-xl tracking-tight">{catFilter} · Satışlar</div>
+                <div className="text-[11px] text-[#352432]/45">
+                  Bu kategorideki tüm satışlar: hangi müşteri ne almış, kim satmış, iptal edildiyse gerekçesi.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCatFilter('')}
+                className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+              >
+                Kategori filtresini kaldır
+              </button>
+            </div>
+            <CatalogSalesPanel
+              item={{ id: catFilter, name: catFilter, price: 0 }}
+              kind="category"
+              tenantId={tenantId}
+              staffOptions={staffOptions}
+              packageOptions={packageOptions}
+              serviceOptions={serviceOptions}
+              busy={salesBusy}
+              onCreateHistorical={handleCreateHistoricalSale}
+              onCancelSale={handleCancelSale}
+              onRestoreSale={handleRestoreSale}
+              onCollectInstallment={handleCollectInstallment}
+            />
+          </div>
+        )}
+
         <CatalogCategoryManager
           title="Paket Kategori Ayarları"
           description="Paketlerde kullanılacak ortak kategorileri ekleyin, silin veya kategoriye göre filtreleyin."

@@ -25,6 +25,7 @@ import {
 } from '@/lib/importAnalyzer'
 import { adminApi } from '@/lib/apiClient'
 import { useBranch } from './BranchContext'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 
 interface ImportDialogProps {
   open: boolean
@@ -247,6 +248,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
   const totalSkipped = (totals?.customersSkipped ?? 0) + (totals?.servicesSkipped ?? 0) + (totals?.packagesSkipped ?? 0) + (totals?.productsSkipped ?? 0) + (totals?.staffSkipped ?? 0)
 
   return (
+<ModalPortal>
     <AnimatePresence>
       {open && (
         <motion.div
@@ -255,7 +257,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[210] flex items-start justify-center overflow-y-auto bg-[#4a2335]/22 px-4 py-[8vh] backdrop-blur-md"
+          className="fixed inset-0 z-[145] flex items-start justify-center overflow-y-auto bg-[#4a2335]/22 px-4 py-[8vh] backdrop-blur-md"
           onClick={close}
         >
           <motion.div
@@ -540,5 +542,6 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
         </motion.div>
       )}
     </AnimatePresence>
+    </ModalPortal>
   )
 }

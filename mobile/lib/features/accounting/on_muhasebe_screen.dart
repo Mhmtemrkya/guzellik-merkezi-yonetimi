@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/responsive.dart';
@@ -437,32 +438,63 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       return false;
     }
 
+    // İptal edilen satış borç/vade akışının dışındadır: yalnız "Tümü" ve "İptal"de görünür.
+    bool cancelled(Map<String, dynamic> a) => '${a['saleStatus']}' == 'Cancelled';
+    final cancelledCount = data.accounts.where(cancelled).length;
+
     final filtered = data.accounts.where((a) {
       final remaining = (a['remainingAmount'] as num?)?.toDouble() ?? 0;
-      if (_accountFilter == 'upcoming') return remaining > 0;
-      if (_accountFilter == 'overdue') return isOverdue(a);
+      if (_accountFilter == 'cancelled') return cancelled(a);
+      if (_accountFilter == 'upcoming') return !cancelled(a) && remaining > 0;
+      if (_accountFilter == 'overdue') return !cancelled(a) && isOverdue(a);
       return true;
     }).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       children: [
         _filterChips(
-          {'all': 'Tümü', 'upcoming': 'Bakiyeli', 'overdue': 'Geciken'},
+          {
+            'all': 'Tümü',
+            'upcoming': 'Bakiyeli',
+            'overdue': 'Geciken',
+            'cancelled': cancelledCount > 0 ? 'İptal $cancelledCount' : 'İptal',
+          },
           _accountFilter,
           (v) => setState(() => _accountFilter = v),
         ),
         const SizedBox(height: 10),
         if (filtered.isEmpty) _empty('Cari hesap yok.'),
-        for (final a in filtered)
+        for (final a in filtered) ...[
           _rowCard(
             title: valueOf(a, const ['customerName', 'name'], fallback: 'Hesap'),
             subtitle:
                 '${valueOf(a, const ['name'], fallback: '')} · Ödenen ${CalendarText.tl((a['paidAmount'] as num?)?.toDouble())}',
             trailing:
                 'Kalan ${CalendarText.tl((a['remainingAmount'] as num?)?.toDouble())}',
-            status: (a['remainingAmount'] as num? ?? 0) > 0 ? 'Bakiyeli' : 'Kapandı',
+            status: cancelled(a)
+                ? 'İptal'
+                : (a['remainingAmount'] as num? ?? 0) > 0
+                    ? 'Bakiyeli'
+                    : 'Kapandı',
             onTap: () => _openCustomerDetail(a),
           ),
+          // İptal gerekçesi ön muhasebede de görünür (web paritesi).
+          if (cancelled(a))
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: .07),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'İptal edildi'
+                '${parseUtcToLocal(a['cancelledAtUtc']) == null ? '' : ' · ${DateFormat('dd.MM.yyyy').format(parseUtcToLocal(a['cancelledAtUtc'])!)}'}'
+                ' — ${valueOf(a, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş')}',
+                style: const TextStyle(fontSize: 11, color: AppColors.danger),
+              ),
+            ),
+        ],
       ],
     );
   }

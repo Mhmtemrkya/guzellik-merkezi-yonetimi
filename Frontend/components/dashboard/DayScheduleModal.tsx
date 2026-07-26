@@ -738,7 +738,7 @@ export default function DayScheduleModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
           onClick={onClose}
-          className="fixed inset-0 z-[200] flex items-stretch justify-center bg-[#4a2335]/30 p-2 backdrop-blur-md sm:p-3"
+          className="fixed inset-0 z-[140] flex items-stretch justify-center bg-[#4a2335]/30 p-2 backdrop-blur-md sm:p-3"
         >
           <motion.div
             key="day-schedule-panel"

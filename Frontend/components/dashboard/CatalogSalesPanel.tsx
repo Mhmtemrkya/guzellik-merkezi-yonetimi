@@ -65,9 +65,9 @@ export default function CatalogSalesPanel({
   onRestoreSale,
   onCollectInstallment,
 }: {
-  /** Panelin bağlı olduğu katalog kaydı (seçili hizmet ya da paket). */
+  /** Panelin bağlı olduğu katalog kaydı. kind='category' iken id = kategori adıdır. */
   item: { id: string; name: string; price: number }
-  kind: 'service' | 'package'
+  kind: 'service' | 'package' | 'category'
   tenantId?: string
   staffOptions: { id: string; name: string }[]
   packageOptions: { id: string; name: string; price: number }[]
@@ -93,7 +93,11 @@ export default function CatalogSalesPanel({
         tenantId,
         page: 1,
         pageSize: 200,
-        ...(kind === 'service' ? { serviceDefinitionId: item.id } : { servicePackageId: item.id }),
+        ...(kind === 'service'
+          ? { serviceDefinitionId: item.id }
+          : kind === 'package'
+            ? { servicePackageId: item.id }
+            : { category: item.id }),
       })
       return apiItems(res)
     },
@@ -155,7 +159,7 @@ export default function CatalogSalesPanel({
               <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
             )}
           </div>
-          {canManage && (
+          {canManage && kind !== 'category' && (
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
@@ -231,11 +235,13 @@ export default function CatalogSalesPanel({
           {visible.length === 0 ? (
             <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11px] text-[#705a66]">
               {sorted.length === 0
-                ? `Bu ${kind === 'package' ? 'paket' : 'hizmet'} henüz satılmamış. Geçmiş satışları da buradan girebilirsiniz.`
+                ? kind === 'category'
+                  ? `"${item.name}" kategorisinde henüz satış yok.`
+                  : `Bu ${kind === 'package' ? 'paket' : 'hizmet'} henüz satılmamış. Geçmiş satışları da buradan girebilirsiniz.`
                 : 'Bu durumda satış yok.'}
             </div>
           ) : (
-            visible.map((a) => <CatalogSaleRow key={a.id} account={a} onClick={() => setDetailId(a.id)} />)
+            visible.map((a) => <CatalogSaleRow key={a.id} account={a} showItemName={kind === 'category'} onClick={() => setDetailId(a.id)} />)
           )}
         </div>
 
@@ -272,7 +278,8 @@ export default function CatalogSalesPanel({
       </AnimatePresence>
 
       <AnimatePresence>
-        {historyOpen && (
+        {/* Geçmiş satış girişi tek bir katalog kaydına bağlıdır; kategori görünümünde açılmaz. */}
+        {historyOpen && kind !== 'category' && (
           <HistoricalSaleDialog
             customerName={item.name}
             needsCustomer
@@ -307,7 +314,7 @@ function Kpi({ icon: Icon, label, value, sub }: { icon: typeof Package; label: s
   )
 }
 
-function CatalogSaleRow({ account, onClick }: { account: CustomerAccount; onClick: () => void }) {
+function CatalogSaleRow({ account, onClick, showItemName = false }: { account: CustomerAccount; onClick: () => void; showItemName?: boolean }) {
   const meta = STATUS_META[account.saleStatus]
   const StatusIcon = meta.icon
 
@@ -335,6 +342,9 @@ function CatalogSaleRow({ account, onClick }: { account: CustomerAccount; onClic
             </span>
           )}
         </span>
+        {showItemName && (
+          <span className="mt-0.5 block truncate text-[10.5px] font-medium text-[#a34a62]">{account.name}</span>
+        )}
         <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9.5px] text-[#705a66]">
           <span>{formatSaleDate(account.soldAtUtc)}</span>
           <span className="text-[#c9b3bd]">·</span>
@@ -346,6 +356,12 @@ function CatalogSaleRow({ account, onClick }: { account: CustomerAccount; onClic
             </>
           )}
         </span>
+        {/* İptal gerekçesi listede de görünür — katalogda "hangi paket neden iptal edildi" sorusu. */}
+        {account.saleStatus === 'Cancelled' && (
+          <span className="mt-0.5 block truncate text-[9.5px] italic text-[#b3453f]">
+            Gerekçe: {account.cancellationReason || 'belirtilmemiş'}
+          </span>
+        )}
       </span>
 
       <span className="flex shrink-0 flex-col items-end">

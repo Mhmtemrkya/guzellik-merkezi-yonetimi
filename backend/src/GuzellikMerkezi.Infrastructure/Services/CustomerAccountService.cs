@@ -27,7 +27,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
     private CustomerAccountDto Mask(CustomerAccountDto dto) =>
         IsStaffViewer ? dto with { CustomerPhone = PhoneMask.Mask(dto.CustomerPhone) } : dto;
 
-    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null)
+    public async Task<Result<PagedResult<CustomerAccountDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default, Guid? customerId = null, Guid? serviceDefinitionId = null, Guid? servicePackageId = null, string? category = null)
     {
         var query = _db.CustomerAccounts
             .AsNoTracking()
@@ -56,8 +56,41 @@ public sealed class CustomerAccountService : ICustomerAccountService
             query = query.Where(x => x.ServicePackageId == pkgId || _db.CustomerPackageSessions
                 .Any(s => s.CustomerAccountId == x.Id && s.ServicePackageId == pkgId));
         }
+        // Kategori kapsamı: o kategorideki HERHANGİ bir hizmetin seansını içeren satışlar.
+        // DİKKAT: ServiceDefinition.Category ŞİFRELİ bir kolondur (AES-GCM, rastgele nonce) —
+        // SQL'de eşitlik karşılaştırması yapılamaz, sessizce 0 satır döner. Bu yüzden hizmetler
+        // belleğe çözülüp kategori orada eşleştirilir, ardından satış kümesi seanslardan bulunur.
+        var categoryScoped = !string.IsNullOrWhiteSpace(category);
+        HashSet<Guid>? categoryAccountIds = null;
+        if (categoryScoped)
+        {
+            var wanted = category!.Trim();
+            var uncategorized = string.Equals(wanted, "Kategorisiz", StringComparison.OrdinalIgnoreCase);
+
+            var services = await _db.ServiceDefinitions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => new { x.Id, x.Category })
+                .ToListAsync(cancellationToken);
+            var serviceIds = services
+                .Where(x => uncategorized
+                    ? string.IsNullOrWhiteSpace(x.Category)
+                    : string.Equals(x.Category?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Id)
+                .ToHashSet();
+
+            var sessionRows = await _db.CustomerPackageSessions.AsNoTracking()
+                .Where(s => s.TenantId == tenantId)
+                .Select(s => new { s.CustomerAccountId, s.ServiceDefinitionId })
+                .ToListAsync(cancellationToken);
+            categoryAccountIds = sessionRows
+                .Where(s => serviceIds.Contains(s.ServiceDefinitionId))
+                .Select(s => s.CustomerAccountId)
+                .ToHashSet();
+        }
+
         var catalogScoped = (serviceDefinitionId is { } s1 && s1 != Guid.Empty)
-                            || (servicePackageId is { } s2 && s2 != Guid.Empty);
+                            || (servicePackageId is { } s2 && s2 != Guid.Empty)
+                            || categoryScoped;
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
@@ -65,8 +98,23 @@ public sealed class CustomerAccountService : ICustomerAccountService
             query = query.Where(x => x.Name.Contains(search) || (x.Customer != null && x.Customer.FullName.Contains(search)));
         }
 
-        var total = await query.CountAsync(cancellationToken);
-        var accounts = await query.Skip(request.Skip).Take(request.SafePageSize).ToArrayAsync(cancellationToken);
+        int total;
+        CustomerAccount[] accounts;
+        if (categoryAccountIds is not null)
+        {
+            // Kategori süzgeci bellekte olduğu için sayfalama da bellekte yapılır.
+            // Ölçek notu: bu görünüm yalnız katalog sayfasında, kategori seçilince açılır.
+            var inCategory = (await query.ToListAsync(cancellationToken))
+                .Where(a => categoryAccountIds.Contains(a.Id))
+                .ToList();
+            total = inCategory.Count;
+            accounts = inCategory.Skip(request.Skip).Take(request.SafePageSize).ToArray();
+        }
+        else
+        {
+            total = await query.CountAsync(cancellationToken);
+            accounts = await query.Skip(request.Skip).Take(request.SafePageSize).ToArrayAsync(cancellationToken);
+        }
 
         var customerIds = accounts.Select(a => a.CustomerId).Distinct().ToArray();
         // Sadece tamamlanmış randevuları çek, sonra customer id filtresini in-memory uygula
