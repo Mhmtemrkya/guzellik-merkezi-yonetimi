@@ -448,20 +448,26 @@ WHERE IsDeleted = 0 AND TenantId = '{tenantId}';";
         }
 
         // Yaş segmenti: gruplama veritabanında (müşteri satırları belleğe alınmaz).
+        // Kovalar GERÇEK doğum tarihinden TIMESTAMPDIFF ile hesaplanır — sabit/örnek veri yoktur.
+        // ÖNEMLİ: eskiden 25 yaş altındaki HERKES (çocuklar dahil) "18–24 Yaş" etiketini alıyordu;
+        // 18 altı ayrı kovaya alındı ve yaşlı müşteriler için 55–64 / 65+ ayrımı eklendi
+        // (önceden 55 üstü tek kovada toplanıyordu).
         await using (var command = _db.Database.GetDbConnection().CreateCommand())
         {
             command.CommandText = $@"
 SELECT CASE
+         WHEN age < 18 THEN '18 Yaş Altı'
          WHEN age < 25 THEN '18–24 Yaş'
          WHEN age < 35 THEN '25–34 Yaş'
          WHEN age < 45 THEN '35–44 Yaş'
          WHEN age < 55 THEN '45–54 Yaş'
-         ELSE '55+ Yaş' END AS Segment,
+         WHEN age < 65 THEN '55–64 Yaş'
+         ELSE '65+ Yaş' END AS Segment,
        COUNT(*) AS Cnt
 FROM (SELECT TIMESTAMPDIFF(YEAR, BirthDate, CURDATE()) AS age
       FROM customers
       WHERE IsDeleted = 0 AND TenantId = '{tenantId}' AND BirthDate IS NOT NULL) t
-WHERE age > 0 AND age < 120
+WHERE age >= 0 AND age < 120
 GROUP BY Segment;";
             if (command.Connection!.State != System.Data.ConnectionState.Open)
                 await command.Connection.OpenAsync(cancellationToken);

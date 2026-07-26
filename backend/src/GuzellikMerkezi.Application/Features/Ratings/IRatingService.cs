@@ -12,4 +12,10 @@ public interface IRatingService
 
     /// <summary>Müşteri telefon + yıldız gönderir; telefon eşleşir ve süre dolmadıysa kaydeder.</summary>
     Task<Result<PublicRatingDto>> SubmitAsync(Guid token, SubmitRatingRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Panel için son müşteri yorumları + ortalamalar. Vitrinden farklı olarak müşteri adı
+    /// MASKELENMEZ — kurum kendi müşterisini görür.
+    /// </summary>
+    Task<Result<AdminReviewSummaryDto>> GetRecentReviewsAsync(Guid tenantId, int take = 5, CancellationToken cancellationToken = default);
 }

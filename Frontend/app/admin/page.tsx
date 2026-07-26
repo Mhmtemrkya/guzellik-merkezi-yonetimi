@@ -62,6 +62,7 @@ import {
   normalizeService,
   normalizeStaff,
 } from '@/lib/apiMappers'
+import CustomerReviewsCard from '@/components/dashboard/CustomerReviewsCard'
 import type {
   AccountMonthlyInstallment,
   ApiAccountReport,
@@ -1658,6 +1659,10 @@ export default function AdminDashboard() {
                 )}
               </div>
             </SectionCard>
+
+            {/* Salona ve personele gelen müşteri yorumları. Aynı yorumlar herkese açık
+                vitrinde de görünür; ORADA müşteri adı maskelidir, burada açıktır. */}
+            <CustomerReviewsCard tenantId={tenantId} />
           </div>
         </div>
       </div>

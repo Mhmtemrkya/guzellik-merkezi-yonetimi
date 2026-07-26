@@ -889,6 +889,14 @@ export const adminApi = {
   /** Randevu tamamlanınca müşteri puanlama linki (QR token) üretir. */
   issueRating: <T = unknown>(appointmentId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/ratings/issue', { method: 'POST', query: { tenantId }, body: { appointmentId } }),
+
+  /**
+   * Panel için son müşteri yorumları + salon/personel ortalaması.
+   * Vitrindeki (/salonlar) maskeleme burada YOKTUR — kurum kendi müşterisinin adını görür.
+   * Sunucu yalnız yöneticilere açar (personel 403 alır).
+   */
+  recentReviews: <T = unknown>(take = 5, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/ratings/reviews', { query: { take, tenantId } }),
   /** Public puanlama durumu — anonim, token üzerinden (auth/scope yok). */
   publicRating: <T = unknown>(token: string): Promise<T> =>
     apiRequest<T>(`/api/public/ratings/${token}`, { token: null, scope: false, noCache: true }),

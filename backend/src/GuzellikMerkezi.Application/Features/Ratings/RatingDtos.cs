@@ -1,6 +1,29 @@
 namespace GuzellikMerkezi.Application.Features.Ratings;
 
 /// <summary>Randevu "tamamlandı" işaretlenince personele dönen QR/link bilgisi.</summary>
+/// <summary>
+/// Panelde gösterilen müşteri yorumu. Herkese açık vitrinde (bkz. PublicSalonService) müşteri adı
+/// MASKELENİR; burada kurum kendi müşterisini gördüğü için AD SOYAD AÇIK gelir.
+/// </summary>
+public sealed record AdminReviewDto(
+    Guid Id,
+    string CustomerName,
+    DateTime SubmittedAtUtc,
+    string? Comment,
+    int StaffStars,
+    int? SalonStars,
+    string StaffName,
+    string? ServiceName,
+    string? BranchName);
+
+/// <summary>Panel yorum özeti: salon ve personel ortalaması + toplam yorum sayısı.</summary>
+public sealed record AdminReviewSummaryDto(
+    int TotalCount,
+    double? SalonAverage,
+    double? StaffAverage,
+    int WithCommentCount,
+    IReadOnlyCollection<AdminReviewDto> Recent);
+
 public sealed record RatingTokenDto(
     Guid Token,
     DateTime ExpiresAtUtc,

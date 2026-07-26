@@ -115,6 +115,75 @@ public sealed class RatingService : IRatingService
         return Result<PublicRatingDto>.Success(ToPublicDto(rating));
     }
 
+    /// <summary>
+    /// Panel yorum kartı: son gönderilmiş değerlendirmeler + salon/personel ortalaması.
+    /// Vitrindeki maskeleme burada YOK — kurum kendi müşterisinin adını görür.
+    /// Şube global sorgu filtresi geçerlidir: yöneticinin kapsamındaki şubeler gelir.
+    /// </summary>
+    public async Task<Result<AdminReviewSummaryDto>> GetRecentReviewsAsync(Guid tenantId, int take = 5, CancellationToken cancellationToken = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+
+        var baseQuery = _db.AppointmentRatings.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.Status == RatingStatus.Submitted);
+
+        var stats = await baseQuery
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                StaffAvg = (double?)g.Average(x => x.Stars),
+                SalonSum = (double?)g.Sum(x => x.SalonStars ?? 0),
+                SalonCount = g.Count(x => x.SalonStars != null),
+                WithComment = g.Count(x => x.Comment != null && x.Comment != ""),
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var rows = await baseQuery
+            .OrderByDescending(r => r.SubmittedAtUtc)
+            .Take(take)
+            .Select(r => new
+            {
+                r.Id,
+                r.SubmittedAtUtc,
+                r.Comment,
+                r.Stars,
+                r.SalonStars,
+                r.StaffName,
+                r.ServiceName,
+                r.BranchId,
+                // Müşteri adı ŞİFRELİ kolondur; korelasyonlu alt sorgu ile yalnız bu satırlar
+                // için çözülür. Tüm müşteri tablosunu belleğe çekmek 12 bin+ kayıtta hem
+                // yavaş hem de gereksiz veri okumasıdır.
+                CustomerName = _db.Customers.Where(c => c.Id == r.CustomerId).Select(c => c.FullName).FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        // Şube adı da şifrelidir; şube sayısı küçük olduğu için tek seferde çözülür.
+        var branchNames = (await _db.Branches.AsNoTracking()
+                .Where(b => b.TenantId == tenantId)
+                .Select(b => new { b.Id, b.Name })
+                .ToListAsync(cancellationToken))
+            .ToDictionary(b => b.Id, b => b.Name);
+
+        var items = rows.Select(r => new AdminReviewDto(
+            r.Id,
+            string.IsNullOrWhiteSpace(r.CustomerName) ? "Müşteri" : r.CustomerName,
+            AsUtc(r.SubmittedAtUtc ?? DateTime.UtcNow),
+            r.Comment,
+            r.Stars,
+            r.SalonStars,
+            r.StaffName,
+            r.ServiceName,
+            branchNames.TryGetValue(r.BranchId, out var bn) ? bn : null)).ToArray();
+
+        var salonAvg = stats is { SalonCount: > 0 } ? Math.Round(stats.SalonSum!.Value / stats.SalonCount, 2) : (double?)null;
+        var staffAvg = stats?.StaffAvg is { } sa ? Math.Round(sa, 2) : (double?)null;
+
+        return Result<AdminReviewSummaryDto>.Success(new AdminReviewSummaryDto(
+            stats?.Total ?? 0, salonAvg, staffAvg, stats?.WithComment ?? 0, items));
+    }
+
     // MySQL'den okunan DateTime Kind=Unspecified döner; 'Z'siz serialize edilmemesi için UTC işaretle.
     private static DateTime AsUtc(DateTime dt) => DateTime.SpecifyKind(dt, DateTimeKind.Utc);
 
