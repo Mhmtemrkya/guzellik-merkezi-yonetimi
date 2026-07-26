@@ -69,16 +69,16 @@ public sealed class KvkkDocumentService : IKvkkDocumentService
             profile?.LogoData);
     }
 
-    public async Task<byte[]?> BuildPdfAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    public async Task<byte[]?> BuildPdfAsync(Guid tenantId, string? customerName = null, CancellationToken cancellationToken = default)
     {
         var content = await GetContentAsync(tenantId, cancellationToken);
         if (content is null) return null;
-        return Render(content);
+        return Render(content, customerName);
     }
 
     // ---------------------------------------------------------------- çizim ---
 
-    private byte[] Render(KvkkContentDto content)
+    private byte[] Render(KvkkContentDto content, string? customerName)
     {
         using var document = new PdfDocument();
         document.Info.Title = $"{content.SalonName} — KVKK Aydınlatma Metni";
@@ -168,6 +168,21 @@ public sealed class KvkkDocumentService : IKvkkDocumentService
                 y += lineHeight;
             }
         }
+
+        // --- imza bloğu: "Müşteri Ad Soyad" ve "Tarih & İmza".
+        // WhatsApp'la kişiye gönderilen belgede ad OTOMATİK yazılır; herkese açık indirmede
+        // boş çizgi kalır (elle doldurulsun diye).
+        EnsureSpace(46);
+        y += 12;
+        var colWidth = (contentWidth - 24) / 2;
+        var lineY = y + 20;
+        gfx.DrawString("Müşteri Ad Soyad", bold, XBrushes.Black, new XPoint(Margin, y + 9));
+        gfx.DrawString("Tarih & İmza", bold, XBrushes.Black, new XPoint(Margin + colWidth + 24, y + 9));
+        if (!string.IsNullOrWhiteSpace(customerName))
+            gfx.DrawString(customerName!.Trim(), body, XBrushes.Black, new XPoint(Margin, lineY - 3));
+        var pen = new XPen(XColor.FromArgb(0x9A, 0x84, 0x90), 0.7);
+        gfx.DrawLine(pen, Margin, lineY, Margin + colWidth, lineY);
+        gfx.DrawLine(pen, Margin + colWidth + 24, lineY, Margin + contentWidth, lineY);
 
         gfx.Dispose();
 

@@ -291,7 +291,7 @@ public sealed class WhatsAppService : IWhatsAppService
             // linki mesaja konur (PDF'i açamayan müşteri metni tarayıcıda okuyabilsin).
             var link = await KvkkLinkAsync(tenantId, ct);
             byte[]? pdf = null;
-            try { pdf = await _kvkkDocuments.BuildPdfAsync(tenantId, ct); }
+            try { pdf = await _kvkkDocuments.BuildPdfAsync(tenantId, customer.FullName, ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "KVKK PDF üretilemedi, mesaj eksiz gönderilecek: {Tenant}", tenantId); }
 
             var body = KvkkConsentTemplate

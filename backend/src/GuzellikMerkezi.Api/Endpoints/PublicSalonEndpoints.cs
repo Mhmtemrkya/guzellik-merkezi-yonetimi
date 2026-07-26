@@ -42,7 +42,7 @@ public static class PublicSalonEndpoints
         {
             var tenantId = await service.ResolveTenantIdBySlugAsync(slug, ct);
             if (tenantId is null) return Results.NotFound();
-            var pdf = await service.BuildPdfAsync(tenantId.Value, ct);
+            var pdf = await service.BuildPdfAsync(tenantId.Value, null, ct);
             return pdf is null ? Results.NotFound() : Results.File(pdf, "application/pdf", $"KVKK-Aydinlatma-Metni-{slug}.pdf");
         });
 
