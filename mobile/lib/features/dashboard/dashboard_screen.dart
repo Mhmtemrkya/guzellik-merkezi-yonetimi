@@ -129,6 +129,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'toUtc': now.toUtc().toIso8601String(),
           })
           .catchError((_) => const <dynamic>[]),
+      // Müşteri yorumları (salon + personel yıldızı). Sunucu bu ucu yalnız yöneticilere
+      // açar; personelde 403 döner ve pano çökmesin diye boş değere düşülür.
+      widget.api
+          .get('/api/ratings/reviews', query: {'take': 5})
+          .catchError((_) => const <String, dynamic>{}),
     ]);
     final statsPayload = values[1];
     final customerStats = statsPayload is Map
@@ -148,6 +153,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ? (values[7] as Map).cast<String, dynamic>()
           : const <String, dynamic>{},
       cashEntries: apiItems(values[8]),
+      reviews: values[9] is Map
+          ? (values[9] as Map).cast<String, dynamic>()
+          : const <String, dynamic>{},
       summary: {
         'customers': (customerStats['total'] as num?)?.toInt() ?? 0,
         ...(values[2] is Map
@@ -328,6 +336,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 22),
                       _StockAlertsCard(products: data.products),
+                      const SizedBox(height: 22),
+                      _CustomerReviewsCard(data: data.reviews),
                       const SizedBox(height: 22),
                       _FollowUpsCard(
                         customerStats: data.customerStats,
@@ -654,6 +664,7 @@ class _DashboardData {
     this.report = const <String, dynamic>{},
     this.passive = const <String, dynamic>{},
     this.cashEntries = const <Map<String, dynamic>>[],
+    this.reviews = const <String, dynamic>{},
   });
   final List<Map<String, dynamic>> primary;
   final List<Map<String, dynamic>> secondary;
@@ -668,6 +679,10 @@ class _DashboardData {
   final Map<String, dynamic> report;
   final Map<String, dynamic> passive;
   final List<Map<String, dynamic>> cashEntries;
+
+  /// /api/ratings/reviews çıktısı — totalCount, salonAverage, staffAverage, recent[].
+  /// Müşteri adı vitrindekinin aksine MASKESİZDİR (kurum kendi müşterisini görür).
+  final Map<String, dynamic> reviews;
 }
 
 // ----------------------- Web paritesi: yardımcılar -----------------------
@@ -1579,6 +1594,146 @@ class _StaffPerformanceCard extends StatelessWidget {
             ),
     );
   }
+}
+
+/// Salona ve personele gelen müşteri yorumları (web "Müşteri Yorumları" kartı paritesi).
+///
+/// Aynı yorumlar herkese açık vitrinde de görünür; ORADA müşteri adı MASKELİDİR (M*** Y***),
+/// burada kurum kendi müşterisini gördüğü için ad açıktır. Sunucu bu ucu yalnız yöneticilere
+/// açar — personelde boş gelir ve kart hiç çizilmez.
+class _CustomerReviewsCard extends StatelessWidget {
+  const _CustomerReviewsCard({required this.data});
+  final Map<String, dynamic> data;
+
+  static Widget _stars(int value, Color color) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 1; i <= 5; i++)
+            Icon(
+              i <= value ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 13,
+              color: i <= value ? color : AppColors.border,
+            ),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = apiItems(data['recent']);
+    final total = numberOf(data, const ['totalCount']).toInt();
+    // Personelde uç 403 döner → veri boş; kartı hiç gösterme.
+    if (total == 0 && recent.isEmpty) return const SizedBox.shrink();
+
+    final salonAvg = data['salonAverage'] as num?;
+    final staffAvg = data['staffAverage'] as num?;
+
+    return _DashCard(
+      icon: Icons.reviews_rounded,
+      title: 'Müşteri Yorumları',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Salona ve personele gelen değerlendirmeler · $total yorum',
+            style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
+          ),
+          if (salonAvg != null || staffAvg != null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (salonAvg != null)
+                  _AvgChip(
+                    icon: Icons.storefront_rounded,
+                    label: 'Salon ${salonAvg.toStringAsFixed(1)}',
+                    color: AppColors.primaryDark,
+                  ),
+                if (staffAvg != null)
+                  _AvgChip(
+                    icon: Icons.person_rounded,
+                    label: 'Personel ${staffAvg.toStringAsFixed(1)}',
+                    color: const Color(0xFF96702A),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          for (final r in recent)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          valueOf(r, const ['customerName'], fallback: 'Müşteri'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                        ),
+                      ),
+                      if (r['salonStars'] != null) ...[
+                        _stars(numberOf(r, const ['salonStars']).toInt(), AppColors.primaryDark),
+                        const SizedBox(width: 6),
+                      ],
+                      _stars(numberOf(r, const ['staffStars']).toInt(), const Color(0xFFD8AD55)),
+                    ],
+                  ),
+                  if ('${r['comment'] ?? ''}'.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        '“${r['comment']}”',
+                        style: const TextStyle(fontSize: 11.5, height: 1.35),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      [
+                        valueOf(r, const ['staffName'], fallback: ''),
+                        valueOf(r, const ['serviceName'], fallback: ''),
+                        valueOf(r, const ['branchName'], fallback: ''),
+                      ].where((x) => x.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AvgChip extends StatelessWidget {
+  const _AvgChip({required this.icon, required this.label, required this.color});
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+          ],
+        ),
+      );
 }
 
 /// Kritik/tükenen stok uyarıları (web 'Stok Uyarıları').
