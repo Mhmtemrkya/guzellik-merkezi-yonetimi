@@ -1767,6 +1767,22 @@ class _PackageReportCard extends StatelessWidget {
     final overdue = numberOf(report, const ['overdueAmount']);
     // (etiket, değer, ikon, ton, tehlike mi)
     final stats = <(String, String, IconData, _MetricTone, bool)>[
+      // Anlık paket portföyü (web ile aynı alanlar). Mobilde rapor zaten dönemsiz
+      // çekildiği için buradaki tüm kartlar "tüm zamanlar" kapsamındadır.
+      (
+        'Toplam Paket',
+        '${numberOf(report, const ['totalPackagesAllTime']).toInt()}',
+        Icons.inventory_2_rounded,
+        _MetricTone.violet,
+        false,
+      ),
+      (
+        'Aktif Paket',
+        '${numberOf(report, const ['activePackagesAllTime']).toInt()}',
+        Icons.autorenew_rounded,
+        _MetricTone.violet,
+        false,
+      ),
       (
         'Satılan Paket',
         '${numberOf(report, const ['packageSalesCount']).toInt()}',

@@ -1136,6 +1136,8 @@ export interface ApiAccountMonthlyInstallment {
 export interface ApiAccountReport {
   packageSalesCount?: number
   customersWithPackages?: number
+  totalPackagesAllTime?: number
+  activePackagesAllTime?: number
   totalAccounts?: number
   activeAccounts?: number
   sessionsTotal?: number
@@ -1216,6 +1218,10 @@ export interface AccountMonthlyInstallment {
 export interface AccountReport {
   packageSalesCount: number
   customersWithPackages: number
+  /** Dönem filtresine BAĞLI DEĞİL — bugüne kadar satılmış tüm paketler (iptaller hariç). */
+  totalPackagesAllTime: number
+  /** Dönem filtresine BAĞLI DEĞİL — seansı hâlâ devam eden paketler. */
+  activePackagesAllTime: number
   totalAccounts: number
   activeAccounts: number
   sessionsTotal: number

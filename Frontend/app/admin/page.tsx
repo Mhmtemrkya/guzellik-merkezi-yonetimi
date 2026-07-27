@@ -1680,7 +1680,20 @@ export default function AdminDashboard() {
                   </span>
                   <span className="text-[10px] text-[#b09ca5]">Dönemde satılan paketler</span>
                 </div>
-                <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5 ${packageLoading ? 'opacity-60' : 'opacity-100'}`}>
+                <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 ${packageLoading ? 'opacity-60' : 'opacity-100'}`}>
+                  {/* İlk iki kart dönem çipine BAĞLI DEĞİL — kurumun anlık paket portföyü (aynı ton ile eşleştirildi). */}
+                  <ReportKpi icon={Boxes} tone="violet" label="Toplam Paket" value={String(packageReport.totalPackagesAllTime)} hint="Tüm zamanlar" />
+                  <ReportKpi
+                    icon={Package}
+                    tone="violet"
+                    label="Aktif Paket"
+                    value={String(packageReport.activePackagesAllTime)}
+                    hint={
+                      packageReport.totalPackagesAllTime > 0
+                        ? `${packageReport.totalPackagesAllTime - packageReport.activePackagesAllTime} paket tamamlandı`
+                        : 'Seansı devam eden'
+                    }
+                  />
                   <ReportKpi icon={ShoppingBag} tone="cream" label="Satılan Paket" value={String(packageReport.packageSalesCount)} hint={packageReport.customersWithPackages > 0 ? `${packageReport.customersWithPackages} müşteriye` : 'Dönem paket adedi'} />
                   <ReportKpi icon={Activity} tone="mint" label="Kalan Seans" value={String(packageReport.sessionsRemaining)} hint={`${packageReport.sessionsUsed}/${packageReport.sessionsTotal} kullanıldı`} />
                   <ReportKpi icon={Wallet} tone="rose" label="Toplam Kalan Taksit" value={formatTL(Math.round(packageReport.totalReceivable))} hint="Kalan taksit miktarı" />

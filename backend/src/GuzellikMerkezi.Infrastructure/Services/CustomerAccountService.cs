@@ -843,6 +843,26 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
 
+        // --- Anlık paket portföyü (dönemden BAĞIMSIZ) ---------------------------
+        // Panodaki "Toplam Paket" / "Aktif Paket" kartları dönem çipine bağlı değildir: kurumun
+        // bugünkü durumunu gösterir (geçen yıl satılan paket bugün hâlâ devam ediyor olabilir).
+        // Paket örneği = (cari, paket) çifti — hem doğrudan cari satışını hem adisyon paket
+        // satışını kapsar, çünkü ikisi de seans satırı açar. İptal edilen cariler ikisine de
+        // girmez; böylece "Toplam − Aktif = seansı biten paketler" olur.
+        var portfolioAccounts = await _db.CustomerAccounts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
+            .Select(a => a.Id)
+            .ToListAsync(cancellationToken);
+        var portfolioAccountIds = portfolioAccounts.ToHashSet();
+        var packagePortfolio = sessionRows
+            .Where(s => portfolioAccountIds.Contains(s.CustomerAccountId))
+            .GroupBy(s => new { s.CustomerAccountId, s.ServicePackageId })
+            .Select(g => g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)))
+            .ToList();
+        var totalPackagesAllTime = packagePortfolio.Count;
+        var activePackagesAllTime = packagePortfolio.Count(remaining => remaining > 0);
+
         // --- Kategori kırılımı --------------------------------------------------
         // Seans satırında tutar yok; satışın toplamı (cari TotalAmount, indirim dahil) paket
         // kalemlerinin birim fiyatına göre hizmetlere dağıtılır. Fiyat bulunamazsa seans
@@ -971,6 +991,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var report = new AccountReportDto(
             packageSalesCount,
             customersWithPackages,
+            totalPackagesAllTime,
+            activePackagesAllTime,
             accounts.Count,
             activeAccounts,
             sessionsTotal,

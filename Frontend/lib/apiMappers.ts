@@ -496,6 +496,8 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
   return {
     packageSalesCount: Number(report?.packageSalesCount ?? 0),
     customersWithPackages: Number(report?.customersWithPackages ?? 0),
+    totalPackagesAllTime: Number(report?.totalPackagesAllTime ?? 0),
+    activePackagesAllTime: Number(report?.activePackagesAllTime ?? 0),
     totalAccounts: Number(report?.totalAccounts ?? 0),
     activeAccounts: Number(report?.activeAccounts ?? 0),
     sessionsTotal: Number(report?.sessionsTotal ?? 0),
