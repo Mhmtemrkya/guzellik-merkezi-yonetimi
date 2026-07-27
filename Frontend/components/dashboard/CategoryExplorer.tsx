@@ -61,6 +61,8 @@ export default function CategoryExplorer({
   const customCats = useMemo(() => (data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i)), [data])
   // Üst-seviye özel kategoriler (alt kategori kayıtları haritadan hariç).
   const topCustomCats = useMemo(() => customCats.filter((c) => !c.parentId), [customCats])
+  /** Bir üst kategorinin alt kategori sayısı — silme onayında "N alt kategorisi de silinecek" için. */
+  const subCountOf = (parentId: string) => customCats.filter((c) => c.parentId === parentId).length
 
   // Üst kategori havuzu: üst-seviye özel kategoriler + hizmet/paketlerde geçen kategori adları + Kategorisiz
   const categories = useMemo(() => {
@@ -163,11 +165,24 @@ export default function CategoryExplorer({
     }
   }
 
-  const deleteCat = async (id: string) => {
+  /**
+   * Kategori silme. Onay şart: geri alınamaz ve alt kategorileri de siler.
+   * Hizmet/paketler SİLİNMEZ — kategori adı üzerlerinde metin olarak kalır, listede
+   * "türetilmiş kategori" olarak görünmeye devam eder.
+   */
+  const deleteCat = async (id: string, name: string, subCount = 0) => {
+    const detail = subCount > 0
+      ? `\n\n${subCount} alt kategorisi de silinecek.`
+      : ''
+    if (!window.confirm(
+      `"${name}" kategorisi silinsin mi?${detail}\n\nBu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.`,
+    )) return
     setBusy(true)
     setError('')
     try {
       await adminApi.deleteServiceCategory(id, tenantId)
+      if (selectedCat === name) setSelectedCat(null)
+      if (selectedSub === name) setSelectedSub('')
       await reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kategori silinemedi')
@@ -283,14 +298,16 @@ export default function CategoryExplorer({
                       <Plus className="h-3 w-3" /> alt
                     </span>
                   )}
+                  {/* Silme HER ZAMAN görünür: opacity-0 + group-hover ile gizliyken dokunmatik
+                      cihazlarda hiç erişilemiyordu ve kullanıcı özelliği bulamıyordu. */}
                   {c.isCustom && c.customId && canCustomCat && (
                     <span
                       role="button"
                       tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); void deleteCat(c.customId!) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void deleteCat(c.customId!) } }}
-                      title="Özel kategoriyi sil"
-                      className="grid h-7 w-7 place-items-center rounded-md text-[#352432]/25 opacity-0 transition-opacity hover:text-rose-600 group-hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); void deleteCat(c.customId!, c.name, subCountOf(c.customId!)) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void deleteCat(c.customId!, c.name, subCountOf(c.customId!)) } }}
+                      title="Kategoriyi sil"
+                      className="grid h-7 w-7 place-items-center rounded-md border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </span>
@@ -356,12 +373,13 @@ export default function CategoryExplorer({
                           className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronRight className="h-3 w-3" /></button>
                       </span>
                     )}
+                    {/* Alt kategori silme de her zaman görünür (bkz. üst kategori notu). */}
                     {s.customId && canCustomCat && (
                       <button
                         type="button"
-                        onClick={() => void deleteCat(s.customId!)}
+                        onClick={() => void deleteCat(s.customId!, s.name)}
                         title="Alt kategoriyi sil"
-                        className="ml-0.5 grid h-5 w-5 place-items-center rounded-full text-[#352432]/25 opacity-0 transition-opacity hover:text-rose-600 group-hover/sub:opacity-100"
+                        className="ml-0.5 grid h-5 w-5 place-items-center rounded-full border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                       >
                         <X className="h-3 w-3" />
                       </button>

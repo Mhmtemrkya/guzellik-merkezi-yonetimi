@@ -62,6 +62,15 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
     {
         var category = await _db.CustomServiceCategories.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (category is null) return Result.Failure(Error.NotFound("Kategori bulunamadı."));
+
+        // Üst kategori silinince ALT KATEGORİLERİ de silinir; aksi halde ParentId'si silinmiş bir
+        // kayda işaret eden öksüz alt kategoriler kalıyor ve hiçbir listede görünmüyordu.
+        // Hizmet/paketler silinmez — kategori adı metin olarak üzerlerinde kalır (türetilmiş kategori).
+        var children = await _db.CustomServiceCategories
+            .Where(x => x.TenantId == tenantId && x.ParentId == id)
+            .ToListAsync(cancellationToken);
+        foreach (var child in children) child.SoftDelete();
+
         category.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         return Result.Success();
