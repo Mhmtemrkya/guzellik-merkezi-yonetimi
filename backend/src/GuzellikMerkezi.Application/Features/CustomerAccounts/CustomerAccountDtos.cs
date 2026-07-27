@@ -137,9 +137,9 @@ public sealed record AccountMonthlyInstallmentDto(
 public sealed record AccountReportDto(
     int PackageSalesCount,      // Satılan TOPLAM paket adedi (doğrudan cari + onaylı adisyon paket satışları)
     int CustomersWithPackages,  // Paket satın almış benzersiz müşteri sayısı
-    // Aşağıdaki iki alan dönem filtresine BAĞLI DEĞİLDİR — kurumun anlık paket portföyüdür.
-    int TotalPackagesAllTime,   // Bugüne kadar satılmış tüm paketler (iptaller hariç)
-    int ActivePackagesAllTime,  // Bunlardan seansı hâlâ devam edenler ("Aktif Paket")
+    // Aşağıdaki iki alan dönem filtresine BAĞLI DEĞİLDİR ve ikisi de KATALOĞU sayar.
+    int CatalogPackageCount,    // "Toplam Paket" — kurumda tanımlı paket adedi (Paketler sayfasıyla aynı)
+    int PackagesInUseCount,     // "Aktif Paket"  — bunlardan kaç çeşidinin seansı süren satışı var
     int TotalAccounts,
     int ActiveAccounts,
     int SessionsTotal,          // Satılan toplam seans

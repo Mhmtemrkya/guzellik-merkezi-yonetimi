@@ -658,12 +658,15 @@ public sealed class CustomerAccountService : ICustomerAccountService
         if (months > 24) months = 24;
         const int hardCapMonths = 36;
 
-        // Dönem filtresi: verilirse rapor, [fromUtc, toUtc) aralığında satılan (oluşturulan)
-        // paketlere göre süzülür. Hem cari hem adisyon CreatedAtUtc'sine uygulanır.
+        // Dönem filtresi: verilirse rapor, [fromUtc, toUtc) aralığında satılan paketlere göre süzülür.
         // Kapsamdaki cariler (tenant + şube global filtresiyle süzülür) — taksit + tahsilat dahil.
+        // İPTAL EDİLEN SATIŞLAR RAPORA GİRMEZ: CancelSale yalnızca IsActive/CancelledAtUtc yazar,
+        // taksitleri Cancelled'a çekmez. Bu yüzden burada elenmezlerse iptal edilmiş bir satışın
+        // kalan taksiti "Toplam Kalan Taksit"/"Vadesi Geçmiş"e, yapılmayacak seansları "Kalan
+        // Seans"a eklenirdi. İptaller Ön Muhasebe'deki "İptal edilenler" görünümünde izlenir.
         var accountsQuery = _db.CustomerAccounts
             .AsNoTracking()
-            .Where(a => a.TenantId == tenantId);
+            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null);
         // Dönem, satışın GERÇEK tarihine (SoldAtUtc) göre süzülür. Normal satışta SoldAtUtc =
         // oluşturma anı; geçmiş satış girişinde ise geçmiş bir tarihtir — böylece 2024 satışı
         // bugünün cirosunda görünmez.
@@ -693,14 +696,44 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var directPackageCount = directPackageAccounts.Count;
 
         // Onaylı adisyonlardaki paket satışı kalemleri (şube+tenant global filtresiyle süzülür).
+        // Dönem ONAY anına göre süzülür: satış cariye onayda işlenir ve o carinin SoldAtUtc'si de
+        // onay anıdır. CreatedAtUtc kullanılırsa dün açılıp bugün onaylanan adisyonun paketi dünkü
+        // döneme, seansları/tutarı bugünkü döneme düşer — "Satılan Paket" ile kırılım çelişirdi.
         var adisyonQuery = _db.Adisyonlar
             .AsNoTracking()
             .Where(a => a.TenantId == tenantId && a.Status == AdisyonStatus.Approved);
-        if (fromUtc.HasValue) adisyonQuery = adisyonQuery.Where(a => a.CreatedAtUtc >= fromUtc.Value);
-        if (toUtc.HasValue) adisyonQuery = adisyonQuery.Where(a => a.CreatedAtUtc < toUtc.Value);
-        var approvedAdisyonlar = await adisyonQuery
-            .Include(a => a.Items)
-            .ToListAsync(cancellationToken);
+        if (fromUtc.HasValue) adisyonQuery = adisyonQuery.Where(a => (a.ApprovedAtUtc ?? a.CreatedAtUtc) >= fromUtc.Value);
+        if (toUtc.HasValue) adisyonQuery = adisyonQuery.Where(a => (a.ApprovedAtUtc ?? a.CreatedAtUtc) < toUtc.Value);
+        // Adisyonla satılan paket sonradan iptal edilen bir cariye bağlandıysa satış sayılmamalı.
+        // Doğrudan satışta bunu accountsQuery'deki CancelledAtUtc süzgeci hallediyor; adisyon
+        // kalemi cariye bağlı olmadığı için bağ, seans satırındaki SourceAdisyonId üzerinden kurulur.
+        // Ek sorgular yalnızca gerçekten iptal edilmiş satış varsa çalışır.
+        var cancelledAccountIds = (await _db.CustomerAccounts
+                .AsNoTracking()
+                .Where(a => a.TenantId == tenantId && a.CancelledAtUtc != null)
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var cancelledSourceAdisyonIds = new HashSet<Guid>();
+        if (cancelledAccountIds.Count > 0)
+        {
+            // MySQL'de Guid listesi .Contains() sunucuda çevrilemez → bellekte süzülür.
+            var sourceLinks = await _db.CustomerPackageSessions
+                .AsNoTracking()
+                .Where(s => s.TenantId == tenantId && s.SourceAdisyonId != null)
+                .Select(s => new { s.CustomerAccountId, s.SourceAdisyonId })
+                .ToListAsync(cancellationToken);
+            cancelledSourceAdisyonIds = sourceLinks
+                .Where(r => cancelledAccountIds.Contains(r.CustomerAccountId))
+                .Select(r => r.SourceAdisyonId!.Value)
+                .ToHashSet();
+        }
+
+        var approvedAdisyonlar = (await adisyonQuery
+                .Include(a => a.Items)
+                .ToListAsync(cancellationToken))
+            .Where(a => !cancelledSourceAdisyonIds.Contains(a.Id))
+            .ToList();
         var adisyonPackageItems = approvedAdisyonlar
             .SelectMany(a => a.Items.Where(i => i.Type == AdisyonItemType.PackageSale)
                 .Select(i => new { a.CustomerId, Qty = (int)Math.Max(1, Math.Round(i.Quantity, MidpointRounding.AwayFromZero)) }))
@@ -843,25 +876,30 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
 
-        // --- Anlık paket portföyü (dönemden BAĞIMSIZ) ---------------------------
-        // Panodaki "Toplam Paket" / "Aktif Paket" kartları dönem çipine bağlı değildir: kurumun
-        // bugünkü durumunu gösterir (geçen yıl satılan paket bugün hâlâ devam ediyor olabilir).
-        // Paket örneği = (cari, paket) çifti — hem doğrudan cari satışını hem adisyon paket
-        // satışını kapsar, çünkü ikisi de seans satırı açar. İptal edilen cariler ikisine de
-        // girmez; böylece "Toplam − Aktif = seansı biten paketler" olur.
-        var portfolioAccounts = await _db.CustomerAccounts
+        // --- Paket kataloğu kartları (dönemden BAĞIMSIZ) ------------------------
+        // Panodaki "Toplam Paket" / "Aktif Paket" kartları dönem çipine bağlı değildir ve İKİSİ DE
+        // KATALOĞU sayar — böylece Paketler sayfasındaki adetle birebir tutar:
+        //   Toplam Paket = kurumda tanımlı paket sayısı (Paketler sayfasının toplamı).
+        //   Aktif Paket  = bu paketlerden kaç ÇEŞİDİNİN şu an seansı devam eden satışı var.
+        //                  Aynı paket 5 müşteride sürüyorsa 1 sayılır (satış adedi değil, çeşit).
+        // Her ikisi de şube kapsamına uyar (ServicePackage.BranchId global filtreden geçer).
+        var catalogPackageCount = await _db.ServicePackages
             .AsNoTracking()
-            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
-            .Select(a => a.Id)
-            .ToListAsync(cancellationToken);
-        var portfolioAccountIds = portfolioAccounts.ToHashSet();
-        var packagePortfolio = sessionRows
-            .Where(s => portfolioAccountIds.Contains(s.CustomerAccountId))
+            .CountAsync(p => p.TenantId == tenantId, cancellationToken);
+
+        var liveAccountIds = (await _db.CustomerAccounts
+                .AsNoTracking()
+                .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var packagesInUseCount = sessionRows
+            .Where(s => liveAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => new { s.CustomerAccountId, s.ServicePackageId })
-            .Select(g => g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)))
-            .ToList();
-        var totalPackagesAllTime = packagePortfolio.Count;
-        var activePackagesAllTime = packagePortfolio.Count(remaining => remaining > 0);
+            .Where(g => g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)) > 0)
+            .Select(g => g.Key.ServicePackageId)
+            .Distinct()
+            .Count();
 
         // --- Kategori kırılımı --------------------------------------------------
         // Seans satırında tutar yok; satışın toplamı (cari TotalAmount, indirim dahil) paket
@@ -991,8 +1029,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var report = new AccountReportDto(
             packageSalesCount,
             customersWithPackages,
-            totalPackagesAllTime,
-            activePackagesAllTime,
+            catalogPackageCount,
+            packagesInUseCount,
             accounts.Count,
             activeAccounts,
             sessionsTotal,
