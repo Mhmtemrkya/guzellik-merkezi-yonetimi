@@ -968,8 +968,12 @@ export const adminApi = {
     apiRequest<PagedResult<T>>('/api/admin/accounts/', { query: { page: 1, pageSize: 100, ...query } }),
   /** Pano "Paket Raporu": paket satışı, yapılacak seans, ay ay taksit takvimi (tek sorgu).
    *  fromUtc/toUtc verilirse rapor o dönemde satılan paketlere göre süzülür (günlük/aylık/yıllık). */
-  accountReport: <T = unknown>(tenantId?: string, months = 6, fromUtc?: string, toUtc?: string): Promise<T> =>
-    apiRequest<T>('/api/admin/accounts/report', { query: { tenantId, months, fromUtc, toUtc } }),
+  // category/subCategory: rapor o kategorideki paketlere daralır; dönemle birlikte uygulanır.
+  accountReport: <T = unknown>(tenantId?: string, months = 6, fromUtc?: string, toUtc?: string, category?: string, subCategory?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/report', { query: { tenantId, months, fromUtc, toUtc, category, subCategory } }),
+  // Hizmet Raporu — paket raporundan AYRI; buradaki kategori HİZMETİN kategorisidir.
+  serviceReport: <T = unknown>(tenantId?: string, fromUtc?: string, toUtc?: string, category?: string, subCategory?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/service-report', { query: { tenantId, fromUtc, toUtc, category, subCategory } }),
   // Müşterinin paketlerindeki hizmet-bazlı kalan seans bakiyeleri
   customerSessions: <T = unknown>(customerId: string, tenantId?: string): Promise<T[]> =>
     apiRequest<T[]>(`/api/admin/accounts/sessions/${customerId}`, { query: { tenantId } }),

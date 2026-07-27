@@ -154,6 +154,19 @@ public sealed record AccountReportDto(
     IReadOnlyList<PackageCustomerBreakdownDto> Customers);   // Müşteri bazlı taksit/ödeme/seans kırılımı
 
 /// <summary>
+/// Pano "Hizmet Raporu" kartları. Paket raporundan TAMAMEN AYRIDIR: buradaki kategori HİZMETİN
+/// kategorisidir ve sayılan şey hizmettir, paket değil. Dönem + kategori birlikte uygulanır.
+/// </summary>
+public sealed record ServiceReportDto(
+    int CatalogServiceCount,   // "Toplam Hizmet" — tanımlı hizmet adedi (dönemden BAĞIMSIZ)
+    int ServicesInUseCount,    // "Aktif Hizmet"  — seansı süren satışı olan farklı hizmet (dönemden BAĞIMSIZ)
+    int ServiceSalesCount,     // "Satılan Hizmet" — dönemde satılan hizmet adedi
+    int SessionsTotal,
+    int SessionsUsed,
+    int SessionsRemaining,
+    decimal Revenue);          // Dönemde satılan hizmetlerin tutarı (satış toplamından dağıtılır)
+
+/// <summary>
 /// "Kim sattı" kırılımı — satışı yapan personel bazında adet/seans/tutar.
 /// Personel atanmamış (eski/otomatik) satışlar StaffMemberId null ile "Belirtilmemiş" altında toplanır.
 /// </summary>

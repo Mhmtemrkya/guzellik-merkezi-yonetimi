@@ -687,7 +687,95 @@ public sealed class CustomerAccountService : ICustomerAccountService
         return Result<IReadOnlyCollection<CustomerPackageSessionDto>>.Success(rows);
     }
 
-    public async Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Pano "Hizmet Raporu": kaç hizmet tanımlı, kaçının satışı sürüyor, dönemde kaç hizmet satıldı.
+    /// PAKET raporundan ayrıdır — buradaki kategori HİZMETİN kategorisidir ve paket sayılmaz.
+    /// Kategori/alt kategori ŞİFRELİ kolon olduğu için bellekte süzülür (SQL eşitliği çalışmaz).
+    /// </summary>
+    public async Task<Result<ServiceReportDto>> GetServiceReportAsync(Guid tenantId, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, CancellationToken cancellationToken = default)
+    {
+        var serviceRows = await _db.ServiceDefinitions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .Select(s => new { s.Id, s.Category, s.SubCategory, s.Price })
+            .ToListAsync(cancellationToken);
+
+        var wantedCat = category?.Trim();
+        var wantedSub = subCategory?.Trim();
+        var scopedServices = string.IsNullOrWhiteSpace(wantedCat)
+            ? serviceRows
+            : serviceRows
+                .Where(s => string.Equals(s.Category?.Trim(), wantedCat, StringComparison.OrdinalIgnoreCase)
+                            && (string.IsNullOrWhiteSpace(wantedSub)
+                                || string.Equals(s.SubCategory?.Trim(), wantedSub, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+        var scopedServiceIds = scopedServices.Select(s => s.Id).ToHashSet();
+
+        // Dönemdeki satışlar — paket raporuyla aynı kurallar: iptal edilenler girmez, satış tarihi
+        // yoksa kayıt tarihine düşülür.
+        var accountsQuery = _db.CustomerAccounts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null);
+        if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) >= fromUtc.Value);
+        if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) < toUtc.Value);
+        var periodAccounts = await accountsQuery
+            .Select(a => new { a.Id, a.TotalAmount })
+            .ToListAsync(cancellationToken);
+        var periodAccountIds = periodAccounts.Select(a => a.Id).ToHashSet();
+        var totalByAccount = periodAccounts.ToDictionary(a => a.Id, a => a.TotalAmount);
+
+        var liveAccountIds = (await _db.CustomerAccounts
+                .AsNoTracking()
+                .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
+                .Select(a => a.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var sessions = await _db.CustomerPackageSessions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .Select(s => new { s.CustomerAccountId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
+            .ToListAsync(cancellationToken);
+
+        var scopedSessions = sessions
+            .Where(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && periodAccountIds.Contains(s.CustomerAccountId))
+            .ToList();
+
+        // Ciro: seans satırında tutar yok → satışın toplamı seans ağırlığına göre dağıtılır
+        // (paket raporundaki kalem dağıtımıyla aynı mantık; kategori dışı kalemler paya girmez).
+        var weightByAccount = sessions
+            .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
+            .GroupBy(s => s.CustomerAccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(1, x.TotalSessions)));
+        var revenue = scopedSessions.Sum(s =>
+        {
+            var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1;
+            var total = totalByAccount.TryGetValue(s.CustomerAccountId, out var t) ? t : 0m;
+            return total * Math.Max(1, s.TotalSessions) / weight;
+        });
+
+        var servicesInUse = sessions
+            .Where(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && liveAccountIds.Contains(s.CustomerAccountId))
+            .GroupBy(s => new { s.CustomerAccountId, s.ServiceDefinitionId })
+            .Where(g => g.Sum(x => Math.Max(0, x.TotalSessions - x.UsedSessions)) > 0)
+            .Select(g => g.Key.ServiceDefinitionId)
+            .Distinct()
+            .Count();
+
+        var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
+        var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
+
+        return Result<ServiceReportDto>.Success(new ServiceReportDto(
+            scopedServices.Count,
+            servicesInUse,
+            scopedSessions.Count,
+            sessionsTotal,
+            sessionsUsed,
+            Math.Max(0, sessionsTotal - sessionsUsed),
+            Math.Round(revenue, 2)));
+    }
+
+    public async Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, CancellationToken cancellationToken = default)
     {
         // 'months' artık takvimin EN AZ kaç ay göstereceği (taban). Gerçek pencere, taksitlerin
         // bittiği son aya kadar otomatik uzar (üst sınır 36 ay) — sonda boş ay kuyruğu olmasın diye.
@@ -713,11 +801,55 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // kayıt tarihine düşülür.
         if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) >= fromUtc.Value);
         if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) < toUtc.Value);
+        // Kategori süzgeci (dönem çipiyle BİRLİKTE çalışır): seçiliyse rapor yalnızca o kategorideki
+        // paketlere ve onların satışlarına daralır. Alt kategori de verilirse ikisi birden aranır.
+        // null = süzgeç yok (tüm paketler).
+        // DİKKAT: Category/SubCategory ŞİFRELİ kolonlardır — SQL'de `p.Category == category`
+        // eşitliği HİÇBİR satırı bulmaz (şifreleme deterministik değil). Satırlar çekilip bellekte
+        // süzülür; EF materialize ederken çözer. Paket sayısı küçüktür (katalog), maliyeti yok.
+        HashSet<Guid>? categoryPackageIds = null;
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            var catRows = await _db.ServicePackages
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId)
+                .Select(p => new { p.Id, p.Category, p.SubCategory })
+                .ToListAsync(cancellationToken);
+            var wantedCat = category.Trim();
+            var wantedSub = subCategory?.Trim();
+            categoryPackageIds = catRows
+                .Where(p => string.Equals(p.Category?.Trim(), wantedCat, StringComparison.OrdinalIgnoreCase)
+                            && (string.IsNullOrWhiteSpace(wantedSub)
+                                || string.Equals(p.SubCategory?.Trim(), wantedSub, StringComparison.OrdinalIgnoreCase)))
+                .Select(p => p.Id)
+                .ToHashSet();
+        }
+
         var accounts = await accountsQuery
             .Include(a => a.Installments)
             .Include(a => a.Payments)
             .Include(a => a.Customer)   // müşteri kırılımı için ad (şifreli kolon → bellekte çözülür)
             .ToListAsync(cancellationToken);
+
+        // Kategori seçiliyse satışlar da daralır. Cari→paket bağı doğrudan alandan ya da (adisyon
+        // satışında NULL kaldığı için) seans satırından kurulur — bkz. WithPackageLinkAsync.
+        if (categoryPackageIds is not null)
+        {
+            var linkRows = await _db.CustomerPackageSessions
+                .AsNoTracking()
+                .Where(s => s.TenantId == tenantId)
+                .Select(s => new { s.CustomerAccountId, s.ServicePackageId })
+                .ToListAsync(cancellationToken);
+            var packagesByAccount = linkRows
+                .Where(l => l.ServicePackageId != Guid.Empty)
+                .GroupBy(l => l.CustomerAccountId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ServicePackageId).ToHashSet());
+
+            accounts = accounts
+                .Where(a => (a.ServicePackageId is { } pid && categoryPackageIds.Contains(pid))
+                            || (packagesByAccount.TryGetValue(a.Id, out var pkgs) && pkgs.Overlaps(categoryPackageIds)))
+                .ToList();
+        }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var firstOfThisMonth = new DateOnly(today.Year, today.Month, 1);
@@ -772,7 +904,10 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Where(a => !cancelledSourceAdisyonIds.Contains(a.Id))
             .ToList();
         var adisyonPackageItems = approvedAdisyonlar
-            .SelectMany(a => a.Items.Where(i => i.Type == AdisyonItemType.PackageSale)
+            // Paket satışı kaleminde RefId = satılan paketin kimliği; kategori seçiliyse ona göre süzülür.
+            .SelectMany(a => a.Items.Where(i => i.Type == AdisyonItemType.PackageSale
+                                                && (categoryPackageIds is null
+                                                    || (i.RefId is { } refId && categoryPackageIds.Contains(refId))))
                 .Select(i => new { a.CustomerId, Qty = (int)Math.Max(1, Math.Round(i.Quantity, MidpointRounding.AwayFromZero)) }))
             .ToList();
         var adisyonPackageCount = adisyonPackageItems.Sum(x => x.Qty);
@@ -909,7 +1044,13 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 s.UsedSessions,
             })
             .ToListAsync(cancellationToken);
-        var scopedSessions = sessionRows.Where(s => inScopeAccountIds.Contains(s.CustomerAccountId)).ToList();
+        // Kategori seçiliyse seanslar da o kategorinin paketleriyle sınırlanır. Aksi halde aynı
+        // satışa bağlı BAŞKA paketlerin (ya da pakete bağlı olmayan manuel) seansları "Kalan Seans"a
+        // sızar ve "Toplam/Aktif Paket" ile çelişirdi.
+        var scopedSessions = sessionRows
+            .Where(s => inScopeAccountIds.Contains(s.CustomerAccountId)
+                        && (categoryPackageIds is null || categoryPackageIds.Contains(s.ServicePackageId)))
+            .ToList();
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
 
@@ -920,9 +1061,12 @@ public sealed class CustomerAccountService : ICustomerAccountService
         //   Aktif Paket  = bu paketlerden kaç ÇEŞİDİNİN şu an seansı devam eden satışı var.
         //                  Aynı paket 5 müşteride sürüyorsa 1 sayılır (satış adedi değil, çeşit).
         // Her ikisi de şube kapsamına uyar (ServicePackage.BranchId global filtreden geçer).
-        var catalogPackageCount = await _db.ServicePackages
-            .AsNoTracking()
-            .CountAsync(p => p.TenantId == tenantId, cancellationToken);
+        // Dönemden bağımsızdırlar ama KATEGORİ süzgecine uyarlar — kullanıcı kategori seçince
+        // "bu kategoride kaç paketim var / kaçı sahada" sorusunun cevabı beklenir.
+        var catalogPackageCount = categoryPackageIds?.Count
+            ?? await _db.ServicePackages
+                .AsNoTracking()
+                .CountAsync(p => p.TenantId == tenantId, cancellationToken);
 
         var liveAccountIds = (await _db.CustomerAccounts
                 .AsNoTracking()
@@ -931,7 +1075,8 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 .ToListAsync(cancellationToken))
             .ToHashSet();
         var packagesInUseCount = sessionRows
-            .Where(s => liveAccountIds.Contains(s.CustomerAccountId))
+            .Where(s => liveAccountIds.Contains(s.CustomerAccountId)
+                        && (categoryPackageIds is null || categoryPackageIds.Contains(s.ServicePackageId)))
             .GroupBy(s => new { s.CustomerAccountId, s.ServicePackageId })
             .Where(g => g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)) > 0)
             .Select(g => g.Key.ServicePackageId)
@@ -973,8 +1118,9 @@ public sealed class CustomerAccountService : ICustomerAccountService
             for (var i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
-                var category = string.IsNullOrWhiteSpace(row.Category) ? "Kategorisiz" : row.Category!.Trim();
-                var key = (category, row.ServiceDefinitionId);
+                // Kırılımdaki kategori HİZMETİN kategorisidir (rapor parametresindeki paket kategorisiyle karışmasın).
+                var serviceCategory = string.IsNullOrWhiteSpace(row.Category) ? "Kategorisiz" : row.Category!.Trim();
+                var key = (serviceCategory, row.ServiceDefinitionId);
                 if (!serviceAgg.TryGetValue(key, out var acc))
                 {
                     acc = new CategoryServiceAccumulator(row.ServiceName);

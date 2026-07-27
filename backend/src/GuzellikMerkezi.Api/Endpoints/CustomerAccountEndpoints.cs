@@ -80,10 +80,18 @@ public static class CustomerAccountEndpoints
 
         // Pano "Paket Raporu": paket satışı, yapılacak seans, ay ay taksit takvimi.
         // fromUtc/toUtc verilirse rapor o dönemde satılan paketlere göre süzülür (günlük/aylık/yıllık).
-        group.MapGet("/report", async (Guid? tenantId, int? months, DateTime? fromUtc, DateTime? toUtc, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        // category/subCategory: rapor yalnızca o kategorideki paketlere daralır; dönemle birlikte çalışır.
+        group.MapGet("/report", async (Guid? tenantId, int? months, DateTime? fromUtc, DateTime? toUtc, string? category, string? subCategory, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetReportAsync(resolvedTenantId, months ?? 6, fromUtc, toUtc, ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetReportAsync(resolvedTenantId, months ?? 6, fromUtc, toUtc, category, subCategory, ct)).ToHttpResult(http);
+        });
+
+        // Pano "Hizmet Raporu": paket raporundan AYRI — kategori hizmetin kategorisidir, paket sayılmaz.
+        group.MapGet("/service-report", async (Guid? tenantId, DateTime? fromUtc, DateTime? toUtc, string? category, string? subCategory, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetServiceReportAsync(resolvedTenantId, fromUtc, toUtc, category, subCategory, ct)).ToHttpResult(http);
         });
 
         // Müşterinin paketlerindeki hizmet-bazlı kalan seans bakiyeleri

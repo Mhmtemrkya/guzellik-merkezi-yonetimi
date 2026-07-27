@@ -1138,6 +1138,17 @@ export interface ApiAccountMonthlyInstallment {
   remaining?: number
 }
 
+/** Pano "Hizmet Raporu" kartları — paket raporundan ayrı, kategori HİZMETİN kategorisidir. */
+export interface ApiServiceReport {
+  catalogServiceCount?: number
+  servicesInUseCount?: number
+  serviceSalesCount?: number
+  sessionsTotal?: number
+  sessionsUsed?: number
+  sessionsRemaining?: number
+  revenue?: number
+}
+
 export interface ApiAccountReport {
   packageSalesCount?: number
   customersWithPackages?: number

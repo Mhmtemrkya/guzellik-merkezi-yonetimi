@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
 import DashboardHero from '@/components/dashboard/DashboardHero'
 import PackageReportBreakdown from '@/components/dashboard/PackageReportBreakdown'
-import { motion, type Variants } from 'framer-motion'
+import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
 import {
   Bar,
@@ -29,6 +29,7 @@ import {
   Calendar,
   CalendarPlus,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -76,6 +77,8 @@ import type {
   ApiPendingOperation,
   ApiProduct,
   ApiService,
+  ApiServicePackage,
+  ApiServiceReport,
   ApiStaff,
   AppointmentLookups,
   AppointmentStatusKey,
@@ -104,6 +107,7 @@ interface DashboardData {
   pendingResult: PagedResult<ApiPendingOperation>
   passiveResult: ApiPassiveCustomerList
   reportResult: ApiAccountReport
+  packagesResult: PagedResult<ApiServicePackage>
 }
 
 interface StatusBadgeMeta {
@@ -320,6 +324,139 @@ const PACKAGE_PERIOD_OPTIONS: { key: RangePeriod; label: string }[] = [
   { key: 'monthly', label: 'Aylık' },
   { key: 'yearly', label: 'Yıllık' },
 ]
+
+interface CategoryOption { name: string; subs: string[]; count: number }
+
+/**
+ * Kategori (+ varsa alt kategori) süzgeci. Ham <select> yerine panelin diliyle uyumlu açılır panel:
+ * seçili kategori tetikleyicide rozetlenir, alt kategoriler seçimden sonra çip olarak açılır.
+ * Paket ve Hizmet blokları aynı bileşeni kendi listesiyle kullanır (ikisi birbirine karışmaz).
+ */
+function CategoryFilter({
+  icon: Icon,
+  options,
+  value,
+  subValue,
+  onChange,
+  onSubChange,
+  allLabel = 'Tüm kategoriler',
+}: {
+  icon: LucideIcon
+  options: CategoryOption[]
+  value: string
+  subValue: string
+  onChange: (value: string) => void
+  onSubChange: (value: string) => void
+  allLabel?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onEsc)
+    return () => { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onEsc) }
+  }, [open])
+
+  const active = Boolean(value)
+  const subs = options.find((o) => o.name === value)?.subs ?? []
+  const totalCount = options.reduce((sum, o) => sum + o.count, 0)
+
+  return (
+    <div ref={boxRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex max-w-[240px] items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11px] font-semibold leading-none transition-colors ${
+          active
+            ? 'border-[#f0c2d2] bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a] shadow-sm'
+            : 'border-[#efe1e7] bg-white text-[#705a66] hover:border-[#e7c7d4] hover:bg-[#fff8fa]'
+        }`}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <span className="truncate">{active ? value : allLabel}</span>
+        {active && subValue && <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-[1px] text-[10px]">{subValue}</span>}
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[14px] border border-[#efe1e7] bg-white shadow-[0_24px_50px_-28px_rgba(120,71,88,0.55)]"
+          >
+            <div className="max-h-64 overflow-y-auto p-1.5">
+              <button
+                type="button"
+                onClick={() => { onChange(''); onSubChange(''); setOpen(false) }}
+                className={`flex w-full items-center justify-between gap-2 rounded-[9px] px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                  !active ? 'bg-[#fff1f6] font-semibold text-[#a34a62]' : 'text-[#4a3a44] hover:bg-[#fff8fa]'
+                }`}
+              >
+                <span>{allLabel}</span>
+                <span className="text-[10px] text-[#705a66]">{totalCount}</span>
+              </button>
+              {options.length === 0 && (
+                <div className="px-2.5 py-3 text-center text-[11px] text-[#705a66]">Kategori tanımlı değil.</div>
+              )}
+              {options.map((o) => (
+                <button
+                  key={o.name}
+                  type="button"
+                  onClick={() => { onChange(o.name); onSubChange(''); if (o.subs.length === 0) setOpen(false) }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-[9px] px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                    value === o.name ? 'bg-[#fff1f6] font-semibold text-[#a34a62]' : 'text-[#4a3a44] hover:bg-[#fff8fa]'
+                  }`}
+                >
+                  <span className="truncate">{o.name}</span>
+                  <span className="shrink-0 text-[10px] text-[#705a66]">{o.count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Alt kategoriler yalnızca seçili kategorinin altı varsa görünür. */}
+            {subs.length > 0 && (
+              <div className="border-t border-[#f3e6ec] bg-[#fffafc] p-2">
+                <div className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#705a66]">Alt kategori</div>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { onSubChange(''); setOpen(false) }}
+                    className={`rounded-full border px-2 py-[3px] text-[10px] font-medium transition-colors ${
+                      !subValue ? 'border-[#e7a9c0] bg-[#fff1f6] text-[#a34a62]' : 'border-[#efe1e7] bg-white text-[#705a66] hover:bg-[#fff8fa]'
+                    }`}
+                  >
+                    Tümü
+                  </button>
+                  {subs.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => { onSubChange(s); setOpen(false) }}
+                      className={`rounded-full border px-2 py-[3px] text-[10px] font-medium transition-colors ${
+                        subValue === s ? 'border-[#e7a9c0] bg-[#fff1f6] text-[#a34a62]' : 'border-[#efe1e7] bg-white text-[#705a66] hover:bg-[#fff8fa]'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 function PeriodTabs({
   value,
@@ -1198,6 +1335,13 @@ export default function AdminDashboard() {
   const [chartRange, setChartRange] = useState<RangePeriod>('weekly')
   // Paket Raporu KPI kartları dönem filtresi (günlük/aylık/yıllık) — varsayılan aylık.
   const [packagePeriod, setPackagePeriod] = useState<RangePeriod>('monthly')
+  // Paket Raporu kategori süzgeci — dönem çipiyle BİRLİKTE çalışır ('' = tüm kategoriler).
+  const [packageCategory, setPackageCategory] = useState('')
+  const [packageSubCategory, setPackageSubCategory] = useState('')
+  // Hizmet Raporu kendi dönemi ve kendi (hizmet) kategorisiyle çalışır — paketle karışmaz.
+  const [servicePeriod, setServicePeriod] = useState<RangePeriod>('monthly')
+  const [serviceCategory, setServiceCategory] = useState('')
+  const [serviceSubCategory, setServiceSubCategory] = useState('')
   // Satış Detayı > Kategori Kırılımı kendi dönemine sahiptir (KPI'ları ve taksit grafiğini etkilemez).
   const [categoryPeriod, setCategoryPeriod] = useState<RangePeriod>('monthly')
   // Global randevu dönemi (üst seçici): randevu kartı + akış tablosunu sürükler. Diğer kartlar kendi sekmesini korur.
@@ -1234,6 +1378,7 @@ export default function AdminDashboard() {
         pendingResult,
         passiveResult,
         reportResult,
+        packagesResult,
       ] = await Promise.all([
         adminApi.appointments<ApiAppointment>({
           tenantId,
@@ -1253,6 +1398,9 @@ export default function AdminDashboard() {
         adminApi.pendingOperations<ApiPendingOperation>({ tenantId, status: 'Pending', page: 1, pageSize: 10 }),
         adminApi.passiveCustomers<ApiPassiveCustomerList>(tenantId).catch(() => ({ items: [], thresholdDays: 0 })),
         adminApi.accountReport<ApiAccountReport>(tenantId, 6).catch(() => ({} as ApiAccountReport)),
+        // Paket Raporu kategori süzgecinin seçenekleri paketlerin kendi kategorilerinden türetilir
+        // (boş kategori gösterilmesin diye katalog listesi yerine gerçek paketler kullanılır).
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
       ])
       return {
         appointmentsResult,
@@ -1266,6 +1414,7 @@ export default function AdminDashboard() {
         pendingResult,
         passiveResult,
         reportResult,
+        packagesResult,
       }
     },
     [tenantId, apptFromIso, apptToIso, dayStartIso, dayEndIso, yearStartIso],
@@ -1287,9 +1436,12 @@ export default function AdminDashboard() {
   const pkgToIso = pkgToDate.toISOString()
 
   // Paket Raporu kartları için döneme göre süzülmüş ayrı rapor (Tahsilat Oranı + takvim genel kalır).
+  // Kategori seçiliyse aynı sorguya eklenir → dönem + kategori birlikte uygulanır.
   const { data: packageReportData, loading: packageLoading } = useApiQuery<ApiAccountReport>(
-    () => adminApi.accountReport<ApiAccountReport>(tenantId, 6, pkgFromIso, pkgToIso).catch(() => ({}) as ApiAccountReport),
-    [tenantId, pkgFromIso, pkgToIso],
+    () => adminApi
+      .accountReport<ApiAccountReport>(tenantId, 6, pkgFromIso, pkgToIso, packageCategory || undefined, packageSubCategory || undefined)
+      .catch(() => ({}) as ApiAccountReport),
+    [tenantId, pkgFromIso, pkgToIso, packageCategory, packageSubCategory],
     { initialData: null },
   )
 
@@ -1298,10 +1450,67 @@ export default function AdminDashboard() {
   const catFromIso = new Date(`${catWindow.startKey}T00:00:00`).toISOString()
   const catToIso = new Date(`${catWindow.endKey}T00:00:00`).toISOString()
   const { data: categoryReportData, loading: categoryLoading } = useApiQuery<ApiAccountReport>(
-    () => adminApi.accountReport<ApiAccountReport>(tenantId, 6, catFromIso, catToIso).catch(() => ({}) as ApiAccountReport),
-    [tenantId, catFromIso, catToIso],
+    () => adminApi
+      .accountReport<ApiAccountReport>(tenantId, 6, catFromIso, catToIso, packageCategory || undefined, packageSubCategory || undefined)
+      .catch(() => ({}) as ApiAccountReport),
+    [tenantId, catFromIso, catToIso, packageCategory, packageSubCategory],
     { initialData: null },
   )
+
+  // --- Hizmet Raporu: paket raporundan TAMAMEN AYRI (kendi dönemi + kendi kategorisi) ---------
+  const svcWindow = periodWindow(servicePeriod, dayStart)
+  const svcFromIso = new Date(`${svcWindow.startKey}T00:00:00`).toISOString()
+  const svcToIso = new Date(`${svcWindow.endKey}T00:00:00`).toISOString()
+  const { data: serviceReportData, loading: serviceReportLoading } = useApiQuery<ApiServiceReport>(
+    () => adminApi
+      .serviceReport<ApiServiceReport>(tenantId, svcFromIso, svcToIso, serviceCategory || undefined, serviceSubCategory || undefined)
+      .catch(() => ({}) as ApiServiceReport),
+    [tenantId, svcFromIso, svcToIso, serviceCategory, serviceSubCategory],
+    { initialData: null },
+  )
+  const serviceReport = {
+    catalogServiceCount: Number(serviceReportData?.catalogServiceCount ?? 0),
+    servicesInUseCount: Number(serviceReportData?.servicesInUseCount ?? 0),
+    serviceSalesCount: Number(serviceReportData?.serviceSalesCount ?? 0),
+    sessionsTotal: Number(serviceReportData?.sessionsTotal ?? 0),
+    sessionsUsed: Number(serviceReportData?.sessionsUsed ?? 0),
+    sessionsRemaining: Number(serviceReportData?.sessionsRemaining ?? 0),
+    revenue: Number(serviceReportData?.revenue ?? 0),
+  }
+  // Hizmet kategorileri: hizmetlerin kendi kategori/alt kategorileri (paketinkiyle karışmaz).
+  const serviceCategoryOptions = useMemo<CategoryOption[]>(() => {
+    const map = new Map<string, { subs: Set<string>; count: number }>()
+    for (const s of apiItems(data?.servicesResult)) {
+      const cat = (s.category || '').trim()
+      if (!cat) continue
+      if (!map.has(cat)) map.set(cat, { subs: new Set(), count: 0 })
+      const entry = map.get(cat)!
+      entry.count += 1
+      const sub = (s.subCategory || '').trim()
+      if (sub) entry.subs.add(sub)
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([name, v]) => ({ name, count: v.count, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
+  }, [data])
+
+  // Kategori süzgecinin seçenekleri: paketlerin kendi kategori/alt kategorileri.
+  // Alt kategori kutusu yalnızca seçili kategorinin alt kategorisi VARSA görünür.
+  const packageCategoryOptions = useMemo<CategoryOption[]>(() => {
+    const map = new Map<string, { subs: Set<string>; count: number }>()
+    for (const p of apiItems(data?.packagesResult)) {
+      const cat = (p.category || '').trim()
+      if (!cat) continue
+      if (!map.has(cat)) map.set(cat, { subs: new Set(), count: 0 })
+      const entry = map.get(cat)!
+      entry.count += 1
+      const sub = (p.subCategory || '').trim()
+      if (sub) entry.subs.add(sub)
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([name, v]) => ({ name, count: v.count, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
+  }, [data])
 
   const customerStats = data?.customersStats || {}
   // Gün → yeni müşteri sayısı (sunucudan gruplu gelir; liste çekilmez).
@@ -1673,12 +1882,24 @@ export default function AdminDashboard() {
               }
             >
               <div className="space-y-4 px-5 pb-5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2.5 py-1 text-[10px] font-semibold text-[#9a8590]">
                     <Calendar className="h-3 w-3" strokeWidth={1.8} />
                     {packageWindowLabel} · {selectedBranch?.name || 'Tüm şubeler'}
+                    {packageCategory && ` · ${packageCategory}${packageSubCategory ? ` / ${packageSubCategory}` : ''}`}
                   </span>
-                  <span className="text-[10px] text-[#b09ca5]">Dönemde satılan paketler</span>
+                  {/* Kategori süzgeci: dönem çipiyle BİRLİKTE çalışır, aşağıdaki kartları daraltır. */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CategoryFilter
+                      icon={Boxes}
+                      options={packageCategoryOptions}
+                      value={packageCategory}
+                      subValue={packageSubCategory}
+                      onChange={setPackageCategory}
+                      onSubChange={setPackageSubCategory}
+                    />
+                    <span className="text-[10px] text-[#b09ca5]">Dönemde satılan paketler</span>
+                  </div>
                 </div>
                 <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 ${packageLoading ? 'opacity-60' : 'opacity-100'}`}>
                   {/* İlk iki kart dönem çipine BAĞLI DEĞİL — ikisi de kataloğu sayar (aynı ton ile eşleştirildi). */}
@@ -1702,6 +1923,50 @@ export default function AdminDashboard() {
                 </div>
 
                 <InstallmentCalendar months={reportMonths} period={packagePeriod} />
+
+                {/* HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok. Kendi dönemi ve kendi
+                    (hizmet) kategorisi vardır; yukarıdaki paket seçimlerinden etkilenmez. */}
+                <div className="rounded-[16px] border border-[#efe1e7] bg-[#fffafc]/60 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]">
+                        <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
+                      </span>
+                      <div>
+                        <div className="text-[13px] font-semibold text-[#4a3a44]">Hizmet Raporu</div>
+                        <div className="text-[10px] text-[#705a66]">
+                          {svcWindow.label}
+                          {serviceCategory && ` · ${serviceCategory}${serviceSubCategory ? ` / ${serviceSubCategory}` : ''}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CategoryFilter
+                        icon={Tag}
+                        options={serviceCategoryOptions}
+                        value={serviceCategory}
+                        subValue={serviceSubCategory}
+                        onChange={setServiceCategory}
+                        onSubChange={setServiceSubCategory}
+                      />
+                      <PeriodTabs value={servicePeriod} onChange={setServicePeriod} options={FULL_PERIOD_OPTIONS} />
+                    </div>
+                  </div>
+                  <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5 ${serviceReportLoading ? 'opacity-60' : 'opacity-100'}`}>
+                    {/* İlk iki kart dönemden BAĞIMSIZ (kurumun anlık hizmet durumu), diğerleri döneme bağlı. */}
+                    <ReportKpi icon={Tag} tone="mint" label="Toplam Hizmet" value={String(serviceReport.catalogServiceCount)} hint="Tanımlı hizmet" />
+                    <ReportKpi
+                      icon={Activity}
+                      tone="mint"
+                      label="Aktif Hizmet"
+                      value={String(serviceReport.servicesInUseCount)}
+                      hint={serviceReport.catalogServiceCount > 0 ? `${serviceReport.catalogServiceCount} çeşitten sahada` : 'Seansı süren çeşit'}
+                    />
+                    <ReportKpi icon={ShoppingBag} tone="cream" label="Satılan Hizmet" value={String(serviceReport.serviceSalesCount)} hint="Dönem hizmet adedi" />
+                    <ReportKpi icon={Sparkles} tone="violet" label="Kalan Seans" value={String(serviceReport.sessionsRemaining)} hint={`${serviceReport.sessionsUsed}/${serviceReport.sessionsTotal} kullanıldı`} />
+                    <ReportKpi icon={Wallet} tone="gold" label="Hizmet Cirosu" value={formatTL(Math.round(serviceReport.revenue))} hint="Dönemde satılan hizmet" />
+                  </div>
+                </div>
 
                 {/* Kategori → hizmet ve müşteri bazlı taksit/ödeme/seans kırılımı (dönem filtresine uyar). */}
                 <PackageReportBreakdown
