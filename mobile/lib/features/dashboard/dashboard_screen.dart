@@ -961,7 +961,6 @@ class _DashboardHeroState extends State<_DashboardHero>
       }
     }
     final total = widget.appointments.length;
-    final doneRate = total > 0 ? (completed / total * 100).round() : 0;
     final firstName = widget.userName.trim().split(RegExp(r'\s+')).first;
     final clock =
         '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
@@ -1149,61 +1148,6 @@ class _DashboardHeroState extends State<_DashboardHero>
                     ],
                   ),
                 ],
-                const SizedBox(height: 14),
-                // Günün nabzı — tamamlanma oranı.
-                Row(
-                  children: [
-                    const Text(
-                      'Günün ilerlemesi',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '%$doneRate',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFFA3576F),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: Stack(
-                    children: [
-                      Container(
-                        height: 8,
-                        color: Colors.white.withValues(alpha: .7),
-                      ),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: doneRate / 100),
-                        duration: const Duration(milliseconds: 900),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, v, _) => FractionallySizedBox(
-                          widthFactor: v.clamp(0.0, 1.0),
-                          child: Container(
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Color(0xFFE0617F),
-                                  Color(0xFFD66D8A),
-                                  Color(0xFFF3A3BF),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 14),
                 // Günün dört rakamı.
                 GridView.count(

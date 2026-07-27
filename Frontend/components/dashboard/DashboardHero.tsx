@@ -58,8 +58,6 @@ export default function DashboardHero({
   const clock = now ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` : '—'
   const dateLabel = now ? `${now.getDate()} ${MONTHS_TR[now.getMonth()]} ${now.getFullYear()} · ${DAYS_TR[now.getDay()]}` : ''
 
-  const doneRate = appointmentsToday > 0 ? Math.round((completedToday / appointmentsToday) * 100) : 0
-
   const tiles = [
     {
       key: 'appt',
@@ -164,22 +162,6 @@ export default function DashboardHero({
             {branchName ? <span className="text-[#c9b3bd]">·</span> : null}
             {branchName || ''}
           </p>
-
-          {/* Günün nabzı: tamamlanma oranı */}
-          <div className="mt-3.5 max-w-[380px]">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-[#705a66]">
-              <span>Günün ilerlemesi</span>
-              <span className="text-[#a3576f]">%{doneRate}</span>
-            </div>
-            <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/70 ring-1 ring-[#f3dde5]">
-              <motion.span
-                className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] via-[#d66d8a] to-[#f3a3bf]"
-                initial={{ width: 0 }}
-                animate={{ width: `${doneRate}%` }}
-                transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-              />
-            </div>
-          </div>
 
           {/* Kısayollar */}
           <div className="mt-3.5 flex flex-wrap gap-1.5">
