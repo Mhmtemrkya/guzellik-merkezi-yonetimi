@@ -226,6 +226,13 @@ export default function ServiceLibrary({
     await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
     await reload()
   }
+  /** Hizmetlerde hâlihazırda kullanılan alt kategori adları — kaydı olmayanlar da seçilebilsin diye. */
+  const usedSubCategories = useMemo(
+    () => Array.from(new Set(services.map((s) => (s.subGroup || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'tr')),
+    [services],
+  )
+
   // Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır (CategoryExplorer).
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
   const handleReorderCat = async (orderedIds: string[]) => { await adminApi.reorderServiceCategories(orderedIds, tenantId); await reload() }
@@ -260,6 +267,7 @@ export default function ServiceLibrary({
             <ServiceFormDialog
               customCategories={customCategories}
               onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
+              knownSubCategories={usedSubCategories}
               onSubmit={onCreate}
               trigger={
                 <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
@@ -429,6 +437,7 @@ export default function ServiceLibrary({
                   />
                   <ServiceFormDialog mode="edit" customCategories={customCategories}
                     onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
+                    knownSubCategories={usedSubCategories}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
                     onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
                     trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>} />

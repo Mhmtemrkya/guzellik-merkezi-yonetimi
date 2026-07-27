@@ -59,6 +59,8 @@ export interface ServiceFormDialogProps {
   customCategories: CustomServiceCategory[]
   onSubmit: (values: ServiceFormDialogValues) => Promise<void>
   onDeleteCustomCategory?: (id: string) => Promise<void>
+  /** Hâlihazırda hizmetlerde kullanılan alt kategori adları (kaydı olmayanlar da seçilebilsin). */
+  knownSubCategories?: string[]
   initialValues?: Partial<ServiceFormDialogValues>
   title?: string
   submitLabel?: string
@@ -76,6 +78,7 @@ export default function ServiceFormDialog({
   customCategories,
   onSubmit,
   onDeleteCustomCategory,
+  knownSubCategories = [],
   initialValues,
   title = 'Yeni Hizmet Tanımla',
   submitLabel = 'Hizmeti oluştur',
@@ -165,13 +168,19 @@ export default function ServiceFormDialog({
     () => customCategories.find((c) => !c.parentId && c.name === values.category)?.id ?? null,
     [customCategories, values.category],
   )
-  const subCategoryOptions = useMemo(
-    () => customCategories
+  // Tanımlı alt kategoriler + KULLANIMDA olan adlar. İkincisi şart: serbest yazım kaldırılmadan
+  // önce girilmiş alt kategorilerin kaydı yoktur; yalnızca tanımlılar listelenirse mevcut hizmetin
+  // alt kategorisi listede çıkmaz ve kaydedince sessizce silinirdi.
+  const subCategoryOptions = useMemo(() => {
+    const names = customCategories
       .filter((c) => c.isActive && c.parentId && (!parentCategoryId || c.parentId === parentCategoryId))
       .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr'))
-      .map((c) => c.name),
-    [customCategories, parentCategoryId],
-  )
+      .map((c) => c.name)
+    const set = new Set(names)
+    for (const n of knownSubCategories) if (n && !set.has(n)) { set.add(n); names.push(n) }
+    if (values.subCategory && !set.has(values.subCategory)) names.push(values.subCategory)
+    return names
+  }, [customCategories, parentCategoryId, knownSubCategories, values.subCategory])
 
   const previewIcon = values.iconKey || suggestIcon(values.name || values.category)
 

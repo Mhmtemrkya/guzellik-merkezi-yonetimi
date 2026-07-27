@@ -16,6 +16,21 @@ import type { ApiCustomServiceCategory, ApiService, ApiServicePackage } from '@/
 const UNCATEGORIZED = 'Kategorisiz'
 
 /**
+ * Silme onayı için hedef. 'custom' = gerçek kategori kaydı; 'derived' = kaydı olmayan,
+ * yalnızca hizmet/paket üzerinde metin olarak duran (eskiden serbest yazılmış) ad.
+ */
+interface PendingDelete {
+  kind: 'custom' | 'derived'
+  id: string
+  name: string
+  level: 'category' | 'sub'
+  /** Etkilenecek hizmet + paket adedi (derived silmede kullanıcıya gösterilir). */
+  usageCount: number
+  /** custom silmede birlikte gidecek alt kategori adedi. */
+  subCount: number
+}
+
+/**
  * Genel kategori görünümü — sektör standardı katalog deseni (Zenoti/Mangomint tarzı):
  * tüm hizmet + paketler ortak kategorilere göre gruplanır. Kategoriye tıklayınca o kategorinin
  * alt kategorileri (varsa) + hizmet ve paketleri listelenir; alt kategori seçilince liste süzülür.
@@ -39,6 +54,7 @@ export default function CategoryExplorer({
   const [addingSub, setAddingSub] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
   const { data, loading, error: apiError, reload } = useApiQuery<{
     services: ApiService[]; packages: ApiServicePackage[]; cats: ApiCustomServiceCategory[]
@@ -166,23 +182,39 @@ export default function CategoryExplorer({
   }
 
   /**
-   * Kategori silme. Onay şart: geri alınamaz ve alt kategorileri de siler.
-   * Hizmet/paketler SİLİNMEZ — kategori adı üzerlerinde metin olarak kalır, listede
-   * "türetilmiş kategori" olarak görünmeye devam eder.
+   * Silme onayı uygulama İÇİ modal ile sorulur (tarayıcı confirm'i değil).
+   * İki tür kayıt silinebilir:
+   *  • custom  → CustomServiceCategory kaydı; backend alt kategorileri de siler.
+   *  • derived → kaydı yok, adı yalnızca hizmet/paket üzerinde metin olarak duruyor.
+   *              Silmek = o adı kullanan hizmet/paketlerden temizlemek.
    */
-  const deleteCat = async (id: string, name: string, subCount = 0) => {
-    const detail = subCount > 0
-      ? `\n\n${subCount} alt kategorisi de silinecek.`
-      : ''
-    if (!window.confirm(
-      `"${name}" kategorisi silinsin mi?${detail}\n\nBu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.`,
-    )) return
+  const askDelete = (target: PendingDelete) => { setError(''); setPendingDelete(target) }
+
+  const confirmDelete = async () => {
+    const target = pendingDelete
+    if (!target) return
     setBusy(true)
     setError('')
     try {
-      await adminApi.deleteServiceCategory(id, tenantId)
-      if (selectedCat === name) setSelectedCat(null)
-      if (selectedSub === name) setSelectedSub('')
+      if (target.kind === 'custom') {
+        await adminApi.deleteServiceCategory(target.id, tenantId)
+      } else {
+        // Kaydı olmayan (türetilmiş) alt kategori: adı kullanan hizmet ve paketlerden kaldırılır.
+        for (const s of services.filter((x) => x.subGroup === target.name)) {
+          await adminApi.updateService(s.id, {
+            branchId: s.branchId || null, name: s.name, category: s.group || null, subCategory: null,
+            durationMinutes: s.duration, price: s.price, isActive: s.isActive, iconKey: s.iconKey || null,
+            status: s.status, defaultSessionCount: s.session || 1,
+            loyaltyPointCost: s.loyaltyPointCost || null,
+          }, tenantId)
+        }
+        for (const p of packages.filter((x) => x.subCategory === target.name)) {
+          await adminApi.updatePackageCategory(p.id, p.category || null, null, tenantId)
+        }
+      }
+      if (selectedCat === target.name) setSelectedCat(null)
+      if (selectedSub === target.name) setSelectedSub('')
+      setPendingDelete(null)
       await reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kategori silinemedi')
@@ -304,8 +336,8 @@ export default function CategoryExplorer({
                     <span
                       role="button"
                       tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); void deleteCat(c.customId!, c.name, subCountOf(c.customId!)) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void deleteCat(c.customId!, c.name, subCountOf(c.customId!)) } }}
+                      onClick={(e) => { e.stopPropagation(); askDelete({ kind: 'custom', id: c.customId!, name: c.name, level: 'category', usageCount: c.serviceCount + c.packageCount, subCount: subCountOf(c.customId!) }) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); askDelete({ kind: 'custom', id: c.customId!, name: c.name, level: 'category', usageCount: c.serviceCount + c.packageCount, subCount: subCountOf(c.customId!) }) } }}
                       title="Kategoriyi sil"
                       className="grid h-7 w-7 place-items-center rounded-md border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                     >
@@ -373,11 +405,16 @@ export default function CategoryExplorer({
                           className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronRight className="h-3 w-3" /></button>
                       </span>
                     )}
-                    {/* Alt kategori silme de her zaman görünür (bkz. üst kategori notu). */}
-                    {s.customId && canCustomCat && (
+                    {/* Alt kategori silme her zaman görünür. Kaydı olmayan (eskiden serbest
+                        yazılmış) alt kategoriler de silinebilir — o ad hizmet/paketlerden temizlenir. */}
+                    {canCustomCat && (
                       <button
                         type="button"
-                        onClick={() => void deleteCat(s.customId!, s.name)}
+                        onClick={() => askDelete(
+                          s.customId
+                            ? { kind: 'custom', id: s.customId, name: s.name, level: 'sub', usageCount: s.serviceCount + s.packageCount, subCount: 0 }
+                            : { kind: 'derived', id: s.name, name: s.name, level: 'sub', usageCount: s.serviceCount + s.packageCount, subCount: 0 },
+                        )}
                         title="Alt kategoriyi sil"
                         className="ml-0.5 grid h-5 w-5 place-items-center rounded-full border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                       >
@@ -510,6 +547,82 @@ export default function CategoryExplorer({
           <Tag className="h-4 w-4" /> Kategoriler hizmet ve paketlerde ortaktır — hizmet/paket formlarında bu kategorilerden ve alt kategorilerden seçim yapılır. <Plus className="h-3 w-3" /> ile yeni kategori/alt kategori herkese açılır.
         </div>
       </div>
+
+      {/* Silme onayı — uygulama içi modal (tarayıcı confirm'i kullanılmaz). */}
+      <AnimatePresence>
+        {pendingDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] grid place-items-center bg-[#2b1620]/45 p-4 backdrop-blur-sm"
+            onClick={() => { if (!busy) setPendingDelete(null) }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.97 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-[420px] overflow-hidden rounded-[20px] border border-[#f3dde5] bg-white shadow-[0_40px_80px_-40px_rgba(120,71,88,0.6)]"
+            >
+              <div className="flex items-start gap-3 border-b border-[#f6e8ee] px-5 py-4">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-rose-200 bg-rose-50 text-rose-600">
+                  <Trash2 className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-display text-[17px] tracking-tight text-[#352432]">
+                    {pendingDelete.level === 'sub' ? 'Alt kategori silinsin mi?' : 'Kategori silinsin mi?'}
+                  </div>
+                  <div className="mt-0.5 truncate text-[12px] text-[#705a66]">{pendingDelete.name}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2 px-5 py-4 text-[12px] text-[#4a3a44]">
+                {pendingDelete.kind === 'derived' ? (
+                  <p>
+                    Bu alt kategorinin ayrı bir kaydı yok; adı{' '}
+                    <span className="font-semibold">{pendingDelete.usageCount}</span> hizmet/pakette yazılı.
+                    Silince o kayıtlardan kaldırılacak — hizmet ve paketlerin kendisi silinmez.
+                  </p>
+                ) : (
+                  <>
+                    {pendingDelete.subCount > 0 && (
+                      <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                        <span className="font-semibold">{pendingDelete.subCount}</span> alt kategorisi de silinecek.
+                      </p>
+                    )}
+                    <p>
+                      Bu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.
+                    </p>
+                  </>
+                )}
+                <p className="text-[11px] text-[#705a66]">Bu işlem geri alınamaz.</p>
+                {error && <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">{error}</p>}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-[#f6e8ee] bg-[#fffafc] px-5 py-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPendingDelete(null)}
+                  className="rounded-[11px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8] disabled:opacity-50"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void confirmDelete()}
+                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> {busy ? 'Siliniyor…' : 'Sil'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

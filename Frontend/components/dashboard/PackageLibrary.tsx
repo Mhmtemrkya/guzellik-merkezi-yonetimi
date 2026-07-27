@@ -234,17 +234,21 @@ export default function PackageLibrary({
     const orderOf = categoryOrderIndex(customCategories)
     return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
   }, [customCategories, services, packages])
-  // Alt kategori seçenekleri: YALNIZCA Kategoriler sayfasında tanımlı alt kategoriler.
-  // Paketlerden türetme yapılmaz — alt kategori serbest yazılamadığı için kaynak tek olmalı.
-  // Üst kategori seçilmeden alt kategori listelenmez; kayıtta duran eski değer varsa korunur.
+  // Alt kategori seçenekleri: Kategoriler sayfasında tanımlı alt kategoriler + KULLANIMDA olanlar.
+  // İkincisi şart: serbest yazım kaldırılmadan önce girilmiş alt kategorilerin kaydı yoktur;
+  // yalnızca tanımlılar listelenirse mevcut paketin alt kategorisi seçilemez hale gelirdi.
   const packageSubCategoryOptions = useMemo(() => {
     const parent = customCategories.find((c) => !c.parentId && c.name === draft.category)
     const names = new Set<string>()
     if (parent) for (const c of customCategories) if (c.parentId === parent.id) names.add(c.name)
+    for (const p of packages) {
+      const sub = (p.subCategory || '').trim()
+      if (sub && (!draft.category || p.category === draft.category)) names.add(sub)
+    }
     if (draft.subCategory) names.add(draft.subCategory)
     const orderOf = categoryOrderIndex(customCategories.filter((c) => c.parentId))
     return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
-  }, [customCategories, draft.category, draft.subCategory])
+  }, [customCategories, packages, draft.category, draft.subCategory])
 
   // ---- taslak editörü
   const araToplam = draft.items.reduce((a, i) => a + i.unitPrice * i.sessionCount, 0)
