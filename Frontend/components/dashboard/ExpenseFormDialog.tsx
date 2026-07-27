@@ -203,315 +203,264 @@ export default function ExpenseFormDialog({
     [customCategories],
   )
 
+  const categoryTone = 'bg-[#fff1f6] text-[#c05277]'
+  const field =
+    'w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#b499a6]'
+  const label = 'mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]'
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex h-[94dvh] flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
-        style={{ width: 'min(94vw, 1180px)', maxWidth: 'min(94vw, 1180px)', height: '94dvh', maxHeight: '94dvh' }}
+        className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        style={{ width: 'min(96vw, 720px)', maxHeight: '90dvh' }}
       >
-        <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
-          <motion.span
-            aria-hidden
-            animate={{ opacity: [0.55, 0.85, 0.55] }}
-            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#f0aac2]/[0.22] blur-3xl"
-          />
-          <span aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-[0.04]" />
-
-          {/* HEADER */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/[0.70] p-5 pr-12 sm:p-6 sm:pr-14">
-            <div className="flex items-start gap-4">
-              <motion.span
-                initial={{ scale: 0.85, rotate: -8 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ duration: 0.4 }}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
-              >
-                <TrendingDown className="h-4 w-4 text-[#c85776]" strokeWidth={1.6} />
-              </motion.span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/[0.80]">Expense · POST</div>
-                <DialogTitle className="mt-1 font-display text-2xl tracking-tight">{title}</DialogTitle>
-                <DialogDescription className="mt-2 text-[12px] leading-relaxed text-[#352432]/[0.60]">
-                  İşletme gideri ekle. Kira, fatura, sarf vb. tüm para çıkışları burada toplanır. &quot;Diğer&quot; seçersen
-                  kendi kategorinin altına alabilir, ileride aynı kategoriyi tekrar kullanabilirsin.
+        {/* ---- Başlık ---- */}
+        <div className="shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f8] via-white to-[#fff2f6] px-5 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+                <TrendingDown className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="text-[16px] font-bold text-[#2b1e29]">{title}</DialogTitle>
+                <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#705a66]">
+                  Kira, fatura, sarf gibi tüm para çıkışları burada toplanır. Personel maaşı için “Personel Maaşları” sekmesini kullan.
                 </DialogDescription>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.82] text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
-          </header>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"
+              aria-label="Kapat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
-          {/* BODY */}
-          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-7 sm:py-7">
-            <div className="space-y-5">
-              {/* Kategori dropdown */}
-              <div>
-                <label className={labelStyle}>
-                  <Tag className="h-3 w-3" /> Kategori
-                </label>
-                <select
-                  value={values.category}
-                  onChange={(e) => {
-                    const cat = e.target.value as ExpenseCategoryKey
-                    setValues((v) => ({ ...v, category: cat, customCategoryName: cat === 'Other' ? v.customCategoryName : null }))
-                    if (cat === 'Other') setShowCustomList(true)
-                    else setShowCustomList(false)
-                  }}
-                  className={`mt-2 ${fieldStyle}`}
-                >
-                  <optgroup label="Standart kategoriler">
-                    {visiblePredefined
-                      .filter((c) => c !== 'Other')
-                      .map((cat) => (
-                        <option key={cat} value={cat}>
-                          {expenseCategoryLabels[cat]}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <option value="Other">── Diğer (özel kategori)</option>
-                </select>
-                <div className={helperStyle}>
-                  Personel maaşı için sol menüden &quot;Personel Maaşları&quot; sekmesini kullan.
-                </div>
-              </div>
-
-              {/* "Diğer" seçilince → özel kategoriler */}
-              <AnimatePresence>
-                {(values.category === 'Other' || showCustomList) && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="overflow-hidden"
+        {/* ---- Gövde ---- */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {/* Kategori kartları */}
+          <div>
+            <span className={label}><Tag className="h-3.5 w-3.5 text-[#c05277]" /> Kategori</span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {visiblePredefined.map((key) => {
+                const Icon = categoryIcons[key] || ScrollText
+                const on = values.category === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setValues((v) => ({ ...v, category: key, customCategoryName: key === 'Other' ? v.customCategoryName : null }))}
+                    className={`flex items-center gap-2 rounded-[13px] border px-2.5 py-2 text-left transition-colors ${
+                      on ? 'border-[#c85776] bg-[#fff1f6]' : 'border-[#ead8df] bg-white hover:border-[#efbfd0]'
+                    }`}
                   >
-                    <div className="rounded-[22px] border border-[#efbfd0]/[0.80] bg-white/[0.72] p-4 shadow-[0_18px_44px_-36px_rgba(200,87,118,0.5)]">
-                      <div className="flex items-center justify-between">
-                        <label className={labelStyle}>
-                          <Sparkles className="h-3 w-3" /> Özel kategoriler (kuruma özel)
-                        </label>
-                        <span className="text-[9px] font-mono text-[#352432]/[0.40]">
-                          {sortedCustomCategories.length} adet
-                        </span>
-                      </div>
-
-                      {/* Özel kategori dropdown + sil */}
-                      <div className="mt-2 flex gap-2">
-                        <select
-                          value={values.customCategoryName && sortedCustomCategories.some((c) => c.name === values.customCategoryName) ? values.customCategoryName : ''}
-                          onChange={(e) => setValues((v) => ({ ...v, category: 'Other', customCategoryName: e.target.value || null }))}
-                          className={`flex-1 ${fieldStyle}`}
-                        >
-                          <option value="">— Özel kategori seç —</option>
-                          {sortedCustomCategories.map((c) => (
-                            <option key={c.id} value={c.name}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                        {onDeleteCustomCategory && values.customCategoryName && sortedCustomCategories.find((c) => c.name === values.customCategoryName) && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const target = sortedCustomCategories.find((c) => c.name === values.customCategoryName)
-                              if (!target || !onDeleteCustomCategory) return
-                              try {
-                                await onDeleteCustomCategory(target.id)
-                                setValues((v) => ({ ...v, customCategoryName: null }))
-                              } catch (err: unknown) {
-                                setCategoryError(err instanceof Error ? err.message : 'Silinemedi.')
-                              }
-                            }}
-                            title="Seçili kategoriyi sil"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-rose-700 transition-colors hover:bg-rose-100/80"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Sil
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Yeni kategori ekle — sadece paket categories.expense.custom içeriyorsa */}
-                      {onCreateCustomCategory && (
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Yeni kategori adı yaz, Enter veya Ekle..."
-                          maxLength={80}
-                          value={newCategoryName}
-                          onChange={(e) => {
-                            setNewCategoryName(e.target.value)
-                            setCategoryError('')
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              handleCreateCategory()
-                            }
-                          }}
-                          className={`flex-1 ${fieldStyle}`}
-                        />
-                        <motion.button
-                          type="button"
-                          whileTap={{ scale: 0.96 }}
-                          onClick={handleCreateCategory}
-                          disabled={creatingCategory || !newCategoryName.trim()}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0]/[0.80] bg-[#fff2f6] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#fbe5eb] disabled:opacity-60"
-                        >
-                          {creatingCategory ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                          Ekle
-                        </motion.button>
-                      </div>
-                      )}
-                      {categoryError && (
-                        <div className="mt-2 text-[10px] text-rose-700">{categoryError}</div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Tutar + Ödeme yöntemi */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelStyle}>
-                    <Wallet className="h-3 w-3" /> Tutar
-                  </label>
-                  <div className="relative mt-2">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-mono text-[#c85776]/[0.55]">
-                      ₺
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${on ? 'bg-[#c85776] text-white' : categoryTone}`}>
+                      <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={values.amount}
-                      onChange={(e) => setValues((v) => ({ ...v, amount: Number(e.target.value) }))}
-                      className={`${fieldStyle} pl-7`}
-                    />
+                    <span className="truncate text-[11.5px] font-semibold text-[#4a3a44]">{expenseCategoryLabels[key]}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* "Diğer" → özel kategoriler */}
+          <AnimatePresence initial={false}>
+            {values.category === 'Other' && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="rounded-[14px] border border-[#f0e0e6] bg-[#fffafc] p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">
+                    <Sparkles className="h-3.5 w-3.5" /> Özel kategori
                   </div>
+                  {sortedCustomCategories.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {sortedCustomCategories.map((c) => {
+                        const on = values.customCategoryName === c.name
+                        return (
+                          <span key={c.id} className="inline-flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => setValues((v) => ({ ...v, customCategoryName: c.name }))}
+                              className={`rounded-l-[10px] border px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
+                                on ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                              }`}
+                            >
+                              {c.name}
+                            </button>
+                            {onDeleteCustomCategory && (
+                              <button
+                                type="button"
+                                onClick={() => void onDeleteCustomCategory(c.id)}
+                                className="rounded-r-[10px] border border-l-0 border-[#ead8df] bg-white px-1.5 py-1.5 text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                aria-label={`${c.name} kategorisini sil`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {onCreateCustomCategory && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleCreateCategory() } }}
+                        placeholder="Yeni kategori adı (ör. Danışmanlık)"
+                        className={field}
+                      />
+                      <button
+                        type="button"
+                        disabled={creatingCategory || !newCategoryName.trim()}
+                        onClick={() => void handleCreateCategory()}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-[12px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2.5 text-[11.5px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef] disabled:opacity-40"
+                      >
+                        {creatingCategory ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Ekle
+                      </button>
+                    </div>
+                  )}
+                  {categoryError && <div className="mt-1.5 text-[11px] font-medium text-rose-600">{categoryError}</div>}
+                  {showCustomList && sortedCustomCategories.length === 0 && !onCreateCustomCategory && (
+                    <div className="mt-1.5 text-[11px] text-[#705a66]">Tanımlı özel kategori yok.</div>
+                  )}
                 </div>
-                <div>
-                  <label className={labelStyle}>
-                    <CreditCard className="h-3 w-3" /> Ödeme yöntemi
-                  </label>
-                  <select
-                    value={values.paymentMethod}
-                    onChange={(e) => setValues((v) => ({ ...v, paymentMethod: e.target.value as ExpensePaymentMethodKey }))}
-                    className={`mt-2 ${fieldStyle}`}
-                  >
-                    {(Object.keys(paymentMethodLabels) as ExpensePaymentMethodKey[]).map((m) => (
-                      <option key={m} value={m}>
-                        {paymentMethodLabels[m]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Tarih + Dönem */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelStyle}>
-                    <Calendar className="h-3 w-3" /> Tarih
-                  </label>
-                  <input
-                    type="date"
-                    value={values.occurredAt}
-                    onChange={(e) => {
-                      const d = e.target.value
-                      setValues((v) => ({ ...v, occurredAt: d, periodLabel: v.periodLabel || periodLabelFromDate(d) }))
-                    }}
-                    className={`mt-2 ${fieldStyle}`}
-                  />
-                </div>
-                <div>
-                  <label className={labelStyle}>
-                    <CalendarClock className="h-3 w-3" /> Dönem (YYYY-AA)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="2026-05"
-                    value={values.periodLabel}
-                    onChange={(e) => setValues((v) => ({ ...v, periodLabel: e.target.value }))}
-                    className={`mt-2 ${fieldStyle}`}
-                  />
-                  <div className={helperStyle}>Faturanın hangi aya ait olduğu</div>
-                </div>
-              </div>
-
-              {/* Açıklama + Referans */}
-              <div>
-                <label className={labelStyle}>
-                  <FileText className="h-3 w-3" /> Açıklama
-                </label>
+          {/* Tutar + yöntem */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}><Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar</span>
+              <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#c85776]">
+                <span className="text-[13px] font-semibold text-[#705a66]">₺</span>
                 <input
-                  type="text"
-                  placeholder="Hangi tedarikçi, ne için..."
-                  value={values.description}
-                  onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
-                  className={`mt-2 ${fieldStyle}`}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={values.amount || ''}
+                  placeholder="0"
+                  onChange={(e) => setValues((v) => ({ ...v, amount: Number(e.target.value) }))}
+                  className="w-full bg-transparent text-[15px] font-bold tabular-nums text-[#352432] outline-none"
                 />
               </div>
-              <div>
-                <label className={labelStyle}>
-                  <Hash className="h-3 w-3" /> Fiş / fatura no
-                </label>
-                <input
-                  type="text"
-                  placeholder="Opsiyonel"
-                  value={values.reference}
-                  onChange={(e) => setValues((v) => ({ ...v, reference: e.target.value }))}
-                  className={`mt-2 ${fieldStyle}`}
-                />
+            </label>
+            <div>
+              <span className={label}><CreditCard className="h-3.5 w-3.5 text-[#c05277]" /> Ödeme yöntemi</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(paymentMethodLabels) as ExpensePaymentMethodKey[]).map((m) => {
+                  const on = values.paymentMethod === m
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setValues((v) => ({ ...v, paymentMethod: m }))}
+                      className={`rounded-[11px] border px-2.5 py-2 text-[11.5px] font-semibold transition-colors ${
+                        on ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                      }`}
+                    >
+                      {paymentMethodLabels[m]}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>
 
-          {/* FOOTER */}
-          <footer className="relative shrink-0 border-t border-[#ead8df]/[0.75] bg-white/[0.78] px-5 py-4 shadow-[0_-18px_46px_-36px_rgba(120,71,88,0.45)] backdrop-blur-xl sm:px-7 sm:py-5">
-            {error && (
-              <div className="mb-3 border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-700">
-                {error}
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
-                {values.category === 'Other' && values.customCategoryName
-                  ? `Diğer · ${values.customCategoryName}`
-                  : expenseCategoryLabels[values.category]}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={busy}
-                  className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-50"
-                >
-                  Vazgeç
-                </button>
-                <motion.button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={busy || saved}
-                  whileTap={{ scale: 0.96 }}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-70"
-                >
-                  {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {saved && <CheckCircle2 className="h-3 w-3" />}
-                  {!busy && !saved && <PenLine className="h-3 w-3" />}
-                  {saved ? 'Kaydedildi' : submitLabel}
-                </motion.button>
-              </div>
+          {/* Tarih + dönem */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}><Calendar className="h-3.5 w-3.5 text-[#c05277]" /> Tarih</span>
+              <input
+                type="date"
+                value={values.occurredAt}
+                onChange={(e) => setValues((v) => ({ ...v, occurredAt: e.target.value, periodLabel: periodLabelFromDate(e.target.value) }))}
+                className={field}
+              />
+            </label>
+            <label className="block">
+              <span className={label}><CalendarClock className="h-3.5 w-3.5 text-[#c05277]" /> Dönem</span>
+              <input
+                type="month"
+                value={values.periodLabel}
+                onChange={(e) => setValues((v) => ({ ...v, periodLabel: e.target.value }))}
+                className={field}
+              />
+              <span className="mt-1 block text-[10.5px] text-[#705a66]">Faturanın hangi aya ait olduğu</span>
+            </label>
+          </div>
+
+          {/* Açıklama + fiş no */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}><PenLine className="h-3.5 w-3.5 text-[#c05277]" /> Açıklama</span>
+              <input
+                value={values.description}
+                onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
+                placeholder="Hangi tedarikçi, ne için…"
+                className={field}
+              />
+            </label>
+            <label className="block">
+              <span className={label}><Hash className="h-3.5 w-3.5 text-[#c05277]" /> Fiş / fatura no</span>
+              <input
+                value={values.reference}
+                onChange={(e) => setValues((v) => ({ ...v, reference: e.target.value }))}
+                placeholder="Opsiyonel"
+                className={field}
+              />
+            </label>
+          </div>
+
+          {error && (
+            <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] font-medium text-rose-600">{error}</div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-1.5 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11.5px] font-medium text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Gider kaydedildi.
             </div>
-          </footer>
+          )}
+        </div>
+
+        {/* ---- Alt bar ---- */}
+        <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-[11px] text-[#705a66]">
+              <b className="text-[#352432]">
+                {values.category === 'Other' ? values.customCategoryName || 'Özel kategori' : expenseCategoryLabels[values.category]}
+              </b>
+              {values.amount > 0 ? ` · ₺${values.amount.toLocaleString('tr-TR')}` : ''}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex min-h-10 items-center rounded-[12px] border border-[#ead8df] bg-white px-4 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0]"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleSubmit()}
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {submitLabel}
+              </button>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

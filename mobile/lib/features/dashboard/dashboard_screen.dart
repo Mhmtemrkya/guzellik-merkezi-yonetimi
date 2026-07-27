@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -197,38 +200,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 }
                 final data = snapshot.data!;
+                final heroTrailing = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!user.isPlatform)
+                      NotificationBell(
+                        center: widget.notifications,
+                        onOpen: () => context.push('/notification-inbox'),
+                      ),
+                    CircleAvatar(
+                      backgroundColor: AppColors.rose,
+                      child: Text(
+                        user.initials,
+                        style: const TextStyle(
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(18, 22, 18, 110),
                   children: [
-                    PageHeader(
-                      eyebrow: user.isPlatform ? 'Platform' : 'Özet',
-                      title: 'Merhaba, ${user.fullName.split(' ').first}',
-                      subtitle: user.isPlatform
-                          ? DateFormat('d MMMM yyyy, EEEE', 'tr_TR')
-                              .format(DateTime.now())
-                          : _period.label(),
-                      action: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (!user.isPlatform)
-                            NotificationBell(
-                              center: widget.notifications,
-                              onOpen: () =>
-                                  context.push('/notification-inbox'),
-                            ),
-                          CircleAvatar(
-                            backgroundColor: AppColors.rose,
-                            child: Text(
-                              user.initials,
-                              style: const TextStyle(
-                                color: AppColors.primaryDark,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
+                    if (user.isPlatform)
+                      PageHeader(
+                        eyebrow: 'Platform',
+                        title: 'Merhaba, ${user.fullName.split(' ').first}',
+                        subtitle: DateFormat(
+                          'd MMMM yyyy, EEEE',
+                          'tr_TR',
+                        ).format(DateTime.now()),
+                        action: heroTrailing,
+                      )
+                    else
+                      _DashboardHero(
+                        userName: user.fullName,
+                        institutionName: data.tenant?['name']?.toString(),
+                        appointments: data.primary,
+                        revenue: numberOf(data.summary, const [
+                          'totalIncome',
+                          'income',
+                        ]),
+                        pendingApprovals: data.secondary.length,
+                        activeStaff: data.staff
+                            .where((s) => s['isActive'] != false)
+                            .length,
+                        totalCustomers: data.customersTotal,
+                        periodLabel: _period.label(),
+                        trailing: heroTrailing,
                       ),
-                    ),
                     if (data.tenant != null) ...[
                       const SizedBox(height: 14),
                       _TrialBanner(tenant: data.tenant!),
@@ -326,7 +347,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 22),
                       _RevenueTrendCard(entries: data.cashEntries),
                       const SizedBox(height: 22),
-                      _PackageReportCard(report: data.report),
+                      _PackageReportCard(
+                        report: data.report,
+                        api: widget.api,
+                      ),
                       const SizedBox(height: 22),
                       _InstallmentChartCard(report: data.report),
                       const SizedBox(height: 22),
@@ -406,28 +430,34 @@ class _MetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // (başlık, değer, ikon, alt-bilgi?)
-    final List<(String, String, IconData, String?)> cards;
+    final List<_Metric> cards;
     if (platform) {
       cards = [
-        ('Toplam kurum', '${data.primary.length}', Icons.apartment_rounded, null),
-        (
-          'Toplam kullanıcı',
-          '${data.summary['totalUsers'] ?? data.summary['userCount'] ?? 0}',
-          Icons.groups_rounded,
-          null,
+        _Metric(
+          label: 'Toplam kurum',
+          value: '${data.primary.length}',
+          icon: Icons.apartment_rounded,
+          tone: _MetricTone.rose,
         ),
-        (
-          'Aktif kurum',
-          '${data.primary.where((e) => '${e['status']}'.toLowerCase() == 'active').length}',
-          Icons.verified_rounded,
-          null,
+        _Metric(
+          label: 'Toplam kullanıcı',
+          value:
+              '${data.summary['totalUsers'] ?? data.summary['userCount'] ?? 0}',
+          icon: Icons.groups_rounded,
+          tone: _MetricTone.violet,
         ),
-        (
-          'Plan sayısı',
-          '${data.secondary.length}',
-          Icons.workspace_premium_rounded,
-          null,
+        _Metric(
+          label: 'Aktif kurum',
+          value:
+              '${data.primary.where((e) => '${e['status']}'.toLowerCase() == 'active').length}',
+          icon: Icons.verified_rounded,
+          tone: _MetricTone.mint,
+        ),
+        _Metric(
+          label: 'Plan sayısı',
+          value: '${data.secondary.length}',
+          icon: Icons.workspace_premium_rounded,
+          tone: _MetricTone.gold,
         ),
       ];
     } else {
@@ -460,30 +490,49 @@ class _MetricGrid extends StatelessWidget {
       final base = collected + receivable;
       // Bekleyen tahsilat oranı: toplam alacağın ne kadarı hâlâ borç.
       final rate = base > 0 ? ((receivable / base) * 100).round() : 0;
+      final other = data.primary.length - completed - waiting;
       cards = [
-        (
-          'Randevu',
-          '${data.primary.length}',
-          Icons.calendar_today_rounded,
-          '$completed tamamlandı · $waiting bekliyor',
+        _Metric(
+          label: 'Randevu',
+          value: '${data.primary.length}',
+          icon: Icons.calendar_today_rounded,
+          tone: _MetricTone.rose,
+          sub: data.primary.isEmpty
+              ? 'Dönemde randevu yok'
+              : '$completed tamamlandı · $waiting bekliyor',
+          // Dönemin randevu dağılımı: tamamlanan / bekleyen / diğer.
+          segments: [
+            (const Color(0xFF39846F), completed.toDouble()),
+            (const Color(0xFFEF6F94), waiting.toDouble()),
+            (const Color(0xFFE3C9D4), other > 0 ? other.toDouble() : 0),
+          ],
         ),
-        (
-          'Gelir',
-          _compactMoney(data.summary['totalIncome'] ?? data.summary['income']),
-          Icons.trending_up_rounded,
-          null,
+        _Metric(
+          label: 'Gelir',
+          value: _compactMoney(
+            data.summary['totalIncome'] ?? data.summary['income'],
+          ),
+          icon: Icons.trending_up_rounded,
+          tone: _MetricTone.mint,
+          sub: 'Kasaya giren',
+          // Son 6 ayın tahsilat eğrisi (kartın altında boydan boya).
+          series: _monthlyIncomeSeries(data.cashEntries),
         ),
-        (
-          'Yeni Danışan',
-          '$newCustomers',
-          Icons.person_add_alt_1_rounded,
-          'Toplam ${data.customersTotal}',
+        _Metric(
+          label: 'Yeni Müşteri',
+          value: '$newCustomers',
+          icon: Icons.person_add_alt_1_rounded,
+          tone: _MetricTone.violet,
+          sub: 'Toplam ${data.customersTotal}',
+          series: _newCustomerSeries(data.customerStats),
         ),
-        (
-          'Bekleyen Tahsilat',
-          '%$rate',
-          Icons.pie_chart_rounded,
-          'Kalan borç ${_compactMoney(receivable)}',
+        _Metric(
+          label: 'Bekleyen Tahsilat',
+          value: '%$rate',
+          icon: Icons.pie_chart_rounded,
+          tone: _MetricTone.gold,
+          sub: 'Kalan borç ${_compactMoney(receivable)}',
+          ringPct: rate,
         ),
       ];
     }
@@ -495,50 +544,927 @@ class _MetricGrid extends StatelessWidget {
         crossAxisCount: gridCols(context, 2),
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        mainAxisExtent: 132,
+        mainAxisExtent: 168,
       ),
-      itemBuilder: (context, index) {
-        final card = cards[index];
-        final subtitle = card.$4;
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      itemBuilder: (context, index) => _MetricCard(metric: cards[index]),
+    );
+  }
+}
+
+/// Metrik kartının renk ailesi — banttaki gradyan + rakam/rozet mürekkebi.
+enum _MetricTone {
+  rose(Color(0xFFFFE3EC), Color(0xFFFFD0E0), Color(0xFFA63E5F)),
+  mint(Color(0xFFE6F7EE), Color(0xFFD1F0E0), Color(0xFF2F7D54)),
+  violet(Color(0xFFEFE7FF), Color(0xFFE0D3FF), Color(0xFF6B45C0)),
+  gold(Color(0xFFFFF2DC), Color(0xFFFFE6BD), Color(0xFFA3701F));
+
+  const _MetricTone(this.from, this.to, this.ink);
+  final Color from;
+  final Color to;
+  final Color ink;
+}
+
+/// Pano metrik kartının içeriği. Görsel katman üç türden biri olur:
+/// alan grafiği (series), yığılmış şerit (segments) ya da doluluk halkası (ringPct).
+class _Metric {
+  const _Metric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.tone,
+    this.sub,
+    this.series,
+    this.segments,
+    this.ringPct,
+  });
+  final String label;
+  final String value;
+  final IconData icon;
+  final _MetricTone tone;
+  final String? sub;
+  final List<double>? series;
+  final List<(Color, double)>? segments;
+  final int? ringPct;
+}
+
+/// Web'deki kart anatomisi: tonlu üst bant + beyaz cam ikon → büyük rakam +
+/// rozetli ipucu → kartın altında boydan boya görsel.
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.metric});
+  final _Metric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = metric.tone;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Üst bant — ikon çipi ve (varsa) halka burada durur.
+          Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [tone.from, tone.to]),
+            ),
+            child: Row(
               children: [
-                Icon(card.$3, color: AppColors.primary, size: 21),
-                const Spacer(),
-                Text(
-                  card.$2,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .82),
+                    borderRadius: BorderRadius.circular(10),
                   ),
+                  child: Icon(metric.icon, color: tone.ink, size: 17),
                 ),
-                Text(
-                  card.$1,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
-                ),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                const Spacer(),
+                if (metric.ringPct != null)
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CustomPaint(
+                      painter: _RingPainter(
+                        pct: metric.ringPct!.clamp(0, 100) / 100,
+                        color: tone.ink,
+                      ),
                     ),
                   ),
               ],
             ),
           ),
-        );
-      },
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    metric.label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    metric.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 24,
+                      height: 1.1,
+                    ),
+                  ),
+                  if (metric.sub != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tone.from.withValues(alpha: .55),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        metric.sub!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tone.ink,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (metric.series != null && metric.series!.isNotEmpty)
+            SizedBox(
+              height: 34,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _SparkAreaPainter(
+                  values: metric.series!,
+                  color: tone.ink,
+                ),
+              ),
+            )
+          else if (metric.segments != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+              child: _SegmentBar(segments: metric.segments!),
+            )
+          else
+            const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+}
+
+/// Yığılmış oran şeridi (tamamlandı / bekliyor / diğer).
+class _SegmentBar extends StatelessWidget {
+  const _SegmentBar({required this.segments});
+  final List<(Color, double)> segments;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = segments.fold<double>(0, (s, e) => s + e.$2);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 6,
+        child: total <= 0
+            ? const ColoredBox(color: Color(0xFFF6E3EA))
+            : Row(
+                children: [
+                  for (final s in segments)
+                    if (s.$2 > 0)
+                      Expanded(
+                        flex: (s.$2 * 1000 / total).round().clamp(1, 100000),
+                        child: ColoredBox(color: s.$1),
+                      ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// Kart altındaki gradyan dolgulu alan grafiği (web `AreaSpark` eşdeğeri).
+class _SparkAreaPainter extends CustomPainter {
+  const _SparkAreaPainter({required this.values, required this.color});
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    final maxVal = values.reduce((a, b) => a > b ? a : b);
+    final safeMax = maxVal <= 0 ? 1.0 : maxVal;
+    final stepX = values.length > 1 ? size.width / (values.length - 1) : 0.0;
+    // Alt kenarda 2px pay bırakılır ki sıfır değerler çizgi olarak görünsün.
+    double yOf(double v) => size.height - 3 - (v / safeMax) * (size.height - 8);
+
+    final line = Path()..moveTo(0, yOf(values.first));
+    for (var i = 1; i < values.length; i++) {
+      line.lineTo(stepX * i, yOf(values[i]));
+    }
+    final area = Path.from(line)
+      ..lineTo(values.length > 1 ? size.width : 0, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(
+      area,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: .28),
+            color.withValues(alpha: .02),
+          ],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.drawPath(
+      line,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..strokeJoin = StrokeJoin.round
+        ..color = color.withValues(alpha: .85),
+    );
+    // Son nokta işaretlenir — "bugün nerede" hissi.
+    if (values.length > 1) {
+      final last = Offset(size.width - 1, yOf(values.last));
+      canvas.drawCircle(last, 2.6, Paint()..color = color);
+      canvas.drawCircle(
+        last,
+        2.6,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..color = Colors.white,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparkAreaPainter old) =>
+      old.values != values || old.color != color;
+}
+
+/// Doluluk halkası (bekleyen tahsilat oranı).
+class _RingPainter extends CustomPainter {
+  const _RingPainter({required this.pct, required this.color});
+  final double pct;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final radius = size.shortestSide / 2 - 2.5;
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.4
+        ..color = Colors.white.withValues(alpha: .75),
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -1.5708,
+      6.2832 * pct.clamp(0.0, 1.0),
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.4
+        ..strokeCap = StrokeCap.round
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.pct != pct || old.color != color;
+}
+
+/// Son 6 takvim ayının tahsilat serisi (Gelir kartının alan grafiği).
+List<double> _monthlyIncomeSeries(List<Map<String, dynamic>> entries) {
+  final now = DateTime.now();
+  final out = <double>[];
+  for (var i = 5; i >= 0; i--) {
+    final start = DateTime(now.year, now.month - i, 1);
+    final end = DateTime(start.year, start.month + 1, 1);
+    var sum = 0.0;
+    for (final e in entries) {
+      if ('${e['type']}'.toLowerCase() != 'income') continue;
+      final d = parseUtcToLocal(e['occurredAtUtc']);
+      if (d == null) continue;
+      if (!d.isBefore(start) && d.isBefore(end)) {
+        sum += numberOf(e, const ['amount']);
+      }
+    }
+    out.add(sum);
+  }
+  return out;
+}
+
+/// Son 7 günün yeni müşteri serisi (sunucudan gruplu gelen newByDay üzerinden).
+List<double> _newCustomerSeries(Map<String, dynamic> stats) {
+  final rows = <String, double>{};
+  for (final row in (stats['newByDay'] as List? ?? const [])) {
+    if (row is! Map) continue;
+    rows['${row['date'] ?? ''}'] = ((row['count'] as num?) ?? 0).toDouble();
+  }
+  final today = DateTime.now();
+  final out = <double>[];
+  for (var i = 6; i >= 0; i--) {
+    final d = DateTime(today.year, today.month, today.day - i);
+    final key =
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    out.add(rows[key] ?? 0);
+  }
+  return out;
+}
+
+/// Panonun karşılama bandı (web `DashboardHero` paritesi): kime, hangi kurumda,
+/// hangi saatte olduğunu söyleyen canlı bir şerit + günün dört kritik rakamı +
+/// tek dokunuşluk kısayollar. Ağır koyu blok yerine ışıklı aurora.
+class _DashboardHero extends StatefulWidget {
+  const _DashboardHero({
+    required this.userName,
+    required this.appointments,
+    required this.revenue,
+    required this.pendingApprovals,
+    required this.activeStaff,
+    required this.totalCustomers,
+    required this.periodLabel,
+    this.institutionName,
+    this.trailing,
+  });
+
+  final String userName;
+  final String? institutionName;
+  final List<Map<String, dynamic>> appointments;
+  final double revenue;
+  final int pendingApprovals;
+  final int activeStaff;
+  final int totalCustomers;
+  final String periodLabel;
+  final Widget? trailing;
+
+  @override
+  State<_DashboardHero> createState() => _DashboardHeroState();
+}
+
+class _DashboardHeroState extends State<_DashboardHero>
+    with SingleTickerProviderStateMixin {
+  late DateTime _now = DateTime.now();
+  Timer? _clock;
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat(reverse: true);
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  static String _greeting(int hour) {
+    if (hour < 6) return 'İyi geceler';
+    if (hour < 12) return 'Günaydın';
+    if (hour < 18) return 'İyi günler';
+    return 'İyi akşamlar';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var completed = 0;
+    var waiting = 0;
+    for (final a in widget.appointments) {
+      final key = _statusKey(valueOf(a, const ['status'], fallback: ''));
+      if (key == 'tamamlandi') {
+        completed++;
+      } else if (key == 'bekliyor') {
+        waiting++;
+      }
+    }
+    final total = widget.appointments.length;
+    final doneRate = total > 0 ? (completed / total * 100).round() : 0;
+    final firstName = widget.userName.trim().split(RegExp(r'\s+')).first;
+    final clock =
+        '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFF3DDE5)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFAFC), Color(0xFFFFF2F7), Color(0xFFFFE9F2)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF784758).withValues(alpha: .10),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          // Aurora lekeleri — köşelerden süzülen yumuşak ışık.
+          Positioned(
+            left: -46,
+            top: -54,
+            child: _Blob(
+              color: const Color(0xFFFFC9DD).withValues(alpha: .55),
+              size: 176,
+            ),
+          ),
+          Positioned(
+            right: -40,
+            top: -30,
+            child: _Blob(
+              color: const Color(0xFFE3D4FF).withValues(alpha: .45),
+              size: 148,
+            ),
+          ),
+          Positioned(
+            left: 90,
+            bottom: -70,
+            child: _Blob(
+              color: const Color(0xFFFFE6C2).withValues(alpha: .45),
+              size: 162,
+            ),
+          ),
+          // Altın hairline
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0x00FFD3DF),
+                    Color(0xFFFFD3DF),
+                    Color(0xFFD9A441),
+                    Color(0xFFFFD3DF),
+                    Color(0x00FFD3DF),
+                  ],
+                  stops: [0, .18, .5, .82, 1],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .8),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFF0D9E2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FadeTransition(
+                            opacity: Tween<double>(
+                              begin: .35,
+                              end: 1,
+                            ).animate(_pulse),
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF2FA36B),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Canlı · $clock',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFA3576F),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (widget.trailing != null) widget.trailing!,
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  DateFormat('d MMMM yyyy · EEEE', 'tr_TR').format(_now),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // "Günaydın, Emir" — ad marka gradyanıyla boyanır.
+                Row(
+                  children: [
+                    Text(
+                      '${_greeting(_now.hour)}, ',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF2B1E29),
+                        height: 1.15,
+                      ),
+                    ),
+                    Flexible(
+                      child: ShaderMask(
+                        shaderCallback: (rect) => const LinearGradient(
+                          colors: [Color(0xFFC85776), Color(0xFF8E3F5B)],
+                        ).createShader(rect),
+                        child: Text(
+                          firstName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.institutionName != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 13,
+                        color: Color(0xFFD9A441),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          widget.institutionName!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 14),
+                // Günün nabzı — tamamlanma oranı.
+                Row(
+                  children: [
+                    const Text(
+                      'Günün ilerlemesi',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '%$doneRate',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFA3576F),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: Stack(
+                    children: [
+                      Container(
+                        height: 8,
+                        color: Colors.white.withValues(alpha: .7),
+                      ),
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: doneRate / 100),
+                        duration: const Duration(milliseconds: 900),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, v, _) => FractionallySizedBox(
+                          widthFactor: v.clamp(0.0, 1.0),
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Color(0xFFE0617F),
+                                  Color(0xFFD66D8A),
+                                  Color(0xFFF3A3BF),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Günün dört rakamı.
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: gridCols(context, 2),
+                  crossAxisSpacing: 9,
+                  mainAxisSpacing: 9,
+                  childAspectRatio: 1.55,
+                  children: [
+                    _HeroTile(
+                      label: 'Randevu',
+                      value: '$total',
+                      sub: total > 0
+                          ? '$completed tamamlandı · $waiting bekliyor'
+                          : 'Dönemde randevu yok',
+                      icon: Icons.event_note_rounded,
+                      tone: _MetricTone.rose,
+                      route: '/appointments',
+                    ),
+                    _HeroTile(
+                      label: 'Tahsilat',
+                      value: _compactMoney(widget.revenue),
+                      sub: 'Kasaya giren',
+                      icon: Icons.account_balance_wallet_rounded,
+                      tone: _MetricTone.mint,
+                      route: '/cash',
+                    ),
+                    _HeroTile(
+                      label: 'Bekleyen onay',
+                      value: '${widget.pendingApprovals}',
+                      sub: widget.pendingApprovals > 0
+                          ? 'İncelemeni bekliyor'
+                          : 'Her şey onaylı',
+                      icon: Icons.notifications_active_rounded,
+                      tone: _MetricTone.gold,
+                      route: '/approvals',
+                    ),
+                    _HeroTile(
+                      label: 'Aktif ekip',
+                      value: '${widget.activeStaff}',
+                      sub:
+                          '${NumberFormat.decimalPattern('tr_TR').format(widget.totalCustomers)} müşteri',
+                      icon: Icons.groups_rounded,
+                      tone: _MetricTone.violet,
+                      route: '/staff',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Kısayollar
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: const [
+                    _HeroShortcut(
+                      label: 'Yeni randevu',
+                      icon: Icons.event_available_rounded,
+                      route: '/appointments',
+                    ),
+                    _HeroShortcut(
+                      label: 'Yeni müşteri',
+                      icon: Icons.person_add_alt_1_rounded,
+                      route: '/customers',
+                    ),
+                    _HeroShortcut(
+                      label: 'Günlük kasa',
+                      icon: Icons.account_balance_wallet_rounded,
+                      route: '/cash',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Color(0xFFF3DDE5)),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.trending_up_rounded,
+                      size: 14,
+                      color: Color(0xFFC85776),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        total > 0
+                            ? '${widget.periodLabel}: $total randevunun $completed tanesi tamamlandı'
+                                '${waiting > 0 ? ', $waiting tanesi sırada' : ''}.'
+                            : '${widget.periodLabel}: planlanmış randevu yok — takvimden yeni randevu ekleyebilirsin.',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.muted,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero'daki bulanık ışık lekesi.
+class _Blob extends StatelessWidget {
+  const _Blob({required this.color, this.size = 150});
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    ),
+  );
+}
+
+/// Hero'nun dört rakam kutusundan biri.
+class _HeroTile extends StatelessWidget {
+  const _HeroTile({
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.icon,
+    required this.tone,
+    required this.route,
+  });
+  final String label;
+  final String value;
+  final String sub;
+  final IconData icon;
+  final _MetricTone tone;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: .82),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => context.push(route),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: .75)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [tone.from, tone.to],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 16, color: tone.ink),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .4,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                    ),
+                  ),
+                  Text(
+                    sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hero altındaki tek dokunuşluk kısayol çipi.
+class _HeroShortcut extends StatelessWidget {
+  const _HeroShortcut({
+    required this.label,
+    required this.icon,
+    required this.route,
+  });
+  final String label;
+  final IconData icon;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: .85),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => context.push(route),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFF0D9E2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: const Color(0xFFA3576F)),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFA3576F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -888,34 +1814,50 @@ class _QuickActions extends StatelessWidget {
 
 /// Paket/ön muhasebe özeti (web 'Paket Raporu' KPI'ları).
 class _PackageReportCard extends StatelessWidget {
-  const _PackageReportCard({required this.report});
+  const _PackageReportCard({required this.report, required this.api});
   final Map<String, dynamic> report;
+  final ApiClient api;
 
   @override
   Widget build(BuildContext context) {
     final overdue = numberOf(report, const ['overdueAmount']);
-    final stats = <(String, String, bool)>[
+    // (etiket, değer, ikon, ton, tehlike mi)
+    final stats = <(String, String, IconData, _MetricTone, bool)>[
       (
         'Satılan Paket',
         '${numberOf(report, const ['packageSalesCount']).toInt()}',
+        Icons.shopping_bag_rounded,
+        _MetricTone.violet,
         false,
       ),
       (
         'Kalan Seans',
         '${numberOf(report, const ['sessionsRemaining']).toInt()}',
+        Icons.bolt_rounded,
+        _MetricTone.mint,
         false,
       ),
       (
         'Kalan Taksit',
         _compactMoney(numberOf(report, const ['totalReceivable'])),
+        Icons.account_balance_wallet_rounded,
+        _MetricTone.rose,
         false,
       ),
       (
         'Tahsil Edilen',
         _compactMoney(numberOf(report, const ['totalCollected'])),
+        Icons.check_circle_rounded,
+        _MetricTone.gold,
         false,
       ),
-      ('Vadesi Geçmiş', _compactMoney(overdue), overdue > 0),
+      (
+        'Vadesi Geçmiş',
+        _compactMoney(overdue),
+        Icons.error_rounded,
+        _MetricTone.rose,
+        overdue > 0,
+      ),
     ];
     final categories = apiItems(report['categories']);
     final customers = apiItems(report['customers']);
@@ -932,43 +1874,86 @@ class _PackageReportCard extends StatelessWidget {
                 builder: (_) => _PackageBreakdownSheet(
                   categories: categories,
                   customers: customers,
+                  api: api,
                 ),
               ),
       child: AdaptiveStatGrid(
         phoneCols: 3,
-        height: 78,
+        height: 92,
         spacing: 8,
         children: stats.map((s) {
-          final (label, value, danger) = s;
+          final (label, value, icon, tone, danger) = s;
+          // Web ReportKpi anatomisi: tonlu üst bant + cam ikon → rakam → etiket.
           return Container(
-            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: AppColors.surfaceSoft,
-              borderRadius: BorderRadius.circular(13),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: danger ? const Color(0xFFF2C4C4) : AppColors.border,
+              ),
             ),
+            clipBehavior: Clip.antiAlias,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14.5,
-                    color: danger ? AppColors.danger : AppColors.ink,
+                Container(
+                  height: 24,
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: danger
+                          ? const [Color(0xFFFFE2E2), Color(0xFFFFD0D0)]
+                          : [tone.from, tone.to],
+                    ),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: 17,
+                      height: 17,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .85),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 11,
+                        color: danger ? AppColors.danger : tone.ink,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 9.5,
-                    height: 1.1,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(9, 6, 7, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                            color: danger ? AppColors.danger : AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 10,
+                            height: 1.1,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -986,9 +1971,11 @@ class _PackageBreakdownSheet extends StatefulWidget {
   const _PackageBreakdownSheet({
     required this.categories,
     required this.customers,
+    required this.api,
   });
   final List<Map<String, dynamic>> categories;
   final List<Map<String, dynamic>> customers;
+  final ApiClient api;
 
   @override
   State<_PackageBreakdownSheet> createState() => _PackageBreakdownSheetState();
@@ -997,6 +1984,74 @@ class _PackageBreakdownSheet extends StatefulWidget {
 class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
   int _tab = 0;
   String _query = '';
+
+  /// Yalnız KATEGORİ kırılımına uygulanan dönem (web'deki Gün/Hafta/Ay/Yıl çipleri).
+  /// Kendi rapor sorgusunu açar; panodaki KPI'ları ve taksit grafiğini etkilemez.
+  int _period = 2; // 0=Gün 1=Hafta 2=Ay 3=Yıl
+  late List<Map<String, dynamic>> _categories = widget.categories;
+  bool _loading = false;
+
+  static const _periodLabels = ['Gün', 'Hafta', 'Ay', 'Yıl'];
+
+  /// Seçili dönemin [başlangıç, bitiş) yerel penceresi (web `periodWindow` ile aynı).
+  (DateTime, DateTime) _window() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    switch (_period) {
+      case 0:
+        return (today, tomorrow);
+      case 1:
+        return (today.subtract(const Duration(days: 6)), tomorrow);
+      case 3:
+        return (DateTime(today.year, 1, 1), tomorrow);
+      default:
+        return (DateTime(today.year, today.month, 1), tomorrow);
+    }
+  }
+
+  String _windowLabel() {
+    final now = DateTime.now();
+    switch (_period) {
+      case 0:
+        return 'Bugün · ${now.day} ${_monthsShort[now.month - 1]}';
+      case 1:
+        final start = now.subtract(const Duration(days: 6));
+        return start.month == now.month
+            ? '${start.day}–${now.day} ${_monthsShort[now.month - 1]}'
+            : '${start.day} ${_monthsShort[start.month - 1]} – ${now.day} ${_monthsShort[now.month - 1]}';
+      case 3:
+        return '${now.year}';
+      default:
+        return DateFormat('MMMM yyyy', 'tr_TR').format(now);
+    }
+  }
+
+  Future<void> _selectPeriod(int period) async {
+    setState(() {
+      _period = period;
+      _loading = true;
+    });
+    final (from, to) = _window();
+    try {
+      final res = await widget.api.get(
+        '/api/admin/accounts/report',
+        query: {
+          'months': 6,
+          'fromUtc': from.toUtc().toIso8601String(),
+          'toUtc': to.toUtc().toIso8601String(),
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _categories = apiItems(res is Map ? res['categories'] : null);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1037,9 +2092,11 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
             ),
             const SizedBox(height: 2),
-            const Text(
-              'Kategori · hizmet · müşteri kırılımı',
-              style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+            Text(
+              _tab == 0
+                  ? 'Kategori · hizmet kırılımı · ${_windowLabel()}'
+                  : 'Müşteri bazlı taksit / tahsilat / seans',
+              style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
             ),
             const SizedBox(height: 12),
             SegmentedButton<int>(
@@ -1051,6 +2108,29 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
               showSelectedIcon: false,
               onSelectionChanged: (s) => setState(() => _tab = s.first),
             ),
+            // Dönem çipleri yalnız kategori kırılımında görünür (web ile aynı kural).
+            if (_tab == 0) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  for (var i = 0; i < _periodLabels.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _PeriodChip(
+                        label: _periodLabels[i],
+                        selected: _period == i,
+                        onTap: _loading ? null : () => _selectPeriod(i),
+                      ),
+                    ),
+                  if (_loading)
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+            ],
             if (_tab == 1) ...[
               const SizedBox(height: 10),
               TextField(
@@ -1085,17 +2165,17 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
   }
 
   Widget _categoryList(ScrollController controller) {
-    if (widget.categories.isEmpty) return const _EmptyDetail();
-    final total = widget.categories.fold<double>(
+    if (_categories.isEmpty) return const _EmptyDetail();
+    final total = _categories.fold<double>(
       0,
       (s, c) => s + numberOf(c, const ['amount']),
     );
     return ListView.separated(
       controller: controller,
-      itemCount: widget.categories.length,
+      itemCount: _categories.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        final cat = widget.categories[i];
+        final cat = _categories[i];
         final amount = numberOf(cat, const ['amount']);
         final services = apiItems(cat['services']);
         final share = total > 0 ? (amount / total * 100).round() : 0;
@@ -1403,6 +2483,41 @@ class _SellerStrip extends StatelessWidget {
             }).toList(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Satış Detayı'ndaki dönem çipi (Gün · Hafta · Ay · Yıl).
+class _PeriodChip extends StatelessWidget {
+  const _PeriodChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? AppColors.primary : AppColors.surfaceSoft,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: selected ? Colors.white : AppColors.primaryDark,
+            ),
+          ),
+        ),
       ),
     );
   }

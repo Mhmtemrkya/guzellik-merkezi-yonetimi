@@ -6,6 +6,7 @@ import '../../shared/crud/crud_options.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
+import 'adisyon_receipt_sheet.dart';
 
 const _itemTypes = [
   CrudOption('Service', 'Hizmet'),
@@ -384,6 +385,10 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
 
   Widget _itemRow(Map<String, dynamic> it) {
     final line = (it['lineTotal'] as num?)?.toDouble() ?? 0;
+    // Fişteki kalem dili burada da geçerli: türün ikonu + tonu.
+    final v = adisyonItemVisual(it['type']);
+    final covered = it['coveredByPackage'] == true;
+    final staff = '${it['staffName'] ?? ''}'.trim();
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(12),
@@ -394,21 +399,39 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
       ),
       child: Row(
         children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: v.bg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(v.icon, size: 16, color: v.ink),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(valueOf(it, const ['description'], fallback: '—'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 Text(
-                  '${_typeLabel('${it['type']}')} · ${(it['quantity'] as num?) ?? 1} × ${CalendarText.tl((it['unitPrice'] as num?)?.toDouble())}',
+                  '${v.label} · ${(it['quantity'] as num?) ?? 1} × ${CalendarText.tl((it['unitPrice'] as num?)?.toDouble())}'
+                  '${staff.isNotEmpty ? ' · $staff' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ],
             ),
           ),
-          Text(CalendarText.tl(line),
-              style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(covered ? 'paketten' : CalendarText.tl(line),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: covered ? const Color(0xFFA3701F) : v.ink,
+              )),
           if (_isOpen)
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -439,9 +462,6 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
         ),
       );
 
-  String _typeLabel(String key) => _itemTypes
-      .firstWhere((c) => c.value == key, orElse: () => CrudOption(key, key))
-      .label;
 }
 
 /// Adisyon durumu için küçük rozet.

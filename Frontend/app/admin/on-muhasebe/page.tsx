@@ -5,14 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
-import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
-import CollectionDialog from '@/components/dashboard/CollectionDialog'
-import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
+import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
+import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
+import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
+import InstallmentCollectionDialog from '@/components/dashboard/InstallmentCollectionDialog'
+import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
+import CancelledSalesModal from '@/components/dashboard/CancelledSalesModal'
+import AdisyonModal from '@/components/dashboard/AdisyonModal'
+import AdisyonReceiptModal from '@/components/dashboard/AdisyonReceiptModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
-import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import ExpenseFormDialog, { type ExpenseFormDialogValues } from '@/components/dashboard/ExpenseFormDialog'
-import LoyaltyCard from '@/components/dashboard/LoyaltyCard'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
@@ -24,13 +27,13 @@ import {
   normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeStaff,
 } from '@/lib/apiMappers'
 import {
-  Banknote, Building2, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList,
-  CreditCard, FileText, Landmark, PencilLine, Phone, PieChart, Receipt, ReceiptText,
-  Trash2, TrendingDown, TrendingUp, User, Users, Wallet, Zap,
+  Ban, Banknote, Boxes, Briefcase, Building2, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
+  CreditCard, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
+  Trash2, TrendingDown, TrendingUp, Users, Wallet, Wrench, Zap,
 } from 'lucide-react'
 import type {
   Adisyon, ApiAdisyon, ApiAppointment, ApiBusinessExpense, ApiCustomExpenseCategory, ApiCustomer,
-  ApiCustomerAccount, ApiServicePackage, ApiStaff, BusinessExpense, CustomExpenseCategory,
+  ApiCustomerAccount, ApiServicePackage, ApiStaff, BusinessExpense, CustomerAccount, CustomExpenseCategory,
   ExpensePaymentMethodKey,
 } from '@/lib/types'
 
@@ -50,6 +53,30 @@ const TABS: { key: TabKey; label: string; icon: typeof Wallet }[] = [
 ]
 const TR_MONTHS = ['OCAK', 'ŞUBAT', 'MART', 'NİSAN', 'MAYIS', 'HAZİRAN', 'TEMMUZ', 'AĞUSTOS', 'EYLÜL', 'EKİM', 'KASIM', 'ARALIK']
 const METHOD_LABEL: Record<ExpensePaymentMethodKey, string> = { Cash: 'Nakit', Card: 'Kart', BankTransfer: 'Havale / EFT', Check: 'Çek' }
+
+/** Gider kategorisi başına ikon + renk — liste ve dağılım tek dille okunsun. */
+const EXPENSE_ICONS: Record<string, typeof Wallet> = {
+  Salary: Users, Tax: Landmark, Rent: Building2, Utilities: Zap, Supplies: Package,
+  Inventory: Boxes, Marketing: Megaphone, Maintenance: Wrench, Professional: Briefcase,
+  Equipment: Printer, Office: Printer, Other: Receipt,
+}
+const EXPENSE_TONES: Record<string, string> = {
+  Salary: 'bg-violet-50 text-violet-600', Tax: 'bg-slate-100 text-slate-600',
+  Rent: 'bg-amber-50 text-amber-700', Utilities: 'bg-sky-50 text-sky-600',
+  Supplies: 'bg-teal-50 text-teal-600', Inventory: 'bg-indigo-50 text-indigo-600',
+  Marketing: 'bg-fuchsia-50 text-fuchsia-600', Maintenance: 'bg-orange-50 text-orange-600',
+  Professional: 'bg-emerald-50 text-emerald-600', Equipment: 'bg-cyan-50 text-cyan-600',
+  Office: 'bg-rose-50 text-rose-600', Other: 'bg-[#fff1f6] text-[#c85776]',
+}
+
+const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+
+/** "2026-08-14" → "14 Ağu 2026" (cari kartındaki vade etiketi). */
+function shortDay(iso: string | null | undefined): string {
+  const [y, m, d] = (iso || '').slice(0, 10).split('-')
+  if (!y || !m || !d) return '—'
+  return `${d} ${TR_MONTHS_SHORT[Number(m) - 1] ?? ''} ${y}`
+}
 
 function MiniBars({ values, tone = '#e0617f' }: { values: number[]; tone?: string }) {
   const max = Math.max(1, ...values)
@@ -77,10 +104,21 @@ function OnMuhasebePageInner() {
 
   const [monthOffset, setMonthOffset] = useState(0)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
-  const [accountDetailsOpen, setAccountDetailsOpen] = useState(false)
   const [selectedAdisyonId, setSelectedAdisyonId] = useState<string | null>(null)
   const [adisyonFilter, setAdisyonFilter] = useState<'all' | 'Open' | 'Approved' | 'Cancelled'>('all')
-  const [accountFilter, setAccountFilter] = useState<'all' | 'upcoming' | 'overdue' | 'cancelled'>(scope === 'upcoming' ? 'upcoming' : scope === 'overdue' ? 'overdue' : 'all')
+  const [adisyonQuery, setAdisyonQuery] = useState('')
+  // Açık adisyon düzenlenebilir (AdisyonModal), kapanmış olan okunur fiş (AdisyonReceiptModal).
+  const [adisyonEditOpen, setAdisyonEditOpen] = useState(false)
+  const [adisyonReceiptOpen, setAdisyonReceiptOpen] = useState(false)
+  const [accountFilter, setAccountFilter] = useState<'all' | 'installment' | 'upcoming' | 'overdue' | 'closed'>(scope === 'upcoming' ? 'upcoming' : scope === 'overdue' ? 'overdue' : 'all')
+  const [accountQuery, setAccountQuery] = useState('')
+  const [expenseQuery, setExpenseQuery] = useState('')
+  const [expenseCat, setExpenseCat] = useState<'all' | string>('all')
+  const [newAdisyonOpen, setNewAdisyonOpen] = useState(false)
+  // Cari detay + tahsilat modalları sayfada tutulur (iç içe dialog yığınından kaçınmak için).
+  const [accountDetailOpen, setAccountDetailOpen] = useState(false)
+  const [collectMode, setCollectMode] = useState<'general' | 'monthly' | null>(null)
+  const [cancelledOpen, setCancelledOpen] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -192,11 +230,38 @@ function OnMuhasebePageInner() {
     }
   }, [adisyonlar, monthStart]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Dönemdeki adisyonlar + her zaman açık olanlar (açık fiş ay değişince gözden kaybolmasın).
+  const monthAdisyonlar = useMemo(
+    () => adisyonlar.filter((a) => inMonth(a.openedAtUtc) || a.status === 'Open'),
+    [adisyonlar, monthStart], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const adisyonCounts = useMemo(() => ({
+    all: monthAdisyonlar.length,
+    Open: monthAdisyonlar.filter((a) => a.status === 'Open').length,
+    Approved: monthAdisyonlar.filter((a) => a.status === 'Approved').length,
+    Cancelled: monthAdisyonlar.filter((a) => a.status === 'Cancelled').length,
+  }), [monthAdisyonlar])
+
   const filteredAdisyonlar = useMemo(() => {
-    const list = adisyonlar.filter((a) => inMonth(a.openedAtUtc) || a.status === 'Open')
-    return adisyonFilter === 'all' ? list : list.filter((a) => a.status === adisyonFilter)
-  }, [adisyonlar, adisyonFilter, monthStart]) // eslint-disable-line react-hooks/exhaustive-deps
-  const selAdisyon = useMemo(() => filteredAdisyonlar.find((a) => a.id === selectedAdisyonId) || filteredAdisyonlar[0], [filteredAdisyonlar, selectedAdisyonId])
+    let list = adisyonFilter === 'all' ? monthAdisyonlar : monthAdisyonlar.filter((a) => a.status === adisyonFilter)
+    const q = adisyonQuery.trim().toLocaleLowerCase('tr')
+    if (q) {
+      list = list.filter((a) =>
+        `${a.customerName} ${a.items.map((i) => i.description).join(' ')}`.toLocaleLowerCase('tr').includes(q))
+    }
+    // Açık fişler en üstte, sonra en yeni.
+    return [...list].sort((a, b) => {
+      const ao = a.status === 'Open', bo = b.status === 'Open'
+      if (ao !== bo) return ao ? -1 : 1
+      return (b.openedAtUtc || '').localeCompare(a.openedAtUtc || '')
+    })
+  }, [monthAdisyonlar, adisyonFilter, adisyonQuery])
+  const selAdisyon = useMemo(() => adisyonlar.find((a) => a.id === selectedAdisyonId) || null, [adisyonlar, selectedAdisyonId])
+  const openAdisyonDetail = (a: Adisyon): void => {
+    setSelectedAdisyonId(a.id)
+    if (a.status === 'Open') setAdisyonEditOpen(true)
+    else setAdisyonReceiptOpen(true)
+  }
   // Görüntülenen adisyon değişince "zorla sil" modunu sıfırla (bir sonraki adisyonda taze onay akışı).
   useEffect(() => { setForceDeleteAdisyon(false) }, [selAdisyon?.id])
 
@@ -213,15 +278,42 @@ function OnMuhasebePageInner() {
 
   const cancelledCount = useMemo(() => accounts.filter((a) => a.saleStatus === 'Cancelled').length, [accounts])
 
+  // İptal edilen satışlar borç/vade akışının DIŞINDADIR: ana listede görünmez,
+  // ayrı "İptal edilenler" modalinde toplanır (kayıt durur, tahsil edilmez).
+  const liveAccounts = useMemo(() => accounts.filter((a) => a.saleStatus !== 'Cancelled'), [accounts])
+
+  const activeInstallments = (a: CustomerAccount) => a.installments.filter((i) => i.status !== 'Cancelled')
+
+  const accountCounts = useMemo(() => ({
+    all: liveAccounts.length,
+    installment: liveAccounts.filter((a) => activeInstallments(a).length > 1).length,
+    upcoming: liveAccounts.filter((a) => a.remainingAmount > 0.005 && !a.hasOverdue).length,
+    overdue: liveAccounts.filter((a) => a.hasOverdue).length,
+    closed: liveAccounts.filter((a) => a.remainingAmount <= 0.005).length,
+  }), [liveAccounts])
+
   const filteredAccounts = useMemo(() => {
-    let list = accounts
-    // İptal edilen satışlar borç/vade akışının dışındadır: yalnız "Tümü" ve "İptal" sekmelerinde görünür.
-    if (accountFilter === 'cancelled') list = list.filter((a) => a.saleStatus === 'Cancelled')
-    else if (accountFilter === 'upcoming') list = list.filter((a) => a.saleStatus !== 'Cancelled' && a.installments.some((i) => i.status !== 'Paid' && i.remaining > 0 && !i.overdue))
-    else if (accountFilter === 'overdue') list = list.filter((a) => a.saleStatus !== 'Cancelled' && a.installments.some((i) => i.overdue))
-    return list
-  }, [accounts, accountFilter, todayIso])
-  const selAccount = useMemo(() => filteredAccounts.find((a) => a.id === selectedAccountId) || filteredAccounts[0], [filteredAccounts, selectedAccountId])
+    let list = liveAccounts
+    if (accountFilter === 'installment') list = list.filter((a) => a.installments.filter((i) => i.status !== 'Cancelled').length > 1)
+    else if (accountFilter === 'upcoming') list = list.filter((a) => a.remainingAmount > 0.005 && !a.hasOverdue)
+    else if (accountFilter === 'overdue') list = list.filter((a) => a.hasOverdue)
+    else if (accountFilter === 'closed') list = list.filter((a) => a.remainingAmount <= 0.005)
+
+    const q = accountQuery.trim().toLocaleLowerCase('tr')
+    if (q) list = list.filter((a) => `${a.customerName} ${a.name} ${a.servicePackageName} ${a.customerPhone}`.toLocaleLowerCase('tr').includes(q))
+
+    // Sıralama: gecikenler önce, sonra açık hesaplar (en yakın vade), en sonda kapananlar.
+    return [...list].sort((a, b) => {
+      if (a.hasOverdue !== b.hasOverdue) return a.hasOverdue ? -1 : 1
+      const aOpen = a.remainingAmount > 0.005
+      const bOpen = b.remainingAmount > 0.005
+      if (aOpen !== bOpen) return aOpen ? -1 : 1
+      return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999')
+    })
+  }, [liveAccounts, accountFilter, accountQuery, todayIso])
+
+  const selAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) || null, [accounts, selectedAccountId])
+  const openAccount = (id: string): void => { setSelectedAccountId(id); setAccountDetailOpen(true) }
 
   // Cari hesap ekstresi — ön muhasebe standardı: tarih · işlem · borç · alacak · yürüyen bakiye.
   // Borç: hesap açılış tutarı + onaylı adisyon borçları. Alacak: tahsilatlar. Son bakiye = kalan borç.
@@ -264,10 +356,25 @@ function OnMuhasebePageInner() {
   }, [selAccount, adisyonlar])
 
   const totalCollected = accounts.reduce((s, a) => s + a.paidAmount, 0)
-  const apptRevenueAll = appts.filter((a) => a.status === 'tamamlandi').reduce((s, a) => s + Number(a.price || 0), 0)
 
   // ---------- işlemler ----------
   const goScope = (s: ScopeKey) => router.push(`/admin/on-muhasebe?scope=${s}`)
+
+  // Genel tahsilat da aylık taksit tahsilatı da AYNI uca gider; sunucu tutarı
+  // vade sırasıyla taksitlere dağıtır (allocation modeli).
+  const registerCollection = async (p: CollectionSubmitPayload): Promise<void> => {
+    const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc }
+    const res = await performWrite({
+      operationType: 'RegisterAccountPayment',
+      title: `Tahsilat: ${formatTL(p.amount)}`,
+      summary: accounts.find((a) => a.id === p.accountId)?.customerName || '',
+      payload: { ...payload, accountId: p.accountId },
+      tenantId,
+      directAction: () => adminApi.registerAccountPayment(p.accountId, payload, tenantId),
+    })
+    if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Tahsilat'))
+    await reload()
+  }
 
   const handleCreateExpense = async (values: ExpenseFormDialogValues): Promise<void> => {
     const occurredIso = values.occurredAt || new Date().toISOString().slice(0, 10)
@@ -289,6 +396,13 @@ function OnMuhasebePageInner() {
   const handleCreateExpenseCat = async (name: string) => { const r = await adminApi.createExpenseCategory<ApiCustomExpenseCategory>({ name, isActive: true }, tenantId); await reload(); return normalizeCustomCategory(r) }
   const handleDeleteExpenseCat = async (id: string) => { await adminApi.deleteExpenseCategory(id, tenantId); await reload() }
 
+  // Bekleyen gider/maaş kaydını onayla (yalnız personelin girdiği kayıtlar beklemede olur).
+  const approveExpense = async (e: BusinessExpense) => {
+    setActionError('')
+    try { await adminApi.approveExpense(e.id, tenantId); await reload() }
+    catch (err) { setActionError(err instanceof Error ? err.message : 'Kayıt onaylanamadı.') }
+  }
+
   const deleteExpense = async (e: BusinessExpense) => {
     setActionError('')
     try { await adminApi.deleteExpense(e.id, tenantId); await reload() }
@@ -307,7 +421,8 @@ function OnMuhasebePageInner() {
 
   const showInAccounts = (a: Adisyon) => {
     const acct = accounts.find((x) => x.id === a.customerAccountId) || accounts.find((x) => x.customerId === a.customerId)
-    if (acct) setSelectedAccountId(acct.id)
+    // Cari doğrudan detay modalinde açılsın — listede aramaya gerek kalmasın.
+    if (acct) { setSelectedAccountId(acct.id); setAccountDetailOpen(true) }
     setAccountFilter('all')
     goScope('accounts')
   }
@@ -334,13 +449,13 @@ function OnMuhasebePageInner() {
   const topAction = (() => {
     if (tab === 'adisyon') {
       return (
-        <AdminEditDialog
-          triggerLabel="Yeni Adisyon" eyebrow="Adisyon · POST" titleIcon={ReceiptText} title="Yeni adisyon aç"
-          description="Müşteri için açık hesap fişi açılır. Kalemler eklendikçe toplanır; onaylanınca cariye + kasaya işlenir."
-          submitLabel="Adisyonu aç"
-          onSubmit={async (v) => { const cid = String((v as Record<string, unknown>).customerId || ''); if (!cid) throw new Error('Müşteri seç.'); await createAdisyonFor(cid) }}
-          fields={[{ label: 'Müşteri', name: 'customerId', type: 'select', search: customerSearch, value: '', required: true, icon: User, fullWidth: true }]}
-        />
+        <button
+          type="button"
+          onClick={() => setNewAdisyonOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+        >
+          <Plus className="h-3.5 w-3.5" /> Yeni Adisyon
+        </button>
       )
     }
     if (tab === 'expenses') {
@@ -354,55 +469,36 @@ function OnMuhasebePageInner() {
     }
     if (tab === 'salary') {
       return (
-        <AdminEditDialog
-          triggerLabel="Maaş Öde" eyebrow="BusinessExpense · Salary" titleIcon={Users} title="Personel maaşı öde"
-          description="Maaş ödemesi gider olarak kasaya işlenir ve personel maaşları sekmesinde listelenir." submitLabel="Maaşı öde"
-          onSubmit={async (v) => {
-            const fv = v as Record<string, unknown>
-            const payload = {
-              category: 'Salary', amount: Number(fv.amount || 0), paymentMethod: fv.method || 'BankTransfer',
-              occurredAtUtc: new Date(`${String(fv.date || new Date().toISOString().slice(0, 10))}T12:00:00`).toISOString(),
-              staffMemberId: fv.staffMemberId || null, periodLabel: String(fv.period || ''), description: 'Aylık maaş', reference: null, branchId: branchId || null,
-            }
-            await adminApi.createExpense(payload, tenantId)
+        <SalaryPaymentDialog
+          staff={staff}
+          salaryExpenses={salaryExpenses}
+          defaultPeriod={`${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`}
+          onSubmit={async (p) => {
+            await adminApi.createExpense({
+              category: 'Salary', amount: p.amount, paymentMethod: p.method,
+              occurredAtUtc: new Date(`${p.occurredAt}T12:00:00`).toISOString(),
+              staffMemberId: p.staffMemberId, periodLabel: p.periodLabel,
+              description: p.description, reference: null, branchId: branchId || null,
+            }, tenantId)
             await reload()
           }}
-          fields={[
-            { label: 'Personel', name: 'staffMemberId', type: 'select', value: staff[0]?.id || '', options: staff.map((s) => ({ value: s.id, label: `${s.name} · ${s.role}` })), required: true, icon: User, fullWidth: true },
-            { label: 'Tutar', name: 'amount', type: 'number', value: 25000, required: true, icon: Wallet, prefix: '₺' },
-            { label: 'Ödeme yöntemi', name: 'method', type: 'select', value: 'BankTransfer', options: [{ value: 'BankTransfer', label: 'Havale / EFT' }, { value: 'Cash', label: 'Nakit' }, { value: 'Card', label: 'Kart' }], icon: Landmark },
-            { label: 'Dönem', name: 'period', value: `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`, icon: CalendarDays },
-            { label: 'Tarih', name: 'date', type: 'date', value: new Date().toISOString().slice(0, 10), icon: CalendarDays },
-          ]}
+          trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><Users className="h-3.5 w-3.5" /> Maaş Öde</button>}
         />
       )
     }
     return (
-      <AdminEditDialog
-        triggerLabel="Yeni Cari" eyebrow="CustomerAccount · POST" titleIcon={CreditCard} title="Yeni cari hesap" size="lg"
-        description="Müşteri için borç/taksit takibi yapılacak cari hesap açılır. Paket seçilirse seans bakiyeleri otomatik oluşturulur."
-        submitLabel="Cari hesabı aç"
-        onSubmit={async (v) => {
-          const fv = v as Record<string, unknown>
-          const payload = {
-            customerId: fv.customerId, servicePackageId: fv.servicePackageId || null,
-            name: String(fv.name || 'Cari hesap'), totalAmount: Number(fv.totalAmount || 0),
-            depositAmount: Number(fv.depositAmount || 0), installmentCount: Number(fv.installmentCount || 0),
-            firstDueDate: String(fv.firstDueDate || new Date().toISOString().slice(0, 10)), notes: (fv.notes as string) || null,
-          }
-          await adminApi.createAccount(payload, tenantId)
+      <NewAccountDialog
+        packages={packages}
+        onSearchCustomers={customerSearch}
+        onSubmit={async (p) => {
+          await adminApi.createAccount({
+            customerId: p.customerId, servicePackageId: p.servicePackageId, name: p.name,
+            totalAmount: p.totalAmount, depositAmount: p.depositAmount,
+            installmentCount: p.installmentCount, firstDueDate: p.firstDueDate, notes: p.notes,
+          }, tenantId)
           await reload()
         }}
-        fields={[
-          { label: 'Müşteri', name: 'customerId', type: 'select', search: customerSearch, value: '', required: true, icon: User, section: 'Müşteri & paket', fullWidth: true },
-          { label: 'Paket (opsiyonel)', name: 'servicePackageId', type: 'select', value: '', options: [{ value: '', label: '— Paketsiz —' }, ...packages.map((p) => ({ value: p.id, label: `${p.name} · ${formatTL(p.totalPrice)}` }))], icon: ClipboardList, fullWidth: true, helper: 'Paket seçilirse hizmet seans bakiyeleri otomatik açılır' },
-          { label: 'Cari adı', name: 'name', value: 'Paket satışı', required: true, icon: FileText, section: 'Tutar & plan' },
-          { label: 'Toplam tutar', name: 'totalAmount', type: 'number', value: 2500, required: true, icon: Wallet, prefix: '₺' },
-          { label: 'Peşinat', name: 'depositAmount', type: 'number', value: 500, icon: Banknote, prefix: '₺' },
-          { label: 'Taksit sayısı', name: 'installmentCount', type: 'number', value: 5, icon: CalendarDays, suffix: 'ay' },
-          { label: 'İlk vade', name: 'firstDueDate', type: 'date', value: new Date().toISOString().slice(0, 10), icon: CalendarDays },
-          { label: 'Not', name: 'notes', type: 'textarea', value: '', icon: FileText, fullWidth: true },
-        ]}
+        trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><CreditCard className="h-3.5 w-3.5" /> Yeni Cari</button>}
       />
     )
   })()
@@ -451,57 +547,146 @@ function OnMuhasebePageInner() {
               <OverviewCard icon={CreditCard} label="Açık alacak" value={formatTL(openReceivable)} chip={`↗ ${activeAccountCount} cari · ${formatTL(overdue.sum)} geciken (${overdue.count})`} chipTone={overdue.count ? 'text-rose-700 bg-rose-50' : undefined} bars={monthBars} />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
-              {/* Gider dağılımı */}
+            <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr]">
+              {/* Nakit akışı — giren/çıkan tek bakışta */}
               <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                <div className="flex items-center justify-between">
-                  <div><div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Bu Ay Gider Dağılımı</div><div className="font-display text-3xl tracking-tight">{formatTL(expenseMonth)}</div></div>
-                  <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><PieChart className="h-5 w-5" /></span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Nakit akışı · {monthLabel}</div>
+                    <div className={`font-display text-3xl tracking-tight ${netMonth < 0 ? 'text-rose-700' : 'text-[#352432]'}`}>{formatTL(netMonth)}</div>
+                    <div className="text-[11px] text-[#705a66]">{netMonth >= 0 ? 'Kasada kalan' : 'Kasa açığı'}</div>
+                  </div>
+                  <span className={`grid h-10 w-10 place-items-center rounded-[12px] ${netMonth >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                    <Wallet className="h-5 w-5" />
+                  </span>
                 </div>
-                <div className="mt-4 space-y-3">
-                  {Object.entries(expenses.reduce<Record<string, { sum: number; count: number }>>((m, e) => { const k = expenseCategoryLabels[e.category] || e.category; m[k] = { sum: (m[k]?.sum ?? 0) + e.amount, count: (m[k]?.count ?? 0) + 1 }; return m }, {}))
-                    .sort((a, b) => b[1].sum - a[1].sum)
-                    .map(([name, v]) => {
-                      const pct = expenseMonth > 0 ? Math.round((v.sum / expenseMonth) * 100) : 0
-                      return (
-                        <div key={name}>
+
+                {(() => {
+                  const scale = Math.max(incomeMonth, expenseMonth, 1)
+                  const rows: [string, number, string, string][] = [
+                    ['Tahsilat', incomeMonth, 'bg-gradient-to-r from-emerald-400 to-emerald-500', 'text-emerald-700'],
+                    ['Gider', expenseMonth, 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]', 'text-rose-700'],
+                  ]
+                  return (
+                    <div className="mt-4 space-y-3">
+                      {rows.map(([label, value, bar, tone]) => (
+                        <div key={label}>
                           <div className="flex items-center justify-between text-[12px]">
-                            <span className="flex items-center gap-2 text-[#352432]/75"><span className="grid h-7 w-7 place-items-center rounded-[8px] bg-violet-50 text-violet-600"><Users className="h-3.5 w-3.5" /></span>{name}</span>
-                            <span className="font-display tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
+                            <span className="text-[#4a3a44]">{label}</span>
+                            <span className={`font-display tabular-nums ${tone}`}>{formatTL(value)}</span>
                           </div>
-                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]"><span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} /></div>
-                          <div className="mt-0.5 text-[9px] font-mono uppercase text-[#352432]/40">%{pct} · {v.count} kalem</div>
+                          <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#f7e9ee]">
+                            <span className={`block h-full rounded-full ${bar}`} style={{ width: `${Math.max(2, Math.round((value / scale) * 100))}%` }} />
+                          </div>
                         </div>
-                      )
-                    })}
-                  {expenses.length === 0 && <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[12px] text-[#352432]/45">Bu ay gider kaydı yok.</div>}
+                      ))}
+                    </div>
+                  )
+                })()}
+
+                <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#f0dae2] bg-[#f7e9ee] text-center">
+                  {[
+                    ['Kira', formatTL(rentTotal), Building2],
+                    ['Faturalar', formatTL(utilTotal), Zap],
+                    ['Maaş', formatTL(salaryTotal), Users],
+                  ].map(([l, v, Icon]) => {
+                    const I = Icon as typeof Wallet
+                    return (
+                      <div key={String(l)} className="bg-white px-2 py-2.5">
+                        <span className="mx-auto mb-1 grid h-7 w-7 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><I className="h-3.5 w-3.5" /></span>
+                        <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">{String(l)}</div>
+                        <div className="font-display text-[15px] tabular-nums">{String(v)}</div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Personel maaş yükü */}
+              {/* Gider dağılımı */}
               <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                <div className="flex items-center justify-between">
-                  <div><div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Personel Maaş Yükü</div><div className="font-display text-3xl tracking-tight">{formatTL(salaryTotal)}</div></div>
-                  <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-violet-50 text-violet-600"><Users className="h-5 w-5" /></span>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Gider dağılımı</div>
+                    <div className="font-display text-3xl tracking-tight">{formatTL(expenseMonth)}</div>
+                    <div className="text-[11px] text-[#705a66]">{expenses.length} kalem · {monthLabel}</div>
+                  </div>
+                  <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><PieChart className="h-5 w-5" /></span>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {Object.entries(salaryExpenses.reduce<Record<string, { sum: number; count: number }>>((m, e) => { const k = e.staffName || e.description || 'Personel'; m[k] = { sum: (m[k]?.sum ?? 0) + e.amount, count: (m[k]?.count ?? 0) + 1 }; return m }, {}))
+                <div className="mt-4 space-y-2.5">
+                  {Object.entries(expenses.reduce<Record<string, { sum: number; count: number }>>((m, e) => {
+                    const k = e.category
+                    m[k] = { sum: (m[k]?.sum ?? 0) + e.amount, count: (m[k]?.count ?? 0) + 1 }
+                    return m
+                  }, {}))
                     .sort((a, b) => b[1].sum - a[1].sum)
-                    .map(([name, v]) => (
-                      <div key={name} className="flex items-center justify-between rounded-[12px] border border-[#f0e0e6] bg-[#fffafc] px-3 py-2.5">
-                        <span className="flex items-center gap-2.5 text-[13px] text-[#352432]"><span className="grid h-8 w-8 place-items-center rounded-[9px] bg-violet-50 text-violet-600"><User className="h-4 w-4" /></span>{name} <span className="text-[10px] text-[#352432]/40">{v.count} ödeme</span></span>
-                        <span className="font-display tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
-                      </div>
-                    ))}
-                  {salaryExpenses.length === 0 && <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[12px] text-[#352432]/45">Bu ay maaş ödemesi yok.</div>}
+                    .map(([cat, v]) => {
+                      const pct = expenseMonth > 0 ? Math.round((v.sum / expenseMonth) * 100) : 0
+                      const Icon = EXPENSE_ICONS[cat] || Receipt
+                      return (
+                        <div key={cat}>
+                          <div className="flex items-center justify-between gap-2 text-[12px]">
+                            <span className="flex min-w-0 items-center gap-2 text-[#4a3a44]">
+                              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${EXPENSE_TONES[cat] || 'bg-[#fff1f6] text-[#c85776]'}`}>
+                                <Icon className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="truncate">{expenseCategoryLabels[cat as keyof typeof expenseCategoryLabels] || cat}</span>
+                              <span className="shrink-0 text-[10px] text-[#705a66]">{v.count} kalem</span>
+                            </span>
+                            <span className="shrink-0 font-display tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+                              <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} />
+                            </span>
+                            <span className="w-9 shrink-0 text-right text-[10px] font-semibold text-[#705a66]">%{pct}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  {expenses.length === 0 && (
+                    <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#705a66]">
+                      Bu ay gider kaydı yok.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <BottomCard label="Kira" value={formatTL(rentTotal)} sub="Bu ay" icon={Building2} />
-              <BottomCard label="Faturalar" value={formatTL(utilTotal)} sub="Elektrik / su / internet" icon={Zap} />
-              <BottomCard label="Açık Alacak" value={formatTL(openReceivable)} sub={`${activeAccountCount} cari`} icon={CreditCard} />
+            {/* Personel maaş yükü */}
+            <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Personel maaş yükü</div>
+                  <div className="font-display text-3xl tracking-tight">{formatTL(salaryTotal)}</div>
+                  <div className="text-[11px] text-[#705a66]">{salaryExpenses.length} ödeme · {monthLabel}</div>
+                </div>
+                <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-violet-50 text-violet-600"><Users className="h-5 w-5" /></span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {Object.entries(salaryExpenses.reduce<Record<string, { sum: number; count: number }>>((m, e) => {
+                  const k = e.staffName || e.description || 'Personel'
+                  m[k] = { sum: (m[k]?.sum ?? 0) + e.amount, count: (m[k]?.count ?? 0) + 1 }
+                  return m
+                }, {}))
+                  .sort((a, b) => b[1].sum - a[1].sum)
+                  .map(([name, v]) => (
+                    <div key={name} className="flex items-center gap-2.5 rounded-[14px] border border-[#f0e0e6] bg-[#fffafc] px-3 py-2.5">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-violet-50 text-[11px] font-bold text-violet-700">
+                        {name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr') || '—'}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] font-semibold text-[#352432]">{name}</span>
+                        <span className="block text-[10px] text-[#705a66]">{v.count} ödeme</span>
+                      </span>
+                      <span className="shrink-0 font-display text-[14px] tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
+                    </div>
+                  ))}
+                {salaryExpenses.length === 0 && (
+                  <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#705a66] sm:col-span-2 xl:col-span-3">
+                    Bu ay maaş ödemesi yok.
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -511,7 +696,7 @@ function OnMuhasebePageInner() {
           <>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
-                <ReceiptText className="h-4 w-4" /> <b>ADİSYON</b> · AÇIK HESAP FİŞLERİ — ONAYLANANLAR CARİYE VE KASAYA İŞLENİR
+                <ReceiptText className="h-4 w-4" /> Açık hesap fişleri. Kalemler önce adisyona düşer; yönetici onaylayınca borç cariye, tahsilat kasaya işlenir.
               </div>
               <button
                 type="button"
@@ -530,159 +715,206 @@ function OnMuhasebePageInner() {
               <OverviewCard icon={Landmark} label="Kasaya işlenen tahsilat" value={formatTL(adisyonStats.payment)} bars={monthBars} />
             </div>
 
-            {/* Akış adımları */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Akış şeridi — üç adım tek satırda */}
+            <div className="flex flex-wrap items-center gap-1.5 rounded-[14px] border border-[#ead8df]/70 bg-white/70 px-3 py-2 text-[10.5px]">
               {[
-                ['1 · Adisyon açılır, kalemler toplanır', 'border-amber-300/50 bg-amber-50 text-amber-700'],
-                ['2 · Yönetici onaylar', 'border-emerald-300/50 bg-emerald-50 text-emerald-700'],
-                ['3 · Borç cariye, tahsilat kasaya işlenir', 'border-rose-300/50 bg-rose-50 text-rose-700'],
-              ].map(([t, cls], i) => (
-                <span key={t} className="flex items-center gap-2">
-                  <span className={`rounded-[12px] border px-3.5 py-2 text-[11px] font-medium ${cls}`}>{t}</span>
-                  {i < 2 && <ChevronRight className="h-4 w-4 text-[#352432]/30" />}
+                ['1', 'Adisyon açılır, kalemler toplanır', 'bg-amber-50 text-amber-700'],
+                ['2', 'Yönetici onaylar', 'bg-emerald-50 text-emerald-700'],
+                ['3', 'Borç cariye, tahsilat kasaya işlenir', 'bg-rose-50 text-rose-700'],
+              ].map(([n, t, cls], i) => (
+                <span key={n} className="flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${cls}`}>
+                    <span className="grid h-4 w-4 place-items-center rounded-full bg-white/70 text-[9px] font-bold">{n}</span>
+                    {t}
+                  </span>
+                  {i < 2 && <ChevronRight className="h-3.5 w-3.5 text-[#c9b3bd]" />}
                 </span>
               ))}
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
-              {/* ADİSYONLAR listesi */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div><div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Adisyonlar</div><div className="font-display text-2xl tracking-tight">{filteredAdisyonlar.length} fiş</div></div>
-                  <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
-                    {([['all', 'TÜMÜ'], ['Open', 'AÇIK'], ['Approved', 'ONAYLI'], ['Cancelled', 'İPTAL']] as const).map(([k, l]) => (
-                      <button key={k} type="button" onClick={() => setAdisyonFilter(k)}
-                        className={`rounded-[8px] px-2.5 py-1 text-[10px] font-mono tracking-wide transition-colors ${adisyonFilter === k ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {filteredAdisyonlar.map((a) => {
-                    const saleCancelled = a.customerAccountId ? cancelledSaleByAccountId.get(a.customerAccountId) : undefined
-                    return (
-                    <button key={a.id} type="button" onClick={() => setSelectedAdisyonId(a.id)}
-                      className={`flex w-full flex-wrap items-center gap-3 rounded-[14px] border p-3.5 text-left transition-colors ${selAdisyon?.id === a.id ? 'border-[#c85776]/60 bg-[#fff1f6]/50' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="truncate text-[14px] font-medium text-[#352432]">{a.customerName || 'Müşteri'}</span>
-                          {saleCancelled && (
-                            <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">SATIŞ İPTAL</span>
-                          )}
-                        </div>
-                        <div className="text-[10px] font-mono text-[#352432]/45">{(a.openedAtUtc || '').slice(0, 10)} · {a.items.length} kalem</div>
-                        {saleCancelled && (
-                          <div className="mt-1 text-[10px] italic text-rose-600">
-                            Gerekçe: {saleCancelled.reason || 'belirtilmemiş'}
-                            {saleCancelled.at ? ` · ${saleCancelled.at.slice(0, 10)}` : ''}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="font-display text-[16px] tabular-nums text-[#c85776]">{formatTL(a.chargeTotal)}</div>
-                        <div className="text-[9px] font-mono uppercase text-emerald-700">TAHSİLAT {formatTL(a.paymentTotal)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[9px] font-mono uppercase text-[#352432]/40">Net</div>
-                        <div className="font-display text-[14px] tabular-nums">{formatTL(a.chargeTotal - a.paymentTotal)}</div>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-mono uppercase ${a.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : a.status === 'Open' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
-                        ● {a.status === 'Approved' ? 'ONAYLANDI' : a.status === 'Open' ? 'AÇIK' : 'İPTAL'}
-                      </span>
-                    </button>
-                    )
-                  })}
-                  {filteredAdisyonlar.length === 0 && <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#352432]/45">Bu dönemde adisyon yok. Üstten "Yeni Adisyon" ile açabilirsin.</div>}
-                </div>
+            {/* ---- Araç çubuğu ---- */}
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+                <input
+                  value={adisyonQuery}
+                  onChange={(e) => setAdisyonQuery(e.target.value)}
+                  placeholder="Müşteri veya kalem ara…"
+                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                />
+                {adisyonQuery && (
+                  <button type="button" onClick={() => setAdisyonQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
+                )}
               </div>
-
-              {/* ADİSYON DETAY */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                {selAdisyon ? (
-                  selAdisyon.status === 'Open' ? (
-                    <>
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Adisyon Detay · {selAdisyon.customerName}</div>
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[9px] font-mono uppercase text-amber-700">● AÇIK</span>
-                      </div>
-                      <AdisyonPanel customerId={selAdisyon.customerId} tenantId={tenantId} onChanged={reload} />
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between">
-                        <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Adisyon Detay</div>
-                        <span className={`rounded-full px-2.5 py-1 text-[9px] font-mono uppercase ${selAdisyon.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>● {selAdisyon.status === 'Approved' ? 'ONAYLANDI' : 'İPTAL'}</span>
-                      </div>
-                      <div className="mt-1 font-display text-3xl tracking-tight">{selAdisyon.customerName}</div>
-                      <div className="text-[11px] text-[#352432]/50">Açılış: {(selAdisyon.openedAtUtc || '').slice(0, 10)}{selAdisyon.approvedAtUtc ? ` · Onay: ${selAdisyon.approvedAtUtc.slice(0, 10)}` : ''}</div>
-
-                      <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#ead8df]/65 bg-[#f1e5ea]">
-                        <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Borç</div><div className="font-display text-2xl tabular-nums text-rose-700">{formatTL(selAdisyon.chargeTotal)}</div></div>
-                        <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Tahsilat</div><div className="font-display text-2xl tabular-nums text-emerald-700">{formatTL(selAdisyon.paymentTotal)}</div></div>
-                        <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Net</div><div className="font-display text-2xl tabular-nums">{formatTL(selAdisyon.chargeTotal - selAdisyon.paymentTotal)}</div></div>
-                      </div>
-
-                      <div className="mt-3 space-y-1.5">
-                        {selAdisyon.items.map((it) => (
-                          <div key={it.id} className="flex items-center justify-between rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2.5">
-                            <span className="flex min-w-0 items-center gap-2">
-                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-mono uppercase ${it.type === 'Payment' ? 'bg-emerald-50 text-emerald-700' : it.type === 'Discount' ? 'bg-rose-50 text-rose-700' : 'bg-[#fff1f6] text-[#c85776]'}`}>
-                                {{ Payment: 'TAHSİLAT', Product: 'ÜRÜN', Service: 'HİZMET', PackageSale: 'PAKET SATIŞI', PackageUse: 'PAKETTEN', Extra: 'EK KALEM', Discount: 'İNDİRİM' }[it.type] || 'KALEM'}
-                              </span>
-                              <span className="truncate text-[13px] text-[#352432]">{it.description}</span>
-                            </span>
-                            <span className="font-display tabular-nums text-[14px]">{formatTL(it.lineTotal)}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                        <button type="button" onClick={() => showInAccounts(selAdisyon)}
-                          className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-emerald-300/50 bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-700 hover:bg-emerald-100">
-                          <CreditCard className="h-4 w-4" /> Cari hesaplarda gör
-                        </button>
-                        {!isStaff && (
-                          <ConfirmDialog
-                            destructive
-                            title={forceDeleteAdisyon ? 'Kullanılmış seans var — zorla sil' : (selAdisyon.status === 'Approved' ? 'Adisyonu geri al ve sil' : 'Adisyonu sil')}
-                            confirmLabel={forceDeleteAdisyon ? 'Yine de zorla sil' : 'Evet, sil'}
-                            cancelLabel="Vazgeç"
-                            onConfirm={() => doDeleteAdisyon(selAdisyon, forceDeleteAdisyon)}
-                            description={
-                              forceDeleteAdisyon ? (
-                                <span className="block space-y-1.5">
-                                  <span className="block">Bu satıştan <b>kullanılmış (müşteriye verilmiş) seans</b> var.</span>
-                                  <span className="block">• <b>Kullanılmış seanslar korunur</b>, silinmez</span>
-                                  <span className="block">• Kullanılmamış seanslar geri alınır</span>
-                                  <span className="block">• <b>Borç, tahsilat, prim, sadakat ve stok tamamen iade edilir</b></span>
-                                  <span className="block text-rose-600">Müşteri kullandığı hizmetlerin bedelini de geri almış olur; cariyi kontrol et. Geri alınamaz.</span>
-                                </span>
-                              ) : selAdisyon.status === 'Approved' ? (
-                                <span className="block space-y-1.5">
-                                  <span className="block">Bu <b>onaylı</b> adisyon silinince şunlar da geri alınacak:</span>
-                                  <span className="block">• Bu satışa ait <b>cari hesap</b> (varsa) silinir</span>
-                                  <span className="block">• Satılan <b>hizmet/paket seansları</b> geri alınır</span>
-                                  <span className="block">• İlgili <b>randevular</b> (planlı/onaylı) silinir</span>
-                                  <span className="block">• <b>Prim, sadakat puanı ve stok</b> geri alınır</span>
-                                  <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
-                                </span>
-                              ) : (
-                                <span className="block">Bu adisyon ve kalemleri kalıcı olarak silinecek. Bu işlem geri alınamaz.</span>
-                              )
-                            }
-                            trigger={
-                              <button type="button" disabled={busy}
-                                className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40">
-                                <Trash2 className="h-4 w-4" /> Adisyonu sil{selAdisyon.status === 'Approved' ? ' (geri al)' : ''}
-                              </button>
-                            }
-                          />
-                        )}
-                      </div>
-                    </>
-                  )
-                ) : <div className="grid h-full place-items-center py-16 text-sm text-[#352432]/45">Adisyon seçimi yok.</div>}
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                {([
+                  ['all', 'Tümü', adisyonCounts.all],
+                  ['Open', 'Açık', adisyonCounts.Open],
+                  ['Approved', 'Onaylı', adisyonCounts.Approved],
+                  ['Cancelled', 'İptal', adisyonCounts.Cancelled],
+                ] as const).map(([k, l, n]) => (
+                  <button
+                    key={k} type="button" onClick={() => setAdisyonFilter(k)}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${adisyonFilter === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                  >
+                    {l} <span className={adisyonFilter === k ? 'opacity-80' : 'text-[#a3576f]'}>{n}</span>
+                  </button>
+                ))}
               </div>
             </div>
+
+            {/* ---- Adisyon fişleri ---- */}
+            <div className="grid gap-3 lg:grid-cols-2">
+              {filteredAdisyonlar.map((a) => {
+                const saleCancelled = a.customerAccountId ? cancelledSaleByAccountId.get(a.customerAccountId) : undefined
+                const net = a.chargeTotal - a.paymentTotal
+                const isOpen = a.status === 'Open'
+                const paidPct = a.chargeTotal > 0 ? Math.min(100, Math.round((a.paymentTotal / a.chargeTotal) * 100)) : 0
+                const initials = (a.customerName || 'Müşteri').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
+                return (
+                  <div
+                    key={a.id}
+                    className={`rounded-[18px] border bg-white p-4 transition-shadow hover:shadow-[0_22px_46px_-34px_rgba(150,78,104,0.5)] ${
+                      isOpen ? 'border-amber-200' : a.status === 'Approved' ? 'border-[#ead8df]/80' : 'border-rose-200/70'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" onClick={() => openAdisyonDetail(a)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#a3576f]">
+                          {initials || '—'}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-[14px] font-semibold text-[#352432]">{a.customerName || 'Müşteri'}</span>
+                          <span className="block truncate text-[11px] text-[#705a66]">
+                            {shortDay(a.openedAtUtc)} · {a.items.length} kalem
+                            {a.items.length > 0 ? ` · ${a.items.slice(0, 2).map((i) => i.description).join(', ')}${a.items.length > 2 ? '…' : ''}` : ''}
+                          </span>
+                        </span>
+                      </button>
+                      <div className="shrink-0 text-right">
+                        <div className="font-display text-[19px] tabular-nums text-[#c85776]">{formatTL(a.chargeTotal)}</div>
+                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">borç</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-md px-2 py-0.5 text-[9.5px] font-bold ${
+                        isOpen ? 'bg-amber-50 text-amber-700' : a.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                      }`}>
+                        ● {isOpen ? 'AÇIK' : a.status === 'Approved' ? 'ONAYLANDI' : 'İPTAL'}
+                      </span>
+                      <span className="text-[10.5px] text-[#705a66]">
+                        Tahsilat <b className="text-emerald-700">{formatTL(a.paymentTotal)}</b>
+                        {' · '}{net >= 0 ? 'Kalan' : 'Fazla'} <b className="text-[#4a3a44]">{formatTL(Math.abs(net))}</b>
+                      </span>
+                      {saleCancelled && (
+                        <span className="rounded-md bg-rose-50 px-2 py-0.5 text-[9.5px] font-bold text-rose-600">SATIŞ İPTAL</span>
+                      )}
+                    </div>
+
+                    {saleCancelled && (
+                      <div className="mt-1.5 rounded-[10px] bg-rose-50/70 px-2.5 py-1.5 text-[10.5px] text-rose-700">
+                        Gerekçe: {saleCancelled.reason || 'belirtilmemiş'}{saleCancelled.at ? ` · ${shortDay(saleCancelled.at)}` : ''}
+                      </div>
+                    )}
+
+                    {a.chargeTotal > 0 && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+                          <span className="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{ width: `${paidPct}%` }} />
+                        </span>
+                        <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">%{paidPct} tahsil</span>
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {isOpen ? (
+                        <button
+                          type="button" onClick={() => openAdisyonDetail(a)}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                        >
+                          <ReceiptText className="h-3.5 w-3.5" /> Adisyonu aç
+                        </button>
+                      ) : (
+                        <button
+                          type="button" onClick={() => openAdisyonDetail(a)}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                        >
+                          <ReceiptText className="h-3.5 w-3.5" /> Fişi gör
+                        </button>
+                      )}
+                      <button
+                        type="button" onClick={() => showInAccounts(a)}
+                        className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-emerald-300/50 bg-emerald-50 px-3 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <CreditCard className="h-3.5 w-3.5" /> Cari
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              {filteredAdisyonlar.length === 0 && (
+                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66] lg:col-span-2">
+                  {adisyonQuery ? 'Aramaya uyan adisyon yok.' : 'Bu dönemde adisyon yok. Üstten “Yeni Adisyon” ile açabilirsin.'}
+                </div>
+              )}
+            </div>
+
+            {/* ---- Açık adisyon: düzenlenebilir kart ---- */}
+            <AdisyonModal
+              open={adisyonEditOpen}
+              onOpenChange={setAdisyonEditOpen}
+              customerId={selAdisyon?.customerId}
+              customerName={selAdisyon?.customerName}
+              tenantId={tenantId}
+              onChanged={reload}
+            />
+
+            {/* ---- Kapanmış adisyon: okunur fiş ---- */}
+            <AdisyonReceiptModal
+              adisyon={selAdisyon}
+              open={adisyonReceiptOpen}
+              onOpenChange={setAdisyonReceiptOpen}
+              saleCancelled={selAdisyon?.customerAccountId ? cancelledSaleByAccountId.get(selAdisyon.customerAccountId) : undefined}
+              onShowInAccounts={() => { if (selAdisyon) { setAdisyonReceiptOpen(false); showInAccounts(selAdisyon) } }}
+              deleteSlot={!isStaff && selAdisyon ? (
+                <ConfirmDialog
+                  destructive
+                  title={forceDeleteAdisyon ? 'Kullanılmış seans var — zorla sil' : (selAdisyon.status === 'Approved' ? 'Adisyonu geri al ve sil' : 'Adisyonu sil')}
+                  confirmLabel={forceDeleteAdisyon ? 'Yine de zorla sil' : 'Evet, sil'}
+                  cancelLabel="Vazgeç"
+                  onConfirm={() => doDeleteAdisyon(selAdisyon, forceDeleteAdisyon)}
+                  description={
+                    forceDeleteAdisyon ? (
+                      <span className="block space-y-1.5">
+                        <span className="block">Bu satıştan <b>kullanılmış (müşteriye verilmiş) seans</b> var.</span>
+                        <span className="block">• <b>Kullanılmış seanslar korunur</b>, silinmez</span>
+                        <span className="block">• Kullanılmamış seanslar geri alınır</span>
+                        <span className="block">• <b>Borç, tahsilat, prim, sadakat ve stok tamamen iade edilir</b></span>
+                        <span className="block text-rose-600">Müşteri kullandığı hizmetlerin bedelini de geri almış olur; cariyi kontrol et. Geri alınamaz.</span>
+                      </span>
+                    ) : selAdisyon.status === 'Approved' ? (
+                      <span className="block space-y-1.5">
+                        <span className="block">Bu <b>onaylı</b> adisyon silinince şunlar da geri alınacak:</span>
+                        <span className="block">• Bu satışa ait <b>cari hesap</b> (varsa) silinir</span>
+                        <span className="block">• Satılan <b>hizmet/paket seansları</b> geri alınır</span>
+                        <span className="block">• İlgili <b>randevular</b> (planlı/onaylı) silinir</span>
+                        <span className="block">• <b>Prim, sadakat puanı ve stok</b> geri alınır</span>
+                        <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
+                      </span>
+                    ) : (
+                      <span className="block">Bu adisyon ve kalemleri kalıcı olarak silinecek. Bu işlem geri alınamaz.</span>
+                    )
+                  }
+                  trigger={
+                    <button type="button" disabled={busy}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40">
+                      <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil{selAdisyon.status === 'Approved' ? ' (geri al)' : ''}
+                    </button>
+                  }
+                />
+              ) : undefined}
+            />
           </>
         )}
 
@@ -691,298 +923,333 @@ function OnMuhasebePageInner() {
           <>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
-                <CreditCard className="h-4 w-4" /> Cari hesaplar modülü ile müşterilerin borç, ödeme, tahsilat ve taksit işlemlerini görüntüleyebilir ve yönetebilirsiniz.
+                <CreditCard className="h-4 w-4" /> Müşterilerin kalan borcu, taksit planı ve tahsilatları. Peşin satışta tek tahsilat, taksitlide aylık taksit ya da genel tahsilat alınır.
               </div>
               {monthNav}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <OverviewCard icon={CreditCard} label="Toplam açık alacak" value={formatTL(openReceivable)} chip={`↗ ${activeAccountCount} aktif`} bars={monthBars} />
-              <OverviewCard icon={TrendingDown} label="Geciken bakiye" value={formatTL(overdue.sum)} chip={`↗ ${overdue.count} kayıt`} chipTone={overdue.count ? 'text-rose-700 bg-rose-50' : undefined} bars={monthBars} />
+              <OverviewCard icon={CreditCard} label="Toplam açık alacak" value={formatTL(openReceivable)} chip={`↗ ${activeAccountCount} aktif cari`} bars={monthBars} />
+              <OverviewCard icon={TrendingDown} label="Geciken bakiye" value={formatTL(overdue.sum)} chip={`↗ ${overdue.count} taksit`} chipTone={overdue.count ? 'text-rose-700 bg-rose-50' : undefined} bars={monthBars} />
+              <OverviewCard icon={Banknote} label={`Tahsilat · ${monthLabel}`} value={formatTL(paymentsMonth)} bars={monthBars} />
               <OverviewCard icon={Landmark} label="Toplam tahsilat" value={formatTL(totalCollected)} bars={monthBars} />
-              <OverviewCard icon={CalendarDays} label="Randevu cirosu (tahakkuk)" value={formatTL(apptRevenueAll)} chip="↗ Tahsilatla karıştırılmaz" bars={monthBars} />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
-              {/* LİSTE */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div><div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Cari Hesaplar</div><div className="font-display text-2xl tracking-tight">{filteredAccounts.length} kayıt</div></div>
-                  <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
-                    {([['all', 'Tümü'], ['upcoming', 'Bekleyen'], ['overdue', 'Geciken'], ['cancelled', `İptal${cancelledCount ? ` ${cancelledCount}` : ''}`]] as const).map(([k, l]) => (
-                      <button key={k} type="button" onClick={() => setAccountFilter(k)}
-                        className={`rounded-[8px] px-2.5 py-1 text-[10px] font-medium transition-colors ${accountFilter === k ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {filteredAccounts.map((a) => {
-                    const pct = a.totalAmount > 0 ? Math.round((a.paidAmount / a.totalAmount) * 100) : 0
-                    const isCancelled = a.saleStatus === 'Cancelled'
-                    const isOverdue = !isCancelled && a.installments.some((i) => i.overdue)
-                    return (
-                      <button key={a.id} type="button" onClick={() => setSelectedAccountId(a.id)}
-                        className={`w-full rounded-[14px] border p-3.5 text-left transition-colors ${selAccount?.id === a.id ? 'border-[#c85776]/60 bg-[#fff1f6]/50' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}>
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-[14px] font-medium text-[#352432]">{a.customerName || a.name}</div>
-                            <div className="truncate text-[10px] text-[#352432]/45">{a.servicePackageName || a.name}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-display text-[16px] tabular-nums text-[#c85776]">{formatTL(a.remainingAmount)}</div>
-                            <div className="text-[9px] font-mono text-[#352432]/40">{a.nextDueDate ? `Vade: ${a.nextDueDate}` : 'Vade yok'}</div>
-                          </div>
-                          <span className={`shrink-0 rounded-md border px-2 py-1 text-[9px] font-mono uppercase ${isCancelled ? 'border-rose-300/60 bg-rose-100 text-rose-700' : a.remainingAmount > 0 ? (isOverdue ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700') : 'border-emerald-300/40 bg-emerald-50 text-emerald-700'}`}>
-                            {isCancelled ? 'İPTAL' : a.remainingAmount > 0 ? (isOverdue ? 'GECİKEN' : 'AÇIK') : 'KAPALI'}
-                          </span>
-                        </div>
-                        {/* İptal edilen satış: gerekçe ön muhasebede de görünür (satış paneliyle aynı bilgi). */}
-                        {isCancelled && (
-                          <div className="mt-1.5 rounded-[10px] border border-rose-200 bg-rose-50/70 px-2.5 py-1.5 text-[10px] text-rose-700">
-                            <b>İptal edildi</b>{a.cancelledAtUtc ? ` · ${a.cancelledAtUtc.slice(0, 10)}` : ''}
-                            {a.cancellationReason ? ` — ${a.cancellationReason}` : ' — gerekçe belirtilmemiş'}
-                          </div>
-                        )}
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]"><span className={`block h-full rounded-full ${isCancelled ? 'bg-[#d9b7c3]' : 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]'}`} style={{ width: `${pct}%` }} /></div>
-                        <div className="mt-1 text-[9px] font-mono uppercase text-[#352432]/40">%{pct} ÖDENDİ · {formatTL(a.paidAmount)} / {formatTL(a.totalAmount)}</div>
+            {/* ---- Araç çubuğu: arama · filtre · iptal edilenler ---- */}
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+                <input
+                  value={accountQuery}
+                  onChange={(e) => setAccountQuery(e.target.value)}
+                  placeholder="Müşteri, paket veya telefon ara…"
+                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                />
+                {accountQuery && (
+                  <button type="button" onClick={() => setAccountQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
+                )}
+              </div>
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                {([
+                  ['all', 'Tümü', accountCounts.all],
+                  ['overdue', 'Geciken', accountCounts.overdue],
+                  ['upcoming', 'Bekleyen', accountCounts.upcoming],
+                  ['installment', 'Taksitli', accountCounts.installment],
+                  ['closed', 'Kapanan', accountCounts.closed],
+                ] as const).map(([k, l, n]) => (
+                  <button
+                    key={k} type="button" onClick={() => setAccountFilter(k)}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${accountFilter === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                  >
+                    {l} <span className={accountFilter === k ? 'opacity-80' : 'text-[#a3576f]'}>{n}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button" onClick={() => setCancelledOpen(true)}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-[12px] border border-rose-200 bg-rose-50 px-3 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+              >
+                <Ban className="h-3.5 w-3.5" /> İptal edilenler{cancelledCount > 0 ? ` · ${cancelledCount}` : ''}
+              </button>
+            </div>
+
+            {/* ---- Cari listesi ---- */}
+            <div className="grid gap-3 lg:grid-cols-2">
+              {filteredAccounts.map((a) => {
+                const insts = activeInstallments(a)
+                const isInstallment = insts.length > 1
+                const isOpen = a.remainingAmount > 0.005
+                const pct = a.totalAmount > 0 ? Math.min(100, Math.round((a.paidAmount / a.totalAmount) * 100)) : 0
+                const paidCount = insts.filter((i) => i.remaining <= 0.005).length
+                const initials = (a.customerName || a.name).trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
+                return (
+                  <div
+                    key={a.id}
+                    className={`rounded-[18px] border bg-white p-4 transition-shadow hover:shadow-[0_22px_46px_-34px_rgba(150,78,104,0.5)] ${
+                      a.hasOverdue ? 'border-rose-200' : isOpen ? 'border-[#ead8df]/80' : 'border-emerald-200/70'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" onClick={() => openAccount(a.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#a3576f]">
+                          {initials || '—'}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-[14px] font-semibold text-[#352432]">{a.customerName || a.name}</span>
+                          <span className="block truncate text-[11px] text-[#705a66]">{a.servicePackageName || a.name}</span>
+                        </span>
                       </button>
-                    )
-                  })}
-                  {filteredAccounts.length === 0 && <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#352432]/45">Bu kapsamda cari hesap yok.</div>}
-                </div>
-              </div>
-
-              {/* CARİ DETAY */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
-                {selAccount ? (
-                  <>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Cari Detay</div>
-                    <div className="mt-1 font-display text-3xl tracking-tight">{selAccount.customerName || selAccount.name}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-[#352432]/55">
-                      {selAccount.customerPhone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-[#c85776]" /> {selAccount.customerPhone}</span>}
-                      <span className="truncate">{[selAccount.name, selAccount.servicePackageName].filter(Boolean).join(' • ')}</span>
-                      {selAccount.soldByStaffName && <span className="truncate">Satan: <b className="text-[#4a3a44]">{selAccount.soldByStaffName}</b></span>}
+                      <div className="shrink-0 text-right">
+                        <div className={`font-display text-[19px] tabular-nums ${isOpen ? 'text-[#c85776]' : 'text-emerald-700'}`}>{formatTL(a.remainingAmount)}</div>
+                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">{isOpen ? 'kalan borç' : 'kapandı'}</div>
+                      </div>
                     </div>
 
-                    {selAccount.saleStatus === 'Cancelled' && (
-                      <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[11.5px] text-rose-700">
-                        <b>Bu satış iptal edildi</b>
-                        {selAccount.cancelledAtUtc ? ` · ${selAccount.cancelledAtUtc.slice(0, 10)}` : ''}
-                        {selAccount.cancellationReason ? ` — ${selAccount.cancellationReason}` : ' — gerekçe belirtilmemiş'}
-                        <div className="mt-0.5 text-[10.5px] text-rose-600/80">Kalan taksitler tahsil edilmez; geçmiş tahsilat kaydı korunur.</div>
-                      </div>
-                    )}
-
-                    <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#ead8df]/65 bg-[#f1e5ea]">
-                      <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Toplam</div><div className="font-display text-xl tabular-nums">{formatTL(selAccount.totalAmount)}</div></div>
-                      <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Ödenen</div><div className="font-display text-xl tabular-nums text-emerald-700">{formatTL(selAccount.paidAmount)}</div></div>
-                      <div className="bg-white p-3 text-center"><div className="text-[9px] font-mono uppercase text-[#352432]/40">Kalan</div><div className="font-display text-xl tabular-nums text-rose-700">{formatTL(selAccount.remainingAmount)}</div></div>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-md px-2 py-0.5 text-[9.5px] font-bold ${isInstallment ? 'bg-[#f3e8ff] text-[#7c3aed]' : 'bg-[#e0f2fe] text-[#0369a1]'}`}>
+                        {isInstallment ? `TAKSİTLİ · ${insts.length} AY` : 'PEŞİN'}
+                      </span>
+                      {a.hasOverdue && <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[9.5px] font-bold text-rose-700">GECİKMİŞ</span>}
+                      {a.creditBalance > 0 && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700">KREDİ {formatTL(a.creditBalance)}</span>}
+                      {isOpen && a.nextDueDate && (
+                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[#705a66]">
+                          <CalendarDays className="h-3 w-3 text-[#c85776]" /> {shortDay(a.nextDueDate)} · <b className="text-[#4a3a44]">{formatTL(a.nextDueAmount)}</b>
+                        </span>
+                      )}
                     </div>
-                    {selAccount.creditBalance > 0 && (
-                      <div className="mt-2 flex items-center justify-between rounded-[12px] border border-emerald-200/70 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700">
-                        <span className="flex items-center gap-1.5"><Banknote className="h-3.5 w-3.5" /> Fazla ödeme (kredi)</span>
-                        <span className="font-display tabular-nums">{formatTL(selAccount.creditBalance)}</span>
-                      </div>
-                    )}
 
-                    <button type="button" onClick={() => setAccountDetailsOpen((open) => !open)}
-                      className="mt-3 flex w-full items-center justify-between rounded-[12px] border border-[#ead8df]/70 bg-[#fff4f8]/40 px-3 py-2.5 text-[11px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:bg-[#fff1f6]">
-                      <span>{accountDetailsOpen ? 'Detayları gizle' : 'Cari hesap detayları'}</span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${accountDetailsOpen ? 'rotate-180' : ''}`} />
-                    </button>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+                        <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} />
+                      </span>
+                      <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">
+                        {isInstallment ? `${paidCount}/${insts.length} taksit` : `%${pct} ödendi`}
+                      </span>
+                    </div>
 
-                    <AnimatePresence initial={false}>
-                      {accountDetailsOpen && (
-                        <motion.div
-                          key={`account-details-${selAccount.id}`}
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                          className="overflow-hidden"
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {isOpen && isInstallment && (
+                        <button
+                          type="button" onClick={() => { setSelectedAccountId(a.id); setCollectMode('monthly') }}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#c85776]/50 bg-white px-3 text-[11.5px] font-semibold text-[#a3576f] transition-transform hover:-translate-y-0.5"
                         >
-                          {/* Hesap ekstresi — borç / alacak / yürüyen bakiye */}
-                          <div className="mt-4">
-                            <div className="flex items-center justify-between">
-                              <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Hesap Ekstresi · {ledger.length} hareket</div>
-                              {ledger.length > 0 && (
-                                <span className={`rounded-md px-2 py-0.5 text-[9px] font-mono uppercase ${ledger[ledger.length - 1].balance > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                                  Bakiye {formatTL(ledger[ledger.length - 1].balance)} {ledger[ledger.length - 1].balance > 0 ? '(B)' : ''}
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-2 overflow-hidden rounded-[12px] border border-[#ead8df]/65">
-                              <div className="grid grid-cols-[0.8fr_1.4fr_0.7fr_0.7fr_0.7fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-3 py-2 text-[8px] font-mono uppercase tracking-widest text-[#352432]/40">
-                                <span>Tarih</span><span>İşlem</span><span className="text-right">Borç</span><span className="text-right">Alacak</span><span className="text-right">Bakiye</span>
-                              </div>
-                              <div className="max-h-44 divide-y divide-[#f1e5ea] overflow-y-auto bg-white">
-                                {ledger.map((r, i) => (
-                                  <div key={i} className="grid grid-cols-[0.8fr_1.4fr_0.7fr_0.7fr_0.7fr] items-center gap-2 px-3 py-2 text-[11px]">
-                                    <span className="font-mono text-[10px] text-[#352432]/50">{(r.date || '').slice(0, 10) || '—'}</span>
-                                    <span className="min-w-0">
-                                      <span className={`mr-1.5 rounded px-1 py-0.5 text-[8px] font-mono uppercase ${r.credit > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-[#fff1f6] text-[#c85776]'}`}>{r.label}</span>
-                                      <span className="truncate text-[10px] text-[#352432]/50">{r.detail}</span>
-                                    </span>
-                                    <span className="text-right font-display tabular-nums text-rose-700">{r.debit > 0 ? formatTL(r.debit) : '—'}</span>
-                                    <span className="text-right font-display tabular-nums text-emerald-700">{r.credit > 0 ? formatTL(r.credit) : '—'}</span>
-                                    <span className={`text-right font-display tabular-nums ${r.balance > 0 ? 'text-[#352432]' : 'text-emerald-700'}`}>{formatTL(r.balance)}</span>
-                                  </div>
-                                ))}
-                                {ledger.length === 0 && <div className="px-3 py-4 text-center text-[11px] text-[#352432]/45">Hareket yok.</div>}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3"><CustomerSessionsCard customerId={selAccount.customerId} tenantId={tenantId} refreshKey={sessionsTick} /></div>
-                          <div className="mt-3"><LoyaltyCard customerId={selAccount.customerId} tenantId={tenantId} /></div>
-
-                          {/* Taksit planı — tahsilatlar vade sırasıyla taksitlere dağıtılır (kısmi/tam/gecikti) */}
-                          <div className="mt-4">
-                            <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Taksit Planı · {selAccount.installments.length} kalem</div>
-                            <div className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                              {selAccount.installments.map((i) => {
-                                const partial = i.status !== 'Paid' && i.paidAmount > 0.005
-                                const late = i.overdue
-                                const tone = i.status === 'Paid' ? 'border-emerald-200/60 bg-emerald-50/50'
-                                  : late ? 'border-rose-200/60 bg-rose-50/50'
-                                  : partial ? 'border-sky-200/70 bg-sky-50/40'
-                                  : 'border-[#f0e0e6] bg-[#fffafc]'
-                                const [badgeLabel, badgeTone] = i.status === 'Paid' ? ['ÖDENDİ', 'bg-emerald-100 text-emerald-700']
-                                  : late ? ['GECİKTİ', 'bg-rose-100 text-rose-700']
-                                  : partial ? ['KISMİ', 'bg-sky-100 text-sky-700']
-                                  : ['BEKLİYOR', 'bg-amber-50 text-amber-700']
-                                return (
-                                  <div key={i.id} className={`rounded-[10px] border px-3 py-2 text-[12px] ${tone}`}>
-                                    <div className="flex items-center justify-between">
-                                      <span className="flex items-center gap-2"><span className="font-mono text-[10px] text-[#352432]/40">#{i.no}</span><span>{i.dueDate}</span></span>
-                                      <span className="flex items-center gap-2"><span className="font-display tabular-nums">{formatTL(i.amount)}</span>
-                                        <span className={`rounded-md px-1.5 py-0.5 text-[8px] font-mono uppercase ${badgeTone}`}>{badgeLabel}</span></span>
-                                    </div>
-                                    {partial && (
-                                      <div className="mt-1 flex items-center justify-between text-[10px]">
-                                        <span className="text-emerald-700">✓ Ödendi {formatTL(i.paidAmount)}</span>
-                                        <span className="font-medium text-rose-700">Kalan {formatTL(i.remaining)}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                              {selAccount.installments.length === 0 && <div className="rounded-[10px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[11px] text-[#352432]/45">Taksit planı yok.</div>}
-                            </div>
-                          </div>
-                        </motion.div>
+                          <CalendarClock className="h-3.5 w-3.5" /> Aylık taksit
+                        </button>
                       )}
-                    </AnimatePresence>
-
-                    {/* Aksiyonlar — iptal edilmiş satışta tahsilat/taksit değişikliği kapalıdır.
-                        (Sunucu da reddeder; buradaki gizleme yalnız kullanıcıyı boş yere uğraştırmamak için.) */}
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {selAccount.saleStatus === 'Cancelled' ? (
-                        <div className="col-span-2 rounded-[12px] border border-dashed border-rose-200 bg-rose-50/60 px-3 py-3 text-center text-[11.5px] text-rose-700">
-                          Satış iptal edildiği için tahsilat alınamaz ve taksit planı değiştirilemez.
-                          <span className="mt-0.5 block text-[10.5px] text-rose-600/80">Yanlışlıkla iptal edildiyse müşteri kartındaki satış detayından &quot;İptali geri al&quot; yapın.</span>
-                        </div>
-                      ) : (
-                      <>
-                      <CollectionDialog
-                        accounts={accounts}
-                        initialAccountId={selAccount.id}
-                        title={`Tahsilat · ${selAccount.customerName || selAccount.name}`}
-                        trigger={
-                          <button
-                            type="button"
-                            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
-                          >
-                            <Banknote className="h-4 w-4" /> Tahsilat Al
-                          </button>
-                        }
-                        onSubmit={async (p) => {
-                          const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc }
-                          const res = await performWrite({ operationType: 'RegisterAccountPayment', title: `Tahsilat: ${formatTL(p.amount)}`, summary: (accounts.find((a) => a.id === p.accountId)?.customerName) || '', payload: { ...payload, accountId: p.accountId }, tenantId, directAction: () => adminApi.registerAccountPayment(p.accountId, payload, tenantId) })
-                          if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Tahsilat'))
-                          await reload()
-                        }}
-                      />
-                      <AdminEditDialog
-                        triggerVariant="ghost" triggerLabel="Taksiti Değiştir" eyebrow="Reschedule · PATCH" titleIcon={PencilLine} title="Taksit planını yeniden oluştur"
-                        description="Finanse edilen tutar (toplam − peşinat) seçtiğin taksit sayısına eşit bölünür; alınan tahsilatlar yeni plana baştan dağıtılır." submitLabel="Planı güncelle"
-                        onSubmit={async (v) => {
-                          const fv = v as Record<string, unknown>
-                          await adminApi.rescheduleAccount(selAccount.id, { installmentCount: Number(fv.installmentCount || 0), firstDueDate: String(fv.firstDueDate || todayIso) }, tenantId)
-                          await reload()
-                        }}
-                        fields={[
-                          { label: 'Taksit sayısı', name: 'installmentCount', type: 'number', value: Math.max(1, selAccount.installments.filter((i) => i.status === 'Planned').length), required: true, icon: CalendarDays, suffix: 'ay' },
-                          { label: 'İlk vade', name: 'firstDueDate', type: 'date', value: todayIso, icon: CalendarDays },
-                        ]}
-                      />
-                      </>
+                      {isOpen && (
+                        <button
+                          type="button" onClick={() => { setSelectedAccountId(a.id); setCollectMode('general') }}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                        >
+                          <Banknote className="h-3.5 w-3.5" /> {isInstallment ? 'Genel tahsilat' : 'Tahsilat al'}
+                        </button>
                       )}
-                      <ConfirmDialog destructive title={`"${selAccount.customerName || selAccount.name}" carisi silinsin mi?`} description="Cari pasifleştirilir; ödeme geçmişi raporlarda kalır." confirmLabel="Cariyi sil"
-                        onConfirm={async () => { await adminApi.deleteAccount(selAccount.id, tenantId); setSelectedAccountId(null); await reload() }}
-                        trigger={<button type="button" className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" /> Cariyi Sil</button>} />
+                      <button
+                        type="button" onClick={() => openAccount(a.id)}
+                        className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                      >
+                        Detay <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                  </>
-                ) : <div className="grid h-full place-items-center py-16 text-sm text-[#352432]/45">Cari seçimi yok.</div>}
-              </div>
+                  </div>
+                )
+              })}
+              {filteredAccounts.length === 0 && (
+                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66] lg:col-span-2">
+                  {accountQuery ? 'Aramaya uyan cari hesap yok.' : 'Bu kapsamda cari hesap yok.'}
+                </div>
+              )}
             </div>
+
+            {/* ---- Modallar ---- */}
+            <AccountDetailModal
+              account={selAccount}
+              open={accountDetailOpen}
+              onOpenChange={setAccountDetailOpen}
+              tenantId={tenantId}
+              ledger={ledger}
+              sessionsTick={sessionsTick}
+              onCollectGeneral={() => setCollectMode('general')}
+              onCollectMonthly={() => setCollectMode('monthly')}
+              onReschedule={async (installmentCount, firstDueDate) => {
+                if (!selAccount) return
+                await adminApi.rescheduleAccount(selAccount.id, { installmentCount, firstDueDate }, tenantId)
+                await reload()
+              }}
+              onDelete={async () => {
+                if (!selAccount) return
+                await adminApi.deleteAccount(selAccount.id, tenantId)
+                setSelectedAccountId(null)
+                await reload()
+              }}
+            />
+
+            <CancelledSalesModal
+              accounts={accounts}
+              open={cancelledOpen}
+              onOpenChange={setCancelledOpen}
+              onSelect={(a) => openAccount(a.id)}
+            />
+
+            {selAccount && (
+              <CollectionDialog
+                accounts={liveAccounts}
+                initialAccountId={selAccount.id}
+                hideTrigger
+                open={collectMode === 'general'}
+                onOpenChange={(next) => { if (!next) setCollectMode(null) }}
+                title={`Genel tahsilat · ${selAccount.customerName || selAccount.name}`}
+                onSubmit={registerCollection}
+              />
+            )}
+            {selAccount && (
+              <InstallmentCollectionDialog
+                account={selAccount}
+                hideTrigger
+                open={collectMode === 'monthly'}
+                onOpenChange={(next) => { if (!next) setCollectMode(null) }}
+                onSubmit={registerCollection}
+              />
+            )}
           </>
         )}
 
         {/* ================= GİDERLER + MAAŞLAR ================= */}
-        {(tab === 'expenses' || tab === 'salary') && (
+        {(tab === 'expenses' || tab === 'salary') && (() => {
+          const source = tab === 'salary' ? salaryExpenses : expenses
+          const cats = Array.from(new Set(source.map((e) => e.category)))
+          const q = expenseQuery.trim().toLocaleLowerCase('tr')
+          const list = source.filter((e) => {
+            if (tab === 'expenses' && expenseCat !== 'all' && e.category !== expenseCat) return false
+            if (!q) return true
+            return `${e.description} ${expenseCategoryLabels[e.category] || ''} ${e.staffName} ${e.periodLabel}`.toLocaleLowerCase('tr').includes(q)
+          })
+          const listTotal = list.reduce((s, e) => s + e.amount, 0)
+          return (
           <>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
-                {tab === 'salary' ? <><Users className="h-4 w-4" /> <b>PERSONEL MAAŞLARI</b> · SADECE MAAŞ VE AVANS KAYITLARI</> : <><TrendingDown className="h-4 w-4" /> <b>GİDERLER</b> · TÜM İŞLETME GİDERLERİ (KİRA, SARF, FATURA)</>}
+                {tab === 'salary'
+                  ? <><Users className="h-4 w-4" /> Personel maaş ve avans ödemeleri. Kayıtlar gider olarak kasaya işlenir.</>
+                  : <><TrendingDown className="h-4 w-4" /> Tüm işletme giderleri: kira, sarf, fatura, ekipman ve diğerleri.</>}
               </div>
               {monthNav}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <OverviewCard icon={TrendingDown} label="Bu ay toplam" value={formatTL(expenseMonth)} chip={`↗ ${expenses.length} kalem`} bars={monthBars} />
-              <OverviewCard icon={Users} label="Personel maaşı" value={formatTL(salaryTotal)} chip="↗ Tüm personel" bars={monthBars} />
+              <OverviewCard icon={TrendingDown} label={`Toplam · ${monthLabel}`} value={formatTL(tab === 'salary' ? salaryTotal : expenseMonth)} chip={`↗ ${source.length} kalem`} bars={monthBars} />
+              <OverviewCard icon={Users} label="Personel maaşı" value={formatTL(salaryTotal)} chip={`↗ ${salaryExpenses.length} ödeme`} bars={monthBars} />
               <OverviewCard icon={Building2} label="Kira" value={formatTL(rentTotal)} chip="↗ Şubeler" bars={monthBars} />
               <OverviewCard icon={Zap} label="Faturalar" value={formatTL(utilTotal)} chip="↗ Elektrik / su / internet" bars={monthBars} />
             </div>
 
-            <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-              <div className="border-b border-[#ead8df]/70 px-5 py-4">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{tab === 'salary' ? 'Personel Maaş Ödemeleri' : 'Tüm Giderler'}</div>
-                <div className="font-display text-2xl tracking-tight">{(tab === 'salary' ? salaryExpenses : expenses).length} kalem <span className="ml-2 text-[12px] font-mono uppercase tracking-widest text-[#352432]/40">TOPLAM: {formatTL((tab === 'salary' ? salaryExpenses : expenses).reduce((s, e) => s + e.amount, 0))}</span></div>
-              </div>
-              <div className="hidden grid-cols-[1.6fr_0.8fr_0.9fr_0.7fr_0.6fr_0.4fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 sm:grid">
-                <span>Açıklama</span><span>Tarih</span><span>Ödeme Yöntemi</span><span>Tutar</span><span>Durum</span><span />
-              </div>
-              <div className="divide-y divide-[#f1e5ea]">
-                {(tab === 'salary' ? salaryExpenses : expenses).map((e) => (
-                  <div key={e.id} className="grid grid-cols-1 gap-2 px-5 py-3 sm:grid-cols-[1.6fr_0.8fr_0.9fr_0.7fr_0.6fr_0.4fr] sm:items-center">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-violet-50 text-violet-600">{e.category === 'Salary' ? <Users className="h-4 w-4" /> : <Receipt className="h-4 w-4" />}</span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-[#352432]">{e.description || expenseCategoryLabels[e.category]}</div>
-                        <div className="truncate text-[10px] text-[#352432]/45">{[expenseCategoryLabels[e.category], e.staffName, e.periodLabel].filter(Boolean).join(' · ')}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#352432]/55"><CalendarDays className="h-3 w-3 text-[#c85776]/60" /> {(e.occurredAt || '').slice(0, 10)}</div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#352432]/55"><Landmark className="h-3 w-3 text-[#c85776]/60" /> {METHOD_LABEL[e.paymentMethod] || e.paymentMethod}</div>
-                    <div className="font-display text-[15px] tabular-nums text-[#c85776]">{formatTL(e.amount)}</div>
-                    <div><span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[9px] font-mono uppercase ${e.isApproved ? 'border-emerald-300/40 bg-emerald-50 text-emerald-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}><CheckCircle2 className="h-3 w-3" /> {e.isApproved ? 'ONAYLI' : 'BEKLİYOR'}</span></div>
-                    <div className="flex justify-end">
-                      <ConfirmDialog destructive title="Gider silinsin mi?" description={`${e.description || expenseCategoryLabels[e.category]} · ${formatTL(e.amount)}`} confirmLabel="Sil"
-                        onConfirm={() => deleteExpense(e)}
-                        trigger={<button type="button" className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df]/70 bg-white text-[#352432]/40 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>} />
-                    </div>
-                  </div>
-                ))}
-                {(tab === 'salary' ? salaryExpenses : expenses).length === 0 && (
-                  <div className="px-5 py-12 text-center text-sm text-[#352432]/45">{tab === 'salary' ? 'Bu ay maaş ödemesi yok. Üstten "Maaş Öde" ile başla.' : 'Bu ay gider kaydı yok. Üstten "Yeni Gider" ile başla.'}</div>
+            {/* Araç çubuğu */}
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+                <input
+                  value={expenseQuery}
+                  onChange={(e) => setExpenseQuery(e.target.value)}
+                  placeholder={tab === 'salary' ? 'Personel veya dönem ara…' : 'Açıklama veya kategori ara…'}
+                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                />
+                {expenseQuery && (
+                  <button type="button" onClick={() => setExpenseQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
                 )}
               </div>
+              {tab === 'expenses' && cats.length > 1 && (
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                  <button
+                    type="button" onClick={() => setExpenseCat('all')}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === 'all' ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                  >
+                    Tümü {source.length}
+                  </button>
+                  {cats.map((c) => (
+                    <button
+                      key={c} type="button" onClick={() => setExpenseCat(c)}
+                      className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === c ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                    >
+                      {expenseCategoryLabels[c] || c} {source.filter((e) => e.category === c).length}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span className="ml-auto rounded-[10px] bg-[#fff1f6] px-3 py-1.5 text-[11.5px] font-semibold text-[#a3576f]">
+                {list.length} kalem · {formatTL(listTotal)}
+              </span>
+            </div>
+
+            {/* Liste */}
+            <div className="grid gap-2.5">
+              {list.map((e) => {
+                const Icon = EXPENSE_ICONS[e.category] || Receipt
+                return (
+                  <div key={e.id} className="flex flex-wrap items-center gap-3 rounded-[16px] border border-[#ead8df]/80 bg-white px-4 py-3 transition-shadow hover:shadow-[0_20px_40px_-34px_rgba(150,78,104,0.5)]">
+                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[13px] ${EXPENSE_TONES[e.category] || 'bg-[#fff1f6] text-[#c85776]'}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] font-semibold text-[#352432]">
+                        {e.description || expenseCategoryLabels[e.category]}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[#705a66]">
+                        <span className="rounded-md bg-[#fff4f8] px-1.5 py-0.5 font-semibold text-[#a3576f]">{expenseCategoryLabels[e.category]}</span>
+                        {e.staffName && <span>· {e.staffName}</span>}
+                        {e.periodLabel && <span>· dönem {e.periodLabel}</span>}
+                        <span className="inline-flex items-center gap-1">· <CalendarDays className="h-3 w-3 text-[#c85776]" />{shortDay(e.occurredAt)}</span>
+                        <span className="inline-flex items-center gap-1">· <Landmark className="h-3 w-3 text-[#c85776]" />{METHOD_LABEL[e.paymentMethod] || e.paymentMethod}</span>
+                      </div>
+                    </div>
+                    {e.isApproved ? (
+                      <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-[9.5px] font-bold text-emerald-700">ONAYLI</span>
+                    ) : (
+                      // Personelin girdiği kayıt onay bekler; yönetici tek tıkla onaylar.
+                      <button
+                        type="button"
+                        onClick={() => void approveExpense(e)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300/60 bg-amber-50 px-2 py-1 text-[9.5px] font-bold text-amber-700 transition-colors hover:bg-amber-100"
+                        title="Bu kaydı onayla"
+                      >
+                        <CheckCircle2 className="h-3 w-3" /> ONAYLA
+                      </button>
+                    )}
+                    <span className="shrink-0 font-display text-[18px] tabular-nums text-[#c85776]">{formatTL(e.amount)}</span>
+                    <ConfirmDialog
+                      destructive title="Gider silinsin mi?"
+                      description={`${e.description || expenseCategoryLabels[e.category]} · ${formatTL(e.amount)}`}
+                      confirmLabel="Sil"
+                      onConfirm={() => deleteExpense(e)}
+                      trigger={
+                        <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      }
+                    />
+                  </div>
+                )
+              })}
+              {list.length === 0 && (
+                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66]">
+                  {expenseQuery
+                    ? 'Aramaya uyan kayıt yok.'
+                    : tab === 'salary' ? 'Bu ay maaş ödemesi yok. Üstten “Maaş Öde” ile başla.' : 'Bu ay gider kaydı yok. Üstten “Yeni Gider” ile başla.'}
+                </div>
+              )}
             </div>
           </>
-        )}
+          )
+        })()}
       </div>
+
+      {/* Yeni adisyon: müşteri seçtirir, ardından adisyon kartını açar */}
+      <AdisyonModal
+        open={newAdisyonOpen}
+        onOpenChange={setNewAdisyonOpen}
+        tenantId={tenantId}
+        allowPick
+        onChanged={reload}
+      />
 
       {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}
       <DailyAdisyonModal open={dailyOpen} onOpenChange={setDailyOpen} tenantId={tenantId} />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -26,10 +26,15 @@ export default function PackageReportBreakdown({
   categories,
   customers,
   loading = false,
+  periodTabs,
+  periodLabel,
 }: {
   categories: PackageCategoryBreakdown[]
   customers: PackageCustomerBreakdown[]
   loading?: boolean
+  /** Yalnız KATEGORİ kırılımına uygulanan dönem seçici (Gün/Hafta/Ay/Yıl). */
+  periodTabs?: ReactNode
+  periodLabel?: string
 }) {
   const [view, setView] = useState<'category' | 'customer'>('category')
 
@@ -44,9 +49,14 @@ export default function PackageReportBreakdown({
           </span>
           <div>
             <div className="font-display text-[14px] font-semibold text-[#2f2230]">Satış Detayı</div>
-            <div className="text-[11px] text-[#705a66]">Kategori · hizmet · müşteri kırılımı</div>
+            <div className="text-[11px] text-[#705a66]">
+              Kategori · hizmet · müşteri kırılımı
+              {view === 'category' && periodLabel ? <span className="text-[#a3576f]"> · {periodLabel}</span> : ''}
+            </div>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {view === 'category' && periodTabs}
         <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
           {(
             [
@@ -65,6 +75,7 @@ export default function PackageReportBreakdown({
               {label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 

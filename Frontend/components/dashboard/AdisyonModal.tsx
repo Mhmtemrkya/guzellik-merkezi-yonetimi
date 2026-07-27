@@ -44,10 +44,10 @@ export default function AdisyonModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex flex-col overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
-        style={{ width: 'min(96vw, 640px)', maxHeight: '94dvh' }}
+        className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        style={{ width: 'min(96vw, 900px)', height: 'min(94dvh, 940px)', maxHeight: '94dvh' }}
       >
-        <div className="flex min-h-0 max-h-[94dvh] flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* HEADER */}
           <header className="relative shrink-0 border-b border-[#ead8df]/70 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] px-5 py-4">
             <span
@@ -93,21 +93,30 @@ export default function AdisyonModal({
             {effectiveId ? (
               <AdisyonPanel customerId={effectiveId} tenantId={tenantId} onChanged={onChanged} />
             ) : allowPick ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#352432]/55">
-                  <Users className="h-3.5 w-3.5 text-[#c85776]/60" /> Adisyonunu açmak için müşteri seçin
+              // Müşteri seçimi: arama kutusu ve sonuç listesi rahat sığsın diye ortada geniş bir alan.
+              <div className="mx-auto w-full max-w-[560px] pt-6">
+                <div className="text-center">
+                  <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c05277]">
+                    <Users className="h-6 w-6" />
+                  </span>
+                  <div className="mt-2 text-[15px] font-bold text-[#352432]">Adisyon açılacak müşteri</div>
+                  <div className="mt-0.5 text-[11.5px] text-[#705a66]">
+                    İsim ya da telefon ile arayın; seçtiğiniz müşterinin adisyon kartı hemen açılır.
+                  </div>
                 </div>
-                <CustomerPicker
-                  items={[]}
-                  onSearch={customerSearch}
-                  value=""
-                  onChange={() => undefined}
-                  onSelectItem={(it) => setPicked({ id: it.id, name: it.name })}
-                  placeholder="İsim veya telefon ile ara…"
-                />
+                <div className="mt-4">
+                  <CustomerPicker
+                    items={[]}
+                    onSearch={customerSearch}
+                    value=""
+                    onChange={() => undefined}
+                    onSelectItem={(it) => setPicked({ id: it.id, name: it.name })}
+                    placeholder="İsim veya telefon ile ara…"
+                  />
+                </div>
               </div>
             ) : (
-              <div className="grid place-items-center py-16 text-sm text-[#352432]/45">Müşteri seçili değil.</div>
+              <div className="grid place-items-center py-16 text-sm text-[#705a66]">Müşteri seçili değil.</div>
             )}
           </div>
         </div>

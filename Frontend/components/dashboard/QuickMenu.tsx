@@ -20,7 +20,8 @@ import {
   UserCog,
   ClipboardList,
   ShieldCheck,
-  GripVertical,
+  ChevronUp,
+  ChevronDown,
   Sparkles,
   Scissors,
   UserRound,
@@ -111,9 +112,10 @@ function loadIds(key: string, fallback: string[], legacyKey?: string): string[] 
 
 /** Radial menü: butonları FAB merkezli yarım daire yayına dizer. */
 function arcPosition(index: number, total: number, radius: number) {
-  // 170° → 10° arası yay (alt kenara yapışık FAB'dan yukarı doğru), tek eleman tepede
-  const start = (170 * Math.PI) / 180
-  const end = (10 * Math.PI) / 180
+  // 164° → 16° arası yay (alt kenara yapışık FAB'dan yukarı doğru), tek eleman tepede.
+  // Uçlar biraz içeri alındı: etiket balonları ekran kenarına taşmasın.
+  const start = (164 * Math.PI) / 180
+  const end = (16 * Math.PI) / 180
   const t = total === 1 ? 0.5 : index / (total - 1)
   const angle = start + (end - start) * t
   return { x: Math.cos(angle) * radius, y: -Math.sin(angle) * radius }
@@ -188,82 +190,137 @@ export default function QuickMenu() {
     router.push(href)
   }
 
+  // ESC menüyü kapatsın (açıkken sayfanın geri kalanı zaten karartma ile kilitli).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   return (
     <>
-      {/* Karartma */}
+      {/* Karartma — menü açıkken arka plan yumuşak bir vinyetle geri çekilir */}
       <AnimatePresence>
         {open && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-[#3b2330]/30 backdrop-blur-[2px]"
+            transition={{ duration: 0.22 }}
+            className="fixed inset-0 z-[70] backdrop-blur-[3px]"
+            style={{ background: 'radial-gradient(120% 90% at 50% 100%, rgba(122,41,64,0.42) 0%, rgba(59,35,48,0.34) 45%, rgba(59,35,48,0.22) 100%)' }}
             onClick={() => setOpen(false)}
           />
         )}
       </AnimatePresence>
 
       {/* FAB + radial yay */}
-      <div className="fixed bottom-16 left-1/2 z-[75] -translate-x-1/2 lg:bottom-0">
+      <div className="pointer-events-none fixed bottom-16 left-1/2 z-[75] -translate-x-1/2 lg:bottom-0">
+        {/* Açıkken FAB'ın arkasında ışık halesi */}
+        <AnimatePresence>
+          {open && (
+            <motion.span
+              key="glow"
+              aria-hidden
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ duration: 0.3 }}
+              className="absolute left-1/2 top-1/2 -ml-[190px] -mt-[190px] h-[380px] w-[380px] rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(255,214,228,0.30) 0%, rgba(255,214,228,0) 62%)' }}
+            />
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
           {open &&
             actions.map((action, i) => {
-              const pos = arcPosition(i, actions.length, 130)
+              const pos = arcPosition(i, actions.length, 148)
               const Icon = action.icon
               return (
                 <motion.button
                   key={action.id}
-                  initial={{ x: 0, y: 0, scale: 0, opacity: 0 }}
+                  initial={{ x: 0, y: 0, scale: 0.3, opacity: 0 }}
                   animate={{ x: pos.x, y: pos.y, scale: 1, opacity: 1 }}
-                  exit={{ x: 0, y: 0, scale: 0, opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 380, damping: 24, delay: i * 0.035 }}
+                  exit={{ x: 0, y: 0, scale: 0.3, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 26, delay: i * 0.04 }}
+                  whileHover={{ scale: 1.07 }}
+                  whileTap={{ scale: 0.94 }}
                   onClick={() => go(action.href)}
-                  className="group absolute left-1/2 top-1/2 -ml-7 -mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-[#3b2330] text-[#f4d7c3] shadow-lg shadow-[#3b2330]/40 ring-1 ring-[#b76e79]/40 transition-colors hover:bg-[#7a2940] hover:text-white"
-                  title={action.label}
+                  className="pointer-events-auto group absolute left-1/2 top-1/2 -ml-[44px] -mt-[44px] flex w-[88px] flex-col items-center gap-1.5"
                 >
-                  <Icon className="h-6 w-6" />
-                  <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#3b2330] px-3 py-1 text-xs font-medium text-[#f4d7c3] opacity-0 shadow transition-opacity group-hover:opacity-100">
+                  <span className="grid h-14 w-14 place-items-center rounded-full border border-white/70 bg-gradient-to-b from-white to-[#fff1f6] text-[#a63e5f] shadow-[0_18px_34px_-16px_rgba(59,35,48,0.6)] transition-colors group-hover:from-[#c85776] group-hover:to-[#a63e5f] group-hover:text-white">
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <span className="max-w-[88px] rounded-full bg-[#3b2330]/85 px-2 py-0.5 text-center text-[10.5px] font-semibold leading-tight text-[#ffe7ef] shadow-[0_8px_18px_-10px_rgba(0,0,0,0.6)] backdrop-blur-sm">
                     {action.label}
                   </span>
                 </motion.button>
               )
             })}
 
-          {/* Düzenle butonu — yönetici kurum menüsünü, personel kendi menüsünü düzenler */}
+          {/* Düzenle — FAB'ın TAM ÜSTÜNDE, ortalanmış.
+              DİKKAT: motion `transform`u yazdığı için `-translate-x-1/2` iç öğeye verilemez;
+              ortalama dıştaki statik katmanda yapılır, animasyon içeride kalır. */}
           {open && (
-            <motion.button
-              key="edit"
-              initial={{ y: 0, scale: 0, opacity: 0 }}
-              animate={{ y: -2, x: 85, scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 24, delay: actions.length * 0.035 }}
-              onClick={() => {
-                setOpen(false)
-                setEditing(true)
-              }}
-              className="absolute left-1/2 top-1/2 -ml-5 -mt-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#b76e79] text-white shadow-md ring-1 ring-white/30 hover:bg-[#7a2940]"
-              title="Hızlı menüyü düzenle"
-            >
-              <Settings2 className="h-4 w-4" />
-            </motion.button>
+            <div key="edit" className="pointer-events-none absolute bottom-full left-1/2 z-10 -translate-x-1/2 pb-1.5">
+              <motion.button
+                initial={{ y: 14, scale: 0.8, opacity: 0 }}
+                animate={{ y: 0, scale: 1, opacity: 1 }}
+                exit={{ y: 14, scale: 0.8, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 26, delay: actions.length * 0.04 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => { setOpen(false); setEditing(true) }}
+                className="pointer-events-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0d9e2] bg-white/95 px-3.5 py-1.5 text-[11px] font-semibold text-[#a63e5f] shadow-[0_14px_30px_-14px_rgba(59,35,48,0.6)] backdrop-blur-sm transition-colors hover:bg-[#fff1f6]"
+                title="Hızlı menüyü düzenle"
+              >
+                <Settings2 className="h-3.5 w-3.5" /> Menüyü düzenle
+              </motion.button>
+            </div>
           )}
         </AnimatePresence>
 
-        <motion.button
-          onClick={() => setOpen((v) => !v)}
-          whileTap={{ scale: 0.95 }}
-          className="relative flex h-12 w-24 items-start justify-center rounded-t-full bg-gradient-to-b from-[#7a2940] to-[#3b2330] pt-3 text-[#f4d7c3] shadow-xl shadow-[#7a2940]/40 ring-1 ring-[#b76e79]/50"
-          title="Hızlı menü"
-        >
-          <motion.span
-            key={open ? 'x' : 'menu'}
-            initial={{ rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            transition={{ duration: 0.2 }}
+        {/* FAB — açık zeminli kavisli taban + markalı bordo yuvarlak buton */}
+        <div className="pointer-events-none relative flex h-[64px] w-[148px] items-end justify-center">
+          <span
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 h-[40px] rounded-t-[74px] border border-b-0 border-[#f0d9e2] bg-white/90 shadow-[0_-12px_34px_-16px_rgba(122,41,64,0.45)] backdrop-blur-md"
+          />
+          <span
+            aria-hidden
+            className="absolute inset-x-12 bottom-[38px] h-[2px] rounded-full opacity-70"
+            style={{ background: 'linear-gradient(90deg, transparent, #f0d9e2 35%, #d9a441 50%, #f0d9e2 65%, transparent)' }}
+          />
+
+          <motion.button
+            onClick={() => setOpen((v) => !v)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.93 }}
+            className="pointer-events-auto absolute bottom-[12px] grid h-[60px] w-[60px] place-items-center rounded-full bg-gradient-to-br from-[#e0617f] via-[#c85776] to-[#8e3f5b] text-white shadow-[0_20px_38px_-16px_rgba(140,50,80,0.95)] ring-[3px] ring-white"
+            title="Hızlı menü"
+            aria-label="Hızlı menü"
+            aria-expanded={open}
           >
-            {open ? <X className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
-          </motion.span>
-        </motion.button>
+            <span aria-hidden className="absolute inset-[3px] rounded-full ring-1 ring-white/35" />
+            <motion.span
+              className="relative"
+              animate={{ rotate: open ? 90 : 0 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+            >
+              {open ? <X className="h-[26px] w-[26px]" /> : <MenuIcon className="h-[26px] w-[26px]" />}
+            </motion.span>
+            {!open && (
+              <motion.span
+                aria-hidden
+                className="absolute inset-0 rounded-full ring-2 ring-[#e78ba8]/60"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.55, 0, 0.55] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
+          </motion.button>
+        </div>
       </div>
 
       {/* Düzenleme modalı */}
@@ -273,109 +330,158 @@ export default function QuickMenu() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-[#3b2330]/50 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-[#3b2330]/45 p-4 backdrop-blur-sm"
             onClick={() => setEditing(false)}
           >
             <motion.div
-              initial={{ scale: 0.92, y: 16, opacity: 0 }}
+              initial={{ scale: 0.94, y: 18, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.92, y: 16, opacity: 0 }}
+              exit={{ scale: 0.94, y: 18, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-              className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"
+              className="flex w-full max-w-lg flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)]"
+              style={{ maxHeight: 'min(88dvh, 760px)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between bg-gradient-to-r from-[#7a2940] to-[#3b2330] px-5 py-4 text-white">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-[#f4d7c3]" />
-                  <div>
-                    <h3 className="text-sm font-semibold">Hızlı Menüyü Düzenle</h3>
-                    <p className="text-xs text-white/70">
-                      En fazla {MAX_ITEMS} işlem · {ids.length} seçili
-                    </p>
-                  </div>
-                </div>
-                <button onClick={() => setEditing(false)} className="rounded-full p-1 hover:bg-white/15">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="max-h-[60vh] space-y-1 overflow-y-auto p-4">
-                {/* Seçililer (sıralanabilir) */}
-                {ids.map((id) => {
-                  const action = allowedCatalog.find((a) => a.id === id)
-                  if (!action) return null
-                  const Icon = action.icon
-                  return (
-                    <div
-                      key={id}
-                      className="flex items-center gap-3 rounded-2xl border border-[#b76e79]/30 bg-[#fff7fa] px-3 py-2"
-                    >
-                      <GripVertical className="h-4 w-4 text-[#b76e79]/60" />
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3b2330] text-[#f4d7c3]">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="flex-1 text-sm font-medium text-[#3b2330]">{action.label}</span>
-                      <button
-                        onClick={() => move(id, -1)}
-                        className="rounded-lg px-1.5 py-0.5 text-xs text-[#7a2940] hover:bg-[#7a2940]/10"
-                        title="Yukarı taşı"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => move(id, 1)}
-                        className="rounded-lg px-1.5 py-0.5 text-xs text-[#7a2940] hover:bg-[#7a2940]/10"
-                        title="Aşağı taşı"
-                      >
-                        ↓
-                      </button>
-                      <button
-                        onClick={() => toggleId(id)}
-                        className="rounded-lg p-1 text-[#7a2940] hover:bg-[#7a2940]/10"
-                        title="Kaldır"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+              {/* Başlık */}
+              <div className="relative shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f8] via-white to-[#fff2f6] px-5 py-4">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+                  style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 22%, #d9a441 50%, #ffd3df 78%, transparent)' }}
+                />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+                      <Sparkles className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-[15.5px] font-bold text-[#2b1e29]">Hızlı menüyü düzenle</h3>
+                      <p className="mt-0.5 text-[11.5px] text-[#705a66]">
+                        Alt menüde görünecek kısayolları seç ve sırala.
+                      </p>
                     </div>
-                  )
-                })}
+                  </div>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"
+                    aria-label="Kapat"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
 
-                <p className="px-1 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-[#b76e79]">
-                  Eklenebilir işlemler
-                </p>
-                {allowedCatalog.filter((a) => !ids.includes(a.id)).map((action) => {
-                  const Icon = action.icon
-                  const full = ids.length >= MAX_ITEMS
-                  return (
-                    <button
-                      key={action.id}
-                      onClick={() => toggleId(action.id)}
-                      disabled={full}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-left transition-colors hover:border-[#b76e79]/30 hover:bg-[#fff7fa] disabled:opacity-40"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4d7c3]/60 text-[#7a2940]">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="flex-1 text-sm text-[#3b2330]">{action.label}</span>
-                      <Plus className="h-4 w-4 text-[#b76e79]" />
-                    </button>
-                  )
-                })}
+                {/* Doluluk göstergesi */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+                    <span
+                      className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf] transition-all"
+                      style={{ width: `${Math.round((ids.length / MAX_ITEMS) * 100)}%` }}
+                    />
+                  </span>
+                  <span className="shrink-0 text-[10.5px] font-semibold text-[#705a66]">{ids.length}/{MAX_ITEMS} kısayol</span>
+                </div>
               </div>
 
-              <div className="border-t border-[#b76e79]/20 px-4 py-3 text-right">
-                <button
-                  onClick={() => save(defaultIds)}
-                  className="mr-2 rounded-xl px-3 py-1.5 text-sm text-[#7a2940] hover:bg-[#7a2940]/10"
-                >
-                  Varsayılana dön
-                </button>
-                <button
-                  onClick={() => setEditing(false)}
-                  className="rounded-xl bg-gradient-to-r from-[#7a2940] to-[#3b2330] px-4 py-1.5 text-sm font-medium text-white shadow"
-                >
-                  Tamam
-                </button>
+              {/* Gövde */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Menüdeki sıra</div>
+                <div className="mt-2 space-y-1.5">
+                  {ids.map((id, index) => {
+                    const action = allowedCatalog.find((a) => a.id === id)
+                    if (!action) return null
+                    const Icon = action.icon
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-2.5 rounded-[14px] border border-[#f0dae2] bg-[#fffafc] px-3 py-2.5"
+                      >
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[10.5px] font-bold text-[#a3576f] ring-1 ring-[#f0d9e2]">
+                          {index + 1}
+                        </span>
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#c85776] to-[#a63e5f] text-white">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#352432]">{action.label}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => move(id, -1)}
+                            disabled={index === 0}
+                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#a3576f] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6] disabled:opacity-30"
+                            title="Yukarı taşı"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => move(id, 1)}
+                            disabled={index === ids.length - 1}
+                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#a3576f] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6] disabled:opacity-30"
+                            title="Aşağı taşı"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => toggleId(id)}
+                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100"
+                            title="Menüden çıkar"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {ids.length === 0 && (
+                    <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] text-[#705a66]">
+                      Menü boş — aşağıdan kısayol ekle.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Eklenebilir işlemler</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {allowedCatalog.filter((a) => !ids.includes(a.id)).map((action) => {
+                    const Icon = action.icon
+                    const full = ids.length >= MAX_ITEMS
+                    return (
+                      <button
+                        key={action.id}
+                        onClick={() => toggleId(action.id)}
+                        disabled={full}
+                        className="flex items-center gap-2.5 rounded-[14px] border border-[#ead8df] bg-white px-3 py-2.5 text-left transition-colors hover:border-[#efbfd0] hover:bg-[#fff7fa] disabled:opacity-40"
+                        title={full ? `En fazla ${MAX_ITEMS} kısayol eklenebilir` : undefined}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[#a63e5f]">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[#4a3a44]">{action.label}</span>
+                        <Plus className="h-4 w-4 shrink-0 text-[#c85776]" />
+                      </button>
+                    )
+                  })}
+                  {allowedCatalog.filter((a) => !ids.includes(a.id)).length === 0 && (
+                    <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11.5px] text-[#705a66] sm:col-span-2">
+                      Tüm işlemler menüde.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Alt bar */}
+              <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => save(defaultIds)}
+                    className="inline-flex min-h-10 items-center rounded-[12px] border border-[#ead8df] bg-white px-3.5 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0]"
+                  >
+                    Varsayılana dön
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-5 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                  >
+                    Tamam
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

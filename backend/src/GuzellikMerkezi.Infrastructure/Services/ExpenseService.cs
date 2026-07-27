@@ -2,6 +2,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Expenses;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,11 +12,13 @@ public sealed class ExpenseService : IExpenseService
 {
     private readonly GuzellikDbContext _db;
     private readonly IAuditLogger _audit;
+    private readonly ICurrentUser _currentUser;
 
-    public ExpenseService(GuzellikDbContext db, IAuditLogger audit)
+    public ExpenseService(GuzellikDbContext db, IAuditLogger audit, ICurrentUser currentUser)
     {
         _db = db;
         _audit = audit;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<PagedResult<BusinessExpenseDto>>> ListAsync(Guid tenantId, ExpenseFilter filter, PageRequest pageRequest, CancellationToken cancellationToken = default)
@@ -109,6 +112,12 @@ public sealed class ExpenseService : IExpenseService
             request.StaffMemberId,
             request.PeriodLabel,
             request.Reference);
+
+        // Gideri/maaşı KAYDEDEN zaten onay makamıysa (kurum ya da şube yöneticisi) kayıt
+        // "onay bekliyor" olarak durmaz — kendi kendini onaylaması anlamsız. Personelin girdiği
+        // kayıt beklemede kalır; onu yönetici onaylar (personel yazma akışı zaten onay kapısından geçer).
+        if (_currentUser.Role is UserRole.InstitutionOwner or UserRole.BranchManager or UserRole.PlatformAdmin)
+            expense.Approve();
 
         _db.BusinessExpenses.Add(expense);
         await _db.SaveChangesAsync(cancellationToken);

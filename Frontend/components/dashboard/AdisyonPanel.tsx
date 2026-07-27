@@ -7,7 +7,10 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiProduct, ApiService, ApiServicePackage, ApiStaff, AdisyonItemTypeKey } from '@/lib/types'
-import { CalendarDays, CheckCircle2, Plus, ReceiptText, Star, Trash2, X } from 'lucide-react'
+import {
+  Banknote, Boxes, CalendarDays, CheckCircle2, ChevronDown, Gift, Package, Percent,
+  Plus, ReceiptText, Sparkles, Star, Ticket, Trash2, X,
+} from 'lucide-react'
 
 const TYPE_LABELS: Record<AdisyonItemTypeKey, string> = {
   Service: 'Hizmet',
@@ -27,6 +30,27 @@ const TYPE_TONES: Record<AdisyonItemTypeKey, string> = {
   Payment: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Discount: 'border-rose-300/40 bg-rose-50 text-rose-700',
   PackageSale: 'border-fuchsia-300/40 bg-fuchsia-50 text-fuchsia-700',
+}
+
+/** Kalem satırındaki renk şeridi + ikon — fiş bir bakışta okunsun. */
+const TYPE_ICONS: Record<AdisyonItemTypeKey, typeof Sparkles> = {
+  Service: Sparkles,
+  Product: Package,
+  PackageUse: Ticket,
+  Extra: Plus,
+  Payment: Banknote,
+  Discount: Percent,
+  PackageSale: Boxes,
+}
+
+const TYPE_BARS: Record<AdisyonItemTypeKey, string> = {
+  Service: 'bg-sky-400',
+  Product: 'bg-violet-400',
+  PackageUse: 'bg-amber-400',
+  Extra: 'bg-slate-400',
+  Payment: 'bg-emerald-500',
+  Discount: 'bg-rose-400',
+  PackageSale: 'bg-fuchsia-400',
 }
 
 const PAYMENT_METHODS = ['Nakit', 'Kart', 'Havale/EFT'] as const
@@ -65,6 +89,8 @@ export default function AdisyonPanel({
   const [loyaltyPointsInput, setLoyaltyPointsInput] = useState('')
   const [giftSel, setGiftSel] = useState('')
   const [couponCode, setCouponCode] = useState('')
+  // İndirim/hediye bölümü varsayılan kapalı — fiş sade kalsın, gerekince açılsın.
+  const [perksOpen, setPerksOpen] = useState(false)
 
   const { data, loading, reload } = useApiQuery<{
     adisyon: ApiAdisyon | null
@@ -295,371 +321,482 @@ export default function AdisyonPanel({
     await refresh()
   }
 
+  // Fiş özeti: kalan ödenecek + tahsilat ilerlemesi (başlıktaki büyük rakam).
+  const due = adisyon ? Math.max(0, adisyon.chargeTotal - adisyon.paymentTotal) : 0
+  const overpaid = adisyon ? Math.max(0, adisyon.paymentTotal - adisyon.chargeTotal) : 0
+  const paidPct = adisyon && adisyon.chargeTotal > 0
+    ? Math.min(100, Math.round((adisyon.paymentTotal / adisyon.chargeTotal) * 100))
+    : 0
+
+  // Kalem ekleme önizlemesi: seçilen katalog fiyatı × adet (kullanıcı tutarı boş bıraksa da görünür).
+  const selectedRefPrice =
+    form.type === 'Service' || form.type === 'PackageUse'
+      ? Number(services.find((s) => s.id === form.refId)?.price || 0)
+      : form.type === 'Product'
+        ? Number(products.find((p) => p.id === form.refId)?.salePrice || 0)
+        : form.type === 'PackageSale'
+          ? Number(packages.find((p) => p.id === form.refId)?.totalPrice || 0)
+          : 0
+  const effectiveUnit = form.type === 'PackageUse' ? 0 : (Number(form.unitPrice) || selectedRefPrice)
+  const previewQty = form.type === 'Payment' || form.type === 'Discount' ? 1 : Math.max(1, Number(form.quantity) || 1)
+  const previewTotal = effectiveUnit * previewQty
+
+  const fieldClass =
+    'w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none transition-colors focus:border-[#c85776]'
+  const labelClass = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#7e5f6e]'
+
   return (
-    <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
-          <ReceiptText className="h-3.5 w-3.5" /> Adisyon
+    <div className="overflow-hidden rounded-[20px] border border-[#ead8df]/80 bg-white shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+      {/* ---------- BAŞLIK: durum + ödenecek tutar ---------- */}
+      <div className="relative border-b border-[#f2e2e9] bg-gradient-to-br from-[#fff5f8] via-white to-[#fff1f6] px-4 py-3.5">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+          style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 22%, #d9a441 50%, #ffd3df 78%, transparent)' }}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+              <ReceiptText className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Adisyon</div>
+              <div className="truncate text-[13px] font-bold text-[#352432]">
+                {adisyon
+                  ? `${adisyon.items.length} kalem${adisyon.openedAtUtc ? ` · ${adisyon.openedAtUtc.slice(0, 10)}` : ''}`
+                  : 'Açık adisyon yok'}
+              </div>
+            </div>
+          </div>
+          {adisyon && (
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[9.5px] font-bold text-amber-700">● AÇIK</span>
+              <div className="text-right">
+                <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">
+                  {overpaid > 0 ? 'Fazla tahsilat' : 'Ödenecek'}
+                </div>
+                <div className={`font-display text-[26px] leading-7 tabular-nums ${overpaid > 0 ? 'text-emerald-700' : 'text-[#352432]'}`}>
+                  {formatTL(overpaid > 0 ? overpaid : due)}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        {adisyon && (
-          <span className="rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest text-amber-700">
-            Açık · {adisyon.items.length} kalem
-          </span>
+        {adisyon && adisyon.chargeTotal > 0 && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+              <span className="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{ width: `${paidPct}%` }} />
+            </span>
+            <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">%{paidPct} tahsil edildi</span>
+          </div>
         )}
       </div>
 
-      {error && (
-        <div className="mb-2 rounded-[12px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{error}</div>
-      )}
+      <div className="p-4">
+        {error && (
+          <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] font-medium text-rose-700">{error}</div>
+        )}
 
-      {!adisyon ? (
-        <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center">
-          <p className="text-[12px] text-[#352432]/55">
-            Açık adisyon yok. İşlemler önce adisyona düşer; onaylayınca cariye + kasaya aktarılır.
-          </p>
-          <button
-            type="button"
-            disabled={busy || loading}
-            onClick={openAdisyon}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#c85776] px-4 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <Plus className="h-3.5 w-3.5" /> Adisyon aç
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Kalemler */}
-          <div className="space-y-1.5">
-            {adisyon.items.length === 0 && (
-              <div className="rounded-[12px] border border-[#f0e0e6] bg-[#fffafb] px-3 py-2 text-center text-[11px] text-[#352432]/45">
-                Henüz kalem yok — aşağıdan ekleyin.
-              </div>
-            )}
-            {adisyon.items.map((it) => (
-              <div key={it.id} className="flex items-center justify-between gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2">
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] font-mono uppercase ${TYPE_TONES[it.type]}`}>
-                    {TYPE_LABELS[it.type]}
-                  </span>
-                  <span className="truncate text-[12px] text-[#352432]">
-                    {it.description}
-                    {it.quantity > 1 && <span className="text-[#352432]/45"> ×{it.quantity}</span>}
-                    {it.staffName && <span className="text-[#352432]/45"> · {it.staffName}</span>}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className={`font-mono text-[12px] tabular-nums ${it.type === 'Payment' ? 'text-emerald-700' : it.type === 'Discount' ? 'text-rose-700' : it.coveredByPackage ? 'text-amber-700' : 'text-[#352432]'}`}>
-                    {it.coveredByPackage ? 'paket' : `${it.type === 'Payment' ? '+' : it.type === 'Discount' ? '−' : ''}${formatTL(it.lineTotal)}`}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => removeItemWithRefund(it.id, it.description)}
-                    className="text-[#352432]/30 transition-colors hover:text-rose-600 disabled:opacity-40"
-                    aria-label="Kalemi sil"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+        {!adisyon ? (
+          <div className="rounded-[16px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c05277]">
+              <ReceiptText className="h-6 w-6" />
+            </span>
+            <p className="mx-auto mt-2.5 max-w-[320px] text-[12px] leading-relaxed text-[#705a66]">
+              Açık adisyon yok. Hizmet, ürün ve tahsilat önce adisyona düşer; <b className="text-[#4a3a44]">onaylayınca</b> cariye ve kasaya aktarılır.
+            </p>
+            <button
+              type="button"
+              disabled={busy || loading}
+              onClick={openAdisyon}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-5 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" /> Adisyon aç
+            </button>
           </div>
-
-          {/* Toplamlar */}
-          <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-[12px] border border-[#ead8df]/65 bg-[#fff1f6]/72 text-center">
-            <div className="bg-white p-2">
-              <div className="text-[8px] font-mono uppercase text-[#352432]/40">Borç</div>
-              <div className="mt-0.5 font-display text-[14px] tabular-nums text-rose-700">{formatTL(adisyon.chargeTotal)}</div>
-            </div>
-            <div className="bg-white p-2">
-              <div className="text-[8px] font-mono uppercase text-[#352432]/40">Tahsilat</div>
-              <div className="mt-0.5 font-display text-[14px] tabular-nums text-emerald-700">{formatTL(adisyon.paymentTotal)}</div>
-            </div>
-            <div className="bg-white p-2">
-              <div className="text-[8px] font-mono uppercase text-[#352432]/40">Net</div>
-              <div className={`mt-0.5 font-display text-[14px] tabular-nums ${net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatTL(net)}</div>
-            </div>
-          </div>
-
-          {/* Sadakat puanı — indirim veya hediye olarak kullan */}
-          <div className="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/40 p-2.5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-amber-700">
-                <Star className="h-3.5 w-3.5" /> Sadakat Puanı
-              </span>
-              <span className="rounded-full border border-amber-300/50 bg-white px-2.5 py-0.5 font-display text-[13px] tabular-nums text-amber-700">{loyaltyBalance}P</span>
-            </div>
-            {loyaltyBalance > 0 ? (
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={1}
-                    max={loyaltyBalance}
-                    value={loyaltyPointsInput}
-                    onChange={(e) => setLoyaltyPointsInput(e.target.value)}
-                    placeholder={`İndirim puanı (1P = 1₺)`}
-                    className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
-                  />
-                  <button
-                    type="button"
-                    disabled={busy || !Number(loyaltyPointsInput)}
-                    onClick={() => redeemDiscount(Number(loyaltyPointsInput))}
-                    className="shrink-0 rounded-[10px] border border-amber-300/60 bg-amber-100 px-3 py-1.5 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-200 disabled:opacity-40"
-                  >
-                    İndirim
-                  </button>
+        ) : (
+          <>
+            {/* ---------- KALEMLER ---------- */}
+            <div className="overflow-hidden rounded-[14px] border border-[#f0e0e6]">
+              {adisyon.items.length === 0 && (
+                <div className="bg-[#fffafb] px-3 py-6 text-center text-[11.5px] text-[#705a66]">
+                  Henüz kalem yok — aşağıdan hizmet, ürün veya tahsilat ekleyin.
                 </div>
-                {hasGiftable ? (
-                  <div className="flex items-center gap-1.5">
-                    <select
-                      value={giftSel}
-                      onChange={(e) => setGiftSel(e.target.value)}
-                      className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
+              )}
+              {adisyon.items.map((it, idx) => {
+                const Icon = TYPE_ICONS[it.type]
+                return (
+                  <div
+                    key={it.id}
+                    className={`group relative flex items-center gap-2.5 bg-white py-2.5 pl-3.5 pr-3 ${idx > 0 ? 'border-t border-[#f6ebef]' : ''}`}
+                  >
+                    <span aria-hidden className={`absolute inset-y-1.5 left-0 w-[3px] rounded-full ${TYPE_BARS[it.type]}`} />
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] border ${TYPE_TONES[it.type]}`}>
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-medium text-[#352432]">{it.description}</span>
+                      <span className="block truncate text-[10px] text-[#705a66]">
+                        {TYPE_LABELS[it.type]}
+                        {it.quantity > 1 ? ` · ${it.quantity} adet × ${formatTL(it.unitPrice)}` : ''}
+                        {it.staffName ? ` · ${it.staffName}` : ''}
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 font-display text-[14px] tabular-nums ${
+                        it.type === 'Payment' ? 'text-emerald-700' : it.type === 'Discount' ? 'text-rose-700' : it.coveredByPackage ? 'text-amber-700' : 'text-[#352432]'
+                      }`}
                     >
-                      <option value="">Hediye seç…</option>
-                      {giftableServices.length > 0 && (
-                        <optgroup label="Hizmetler">
-                          {giftableServices.map((s) => (
-                            <option key={s.id} value={`svc:${s.id}`} disabled={s.loyaltyPointCost > loyaltyBalance}>
-                              {s.name} · {s.loyaltyPointCost}P{s.loyaltyPointCost > loyaltyBalance ? ' · yetersiz' : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {giftablePackages.length > 0 && (
-                        <optgroup label="Paketler">
-                          {giftablePackages.map((p) => (
-                            <option key={p.id} value={`pkg:${p.id}`} disabled={p.loyaltyPointCost > loyaltyBalance}>
-                              {p.name} · {p.loyaltyPointCost}P{p.loyaltyPointCost > loyaltyBalance ? ' · yetersiz' : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                      {it.coveredByPackage ? 'paketten' : `${it.type === 'Payment' ? '+' : it.type === 'Discount' ? '−' : ''}${formatTL(it.lineTotal)}`}
+                    </span>
                     <button
                       type="button"
-                      disabled={busy || !giftSel}
-                      onClick={() => redeemGift(giftSel)}
-                      className="shrink-0 rounded-[10px] border border-amber-300/60 bg-amber-100 px-3 py-1.5 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-200 disabled:opacity-40"
+                      disabled={busy}
+                      onClick={() => removeItemWithRefund(it.id, it.description)}
+                      className="shrink-0 rounded-md p-1 text-[#c2a8b4] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                      aria-label="Kalemi sil"
                     >
-                      Hediye Et
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                ) : (
-                  <div className="flex items-center rounded-[10px] border border-dashed border-amber-300/60 bg-white/60 px-2.5 py-1.5 text-[10px] leading-snug text-amber-700/70">
-                    Hediye edilebilir hizmet/paket yok. Katalogda hizmet veya pakete sadakat puanı belirleyin.
+                )
+              })}
+            </div>
+
+            {/* ---------- TOPLAMLAR ---------- */}
+            <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#f0dae2] bg-[#f7e9ee] text-center">
+              <div className="bg-white px-2 py-2.5">
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">Borç</div>
+                <div className="font-display text-[15px] tabular-nums text-rose-700">{formatTL(adisyon.chargeTotal)}</div>
+              </div>
+              <div className="bg-white px-2 py-2.5">
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">Tahsilat</div>
+                <div className="font-display text-[15px] tabular-nums text-emerald-700">{formatTL(adisyon.paymentTotal)}</div>
+              </div>
+              <div className="bg-white px-2 py-2.5">
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">{overpaid > 0 ? 'Fazla' : 'Kalan'}</div>
+                <div className={`font-display text-[15px] tabular-nums ${overpaid > 0 ? 'text-emerald-700' : due > 0 ? 'text-[#352432]' : 'text-emerald-700'}`}>
+                  {formatTL(overpaid > 0 ? overpaid : due)}
+                </div>
+              </div>
+            </div>
+
+            {/* ---------- İNDİRİM & HEDİYE (katlanır) ---------- */}
+            <div className="mt-3 overflow-hidden rounded-[14px] border border-[#f0e0e6] bg-[#fffafc]">
+              <button
+                type="button"
+                onClick={() => setPerksOpen((o) => !o)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+              >
+                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-[#4a3a44]">
+                  <Gift className="h-4 w-4 text-[#c05277]" /> İndirim & hediye
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9.5px] font-bold text-amber-700">{loyaltyBalance}P</span>
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-[#a3576f] transition-transform duration-300 ${perksOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {perksOpen && (
+                <div className="space-y-2.5 border-t border-[#f6ebef] p-3">
+                  {/* Sadakat puanı */}
+                  <div className="rounded-[12px] border border-amber-200/70 bg-amber-50/40 p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-amber-700">
+                        <Star className="h-3.5 w-3.5" /> Sadakat puanı
+                      </span>
+                      <span className="rounded-full border border-amber-300/50 bg-white px-2.5 py-0.5 font-display text-[13px] tabular-nums text-amber-700">{loyaltyBalance}P</span>
+                    </div>
+                    {loyaltyBalance > 0 ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={1}
+                            max={loyaltyBalance}
+                            value={loyaltyPointsInput}
+                            onChange={(e) => setLoyaltyPointsInput(e.target.value)}
+                            placeholder="İndirim puanı (1P = 1₺)"
+                            className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
+                          />
+                          <button
+                            type="button"
+                            disabled={busy || !Number(loyaltyPointsInput)}
+                            onClick={() => redeemDiscount(Number(loyaltyPointsInput))}
+                            className="shrink-0 rounded-[10px] border border-amber-300/60 bg-amber-100 px-3 py-1.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-200 disabled:opacity-40"
+                          >
+                            İndirim
+                          </button>
+                        </div>
+                        {hasGiftable ? (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={giftSel}
+                              onChange={(e) => setGiftSel(e.target.value)}
+                              className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
+                            >
+                              <option value="">Hediye seç…</option>
+                              {giftableServices.length > 0 && (
+                                <optgroup label="Hizmetler">
+                                  {giftableServices.map((s) => (
+                                    <option key={s.id} value={`svc:${s.id}`} disabled={s.loyaltyPointCost > loyaltyBalance}>
+                                      {s.name} · {s.loyaltyPointCost}P{s.loyaltyPointCost > loyaltyBalance ? ' · yetersiz' : ''}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {giftablePackages.length > 0 && (
+                                <optgroup label="Paketler">
+                                  {giftablePackages.map((p) => (
+                                    <option key={p.id} value={`pkg:${p.id}`} disabled={p.loyaltyPointCost > loyaltyBalance}>
+                                      {p.name} · {p.loyaltyPointCost}P{p.loyaltyPointCost > loyaltyBalance ? ' · yetersiz' : ''}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={busy || !giftSel}
+                              onClick={() => redeemGift(giftSel)}
+                              className="shrink-0 rounded-[10px] border border-amber-300/60 bg-amber-100 px-3 py-1.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-200 disabled:opacity-40"
+                            >
+                              Hediye et
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center rounded-[10px] border border-dashed border-amber-300/60 bg-white/60 px-2.5 py-1.5 text-[10.5px] leading-snug text-amber-700">
+                            Hediye edilebilir hizmet/paket yok. Katalogda sadakat puanı belirleyin.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-[10.5px] text-amber-700">Puan yok — her 10₺ onaylı tahsilat 1 puan kazandırır.</p>
+                    )}
                   </div>
+
+                  {/* Hediye çeki / kupon */}
+                  {giftCardsAllowed && (
+                    <div className="rounded-[12px] border border-violet-200/70 bg-violet-50/40 p-2.5">
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-violet-700">
+                        <Ticket className="h-3.5 w-3.5" /> Hediye çeki / kupon
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon() } }}
+                          placeholder="Kodu girin (ör. YILBASI25)"
+                          className="w-full rounded-[10px] border border-violet-200/80 bg-white px-2.5 py-1.5 font-mono text-[12px] uppercase text-[#352432] outline-none focus:border-violet-400"
+                        />
+                        <button
+                          type="button"
+                          disabled={busy || !couponCode.trim()}
+                          onClick={applyCoupon}
+                          className="shrink-0 rounded-[10px] border border-violet-300/60 bg-violet-100 px-3 py-1.5 text-[11px] font-semibold text-violet-800 transition-colors hover:bg-violet-200 disabled:opacity-40"
+                        >
+                          Uygula
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[10.5px] text-violet-700">İndirim kalemi olarak eklenir; adisyon onaylanınca kod kullanılmış sayılır.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ---------- KALEM EKLE ---------- */}
+            <div className="mt-3 rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3">
+              <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Kalem ekle</div>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(TYPE_LABELS) as AdisyonItemTypeKey[]).map((t) => {
+                  const Icon = TYPE_ICONS[t]
+                  const on = form.type === t
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm({ ...emptyForm, type: t, method: form.method })}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-colors ${
+                        on ? `${TYPE_TONES[t]} ring-1 ring-current/20` : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-white'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" /> {TYPE_LABELS[t]}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
+                {(form.type === 'Service' || form.type === 'PackageUse') && (
+                  <label className="col-span-2 block">
+                    <span className={labelClass}>{form.type === 'PackageUse' ? 'Paketten kullanılacak hizmet' : 'Hizmet'}</span>
+                    <select value={form.refId} onChange={(e) => setForm({ ...form, refId: e.target.value })} className={fieldClass}>
+                      <option value="">Hizmet seç…</option>
+                      {services.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} · {formatTL(Number(s.price || 0))}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {form.type === 'Product' && (
+                  <label className="col-span-2 block">
+                    <span className={labelClass}>Ürün</span>
+                    <select value={form.refId} onChange={(e) => setForm({ ...form, refId: e.target.value })} className={fieldClass}>
+                      <option value="">Ürün seç…</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} · {formatTL(p.salePrice)} (stok {p.currentStock})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {form.type === 'PackageSale' && (
+                  <label className="col-span-2 block">
+                    <span className={labelClass}>Paket</span>
+                    <select value={form.refId} onChange={(e) => setForm({ ...form, refId: e.target.value })} className={fieldClass}>
+                      <option value="">Paket seç…</option>
+                      {packages.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} · {formatTL(p.totalPrice)} · {p.totalSessions} seans</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {(form.type === 'Extra' || form.type === 'Discount' || form.type === 'Payment') && (
+                  <label className="col-span-2 block">
+                    <span className={labelClass}>Açıklama</span>
+                    <input
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      placeholder={form.type === 'Payment' ? 'Tahsilat açıklaması (opsiyonel)' : 'Açıklama'}
+                      className={fieldClass}
+                    />
+                  </label>
+                )}
+
+                {form.type === 'Payment' && (
+                  <label className="block">
+                    <span className={labelClass}>Ödeme yöntemi</span>
+                    <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} className={fieldClass}>
+                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                )}
+
+                {form.type !== 'PackageUse' && (
+                  <label className="block">
+                    <span className={labelClass}>{form.type === 'Payment' || form.type === 'Discount' ? 'Tutar' : 'Birim fiyat'}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.unitPrice || ''}
+                      onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
+                      placeholder={selectedRefPrice > 0 ? `Katalog: ${formatTL(selectedRefPrice)}` : '0'}
+                      className={fieldClass}
+                    />
+                  </label>
+                )}
+
+                {form.type !== 'Payment' && form.type !== 'Discount' && (
+                  <label className="block">
+                    <span className={labelClass}>Adet</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
+                      className={fieldClass}
+                    />
+                  </label>
+                )}
+
+                {(form.type === 'Service' || form.type === 'Product' || form.type === 'Extra' || form.type === 'PackageUse' || form.type === 'PackageSale') && (
+                  <label className="col-span-2 block">
+                    <span className={labelClass}>Personel (opsiyonel)</span>
+                    <select value={form.staffMemberId} onChange={(e) => setForm({ ...form, staffMemberId: e.target.value })} className={fieldClass}>
+                      <option value="">Seçilmedi</option>
+                      {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
                 )}
               </div>
-            ) : (
-              <p className="mt-1.5 text-[10px] text-amber-700/70">Puan yok — her 10₺ onaylı tahsilat 1 puan kazandırır.</p>
-            )}
-          </div>
 
-          {/* Hediye çeki / kupon kodu */}
-          {giftCardsAllowed && (
-            <div className="mt-3 rounded-[14px] border border-violet-200/70 bg-violet-50/40 p-2.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-violet-700">
-                <ReceiptText className="h-3.5 w-3.5" /> Hediye Çeki / Kupon
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <input
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon() } }}
-                  placeholder="Kodu girin (ör. YILBASI25)"
-                  className="w-full rounded-[10px] border border-violet-200/80 bg-white px-2.5 py-1.5 font-mono text-[12px] uppercase text-[#352432] outline-none focus:border-violet-400"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !couponCode.trim()}
-                  onClick={applyCoupon}
-                  className="shrink-0 rounded-[10px] border border-violet-300/60 bg-violet-100 px-3 py-1.5 text-[11px] font-medium text-violet-800 transition-colors hover:bg-violet-200 disabled:opacity-40"
-                >
-                  Uygula
-                </button>
-              </div>
-              <p className="mt-1 text-[10px] text-violet-700/70">İndirim kalemi olarak eklenir; adisyon onaylanınca kod kullanılmış sayılır.</p>
-            </div>
-          )}
-
-          {/* Kalem ekle */}
-          <div className="mt-3 rounded-[14px] border border-[#f0e0e6] bg-[#fffafb] p-2.5">
-            <div className="flex flex-wrap gap-1.5">
-              {(Object.keys(TYPE_LABELS) as AdisyonItemTypeKey[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setForm({ ...emptyForm, type: t, method: form.method })}
-                  className={`rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide transition-colors ${
-                    form.type === t ? TYPE_TONES[t] : 'border-[#ead8df]/70 bg-white text-[#352432]/50 hover:bg-[#fff4f8]/50'
-                  }`}
-                >
-                  {TYPE_LABELS[t]}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              {(form.type === 'Service' || form.type === 'PackageUse') && (
-                <select
-                  value={form.refId}
-                  onChange={(e) => setForm({ ...form, refId: e.target.value })}
-                  className="col-span-2 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                >
-                  <option value="">Hizmet seç…</option>
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · {formatTL(Number(s.price || 0))}</option>
-                  ))}
-                </select>
-              )}
-              {form.type === 'Product' && (
-                <select
-                  value={form.refId}
-                  onChange={(e) => setForm({ ...form, refId: e.target.value })}
-                  className="col-span-2 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                >
-                  <option value="">Ürün seç…</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} · {formatTL(p.salePrice)} (stok {p.currentStock})</option>
-                  ))}
-                </select>
-              )}
-              {form.type === 'PackageSale' && (
-                <select
-                  value={form.refId}
-                  onChange={(e) => setForm({ ...form, refId: e.target.value })}
-                  className="col-span-2 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                >
-                  <option value="">Paket seç…</option>
-                  {packages.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} · {formatTL(p.totalPrice)} · {p.totalSessions} seans</option>
-                  ))}
-                </select>
-              )}
-              {(form.type === 'Extra' || form.type === 'Discount' || form.type === 'Payment') && (
-                <input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder={form.type === 'Payment' ? 'Tahsilat açıklaması (ops.)' : 'Açıklama'}
-                  className="col-span-2 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                />
-              )}
-
-              {form.type === 'Payment' && (
-                <select
-                  value={form.method}
-                  onChange={(e) => setForm({ ...form, method: e.target.value })}
-                  className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                >
-                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              )}
-
-              {form.type !== 'PackageUse' && (
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.unitPrice || ''}
-                  onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
-                  placeholder={form.type === 'Payment' || form.type === 'Discount' ? 'Tutar' : 'Birim fiyat'}
-                  className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                />
-              )}
-
-              {form.type !== 'Payment' && form.type !== 'Discount' && (
-                <input
-                  type="number"
-                  min={1}
-                  step="1"
-                  value={form.quantity}
-                  onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-                  placeholder="Adet"
-                  className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                />
-              )}
-
-              {(form.type === 'Service' || form.type === 'Product' || form.type === 'Extra' || form.type === 'PackageUse' || form.type === 'PackageSale') && (
-                <select
-                  value={form.staffMemberId}
-                  onChange={(e) => setForm({ ...form, staffMemberId: e.target.value })}
-                  className="col-span-2 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
-                >
-                  <option value="">Personel (ops.)</option>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              )}
-            </div>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={addItem}
-              className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-1.5 text-[11px] font-medium text-[#b14d6c] transition-colors hover:bg-[#ffe6ef] disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" /> Kalem ekle
-            </button>
-          </div>
-
-          {/* Taksitli satış bilgisi — onayda cariye taksitli işlenir */}
-          {adisyon.plannedInstallmentCount > 0 && (
-            <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3 py-2 text-[11px] text-[#b14d6c]">
-              <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                Taksitli satış: {adisyon.plannedInstallmentCount} taksit
-                {adisyon.plannedFirstDueDate ? ` · ilk vade ${adisyon.plannedFirstDueDate}` : ''}. Onaylanınca cariye taksitli işlenir.
-              </span>
-            </div>
-          )}
-
-          {/* Onayla / İptal */}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={busy || adisyon.items.length === 0}
-              onClick={() => run(() => adminApi.approveAdisyon(adisyon.id, tenantId))}
-              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-emerald-600 px-3 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              <CheckCircle2 className="h-4 w-4" /> Onayla → cariye aktar
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={cancelWithRefund}
-              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/70 transition-colors hover:bg-[#fff4f8]/60 disabled:opacity-40"
-            >
-              <X className="h-4 w-4" /> İptal
-            </button>
-          </div>
-
-          {/* Adisyonu tamamen sil (açık adisyon) — şık onay modalı */}
-          <ConfirmDialog
-            destructive
-            title="Adisyonu sil"
-            confirmLabel="Evet, sil"
-            cancelLabel="Vazgeç"
-            onConfirm={doDeleteAdisyon}
-            description={
-              <span className="block space-y-1.5">
-                <span className="block">Bu <b>açık adisyon</b> ve tüm kalemleri kalıcı olarak silinecek.</span>
-                <span className="block">• Kullanılan sadakat puanı iade edilir.</span>
-                <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
-              </span>
-            }
-            trigger={
               <button
                 type="button"
                 disabled={busy}
-                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40"
+                onClick={addItem}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2.5 text-[12px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef] disabled:opacity-50"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil
+                <Plus className="h-4 w-4" />
+                Kalem ekle
+                {previewTotal > 0 && form.type !== 'PackageUse' && (
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#4a3a44]">
+                    {previewQty > 1 ? `${previewQty} × ${formatTL(effectiveUnit)} = ` : ''}{formatTL(previewTotal)}
+                  </span>
+                )}
               </button>
-            }
-          />
-        </>
-      )}
+            </div>
+
+            {/* Taksitli satış bilgisi — onayda cariye taksitli işlenir */}
+            {adisyon.plannedInstallmentCount > 0 && (
+              <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3 py-2 text-[11px] text-[#b14d6c]">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Taksitli satış: {adisyon.plannedInstallmentCount} taksit
+                  {adisyon.plannedFirstDueDate ? ` · ilk vade ${adisyon.plannedFirstDueDate}` : ''}. Onaylanınca cariye taksitli işlenir.
+                </span>
+              </div>
+            )}
+
+            {/* ---------- ONAY / İPTAL / SİL ---------- */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={busy || adisyon.items.length === 0}
+                onClick={() => run(() => adminApi.approveAdisyon(adisyon.id, tenantId))}
+                className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(4,120,87,0.9)] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Onayla → cariye + kasaya aktar
+                {adisyon.items.length > 0 && (
+                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] tabular-nums">{formatTL(adisyon.chargeTotal)}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={cancelWithRefund}
+                className="inline-flex items-center justify-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[11.5px] font-semibold text-[#705a66] transition-colors hover:bg-[#fff4f8] disabled:opacity-40"
+              >
+                <X className="h-4 w-4" /> Adisyonu iptal et
+              </button>
+
+              {/* Adisyonu tamamen sil (açık adisyon) — şık onay modalı */}
+              <ConfirmDialog
+                destructive
+                title="Adisyonu sil"
+                confirmLabel="Evet, sil"
+                cancelLabel="Vazgeç"
+                onConfirm={doDeleteAdisyon}
+                description={
+                  <span className="block space-y-1.5">
+                    <span className="block">Bu <b>açık adisyon</b> ve tüm kalemleri kalıcı olarak silinecek.</span>
+                    <span className="block">• Kullanılan sadakat puanı iade edilir.</span>
+                    <span className="block text-rose-600">Bu işlem geri alınamaz.</span>
+                  </span>
+                }
+                trigger={
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-[11px] border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Adisyonu sil
+                  </button>
+                }
+              />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
+import DashboardHero from '@/components/dashboard/DashboardHero'
 import PackageReportBreakdown from '@/components/dashboard/PackageReportBreakdown'
 import { motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
@@ -46,6 +47,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useBranch } from '@/components/dashboard/BranchContext'
+import { useAuth } from '@/components/dashboard/AuthContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import {
@@ -170,7 +172,7 @@ const toneClasses: Record<QuickAction['tone'], string> = {
   mint: 'border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]',
   violet: 'border-[#eadcf5] bg-[#faf4ff] text-[#8b5aa5]',
   peach: 'border-[#f3dde0] bg-[#fff6f3] text-[#bd6476]',
-  cream: 'border-[#f3e6ce] bg-[#fffaf0] text-[#b08742]',
+  cream: 'border-[#d9e8f6] bg-[#f3f9ff] text-[#3a7ca8]',
 }
 
 type RangePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -358,8 +360,21 @@ const listRow: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } },
 }
 
+// Panelin ortak kart dili: hero ile aynı — krem-beyaz yüzey, üstte altın hairline,
+// köşede yumuşak gül halesi ve hover'da hafif yükselme.
 const cardShell =
-  'relative overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]'
+  'relative overflow-hidden rounded-[24px] border border-[#f3dde5] bg-gradient-to-br from-white via-white to-[#fffafc] shadow-[0_22px_58px_-38px_rgba(120,71,88,0.5)] transition-shadow hover:shadow-[0_28px_66px_-34px_rgba(120,71,88,0.55)]'
+
+/** Kartın üst kenarındaki altın çizgi — marka imzası. */
+function GoldHairline() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+      style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 20%, #d9a441 50%, #ffd3df 80%, transparent)' }}
+    />
+  )
+}
 
 function initials(name: string): string {
   return (
@@ -390,9 +405,13 @@ function SectionCard({
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
       className={`${cardShell} ${className}`}
     >
+      <GoldHairline />
       <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
       <div className="relative flex items-center justify-between gap-3 px-5 pb-3 pt-5">
-        <h2 className="text-[15px] font-semibold tracking-tight text-[#241923]">{title}</h2>
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[#241923]">
+          <span aria-hidden className="h-4 w-[3px] rounded-full bg-gradient-to-b from-[#e0617f] to-[#8e3f5b]" />
+          {title}
+        </h2>
         {action}
       </div>
       <div className="relative">{children}</div>
@@ -469,6 +488,49 @@ function MiniBars({ values = [28, 44, 36, 54, 68, 82] }: { values?: number[] }) 
   )
 }
 
+/** Kart tonuna göre başlık bandı yüzeyi ve grafik rengi. */
+const toneSurface: Record<QuickAction['tone'], string> = {
+  rose: 'from-[#fff1f6] to-[#ffe0eb]',
+  gold: 'from-[#fff8ea] to-[#ffedcd]',
+  violet: 'from-[#f6f1ff] to-[#eae0ff]',
+  mint: 'from-[#eefaf3] to-[#daf2e6]',
+  peach: 'from-[#fff4ee] to-[#ffe4d5]',
+  cream: 'from-[#f3f9ff] to-[#ddecfb]',
+}
+const toneStroke: Record<QuickAction['tone'], string> = {
+  rose: '#c85776', gold: '#c79a45', violet: '#7c5cbf', mint: '#2f9d6b', peach: '#d97845', cream: '#3a7ca8',
+}
+
+/** Kartın altını boydan boya kaplayan yumuşak alan grafiği (dönemin gerçek serisi). */
+function AreaSpark({ values, tone }: { values: number[]; tone: QuickAction['tone'] }) {
+  const max = Math.max(1, ...values)
+  const line = values
+    .map((v, i) => `${(i / Math.max(values.length - 1, 1)) * 100},${30 - (v / max) * 25}`)
+    .join(' ')
+  const stroke = toneStroke[tone]
+  const gid = `spark-${tone}`
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full" aria-hidden>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.30" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,30 ${line} 100,30`} fill={`url(#${gid})`} />
+      <polyline
+        points={line}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.6"
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function DonutGauge({ value }: { value: number }) {
   const percent = Math.max(0, Math.min(100, value))
   return (
@@ -491,6 +553,7 @@ function MetricCard({
   detail,
   subDetail,
   visual,
+  series,
   control,
   tone = 'rose',
 }: {
@@ -499,39 +562,56 @@ function MetricCard({
   value: ReactNode
   detail: ReactNode
   subDetail?: ReactNode
-  visual: ReactNode
+  /** Seri verilmediğinde başlık bandında gösterilen küçük görsel (ör. doluluk halkası). */
+  visual?: ReactNode
+  /** Verilirse kartın altına boydan boya alan grafiği çizilir. */
+  series?: number[]
   control?: ReactNode
   tone?: QuickAction['tone']
 }) {
   return (
     <motion.div
       variants={listRow}
-      whileHover={{ y: -3 }}
+      whileHover={{ y: -4 }}
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-      className={`${cardShell} group min-h-[142px] px-5 py-5`}
+      className={`${cardShell} group flex min-h-[188px] flex-col`}
     >
-      <span aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-[#ffdce8]/38 blur-3xl" />
-      <div className="relative flex h-full flex-col justify-between gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${toneClasses[tone]}`}>
-            <Icon className="h-[19px] w-[19px]" strokeWidth={1.65} />
-          </span>
-          <div className="shrink-0">{visual}</div>
-        </div>
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-[13px] font-semibold leading-4 text-[#2b1e29]">{title}</div>
-            {control}
-          </div>
-          <div className="mt-1.5 text-[30px] font-semibold leading-none tracking-tight text-[#1f1620] tabular-nums">
+      <GoldHairline />
+
+      {/* Renkli başlık bandı: ikon + dönem kontrolü */}
+      <div className={`relative flex min-h-[76px] items-start justify-between gap-3 bg-gradient-to-br ${toneSurface[tone]} px-5 pb-4 pt-5`}>
+        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/45 blur-2xl transition-transform duration-500 group-hover:scale-110" />
+        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] bg-white/85 shadow-[0_12px_26px_-18px_rgba(120,71,88,0.9)] transition-transform duration-300 group-hover:scale-105 ${toneClasses[tone]}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={1.65} />
+        </span>
+        <div className="relative flex shrink-0 flex-col items-end gap-2">{control}</div>
+      </div>
+
+      {/* Gövde: başlık · büyük rakam · rozetler */}
+      <div className="relative flex flex-1 items-end justify-between gap-3 px-5 pb-3 pt-3.5">
+        <div className="min-w-0">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#8a7480]">{title}</div>
+          <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-[#1f1620] tabular-nums">
             {value}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#77616b]">
-            <span>{detail}</span>
-            {subDetail && <span className="font-semibold text-[#45a36b]">{subDetail}</span>}
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+            <span className="rounded-full bg-[#fff4f8] px-2 py-0.5 font-medium text-[#77616b]">{detail}</span>
+            {subDetail && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">{subDetail}</span>
+            )}
           </div>
         </div>
+        {/* Halka gibi büyük görseller gövdede, rakamın yanında durur — renkli bant
+            tüm kartlarda aynı yükseklikte kalsın diye banda konmaz. */}
+        {!series && visual && <div className="shrink-0 pb-0.5">{visual}</div>}
       </div>
+
+      {/* Alt şerit: dönemin gerçek trendi */}
+      {series && series.length > 1 && (
+        <div className="relative h-[52px] w-full">
+          <AreaSpark values={series} tone={tone} />
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -675,13 +755,26 @@ function RevenueChart({
 
 function InsightTile({ title, value, sub, medal, pie }: { title: string; value: string; sub: string; medal?: boolean; pie?: boolean }) {
   return (
-    <div className="relative overflow-hidden rounded-[18px] border border-[#efe1e7] bg-[#fff9fb] p-3">
-      <div className="text-[10px] font-medium text-[#8a7480]">{title}</div>
-      <div className="mt-2 truncate text-[12px] font-semibold text-[#2c202b]">{value}</div>
-      <div className="mt-1 text-[12px] font-semibold text-[#5c3849]">{sub}</div>
-      {medal && <Star className="absolute bottom-3 right-3 h-6 w-6 text-[#d8ad55]" fill="currentColor" strokeWidth={1.4} />}
-      {pie && <div className="absolute bottom-3 right-3 h-7 w-7 rounded-full bg-[conic-gradient(#9c70bb_0_70%,#f0e1f7_70%)]" />}
-    </div>
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+      className="group relative overflow-hidden rounded-[18px] border border-[#f3dde5] bg-gradient-to-br from-white to-[#fffafc] p-3.5 shadow-[0_16px_40px_-32px_rgba(120,71,88,0.55)]"
+    >
+      <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#ffdce8]/40 blur-2xl transition-transform duration-500 group-hover:scale-125" />
+      <div className="relative text-[9.5px] font-semibold uppercase tracking-wide text-[#8a7480]">{title}</div>
+      <div className="relative mt-1.5 truncate text-[15px] font-semibold leading-tight text-[#1f1620]">{value}</div>
+      <div className="relative mt-1.5 inline-block rounded-full bg-[#fff4f8] px-2 py-0.5 text-[10.5px] font-semibold text-[#a3576f]">{sub}</div>
+      {medal && (
+        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#f7d774] to-[#d9a441] text-white shadow-[0_10px_20px_-14px_rgba(120,71,88,0.9)]">
+          <Star className="h-4 w-4" fill="currentColor" strokeWidth={1.4} />
+        </span>
+      )}
+      {pie && (
+        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-[conic-gradient(#9c70bb_0_70%,#f0e1f7_70%)]">
+          <span className="h-4 w-4 rounded-full bg-white" />
+        </span>
+      )}
+    </motion.div>
   )
 }
 
@@ -719,18 +812,29 @@ function ReportKpi({
   danger?: boolean
 }) {
   return (
-    <div className="rounded-[16px] border border-[#efe1e7] bg-white p-3.5">
-      <div className="flex items-center gap-2">
-        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[11px] ${toneClasses[tone]}`}>
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+      className={`group relative flex flex-col overflow-hidden rounded-[18px] border ${
+        danger ? 'border-rose-200' : 'border-[#f3dde5]'
+      } bg-white shadow-[0_16px_40px_-32px_rgba(120,71,88,0.55)] transition-shadow hover:shadow-[0_22px_46px_-30px_rgba(120,71,88,0.6)]`}
+    >
+      {/* Tonlu üst bant */}
+      <div className={`relative flex items-center gap-2 bg-gradient-to-br ${toneSurface[tone]} px-3 py-2.5`}>
+        <span aria-hidden className="pointer-events-none absolute -right-5 -top-6 h-16 w-16 rounded-full bg-white/50 blur-xl transition-transform duration-500 group-hover:scale-125" />
+        <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] bg-white/85 shadow-[0_10px_20px_-16px_rgba(120,71,88,0.9)] ${toneClasses[tone]}`}>
           <Icon className="h-4 w-4" strokeWidth={1.6} />
         </span>
-        <span className="text-[11px] font-medium leading-tight text-[#77616b]">{label}</span>
+        <span className="relative text-[10px] font-semibold uppercase leading-tight tracking-wide text-[#7a6470]">{label}</span>
       </div>
-      <div className={`mt-2 text-[20px] font-semibold tabular-nums tracking-tight ${danger ? 'text-[#c0506a]' : 'text-[#1f1620]'}`}>
-        {value}
+      {/* Rakam + ipucu */}
+      <div className="px-3 pb-3 pt-2.5">
+        <div className={`text-[22px] font-semibold leading-none tabular-nums tracking-tight ${danger ? 'text-[#c0506a]' : 'text-[#1f1620]'}`}>
+          {value}
+        </div>
+        <div className="mt-1.5 inline-block rounded-full bg-[#fff4f8] px-2 py-0.5 text-[10px] font-medium text-[#77616b]">{hint}</div>
       </div>
-      <div className="mt-0.5 text-[10.5px] text-[#9a8590]">{hint}</div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -965,22 +1069,24 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
           <div className="relative mt-3 overflow-x-auto rounded-[18px] border border-[#eee3e7] bg-white/75 px-1 pb-1 pt-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:px-3">
             <div className="h-[280px] min-w-[560px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 22, right: 8, left: -12, bottom: 26 }} barCategoryGap="30%">
+                <BarChart data={chartData} margin={{ top: 26, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
                   <defs>
                     <linearGradient id="installmentCollected" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ebce92" />
-                      <stop offset="100%" stopColor="#cda34e" />
+                      <stop offset="0%" stopColor="#f3dcae" />
+                      <stop offset="55%" stopColor="#e0bd76" />
+                      <stop offset="100%" stopColor="#c69b45" />
                     </linearGradient>
                     <linearGradient id="installmentRemaining" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f6b3ca" />
-                      <stop offset="100%" stopColor="#df769b" />
+                      <stop offset="0%" stopColor="#ffd0e0" />
+                      <stop offset="55%" stopColor="#f39cbb" />
+                      <stop offset="100%" stopColor="#d9648e" />
                     </linearGradient>
                     <linearGradient id="installmentNext" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#ffc3d7" />
                       <stop offset="100%" stopColor="#d95d88" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} stroke="#eee4e8" strokeDasharray="4 5" />
+                  <CartesianGrid vertical={false} stroke="#f7ecf1" strokeDasharray="2 8" strokeWidth={1} />
                   <XAxis
                     dataKey="axisLabel"
                     axisLine={false}
@@ -998,7 +1104,7 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                   />
                   <Tooltip
                     content={<InstallmentTooltip />}
-                    cursor={{ fill: '#fff2f6', opacity: 0.72, radius: 12 }}
+                    cursor={{ fill: '#fff2f6', opacity: 0.9, radius: 14 }}
                     wrapperStyle={{ outline: 'none' }}
                   />
                   <Bar
@@ -1006,8 +1112,8 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     name="Tahsil edildi"
                     stackId="installments"
                     fill="url(#installmentCollected)"
-                    maxBarSize={46}
-                    radius={[0, 0, 9, 9]}
+                    maxBarSize={34}
+                    radius={[0, 0, 10, 10]}
                     animationDuration={850}
                     animationEasing="ease-out"
                   >
@@ -1020,8 +1126,8 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     name="Alınacak"
                     stackId="installments"
                     fill="url(#installmentRemaining)"
-                    maxBarSize={46}
-                    radius={[10, 10, 0, 0]}
+                    maxBarSize={34}
+                    radius={[12, 12, 0, 0]}
                     animationDuration={850}
                     animationEasing="ease-out"
                   >
@@ -1083,6 +1189,7 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
 
 export default function AdminDashboard() {
   const { selectedBranch, selectedInstitutionId, selectedInstitution } = useBranch()
+  const { user } = useAuth()
   const tenantId = guidOrUndefined(selectedInstitutionId)
 
   // Kart ve grafik dönem seçimleri (günlük/haftalık/aylık/yıllık).
@@ -1091,6 +1198,8 @@ export default function AdminDashboard() {
   const [chartRange, setChartRange] = useState<RangePeriod>('weekly')
   // Paket Raporu KPI kartları dönem filtresi (günlük/aylık/yıllık) — varsayılan aylık.
   const [packagePeriod, setPackagePeriod] = useState<RangePeriod>('monthly')
+  // Satış Detayı > Kategori Kırılımı kendi dönemine sahiptir (KPI'ları ve taksit grafiğini etkilemez).
+  const [categoryPeriod, setCategoryPeriod] = useState<RangePeriod>('monthly')
   // Global randevu dönemi (üst seçici): randevu kartı + akış tablosunu sürükler. Diğer kartlar kendi sekmesini korur.
   const [globalPeriod, setGlobalPeriod] = useState<RangePeriod>('daily')
 
@@ -1184,6 +1293,16 @@ export default function AdminDashboard() {
     { initialData: null },
   )
 
+  // Yalnız kategori kırılımı için ayrı pencere (Gün/Hafta/Ay/Yıl) — kendi rapor sorgusu.
+  const catWindow = periodWindow(categoryPeriod, dayStart)
+  const catFromIso = new Date(`${catWindow.startKey}T00:00:00`).toISOString()
+  const catToIso = new Date(`${catWindow.endKey}T00:00:00`).toISOString()
+  const { data: categoryReportData, loading: categoryLoading } = useApiQuery<ApiAccountReport>(
+    () => adminApi.accountReport<ApiAccountReport>(tenantId, 6, catFromIso, catToIso).catch(() => ({}) as ApiAccountReport),
+    [tenantId, catFromIso, catToIso],
+    { initialData: null },
+  )
+
   const customerStats = data?.customersStats || {}
   // Gün → yeni müşteri sayısı (sunucudan gruplu gelir; liste çekilmez).
   const newCustomersByDay = useMemo(() => {
@@ -1219,7 +1338,7 @@ export default function AdminDashboard() {
       .filter((entry: CashFlowEntry) => entry.type === 'income' && entry.date >= startKey && entry.date < endKey)
       .reduce((sum, entry) => sum + entry.amount, 0)
 
-  // [startKey, endKey) içinde kaydı oluşturulan (yeni) danışan sayısı — sunucu gruplu veriden.
+  // [startKey, endKey) içinde kaydı oluşturulan (yeni) müşteri sayısı — sunucu gruplu veriden.
   const countNewCustomersBetween = (startKey: string, endKey: string): number =>
     Object.entries(newCustomersByDay)
       .filter(([key]) => key >= startKey && key < endKey)
@@ -1312,6 +1431,7 @@ export default function AdminDashboard() {
   const reportMonths = report.monthlyInstallments
   // Dönem filtreli paket raporu (KPI kartları); henüz yüklenmediyse genel rapora düş.
   const packageReport = normalizeAccountReport(packageReportData ?? data?.reportResult)
+  const categoryReport = normalizeAccountReport(categoryReportData ?? packageReportData ?? data?.reportResult)
 
   // Bekleyen tahsilat: toplam alacağın (tahsil + kalan) ne kadarı hâlâ borç olarak bekliyor (gauge kartı).
   const collectionBase = report.totalCollected + report.totalReceivable
@@ -1325,28 +1445,28 @@ export default function AdminDashboard() {
 
   const followUps = [
     {
-      title: passiveThresholdDays > 0 ? `${passiveThresholdDays}+ gündür gelmeyen danışanlar` : 'Uzun süredir gelmeyen danışanlar',
+      title: passiveThresholdDays > 0 ? `${passiveThresholdDays}+ gündür gelmeyen müşteriler` : 'Uzun süredir gelmeyen müşteriler',
       count: passiveCustomers.length,
       icon: Clock,
       tone: 'violet' as const,
       href: '/admin/musteriler?scope=passive',
     },
     {
-      title: 'Bu ay doğum günü olan danışanlar',
+      title: 'Bu ay doğum günü olan müşteriler',
       count: birthdayThisMonth,
       icon: Sparkles,
       tone: 'rose' as const,
       href: '/admin/musteriler',
     },
     {
-      title: 'KVKK onayı bekleyen danışanlar',
+      title: 'KVKK onayı bekleyen müşteriler',
       count: kvkkPending,
       icon: ShieldCheck,
       tone: 'gold' as const,
       href: '/admin/musteriler?scope=kvkk-pending',
     },
     {
-      title: 'Kara listedeki danışanlar',
+      title: 'Kara listedeki müşteriler',
       count: blacklisted,
       icon: FileWarning,
       tone: 'peach' as const,
@@ -1370,6 +1490,20 @@ export default function AdminDashboard() {
       />
 
       <div className="relative space-y-5 px-4 pb-8 pt-4 sm:px-6 lg:px-6 xl:px-7">
+        {/* Karşılama bandı — günün nabzı ilk ekranda okunur. */}
+        <DashboardHero
+          userName={user?.fullName || user?.email}
+          institutionName={selectedInstitution?.name}
+          branchName={selectedBranch?.name}
+          appointmentsToday={appointmentsTotal}
+          completedToday={completed}
+          waitingToday={waiting}
+          revenueToday={todayRevenue}
+          pendingApprovals={pendingCount}
+          activeStaff={activeStaff}
+          totalCustomers={customerStats.total ?? 0}
+        />
+
         <div data-guide="dash-abonelik"><SubscriptionCountdown tenantId={tenantId} /></div>
 
         <ApiStateNotice
@@ -1399,7 +1533,7 @@ export default function AdminDashboard() {
             value={<AnimatedNumber value={appointmentsTotal} />}
             detail={<><b className="font-semibold text-[#2f2430]">{completed}</b> Tamamlandı</>}
             subDetail={<>{waiting} Beklemede</>}
-            visual={<MiniSparkline values={appointmentSparkline} />}
+            series={appointmentSparkline}
             tone="rose"
           />
           <MetricCard
@@ -1407,16 +1541,16 @@ export default function AdminDashboard() {
             title="Genel Ciro"
             value={<AnimatedNumber value={revenueValue} format={(n) => formatTL(Math.round(n))} />}
             detail={revenueWindow.label}
-            visual={<MiniBars values={revenueSparkline} />}
+            series={revenueSparkline}
             control={<PeriodTabs value={revenuePeriod} onChange={setRevenuePeriod} options={FULL_PERIOD_OPTIONS} />}
             tone="gold"
           />
           <MetricCard
             icon={ShieldCheck}
-            title="Yeni Danışanlar"
+            title="Yeni Müşteriler"
             value={<AnimatedNumber value={newCustomersValue} />}
             detail={customerWindow.label}
-            visual={<MiniSparkline values={customerSparkline} />}
+            series={customerSparkline}
             control={<PeriodTabs value={customerPeriod} onChange={setCustomerPeriod} options={FULL_PERIOD_OPTIONS} />}
             tone="violet"
           />
@@ -1452,60 +1586,78 @@ export default function AdminDashboard() {
                 </div>
               }
             >
-              <motion.div variants={listContainer} initial="hidden" animate="visible" className="overflow-x-auto px-4 pb-4">
-                <table className="w-full min-w-[720px] border-separate border-spacing-0 overflow-hidden rounded-[18px] border border-[#efe1e7] text-left">
-                  <thead>
-                    <tr className="bg-[#fff8fa] text-[11px] font-medium text-[#8a7480]">
-                      <th className="px-4 py-3">Saat</th>
-                      <th className="px-4 py-3">Danışan</th>
-                      <th className="px-4 py-3">İşlem</th>
-                      <th className="px-4 py-3">Uzman</th>
-                      <th className="px-4 py-3">Durum</th>
-                      <th className="px-4 py-3 text-right"> </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#efe1e7] bg-white">
-                    {appointments.slice(0, 5).map((appointment) => {
-                      const badge = statusBadge[appointment.status] || statusBadge.bekliyor
-                      return (
-                        <motion.tr key={appointment.id} variants={listRow} className="group text-[12px] text-[#3d2f3a] transition-colors hover:bg-[#fff8fa]">
-                          <td className="px-4 py-3 font-medium tabular-nums">{appointment.time || '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className="flex items-center gap-2.5">
-                              <AvatarBubble name={appointment.musteri} size="sm" />
-                              <span className="font-medium">{appointment.musteri}</span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-[#5d4a56]">{appointment.islem}</td>
-                          <td className="px-4 py-3">
-                            <span className="flex items-center gap-2.5">
-                              <AvatarBubble name={appointment.personel} size="sm" />
-                              <span>{appointment.personel}</span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-medium ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-[#a9929d]">
-                            <MoreHorizontal className="inline h-4 w-4" />
-                          </td>
-                        </motion.tr>
-                      )
-                    })}
-                    {!appointments.length && (
-                      <tr>
-                        <td colSpan={6} className="px-5 py-8 text-center text-[12px] text-[#9d7386]">
-                          {globalPeriod === 'daily' ? 'Bugün için randevu kaydı yok.' : 'Seçili dönemde randevu kaydı yok.'}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-                <Link href="/admin/randevular" className="mx-auto mt-4 flex w-max items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
-                  Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
+              <motion.div variants={listContainer} initial="hidden" animate="visible" className="px-4 pb-4">
+                {/* Zaman çizelgesi: solda saat, ortada müşteri+işlem, sağda uzman ve durum. */}
+                <div className="relative space-y-2">
+                  {appointments.length > 0 && (
+                    <span aria-hidden className="pointer-events-none absolute bottom-3 left-[54px] top-3 w-px bg-gradient-to-b from-[#f7dbe5] via-[#f3dde5] to-transparent" />
+                  )}
+                  {appointments.slice(0, 5).map((appointment) => {
+                    const badge = statusBadge[appointment.status] || statusBadge.bekliyor
+                    return (
+                      <motion.div
+                        key={appointment.id}
+                        variants={listRow}
+                        whileHover={{ x: 3 }}
+                        className="group relative flex items-center gap-3 rounded-[18px] border border-[#f3dde5] bg-white/90 px-3 py-2.5 transition-colors hover:border-[#efbfd0] hover:bg-[#fffafc]"
+                      >
+                        {/* Saat rozeti */}
+                        <span className="relative z-[1] grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-[#fff1f6] to-[#ffe0eb] text-[12px] font-bold tabular-nums text-[#a63e5f] ring-1 ring-white">
+                          {appointment.time || '—'}
+                        </span>
+
+                        {/* Müşteri + işlem */}
+                        <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <AvatarBubble name={appointment.musteri} size="md" />
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] font-semibold text-[#2b1e29]">{appointment.musteri}</span>
+                            <span className="block truncate text-[11.5px] text-[#77616b]">{appointment.islem}</span>
+                          </span>
+                        </span>
+
+                        {/* Uzman */}
+                        <span className="hidden min-w-0 items-center gap-2 sm:flex">
+                          <AvatarBubble name={appointment.personel} size="sm" />
+                          <span className="truncate text-[11.5px] font-medium text-[#5d4a56]">{appointment.personel}</span>
+                        </span>
+
+                        {/* Durum */}
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-bold ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+
+                        <Link
+                          href="/admin/randevular"
+                          aria-label="Randevulara git"
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#c9b3bd] opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#a63e5f] group-hover:opacity-100"
+                        >
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      </motion.div>
+                    )
+                  })}
+                  {!appointments.length && (
+                    <div className="rounded-[18px] border border-dashed border-[#f3dde5] bg-[#fffafc] px-4 py-10 text-center">
+                      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]">
+                        <Calendar className="h-6 w-6" strokeWidth={1.6} />
+                      </span>
+                      <p className="mt-2 text-[12.5px] text-[#77616b]">
+                        {globalPeriod === 'daily' ? 'Bugün için randevu kaydı yok.' : 'Seçili dönemde randevu kaydı yok.'}
+                      </p>
+                      <Link
+                        href="/admin/randevular?action=new"
+                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)]"
+                      >
+                        <CalendarPlus className="h-3.5 w-3.5" /> Randevu oluştur
+                      </Link>
+                    </div>
+                  )}
+                </div>
+                {appointments.length > 0 && (
+                  <Link href="/admin/randevular" className="mx-auto mt-4 flex w-max items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
+                    Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
+                  </Link>
+                )}
               </motion.div>
             </SectionCard>
 
@@ -1540,9 +1692,11 @@ export default function AdminDashboard() {
 
                 {/* Kategori → hizmet ve müşteri bazlı taksit/ödeme/seans kırılımı (dönem filtresine uyar). */}
                 <PackageReportBreakdown
-                  categories={packageReport.categories}
+                  categories={categoryReport.categories}
                   customers={packageReport.customers}
-                  loading={packageLoading}
+                  loading={packageLoading || categoryLoading}
+                  periodLabel={catWindow.label}
+                  periodTabs={<PeriodTabs value={categoryPeriod} onChange={setCategoryPeriod} options={FULL_PERIOD_OPTIONS} />}
                 />
               </div>
             </SectionCard>
@@ -1556,26 +1710,42 @@ export default function AdminDashboard() {
               </SectionCard>
 
               <SectionCard
-                title="Takip Edilmesi Gereken Danışanlar"
+                title="Takip Edilmesi Gereken Müşteriler"
                 action={
                   <Link href="/admin/musteriler" className="text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
                     Tümü <ChevronRight className="inline h-3.5 w-3.5" />
                   </Link>
                 }
               >
-                <div className="space-y-3 px-5 pb-5">
-                  {followUps.map((item) => {
+                <div className="grid gap-2.5 px-5 pb-5 sm:grid-cols-2">
+                  {followUps.map((item, idx) => {
                     const Icon = item.icon
+                    const urgent = item.count > 0
                     return (
-                      <Link key={item.title} href={item.href} className="flex items-center gap-3 rounded-[16px] border border-transparent p-2.5 transition-colors hover:border-[#efe1e7] hover:bg-[#fff8fa]">
-                        <span className={`grid h-9 w-9 place-items-center rounded-[13px] ${toneClasses[item.tone]}`}>
-                          <Icon className="h-4 w-4" strokeWidth={1.55} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium text-[#372934]">{item.title}</span>
-                          <span className="mt-0.5 block text-[11px] text-[#8a7480]">{item.count} danışan</span>
-                        </span>
-                      </Link>
+                      <motion.div
+                        key={item.title}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                        whileHover={{ y: -2 }}
+                      >
+                        <Link
+                          href={item.href}
+                          className={`group relative flex h-full items-center gap-3 overflow-hidden rounded-[18px] border p-3 transition-shadow hover:shadow-[0_20px_38px_-28px_rgba(150,78,104,0.55)] ${
+                            urgent ? toneClasses[item.tone] : 'border-[#f3dde5] bg-white/90 text-[#8a7480]'
+                          }`}
+                        >
+                          <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
+                          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white/85 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)]">
+                            <Icon className="h-[18px] w-[18px]" strokeWidth={1.55} />
+                          </span>
+                          <span className="relative min-w-0 flex-1">
+                            <span className="block text-[22px] font-semibold leading-none tabular-nums">{item.count}</span>
+                            <span className="mt-1 block text-[11px] font-medium leading-snug opacity-90">{item.title}</span>
+                          </span>
+                          <ArrowUpRight className="relative h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </Link>
+                      </motion.div>
                     )
                   })}
                 </div>
@@ -1586,17 +1756,30 @@ export default function AdminDashboard() {
           <div className="space-y-5">
             <SectionCard title="Hızlı İşlemler">
               <div className="grid grid-cols-2 gap-4 px-5 pb-5 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
-                {quickActions.map((action) => {
+                {quickActions.map((action, idx) => {
                   const Icon = action.icon
                   return (
-                    <Link
+                    <motion.div
                       key={action.label}
-                      href={action.href}
-                      className={`${toneClasses[action.tone]} group flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-[18px] border text-center text-[12px] font-medium leading-4 transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-24px_rgba(150,78,104,0.55)]`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                      whileHover={{ y: -3 }}
                     >
-                      <Icon className="h-6 w-6 transition-transform group-hover:scale-110" strokeWidth={1.55} />
-                      <span className="whitespace-pre-line">{action.label}</span>
-                    </Link>
+                      <Link
+                        href={action.href}
+                        className={`${toneClasses[action.tone]} group relative flex min-h-[96px] flex-col justify-between overflow-hidden rounded-[18px] border p-3 transition-shadow hover:shadow-[0_20px_38px_-26px_rgba(150,78,104,0.6)]`}
+                      >
+                        <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
+                        <span className="relative grid h-10 w-10 place-items-center rounded-[13px] bg-white/80 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)] transition-transform duration-300 group-hover:scale-105">
+                          <Icon className="h-[19px] w-[19px]" strokeWidth={1.6} />
+                        </span>
+                        <span className="relative flex items-end justify-between gap-2">
+                          <span className="whitespace-pre-line text-[12px] font-semibold leading-4">{action.label}</span>
+                          <ArrowUpRight className="h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </span>
+                      </Link>
+                    </motion.div>
                   )
                 })}
               </div>
@@ -1606,31 +1789,55 @@ export default function AdminDashboard() {
               title="Personel Performansı"
               action={<Star className="h-5 w-5 text-[#d8ad55]" fill="currentColor" strokeWidth={1.3} />}
             >
-              <div className="px-5 pb-5">
-                <div className="grid grid-cols-[minmax(0,1.4fr)_0.55fr_0.85fr_0.55fr] gap-3 border-b border-[#efe1e7] pb-2 text-[10px] font-medium text-[#8a7480]">
-                  <span>Personel</span>
-                  <span>Randevu</span>
-                  <span>Ciro</span>
-                  <span>Puan</span>
-                </div>
-                <div className="divide-y divide-[#f2e6eb]">
-                  {performanceRows.map((row) => (
-                    <div key={row.person.id} className="grid grid-cols-[minmax(0,1.4fr)_0.55fr_0.85fr_0.55fr] items-center gap-3 py-3 text-[12px] text-[#3b2d38]">
-                      <span className="flex min-w-0 items-center gap-2.5">
-                        <AvatarBubble name={row.person.name} size="sm" photoUrl={row.person.photoUrl || undefined} />
-                        <span className="truncate font-medium">{row.person.name}</span>
-                      </span>
-                      <span className="tabular-nums">{row.count}</span>
-                      <span className="tabular-nums">{formatTL(Math.round(row.revenue))}</span>
-                      <span className="inline-flex items-center gap-1 tabular-nums">
-                        {row.score.toFixed(1)} <Star className="h-3.5 w-3.5 text-[#d8ad55]" fill="currentColor" strokeWidth={1.2} />
-                      </span>
-                    </div>
-                  ))}
-                  {!performanceRows.length && (
-                    <div className="py-6 text-center text-[12px] text-[#9d7386]">Personel performans verisi bekleniyor.</div>
-                  )}
-                </div>
+              <div className="space-y-2 px-4 pb-5">
+                {(() => {
+                  const topRevenue = Math.max(1, ...performanceRows.map((r) => r.revenue))
+                  const medals = ['from-[#f7d774] to-[#d9a441]', 'from-[#e3e3e8] to-[#b9bcc6]', 'from-[#eec59a] to-[#c98b53]']
+                  return performanceRows.map((row, idx) => (
+                    <motion.div
+                      key={row.person.id}
+                      variants={listRow}
+                      initial="hidden"
+                      animate="visible"
+                      whileHover={{ x: 3 }}
+                      className="group rounded-[18px] border border-[#f3dde5] bg-white/90 px-3 py-2.5 transition-colors hover:border-[#efbfd0] hover:bg-[#fffafc]"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white shadow-[0_8px_18px_-12px_rgba(120,71,88,0.9)] ${
+                            idx < 3 ? `bg-gradient-to-br ${medals[idx]}` : 'bg-[#e9d9e0] text-[#7f4057]'
+                          }`}
+                        >
+                          {idx + 1}
+                        </span>
+                        <AvatarBubble name={row.person.name} size="md" photoUrl={row.person.photoUrl || undefined} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-semibold text-[#2b1e29]">{row.person.name}</span>
+                          <span className="block text-[11px] text-[#77616b]">{row.count} randevu</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-[13.5px] font-semibold tabular-nums text-[#a63e5f]">{formatTL(Math.round(row.revenue))}</span>
+                          <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#fff7e6] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[#a3701f]">
+                            {row.score.toFixed(1)} <Star className="h-3 w-3" fill="currentColor" strokeWidth={1.2} />
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]">
+                        <motion.span
+                          className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.max(4, Math.round((row.revenue / topRevenue) * 100))}%` }}
+                          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                        />
+                      </div>
+                    </motion.div>
+                  ))
+                })()}
+                {!performanceRows.length && (
+                  <div className="rounded-[18px] border border-dashed border-[#f3dde5] bg-[#fffafc] py-8 text-center text-[12px] text-[#77616b]">
+                    Personel performans verisi bekleniyor.
+                  </div>
+                )}
               </div>
             </SectionCard>
 
@@ -1642,19 +1849,36 @@ export default function AdminDashboard() {
                 </Link>
               }
             >
-              <div className="divide-y divide-[#f2e6eb] px-5 pb-5">
-                {criticalProducts.slice(0, 3).map((product) => (
-                  <Link key={product.id} href="/admin/stok" className="flex items-center gap-3 py-3 text-[12px] transition-colors hover:text-[#c85776]">
-                    <FileWarning className={`h-4 w-4 shrink-0 ${stockTone(product)}`} strokeWidth={1.6} />
-                    <span className="min-w-0 flex-1 truncate font-medium text-[#3b2d38]">{product.name}</span>
-                    <span className={`shrink-0 text-[11px] font-semibold ${stockTone(product)}`}>
-                      {product.status === 'out' ? 'Tükendi' : `${product.currentStock} ${product.unit} kaldı`}
-                    </span>
-                  </Link>
-                ))}
+              <div className="space-y-2 px-4 pb-5">
+                {criticalProducts.slice(0, 4).map((product) => {
+                  const out = product.status === 'out'
+                  return (
+                    <Link
+                      key={product.id}
+                      href="/admin/stok"
+                      className={`group flex items-center gap-3 rounded-[18px] border px-3 py-2.5 transition-colors ${
+                        out ? 'border-rose-200 bg-rose-50/60 hover:bg-rose-50' : 'border-amber-200/70 bg-amber-50/50 hover:bg-amber-50'
+                      }`}
+                    >
+                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white/85 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)] ${stockTone(product)}`}>
+                        <FileWarning className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] font-semibold text-[#2b1e29]">{product.name}</span>
+                        <span className={`mt-0.5 block text-[11px] font-semibold ${stockTone(product)}`}>
+                          {out ? 'Tükendi — sipariş ver' : `${product.currentStock} ${product.unit} kaldı`}
+                        </span>
+                      </span>
+                      <span className={`shrink-0 rounded-full px-2 py-1 text-[9.5px] font-bold ${out ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {out ? 'KRİTİK' : 'AZALDI'}
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 shrink-0 text-[#c9b3bd] opacity-0 transition-opacity group-hover:opacity-100" />
+                    </Link>
+                  )
+                })}
                 {!criticalProducts.length && (
-                  <div className="flex items-center gap-3 py-5 text-[12px] text-[#6b8b75]">
-                    <CheckCircle2 className="h-4 w-4" /> Kritik stok uyarısı yok.
+                  <div className="flex items-center justify-center gap-2 rounded-[18px] border border-dashed border-emerald-200 bg-emerald-50/50 py-6 text-[12px] font-medium text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" /> Kritik stok uyarısı yok — her ürün yeterli.
                   </div>
                 )}
               </div>
