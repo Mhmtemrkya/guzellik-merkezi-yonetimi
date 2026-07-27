@@ -58,8 +58,6 @@ export interface ServiceFormDialogProps {
   trigger: ReactNode
   customCategories: CustomServiceCategory[]
   onSubmit: (values: ServiceFormDialogValues) => Promise<void>
-  /** Verilmezse (paket categories.service.custom içermiyorsa) özel kategori oluşturma UI gizlenir. */
-  onCreateCustomCategory?: (name: string) => Promise<CustomServiceCategory | null>
   onDeleteCustomCategory?: (id: string) => Promise<void>
   initialValues?: Partial<ServiceFormDialogValues>
   title?: string
@@ -77,7 +75,6 @@ export default function ServiceFormDialog({
   trigger,
   customCategories,
   onSubmit,
-  onCreateCustomCategory,
   onDeleteCustomCategory,
   initialValues,
   title = 'Yeni Hizmet Tanımla',
@@ -112,8 +109,6 @@ export default function ServiceFormDialog({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [creatingCategory, setCreatingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState('')
 
   const initialSignature = JSON.stringify(merged)
@@ -123,34 +118,10 @@ export default function ServiceFormDialog({
       setSaved(false)
       setError('')
       setShowCustomList(Boolean(merged.category) && !initialIsKnown(merged.category))
-      setNewCategoryName('')
       setCategoryError('')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialSignature])
-
-  const handleCreateCategory = async (): Promise<void> => {
-    if (!onCreateCustomCategory) return
-    const name = newCategoryName.trim()
-    if (!name) {
-      setCategoryError('Kategori adı boş olamaz.')
-      return
-    }
-    setCreatingCategory(true)
-    setCategoryError('')
-    try {
-      const created = await onCreateCustomCategory(name)
-      if (created) {
-        setValues((v) => ({ ...v, category: created.name }))
-        setNewCategoryName('')
-        setShowCustomList(true)
-      }
-    } catch (e: unknown) {
-      setCategoryError(e instanceof Error ? e.message : 'Kategori oluşturulamadı.')
-    } finally {
-      setCreatingCategory(false)
-    }
-  }
 
   const handleSubmit = async (): Promise<void> => {
     setError('')
@@ -366,28 +337,10 @@ export default function ServiceFormDialog({
                             </button>
                           )}
                         </div>
-                        {onCreateCustomCategory && (
-                          <div className="mt-2 flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="Yeni kategori adı yaz, Enter veya Ekle..."
-                              maxLength={80}
-                              value={newCategoryName}
-                              onChange={(e) => { setNewCategoryName(e.target.value); setCategoryError('') }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory() } }}
-                              className={`flex-1 ${fieldStyle}`}
-                            />
-                            <motion.button
-                              type="button"
-                              whileTap={{ scale: 0.96 }}
-                              onClick={handleCreateCategory}
-                              disabled={creatingCategory || !newCategoryName.trim()}
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-[14px] border border-[#efbfd0] bg-[#fff1f6] px-4 text-[13px] font-semibold text-[#c85776] transition-colors hover:bg-[#fbe5eb] disabled:opacity-60"
-                            >
-                              {creatingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ekle
-                            </motion.button>
-                          </div>
-                        )}
+                        {/* Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır. */}
+                        <p className="mt-2 text-[11px] text-[#705a66]">
+                          Yeni kategori eklemek için <span className="font-medium">Paket &amp; Hizmet › Kategoriler</span> sayfasını kullanın.
+                        </p>
                         {categoryError && <div className="mt-2 text-[12px] font-medium text-rose-600">{categoryError}</div>}
                       </div>
                     </motion.div>
@@ -399,18 +352,21 @@ export default function ServiceFormDialog({
                 {/* Alt kategori (opsiyonel) — kategorinin altında daha ince gruplama */}
                 <div className="mt-1 flex flex-col gap-1.5">
                   <label className={labelStyle}>Alt kategori <span className="font-normal text-[#705a66]">(opsiyonel)</span></label>
-                  <input
-                    type="text"
-                    list="svc-subcategory-options"
-                    placeholder="Örn. Bölgesel · Yüz · Vücut…"
+                  {/* Serbest yazılmaz: yalnızca Kategoriler sayfasında tanımlı alt kategorilerden seçilir. */}
+                  <select
                     value={values.subCategory || ''}
                     onChange={(e) => setValues((v) => ({ ...v, subCategory: e.target.value || null }))}
-                    className={fieldStyle}
-                  />
-                  <datalist id="svc-subcategory-options">
-                    {subCategoryOptions.map((n) => <option key={n} value={n} />)}
-                  </datalist>
-                  <p className={helperStyle}>Kategoriler sayfasında tanımlı alt kategoriler önerilir; serbest de yazabilirsin.</p>
+                    disabled={subCategoryOptions.length === 0}
+                    className={`${fieldStyle} disabled:opacity-60`}
+                  >
+                    <option value="">— Alt kategorisiz —</option>
+                    {subCategoryOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <p className={helperStyle}>
+                    {subCategoryOptions.length === 0
+                      ? 'Seçili kategorinin alt kategorisi yok. Kategoriler sayfasından ekleyebilirsiniz.'
+                      : 'Kategoriler sayfasında tanımlı alt kategorilerden seçilir.'}
+                  </p>
                 </div>
               </div>
 

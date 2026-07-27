@@ -234,15 +234,17 @@ export default function PackageLibrary({
     const orderOf = categoryOrderIndex(customCategories)
     return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
   }, [customCategories, services, packages])
-  // Alt kategori önerileri: seçili üst kategorinin tanımlı alt kategorileri + paketlerde geçenler.
+  // Alt kategori seçenekleri: YALNIZCA Kategoriler sayfasında tanımlı alt kategoriler.
+  // Paketlerden türetme yapılmaz — alt kategori serbest yazılamadığı için kaynak tek olmalı.
+  // Üst kategori seçilmeden alt kategori listelenmez; kayıtta duran eski değer varsa korunur.
   const packageSubCategoryOptions = useMemo(() => {
-    const parentId = customCategories.find((c) => !c.parentId && c.name === draft.category)?.id
+    const parent = customCategories.find((c) => !c.parentId && c.name === draft.category)
     const names = new Set<string>()
-    for (const c of customCategories) if (c.parentId && (!parentId || c.parentId === parentId)) names.add(c.name)
-    for (const p of packages) if (p.subCategory && (!draft.category || p.category === draft.category)) names.add(p.subCategory)
+    if (parent) for (const c of customCategories) if (c.parentId === parent.id) names.add(c.name)
+    if (draft.subCategory) names.add(draft.subCategory)
     const orderOf = categoryOrderIndex(customCategories.filter((c) => c.parentId))
     return Array.from(names).sort((a, b) => orderOf(a) - orderOf(b) || a.localeCompare(b, 'tr'))
-  }, [customCategories, packages, draft.category])
+  }, [customCategories, draft.category, draft.subCategory])
 
   // ---- taslak editörü
   const araToplam = draft.items.reduce((a, i) => a + i.unitPrice * i.sessionCount, 0)
@@ -403,11 +405,7 @@ export default function PackageLibrary({
     catch (e) { setActionError(e instanceof Error ? e.message : 'Silinemedi.') } finally { setBusy(false) }
   }
 
-  const createCategory = async (name: string) => {
-    await adminApi.createServiceCategory({ name, isActive: true }, tenantId)
-    await reload()
-  }
-
+  // Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır (CategoryExplorer).
   const deleteCategory = async (id: string) => {
     await adminApi.deleteServiceCategory(id, tenantId)
     await reload()
@@ -650,18 +648,23 @@ export default function PackageLibrary({
                 <option value="">— Kategorisiz —</option>
                 {assignableCategories.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
-              <input
-                value={draft.subCategory}
-                disabled={busy}
-                list="pkg-subcategory-options"
-                onChange={(e) => setDraft((d) => ({ ...d, subCategory: e.target.value }))}
-                onBlur={(e) => { if (draft.id) void saveSubCategory(e.currentTarget.value) }}
-                placeholder="Alt kategori (ops.)"
-                className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:opacity-60"
-              />
-              <datalist id="pkg-subcategory-options">
-                {packageSubCategoryOptions.map((n) => <option key={n} value={n} />)}
-              </datalist>
+              {/* Alt kategori SERBEST YAZILMAZ: yalnızca Kategoriler sayfasında tanımlı alt
+                  kategorilerden seçilir. Seçili üst kategorinin altı yoksa kutu hiç çıkmaz. */}
+              {packageSubCategoryOptions.length > 0 ? (
+                <select
+                  value={draft.subCategory}
+                  disabled={busy}
+                  onChange={(e) => { const v = e.target.value; setDraft((d) => ({ ...d, subCategory: v })); if (draft.id) void saveSubCategory(v) }}
+                  className="w-44 rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:opacity-60"
+                >
+                  <option value="">— Alt kategorisiz —</option>
+                  {packageSubCategoryOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              ) : (
+                <span className="text-[10px] text-[#705a66]">
+                  {draft.category ? 'Bu kategorinin alt kategorisi yok.' : 'Alt kategori için önce kategori seç.'}
+                </span>
+              )}
               <span className="text-[9px] text-[#352432]/40">
                 {draft.id ? 'Seçim otomatik kaydedilir.' : 'Paket ilk kaydedildiğinde kategori atanır.'}
               </span>
@@ -905,13 +908,12 @@ export default function PackageLibrary({
 
         <CatalogCategoryManager
           title="Paket Kategori Ayarları"
-          description="Paketlerde kullanılacak ortak kategorileri ekleyin, silin veya kategoriye göre filtreleyin."
+          description="Kategoriye göre filtreleyin veya sırasını değiştirin. Yeni kategori Kategoriler sayfasından eklenir."
           itemLabel="paket"
           categories={categorySettings}
           selectedCategory={catFilter}
           canManage={canCustomServiceCat}
           onSelect={setCatFilter}
-          onCreate={createCategory}
           onDelete={deleteCategory}
           onReorder={canCustomServiceCat ? reorderCategory : undefined}
         />

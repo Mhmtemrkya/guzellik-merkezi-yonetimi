@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight, FolderPlus, Trash2, X } from 'lucide-react'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 
@@ -29,7 +30,11 @@ export default function CatalogCategoryManager({
   selectedCategory: string
   canManage: boolean
   onSelect: (name: string) => void
-  onCreate: (name: string) => Promise<void>
+  /**
+   * Kategori EKLEME yalnızca Kategoriler sayfasında yapılır (tek kaynak). Bu yüzden opsiyoneldir;
+   * verilmezse ekleme arayüzü hiç çıkmaz, yerine Kategoriler sayfasına yönlendiren not gösterilir.
+   */
+  onCreate?: (name: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
   /** Verilen id sırasına göre kalıcı sıra (SortOrder) yaz. Verilmezse elle sıralama gizlenir. */
   onReorder?: (orderedCustomIds: string[]) => Promise<void> | void
@@ -41,7 +46,7 @@ export default function CatalogCategoryManager({
 
   const create = async () => {
     const value = name.trim()
-    if (!value) return
+    if (!value || !onCreate) return
     setBusy(true)
     setError('')
     try {
@@ -90,7 +95,14 @@ export default function CatalogCategoryManager({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[#352432]/45">{categories.length} kategori</span>
-          {canManage && (
+          {/* Ekleme yalnızca Kategoriler sayfasında; burada onCreate verilmez → yönlendirme notu. */}
+          {canManage && !onCreate && (
+            <Link href="/admin/paketler?scope=categories"
+              className="inline-flex items-center gap-1.5 rounded-[9px] border border-[#ead8df] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705a66] hover:bg-[#fff4f8]">
+              <FolderPlus className="h-3.5 w-3.5" /> Kategori eklemek için Kategoriler sayfası
+            </Link>
+          )}
+          {canManage && onCreate && (
             adding ? (
               <div className="flex items-center gap-1 rounded-[10px] border border-[#ead8df] bg-white p-1">
                 <input

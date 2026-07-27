@@ -39,8 +39,6 @@ class _ServiceCategoryFieldState extends State<ServiceCategoryField> {
   String? _category;
   bool _showCustomList = false;
   List<Map<String, dynamic>> _customCategories = [];
-  final _newName = TextEditingController();
-  bool _creating = false;
   String _error = '';
 
   @override
@@ -53,11 +51,6 @@ class _ServiceCategoryFieldState extends State<ServiceCategoryField> {
     _loadCustom();
   }
 
-  @override
-  void dispose() {
-    _newName.dispose();
-    super.dispose();
-  }
 
   Future<void> _loadCustom() async {
     try {
@@ -71,31 +64,6 @@ class _ServiceCategoryFieldState extends State<ServiceCategoryField> {
   void _setCategory(String? value) {
     setState(() => _category = value);
     widget.onChanged(value);
-  }
-
-  Future<void> _create() async {
-    final name = _newName.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Kategori adı boş olamaz.');
-      return;
-    }
-    setState(() {
-      _creating = true;
-      _error = '';
-    });
-    try {
-      await widget.api.post('/api/admin/service-categories/', {
-        'name': name,
-        'isActive': true,
-      });
-      await _loadCustom();
-      _newName.clear();
-      _setCategory(name);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _creating = false);
-    }
   }
 
   Future<void> _delete(Map<String, dynamic> target) async {
@@ -222,42 +190,10 @@ class _ServiceCategoryFieldState extends State<ServiceCategoryField> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _newName,
-                        maxLength: 80,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          counterText: '',
-                          hintText: 'Yeni kategori adı yaz...',
-                        ),
-                        onChanged: (_) {
-                          if (_error.isNotEmpty) setState(() => _error = '');
-                        },
-                        onSubmitted: (_) => _create(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _creating ? null : _create,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 44),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                      ),
-                      child: _creating
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Ekle'),
-                    ),
-                  ],
+                // Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler ekranıdır (web paritesi).
+                const Text(
+                  'Yeni kategori eklemek için Paket & Hizmet › Kategoriler ekranını kullanın.',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
                 if (_error.isNotEmpty)
                   Padding(

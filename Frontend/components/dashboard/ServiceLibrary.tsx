@@ -226,8 +226,7 @@ export default function ServiceLibrary({
     await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
     await reload()
   }
-  const handleCreateCat = async (name: string) => { const r = await adminApi.createServiceCategory<ApiCustomServiceCategory>({ name, isActive: true }, tenantId); await reload(); return normalizeCustomServiceCategory(r) }
-  const handleCreateCatSetting = async (name: string) => { await handleCreateCat(name) }
+  // Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır (CategoryExplorer).
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
   const handleReorderCat = async (orderedIds: string[]) => { await adminApi.reorderServiceCategories(orderedIds, tenantId); await reload() }
 
@@ -260,7 +259,6 @@ export default function ServiceLibrary({
           <div className="flex flex-wrap items-center gap-2">
             <ServiceFormDialog
               customCategories={customCategories}
-              onCreateCustomCategory={canCustomServiceCat ? handleCreateCat : undefined}
               onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
               onSubmit={onCreate}
               trigger={
@@ -430,7 +428,7 @@ export default function ServiceLibrary({
                     triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#c85776]/40 bg-[#fff1f6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
                   />
                   <ServiceFormDialog mode="edit" customCategories={customCategories}
-                    onCreateCustomCategory={canCustomServiceCat ? handleCreateCat : undefined} onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
+                    onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
                     onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
                     trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>} />
@@ -547,13 +545,12 @@ export default function ServiceLibrary({
 
         <CatalogCategoryManager
           title="Hizmet Kategori Ayarları"
-          description="Hizmetlerde kullanılacak ortak kategorileri ekleyin, silin veya kategoriye göre filtreleyin."
+          description="Kategoriye göre filtreleyin veya sırasını değiştirin. Yeni kategori Kategoriler sayfasından eklenir."
           itemLabel="hizmet"
           categories={categories}
           selectedCategory={catFilter}
           canManage={canCustomServiceCat}
           onSelect={(name) => { setCatFilter(name); setPage(1) }}
-          onCreate={handleCreateCatSetting}
           onDelete={handleDeleteCat}
           onReorder={canCustomServiceCat ? handleReorderCat : undefined}
         />
