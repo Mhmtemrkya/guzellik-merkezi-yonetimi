@@ -851,3 +851,17 @@ html.theme-light .theme-surface { text-rendering: optimizeLegibility; }
     animation: none !important;
   }
 }
+
+/* KPI kart ızgarası — kolon sayısı VIEWPORT'a değil KAPSAYICI genişliğine göre belirlenir.
+   Pano kartları dar sol kolonda durduğu için viewport breakpoint'leri yanlış ölçüyordu
+   (14" ekranda xl:grid-cols-7 devreye girip kartları 90px'e indiriyordu). Alt sınır küçük
+   ekranda daha dar, sm ve üstünde daha geniş — böylece telefonda 2 kolon, geniş ekranda
+   ferah kartlar çıkar. */
+.kpi-auto-grid {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+@media (min-width: 640px) {
+  .kpi-auto-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}

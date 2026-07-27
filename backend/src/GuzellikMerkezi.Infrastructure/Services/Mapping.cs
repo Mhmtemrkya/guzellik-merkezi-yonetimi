@@ -159,7 +159,10 @@ internal static class Mapping
             .Select(i =>
             {
                 var paid = allocation.TryGetValue(i.Id, out var p) ? p : 0m;
-                var status = i.Status == InstallmentStatus.Cancelled
+                // İptal edilmiş satışın taksiti AÇIK GÖSTERİLMEZ. CancelSale artık taksitleri de
+                // kapatıyor, ama o düzeltmeden ÖNCE iptal edilmiş kayıtlarda taksitler Planned kaldı;
+                // burada cari durumundan türetilerek onlar da kapalı görünür.
+                var status = (account.CancelledAtUtc is not null || i.Status == InstallmentStatus.Cancelled)
                     ? InstallmentStatus.Cancelled
                     : (i.Amount <= 0 || paid >= i.Amount - 0.005m) ? InstallmentStatus.Paid : InstallmentStatus.Planned;
                 return new InstallmentDto(i.Id, i.No, i.DueDate, i.Amount, paid, status, i.PaidAtUtc);

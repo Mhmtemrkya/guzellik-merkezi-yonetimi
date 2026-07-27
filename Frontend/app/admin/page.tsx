@@ -45,6 +45,7 @@ import {
   TrendingUp,
   UserPlus,
   Wallet,
+  XCircle,
   type LucideIcon,
 } from 'lucide-react'
 import { useBranch } from '@/components/dashboard/BranchContext'
@@ -1469,9 +1470,9 @@ export default function AdminDashboard() {
     { initialData: null },
   )
   const serviceReport = {
-    catalogServiceCount: Number(serviceReportData?.catalogServiceCount ?? 0),
-    servicesInUseCount: Number(serviceReportData?.servicesInUseCount ?? 0),
     serviceSalesCount: Number(serviceReportData?.serviceSalesCount ?? 0),
+    activeSoldServiceCount: Number(serviceReportData?.activeSoldServiceCount ?? 0),
+    cancelledSoldServiceCount: Number(serviceReportData?.cancelledSoldServiceCount ?? 0),
     sessionsTotal: Number(serviceReportData?.sessionsTotal ?? 0),
     sessionsUsed: Number(serviceReportData?.sessionsUsed ?? 0),
     sessionsRemaining: Number(serviceReportData?.sessionsRemaining ?? 0),
@@ -1779,8 +1780,11 @@ export default function AdminDashboard() {
           />
         </motion.div>
 
+        {/* min-w-0: xl altında ızgara tek kolona düşer ve track içeriğe göre boyutlanır. İçeride
+            auto-fit kullanan kart ızgaraları buna yaslanıp kapsayıcıyı taşırıyordu (mobilde sağ
+            taraf kırpılıyordu). min-w-0 track'in daralmasına izin verir. */}
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.68fr)_minmax(320px,0.92fr)]">
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <SectionCard
               title={globalPeriod === 'daily' ? 'Bugünkü Randevu Akışı' : 'Randevu Akışı'}
               action={
@@ -1901,21 +1905,29 @@ export default function AdminDashboard() {
                     <span className="text-[10px] text-[#b09ca5]">Dönemde satılan paketler</span>
                   </div>
                 </div>
-                <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 ${packageLoading ? 'opacity-60' : 'opacity-100'}`}>
-                  {/* İlk iki kart dönem çipine BAĞLI DEĞİL — ikisi de kataloğu sayar (aynı ton ile eşleştirildi). */}
-                  <ReportKpi icon={Boxes} tone="violet" label="Toplam Paket" value={String(packageReport.catalogPackageCount)} hint="Tanımlı paket" />
+                {/* .kpi-auto-grid: kolon sayısı kapsayıcıya göre belirlenir (bkz. globals.css). */}
+                <div className={`kpi-auto-grid grid gap-3 transition-opacity ${packageLoading ? 'opacity-60' : 'opacity-100'}`}>
+                  {/* Kartlar KATALOĞU değil SATIŞI sayar; hepsi dönem + kategori süzgecine uyar. */}
+                  <ReportKpi icon={Boxes} tone="violet" label="Toplam Paket" value={String(packageReport.packageSalesCount)} hint={packageReport.customersWithPackages > 0 ? `${packageReport.customersWithPackages} müşteriye` : 'Dönem paket adedi'} />
                   <ReportKpi
                     icon={Package}
                     tone="violet"
                     label="Aktif Paket"
-                    value={String(packageReport.packagesInUseCount)}
+                    value={String(packageReport.activeSoldPackageCount)}
                     hint={
-                      packageReport.catalogPackageCount > 0
-                        ? `${packageReport.catalogPackageCount} çeşitten sahada`
-                        : 'Seansı süren çeşit'
+                      packageReport.packageSalesCount > 0
+                        ? `${Math.max(0, packageReport.packageSalesCount - packageReport.activeSoldPackageCount)} tamamlandı`
+                        : 'Seansı devam eden'
                     }
                   />
-                  <ReportKpi icon={ShoppingBag} tone="cream" label="Satılan Paket" value={String(packageReport.packageSalesCount)} hint={packageReport.customersWithPackages > 0 ? `${packageReport.customersWithPackages} müşteriye` : 'Dönem paket adedi'} />
+                  <ReportKpi
+                    icon={XCircle}
+                    tone="peach"
+                    label="İptal Edilen Paket"
+                    value={String(packageReport.cancelledSoldPackageCount)}
+                    hint="Satılıp iptal edilen"
+                    danger={packageReport.cancelledSoldPackageCount > 0}
+                  />
                   <ReportKpi icon={Activity} tone="mint" label="Kalan Seans" value={String(packageReport.sessionsRemaining)} hint={`${packageReport.sessionsUsed}/${packageReport.sessionsTotal} kullanıldı`} />
                   <ReportKpi icon={Wallet} tone="rose" label="Toplam Kalan Taksit" value={formatTL(Math.round(packageReport.totalReceivable))} hint="Kalan taksit miktarı" />
                   <ReportKpi icon={CheckCircle2} tone="gold" label="Toplam Tahsil Edilen" value={formatTL(Math.round(packageReport.totalCollected))} hint="Toplanan taksit" />
@@ -1926,7 +1938,7 @@ export default function AdminDashboard() {
 
                 {/* HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok. Kendi dönemi ve kendi
                     (hizmet) kategorisi vardır; yukarıdaki paket seçimlerinden etkilenmez. */}
-                <div className="rounded-[16px] border border-[#efe1e7] bg-[#fffafc]/60 p-4">
+                <div className="rounded-[16px] border border-[#efe1e7] bg-[#fffafc]/60 p-3 sm:p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]">
@@ -1952,17 +1964,29 @@ export default function AdminDashboard() {
                       <PeriodTabs value={servicePeriod} onChange={setServicePeriod} options={FULL_PERIOD_OPTIONS} />
                     </div>
                   </div>
-                  <div className={`grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5 ${serviceReportLoading ? 'opacity-60' : 'opacity-100'}`}>
-                    {/* İlk iki kart dönemden BAĞIMSIZ (kurumun anlık hizmet durumu), diğerleri döneme bağlı. */}
-                    <ReportKpi icon={Tag} tone="mint" label="Toplam Hizmet" value={String(serviceReport.catalogServiceCount)} hint="Tanımlı hizmet" />
+                  {/* Paket ızgarasıyla aynı kural (bkz. globals.css .kpi-auto-grid). */}
+                  <div className={`kpi-auto-grid grid gap-3 transition-opacity ${serviceReportLoading ? 'opacity-60' : 'opacity-100'}`}>
+                    {/* Paket bloğuyla aynı mantık: kartlar SATIŞI sayar, dönem + kategoriye uyar. */}
+                    <ReportKpi icon={Tag} tone="mint" label="Toplam Hizmet" value={String(serviceReport.serviceSalesCount)} hint="Dönem hizmet adedi" />
                     <ReportKpi
                       icon={Activity}
                       tone="mint"
                       label="Aktif Hizmet"
-                      value={String(serviceReport.servicesInUseCount)}
-                      hint={serviceReport.catalogServiceCount > 0 ? `${serviceReport.catalogServiceCount} çeşitten sahada` : 'Seansı süren çeşit'}
+                      value={String(serviceReport.activeSoldServiceCount)}
+                      hint={
+                        serviceReport.serviceSalesCount > 0
+                          ? `${Math.max(0, serviceReport.serviceSalesCount - serviceReport.activeSoldServiceCount)} tamamlandı`
+                          : 'Seansı devam eden'
+                      }
                     />
-                    <ReportKpi icon={ShoppingBag} tone="cream" label="Satılan Hizmet" value={String(serviceReport.serviceSalesCount)} hint="Dönem hizmet adedi" />
+                    <ReportKpi
+                      icon={XCircle}
+                      tone="peach"
+                      label="İptal Edilen Hizmet"
+                      value={String(serviceReport.cancelledSoldServiceCount)}
+                      hint="Satılıp iptal edilen"
+                      danger={serviceReport.cancelledSoldServiceCount > 0}
+                    />
                     <ReportKpi icon={Sparkles} tone="violet" label="Kalan Seans" value={String(serviceReport.sessionsRemaining)} hint={`${serviceReport.sessionsUsed}/${serviceReport.sessionsTotal} kullanıldı`} />
                     <ReportKpi icon={Wallet} tone="gold" label="Hizmet Cirosu" value={formatTL(Math.round(serviceReport.revenue))} hint="Dönemde satılan hizmet" />
                   </div>

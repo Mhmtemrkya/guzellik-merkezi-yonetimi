@@ -55,7 +55,11 @@ public sealed class CustomerAccount : Entity
     public IReadOnlyCollection<AccountPayment> Payments => _payments.AsReadOnly();
 
     public decimal PaidAmount => _payments.Sum(p => p.Amount) + DepositAmount;
-    public decimal RemainingAmount => Math.Max(0, TotalAmount - PaidAmount);
+    /// <summary>
+    /// Kalan borç. İPTAL EDİLMİŞ satışta 0'dır: müşteriden artık tahsilat beklenmez.
+    /// Tahsil edilmiş tutar (PaidAmount) korunur — ödemeler silinmez, yalnızca alacak düşer.
+    /// </summary>
+    public decimal RemainingAmount => CancelledAtUtc is not null ? 0m : Math.Max(0, TotalAmount - PaidAmount);
     /// <summary>Tüm borcu aşan tahsilat (fazla ödeme) — müşteri lehine kredi olarak taşınır.</summary>
     public decimal CreditBalance => Math.Max(0, PaidAmount - TotalAmount);
 
@@ -175,6 +179,12 @@ public sealed class CustomerAccount : Entity
         IsActive = false;
         CancelledAtUtc = DateTime.UtcNow;
         CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        // Kalan borç sıfırlanır: ödenmemiş taksitler iptal edilir. Kapanmış (Paid) taksitler ve
+        // tahsilat kayıtları OLDUĞU GİBİ KALIR — "ödenen" bilgisi korunmalı, yalnızca alacak düşer.
+        foreach (var installment in _installments.Where(i => i.Status == InstallmentStatus.Planned))
+        {
+            installment.Cancel();
+        }
         Touch();
     }
 
@@ -184,6 +194,11 @@ public sealed class CustomerAccount : Entity
         IsActive = true;
         CancelledAtUtc = null;
         CancellationReason = null;
+        // İptalde kapatılan taksitler yeniden açılır; borç eski haline döner.
+        foreach (var installment in _installments.Where(i => i.Status == InstallmentStatus.Cancelled))
+        {
+            installment.Reopen();
+        }
         Touch();
     }
 }
@@ -227,6 +242,14 @@ public sealed class Installment : Entity
     public void Cancel()
     {
         Status = InstallmentStatus.Cancelled;
+        Touch();
+    }
+
+    /// <summary>İptal edilmiş taksiti tekrar açar (satış iptali geri alındığında).</summary>
+    public void Reopen()
+    {
+        if (Status != InstallmentStatus.Cancelled) return;
+        Status = InstallmentStatus.Planned;
         Touch();
     }
 }

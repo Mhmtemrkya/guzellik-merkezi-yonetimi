@@ -135,11 +135,10 @@ public sealed record AccountMonthlyInstallmentDto(
 /// toplam alınacak taksit ve ay ay taksit takvimi. Tek sorguda hesaplanır.
 /// </summary>
 public sealed record AccountReportDto(
-    int PackageSalesCount,      // Satılan TOPLAM paket adedi (doğrudan cari + onaylı adisyon paket satışları)
+    int PackageSalesCount,      // "Satılan Toplam Paket" — dönemde satılan paket adedi (cari + adisyon)
     int CustomersWithPackages,  // Paket satın almış benzersiz müşteri sayısı
-    // Aşağıdaki iki alan dönem filtresine BAĞLI DEĞİLDİR ve ikisi de KATALOĞU sayar.
-    int CatalogPackageCount,    // "Toplam Paket" — kurumda tanımlı paket adedi (Paketler sayfasıyla aynı)
-    int PackagesInUseCount,     // "Aktif Paket"  — bunlardan kaç çeşidinin seansı süren satışı var
+    int ActiveSoldPackageCount, // "Aktif Paket" — satılanlardan seansı hâlâ devam eden adet
+    int CancelledSoldPackageCount, // "İptal Edilen" — satılmış ama sonradan iptal edilmiş satış adedi
     int TotalAccounts,
     int ActiveAccounts,
     int SessionsTotal,          // Satılan toplam seans
@@ -158,9 +157,9 @@ public sealed record AccountReportDto(
 /// kategorisidir ve sayılan şey hizmettir, paket değil. Dönem + kategori birlikte uygulanır.
 /// </summary>
 public sealed record ServiceReportDto(
-    int CatalogServiceCount,   // "Toplam Hizmet" — tanımlı hizmet adedi (dönemden BAĞIMSIZ)
-    int ServicesInUseCount,    // "Aktif Hizmet"  — seansı süren satışı olan farklı hizmet (dönemden BAĞIMSIZ)
-    int ServiceSalesCount,     // "Satılan Hizmet" — dönemde satılan hizmet adedi
+    int ServiceSalesCount,          // "Toplam Hizmet" — dönemde satılan hizmet adedi
+    int ActiveSoldServiceCount,     // "Aktif Hizmet"  — satılanlardan seansı hâlâ devam eden adet
+    int CancelledSoldServiceCount,  // "İptal Edilen"  — satılmış ama sonradan iptal edilmiş adet
     int SessionsTotal,
     int SessionsUsed,
     int SessionsRemaining,

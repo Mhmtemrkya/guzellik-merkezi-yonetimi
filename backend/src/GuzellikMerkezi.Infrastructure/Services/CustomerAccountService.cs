@@ -724,13 +724,6 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var periodAccountIds = periodAccounts.Select(a => a.Id).ToHashSet();
         var totalByAccount = periodAccounts.ToDictionary(a => a.Id, a => a.TotalAmount);
 
-        var liveAccountIds = (await _db.CustomerAccounts
-                .AsNoTracking()
-                .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
-                .Select(a => a.Id)
-                .ToListAsync(cancellationToken))
-            .ToHashSet();
-
         var sessions = await _db.CustomerPackageSessions
             .AsNoTracking()
             .Where(s => s.TenantId == tenantId)
@@ -754,21 +747,29 @@ public sealed class CustomerAccountService : ICustomerAccountService
             return total * Math.Max(1, s.TotalSessions) / weight;
         });
 
-        var servicesInUse = sessions
-            .Where(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && liveAccountIds.Contains(s.CustomerAccountId))
+        // "Aktif Hizmet": dönemde satılanlardan seansı hâlâ devam eden satış adedi
+        // (paket tarafındaki "Aktif Paket" ile aynı mantık — çeşit değil, satış).
+        var activeSoldServiceCount = scopedSessions
             .GroupBy(s => new { s.CustomerAccountId, s.ServiceDefinitionId })
-            .Where(g => g.Sum(x => Math.Max(0, x.TotalSessions - x.UsedSessions)) > 0)
-            .Select(g => g.Key.ServiceDefinitionId)
-            .Distinct()
-            .Count();
+            .Count(g => g.Sum(x => Math.Max(0, x.TotalSessions - x.UsedSessions)) > 0);
+
+        // "İptal Edilen": satılmış ama sonradan iptal edilmiş satışlar (yukarıdaki hesaplara girmez).
+        var cancelledQuery = _db.CustomerAccounts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc != null);
+        if (fromUtc.HasValue) cancelledQuery = cancelledQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) >= fromUtc.Value);
+        if (toUtc.HasValue) cancelledQuery = cancelledQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) < toUtc.Value);
+        var cancelledAccountIds = (await cancelledQuery.Select(a => a.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var cancelledSoldServiceCount = sessions
+            .Count(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && cancelledAccountIds.Contains(s.CustomerAccountId));
 
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
 
         return Result<ServiceReportDto>.Success(new ServiceReportDto(
-            scopedServices.Count,
-            servicesInUse,
             scopedSessions.Count,
+            activeSoldServiceCount,
+            cancelledSoldServiceCount,
             sessionsTotal,
             sessionsUsed,
             Math.Max(0, sessionsTotal - sessionsUsed),
@@ -1054,33 +1055,32 @@ public sealed class CustomerAccountService : ICustomerAccountService
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);
 
-        // --- Paket kataloğu kartları (dönemden BAĞIMSIZ) ------------------------
-        // Panodaki "Toplam Paket" / "Aktif Paket" kartları dönem çipine bağlı değildir ve İKİSİ DE
-        // KATALOĞU sayar — böylece Paketler sayfasındaki adetle birebir tutar:
-        //   Toplam Paket = kurumda tanımlı paket sayısı (Paketler sayfasının toplamı).
-        //   Aktif Paket  = bu paketlerden kaç ÇEŞİDİNİN şu an seansı devam eden satışı var.
-        //                  Aynı paket 5 müşteride sürüyorsa 1 sayılır (satış adedi değil, çeşit).
-        // Her ikisi de şube kapsamına uyar (ServicePackage.BranchId global filtreden geçer).
-        // Dönemden bağımsızdırlar ama KATEGORİ süzgecine uyarlar — kullanıcı kategori seçince
-        // "bu kategoride kaç paketim var / kaçı sahada" sorusunun cevabı beklenir.
-        var catalogPackageCount = categoryPackageIds?.Count
-            ?? await _db.ServicePackages
-                .AsNoTracking()
-                .CountAsync(p => p.TenantId == tenantId, cancellationToken);
+        // --- "Aktif Paket" / "İptal Edilen Paket" -------------------------------
+        // Kartlar KATALOĞU değil SATIŞI sayar; hepsi dönem + kategori süzgecine uyar:
+        //   Toplam Paket = packageSalesCount (dönemde satılan paket adedi)
+        //   Aktif Paket  = bunlardan seansı HÂLÂ devam eden satış adedi
+        //   İptal Edilen = satılmış AMA sonradan iptal edilmiş satış adedi
+        // Paket örneği = (cari, paket) çifti — aynı paket 5 müşteriye satıldıysa 5 sayılır.
+        // Toplam ve Aktif AYNI tabandan sayılır (satılan paket örnekleri). Farklı tabanlar
+        // kullanılınca dönem dilimlerinde "Aktif > Toplam" gibi imkânsız sonuçlar çıkıyordu.
+        var soldPackageInstances = scopedSessions
+            .GroupBy(s => new { s.CustomerAccountId, s.ServicePackageId })
+            .Select(g => new { g.Key.CustomerAccountId, Remaining = g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)) })
+            .ToList();
+        var soldPackageCount = soldPackageInstances.Count;
+        var activeSoldPackageCount = soldPackageInstances.Count(x => x.Remaining > 0);
 
-        var liveAccountIds = (await _db.CustomerAccounts
-                .AsNoTracking()
-                .Where(a => a.TenantId == tenantId && a.CancelledAtUtc == null)
-                .Select(a => a.Id)
-                .ToListAsync(cancellationToken))
-            .ToHashSet();
-        var packagesInUseCount = sessionRows
-            .Where(s => liveAccountIds.Contains(s.CustomerAccountId)
+        // İptaller yukarıdaki hesaplara girmez (accountsQuery onları eler); ayrı sayılır.
+        var cancelledQuery = _db.CustomerAccounts
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.CancelledAtUtc != null);
+        if (fromUtc.HasValue) cancelledQuery = cancelledQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) >= fromUtc.Value);
+        if (toUtc.HasValue) cancelledQuery = cancelledQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) < toUtc.Value);
+        var cancelledPeriodAccountIds = (await cancelledQuery.Select(a => a.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var cancelledSoldPackageCount = sessionRows
+            .Where(s => cancelledPeriodAccountIds.Contains(s.CustomerAccountId)
                         && (categoryPackageIds is null || categoryPackageIds.Contains(s.ServicePackageId)))
             .GroupBy(s => new { s.CustomerAccountId, s.ServicePackageId })
-            .Where(g => g.Sum(r => Math.Max(0, r.TotalSessions - r.UsedSessions)) > 0)
-            .Select(g => g.Key.ServicePackageId)
-            .Distinct()
             .Count();
 
         // --- Kategori kırılımı --------------------------------------------------
@@ -1210,10 +1210,13 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .ToList();
 
         var report = new AccountReportDto(
-            packageSalesCount,
+            // "Toplam Paket" kartı: Aktif/İptal ile aynı tabandan (satılan paket örnekleri).
+            // packageSalesCount (cari + adisyon kalemi) yalnızca seansı olmayan satışlar için
+            // yedek: seans tabanı boşsa eski sayıma düşülür.
+            soldPackageCount > 0 ? soldPackageCount : packageSalesCount,
             customersWithPackages,
-            catalogPackageCount,
-            packagesInUseCount,
+            activeSoldPackageCount,
+            cancelledSoldPackageCount,
             accounts.Count,
             activeAccounts,
             sessionsTotal,

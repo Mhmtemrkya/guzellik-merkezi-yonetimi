@@ -207,8 +207,9 @@ LIMIT 2000")
             CustomerListFilter.KvkkPending => q.Where(x => !x.KvkkConsent),
             CustomerListFilter.Blacklist => q.Where(x => x.IsBlacklisted),
             CustomerListFilter.Recent => q.Where(x => x.CreatedAtUtc >= since30),
+            // İptal edilen satış borç doğurmaz — "Borçlu" sekmesine düşmemeli.
             CustomerListFilter.Debt => q.Where(x => _db.CustomerAccounts
-                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id && a.CancelledAtUtc == null)
                 .Any(a => a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount) > 0)),
             _ => q,
         };
@@ -223,7 +224,7 @@ LIMIT 2000")
         CustomerListSort.Oldest => q.OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id),
         CustomerListSort.Debt => q
             .OrderByDescending(x => _db.CustomerAccounts
-                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id && a.CancelledAtUtc == null)
                 .Sum(a => (decimal?)(a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount))) ?? 0m)
             .ThenByDescending(x => x.CreatedAtUtc),
         CustomerListSort.Spent => q
@@ -265,8 +266,12 @@ LIMIT 2000")
         await using (var command = _db.Database.GetDbConnection().CreateCommand())
         {
             command.CommandText = $@"
+-- İPTAL EDİLEN SATIŞ BORÇ DOĞURMAZ: CancelledAtUtc doluysa kalan alacak 0 sayılır.
+-- Tahsil edilen tutar (Spent) korunur — para gerçekten alınmıştır, yalnızca alacak düşer.
 SELECT a.CustomerId,
-       COALESCE(SUM(GREATEST(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0), 0)), 0) AS Debt,
+       COALESCE(SUM(CASE WHEN a.CancelledAtUtc IS NULL
+                         THEN GREATEST(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0), 0)
+                         ELSE 0 END), 0) AS Debt,
        COALESCE(SUM(a.DepositAmount + COALESCE(p.Paid, 0)), 0) AS Spent
 FROM customer_accounts a
 LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
@@ -498,8 +503,11 @@ SELECT COALESCE(SUM(GREATEST(t.Debt, 0)), 0) AS TotalDebt,
        COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
        COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders
 FROM (
+  -- İptal edilen satış borç doğurmaz (bkz. LoadDebtSpent); tahsil edilen tutar korunur.
   SELECT a.CustomerId,
-         SUM(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0)) AS Debt,
+         SUM(CASE WHEN a.CancelledAtUtc IS NULL
+                  THEN a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0)
+                  ELSE 0 END) AS Debt,
          SUM(a.DepositAmount + COALESCE(p.Paid, 0)) AS Spent
   FROM customer_accounts a
   LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p

@@ -496,8 +496,8 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
   return {
     packageSalesCount: Number(report?.packageSalesCount ?? 0),
     customersWithPackages: Number(report?.customersWithPackages ?? 0),
-    catalogPackageCount: Number(report?.catalogPackageCount ?? 0),
-    packagesInUseCount: Number(report?.packagesInUseCount ?? 0),
+    activeSoldPackageCount: Number(report?.activeSoldPackageCount ?? 0),
+    cancelledSoldPackageCount: Number(report?.cancelledSoldPackageCount ?? 0),
     totalAccounts: Number(report?.totalAccounts ?? 0),
     activeAccounts: Number(report?.activeAccounts ?? 0),
     sessionsTotal: Number(report?.sessionsTotal ?? 0),
@@ -839,7 +839,8 @@ export function normalizeAccount(account: ApiCustomerAccount | null | undefined,
     const paidAmount = Math.min(amount, Math.max(0, Number(i.paidAmount || 0)))
     const remaining = Math.max(0, amount - paidAmount)
     // Geciken = tam ödenmemiş + bir sonraki taksitin vade günü de gelmiş (aylık tolerans).
-    const overdue = status !== 'Paid' && remaining > 0.005 && Boolean(due) && graceDeadlineFor(due) <= todayIso
+    // İPTAL edilmiş taksit hiçbir zaman gecikmiş sayılmaz — o borç artık istenmiyor.
+    const overdue = status !== 'Paid' && status !== 'Cancelled' && remaining > 0.005 && Boolean(due) && graceDeadlineFor(due) <= todayIso
     return {
       id: i.id || `inst-${idx}`,
       no: Number(i.no || idx + 1),

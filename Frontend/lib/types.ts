@@ -1140,9 +1140,9 @@ export interface ApiAccountMonthlyInstallment {
 
 /** Pano "Hizmet Raporu" kartları — paket raporundan ayrı, kategori HİZMETİN kategorisidir. */
 export interface ApiServiceReport {
-  catalogServiceCount?: number
-  servicesInUseCount?: number
   serviceSalesCount?: number
+  activeSoldServiceCount?: number
+  cancelledSoldServiceCount?: number
   sessionsTotal?: number
   sessionsUsed?: number
   sessionsRemaining?: number
@@ -1152,8 +1152,8 @@ export interface ApiServiceReport {
 export interface ApiAccountReport {
   packageSalesCount?: number
   customersWithPackages?: number
-  catalogPackageCount?: number
-  packagesInUseCount?: number
+  activeSoldPackageCount?: number
+  cancelledSoldPackageCount?: number
   totalAccounts?: number
   activeAccounts?: number
   sessionsTotal?: number
@@ -1234,10 +1234,10 @@ export interface AccountMonthlyInstallment {
 export interface AccountReport {
   packageSalesCount: number
   customersWithPackages: number
-  /** Dönem filtresine BAĞLI DEĞİL — kurumda tanımlı paket adedi (Paketler sayfasıyla aynı). */
-  catalogPackageCount: number
-  /** Dönem filtresine BAĞLI DEĞİL — bu paketlerden kaç çeşidinin seansı süren satışı var. */
-  packagesInUseCount: number
+  /** "Aktif Paket" — dönemde satılanlardan seansı hâlâ devam eden satış adedi. */
+  activeSoldPackageCount: number
+  /** "İptal Edilen" — satılmış ama sonradan iptal edilmiş satış adedi. */
+  cancelledSoldPackageCount: number
   totalAccounts: number
   activeAccounts: number
   sessionsTotal: number
