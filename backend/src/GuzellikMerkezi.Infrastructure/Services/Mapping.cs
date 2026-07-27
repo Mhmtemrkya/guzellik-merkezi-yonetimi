@@ -234,6 +234,8 @@ internal static class Mapping
             package.Status,
             package.UpdatedAtUtc ?? package.CreatedAtUtc,
             package.LoyaltyPointCost,
-            package.SubCategory);
+            package.SubCategory,
+            package.CancelledAtUtc,
+            package.CancellationReason);
     }
 }

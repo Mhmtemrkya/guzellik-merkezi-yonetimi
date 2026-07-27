@@ -29,12 +29,15 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'all', label: 'Tümü' }, { key: 'Active', label: 'Aktif' }, { key: 'Passive', label: 'Pasif' },
   { key: 'Draft', label: 'Taslak' }, { key: 'Archived', label: 'Arşiv' },
 ]
-const STATUS_LABEL: Record<CatalogStatusKey, string> = { Active: 'Aktif', Passive: 'Pasif', Draft: 'Taslak', Archived: 'Arşiv' }
+// Cancelled şu an yalnızca paket kataloğunda kullanılıyor; hizmetlerde sekme yok ama
+// rozet eşlemesi eksik kalmasın (aynı CatalogStatus enum'u paylaşılıyor).
+const STATUS_LABEL: Record<CatalogStatusKey, string> = { Active: 'Aktif', Passive: 'Pasif', Draft: 'Taslak', Archived: 'Arşiv', Cancelled: 'İptal' }
 const STATUS_TONE: Record<CatalogStatusKey, string> = {
   Active: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Passive: 'border-slate-300/40 bg-slate-50 text-slate-600',
   Draft: 'border-amber-300/40 bg-amber-50 text-amber-700',
   Archived: 'border-[#ead8df]/70 bg-[#fff4f8]/50 text-[#352432]/45',
+  Cancelled: 'border-rose-200 bg-rose-50 text-rose-600',
 }
 
 const AVATAR_COLORS = ['from-[#f3a3bf] to-[#ffd9e6]', 'from-[#9c70bb] to-[#e3cdf2]', 'from-[#5aa9e6] to-[#cfe7fb]', 'from-[#54c1a0] to-[#cdeee2]', 'from-[#e6a14f] to-[#fbe6cb]']

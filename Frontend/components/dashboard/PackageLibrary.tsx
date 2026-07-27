@@ -19,24 +19,31 @@ import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Gift, Loader2, Minus, PackagePlus, PencilLine,
-  PauseCircle, Plus, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud, Wallet, X,
+  PauseCircle, Plus, RotateCcw, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud,
+  Wallet, X, XCircle,
 } from 'lucide-react'
 import type {
   ApiCampaign, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff,
   CatalogStatusKey, Service, ServicePackage,
 } from '@/lib/types'
 
-type TabKey = 'all' | 'Active' | 'Passive' | 'Draft' | 'Archived'
+// İKİ AYRI İPTAL KAVRAMI, karıştırılmamalı:
+//  • 'Cancelled'      → paket TANIMI iptal edildi (kurum vazgeçti, gerekçesiyle).
+//  • 'customerCancel' → paketin MÜŞTERİ SATIŞI iptal edildi (müşteri detayındaki gerekçeli iptal).
+//    Bu ikincisi paketin durumunu değiştirmez; paket hâlâ aktif olabilir.
+type TabKey = 'all' | 'Active' | 'Passive' | 'Draft' | 'Archived' | 'Cancelled' | 'customerCancel'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'all', label: 'Tümü' }, { key: 'Active', label: 'Aktif' }, { key: 'Passive', label: 'Pasif' },
   { key: 'Draft', label: 'Taslak' }, { key: 'Archived', label: 'Arşiv' },
+  { key: 'Cancelled', label: 'İptal Ettiğimiz' }, { key: 'customerCancel', label: 'Müşteri İptali' },
 ]
-const STATUS_LABEL: Record<CatalogStatusKey, string> = { Active: 'Aktif', Passive: 'Pasif', Draft: 'Taslak', Archived: 'Arşiv' }
+const STATUS_LABEL: Record<CatalogStatusKey, string> = { Active: 'Aktif', Passive: 'Pasif', Draft: 'Taslak', Archived: 'Arşiv', Cancelled: 'İptal' }
 const STATUS_TONE: Record<CatalogStatusKey, string> = {
   Active: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Passive: 'border-slate-300/40 bg-slate-50 text-slate-600',
   Draft: 'border-amber-300/40 bg-amber-50 text-amber-700',
   Archived: 'border-[#ead8df]/70 bg-[#fff4f8]/50 text-[#352432]/45',
+  Cancelled: 'border-rose-200 bg-rose-50 text-rose-600',
 }
 
 function bucketWeekly(times: number[], n = 12): number[] {
@@ -70,13 +77,15 @@ interface Draft {
   installments: number
   loyaltyPointCost: number
   status: CatalogStatusKey
+  /** Paket tanımı iptal edildiyse gerekçesi (müşteri satış iptalinden ayrı). */
+  cancellationReason: string
   items: DraftItem[]
 }
 
 const emptyDraft = (): Draft => ({
   id: null, name: 'Yeni Paket', description: '', category: '', subCategory: '', iconKey: '',
   salePrice: 0, priceTouched: false, deposit: 0, depositTouched: false,
-  installments: 4, loyaltyPointCost: 0, status: 'Draft', items: [],
+  installments: 4, loyaltyPointCost: 0, status: 'Draft', cancellationReason: '', items: [],
 })
 
 export default function PackageLibrary({
@@ -85,6 +94,8 @@ export default function PackageLibrary({
   tenantId?: string; branchId?: string | null; institutionName?: string; branchLabel?: string; canCustomServiceCat: boolean
 }) {
   const [tab, setTab] = useState<TabKey>('all')
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
   const [q, setQ] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
@@ -179,16 +190,25 @@ export default function PackageLibrary({
   const pkgSeries = useMemo(() => bucketWeekly(packages.map((p) => new Date(p.updatedAt.split(' ')[0]?.split('.').reverse().join('-') || '').getTime()).filter((t) => !Number.isNaN(t))), [packages])
 
   // ---- filtre + sayfalama
+  // Müşteri satışı iptal edilmiş paketlerin id'leri — "Müşteri İptali" sekmesi bunları süzer.
+  // Kaynak: cari hesaplardaki gerekçeli satış iptali (CustomerAccount.CancelledAtUtc).
+  const customerCancelledPackageIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const a of accounts) if (a.saleStatus === 'Cancelled' && a.servicePackageId) ids.add(a.servicePackageId)
+    return ids
+  }, [accounts])
+
   const filtered = useMemo(() => {
     let list = packages
-    if (tab !== 'all') list = list.filter((p) => p.status === tab)
+    if (tab === 'customerCancel') list = list.filter((p) => customerCancelledPackageIds.has(p.id))
+    else if (tab !== 'all') list = list.filter((p) => p.status === tab)
     if (catFilter) list = list.filter((p) => catFilter === 'Kategorisiz' ? !p.category : p.category === catFilter)
     if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((p) => p.name.toLocaleLowerCase('tr').includes(t) || p.items.some((i) => i.serviceName.toLocaleLowerCase('tr').includes(t))) }
     const sorted = [...list]
     if (priceSort === 'asc') sorted.sort((a, b) => a.totalPrice - b.totalPrice)
     else if (priceSort === 'desc') sorted.sort((a, b) => b.totalPrice - a.totalPrice)
     return sorted
-  }, [packages, tab, catFilter, q, priceSort])
+  }, [packages, tab, catFilter, q, priceSort, customerCancelledPackageIds])
   useEffect(() => { setPage(1) }, [tab, catFilter, q, priceSort, pageSize])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -237,6 +257,7 @@ export default function PackageLibrary({
       id: p.id, name: p.name, description: p.description, category: p.category, subCategory: p.subCategory,
       iconKey: p.iconKey, salePrice: p.totalPrice, priceTouched: true,
       deposit: p.depositAmount, depositTouched: true, installments: p.installmentCount, loyaltyPointCost: p.loyaltyPointCost || 0, status: p.status,
+      cancellationReason: p.cancellationReason || '',
       items: p.items.map((i) => {
         const svc = serviceById.get(i.serviceDefinitionId)
         return { serviceDefinitionId: i.serviceDefinitionId, name: i.serviceName, iconKey: svc?.iconKey || '', duration: svc?.duration || 0, sessionCount: i.sessionCount, unitPrice: i.unitPrice }
@@ -303,7 +324,12 @@ export default function PackageLibrary({
         if (created?.id) setDraft((d) => ({ ...d, id: created.id!, status }))
       }
       setDraft((d) => ({ ...d, status }))
-      setSavedMsg(status === 'Active' ? 'Paket yayına alındı.' : status === 'Passive' ? 'Paket pasife alındı.' : 'Taslak kaydedildi.')
+      setSavedMsg(
+        status === 'Active' ? 'Paket yayına alındı.'
+          : status === 'Cancelled' ? 'Paket iptal edildi; artık satış listelerinde çıkmaz.'
+            : status === 'Passive' ? 'Paket pasife alındı.'
+              : 'Taslak kaydedildi.',
+      )
       await reload()
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Kaydetme başarısız.') } finally { setBusy(false) }
   }
@@ -342,6 +368,32 @@ export default function PackageLibrary({
     } finally {
       setBusy(false)
     }
+  }
+
+  // --- Paket TANIMININ gerekçeli iptali (müşteri satış iptalinden ayrı) -------
+  const cancelCatalogPackage = async () => {
+    if (!draft.id) return
+    const reason = cancelReason.trim()
+    if (!reason) { setActionError('İptal gerekçesi yazmalısın.'); return }
+    setBusy(true); setActionError(''); setSavedMsg('')
+    try {
+      await adminApi.cancelPackage(draft.id, reason, tenantId)
+      setDraft((d) => ({ ...d, status: 'Cancelled', cancellationReason: reason }))
+      setCancelOpen(false); setCancelReason('')
+      setSavedMsg('Paket iptal edildi; artık satış listelerinde çıkmaz.')
+      await reload()
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'İptal edilemedi.') } finally { setBusy(false) }
+  }
+
+  const restoreCatalogPackage = async () => {
+    if (!draft.id) return
+    setBusy(true); setActionError(''); setSavedMsg('')
+    try {
+      await adminApi.restorePackage(draft.id, tenantId)
+      setDraft((d) => ({ ...d, status: 'Passive', cancellationReason: '' }))
+      setSavedMsg('İptal geri alındı; paket pasif durumda. Satışa açmak için "Yayına Al".')
+      await reload()
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Geri alınamadı.') } finally { setBusy(false) }
   }
 
   const remove = async () => {
@@ -738,8 +790,47 @@ export default function PackageLibrary({
               </div>
             )}
 
+            {/* İptal edilmiş paketin gerekçesi — hangi paketten neden vazgeçildiği kartta görünür. */}
+            {draft.status === 'Cancelled' && (
+              <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50/70 px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-rose-600">
+                  <XCircle className="h-3.5 w-3.5" /> Paket iptal edildi
+                </div>
+                <div className="mt-1 text-[12px] text-[#352432]">{draft.cancellationReason || 'Gerekçe belirtilmemiş.'}</div>
+                <div className="mt-1 text-[10px] text-[#705a66]">Bu, kurumun paketten vazgeçmesidir; müşterilerin satış iptalleriyle ilgisi yoktur.</div>
+              </div>
+            )}
+
+            {/* İptal gerekçesi kutusu — "İptal Et"e basınca açılır, gerekçesiz iptal edilemez. */}
+            {cancelOpen && draft.status !== 'Cancelled' && (
+              <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50/60 p-3">
+                <div className="text-[11px] font-medium text-rose-700">Paketi neden iptal ediyorsun?</div>
+                <div className="mt-0.5 text-[10px] text-[#705a66]">
+                  Paket silinmez; geçmiş satışlar ve raporlar korunur, yalnızca yeni satış listelerinden düşer.
+                </div>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value.slice(0, 500))}
+                  rows={2}
+                  autoFocus
+                  placeholder="Örn: Hizmet kapsamı değişti, yerine yeni paket açıldı."
+                  className="mt-2 w-full resize-none rounded-[9px] border border-rose-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-rose-400"
+                />
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <button type="button" onClick={() => { setCancelOpen(false); setCancelReason('') }}
+                    className="rounded-[9px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] text-[#352432]/70 hover:bg-[#fff4f8]/50">
+                    Vazgeç
+                  </button>
+                  <button type="button" disabled={busy || !cancelReason.trim()} onClick={cancelCatalogPackage}
+                    className="inline-flex items-center gap-1.5 rounded-[9px] bg-rose-600 px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />} Paketi İptal Et
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Aksiyonlar */}
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <button type="button" disabled={busy} onClick={() => save('Draft')}
                 className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/70 hover:bg-[#fff4f8]/50 disabled:opacity-50">
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} Taslağı Kaydet
@@ -752,6 +843,20 @@ export default function PackageLibrary({
                 }`}>
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : draft.status === 'Active' ? <PauseCircle className="h-3.5 w-3.5" /> : <UploadCloud className="h-3.5 w-3.5" />}
                 {draft.status === 'Active' ? 'Pasife Al' : 'Yayına Al'}
+              </button>
+              {/* İptal: paket TANIMINDAN gerekçeli vazgeçme. Silmez — geçmiş satışlar ve raporlar korunur,
+                  paket yalnızca satış listelerinden düşer (isActive=false) ve "İptal Ettiğimiz" sekmesinde durur.
+                  Müşterinin satış iptali BAŞKA bir şeydir; o, aşağıdaki satış panelinden yapılır. */}
+              <button type="button" disabled={busy || !draft.id}
+                onClick={() => { if (draft.status === 'Cancelled') { void restoreCatalogPackage() } else { setActionError(''); setCancelOpen((v) => !v) } }}
+                title={draft.id ? undefined : 'Önce paketi kaydet'}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-[10px] border px-3 py-2 text-[11px] font-medium disabled:opacity-50 ${
+                  draft.status === 'Cancelled'
+                    ? 'border-emerald-300/50 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'border-rose-300/50 bg-white text-rose-600 hover:bg-rose-50'
+                }`}>
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : draft.status === 'Cancelled' ? <RotateCcw className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                {draft.status === 'Cancelled' ? 'İptali Geri Al' : 'İptal Et'}
               </button>
               <button type="button" disabled={busy} onClick={remove}
                 className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50">

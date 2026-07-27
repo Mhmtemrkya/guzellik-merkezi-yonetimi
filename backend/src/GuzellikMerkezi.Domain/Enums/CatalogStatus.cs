@@ -11,4 +11,9 @@ public enum CatalogStatus
     Passive = 2,
     /// <summary>Arşiv — kullanım dışı, geçmiş kayıtlarda kalır.</summary>
     Archived = 3,
+    /// <summary>
+    /// İptal — paket tanımı iptal edildi; satış listelerinde çıkmaz (SetStatus IsActive'i kapatır),
+    /// geçmiş satışlar etkilenmez. Pasif'ten farkı: geçici kapatma değil, kalıcı vazgeçme.
+    /// </summary>
+    Cancelled = 4,
 }

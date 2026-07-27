@@ -124,6 +124,43 @@ public sealed class ServicePackageService : IServicePackageService
         return Result<ServicePackageDto>.Success(hydrated.ToDto());
     }
 
+    /// <summary>
+    /// Paket TANIMININ iptali: kurum bu paketten vazgeçer, gerekçesiyle kaydedilir. Paket silinmez —
+    /// geçmiş satışlar ve raporlar korunur, paket yalnızca satış listelerinden düşer (IsActive=false).
+    /// Müşterinin satış iptali (CustomerAccountService.CancelSaleAsync) BAŞKA bir kavramdır.
+    /// </summary>
+    public async Task<Result<ServicePackageDto>> CancelAsync(Guid tenantId, Guid id, CancelServicePackageRequest request, CancellationToken cancellationToken = default)
+    {
+        var package = await _db.ServicePackages
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (package is null) return Result<ServicePackageDto>.Failure(Error.NotFound("Paket bulunamadı."));
+
+        package.CancelCatalog(request.Reason);
+        await _db.SaveChangesAsync(cancellationToken);
+        return await HydrateAsync(tenantId, id, cancellationToken);
+    }
+
+    public async Task<Result<ServicePackageDto>> RestoreAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    {
+        var package = await _db.ServicePackages
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (package is null) return Result<ServicePackageDto>.Failure(Error.NotFound("Paket bulunamadı."));
+
+        package.RestoreCatalog();
+        await _db.SaveChangesAsync(cancellationToken);
+        return await HydrateAsync(tenantId, id, cancellationToken);
+    }
+
+    private async Task<Result<ServicePackageDto>> HydrateAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
+    {
+        var hydrated = await _db.ServicePackages
+            .AsNoTracking()
+            .Include(x => x.Items)
+            .ThenInclude(i => i.ServiceDefinition)
+            .FirstAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        return Result<ServicePackageDto>.Success(hydrated.ToDto());
+    }
+
     public async Task<Result<ServicePackageDto>> UpdateCategoryAsync(
         Guid tenantId,
         Guid id,

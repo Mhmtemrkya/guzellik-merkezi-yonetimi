@@ -39,6 +39,10 @@ class _PackageFormState extends State<PackageForm> {
   String? _category;
   bool _isActive = true;
   bool _saving = false;
+  /// Paketin katalog durumu (Active/Draft/Passive/Archived/Cancelled). Kaydederken KORUNUR:
+  /// aksi halde iptal edilmiş bir paket mobilden düzenlenince sessizce yayına dönerdi.
+  String _status = 'Active';
+  String _cancellationReason = '';
 
   late Future<void> _loading;
   List<Map<String, dynamic>> _services = [];
@@ -65,6 +69,8 @@ class _PackageFormState extends State<PackageForm> {
         ? it!['category'] as String
         : widget.presetCategory;
     _isActive = it?['isActive'] != false;
+    _status = _normalizeStatus(it?['status'], it?['isActive']);
+    _cancellationReason = '${it?['cancellationReason'] ?? ''}';
     for (final raw in (it?['items'] as List? ?? const [])) {
       if (raw is Map) {
         _items.add(
@@ -216,7 +222,9 @@ class _PackageFormState extends State<PackageForm> {
       'installmentCount': int.tryParse(_installments.text) ?? 1,
       'isActive': _isActive,
       'items': items,
-      'status': 'Active',
+      // Statü korunur: "Aktif" anahtarı yalnızca Aktif <-> Pasif arasında gezdirir. İptal/arşiv/
+      // taslak durumundaki paket düzenlenince sessizce yayına alınmaz (web paritesi).
+      'status': _isActive ? 'Active' : (_status == 'Active' ? 'Passive' : _status),
     };
     try {
       if (_isEdit) {
@@ -228,6 +236,80 @@ class _PackageFormState extends State<PackageForm> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  static String _normalizeStatus(dynamic raw, dynamic isActive) {
+    const byIndex = {0: 'Active', 1: 'Draft', 2: 'Passive', 3: 'Archived', 4: 'Cancelled'};
+    if (raw is int) return byIndex[raw] ?? 'Active';
+    final s = '${raw ?? ''}';
+    if (byIndex.containsValue(s)) return s;
+    final n = int.tryParse(s);
+    if (n != null) return byIndex[n] ?? 'Active';
+    return isActive == false ? 'Passive' : 'Active';
+  }
+
+  /// Paket TANIMININ gerekçeli iptali (kurum vazgeçti). Müşterinin satış iptaliyle karıştırılmamalı —
+  /// o, cari hesap üzerinden yapılır ve paketin durumunu değiştirmez.
+  Future<void> _cancelCatalog() async {
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paketi iptal et'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Paket silinmez; geçmiş satışlar ve raporlar korunur, yalnızca yeni satış '
+              'listelerinden düşer.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLength: 500,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'İptal gerekçesi',
+                hintText: 'Örn: Hizmet kapsamı değişti.',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('İptal Et'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty) return;
+    try {
+      await widget.api.post(
+        '/api/admin/packages/${widget.item!['id']}/cancel',
+        {'reason': reason},
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Future<void> _restoreCatalog() async {
+    try {
+      await widget.api.post('/api/admin/packages/${widget.item!['id']}/restore', const {});
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
@@ -374,7 +456,56 @@ class _PackageFormState extends State<PackageForm> {
                     child: Text(_saving ? 'Kaydediliyor...' : 'Kaydet'),
                   ),
                   if (_isEdit) ...[
+                    if (_status == 'Cancelled') ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF1F3),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFF3C4CE)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'PAKET İPTAL EDİLDİ',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFA63E5F),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _cancellationReason.isEmpty
+                                  ? 'Gerekçe belirtilmemiş.'
+                                  : _cancellationReason,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
+                    // Paket TANIMININ gerekçeli iptali — müşterinin satış iptalinden ayrıdır.
+                    TextButton.icon(
+                      onPressed: _status == 'Cancelled' ? _restoreCatalog : _cancelCatalog,
+                      style: TextButton.styleFrom(
+                        foregroundColor: _status == 'Cancelled'
+                            ? const Color(0xFF2F7D54)
+                            : const Color(0xFFA63E5F),
+                      ),
+                      icon: Icon(
+                        _status == 'Cancelled'
+                            ? Icons.restore_rounded
+                            : Icons.cancel_outlined,
+                      ),
+                      label: Text(
+                        _status == 'Cancelled' ? 'İptali geri al' : 'Paketi iptal et',
+                      ),
+                    ),
                     TextButton.icon(
                       onPressed: _delete,
                       style: TextButton.styleFrom(foregroundColor: Colors.red),

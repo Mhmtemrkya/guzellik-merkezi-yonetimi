@@ -939,6 +939,11 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/packages/${id}/category`, { method: 'PATCH', query: { tenantId }, body: { category, subCategory } }),
   deletePackage: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/packages/${id}`, { method: 'DELETE', query: { tenantId } }),
+  // Paket TANIMININ gerekçeli iptali — müşterinin satış iptali (cancelAccountSale) ayrı kavramdır.
+  cancelPackage: <T = unknown>(id: string, reason: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/packages/${id}/cancel`, { method: 'POST', query: { tenantId }, body: { reason } }),
+  restorePackage: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/packages/${id}/restore`, { method: 'POST', query: { tenantId }, body: {} }),
 
   appointments: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/appointments/', { query: { page: 1, pageSize: 100, ...query } }),

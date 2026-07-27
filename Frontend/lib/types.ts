@@ -876,7 +876,7 @@ export interface LoyaltyBalance {
   history: LoyaltyTransaction[]
 }
 
-export type CatalogStatusKey = 'Active' | 'Draft' | 'Passive' | 'Archived'
+export type CatalogStatusKey = 'Active' | 'Draft' | 'Passive' | 'Archived' | 'Cancelled'
 
 export interface ApiService {
   id?: string
@@ -943,6 +943,9 @@ export interface ApiServicePackage {
   updatedAtUtc?: string | null
   /** Sadakat puanı karşılığı hediye maliyeti (null/0 = hediye edilemez). */
   loyaltyPointCost?: number | null
+  /** Paket TANIMININ iptali (kurum vazgeçti) — müşterinin satış iptalinden ayrıdır. */
+  cancelledAtUtc?: string | null
+  cancellationReason?: string | null
 }
 
 export interface ServicePackageItem {
@@ -972,6 +975,8 @@ export interface ServicePackage {
   updatedAt: string
   /** Sadakat puanı karşılığı hediye maliyeti (0 = hediye edilemez). */
   loyaltyPointCost: number
+  /** Paket TANIMININ iptal gerekçesi (kurum vazgeçti). Müşterinin satış iptalinden ayrıdır. */
+  cancellationReason: string
 }
 
 export type InstallmentStatusKey = 'Planned' | 'Paid' | 'Cancelled'

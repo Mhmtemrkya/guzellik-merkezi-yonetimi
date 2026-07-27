@@ -41,6 +41,20 @@ public static class ServicePackageEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateCategoryAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
+        // Paket TANIMININ gerekçeli iptali (kurum vazgeçti). Müşterinin satış iptali için
+        // /api/admin/accounts/{id}/cancel-sale kullanılır — ikisi ayrı kavramdır.
+        group.MapPost("/{id:guid}/cancel", async (Guid id, CancelServicePackageRequest request, Guid? tenantId, ICurrentUser currentUser, IServicePackageService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CancelAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
+        });
+
+        group.MapPost("/{id:guid}/restore", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IServicePackageService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RestoreAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+        });
+
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IServicePackageService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

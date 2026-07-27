@@ -670,10 +670,10 @@ export function normalizeCampaign(c: ApiCampaign | null | undefined, index = 0):
 }
 
 export function normalizeCatalogStatus(status: unknown, isActive?: boolean): CatalogStatusKey {
-  const byIndex: Record<string, CatalogStatusKey> = { '0': 'Active', '1': 'Draft', '2': 'Passive', '3': 'Archived' }
+  const byIndex: Record<string, CatalogStatusKey> = { '0': 'Active', '1': 'Draft', '2': 'Passive', '3': 'Archived', '4': 'Cancelled' }
   const key = String(status ?? '')
   if (byIndex[key]) return byIndex[key]
-  if (key === 'Active' || key === 'Draft' || key === 'Passive' || key === 'Archived') return key
+  if (key === 'Active' || key === 'Draft' || key === 'Passive' || key === 'Archived' || key === 'Cancelled') return key
   return isActive === false ? 'Passive' : 'Active'
 }
 
@@ -719,6 +719,7 @@ export function normalizePackage(pkg: ApiServicePackage | null | undefined, inde
     totalSessions: Number(pkg?.totalSessions || items.reduce((s, i) => s + i.sessionCount, 0)),
     iconKey: pkg?.iconKey || '',
     status: normalizeCatalogStatus(pkg?.status, pkg?.isActive),
+    cancellationReason: pkg?.cancellationReason || '',
     updatedAt: (() => {
       const d = parseUtc(pkg?.updatedAtUtc)
       if (!d) return ''

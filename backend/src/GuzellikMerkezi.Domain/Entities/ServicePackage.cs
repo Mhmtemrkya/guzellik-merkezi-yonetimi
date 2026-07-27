@@ -93,14 +93,42 @@ public sealed class ServicePackage : Entity
         Touch();
     }
 
+    /// <summary>Paket tanımı iptal edildiyse ne zaman ve neden. DİKKAT: bu, kurumun kendi
+    /// paketinden vazgeçmesidir — müşterinin satış iptaliyle (CustomerAccount.CancelledAtUtc)
+    /// karıştırılmamalı, ikisi ayrı kavramdır.</summary>
+    public DateTime? CancelledAtUtc { get; private set; }
+    public string? CancellationReason { get; private set; }
+
     public void SetStatus(CatalogStatus status)
     {
         Status = status;
         IsActive = status == CatalogStatus.Active;
+        // İptal dışına çıkan paketin gerekçesi taşınmaz.
+        if (status != CatalogStatus.Cancelled) { CancelledAtUtc = null; CancellationReason = null; }
         Touch();
     }
 
-    public void Activate() { Status = CatalogStatus.Active; IsActive = true; Touch(); }
+    /// <summary>Paket tanımını gerekçesiyle iptal eder (satış listelerinden düşer, geçmiş satışlar korunur).</summary>
+    public void CancelCatalog(string? reason)
+    {
+        Status = CatalogStatus.Cancelled;
+        IsActive = false;
+        CancelledAtUtc = DateTime.UtcNow;
+        CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        Touch();
+    }
+
+    /// <summary>İptali geri alır. Kendiliğinden yayına almaz — pasife düşer, yayın kararı ayrıca verilir.</summary>
+    public void RestoreCatalog()
+    {
+        Status = CatalogStatus.Passive;
+        IsActive = false;
+        CancelledAtUtc = null;
+        CancellationReason = null;
+        Touch();
+    }
+
+    public void Activate() { Status = CatalogStatus.Active; IsActive = true; CancelledAtUtc = null; CancellationReason = null; Touch(); }
     public void Deactivate() { Status = CatalogStatus.Passive; IsActive = false; Touch(); }
 }
 

@@ -255,6 +255,12 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // "Kim sattı": personel seçilmemiş satışlarda kaydı oluşturan kullanıcıya düşülür.
         items = await WithSellerFallbackAsync(tenantId, accounts, items, cancellationToken);
 
+        // Paket bağı: adisyondan açılan satışta cari.ServicePackageId NULL bırakılır (paket yalnızca
+        // seans satırında tutulur). Bağ seanstan türetilmezse "bu paketin satışı iptal edildi mi"
+        // sorusu yalnızca doğrudan satışlarda cevaplanır — Paketler sayfasındaki "Müşteri İptali"
+        // süzgeci adisyon satışlarını hiç göremezdi. Genel listede de gerekli, bu yüzden burada.
+        items = await WithPackageLinkAsync(tenantId, items, cancellationToken);
+
         // Satış paneli (müşteri kartı ya da katalog kartı): seans durumu + kalemler +
         // Aktif/Tamamlandı/İptal rozeti. Yalnızca süzülmüş listede hesaplanır (genel liste hafif kalsın).
         if ((customerId is { } scoped && scoped != Guid.Empty) || catalogScoped)
@@ -267,6 +273,36 @@ public sealed class CustomerAccountService : ICustomerAccountService
     /// Satış satırlarına seans durumu, kalem dökümü ve durum rozetini ekler.
     /// Kalem tutarı: paket kalemi birim fiyatı varsa ondan, yoksa satış toplamı seanslara dağıtılarak.
     /// </summary>
+    /// <summary>
+    /// ServicePackageId'si boş olan satışlara (adisyon yoluyla açılanlar) paket bağını seanslardan
+    /// doldurur. Yalnızca gereken satırlar için tek hafif sorgu çalışır.
+    /// </summary>
+    private async Task<CustomerAccountDto[]> WithPackageLinkAsync(
+        Guid tenantId, CustomerAccountDto[] dtos, CancellationToken cancellationToken)
+    {
+        var missing = dtos.Where(d => d.ServicePackageId is null).Select(d => d.Id).ToHashSet();
+        if (missing.Count == 0) return dtos;
+
+        // MySQL'de Guid listesi .Contains() sunucuda çevrilemez → bellekte süzülür.
+        var links = await _db.CustomerPackageSessions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .Select(s => new { s.CustomerAccountId, s.ServicePackageId })
+            .ToListAsync(cancellationToken);
+        var byAccount = links
+            // Paketsiz (tek hizmet) satışın seansında ServicePackageId boş Guid'dir — paket bağı sayılmaz.
+            .Where(l => l.ServicePackageId != Guid.Empty && missing.Contains(l.CustomerAccountId))
+            .GroupBy(l => l.CustomerAccountId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.ServicePackageId).First());
+        if (byAccount.Count == 0) return dtos;
+
+        return dtos
+            .Select(d => d.ServicePackageId is null && byAccount.TryGetValue(d.Id, out var pkg)
+                ? d with { ServicePackageId = pkg }
+                : d)
+            .ToArray();
+    }
+
     private async Task<CustomerAccountDto[]> EnrichSalesAsync(
         Guid tenantId, CustomerAccount[] accounts, CustomerAccountDto[] dtos, CancellationToken cancellationToken)
     {
@@ -279,6 +315,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Select(x => new
             {
                 x.CustomerAccountId,
+                x.ServicePackageId,
                 x.ServiceDefinitionId,
                 ServiceName = x.ServiceDefinition!.Name,
                 x.TotalSessions,

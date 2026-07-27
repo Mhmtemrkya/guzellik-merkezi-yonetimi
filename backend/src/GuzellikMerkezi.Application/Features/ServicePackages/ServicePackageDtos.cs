@@ -26,7 +26,13 @@ public sealed record ServicePackageDto(
     CatalogStatus Status = CatalogStatus.Active,
     DateTime? UpdatedAtUtc = null,
     int? LoyaltyPointCost = null,
-    string? SubCategory = null);
+    string? SubCategory = null,
+    // Paket TANIMININ iptali (kurum vazgeçti). Müşterinin satış iptaliyle ilgisi yoktur.
+    DateTime? CancelledAtUtc = null,
+    string? CancellationReason = null);
+
+/// <summary>Paket tanımını gerekçesiyle iptal etme isteği.</summary>
+public sealed record CancelServicePackageRequest(string? Reason);
 
 public sealed record UpsertServicePackageItemRequest(Guid ServiceDefinitionId, int SessionCount, decimal? UnitPrice);
 
