@@ -14,6 +14,12 @@ public sealed class CustomerAccountService : ICustomerAccountService
     private readonly IAuditLogger _audit;
     private readonly ICurrentUser _currentUser;
 
+    /// <summary>
+    /// SoldAtUtc kolonu eklenmeden önce oluşmuş cariler bu eşiğin altında (0001-01-01) kalır.
+    /// Dönem süzmesinde bu satırlar CreatedAtUtc'ye düşürülür — bkz. GetReportAsync.
+    /// </summary>
+    private static readonly DateTime LegacySoldAtThreshold = new(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     public CustomerAccountService(GuzellikDbContext db, IAuditLogger audit, ICurrentUser currentUser)
     {
         _db = db;
@@ -661,8 +667,12 @@ public sealed class CustomerAccountService : ICustomerAccountService
         // Dönem, satışın GERÇEK tarihine (SoldAtUtc) göre süzülür. Normal satışta SoldAtUtc =
         // oluşturma anı; geçmiş satış girişinde ise geçmiş bir tarihtir — böylece 2024 satışı
         // bugünün cirosunda görünmez.
-        if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.SoldAtUtc >= fromUtc.Value);
-        if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => a.SoldAtUtc < toUtc.Value);
+        // SoldAtUtc kolonu sonradan eklendi (20260725211801) ve eski satırlarda 0001-01-01 kalır;
+        // BackfillCustomerAccountSoldAt bunu doldurur ama migration'ı henüz uygulanmamış kurumda
+        // bu kayıtlar HİÇBİR döneme düşmezdi. Mapping.ToDto ile aynı kural: satış tarihi yoksa
+        // kayıt tarihine düşülür.
+        if (fromUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) >= fromUtc.Value);
+        if (toUtc.HasValue) accountsQuery = accountsQuery.Where(a => (a.SoldAtUtc < LegacySoldAtThreshold ? a.CreatedAtUtc : a.SoldAtUtc) < toUtc.Value);
         var accounts = await accountsQuery
             .Include(a => a.Installments)
             .Include(a => a.Payments)
