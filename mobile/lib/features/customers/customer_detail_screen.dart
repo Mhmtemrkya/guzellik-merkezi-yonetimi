@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -60,6 +61,41 @@ String _methodLabel(String raw) {
       return raw.isEmpty ? 'Diğer' : raw;
   }
 }
+
+/// Doğum gününe kalan gün. Yıl yok sayılır: bu yılki tarih geçtiyse gelecek yıla bakılır.
+/// Web'deki `daysToBirthday` ile aynı mantık — salonun kutlama/kampanya fırsatı.
+int? _daysToBirthday(dynamic birthDate) {
+  final d = parseUtcToLocal(birthDate);
+  if (d == null) return null;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  var next = DateTime(today.year, d.month, d.day);
+  if (next.isBefore(today)) next = DateTime(today.year + 1, d.month, d.day);
+  return next.difference(today).inDays;
+}
+
+/// Randevu durumunu süzgeç grubuna indirger (web'deki çip kümesiyle aynı).
+String _apptGroup(String status) {
+  switch (status.toLowerCase()) {
+    case 'completed':
+      return 'tamamlandi';
+    case 'inprogress':
+      return 'devam';
+    case 'cancelled':
+    case 'noshow':
+      return 'iptal';
+    default:
+      return 'bekliyor';
+  }
+}
+
+const _apptFilters = <(String, String)>[
+  ('all', 'Tümü'),
+  ('tamamlandi', 'Tamamlandı'),
+  ('devam', 'Devam'),
+  ('bekliyor', 'Bekliyor'),
+  ('iptal', 'İptal'),
+];
 
 /// Müşteri Detayı — web `CustomerDetailModal`'ın mobil karşılığı.
 ///
@@ -204,7 +240,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             bottom: false,
             child: Column(
               children: [
-                _header(),
+                // Builder: KPI kartlarının sekme değiştirebilmesi için
+                // DefaultTabController'ın ALTINDA bir context gerekiyor.
+                Builder(builder: (ctx) => _header(ctx)),
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
@@ -265,8 +303,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         ),
       );
 
-  Widget _header() {
+  Widget _header(BuildContext context) {
     final blacklisted = _customer['isBlacklisted'] == true;
+    final birthdayIn = _daysToBirthday(_customer['birthDate']);
     final last = _lastApptDate;
     final active90 = last != null &&
         DateTime.now().difference(last).inDays <= 90;
@@ -304,22 +343,28 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Row(
+                    // Wrap: doğum günü rozeti eklenince rozetler tek satıra sığmıyordu.
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
                         _miniBadge(
                           active90 ? 'Aktif Müşteri' : 'Pasif',
                           active90 ? AppColors.success : AppColors.muted,
                         ),
-                        if (_customer['isVip'] == true) ...[
-                          const SizedBox(width: 6),
+                        if (_customer['isVip'] == true)
                           _miniBadge('VIP', const Color(0xFF9A7420),
                               icon: Icons.workspace_premium_rounded),
-                        ],
-                        if (blacklisted) ...[
-                          const SizedBox(width: 6),
+                        if (blacklisted)
                           _miniBadge('Kara liste', AppColors.danger,
                               icon: Icons.block_rounded),
-                        ],
+                        if (birthdayIn != null && birthdayIn <= 14)
+                          _miniBadge(
+                              birthdayIn == 0
+                                  ? 'Bugün doğum günü!'
+                                  : 'Doğum günü $birthdayIn gün',
+                              const Color(0xFF7C4F96),
+                              icon: Icons.cake_rounded),
                       ],
                     ),
                   ],
@@ -328,24 +373,29 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _kpiStrip(last),
+          _kpiStrip(context, last),
           const SizedBox(height: 6),
-          const TabBar(
+          TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             labelColor: AppColors.primaryDark,
             unselectedLabelColor: AppColors.muted,
             indicatorColor: AppColors.primary,
             indicatorWeight: 2.5,
-            labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            labelStyle:
+                const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
             unselectedLabelStyle:
-                TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            // Sekme başlığında sayaç/işaret: içeriğe girmeden kayıt var mı görünür.
             tabs: [
-              Tab(text: 'Genel Bakış'),
-              Tab(text: 'Randevu & Seans'),
-              Tab(text: 'Adisyon & İşlemler'),
-              Tab(text: 'Sağlık & Günlük'),
-              Tab(text: 'Notlar'),
+              const Tab(text: 'Genel Bakış'),
+              Tab(child: _tabLabel('Randevu & Seans', count: _appts.length)),
+              const Tab(text: 'Adisyon & İşlemler'),
+              const Tab(text: 'Sağlık & Günlük'),
+              Tab(
+                child: _tabLabel('Notlar',
+                    dot: '${_customer['notes'] ?? ''}'.trim().isNotEmpty),
+              ),
             ],
           ),
         ],
@@ -384,13 +434,49 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     );
   }
 
-  Widget _kpiStrip(DateTime? last) {
-    final items = <(String, String)>[
-      ('Toplam Randevu', '${_appts.length}'),
-      ('Toplam Harcama', CalendarText.tl(_spent)),
-      ('Açık Borç', CalendarText.tl(_debt)),
+  /// Sekme başlığı — yanında sayaç ya da "not var" noktası.
+  Widget _tabLabel(String text, {int? count, bool dot = false}) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text),
+          if (count != null && count > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('$count',
+                  style: const TextStyle(
+                      fontSize: 10.5,
+                      height: 1.2,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryDark)),
+            ),
+          ],
+          if (dot) ...[
+            const SizedBox(width: 5),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                  color: AppColors.primary, shape: BoxShape.circle),
+            ),
+          ],
+        ],
+      );
+
+  Widget _kpiStrip(BuildContext context, DateTime? last) {
+    // 3. alan: dokunulunca gidilecek sekme (yoksa kart pasif).
+    final items = <(String, String, int?)>[
+      ('Toplam Randevu', '${_appts.length}', 1),
+      ('Toplam Harcama', CalendarText.tl(_spent), null),
+      // Borç görünce ilk iş adisyona bakmaktır — kart oraya götürsün.
+      ('Açık Borç', CalendarText.tl(_debt), _debt > 0 ? 2 : null),
       ('Son İşlem',
-          last == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(last)),
+          last == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(last),
+          null),
     ];
     return SizedBox(
       height: 60,
@@ -400,9 +486,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
-          final (label, value) = items[i];
+          final (label, value, target) = items[i];
           final danger = label == 'Açık Borç' && _debt > 0;
-          return Container(
+          final card = Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: .7),
@@ -428,6 +514,16 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                         fontWeight: FontWeight.w800,
                         color: danger ? AppColors.danger : AppColors.ink)),
               ],
+            ),
+          );
+          if (target == null) return card;
+          return Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => DefaultTabController.of(context).animateTo(target),
+              child: card,
             ),
           );
         },
@@ -600,8 +696,8 @@ class _OverviewTab extends StatelessWidget {
             children: [
               _infoRow('Ad Soyad', state._name),
               _phoneRow(context, state.widget.api, '${c['id']}', valueOf(c, const ['phone'])),
-              _infoRow('E-posta', valueOf(c, const ['email'])),
-              _infoRow('Doğum Tarihi', _fmtDate(c['birthDate'])),
+              _emailRow(context, valueOf(c, const ['email'])),
+              _birthRow(c['birthDate']),
               _infoRow('Cinsiyet', _genders['${c['gender']}'] ?? 'Belirtilmemiş'),
               _infoRowWidget(
                 'KVKK',
@@ -833,27 +929,173 @@ class _OverviewTab extends StatelessWidget {
 // ===========================================================================
 // RANDEVU & SEANS
 // ===========================================================================
-class _AppointmentsTab extends StatelessWidget {
+class _AppointmentsTab extends StatefulWidget {
   const _AppointmentsTab({required this.state});
   final _CustomerDetailScreenState state;
 
   @override
+  State<_AppointmentsTab> createState() => _AppointmentsTabState();
+}
+
+class _AppointmentsTabState extends State<_AppointmentsTab> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _status = 'all';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _query = '';
+      _status = 'all';
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final appts = state._appts;
+    final appts = widget.state._appts;
+
+    // Süzgeç çiplerindeki sayaçlar — hangi durumda kaç kayıt var, tıklamadan görünür.
+    final counts = <String, int>{};
+    for (final a in appts) {
+      final g = _apptGroup('${a['status']}');
+      counts[g] = (counts[g] ?? 0) + 1;
+    }
+
+    final q = _query.trim().toLowerCase();
+    final filtered = appts.where((a) {
+      if (_status != 'all' && _apptGroup('${a['status']}') != _status) {
+        return false;
+      }
+      if (q.isEmpty) return true;
+      final start = parseUtcToLocal(a['startUtc']);
+      final date = start == null
+          ? ''
+          : DateFormat('d MMMM yyyy', 'tr_TR').format(start).toLowerCase();
+      return valueOf(a, const ['serviceName'], fallback: '')
+              .toLowerCase()
+              .contains(q) ||
+          valueOf(a, const ['staffName'], fallback: '')
+              .toLowerCase()
+              .contains(q) ||
+          date.contains(q);
+    }).toList();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
       children: [
-        _SessionsCard(api: state._api, customerId: state._id),
+        _SessionsCard(api: widget.state._api, customerId: widget.state._id),
         _Section(
           title: 'Randevu Geçmişi',
           icon: Icons.history_rounded,
-          child: appts.isEmpty
-              ? _empty('Randevu kaydı yok.')
-              : Column(children: [for (final a in appts) _ApptRow(appt: a)]),
+          trailing: appts.isEmpty
+              ? null
+              : Text(
+                  filtered.length == appts.length
+                      ? '${appts.length} kayıt'
+                      : '${filtered.length} / ${appts.length} kayıt',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Uzun süredir gelen müşteride liste onlarca satır oluyor; aranmadan bulunmuyordu.
+              if (appts.length > 4) ...[
+                TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'İşlem, personel veya tarih ara…',
+                    hintStyle: const TextStyle(fontSize: 13),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Aramayı temizle',
+                            icon: const Icon(Icons.close_rounded, size: 16),
+                            onPressed: _clearFilters,
+                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (key, label) in _apptFilters)
+                      if (key == 'all' || (counts[key] ?? 0) > 0)
+                        _filterChip(
+                          label,
+                          key == 'all' ? appts.length : counts[key] ?? 0,
+                          _status == key,
+                          () => setState(() => _status = key),
+                        ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (appts.isEmpty)
+                _empty('Randevu kaydı yok.')
+              else if (filtered.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Süzgeçle eşleşen randevu yok.',
+                            style: TextStyle(
+                                color: AppColors.muted, fontSize: 12.5)),
+                      ),
+                      TextButton(
+                        onPressed: _clearFilters,
+                        child: const Text('Temizle'),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                for (final a in filtered) _ApptRow(appt: a),
+            ],
+          ),
         ),
       ],
     );
   }
+
+  Widget _filterChip(String label, int count, bool selected, VoidCallback onTap) =>
+      Material(
+        color: selected ? AppColors.surfaceSoft : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: selected ? AppColors.primary : AppColors.border),
+            ),
+            child: Text(
+              '$label $count',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? AppColors.primaryDark : AppColors.muted,
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _SessionsCard extends StatefulWidget {
@@ -1939,7 +2181,8 @@ Widget _phoneRow(BuildContext context, ApiClient api, String customerId, String 
               style: const TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
           if (phone.isNotEmpty && phone != '—') ...[
-            const SizedBox(width: 8),
+            _copyButton(context, phone, 'Telefon'),
+            const SizedBox(width: 2),
             Material(
               color: AppColors.primary,
               borderRadius: BorderRadius.circular(10),
@@ -1970,6 +2213,66 @@ Widget _phoneRow(BuildContext context, ApiClient api, String customerId, String 
         ],
       ),
     );
+
+/// Değeri panoya kopyalar — personel numarayı/e-postayı elle yazmasın.
+Widget _copyButton(BuildContext context, String value, String what) => IconButton(
+      tooltip: '$what kopyala',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      icon: const Icon(Icons.copy_rounded, size: 15, color: AppColors.muted),
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: value));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$what panoya kopyalandı.')),
+        );
+      },
+    );
+
+Widget _emailRow(BuildContext context, String email) {
+  if (email.isEmpty || email == '—') return _infoRow('E-posta', '—');
+  return _infoRowWidget(
+    'E-posta',
+    Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(email,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink)),
+        ),
+        _copyButton(context, email, 'E-posta'),
+      ],
+    ),
+  );
+}
+
+/// Doğum tarihi + yaklaşıyorsa kalan gün rozeti.
+Widget _birthRow(dynamic birthDate) {
+  final days = _daysToBirthday(birthDate);
+  final text = _fmtDate(birthDate);
+  if (days == null || days > 30) return _infoRow('Doğum Tarihi', text);
+  return _infoRowWidget(
+    'Doğum Tarihi',
+    Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text,
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+        const SizedBox(width: 6),
+        _chip(days == 0 ? 'bugün' : '$days gün', const Color(0xFF7C4F96),
+            icon: Icons.cake_rounded),
+      ],
+    ),
+  );
+}
 
 Widget _infoRow(String label, String value) => _infoRowWidget(
       label,

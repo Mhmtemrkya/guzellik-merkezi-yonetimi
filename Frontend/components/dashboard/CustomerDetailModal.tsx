@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Ban, CalendarPlus, Clock, CreditCard, Crown, FileText, Mail, Phone, PieChart,
-  ReceiptText, Scissors, Sparkles, Trash2, TrendingUp, User, Wallet, X,
+  Ban, Cake, CalendarPlus, Check, Clock, Copy, CreditCard, Crown, FileText, Loader2, Mail,
+  Phone, PieChart, ReceiptText, Scissors, Search, Sparkles, Trash2, TrendingUp, User, Wallet, X,
 } from 'lucide-react'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
@@ -51,6 +51,43 @@ const STATUS_TONE: Record<string, string> = {
 }
 // Net ayrışan, marka uyumlu palet — yan yana dilimler birbirinden bariz farklı görünsün.
 const DONUT_COLORS = ['#c85776', '#7c5cbf', '#2fae8e', '#e8932f', '#4a9fe0', '#d65a8e']
+
+type ApptFilterKey = 'all' | 'tamamlandi' | 'devam' | 'bekliyor' | 'iptal'
+const APPT_FILTERS: { key: ApptFilterKey; label: string }[] = [
+  { key: 'all', label: 'Tümü' },
+  { key: 'tamamlandi', label: 'Tamamlandı' },
+  { key: 'devam', label: 'Devam' },
+  { key: 'bekliyor', label: 'Bekliyor' },
+  { key: 'iptal', label: 'İptal' },
+]
+
+/**
+ * Doğum gününe kalan gün. Yıl bilgisi yok sayılır: bu yılın tarihi geçtiyse gelecek yıla bakılır.
+ * Salon için değerli bir sinyal — doğum günü yaklaşan müşteriye kampanya/kutlama yapılır.
+ */
+function daysToBirthday(birth?: string): number | null {
+  if (!birth) return null
+  const d = new Date(birth)
+  if (Number.isNaN(d.getTime())) return null
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let next = new Date(today.getFullYear(), d.getMonth(), d.getDate())
+  if (next < today) next = new Date(today.getFullYear() + 1, d.getMonth(), d.getDate())
+  return Math.round((next.getTime() - today.getTime()) / 86_400_000)
+}
+
+/** Telefonu tel: bağlantısına uygun hale getirir (boşluk/parantez temizler). */
+function telHref(phone?: string): string {
+  return `tel:${(phone || '').replace(/[^\d+]/g, '')}`
+}
+
+/** `2026-05-31` yerine `31 May 2026` — mobil taraftaki biçimin aynısı. */
+function fmtDateTR(s?: string): string {
+  if (!s) return '—'
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return s
+  return `${d.getDate()} ${TR_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`
+}
 
 function genderLabel(g?: string): string {
   return g === 'Female' ? 'Kadın' : g === 'Male' ? 'Erkek' : g === 'Other' ? 'Diğer' : 'Belirtilmemiş'
@@ -242,15 +279,53 @@ export default function CustomerDetailModal({
 }) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [noteDraft, setNoteDraft] = useState('')
+  /** Not kaydı sessizdi; kullanıcı kaydolup olmadığını göremiyordu. */
+  const [noteState, setNoteState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [copied, setCopied] = useState<'phone' | 'email' | null>(null)
+  /** Randevu geçmişi süzgeci — uzun süreli müşteride liste onlarca satır oluyor. */
+  const [apptQuery, setApptQuery] = useState('')
+  const [apptStatus, setApptStatus] = useState<ApptFilterKey>('all')
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
   // Modal açıldığında / müşteri değiştiğinde sekmeyi ve notu tazele.
   useEffect(() => {
     if (open) {
       setTab('overview')
       setNoteDraft(customer?.notes || '')
+      setNoteState('idle')
+      setApptQuery('')
+      setApptStatus('all')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customer?.id])
+
+  // Sekme değişince gövde başa dönsün: uzun sekmeden kısa sekmeye geçince
+  // sayfa ortasında açılıyor ve içerik yokmuş gibi görünüyordu.
+  useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }) }, [tab])
+
+  const copyToClipboard = useCallback(async (value: string, kind: 'phone' | 'email') => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(kind)
+      window.setTimeout(() => setCopied(null), 1600)
+    } catch {
+      // pano izni yoksa sessiz geç — metin zaten ekranda seçilebilir
+    }
+  }, [])
+
+  /** Not yalnız DEĞİŞTİYSE kaydedilir; her odak kaybında boşuna istek atılmaz. */
+  const saveNote = useCallback(async (value: string) => {
+    if (value === (customer?.notes || '')) return
+    setNoteState('saving')
+    try {
+      await onSaveNote(value)
+      setNoteState('saved')
+      window.setTimeout(() => setNoteState('idle'), 2000)
+    } catch {
+      setNoteState('idle')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.notes, onSaveNote])
 
   // Esc ile kapat + arka plan kaydırmasını kilitle.
   useEffect(() => {
@@ -272,6 +347,27 @@ export default function CustomerDetailModal({
     [appts, cid],
   )
   const customerAccounts = useMemo(() => accounts.filter((a) => a.customerId === cid), [accounts, cid])
+
+  /** Süzgeç çiplerindeki sayaçlar — hangi durumda kaç kayıt olduğu tıklamadan görünür. */
+  const apptStatusCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const a of customerAppts) m[a.status] = (m[a.status] ?? 0) + 1
+    return m
+  }, [customerAppts])
+
+  /** Randevu sekmesindeki liste — arama + durum süzgeci uygulanmış hâli. */
+  const filteredAppts = useMemo(() => {
+    let list = customerAppts
+    if (apptStatus !== 'all') list = list.filter((a) => a.status === apptStatus)
+    const t = apptQuery.trim().toLocaleLowerCase('tr')
+    if (t) {
+      list = list.filter((a) =>
+        (a.islem || '').toLocaleLowerCase('tr').includes(t)
+        || (a.personel || '').toLocaleLowerCase('tr').includes(t)
+        || (a.date || '').includes(t))
+    }
+    return list
+  }, [customerAppts, apptQuery, apptStatus])
 
   // Harcamaların zaman içindeki dağılımı — son 6 ay, cari tahsilatları aydan aya.
   const { spendValues, spendLabels } = useMemo(() => {
@@ -337,19 +433,29 @@ export default function CustomerDetailModal({
   const kvkkOk = customer.tier === 'KVKK Onaylı'
   const active90 = customer.lastDate ? Date.now() - new Date(customer.lastDate).getTime() <= 90 * 86_400_000 : false
 
-  const TABS: { key: TabKey; label: string }[] = [
+  const birthdayIn = daysToBirthday(customer.joined)
+
+  // Sekme başlığında sayaç: içeriğe girmeden ne kadar kayıt olduğu görünür.
+  const TABS: { key: TabKey; label: string; count?: number; dot?: boolean }[] = [
     { key: 'overview', label: 'Genel Bakış' },
-    { key: 'appointments', label: 'Randevu & Seans' },
+    { key: 'appointments', label: 'Randevu & Seans', count: customerAppts.length },
     ...(canAdisyon ? [{ key: 'adisyon' as TabKey, label: 'Adisyon & İşlemler' }] : []),
     { key: 'health', label: 'Sağlık & Günlük' },
-    { key: 'notes', label: 'Notlar' },
+    { key: 'notes', label: 'Notlar', dot: Boolean((customer.notes || '').trim()) },
   ]
 
-  const kpis = [
-    { label: 'Toplam Randevu', value: String(customer.apptCount), icon: CalendarPlus },
+  const kpis: { label: string; value: string; icon: typeof User; tone?: string; small?: boolean; onClick?: () => void }[] = [
+    { label: 'Toplam Randevu', value: String(customer.apptCount), icon: CalendarPlus, onClick: () => setTab('appointments') },
     { label: 'Toplam Harcama', value: formatTL(customer.spent), icon: Wallet },
-    { label: 'Açık Borç', value: formatTL(customer.debt), icon: CreditCard, tone: customer.debt > 0 ? 'text-rose-700' : undefined },
-    { label: 'Son İşlem', value: customer.lastDate || '—', icon: Clock, small: true },
+    {
+      label: 'Açık Borç',
+      value: formatTL(customer.debt),
+      icon: CreditCard,
+      tone: customer.debt > 0 ? 'text-rose-700' : undefined,
+      // Borç görünce yapılacak ilk şey adisyona bakmaktır — kart oraya götürsün.
+      onClick: canAdisyon && customer.debt > 0 ? () => setTab('adisyon') : undefined,
+    },
+    { label: 'Son İşlem', value: fmtDateTR(customer.lastDate), icon: Clock, small: true },
   ]
 
   return (
@@ -419,37 +525,112 @@ export default function CustomerDetailModal({
                       {customer.isBlacklisted && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600"><Ban className="h-3 w-3" /> Kara liste</span>
                       )}
+                      {/* Doğum günü yaklaşıyorsa göster — salonun kutlama/kampanya fırsatı. */}
+                      {birthdayIn !== null && birthdayIn <= 14 && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#d9b3e8]/70 bg-[#f8f0fc] px-2 py-0.5 text-[10px] font-semibold text-[#7c4f96]">
+                          <Cake className="h-3 w-3" />
+                          {birthdayIn === 0 ? 'Bugün doğum günü!' : `Doğum günü ${birthdayIn} gün sonra`}
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#352432]/60">
-                      <span className="flex min-w-0 max-w-full items-center gap-1.5">
-                        <Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> <span className="truncate">{customer.email || '—'}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> {customer.phone}</span>
+                    {/* İletişim satırı TIKLANABİLİR: personel gün boyu müşteri arar; düz metinden
+                        numarayı elle çevirmek zaman kaybıydı. Yanındaki simge panoya kopyalar. */}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                      {customer.phone && (
+                        <span className="flex items-center gap-1">
+                          <a
+                            href={telHref(customer.phone)}
+                            className="flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[#352432]/70 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                            title="Ara"
+                          >
+                            <Phone className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> {customer.phone}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void copyToClipboard(customer.phone, 'phone')}
+                            title="Numarayı kopyala"
+                            className="grid h-6 w-6 place-items-center rounded-md text-[#352432]/35 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                          >
+                            {copied === 'phone' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </span>
+                      )}
+                      {customer.email ? (
+                        <span className="flex min-w-0 items-center gap-1">
+                          <a
+                            href={`mailto:${customer.email}`}
+                            className="flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-[#352432]/70 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                            title="E-posta gönder"
+                          >
+                            <Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]/70" /> <span className="truncate">{customer.email}</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void copyToClipboard(customer.email, 'email')}
+                            title="E-postayı kopyala"
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#352432]/35 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                          >
+                            {copied === 'email' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 px-1 text-[#352432]/45"><Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]/50" /> —</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* KPI şeridi — dar ekranda 2 sütun, geniş ekranda 4; kimlik bloğunu ezmez. */}
                 <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 lg:w-auto lg:gap-3">
-                  {kpis.map((k) => (
-                    <div key={k.label} className="rounded-[14px] border border-[#ead8df]/70 bg-white/70 px-3 py-2">
-                      <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{k.label}</div>
-                      <div className={`mt-0.5 font-display tracking-tight tabular-nums ${k.small ? 'text-[13px]' : 'text-lg'} ${k.tone || 'text-[#352432]'}`}>{k.value}</div>
-                    </div>
-                  ))}
+                  {kpis.map((k) => {
+                    const Tag = k.onClick ? 'button' : 'div'
+                    return (
+                      <Tag
+                        key={k.label}
+                        {...(k.onClick ? { type: 'button' as const, onClick: k.onClick, title: 'Ayrıntıya git' } : {})}
+                        className={`rounded-[14px] border border-[#ead8df]/70 bg-white/70 px-3 py-2 text-left ${
+                          k.onClick ? 'cursor-pointer transition-colors hover:border-[#efbfd0] hover:bg-white' : ''
+                        }`}
+                      >
+                        <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{k.label}</div>
+                        <div className={`mt-0.5 font-display tracking-tight tabular-nums ${k.small ? 'text-[13px]' : 'text-lg'} ${k.tone || 'text-[#352432]'}`}>{k.value}</div>
+                      </Tag>
+                    )
+                  })}
                 </div>
               </div>
 
               {/* Sekmeler */}
-              <div className="relative mt-4 flex gap-1 overflow-x-auto">
+              {/* Sekmeler — sol/sağ ok tuşuyla gezilebilir, ekran okuyucu için rol/durum bildirilir. */}
+              <div
+                role="tablist"
+                aria-label="Müşteri kartı sekmeleri"
+                className="relative mt-4 flex gap-1 overflow-x-auto"
+                onKeyDown={(e) => {
+                  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+                  e.preventDefault()
+                  const i = TABS.findIndex((t) => t.key === tab)
+                  const next = e.key === 'ArrowRight' ? (i + 1) % TABS.length : (i - 1 + TABS.length) % TABS.length
+                  setTab(TABS[next].key)
+                }}
+              >
                 {TABS.map((t) => (
                   <button
                     key={t.key}
                     type="button"
+                    role="tab"
+                    aria-selected={tab === t.key}
+                    tabIndex={tab === t.key ? 0 : -1}
                     onClick={() => setTab(t.key)}
-                    className={`relative shrink-0 cursor-pointer rounded-t-[10px] px-3.5 py-2 text-[12px] font-medium transition-colors ${tab === t.key ? 'text-[#c85776]' : 'text-[#352432]/50 hover:text-[#352432]/75'}`}
+                    className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-[10px] px-3.5 py-2 text-[12px] font-medium transition-colors ${tab === t.key ? 'text-[#c85776]' : 'text-[#352432]/50 hover:text-[#352432]/75'}`}
                   >
                     {t.label}
+                    {typeof t.count === 'number' && t.count > 0 && (
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${tab === t.key ? 'bg-[#fff1f6] text-[#c85776]' : 'bg-[#352432]/[0.06] text-[#352432]/50'}`}>
+                        {t.count}
+                      </span>
+                    )}
+                    {t.dot && <span className="h-1.5 w-1.5 rounded-full bg-[#c85776]" title="Not var" />}
                     {tab === t.key && <motion.span layoutId="cdm-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#c85776]" />}
                   </button>
                 ))}
@@ -457,7 +638,7 @@ export default function CustomerDetailModal({
             </header>
 
             {/* BODY */}
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] p-4 sm:p-5">
+            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] p-4 sm:p-5">
               {/* Onam formu uyarısı — hangi sekmede olursa olsun görünür (eksik yoksa çizilmez). */}
               <ConsentWarningBanner
                 customerId={customer.id}
@@ -474,7 +655,19 @@ export default function CustomerDetailModal({
                         <InfoRow label="Ad Soyad" value={customer.name} />
                         <InfoRow label="Telefon" value={customer.phone} />
                         <InfoRow label="E-posta" value={customer.email || '—'} />
-                        <InfoRow label="Doğum Tarihi" value={isDate(customer.joined) ? customer.joined : '—'} />
+                        <InfoRow
+                          label="Doğum Tarihi"
+                          value={isDate(customer.joined) ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              {fmtDateTR(customer.joined)}
+                              {birthdayIn !== null && birthdayIn <= 30 && (
+                                <span className="rounded-full bg-[#f8f0fc] px-1.5 py-0.5 text-[10px] font-semibold text-[#7c4f96]">
+                                  {birthdayIn === 0 ? 'bugün' : `${birthdayIn} gün`}
+                                </span>
+                              )}
+                            </span>
+                          ) : '—'}
+                        />
                         <InfoRow label="Cinsiyet" value={genderLabel(customer.gender)} />
                         <InfoRow label="KVKK" value={<span className={kvkkOk ? 'text-emerald-700' : 'text-amber-700'}>{kvkkOk ? 'Onaylı' : 'Bekliyor'}</span>} />
                         <InfoRow label="Müşteri No" value={<span className="font-mono text-[11px]">{customer.id.slice(0, 8)}</span>} />
@@ -565,11 +758,77 @@ export default function CustomerDetailModal({
               {tab === 'appointments' && (
                 <div className="space-y-4">
                   <CustomerSessionsCard customerId={customer.id} tenantId={tenantId} refreshKey={sessRefresh} />
-                  <SectionCard title="Randevu Geçmişi" icon={CalendarPlus}>
+                  <SectionCard
+                    title="Randevu Geçmişi"
+                    icon={CalendarPlus}
+                    action={customerAppts.length > 0 ? (
+                      <span className="text-[10px] tabular-nums text-[#352432]/45">
+                        {filteredAppts.length === customerAppts.length
+                          ? `${customerAppts.length} kayıt`
+                          : `${filteredAppts.length} / ${customerAppts.length} kayıt`}
+                      </span>
+                    ) : undefined}
+                  >
+                    {/* Süzgeç — yıllardır gelen müşteride liste onlarca satır oluyor, aranmadan bulunmuyordu. */}
+                    {customerAppts.length > 4 && (
+                      <div className="mb-3 space-y-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
+                          <input
+                            value={apptQuery}
+                            onChange={(e) => setApptQuery(e.target.value)}
+                            placeholder="İşlem, personel veya tarih ara…"
+                            className="w-full rounded-[10px] border border-[#ead8df] bg-[#fffafc] py-2 pl-8 pr-8 text-[12px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#352432]/35"
+                          />
+                          {apptQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setApptQuery('')}
+                              aria-label="Aramayı temizle"
+                              className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[#352432]/35 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {APPT_FILTERS.map((f) => {
+                            const n = f.key === 'all' ? customerAppts.length : (apptStatusCounts[f.key] ?? 0)
+                            if (f.key !== 'all' && n === 0) return null
+                            const on = apptStatus === f.key
+                            return (
+                              <button
+                                key={f.key}
+                                type="button"
+                                onClick={() => setApptStatus(f.key)}
+                                className={`cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                  on
+                                    ? 'border-[#c85776] bg-[#fff1f6] text-[#c85776]'
+                                    : 'border-[#ead8df] bg-white text-[#352432]/55 hover:border-[#efbfd0] hover:text-[#352432]'
+                                }`}
+                              >
+                                {f.label} <span className="tabular-nums opacity-60">{n}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-1.5">
                       {customerAppts.length === 0 ? (
                         <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11px] text-[#352432]/45">Randevu kaydı yok.</div>
-                      ) : customerAppts.map((a) => (
+                      ) : filteredAppts.length === 0 ? (
+                        <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11px] text-[#352432]/45">
+                          Süzgeçle eşleşen randevu yok.
+                          <button
+                            type="button"
+                            onClick={() => { setApptQuery(''); setApptStatus('all') }}
+                            className="ml-1.5 cursor-pointer font-medium text-[#c85776] hover:underline"
+                          >
+                            Temizle
+                          </button>
+                        </div>
+                      ) : filteredAppts.map((a) => (
                         <div key={a.id} className="flex items-center justify-between gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2">
                           <div className="flex min-w-0 items-center gap-2.5">
                             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><CalendarPlus className="h-4 w-4" /></span>
@@ -609,16 +868,36 @@ export default function CustomerDetailModal({
 
               {tab === 'notes' && (
                 <div className="space-y-4">
-                  <SectionCard title="Müşteri Notu" icon={FileText}>
+                  <SectionCard
+                    title="Müşteri Notu"
+                    icon={FileText}
+                    /* Kayıt sessizdi: personel notun gidip gitmediğini göremiyordu. */
+                    action={noteState === 'saving' ? (
+                      <span className="flex items-center gap-1 text-[10px] text-[#352432]/50"><Loader2 className="h-3 w-3 animate-spin" /> Kaydediliyor</span>
+                    ) : noteState === 'saved' ? (
+                      <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600"><Check className="h-3 w-3" /> Kaydedildi</span>
+                    ) : undefined}
+                  >
                     <textarea
                       value={noteDraft}
                       onChange={(e) => setNoteDraft(e.target.value)}
-                      onBlur={() => onSaveNote(noteDraft)}
+                      onBlur={() => void saveNote(noteDraft)}
                       rows={4}
                       placeholder="Tercih, cilt tipi, alerji, kampanya isteği vb."
                       className="w-full resize-none rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#352432]/35"
                     />
-                    <div className="mt-1 text-[10px] text-[#352432]/40">Alandan çıkınca otomatik kaydedilir.</div>
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-[#352432]/40">Alandan çıkınca otomatik kaydedilir.</span>
+                      {noteDraft !== (customer.notes || '') && (
+                        <button
+                          type="button"
+                          onClick={() => void saveNote(noteDraft)}
+                          className="cursor-pointer rounded-[9px] bg-[#c85776] px-3 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+                        >
+                          Kaydet
+                        </button>
+                      )}
+                    </div>
                   </SectionCard>
 
                   {canBlacklist && (
