@@ -1181,6 +1181,50 @@ export const adminApi = {
   /** Kategorileri elle sırala: verilen id sırasına göre SortOrder yazılır, güncel liste döner. */
   reorderServiceCategories: <T = unknown>(orderedIds: string[], tenantId?: string): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/service-categories/reorder', { method: 'POST', query: { tenantId }, body: { orderedIds } }),
+
+  // ---- Onam formu şablonları (kurum yöneticisi) ----
+  consentTemplates: <T = unknown>(tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/consent-templates/', { query: { tenantId } }),
+  createConsentTemplate: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/consent-templates/', { method: 'POST', query: { tenantId }, body }),
+  updateConsentTemplate: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/consent-templates/${id}`, { method: 'PUT', query: { tenantId }, body }),
+  deleteConsentTemplate: (id: string, tenantId?: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/admin/consent-templates/${id}`, { method: 'DELETE', query: { tenantId } }),
+}
+
+/**
+ * Onam formu imza akışı. /api/admin ALTINDA DEĞİLDİR: personel onay kapısına takılırsa
+ * imza anında alınamaz (form tablete hiç düşmez).
+ */
+export const consentApi = {
+  /** Müşterinin tüm onam kayıtları (iptaller hariç). */
+  customerForms: <T = unknown>(customerId: string, tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>(`/api/consent/customers/${customerId}`, { query: { tenantId } }),
+  /** Müşteri için eksik/tamam durumu — kart, cari ve adisyon uyarıları bunu kullanır. */
+  customerStatus: <T = unknown>(customerId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/customers/${customerId}/status`, { query: { tenantId } }),
+  /** Randevu tamamlama kapısı: bu randevunun hizmetine bağlı formlar imzalı mı? */
+  appointmentStatus: <T = unknown>(appointmentId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/appointments/${appointmentId}/status`, { query: { tenantId } }),
+  form: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/forms/${id}`, { query: { tenantId } }),
+  createForm: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/consent/forms', { method: 'POST', query: { tenantId }, body }),
+  updateForm: <T = unknown>(id: string, staffNotes: string | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/forms/${id}`, { method: 'PUT', query: { tenantId }, body: { staffNotes } }),
+  cancelForm: (id: string, tenantId?: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/consent/forms/${id}`, { method: 'DELETE', query: { tenantId } }),
+  /** "Tablete Aktar" — tek kullanımlık imza oturumu açar. */
+  startSession: <T = unknown>(id: string, stationName: string | null, lifetimeMinutes?: number, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/forms/${id}/session`, { method: 'POST', query: { tenantId }, body: { stationName, lifetimeMinutes: lifetimeMinutes ?? null } }),
+  cancelSession: (id: string, tenantId?: string): Promise<unknown> =>
+    apiRequest<unknown>(`/api/consent/forms/${id}/session`, { method: 'DELETE', query: { tenantId } }),
+  /** Tablet yoklaması: bu istasyona gönderilmiş bekleyen form (yoksa null). */
+  stationPending: <T = unknown>(station: string, tenantId?: string): Promise<T | null> =>
+    apiRequest<T | null>('/api/consent/station/pending', { query: { station, tenantId } }),
+  sign: <T = unknown>(token: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/consent/session/${token}/sign`, { method: 'POST', query: { tenantId }, body }),
 }
 
 export function pagedItems<T>(result: PagedResult<T> | T[] | null | undefined): T[] {

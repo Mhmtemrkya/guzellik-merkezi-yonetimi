@@ -360,6 +360,7 @@ public static class DatabaseBootstrap
             FeatureCatalog.AppointmentsOnlineBooking,
             FeatureCatalog.AuditLogs,
             FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
+            FeatureCatalog.ClinicalConsentForms,
             FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
             FeatureCatalog.StockProducts,
         });
@@ -386,6 +387,7 @@ public static class DatabaseBootstrap
             FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
             FeatureCatalog.AppointmentsOnlineBooking,
             FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
+            FeatureCatalog.ClinicalConsentForms,
             FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
             FeatureCatalog.MultiBranch,
             FeatureCatalog.SecurityDeviceControl,
@@ -476,6 +478,7 @@ public static class DatabaseBootstrap
             var newFeatureKeys = new[]
             {
                 FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
+            FeatureCatalog.ClinicalConsentForms,
                 FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
                 FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
                 FeatureCatalog.SecurityDeviceControl,

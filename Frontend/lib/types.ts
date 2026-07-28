@@ -484,7 +484,7 @@ export type FeatureKey =
   | 'categories.expense.custom' | 'categories.service.custom'
   | 'audit.logs'
   // Klinik
-  | 'clinical.consultation' | 'clinical.beforeafter' | 'clinical.customfields'
+  | 'clinical.consultation' | 'clinical.beforeafter' | 'clinical.customfields' | 'clinical.consentforms'
   // Müşteri / CRM
   | 'customers.blacklist' | 'customers.passive'
   // Personel
@@ -2255,6 +2255,74 @@ export interface Appointment {
   customerPhone?: string
   isVip?: boolean
   number?: number | null
+}
+
+// ---------------------------------------------------------------------------
+// Onam formu (rıza/onay formu) — şablon, müşteri kaydı, tablet imza akışı
+// ---------------------------------------------------------------------------
+
+/** Backend ConsentFormStatus enum'u JSON'da string olarak gelir. */
+export type ConsentFormStatusKey = 'Draft' | 'AwaitingSignature' | 'Signed' | 'Cancelled'
+
+export interface ApiConsentTemplate {
+  id?: string
+  title?: string
+  body?: string
+  checkItems?: string[]
+  requiresSignature?: boolean
+  isActive?: boolean
+  sortOrder?: number
+  serviceIds?: string[]
+  serviceNames?: string[]
+  packageIds?: string[]
+  packageNames?: string[]
+}
+
+export interface ApiConsentForm {
+  id?: string
+  customerId?: string
+  customerName?: string | null
+  appointmentId?: string | null
+  templateId?: string | null
+  title?: string
+  body?: string
+  checkItems?: string[]
+  checkedItems?: string[]
+  requiresSignature?: boolean
+  status?: ConsentFormStatusKey | number
+  /** Aktif imza oturumu anahtarı — tablet imzalarken kullanır. */
+  sessionToken?: string | null
+  serviceDefinitionId?: string | null
+  serviceName?: string | null
+  staffName?: string | null
+  staffNotes?: string | null
+  signatureImage?: string | null
+  signedAtUtc?: string | null
+  signerName?: string | null
+  stationName?: string | null
+  sessionExpiresAtUtc?: string | null
+  createdAtUtc?: string
+}
+
+export interface ApiConsentRequirement {
+  templateId?: string
+  title?: string
+  requiresSignature?: boolean
+  formId?: string | null
+  status?: ConsentFormStatusKey | number | null
+  signedAtUtc?: string | null
+  serviceDefinitionId?: string | null
+  serviceName?: string | null
+  servicePackageId?: string | null
+  packageName?: string | null
+}
+
+export interface ApiConsentStatus {
+  complete?: boolean
+  requiredCount?: number
+  signedCount?: number
+  requirements?: ApiConsentRequirement[]
+  missing?: ApiConsentRequirement[]
 }
 
 // ---------------------------------------------------------------------------

@@ -41,4 +41,27 @@ class SessionStorage {
       await _storage.delete(key: _sessionKey);
     } catch (_) {}
   }
+
+  // --- genel amaçlı küçük tercihler (cihaza sabitlenen ayarlar) ---------------
+  // Örn. imza tabletinin istasyon adı: cihaz yeniden açılınca da hatırlanmalı.
+
+  static Future<String?> readValue(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> writeValue(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (_) {}
+  }
+
+  static Future<void> deleteValue(String key) async {
+    try {
+      await _storage.delete(key: key);
+    } catch (_) {}
+  }
 }

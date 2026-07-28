@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ReceiptText, Users, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
+import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 
 /**
@@ -91,7 +92,11 @@ export default function AdisyonModal({
           {/* GÖVDE */}
           <div className="min-h-0 flex-auto overflow-y-auto bg-[#fffafb] p-4">
             {effectiveId ? (
-              <AdisyonPanel customerId={effectiveId} tenantId={tenantId} onChanged={onChanged} />
+              <>
+                {/* Onam formu eksikse adisyonun başında uyarı — imzasız işlem gözden kaçmasın. */}
+                <ConsentWarningBanner customerId={effectiveId} customerName={effectiveName} className="mb-3" />
+                <AdisyonPanel customerId={effectiveId} tenantId={tenantId} onChanged={onChanged} />
+              </>
             ) : allowPick ? (
               // Müşteri seçimi: arama kutusu ve sonuç listesi rahat sığsın diye ortada geniş bir alan.
               <div className="mx-auto w-full max-w-[560px] pt-6">

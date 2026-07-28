@@ -12,6 +12,7 @@ import CustomerOperationsJournal from '@/components/dashboard/CustomerOperations
 import TreatmentJournal from '@/components/dashboard/TreatmentJournal'
 import ConsultationForm from '@/components/dashboard/ConsultationForm'
 import CustomerBlacklistCard from '@/components/dashboard/CustomerBlacklistCard'
+import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import { formatTL } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
@@ -457,6 +458,13 @@ export default function CustomerDetailModal({
 
             {/* BODY */}
             <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] p-4 sm:p-5">
+              {/* Onam formu uyarısı — hangi sekmede olursa olsun görünür (eksik yoksa çizilmez). */}
+              <ConsentWarningBanner
+                customerId={customer.id}
+                customerName={customer.name}
+                className="mb-4"
+              />
+
               {tab === 'overview' && (
                 <div className="grid gap-4 xl:grid-cols-[0.95fr_1.25fr_0.95fr]">
                   {/* SOL: Müşteri bilgileri + hızlı bilgi */}
@@ -592,6 +600,8 @@ export default function CustomerDetailModal({
 
               {tab === 'health' && (
                 <div className="space-y-4">
+                  {/* Sağlık sekmesinde tamam durumunu da göster: personel imzalı belgelere buradan ulaşır. */}
+                  <ConsentWarningBanner customerId={customer.id} customerName={customer.name} showWhenComplete />
                   <ConsultationForm customerId={customer.id} tenantId={tenantId} branchId={customer.branchId} />
                   <TreatmentJournal customerId={customer.id} tenantId={tenantId} />
                 </div>

@@ -6,6 +6,7 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
+import ConsentPicker from '@/components/dashboard/ConsentPicker'
 import CatalogCategoryRail, { buildCatalogCategoryItems } from '@/components/dashboard/CatalogCategoryRail'
 import CampaignPanel from '@/components/dashboard/CampaignPanel'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
@@ -23,7 +24,7 @@ import {
   Wallet, X, XCircle,
 } from 'lucide-react'
 import type {
-  ApiCampaign, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff,
+  ApiCampaign, ApiConsentTemplate, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff,
   CatalogStatusKey, Service, ServicePackage,
 } from '@/lib/types'
 
@@ -80,12 +81,15 @@ interface Draft {
   /** Paket tanımı iptal edildiyse gerekçesi (müşteri satış iptalinden ayrı). */
   cancellationReason: string
   items: DraftItem[]
+  /** Bu paket için zorunlu onam formları — paketi SATIN ALAN müşteride uyarı doğurur. */
+  consentTemplateIds: string[]
 }
 
 const emptyDraft = (): Draft => ({
   id: null, name: 'Yeni Paket', description: '', category: '', subCategory: '', iconKey: '',
   salePrice: 0, priceTouched: false, deposit: 0, depositTouched: false,
   installments: 4, loyaltyPointCost: 0, status: 'Draft', cancellationReason: '', items: [],
+  consentTemplateIds: [],
 })
 
 export default function PackageLibrary({
@@ -121,11 +125,11 @@ export default function PackageLibrary({
 
   const { data, loading, error, reload } = useApiQuery<{
     packages: ApiServicePackage[]; services: ApiService[]; cats: ApiCustomServiceCategory[]
-    accounts: ApiCustomerAccount[]; campaigns: ApiCampaign[]; staff: ApiStaff[]
+    accounts: ApiCustomerAccount[]; campaigns: ApiCampaign[]; staff: ApiStaff[]; consents: ApiConsentTemplate[]
   }>(
     async () => {
-      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [] }
-      const [packages, services, cats, accounts, campaigns, staff] = await Promise.all([
+      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [] }
+      const [packages, services, cats, accounts, campaigns, staff, consents] = await Promise.all([
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         // TÜM hizmetleri çek (tek sayfa 200 tavanına takılıp hizmetler eksik görünmesin).
         fetchAllPaged<ApiService>((page, size) => adminApi.services<ApiService>({ tenantId, page, pageSize: size })).catch(() => [] as ApiService[]),
@@ -133,11 +137,12 @@ export default function PackageLibrary({
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.campaigns<ApiCampaign>({ tenantId }).catch(() => []),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+        adminApi.consentTemplates<ApiConsentTemplate>(tenantId).catch(() => []),
       ])
-      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [], staff: apiItems(staff) }
+      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [], staff: apiItems(staff), consents: Array.isArray(consents) ? consents : [] }
     },
     [tenantId],
-    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [] } },
+    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [] } },
   )
 
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
@@ -279,6 +284,7 @@ export default function PackageLibrary({
       iconKey: p.iconKey, salePrice: p.totalPrice, priceTouched: true,
       deposit: p.depositAmount, depositTouched: true, installments: p.installmentCount, loyaltyPointCost: p.loyaltyPointCost || 0, status: p.status,
       cancellationReason: p.cancellationReason || '',
+      consentTemplateIds: (data?.consents || []).filter((t) => (t.packageIds || []).includes(p.id)).map((t) => t.id || '').filter(Boolean),
       items: p.items.map((i) => {
         const svc = serviceById.get(i.serviceDefinitionId)
         return { serviceDefinitionId: i.serviceDefinitionId, name: i.serviceName, iconKey: svc?.iconKey || '', duration: svc?.duration || 0, sessionCount: i.sessionCount, unitPrice: i.unitPrice }
@@ -338,12 +344,15 @@ export default function PackageLibrary({
     setBusy(true)
     try {
       const payload = packagePayload(draft, status)
+      let savedId = draft.id
       if (draft.id) {
         await adminApi.updatePackage(draft.id, payload, tenantId)
       } else {
         const created = await adminApi.createPackage<ApiServicePackage>(payload, tenantId)
-        if (created?.id) setDraft((d) => ({ ...d, id: created.id!, status }))
+        if (created?.id) { savedId = created.id; setDraft((d) => ({ ...d, id: created.id!, status })) }
       }
+      // Onam bağı paket DTO'sunda taşınmaz; şablon kaydının packageIds listesinde durur.
+      if (savedId) await syncConsentLinks(savedId, draft.consentTemplateIds)
       setDraft((d) => ({ ...d, status }))
       setSavedMsg(
         status === 'Active' ? 'Paket yayına alındı.'
@@ -353,6 +362,29 @@ export default function PackageLibrary({
       )
       await reload()
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Kaydetme başarısız.') } finally { setBusy(false) }
+  }
+
+  /**
+   * Şablonların packageIds listesini paketle eşitler; yalnız DEĞİŞEN şablonlar güncellenir.
+   * (Bağ paket kaydında değil şablon kaydında durduğu için güncelleme şablon ucundan yapılır.)
+   */
+  const syncConsentLinks = async (packageId: string, selected: string[]): Promise<void> => {
+    const templates = data?.consents || []
+    if (templates.length === 0 && selected.length === 0) return
+    for (const t of templates) {
+      if (!t.id) continue
+      const linked = (t.packageIds || []).includes(packageId)
+      const wanted = selected.includes(t.id)
+      if (linked === wanted) continue
+      const nextIds = wanted
+        ? [...(t.packageIds || []), packageId]
+        : (t.packageIds || []).filter((x) => x !== packageId)
+      await adminApi.updateConsentTemplate(t.id, {
+        title: t.title, body: t.body, checkItems: t.checkItems || [],
+        requiresSignature: t.requiresSignature !== false, isActive: t.isActive !== false,
+        serviceIds: t.serviceIds || [], packageIds: nextIds,
+      }, tenantId)
+    }
   }
 
   const changePackageCategory = async (category: string) => {
@@ -691,6 +723,17 @@ export default function PackageLibrary({
               <span className="text-[9px] text-[#352432]/40">
                 {draft.id ? 'Seçim otomatik kaydedilir.' : 'Paket ilk kaydedildiğinde kategori atanır.'}
               </span>
+            </div>
+
+            {/* Onam formu — paketi SATIN ALAN müşteride uyarı doğurur */}
+            <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-white p-3">
+              <ConsentPicker
+                value={draft.consentTemplateIds}
+                onChange={(next) => setDraft((d) => ({ ...d, consentTemplateIds: next }))}
+                tenantId={tenantId}
+                label="Bu paket için onam formu istensin mi?"
+                hint="Seçilen formlar, bu paketi satın alan müşteride imzalanana kadar müşteri kartı, cari, adisyon ve randevu ekranlarında uyarı olarak görünür."
+              />
             </div>
 
             {/* Dahil edilen hizmetler */}

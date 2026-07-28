@@ -14,6 +14,7 @@ import {
   Landmark,
   LayoutGrid,
   Package,
+  PenLine,
   Scissors,
   ShieldAlert,
   UserRound,
@@ -74,6 +75,13 @@ const personelItems: SidebarNavItem[] = [
     label: 'Seanslarım',
     href: '/personel/seanslar',
     icon: Scissors,
+    permissionKey: 'Services',
+  },
+  {
+    group: 'İşletme',
+    label: 'İmza Tableti',
+    href: '/imza',
+    icon: PenLine,
     permissionKey: 'Services',
   },
   {

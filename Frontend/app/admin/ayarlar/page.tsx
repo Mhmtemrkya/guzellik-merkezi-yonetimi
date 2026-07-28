@@ -8,6 +8,7 @@ import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
 import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
 import KvkkSettingsCard from '@/components/dashboard/KvkkSettingsCard'
+import ConsentTemplatesCard from '@/components/dashboard/ConsentTemplatesCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -338,6 +339,11 @@ export default function AyarlarPage() {
         {/* KVKK AYDINLATMA METNİ */}
         <section data-guide="ayarlar-kvkk">
           <KvkkSettingsCard tenantId={tenantId} />
+        </section>
+
+        {/* ONAM FORMLARI — hizmete bağlı imzalı rıza belgeleri */}
+        <section data-guide="ayarlar-onam">
+          <ConsentTemplatesCard tenantId={tenantId} />
         </section>
 
         {/* SATIR 2: GELİR BİLGİLERİ + GELİR KALEMLERİ */}

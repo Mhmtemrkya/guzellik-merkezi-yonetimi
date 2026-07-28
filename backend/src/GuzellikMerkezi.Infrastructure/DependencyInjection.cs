@@ -31,6 +31,7 @@ using GuzellikMerkezi.Application.Features.Stock;
 using GuzellikMerkezi.Application.Features.SubscriptionPlans;
 using GuzellikMerkezi.Application.Features.Tenants;
 using GuzellikMerkezi.Application.Features.TreatmentPhotos;
+using GuzellikMerkezi.Application.Features.Consents;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Infrastructure.Background;
@@ -137,6 +138,7 @@ public static class DependencyInjection
         services.AddScoped<Application.Features.PublicSalons.ITenantProfileService, TenantProfileService>();
         services.AddScoped<Application.Features.PublicSalons.IKvkkDocumentService, KvkkDocumentService>();
         services.AddScoped<ITreatmentPhotoService, TreatmentPhotoService>();
+        services.AddScoped<IConsentService, ConsentService>();
         services.AddScoped<IConsultationService, ConsultationService>();
         services.AddScoped<IWhatsAppService, WhatsAppService>();
         services.AddScoped<Application.Features.WhatsApp.IWhatsAppBillingService, WhatsAppBillingService>();

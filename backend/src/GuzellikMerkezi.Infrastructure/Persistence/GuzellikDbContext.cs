@@ -64,6 +64,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
+    public DbSet<ConsentFormTemplate> ConsentFormTemplates => Set<ConsentFormTemplate>();
+    public DbSet<ServiceConsentForm> ServiceConsentForms => Set<ServiceConsentForm>();
+    public DbSet<CustomerConsentForm> CustomerConsentForms => Set<CustomerConsentForm>();
     public DbSet<WhatsAppSettings> WhatsAppSettings => Set<WhatsAppSettings>();
     public DbSet<WhatsAppMessage> WhatsAppMessages => Set<WhatsAppMessage>();
     public DbSet<WhatsAppPricingRule> WhatsAppPricingRules => Set<WhatsAppPricingRule>();
@@ -120,6 +123,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         ConfigureCustomerTreatmentPhoto(modelBuilder);
         ConfigureConsultationForm(modelBuilder);
         ConfigureConsultationCustomOption(modelBuilder);
+        ConfigureConsentForms(modelBuilder);
         ConfigureWhatsApp(modelBuilder);
         ConfigurePlatformIntegrationSettings(modelBuilder);
         ConfigureAdisyon(modelBuilder);
@@ -220,6 +224,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
         Req(typeof(AppointmentRating), nameof(AppointmentRating.CustomerPhone), nameof(AppointmentRating.StaffName));
         Opt(typeof(AppointmentRating), nameof(AppointmentRating.ServiceName), nameof(AppointmentRating.BusinessName), nameof(AppointmentRating.Comment));
+
+        Opt(typeof(CustomerConsentForm), nameof(CustomerConsentForm.CustomerName), nameof(CustomerConsentForm.SignerName),
+            nameof(CustomerConsentForm.StaffName), nameof(CustomerConsentForm.StaffNotes));
 
         Req(typeof(CustomerAccount), nameof(CustomerAccount.Name));
         Opt(typeof(CustomerAccount), nameof(CustomerAccount.Notes));
@@ -889,6 +896,56 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         b.HasIndex(x => new { x.TenantId, x.BranchId, x.Label });
         // Kuruma + şubeye özel: BranchId null → kurum geneli; dolu → şubeye özel. Null-safe şube filtresi.
         b.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+    }
+
+    /// <summary>
+    /// Onam formu üçlüsü: şablon (kurumun metni), hizmet bağı ve müşteri kaydı (imzalı belge).
+    /// Müşteri kaydı belgeyi KOPYA olarak taşır; şablon değişse bile imzalı metin sabit kalır.
+    /// </summary>
+    private void ConfigureConsentForms(ModelBuilder modelBuilder)
+    {
+        var t = modelBuilder.Entity<ConsentFormTemplate>();
+        t.ToTable("consent_form_templates");
+        t.HasKey(x => x.Id);
+        t.Property(x => x.Title).HasMaxLength(200).IsRequired();
+        // Form metni ve onay maddeleri uzun olabilir.
+        t.Property(x => x.Body).HasColumnType("LONGTEXT").IsRequired();
+        t.Property(x => x.CheckItemsJson).HasColumnType("LONGTEXT");
+        t.HasIndex(x => new { x.TenantId, x.SortOrder });
+        t.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var l = modelBuilder.Entity<ServiceConsentForm>();
+        l.ToTable("service_consent_forms");
+        l.HasKey(x => x.Id);
+        // Bağ hizmete VEYA pakete kurulur; ikisi de indekslidir (gereksinim çözümü bu tabloyu tarar).
+        l.HasIndex(x => new { x.TenantId, x.ServiceDefinitionId });
+        l.HasIndex(x => new { x.TenantId, x.ServicePackageId });
+        l.HasIndex(x => new { x.TenantId, x.ConsentFormTemplateId });
+        l.HasOne(x => x.ServiceDefinition).WithMany().HasForeignKey(x => x.ServiceDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        l.HasOne(x => x.ServicePackage).WithMany().HasForeignKey(x => x.ServicePackageId).OnDelete(DeleteBehavior.Cascade);
+        l.HasOne(x => x.ConsentFormTemplate).WithMany().HasForeignKey(x => x.ConsentFormTemplateId).OnDelete(DeleteBehavior.Cascade);
+        l.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        var f = modelBuilder.Entity<CustomerConsentForm>();
+        f.ToTable("customer_consent_forms");
+        f.HasKey(x => x.Id);
+        f.Property(x => x.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
+        f.Property(x => x.Title).HasMaxLength(200).IsRequired();
+        f.Property(x => x.Body).HasColumnType("LONGTEXT").IsRequired();
+        f.Property(x => x.CheckItemsJson).HasColumnType("LONGTEXT");
+        f.Property(x => x.CheckedItemsJson).HasColumnType("LONGTEXT");
+        // base64 PNG imza görseli
+        f.Property(x => x.SignatureImage).HasColumnType("LONGTEXT");
+        f.Property(x => x.ServiceName).HasMaxLength(200);
+        f.Property(x => x.StationName).HasMaxLength(120);
+        f.Property(x => x.SignerDevice).HasMaxLength(300);
+        f.Property(x => x.SignerIp).HasMaxLength(64);
+        f.HasIndex(x => new { x.TenantId, x.CustomerId });
+        // Tablet yoklaması bu indeksi kullanır (bekleyen form, istasyon adına göre).
+        f.HasIndex(x => new { x.TenantId, x.Status, x.StationName });
+        f.HasIndex(x => x.SessionToken);
+        // Kuruma + şubeye özel: BranchId müşterinin şubesinden gelir; null-safe şube filtresi.
+        f.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }
 
     private void ConfigureAdisyon(ModelBuilder modelBuilder)

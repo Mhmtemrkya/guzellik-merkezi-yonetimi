@@ -12,7 +12,7 @@ import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import CatalogSalesPanel from '@/components/dashboard/CatalogSalesPanel'
 import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
-import ServiceFormDialog, { type ServiceFormDialogValues } from '@/components/dashboard/ServiceFormDialog'
+import ServiceFormDialog, { type ConsentTemplateOption, type ServiceFormDialogValues } from '@/components/dashboard/ServiceFormDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
@@ -22,7 +22,7 @@ import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, FileUp, Layers3, PauseCircle,
   PencilLine, Search, Sparkles, Star, TrendingUp, Trophy, UploadCloud, UserCheck, Users, Wand2,
 } from 'lucide-react'
-import type { ApiAppointment, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
+import type { ApiAppointment, ApiConsentTemplate, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
 
 type TabKey = 'all' | 'Active' | 'Passive' | 'Draft' | 'Archived'
 const TABS: { key: TabKey; label: string }[] = [
@@ -102,21 +102,22 @@ export default function ServiceLibrary({
   const [actionError, setActionError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const { data, loading, error, reload } = useApiQuery<{ services: ApiService[]; staff: ApiStaff[]; appts: ApiAppointment[]; accounts: ApiCustomerAccount[]; cats: ApiCustomServiceCategory[]; packages: ApiServicePackage[] }>(
+  const { data, loading, error, reload } = useApiQuery<{ services: ApiService[]; staff: ApiStaff[]; appts: ApiAppointment[]; accounts: ApiCustomerAccount[]; cats: ApiCustomServiceCategory[]; packages: ApiServicePackage[]; consents: ApiConsentTemplate[] }>(
     async () => {
-      if (!tenantId) return { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [] }
-      const [services, staff, appts, accounts, cats, packages] = await Promise.all([
+      if (!tenantId) return { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [], consents: [] }
+      const [services, staff, appts, accounts, cats, packages, consents] = await Promise.all([
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+        adminApi.consentTemplates<ApiConsentTemplate>(tenantId).catch(() => []),
       ])
-      return { services: apiItems(services), staff: apiItems(staff), appts: apiItems(appts), accounts: apiItems(accounts), cats: Array.isArray(cats) ? cats : [], packages: apiItems(packages) }
+      return { services: apiItems(services), staff: apiItems(staff), appts: apiItems(appts), accounts: apiItems(accounts), cats: Array.isArray(cats) ? cats : [], packages: apiItems(packages), consents: Array.isArray(consents) ? consents : [] }
     },
     [tenantId],
-    { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [] } },
+    { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [], consents: [] } },
   )
 
   // rawCategory = HAM kategori adı. normalizeService boş kategoriye "Genel Hizmet" uydurur;
@@ -237,7 +238,8 @@ export default function ServiceLibrary({
   const setStatus = (s: LibService, status: CatalogStatusKey) => run(() => adminApi.updateService(s.id, buildPayload(s, { status, isActive: status === 'Active' }), tenantId))
 
   const onCreate = async (values: ServiceFormDialogValues) => {
-    await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
+    const created = await adminApi.createService<{ id?: string }>({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
+    if (created?.id && values.consentTemplateIds.length > 0) await syncConsentLinks(created.id, values.consentTemplateIds)
     await reload()
   }
   /**
@@ -264,6 +266,38 @@ export default function ServiceLibrary({
     return map
   }, [data])
 
+  /**
+   * Onam formu bağı hizmet DTO'sunda taşınmaz; şablon kaydında (serviceIds) durur.
+   * Bu yüzden formdaki seçim, ilgili şablonların serviceIds listesine yazılır/çıkarılır.
+   */
+  const consentTemplates = useMemo<ConsentTemplateOption[]>(
+    () => (data?.consents || [])
+      .filter((t) => t.isActive !== false)
+      .map((t) => ({ id: t.id || '', title: t.title || 'Onam formu', requiresSignature: t.requiresSignature !== false }))
+      .filter((t) => t.id),
+    [data],
+  )
+  const consentIdsOf = (serviceId: string): string[] =>
+    (data?.consents || []).filter((t) => (t.serviceIds || []).includes(serviceId)).map((t) => t.id || '').filter(Boolean)
+
+  /** Seçim ↔ şablon bağını eşitler; yalnız DEĞİŞEN şablonlar güncellenir. */
+  const syncConsentLinks = async (serviceId: string, selected: string[]): Promise<void> => {
+    for (const t of data?.consents || []) {
+      if (!t.id) continue
+      const linked = (t.serviceIds || []).includes(serviceId)
+      const wanted = selected.includes(t.id)
+      if (linked === wanted) continue
+      const nextIds = wanted
+        ? [...(t.serviceIds || []), serviceId]
+        : (t.serviceIds || []).filter((x) => x !== serviceId)
+      await adminApi.updateConsentTemplate(t.id, {
+        title: t.title, body: t.body, checkItems: t.checkItems || [],
+        requiresSignature: t.requiresSignature !== false, isActive: t.isActive !== false,
+        serviceIds: nextIds,
+      }, tenantId)
+    }
+  }
+
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
   /** Form içinden "Diğer → yeni kategori": Kategoriler sayfasına gitmeden kategori açılır. */
   const handleCreateCat = async (name: string) => { await adminApi.createServiceCategory({ name, isActive: true }, tenantId); await reload() }
@@ -287,7 +321,7 @@ export default function ServiceLibrary({
     return { topName, avgDur, soldThisMonth, activeRate }
   }, [services, appts, staff, statsByService])
 
-  const editInitial = (s: LibService): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status })
+  const editInitial = (s: LibService): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status, consentTemplateIds: consentIdsOf(s.id) })
 
   return (
     <>
@@ -303,6 +337,8 @@ export default function ServiceLibrary({
               onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
               knownCategories={usedCategories}
               knownSubCategories={usedSubCategories}
+              consentTemplates={consentTemplates}
+              consentTenantId={tenantId}
               onSubmit={onCreate}
               trigger={
                 <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
@@ -476,8 +512,10 @@ export default function ServiceLibrary({
                     onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
                     knownCategories={usedCategories}
                     knownSubCategories={usedSubCategories}
+                    consentTemplates={consentTemplates}
+                    consentTenantId={tenantId}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
-                    onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
+                    onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await syncConsentLinks(sel.id, v.consentTemplateIds); await reload() }}
                     trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>} />
                   </div>
                 </div>

@@ -3,6 +3,7 @@ using System;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GuzellikDbContext))]
-    partial class GuzellikDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260728111035_AddConsentForms")]
+    partial class AddConsentForms
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2484,10 +2487,7 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<Guid?>("ServiceDefinitionId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid?>("ServicePackageId")
+                    b.Property<Guid>("ServiceDefinitionId")
                         .HasColumnType("char(36)");
 
                     b.Property<Guid>("TenantId")
@@ -2505,13 +2505,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ServiceDefinitionId");
 
-                    b.HasIndex("ServicePackageId");
-
                     b.HasIndex("TenantId", "ConsentFormTemplateId");
 
                     b.HasIndex("TenantId", "ServiceDefinitionId");
-
-                    b.HasIndex("TenantId", "ServicePackageId");
 
                     b.ToTable("service_consent_forms", (string)null);
                 });
@@ -4555,18 +4551,12 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasOne("GuzellikMerkezi.Domain.Entities.ServiceDefinition", "ServiceDefinition")
                         .WithMany()
                         .HasForeignKey("ServiceDefinitionId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.HasOne("GuzellikMerkezi.Domain.Entities.ServicePackage", "ServicePackage")
-                        .WithMany()
-                        .HasForeignKey("ServicePackageId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("ConsentFormTemplate");
 
                     b.Navigation("ServiceDefinition");
-
-                    b.Navigation("ServicePackage");
                 });
 
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.ServiceDefinition", b =>

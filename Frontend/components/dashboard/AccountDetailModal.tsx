@@ -8,6 +8,7 @@ import {
   Layers, Loader2, PencilLine, Phone, Receipt, Sparkles, Trash2, User, Wallet,
 } from 'lucide-react'
 import CustomerSessionsCard from './CustomerSessionsCard'
+import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import LoyaltyCard from './LoyaltyCard'
 import type { CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
@@ -501,6 +502,8 @@ export default function AccountDetailModal({
           {/* ---------------- SEANS & SADAKAT ---------------- */}
           {tab === 'extras' && (
             <div className="space-y-3">
+              {/* Cari kartında onam uyarısı: imzasız işlem borçlandırılmış olabilir. */}
+              <ConsentWarningBanner customerId={account.customerId} customerName={account.customerName || account.name} />
               <CustomerSessionsCard customerId={account.customerId} tenantId={tenantId} refreshKey={sessionsTick} />
               <LoyaltyCard customerId={account.customerId} tenantId={tenantId} />
             </div>

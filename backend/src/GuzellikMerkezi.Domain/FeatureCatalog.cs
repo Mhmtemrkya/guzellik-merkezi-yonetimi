@@ -54,6 +54,8 @@ public static class FeatureCatalog
     public const string ClinicalConsultation = "clinical.consultation";
     public const string ClinicalBeforeAfter  = "clinical.beforeafter";
     public const string ClinicalCustomFields = "clinical.customfields";
+    /// <summary>Onam formu: hizmete bağlı rıza belgeleri + tablet üzerinden dijital imza.</summary>
+    public const string ClinicalConsentForms = "clinical.consentforms";
 
     // ---------- Müşteri / CRM (2) ----------
     public const string CustomersBlacklist   = "customers.blacklist";
@@ -127,6 +129,7 @@ public static class FeatureCatalog
         new(ClinicalConsultation,    "Müşteri bilgi ve onay formu", "Müşteri beyanları + işlem uygunluğu uyarıları", FeatureCategory.Operations),
         new(ClinicalBeforeAfter,     "Önce/Sonra galerisi","İşlem günlüğü + önce/sonra karşılaştırma kaydırıcısı", FeatureCategory.Operations),
         new(ClinicalCustomFields,    "Konsültasyon özel alanları","Bilgi formuna kuruma/şubeye özel checkbox/seçenek ekleme", FeatureCategory.Operations),
+        new(ClinicalConsentForms,    "Onam formu & dijital imza","Hizmete bağlı rıza belgeleri; müşteri tabletten imzalar, imzalı PDF dosyasına eklenir", FeatureCategory.Operations),
 
         // Müşteri / CRM
         new(CustomersBlacklist,      "Kara liste",          "Müşteriyi kara listeye al — randevu engelle",   FeatureCategory.Operations),

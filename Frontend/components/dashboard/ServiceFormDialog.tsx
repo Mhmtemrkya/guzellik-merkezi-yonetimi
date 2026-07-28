@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import type { CatalogStatusKey, CustomServiceCategory } from '@/lib/types'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
+import ConsentPicker from '@/components/dashboard/ConsentPicker'
 
 const STATUS_OPTIONS: { value: CatalogStatusKey; label: string }[] = [
   { value: 'Active', label: 'Aktif' },
@@ -35,6 +36,13 @@ const STATUS_OPTIONS: { value: CatalogStatusKey; label: string }[] = [
  */
 const OTHER_SENTINEL = '__OTHER__'
 
+/** Hizmete bağlanabilecek onam formu şablonu (Ayarlar › Onam Formları'nda tanımlanır). */
+export interface ConsentTemplateOption {
+  id: string
+  title: string
+  requiresSignature: boolean
+}
+
 export interface ServiceFormDialogValues {
   name: string
   category: string | null
@@ -48,6 +56,8 @@ export interface ServiceFormDialogValues {
   isActive: boolean
   iconKey: string
   status: CatalogStatusKey
+  /** Bu hizmet için zorunlu onam formları — randevu tamamlanırken imzalı mı diye bakılır. */
+  consentTemplateIds: string[]
 }
 
 export interface ServiceFormDialogProps {
@@ -61,6 +71,10 @@ export interface ServiceFormDialogProps {
   knownSubCategories?: Record<string, string[]>
   /** Verilirse kategori kutusundaki "Yeni kategori ekle" seçeneği çıkar. */
   onCreateCustomCategory?: (name: string) => Promise<void>
+  /** Kurumun tanımlı onam formları (yalnız geriye uyumluluk; picker listeyi kendi çeker). */
+  consentTemplates?: ConsentTemplateOption[]
+  /** Onam formu bölümünü çizerken kullanılacak kurum kimliği. */
+  consentTenantId?: string
   initialValues?: Partial<ServiceFormDialogValues>
   title?: string
   submitLabel?: string
@@ -81,6 +95,8 @@ export default function ServiceFormDialog({
   knownCategories = [],
   knownSubCategories = {},
   onCreateCustomCategory,
+  consentTemplates = [],
+  consentTenantId,
   initialValues,
   title = 'Yeni Hizmet Tanımla',
   submitLabel = 'Hizmeti oluştur',
@@ -99,6 +115,7 @@ export default function ServiceFormDialog({
     isActive: true,
     iconKey: '',
     status: 'Active',
+    consentTemplateIds: [],
   }
   const merged: ServiceFormDialogValues = { ...defaults, ...(initialValues || {}) }
 
@@ -509,6 +526,15 @@ export default function ServiceFormDialog({
                   </div>
                 </div>
               </div>
+
+              {/* Onam formları — bu hizmet için zorunlu rıza belgeleri (seç veya yerinde oluştur) */}
+              <ConsentPicker
+                value={values.consentTemplateIds}
+                onChange={(next) => setValues((v) => ({ ...v, consentTemplateIds: next }))}
+                tenantId={consentTenantId}
+                label="Bu hizmet için onam formu istensin mi?"
+                hint="Seçilen formlar, bu hizmetin randevusu “Tamamlandı” yapılırken imzalı mı diye kontrol edilir; eksikse uyarı çıkar."
+              />
 
               {/* Yayın durumu — segmented */}
               <div className="flex flex-col gap-3">

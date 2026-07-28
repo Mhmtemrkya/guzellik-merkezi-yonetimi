@@ -8,6 +8,7 @@ import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/customer_call.dart';
 import '../../shared/widgets/app_background.dart';
+import '../consent/consent_warning_banner.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import 'customer_sales_panel.dart';
@@ -1348,6 +1349,13 @@ class _HealthTabState extends State<_HealthTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
       children: [
+        // Onam formu durumu: imzalı belgelere buradan ulaşılır, eksikse uyarır.
+        ConsentWarningBanner(
+          api: widget.api,
+          customerId: widget.customerId,
+          customerName: widget.customerName,
+          showWhenComplete: true,
+        ),
         FutureBuilder<Map<String, dynamic>?>(
           future: _future,
           builder: (context, snapshot) {

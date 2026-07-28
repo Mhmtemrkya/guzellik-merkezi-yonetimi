@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
 import '../catalog/catalog_sales_panel.dart';
+import '../consent/consent_picker_field.dart';
 import 'service_category_field.dart';
 
 const _statusOptions = [
@@ -34,6 +35,10 @@ class _ServiceFormState extends State<ServiceForm> {
   bool _isActive = true;
   bool _saving = false;
 
+  // Onam formları: hizmete bağlı zorunlu rıza belgeleri. Bağ hizmet DTO'sunda değil,
+  // şablon kaydının serviceIds listesinde durur — kaydederken oraya yazılır.
+  Set<String> _consentSelected = <String>{};
+
   bool get _isEdit => widget.item != null;
 
   @override
@@ -63,6 +68,14 @@ class _ServiceFormState extends State<ServiceForm> {
     final st = '${it?['status'] ?? 'Active'}';
     _status = _statusOptions.any((s) => s[0] == st) ? st : 'Active';
     _isActive = it?['isActive'] != false;
+    _loadConsentTemplates();
+  }
+
+  Future<void> _loadConsentTemplates() async {
+    final serviceId = '${widget.item?['id'] ?? ''}';
+    if (serviceId.isEmpty) return;
+    final linked = await loadConsentLinks(widget.api, serviceId: serviceId);
+    if (mounted) setState(() => _consentSelected = linked);
   }
 
   @override
@@ -96,10 +109,16 @@ class _ServiceFormState extends State<ServiceForm> {
       'iconKey': widget.item?['iconKey'],
     };
     try {
+      String? serviceId;
       if (_isEdit) {
         await widget.api.put('/api/admin/services/${widget.item!['id']}', body);
+        serviceId = '${widget.item!['id']}';
       } else {
-        await widget.api.post('/api/admin/services/', body);
+        final created = await widget.api.post('/api/admin/services/', body);
+        serviceId = created is Map ? '${created['id'] ?? ''}' : null;
+      }
+      if (serviceId != null && serviceId.isNotEmpty) {
+        await syncConsentLinks(widget.api, serviceId: serviceId, selected: _consentSelected);
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -222,6 +241,16 @@ class _ServiceFormState extends State<ServiceForm> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              // Onam formları — seç veya yerinde oluştur
+              ConsentPickerField(
+                api: widget.api,
+                selected: _consentSelected,
+                onChanged: (next) => setState(() => _consentSelected = next),
+                label: 'Bu hizmet için onam formu istensin mi?',
+                hint: 'Seçilen formlar, bu hizmetin randevusu “Tamamlandı” yapılırken imzalı mı '
+                    'diye kontrol edilir; eksikse uyarı çıkar.',
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(

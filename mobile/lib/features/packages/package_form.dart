@@ -4,6 +4,7 @@ import '../../core/network/api_client.dart';
 import '../catalog/catalog_sales_panel.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../consent/consent_picker_field.dart';
 import '../services/service_category_field.dart';
 
 /// Bottom-sheet form to create/edit a service package (with its line items).
@@ -84,6 +85,7 @@ class _PackageFormState extends State<PackageForm> {
     }
     if (_items.isEmpty) _items.add(_PackageItem());
     _loading = _load();
+    _loadConsentLinks();
   }
 
   Future<void> _load() async {
@@ -189,6 +191,16 @@ class _PackageFormState extends State<PackageForm> {
     super.dispose();
   }
 
+  /// Paket için seçilen onam formları — bağ şablon kaydının packageIds listesinde durur.
+  Set<String> _consentSelected = <String>{};
+
+  Future<void> _loadConsentLinks() async {
+    final packageId = '${widget.item?['id'] ?? ''}';
+    if (packageId.isEmpty) return;
+    final linked = await loadConsentLinks(widget.api, packageId: packageId);
+    if (mounted) setState(() => _consentSelected = linked);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final items = _items
@@ -227,10 +239,16 @@ class _PackageFormState extends State<PackageForm> {
       'status': _isActive ? 'Active' : (_status == 'Active' ? 'Passive' : _status),
     };
     try {
+      String? packageId;
       if (_isEdit) {
         await widget.api.put('/api/admin/packages/${widget.item!['id']}', body);
+        packageId = '${widget.item!['id']}';
       } else {
-        await widget.api.post('/api/admin/packages/', body);
+        final created = await widget.api.post('/api/admin/packages/', body);
+        packageId = created is Map ? '${created['id'] ?? ''}' : null;
+      }
+      if (packageId != null && packageId.isNotEmpty) {
+        await syncConsentLinks(widget.api, packageId: packageId, selected: _consentSelected);
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -386,6 +404,16 @@ class _PackageFormState extends State<PackageForm> {
                     api: widget.api,
                     initialCategory: _category,
                     onChanged: (c) => _category = c,
+                  ),
+                  const SizedBox(height: 14),
+                  // Onam formu — paketi SATIN ALAN müşteride uyarı doğurur
+                  ConsentPickerField(
+                    api: widget.api,
+                    selected: _consentSelected,
+                    onChanged: (next) => setState(() => _consentSelected = next),
+                    label: 'Bu paket için onam formu istensin mi?',
+                    hint: 'Seçilen formlar, bu paketi satın alan müşteride imzalanana kadar '
+                        'müşteri kartı, cari, adisyon ve randevu ekranlarında uyarı olarak görünür.',
                   ),
                   const SizedBox(height: 14),
                   TextFormField(

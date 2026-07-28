@@ -40,6 +40,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/schedule/schedule_screen.dart';
 import '../features/service_categories/service_categories_screen.dart';
+import '../features/consent/signature_station_screen.dart';
 import '../features/services/services_screen.dart';
 import '../features/sessions/sessions_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -197,6 +198,7 @@ class AppRouter {
         _page('/sales', SalesScreen(api: api)),
         _page('/branches', BranchesScreen(api: api)),
         _page('/service-categories', ServiceCategoriesScreen(api: api)),
+        _page('/signature-station', SignatureStationScreen(api: api)),
         _page('/gift-cards', GiftCardsScreen(api: api)),
         _page('/waitlist', WaitlistScreen(api: api)),
         // Müşteri-bağlamlı klinik ekranlar: bağlam state.extra ile gelir

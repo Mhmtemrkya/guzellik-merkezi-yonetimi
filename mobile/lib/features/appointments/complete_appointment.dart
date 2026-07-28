@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../consent/consent_center_sheet.dart';
+import '../consent/consent_models.dart';
 
 /// Randevu "Tamamlandı" akışı — her yüzeyde (detay sheet, onay kutusu) ortak.
 ///  1) "Ödeme alındı mı?" → alındı / alınmadı / vazgeç.
@@ -10,6 +13,11 @@ import '../../shared/json_helpers.dart';
 ///  adisyon üzerinden ciroya işlenir. Tamamlandıysa true döner (çağıran yeniler/kapatır).
 Future<bool> runCompleteAppointment(
     BuildContext context, ApiClient api, Map<String, dynamic> appt) async {
+  // ONAM FORMU KAPISI: bu randevunun hizmetine bağlı formlar imzalı mı? Eksikse önce uyarı
+  // çıkar; personel formları imzalatabilir ya da bilerek imzasız devam edebilir (kapı yumuşak).
+  if (!await _consentGate(context, api, appt)) return false;
+  if (!context.mounted) return false;
+
   final choice = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -74,6 +82,86 @@ Future<bool> runCompleteAppointment(
     }
     return true; // randevu tamamlandı; çağıran yine de yenilesin
   }
+}
+
+/// Eksik onam formu varsa uyarı gösterir. Devam edilecekse true döner.
+Future<bool> _consentGate(
+    BuildContext context, ApiClient api, Map<String, dynamic> appt) async {
+  final id = '${appt['id'] ?? ''}'.trim();
+  final customerId = '${appt['customerId'] ?? ''}'.trim();
+  if (id.isEmpty) return true;
+
+  ConsentStatus? status;
+  try {
+    final res = await api.get('/api/consent/appointments/$id/status');
+    if (res is Map) status = ConsentStatus(res.cast<String, dynamic>());
+  } catch (_) {
+    return true; // onam özelliği yok / uç erişilemez → akışı durdurma
+  }
+  final missing = status?.missing ?? const <ConsentRequirement>[];
+  if (missing.isEmpty || !context.mounted) return true;
+
+  final action = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Onam formu eksik'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${missing.length} onam formu imzalanmadı. Formları görüntüleyip müşterinin '
+            'tabletten imzalamasını sağlayabilirsiniz.',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          for (final m in missing)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(
+                children: [
+                  const Icon(Icons.circle, size: 6, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(m.title,
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'İmzasız tamamlanan işlem, müşteri kartında ve cari/adisyon ekranlarında uyarı olarak görünür.',
+            style: TextStyle(fontSize: 11.5, color: AppColors.muted, height: 1.35),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, 'skip'),
+            child: const Text('İmzasız devam et')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'open'),
+            child: const Text('Formları aç')),
+      ],
+    ),
+  );
+
+  if (action == null) return false;
+  if (action == 'skip') return true;
+  if (!context.mounted || customerId.isEmpty) return false;
+
+  await ConsentCenterSheet.open(
+    context,
+    api: api,
+    customerId: customerId,
+    customerName: '${appt['customerName'] ?? ''}'.trim().isEmpty ? null : '${appt['customerName']}',
+    appointmentId: id,
+  );
+  // Merkez kapandıktan sonra kapıyı yeniden değerlendir (imzalandıysa doğrudan geçer).
+  if (!context.mounted) return false;
+  return _consentGate(context, api, appt);
 }
 
 void _snack(BuildContext context, String msg) {

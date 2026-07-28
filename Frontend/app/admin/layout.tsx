@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Users,
   Package,
+  PenLine,
   Calendar,
   CalendarClock,
   CalendarCheck,
@@ -70,6 +71,13 @@ const items: SidebarNavItem[] = [
       { label: 'Aktif hizmetler', href: '/admin/paketler?scope=active' },
       { label: 'Pasif hizmetler', href: '/admin/paketler?scope=inactive' },
     ],
+  },
+  {
+    group: 'İşletme',
+    label: 'İmza Tableti',
+    href: '/imza',
+    icon: PenLine,
+    permissionKey: 'Services',
   },
   {
     group: 'İşletme',

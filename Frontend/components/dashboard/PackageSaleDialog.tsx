@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
+import ConsentSaleNotice from '@/components/dashboard/ConsentSaleNotice'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -515,6 +516,13 @@ export default function PackageSaleDialog({
               {error && (
                 <div className="rounded-[12px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div>
               )}
+
+              {/* Onam formu bilgisi — satışı engellemez, personeli baştan haberdar eder. */}
+              <ConsentSaleNotice
+                packageId={isServiceSale || isProductSale ? null : packageId}
+                serviceId={isServiceSale ? selectedService?.id : null}
+                tenantId={tenantId}
+              />
 
               <div className="rounded-[16px] border border-[#efbfd0]/60 bg-white/80 p-4">
                 <div className="flex items-start justify-between gap-3">

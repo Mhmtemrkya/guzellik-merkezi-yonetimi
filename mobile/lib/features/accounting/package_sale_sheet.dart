@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
+import '../consent/consent_sale_notice.dart';
 import '../customers/customer_picker.dart';
 import 'adisyon_detail_sheet.dart';
 
@@ -356,6 +357,13 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                           price.clear();
                         }),
                         categoryOrder: categoryOrder,
+                      ),
+
+                      // Onam formu bilgisi — satışı engellemez, personeli baştan haberdar eder.
+                      ConsentSaleNotice(
+                        api: widget.api,
+                        packageId: widget.serviceSale ? null : packageId,
+                        serviceId: widget.serviceSale ? serviceId : null,
                       ),
 
                       if (widget.serviceSale) ...[

@@ -7,13 +7,19 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ArrowLeft, Banknote, Check, CheckCircle2, CreditCard, Loader2, Wallet, XCircle } from 'lucide-react'
-import { adminApi } from '@/lib/apiClient'
+import { ArrowLeft, Banknote, Check, CheckCircle2, CreditCard, FileSignature, Loader2, ShieldAlert, Wallet, XCircle } from 'lucide-react'
+import ConsentCenterModal from '@/components/dashboard/ConsentCenterModal'
+import { adminApi, consentApi } from '@/lib/apiClient'
 import { formatTL } from '@/lib/apiMappers'
-import type { CustomerAccount } from '@/lib/types'
+import { missingRequirements } from '@/lib/consent'
+import type { ApiConsentStatus, CustomerAccount } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Randevu "Tamamlandı" akışı — her yüzeyde (günlük kart, liste, onay kutusu) ortak.
+//  Adım 0: ONAM FORMU KAPISI — bu randevunun hizmetine bağlı formlar imzalı mı? Eksikse
+//          randevu tamamlanmadan önce uyarı çıkar ve formlar buradan görüntülenip imzaya
+//          gönderilebilir. (Kapı YUMUŞAKTIR: yönetici "yine de tamamla" diyebilir; işi
+//          durdurmak değil, imzasız işlem yapıldığını görünür kılmak amaçlanır.)
 //  Adım 1: "Ödeme alındı mı?" → alındı / alınmadı.
 //  Adım 2 (alındı): tutar (varsayılan = kalan borç) + yöntem (nakit/kart/havale).
 // Onayda randevu Tamamlandı yapılır; ödeme alındıysa tahsilat cariye/adisyona işlenir
@@ -58,7 +64,10 @@ export default function CompleteAppointmentDialog({
   tenantId,
   onDone,
 }: CompleteAppointmentDialogProps) {
-  const [step, setStep] = useState<'ask' | 'amount'>('ask')
+  const [step, setStep] = useState<'consent' | 'ask' | 'amount'>('ask')
+  // Onam durumu: null = henüz bilinmiyor (kapı gösterilmez), dolu = kontrol edildi.
+  const [consent, setConsent] = useState<ApiConsentStatus | null>(null)
+  const [consentOpen, setConsentOpen] = useState(false)
   const [amount, setAmount] = useState<number | ''>('')
   const [method, setMethod] = useState('cash')
   const [saving, setSaving] = useState(false)
@@ -74,8 +83,19 @@ export default function CompleteAppointmentDialog({
     setSaving(false)
     setAmount(fallbackAmount > 0 ? Math.round(fallbackAmount) : '')
     setOpenAdisyon(null)
+    setConsent(null)
+    setConsentOpen(false)
     if (!customerId) return
     let cancelled = false
+    // Onam kapısı: eksik form varsa ilk ekran uyarı olur.
+    consentApi
+      .appointmentStatus<ApiConsentStatus>(appointmentId, tenantId)
+      .then((st) => {
+        if (cancelled) return
+        setConsent(st)
+        if (missingRequirements(st).length > 0) setStep('consent')
+      })
+      .catch(() => {})
     adminApi
       .openAdisyon<OpenAdisyonLite>(customerId, tenantId)
       .then((a) => {
@@ -88,7 +108,18 @@ export default function CompleteAppointmentDialog({
     return () => {
       cancelled = true
     }
-  }, [open, customerId, tenantId, fallbackAmount])
+  }, [open, customerId, tenantId, fallbackAmount, appointmentId])
+
+  /** Onam durumunu tazeler; eksik kalmadıysa kapıyı geçip ödeme adımına düşer. */
+  const refreshConsent = async (): Promise<void> => {
+    try {
+      const st = await consentApi.appointmentStatus<ApiConsentStatus>(appointmentId, tenantId)
+      setConsent(st)
+      if (missingRequirements(st).length === 0 && step === 'consent') setStep('ask')
+    } catch {
+      // yoksay — kapı yumuşaktır
+    }
+  }
 
   const finish = async (): Promise<void> => {
     if (onDone) await onDone()
@@ -180,13 +211,70 @@ export default function CompleteAppointmentDialog({
             <DialogTitle className="text-[15px] font-bold text-[#2b1e29]">Randevuyu tamamla</DialogTitle>
             <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#8a7480]">
               {customerName ? `${customerName} · ` : ''}
-              {step === 'ask' ? 'Bu randevu için ödeme alındı mı?' : 'Tahsilat tutarı ve yöntemini onayla.'}
+              {step === 'consent'
+                ? 'Onam formu kontrolü'
+                : step === 'ask'
+                  ? 'Bu randevu için ödeme alındı mı?'
+                  : 'Tahsilat tutarı ve yöntemini onayla.'}
             </DialogDescription>
           </div>
         </div>
 
-        {step === 'ask' ? (
+        {step === 'consent' ? (
+          <div className="space-y-3">
+            <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold text-amber-900">
+                    {missingRequirements(consent).length} onam formu eksik
+                  </div>
+                  <div className="mt-1 text-[11.5px] leading-relaxed text-amber-900/85">
+                    Bu işlem için imzalanması gereken formlar tamamlanmadı. Formları görüntüleyip müşterinin
+                    tabletten imzalamasını sağlayabilirsiniz.
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {missingRequirements(consent).map((m) => (
+                      <li key={m.templateId} className="flex items-center gap-1.5 text-[11.5px] font-medium text-amber-900">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> {m.title}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setConsentOpen(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              <FileSignature className="h-4 w-4" /> Onam formlarını görüntüle
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setStep('ask')}
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#ead8df] bg-white px-4 py-3 text-[12.5px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-60"
+            >
+              İmzasız devam et
+            </button>
+            <p className="text-center text-[11px] text-[#8a7480]">
+              İmzasız tamamlanan işlem, müşteri kartında ve cari/adisyon ekranlarında uyarı olarak görünmeye devam eder.
+            </p>
+          </div>
+        ) : step === 'ask' ? (
           <div className="space-y-2.5">
+            {missingRequirements(consent).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setStep('consent')}
+                className="flex w-full items-center gap-2 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[11.5px] font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+              >
+                <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                {missingRequirements(consent).length} onam formu imzasız — görüntüle
+              </button>
+            )}
             <button
               type="button"
               disabled={saving}
@@ -284,6 +372,17 @@ export default function CompleteAppointmentDialog({
           </div>
         )}
       </DialogContent>
+
+      {customerId && (
+        <ConsentCenterModal
+          open={consentOpen}
+          onClose={() => { setConsentOpen(false); void refreshConsent() }}
+          customerId={customerId}
+          customerName={customerName}
+          appointmentId={appointmentId}
+          onChanged={refreshConsent}
+        />
+      )}
     </Dialog>
   )
 }

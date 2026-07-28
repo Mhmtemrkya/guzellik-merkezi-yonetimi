@@ -30,6 +30,7 @@ class _MoreScreenState extends State<MoreScreen> {
       '/branches',
       '/gift-cards',
       '/waitlist',
+      '/signature-station',
       '/consultation',
       '/treatment-journal',
       '/sessions',
@@ -130,6 +131,12 @@ class _MoreScreenState extends State<MoreScreen> {
               Icons.hourglass_top_rounded,
               '/waitlist',
               permission: 'Waitlist',
+            ),
+            const _Module(
+              'İmza Tableti',
+              Icons.draw_rounded,
+              '/signature-station',
+              permission: 'Services',
             ),
             const _Module(
               'Müşteri Bilgi ve Onay Formu',

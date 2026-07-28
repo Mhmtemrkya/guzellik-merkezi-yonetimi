@@ -209,6 +209,7 @@ app.MapImportEndpoints();
 app.MapCustomerPortalEndpoints();
 app.MapTreatmentPhotoEndpoints();
 app.MapConsultationEndpoints();
+app.MapConsentEndpoints();
 app.MapStaffEndpoints();
 app.MapServiceDefinitionEndpoints();
 app.MapServicePackageEndpoints();

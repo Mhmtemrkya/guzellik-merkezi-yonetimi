@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme/responsive.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../consent/consent_warning_banner.dart';
 import '../../shared/crud/crud_options.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
@@ -1854,7 +1855,17 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
     final points = (_loyalty['balance'] as num?)?.toInt() ??
         (_loyalty['points'] as num?)?.toInt() ??
         0;
+    final consentCustomerId = '${a['customerId'] ?? ''}'.trim();
     return [
+      // Cari kartında onam uyarısı: imzasız işlem borçlandırılmış olabilir.
+      if (consentCustomerId.isNotEmpty)
+        ConsentWarningBanner(
+          api: widget.api,
+          customerId: consentCustomerId,
+          customerName: '${a['customerName'] ?? a['name'] ?? ''}'.trim().isEmpty
+              ? null
+              : '${a['customerName'] ?? a['name']}',
+        ),
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
