@@ -1,19 +1,27 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import ModalPortal from '@/components/dashboard/ModalPortal'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
+import { usePermission } from '@/hooks/usePermission'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeService } from '@/lib/apiMappers'
-import { ChevronLeft, ChevronRight, Clock3, FolderPlus, Layers3, Package, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
-import type { ApiCustomServiceCategory, ApiService, ApiServicePackage } from '@/lib/types'
+import {
+  ArrowDown, ArrowUp, ChevronRight, FolderPlus, Layers3, Package, Pencil,
+  Plus, Search, Sparkles, Tag, Trash2, X,
+} from 'lucide-react'
+import type { ApiCustomServiceCategory, ApiService, ApiServicePackage, Service } from '@/lib/types'
 
 const UNCATEGORIZED = 'Kategorisiz'
+
+interface SubNode { name: string; customId?: string; serviceCount: number; packageCount: number }
+interface CatNode { name: string; isCustom: boolean; customId?: string; serviceCount: number; packageCount: number; subCount: number }
 
 /**
  * Silme onayı için hedef. 'custom' = gerçek kategori kaydı; 'derived' = kaydı olmayan,
@@ -30,11 +38,53 @@ interface PendingDelete {
   subCount: number
 }
 
+/** Hizmet + gruplamada kullanılan HAM kategori adı (bkz. `services` useMemo). */
+type ExplorerService = Service & { rawCategory: string }
+
+type ItemKind = 'service' | 'package'
+/** Hizmet ve paketler tek listede gösterilir; tür rozetle ayrışır. */
+interface CatalogRow {
+  kind: ItemKind
+  id: string
+  name: string
+  iconKey: string
+  sub: string
+  meta: string
+  price: number
+  active: boolean
+  /** Paket içeriği ("Lazer ×6") — yalnız paketlerde dolu. */
+  parts: string[]
+}
+
+const TYPE_TABS: { key: 'all' | ItemKind; label: string }[] = [
+  { key: 'all', label: 'Tümü' },
+  { key: 'service', label: 'Hizmetler' },
+  { key: 'package', label: 'Paketler' },
+]
+
 /**
- * Genel kategori görünümü — sektör standardı katalog deseni (Zenoti/Mangomint tarzı):
- * tüm hizmet + paketler ortak kategorilere göre gruplanır. Kategoriye tıklayınca o kategorinin
- * alt kategorileri (varsa) + hizmet ve paketleri listelenir; alt kategori seçilince liste süzülür.
- * Kuruma özel üst kategorilere alt kategori eklenip kaldırılabilir (ParentId ağacı).
+ * Kategori yönetimi — ana/alt kategori ağacı (solda) + seçili kategorinin içeriği (sağda).
+ *
+ * TASARIM KARARLARI (neden böyle):
+ *
+ * 1. **Gezinme tek yerde: soldaki ağaç.** Önceki hâlde kategoriler ekranın tamamını kaplayan
+ *    kart ızgarasıydı; 15 kategoride seçili kategorinin içeriği ekranın çok altında kalıyor,
+ *    "neye tıkladım / ne görüyorum" bağı kopuyordu. Ray + içerik yerleşiminde kategori listesi
+ *    her zaman görünür, içerik yanında açılır.
+ *
+ * 2. **İşlemler tek yerde: sağdaki başlık kartı.** Kart ızgarasında her kartın köşesinde
+ *    hover'da beliren üç ayrı mini simge (öne al / geri al / "alt" / çöp kutusu) vardı;
+ *    dokunmatikte erişilemiyor, anlamları tahmin gerektiriyordu. Artık seçili kategori/alt
+ *    kategori için ETİKETLİ butonlar tek satırda durur: Alt kategori ekle · Yeniden adlandır ·
+ *    sırala · Sil. Ağaç satırları saf gezinmedir.
+ *
+ * 3. **Hizmet + paket tek liste.** İki ayrı panel yerine tür süzgeçli tek tablo: aynı kategoride
+ *    kaç kayıt olduğu tek yerden okunur, dar ekranda iki panel birbirini ezmez.
+ *
+ * 4. **Yeniden adlandırma kayıtları da taşır.** Kategori adı hizmet/paket üzerinde METİN olarak
+ *    durur; yalnız kategori kaydını yeniden adlandırmak kayıtları eski adla ortada bırakır
+ *    (kategori boşalır, eski ad "otomatik" kategori olarak listede kalır). Bu yüzden ad
+ *    değişince o adı taşıyan tüm hizmet ve paketler de güncellenir.
  */
 export default function CategoryExplorer({
   tenantId,
@@ -46,12 +96,21 @@ export default function CategoryExplorer({
   branchLabel?: string
 }) {
   const canCustomCat = useFeature('categories.service.custom')
+  const { can } = usePermission()
+  const canManage = canCustomCat && can('Services.Manage')
+  const canDelete = canCustomCat && can('Services.Delete')
+
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
   const [selectedSub, setSelectedSub] = useState<string>('') // '' = tüm alt kategoriler
+  const [catQuery, setCatQuery] = useState('')
+  const [itemQuery, setItemQuery] = useState('')
+  const [typeTab, setTypeTab] = useState<'all' | ItemKind>('all')
   const [newCatName, setNewCatName] = useState('')
   const [adding, setAdding] = useState(false)
   const [newSubName, setNewSubName] = useState('')
   const [addingSub, setAddingSub] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
@@ -72,20 +131,48 @@ export default function CategoryExplorer({
     { initialData: { services: [], packages: [], cats: [] } },
   )
 
-  const services = useMemo(() => (data?.services || []).map((s, i) => normalizeService(s, i)), [data])
+  // normalizeService, kategorisi BOŞ hizmete "Genel Hizmet" adını uydurur. Gruplama ve geri
+  // yazma bu uydurma adı kullanamaz: kategorisi olmayan bir hizmet güncellenirken ona gerçekten
+  // "Genel Hizmet" kategorisi yazılır ve kayıt sessizce yanlış kategoriye taşınırdı.
+  const services = useMemo<ExplorerService[]>(
+    () => (data?.services || []).map((s, i) => ({ ...normalizeService(s, i), rawCategory: (s?.category || s?.group || '').trim() })),
+    [data],
+  )
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
   const customCats = useMemo(() => (data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i)), [data])
   // Üst-seviye özel kategoriler (alt kategori kayıtları haritadan hariç).
   const topCustomCats = useMemo(() => customCats.filter((c) => !c.parentId), [customCats])
-  /** Bir üst kategorinin alt kategori sayısı — silme onayında "N alt kategorisi de silinecek" için. */
-  const subCountOf = (parentId: string) => customCats.filter((c) => c.parentId === parentId).length
+  const catNameById = useMemo(() => new Map(customCats.map((c) => [c.id, c.name])), [customCats])
+
+  /**
+   * Tüm alt kategoriler tek geçişte üst kategori adına göre gruplanır: hem ağaçtaki
+   * "N alt kategori" sayacı hem de ray aramasının alt kategori adıyla eşleşmesi buna dayanır.
+   */
+  const subsByCat = useMemo(() => {
+    const out = new Map<string, Map<string, SubNode>>()
+    const touch = (cat: string, name: string) => {
+      if (!out.has(cat)) out.set(cat, new Map())
+      const bucket = out.get(cat)!
+      if (!bucket.has(name)) bucket.set(name, { name, serviceCount: 0, packageCount: 0 })
+      return bucket.get(name)!
+    }
+    for (const c of customCats) {
+      if (!c.parentId) continue
+      const parent = catNameById.get(c.parentId)
+      if (!parent) continue // üst kategorisi silinmiş öksüz kayıt — listelenmez
+      touch(parent, c.name).customId = c.id
+    }
+    for (const s of services) if (s.subGroup) touch(s.rawCategory || UNCATEGORIZED, s.subGroup).serviceCount++
+    for (const p of packages) if (p.subCategory) touch(p.category || UNCATEGORIZED, p.subCategory).packageCount++
+    return out
+  }, [customCats, catNameById, services, packages])
 
   // Üst kategori havuzu: üst-seviye özel kategoriler + hizmet/paketlerde geçen kategori adları + Kategorisiz
-  const categories = useMemo(() => {
-    const map = new Map<string, { name: string; isCustom: boolean; customId?: string; serviceCount: number; packageCount: number }>()
+  const categories = useMemo<CatNode[]>(() => {
+    const map = new Map<string, CatNode>()
     const touch = (name: string) => {
       const key = name || UNCATEGORIZED
-      if (!map.has(key)) map.set(key, { name: key, isCustom: false, serviceCount: 0, packageCount: 0 })
+      if (!map.has(key)) map.set(key, { name: key, isCustom: false, serviceCount: 0, packageCount: 0, subCount: 0 })
       return map.get(key)!
     }
     for (const c of topCustomCats) {
@@ -93,76 +180,116 @@ export default function CategoryExplorer({
       e.isCustom = true
       e.customId = c.id
     }
-    for (const s of services) touch(s.group || UNCATEGORIZED).serviceCount++
+    for (const s of services) touch(s.rawCategory || UNCATEGORIZED).serviceCount++
     for (const p of packages) touch(p.category || UNCATEGORIZED).packageCount++
+    for (const e of map.values()) e.subCount = subsByCat.get(e.name)?.size ?? 0
     // Manuel sıra (SortOrder) önce; türetilmiş adlar adete/alfabeye göre sona, "Kategorisiz" en sonda.
     const orderOf = categoryOrderIndex(topCustomCats)
     return [...map.values()].sort((a, b) =>
       orderOf(a.name) - orderOf(b.name)
       || (b.serviceCount + b.packageCount) - (a.serviceCount + a.packageCount)
       || a.name.localeCompare(b.name, 'tr'))
-  }, [topCustomCats, services, packages])
+  }, [topCustomCats, services, packages, subsByCat])
 
   const activeCat = selectedCat && categories.some((c) => c.name === selectedCat) ? selectedCat : categories[0]?.name || null
   const activeCatInfo = categories.find((c) => c.name === activeCat)
   const activeCatCustomId = activeCatInfo?.customId
+  const isUncategorized = activeCat === UNCATEGORIZED
 
-  // Aktif kategorinin alt kategorileri: özel alt kayıtlar (ParentId eşleşen) + hizmet/paketlerde geçen alt kategoriler.
-  const subCategories = useMemo(() => {
-    const map = new Map<string, { name: string; customId?: string; serviceCount: number; packageCount: number }>()
-    const touch = (name: string) => {
-      if (!map.has(name)) map.set(name, { name, serviceCount: 0, packageCount: 0 })
-      return map.get(name)!
-    }
-    if (activeCatCustomId) {
-      for (const c of customCats) if (c.parentId === activeCatCustomId) { touch(c.name).customId = c.id }
-    }
-    for (const s of services) if ((s.group || UNCATEGORIZED) === activeCat && s.subGroup) touch(s.subGroup).serviceCount++
-    for (const p of packages) if ((p.category || UNCATEGORIZED) === activeCat && p.subCategory) touch(p.subCategory).packageCount++
+  // Aktif kategorinin alt kategorileri — kendi SortOrder'ına göre, sonra alfabetik.
+  const subCategories = useMemo<SubNode[]>(() => {
+    const bucket = subsByCat.get(activeCat || '')
+    if (!bucket) return []
     const orderOf = categoryOrderIndex(customCats.filter((c) => c.parentId === activeCatCustomId))
-    return [...map.values()].sort((a, b) => orderOf(a.name) - orderOf(b.name) || a.name.localeCompare(b.name, 'tr'))
-  }, [customCats, services, packages, activeCat, activeCatCustomId])
+    return [...bucket.values()].sort((a, b) => orderOf(a.name) - orderOf(b.name) || a.name.localeCompare(b.name, 'tr'))
+  }, [subsByCat, activeCat, activeCatCustomId, customCats])
 
-  const catServices = useMemo(
-    () => services.filter((s) => (s.group || UNCATEGORIZED) === activeCat && (!selectedSub || s.subGroup === selectedSub)),
-    [services, activeCat, selectedSub],
-  )
-  const catPackages = useMemo(
-    () => packages.filter((p) => (p.category || UNCATEGORIZED) === activeCat && (!selectedSub || p.subCategory === selectedSub)),
-    [packages, activeCat, selectedSub],
-  )
+  // Ray araması: kategori adı VEYA içindeki bir alt kategori adı eşleşirse kategori görünür.
+  const railCats = useMemo(() => {
+    const t = catQuery.trim().toLocaleLowerCase('tr')
+    if (!t) return categories
+    return categories.filter((c) =>
+      c.name.toLocaleLowerCase('tr').includes(t)
+      || [...(subsByCat.get(c.name)?.keys() ?? [])].some((n) => n.toLocaleLowerCase('tr').includes(t)))
+  }, [categories, catQuery, subsByCat])
 
-  const selectCategory = (name: string) => { setSelectedCat(name); setSelectedSub(''); setAddingSub(false); setNewSubName('') }
-  // Ana kategoriye tıklayıp doğrudan alt kategori eklemeye başla: kategoriyi seç + ekleme kutusunu aç.
-  const startAddSub = (name: string) => { setSelectedCat(name); setSelectedSub(''); setNewSubName(''); setError(''); setAddingSub(true) }
+  const rows = useMemo<CatalogRow[]>(() => {
+    const inScope = (cat: string, sub: string) => cat === activeCat && (!selectedSub || sub === selectedSub)
+    const out: CatalogRow[] = []
+    for (const s of services) {
+      if (!inScope(s.rawCategory || UNCATEGORIZED, s.subGroup)) continue
+      out.push({
+        kind: 'service', id: s.id, name: s.name, iconKey: s.iconKey || suggestIcon(s.name || s.group),
+        sub: s.subGroup, meta: `${s.duration} dk`, price: s.price, active: s.status === 'Active', parts: [],
+      })
+    }
+    for (const p of packages) {
+      if (!inScope(p.category || UNCATEGORIZED, p.subCategory)) continue
+      out.push({
+        kind: 'package', id: p.id, name: p.name, iconKey: p.iconKey || suggestIcon(p.name || p.category),
+        sub: p.subCategory, meta: `${p.totalSessions} seans`, price: p.totalPrice, active: p.isActive,
+        parts: p.items.map((i) => `${i.serviceName} ×${i.sessionCount}`),
+      })
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+  }, [services, packages, activeCat, selectedSub])
 
-  const createCat = async () => {
-    const name = newCatName.trim()
-    if (!name) return
+  const serviceCount = rows.filter((r) => r.kind === 'service').length
+  const packageCount = rows.length - serviceCount
+  const visibleRows = useMemo(() => {
+    let list = typeTab === 'all' ? rows : rows.filter((r) => r.kind === typeTab)
+    const t = itemQuery.trim().toLocaleLowerCase('tr')
+    if (t) list = list.filter((r) => r.name.toLocaleLowerCase('tr').includes(t) || r.sub.toLocaleLowerCase('tr').includes(t))
+    return list
+  }, [rows, typeTab, itemQuery])
+
+  // Görüntülenen özne: alt kategori seçiliyse o, değilse kategorinin kendisi.
+  const subjectInfo = selectedSub ? subCategories.find((s) => s.name === selectedSub) : undefined
+  const subject = selectedSub
+    ? { level: 'sub' as const, name: selectedSub, customId: subjectInfo?.customId, usage: (subjectInfo?.serviceCount ?? 0) + (subjectInfo?.packageCount ?? 0) }
+    : { level: 'category' as const, name: activeCat || '', customId: activeCatCustomId, usage: (activeCatInfo?.serviceCount ?? 0) + (activeCatInfo?.packageCount ?? 0) }
+
+  // Elle sıralama yalnız kayıtlı (özel) kategorilerde; kardeşler arasında yapılır.
+  const topCustomIds = useMemo(() => categories.filter((c) => c.customId).map((c) => c.customId!), [categories])
+  const subCustomIds = useMemo(() => subCategories.filter((s) => s.customId).map((s) => s.customId!), [subCategories])
+  const siblingIds = subject.level === 'sub' ? subCustomIds : topCustomIds
+  const orderIndex = subject.customId ? siblingIds.indexOf(subject.customId) : -1
+  const canReorder = canManage && orderIndex >= 0 && siblingIds.length > 1
+
+  const selectCategory = (name: string) => {
+    setSelectedCat(name); setSelectedSub(''); setAddingSub(false); setNewSubName('')
+    setRenaming(false); setItemQuery(''); setTypeTab('all'); setError('')
+  }
+  const selectSub = (name: string) => { setSelectedSub(name); setRenaming(false); setItemQuery(''); setError('') }
+
+  const run = async (fn: () => Promise<unknown>, fallback: string) => {
     setBusy(true)
     setError('')
     try {
-      await adminApi.createServiceCategory({ name, isActive: true }, tenantId)
-      setNewCatName('')
-      setAdding(false)
-      setSelectedCat(name)
-      setSelectedSub('')
+      await fn()
       await reload()
+      return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kategori eklenemedi')
+      setError(e instanceof Error ? e.message : fallback)
+      return false
     } finally {
       setBusy(false)
     }
   }
 
+  const createCat = async () => {
+    const name = newCatName.trim()
+    if (!name) return
+    const ok = await run(() => adminApi.createServiceCategory({ name, isActive: true }, tenantId), 'Kategori eklenemedi')
+    if (ok) { setNewCatName(''); setAdding(false); setSelectedCat(name); setSelectedSub('') }
+  }
+
   const createSubCat = async () => {
     const name = newSubName.trim()
-    if (!name || !activeCat || activeCat === UNCATEGORIZED) return
-    setBusy(true)
-    setError('')
-    try {
-      // Türetilmiş (özel olmayan) üst kategoriye de alt kategori eklenebilsin:
-      // önce üst kategoriyi kuruma özel kategori olarak oluştur, sonra alt kategoriyi ona bağla.
+    if (!name || !activeCat || isUncategorized) return
+    const ok = await run(async () => {
+      // Türetilmiş (kaydı olmayan) üst kategoriye de alt kategori eklenebilsin:
+      // önce üst kategori kuruma özel kategori olarak oluşturulur, sonra alt kategori ona bağlanır.
       let parentId = activeCatCustomId
       if (!parentId) {
         const created = await adminApi.createServiceCategory<ApiCustomServiceCategory>({ name: activeCat, isActive: true }, tenantId)
@@ -170,14 +297,52 @@ export default function CategoryExplorer({
       }
       if (!parentId) throw new Error('Üst kategori oluşturulamadı')
       await adminApi.createServiceCategory({ name, isActive: true, parentId }, tenantId)
-      setNewSubName('')
-      setAddingSub(false)
-      setSelectedSub(name)
-      await reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Alt kategori eklenemedi')
-    } finally {
-      setBusy(false)
+    }, 'Alt kategori eklenemedi')
+    if (ok) { setNewSubName(''); setAddingSub(false); setSelectedSub(name) }
+  }
+
+  /** Hizmet PUT'u tam gövde ister; yalnızca değişen alanı geçmek için taban yük. */
+  const servicePayload = (s: ExplorerService, over: Record<string, unknown>) => ({
+    branchId: s.branchId || null, name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null,
+    durationMinutes: s.duration, price: s.price, isActive: s.isActive, iconKey: s.iconKey || null,
+    status: s.status, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || null,
+    ...over,
+  })
+
+  const startRename = () => { setRenameValue(subject.name); setRenaming(true); setError('') }
+
+  /** Kategori/alt kategori adını değiştirir ve adı taşıyan tüm hizmet + paketleri de günceller (bkz. tasarım notu 4). */
+  const applyRename = async () => {
+    const next = renameValue.trim()
+    if (!next || !activeCat) return
+    if (next === subject.name) { setRenaming(false); return }
+    const ok = await run(async () => {
+      if (subject.customId) {
+        await adminApi.updateServiceCategory(subject.customId, {
+          name: next,
+          isActive: true,
+          parentId: subject.level === 'sub' ? (activeCatCustomId ?? null) : null,
+        }, tenantId)
+      }
+      if (subject.level === 'category') {
+        for (const s of services.filter((x) => (x.rawCategory || UNCATEGORIZED) === subject.name)) {
+          await adminApi.updateService(s.id, servicePayload(s, { category: next }), tenantId)
+        }
+        for (const p of packages.filter((x) => (x.category || UNCATEGORIZED) === subject.name)) {
+          await adminApi.updatePackageCategory(p.id, next, p.subCategory || null, tenantId)
+        }
+      } else {
+        for (const s of services.filter((x) => (x.rawCategory || UNCATEGORIZED) === activeCat && x.subGroup === subject.name)) {
+          await adminApi.updateService(s.id, servicePayload(s, { subCategory: next }), tenantId)
+        }
+        for (const p of packages.filter((x) => (x.category || UNCATEGORIZED) === activeCat && x.subCategory === subject.name)) {
+          await adminApi.updatePackageCategory(p.id, p.category || null, next, tenantId)
+        }
+      }
+    }, 'Yeniden adlandırılamadı')
+    if (ok) {
+      setRenaming(false)
+      if (subject.level === 'category') setSelectedCat(next); else setSelectedSub(next)
     }
   }
 
@@ -188,441 +353,593 @@ export default function CategoryExplorer({
    *  • derived → kaydı yok, adı yalnızca hizmet/paket üzerinde metin olarak duruyor.
    *              Silmek = o adı kullanan hizmet/paketlerden temizlemek.
    */
-  const askDelete = (target: PendingDelete) => { setError(''); setPendingDelete(target) }
+  const askDelete = () => {
+    if (!subject.name || isUncategorized) return
+    setError('')
+    setPendingDelete({
+      kind: subject.customId ? 'custom' : 'derived',
+      id: subject.customId || subject.name,
+      name: subject.name,
+      level: subject.level,
+      usageCount: subject.usage,
+      subCount: subject.level === 'category' ? (activeCatInfo?.subCount ?? 0) : 0,
+    })
+  }
 
   const confirmDelete = async () => {
     const target = pendingDelete
     if (!target) return
-    setBusy(true)
-    setError('')
-    try {
+    const ok = await run(async () => {
       if (target.kind === 'custom') {
         await adminApi.deleteServiceCategory(target.id, tenantId)
-      } else {
-        // Kaydı olmayan (türetilmiş) alt kategori: adı kullanan hizmet ve paketlerden kaldırılır.
+        return
+      }
+      // Kaydı olmayan (türetilmiş) kategori/alt kategori: adı kullanan hizmet ve paketlerden kaldırılır.
+      if (target.level === 'sub') {
         for (const s of services.filter((x) => x.subGroup === target.name)) {
-          await adminApi.updateService(s.id, {
-            branchId: s.branchId || null, name: s.name, category: s.group || null, subCategory: null,
-            durationMinutes: s.duration, price: s.price, isActive: s.isActive, iconKey: s.iconKey || null,
-            status: s.status, defaultSessionCount: s.session || 1,
-            loyaltyPointCost: s.loyaltyPointCost || null,
-          }, tenantId)
+          await adminApi.updateService(s.id, servicePayload(s, { subCategory: null }), tenantId)
         }
         for (const p of packages.filter((x) => x.subCategory === target.name)) {
           await adminApi.updatePackageCategory(p.id, p.category || null, null, tenantId)
         }
+      } else {
+        for (const s of services.filter((x) => (x.rawCategory || UNCATEGORIZED) === target.name)) {
+          await adminApi.updateService(s.id, servicePayload(s, { category: null }), tenantId)
+        }
+        for (const p of packages.filter((x) => (x.category || UNCATEGORIZED) === target.name)) {
+          await adminApi.updatePackageCategory(p.id, null, p.subCategory || null, tenantId)
+        }
       }
-      if (selectedCat === target.name) setSelectedCat(null)
-      if (selectedSub === target.name) setSelectedSub('')
+    }, 'Kategori silinemedi')
+    if (ok) {
+      if (target.level === 'sub') setSelectedSub('')
+      else { setSelectedCat(null); setSelectedSub('') }
       setPendingDelete(null)
-      await reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kategori silinemedi')
-    } finally {
-      setBusy(false)
     }
   }
 
-  // Elle sıralama: verilen id sırasına göre backend SortOrder yazar (özel kategoriler için).
-  const reorderCats = async (orderedIds: string[]) => {
-    setBusy(true)
-    setError('')
-    try {
-      await adminApi.reorderServiceCategories(orderedIds, tenantId)
-      await reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sıralama kaydedilemedi')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const moveInList = (ids: string[], id: string, dir: -1 | 1) => {
-    const i = ids.indexOf(id)
+  /** Seçili kategoriyi/alt kategoriyi kardeşleri arasında bir sıra öne veya geriye taşır. */
+  const move = (dir: -1 | 1) => {
+    if (!subject.customId) return
+    const i = siblingIds.indexOf(subject.customId)
     const j = i + dir
-    if (i < 0 || j < 0 || j >= ids.length) return
-    const next = [...ids]
+    if (i < 0 || j < 0 || j >= siblingIds.length) return
+    const next = [...siblingIds]
     ;[next[i], next[j]] = [next[j], next[i]]
-    void reorderCats(next)
+    void run(() => adminApi.reorderServiceCategories(next, tenantId), 'Sıralama kaydedilemedi')
   }
-  const topCustomIds = useMemo(() => categories.filter((c) => c.customId).map((c) => c.customId!), [categories])
-  const subCustomIds = useMemo(() => subCategories.filter((s) => s.customId).map((s) => s.customId!), [subCategories])
+
+  const totals = useMemo(() => ({
+    cats: categories.length,
+    subs: [...subsByCat.values()].reduce((a, b) => a + b.size, 0),
+    services: services.length,
+    packages: packages.length,
+  }), [categories, subsByCat, services, packages])
 
   return (
     <>
       <Topbar
         title="Kategoriler"
-        subtitle={`${institutionName || 'Kurum'} · ${branchLabel || 'Merkez'} · Genel Kategori Görünümü`}
+        subtitle={`${institutionName || 'Kurum'} · ${branchLabel || 'Merkez'} · Hizmet ve paket kategorileri`}
         breadcrumbs={['Admin', 'İşletme', 'Paket & Hizmet', 'Kategoriler']}
         actions={
-          canCustomCat ? (
-            <div className="flex items-center gap-2">
-              {adding ? (
-                <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white p-1">
-                  <input
-                    autoFocus
-                    value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void createCat(); if (e.key === 'Escape') setAdding(false) }}
-                    placeholder="Kategori adı…"
-                    className="w-40 rounded-[8px] px-2.5 py-1.5 text-[12px] outline-none"
-                  />
-                  <button type="button" disabled={busy} onClick={createCat}
-                    className="rounded-[8px] bg-[#c85776] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
-                  <button type="button" onClick={() => setAdding(false)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#352432]/45 hover:bg-[#fff4f8]"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setAdding(true)}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
-                  <FolderPlus className="h-3.5 w-3.5" /> Yeni Kategori
-                </button>
-              )}
-            </div>
+          canManage ? (
+            <button
+              type="button"
+              onClick={() => { setAdding(true); setCatQuery('') }}
+              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              <FolderPlus className="h-4 w-4" /> Yeni Kategori
+            </button>
           ) : undefined
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative space-y-4 p-4 sm:p-6 lg:p-8">
         <ApiStateNotice loading={loading} error={apiError} />
-        {error && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{error}</div>}
+        {error && <div className="rounded-[12px] border border-rose-300/40 bg-rose-50 px-4 py-2.5 text-[12px] font-medium text-rose-700">{error}</div>}
 
-        {/* KATEGORİ KARTLARI */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {categories.map((c) => (
-            <motion.button
-              key={c.name}
-              type="button"
-              whileHover={{ y: -3 }}
-              onClick={() => selectCategory(c.name)}
-              className={`group relative overflow-hidden rounded-[18px] border p-4 text-left shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)] transition-colors ${
-                activeCat === c.name ? 'border-[#c85776]/60 bg-[#fff1f6]/60' : 'border-[#ead8df]/70 bg-white/90 hover:border-[#efbfd0]'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <span className="grid h-10 w-10 place-items-center rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]">
-                  <ServiceIcon iconKey={suggestIcon(c.name)} className="h-5 w-5" />
-                </span>
-                <div className="flex items-center gap-1">
-                  {c.isCustom && c.customId && canCustomCat && topCustomIds.length > 1 && (
-                    <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
-                      <span role="button" tabIndex={0} title="Öne al"
-                        onClick={(e) => { e.stopPropagation(); moveInList(topCustomIds, c.customId!, -1) }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); moveInList(topCustomIds, c.customId!, -1) } }}
-                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/35 hover:bg-[#fff1f6] hover:text-[#c85776] ${topCustomIds.indexOf(c.customId!) === 0 ? 'pointer-events-none opacity-30' : ''}`}>
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                      </span>
-                      <span role="button" tabIndex={0} title="Geri al"
-                        onClick={(e) => { e.stopPropagation(); moveInList(topCustomIds, c.customId!, 1) }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); moveInList(topCustomIds, c.customId!, 1) } }}
-                        className={`grid h-6 w-6 place-items-center rounded-md text-[#352432]/35 hover:bg-[#fff1f6] hover:text-[#c85776] ${topCustomIds.indexOf(c.customId!) === topCustomIds.length - 1 ? 'pointer-events-none opacity-30' : ''}`}>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </span>
-                    </span>
-                  )}
-                  {c.name !== UNCATEGORIZED && canCustomCat && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); startAddSub(c.name) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); startAddSub(c.name) } }}
-                      title="Alt kategori ekle"
-                      className="inline-flex items-center gap-0.5 rounded-md border border-[#efbfd0]/60 bg-[#fff1f6]/70 px-1.5 py-1 text-[9px] font-mono uppercase tracking-wide text-[#b14d6c] opacity-0 transition-opacity hover:bg-[#ffe6ef] group-hover:opacity-100"
-                    >
-                      <Plus className="h-3 w-3" /> alt
-                    </span>
-                  )}
-                  {/* Silme HER ZAMAN görünür: opacity-0 + group-hover ile gizliyken dokunmatik
-                      cihazlarda hiç erişilemiyordu ve kullanıcı özelliği bulamıyordu. */}
-                  {c.isCustom && c.customId && canCustomCat && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); askDelete({ kind: 'custom', id: c.customId!, name: c.name, level: 'category', usageCount: c.serviceCount + c.packageCount, subCount: subCountOf(c.customId!) }) }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); askDelete({ kind: 'custom', id: c.customId!, name: c.name, level: 'category', usageCount: c.serviceCount + c.packageCount, subCount: subCountOf(c.customId!) }) } }}
-                      title="Kategoriyi sil"
-                      className="grid h-7 w-7 place-items-center rounded-md border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                </div>
+        {/* ÖZET ŞERİDİ — kataloğun büyüklüğü tek bakışta. */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: 'Kategori', value: totals.cats, icon: Layers3, tone: 'bg-[#fff1f6] text-[#c85776]' },
+            { label: 'Alt kategori', value: totals.subs, icon: Tag, tone: 'bg-[#fdf1e7] text-[#b9743a]' },
+            { label: 'Hizmet', value: totals.services, icon: Sparkles, tone: 'bg-[#fff1f6] text-[#c85776]' },
+            { label: 'Paket', value: totals.packages, icon: Package, tone: 'bg-violet-50 text-violet-600' },
+          ].map((s) => (
+            <div key={s.label} className="flex items-center gap-3 rounded-[16px] border border-[#ead8df]/70 bg-white/90 px-4 py-3 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[12px] ${s.tone}`}><s.icon className="h-5 w-5" /></span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-[#705a66]">{s.label}</div>
+                <div className="font-display text-2xl leading-tight tabular-nums tracking-tight text-[#352432]">{s.value}</div>
               </div>
-              <div className="mt-3 truncate font-display text-xl tracking-tight text-[#352432]">{c.name}</div>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <span className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-1.5 py-0.5 text-[9px] font-mono uppercase text-[#b14d6c]">{c.serviceCount} hizmet</span>
-                <span className="rounded-md border border-violet-200/70 bg-violet-50 px-1.5 py-0.5 text-[9px] font-mono uppercase text-violet-600">{c.packageCount} paket</span>
-                {c.isCustom && <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-mono uppercase text-amber-700">özel</span>}
-              </div>
-              {activeCat === c.name && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-[#c85776]" />}
-            </motion.button>
-          ))}
-          {categories.length === 0 && !loading && (
-            <div className="col-span-full rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-5 py-12 text-center text-sm text-[#352432]/45">
-              Henüz kategori yok. Üstten &quot;Yeni Kategori&quot; ile başlayın; hizmet ve paketlere kategori atandıkça burada gruplanır.
             </div>
-          )}
+          ))}
         </div>
 
-        {/* SEÇİLİ KATEGORİ İÇERİĞİ */}
-        <AnimatePresence mode="wait">
-          {activeCat && (
-            <motion.div
-              key={activeCat}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="space-y-4"
-            >
-              {/* ALT KATEGORİ ŞERİDİ */}
-              <div className="flex flex-wrap items-center gap-1.5 rounded-[16px] border border-[#ead8df]/70 bg-white/80 px-4 py-3">
-                <span className="mr-1 inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70">
-                  <Layers3 className="h-3.5 w-3.5" /> {activeCat} · alt kategoriler
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedSub('')}
-                  className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${!selectedSub ? 'bg-[#c85776] text-white' : 'border border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}
-                >
-                  Tümü
-                </button>
-                {subCategories.map((s) => (
-                  <span key={s.name} className="group/sub inline-flex items-center">
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[330px_minmax(0,1fr)]">
+          {/* ---------------- SOL: KATEGORİ AĞACI ---------------- */}
+          <aside className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)] lg:sticky lg:top-6">
+            <div className="border-b border-[#f1e5ea] px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-display text-[17px] tracking-tight text-[#352432]">Kategoriler</div>
+                <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#b14d6c]">{categories.length}</span>
+              </div>
+              <div className="relative mt-2.5">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                <input
+                  value={catQuery}
+                  onChange={(e) => setCatQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && railCats[0]) selectCategory(railCats[0].name) }}
+                  placeholder="Kategori ara…"
+                  className="w-full rounded-[10px] border border-[#ead8df] bg-white px-8 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                />
+                {catQuery && (
+                  <button type="button" onClick={() => setCatQuery('')} title="Aramayı temizle"
+                    className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[#705a66] hover:bg-[#fff1f6] hover:text-[#c85776]">
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Yeni kategori — listenin ÜSTÜNDE: uzun listede aşağı kaydırmadan erişilir. */}
+            {canManage && (
+              <div className="border-b border-[#f1e5ea] px-3 py-2.5">
+                {adding ? (
+                  <div className="flex items-center gap-1.5 rounded-[11px] border border-[#efbfd0] bg-white p-1 pl-2.5">
+                    <input
+                      autoFocus
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void createCat(); if (e.key === 'Escape') { setAdding(false); setNewCatName('') } }}
+                      placeholder="Kategori adı…"
+                      className="min-w-0 flex-1 bg-transparent text-[12px] text-[#352432] outline-none placeholder:text-[#705a66]"
+                    />
+                    <button type="button" disabled={busy || !newCatName.trim()} onClick={createCat}
+                      className="rounded-[8px] bg-[#c85776] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
+                    <button type="button" onClick={() => { setAdding(false); setNewCatName('') }} title="Vazgeç"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] text-[#705a66] hover:bg-[#fff4f8]"><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setAdding(true)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-[11px] border border-dashed border-[#efbfd0] bg-[#fff1f6]/50 px-3 py-2 text-[12px] font-semibold text-[#c85776] transition-colors hover:bg-[#fff1f6]">
+                    <Plus className="h-3.5 w-3.5" /> Yeni kategori
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="max-h-[320px] space-y-0.5 overflow-y-auto p-2 lg:max-h-[calc(100vh-16rem)]">
+              {railCats.map((c) => {
+                const active = activeCat === c.name
+                return (
+                  <div key={c.name}>
                     <button
                       type="button"
-                      onClick={() => setSelectedSub(selectedSub === s.name ? '' : s.name)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${selectedSub === s.name ? 'bg-[#c85776] text-white' : 'border border-[#ead8df] bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'}`}
+                      onClick={() => selectCategory(c.name)}
+                      className={`group relative flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition-colors ${active ? '' : 'hover:bg-[#fffafc]'}`}
                     >
-                      {s.name}
-                      <span className={`ml-1 tabular-nums ${selectedSub === s.name ? 'text-white/70' : 'text-[#352432]/35'}`}>{s.serviceCount + s.packageCount}</span>
-                    </button>
-                    {s.customId && canCustomCat && subCustomIds.length > 1 && (
-                      <span className="ml-0.5 inline-flex items-center opacity-0 transition-opacity group-hover/sub:opacity-100">
-                        <button type="button" title="Öne al" disabled={subCustomIds.indexOf(s.customId) === 0}
-                          onClick={() => moveInList(subCustomIds, s.customId!, -1)}
-                          className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronLeft className="h-3 w-3" /></button>
-                        <button type="button" title="Geri al" disabled={subCustomIds.indexOf(s.customId) === subCustomIds.length - 1}
-                          onClick={() => moveInList(subCustomIds, s.customId!, 1)}
-                          className="grid h-5 w-5 place-items-center rounded-full text-[#352432]/30 hover:text-[#c85776] disabled:opacity-25"><ChevronRight className="h-3 w-3" /></button>
-                      </span>
-                    )}
-                    {/* Alt kategori silme her zaman görünür. Kaydı olmayan (eskiden serbest
-                        yazılmış) alt kategoriler de silinebilir — o ad hizmet/paketlerden temizlenir. */}
-                    {canCustomCat && (
-                      <button
-                        type="button"
-                        onClick={() => askDelete(
-                          s.customId
-                            ? { kind: 'custom', id: s.customId, name: s.name, level: 'sub', usageCount: s.serviceCount + s.packageCount, subCount: 0 }
-                            : { kind: 'derived', id: s.name, name: s.name, level: 'sub', usageCount: s.serviceCount + s.packageCount, subCount: 0 },
-                        )}
-                        title="Alt kategoriyi sil"
-                        className="ml-0.5 grid h-5 w-5 place-items-center rounded-full border border-[#f3dde5] bg-white text-[#b09ca5] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-                {subCategories.length === 0 && (
-                  <span className="text-[11px] text-[#352432]/40">Bu kategoride alt kategori yok.</span>
-                )}
-
-                {/* Alt kategori ekle — her kategoride (türetilmişse ilk alt eklemede otomatik özel kategoriye çevrilir) */}
-                {canCustomCat && activeCat !== UNCATEGORIZED && (
-                  addingSub ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0] bg-white p-0.5 pl-2.5">
-                      <input
-                        autoFocus
-                        value={newSubName}
-                        onChange={(e) => setNewSubName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void createSubCat(); if (e.key === 'Escape') setAddingSub(false) }}
-                        placeholder="Alt kategori adı…"
-                        className="w-32 bg-transparent text-[11px] outline-none"
-                      />
-                      <button type="button" disabled={busy} onClick={createSubCat} className="rounded-full bg-[#c85776] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
-                      <button type="button" onClick={() => setAddingSub(false)} className="grid h-6 w-6 place-items-center rounded-full text-[#352432]/45 hover:bg-[#fff4f8]"><X className="h-3 w-3" /></button>
-                    </span>
-                  ) : (
-                    <button type="button" onClick={() => setAddingSub(true)}
-                      className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#efbfd0] bg-[#fff1f6]/50 px-3 py-1 text-[11px] font-medium text-[#c85776] transition-colors hover:bg-[#fff1f6]">
-                      <Plus className="h-3 w-3" /> Alt kategori
-                    </button>
-                  )
-                )}
-                {canCustomCat && activeCat === UNCATEGORIZED && (
-                  <span className="text-[10px] text-[#352432]/35">· &quot;Kategorisiz&quot; altına alt kategori eklenemez.</span>
-                )}
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                {/* HİZMETLER */}
-                <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-                  <div className="flex items-center justify-between border-b border-[#ead8df]/70 px-5 py-4">
-                    <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{activeCat}{selectedSub ? ` · ${selectedSub}` : ''} · Hizmetler</div>
-                      <div className="font-display text-2xl tracking-tight">{catServices.length} hizmet</div>
-                    </div>
-                    <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><Sparkles className="h-5 w-5" /></span>
-                  </div>
-                  <div className="divide-y divide-[#f1e5ea]">
-                    {catServices.map((s) => (
-                      <div key={s.id} className="flex items-center gap-3 px-5 py-3">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]">
-                          <ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium text-[#352432]">{s.name}</div>
-                          <div className="flex items-center gap-2 text-[10px] text-[#352432]/45">
-                            <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" /> {s.duration} dk</span>
-                            {s.subGroup && <span className="rounded bg-[#f4ecf9] px-1 py-0.5 text-violet-600">{s.subGroup}</span>}
-                            <span className={`rounded px-1 py-0.5 text-[8px] font-mono uppercase ${s.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>{s.status === 'Active' ? 'Aktif' : 'Pasif'}</span>
-                          </div>
-                        </div>
-                        <div className="font-display text-[15px] tabular-nums text-[#352432]">{formatTL(s.price)}</div>
-                        <PackageSaleDialog
-                          tenantId={tenantId}
-                          presetService={{ id: s.id, name: s.name, price: s.price }}
-                          triggerLabel="Sat"
-                          triggerClassName="inline-flex items-center gap-1 rounded-md border border-[#c85776]/40 bg-[#fff1f6] px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+                      {active && (
+                        <motion.span
+                          layoutId="category-rail-active"
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          className="absolute inset-0 rounded-[12px] border border-[#efbfd0] bg-[#fff1f6]"
                         />
-                      </div>
-                    ))}
-                    {catServices.length === 0 && <div className="px-5 py-10 text-center text-[12px] text-[#352432]/45">Bu {selectedSub ? 'alt kategoride' : 'kategoride'} hizmet yok.</div>}
+                      )}
+                      <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors ${active ? 'border-[#efbfd0] bg-white text-[#c85776]' : 'border-[#f1e5ea] bg-[#fffafc] text-[#b14d6c]'}`}>
+                        <ServiceIcon iconKey={suggestIcon(c.name)} className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="relative min-w-0 flex-1">
+                        <span className={`block truncate text-[13px] font-semibold ${active ? 'text-[#b14d6c]' : 'text-[#352432]'}`}>{c.name}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[#705a66]">
+                          {c.serviceCount} hizmet · {c.packageCount} paket{c.subCount > 0 ? ` · ${c.subCount} alt` : ''}
+                        </span>
+                      </span>
+                      <ChevronRight className={`relative h-4 w-4 shrink-0 transition-transform ${active ? 'rotate-90 text-[#c85776]' : 'text-[#705a66] group-hover:translate-x-0.5'}`} />
+                    </button>
+
+                    {/* Alt kategoriler — yalnız seçili kategorinin altında açılır (ağaç). */}
+                    <AnimatePresence initial={false}>
+                      {active && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <div className="ml-[22px] mt-1 space-y-0.5 border-l border-[#f0dde5] pl-2.5">
+                            <SubRow label="Tümü" count={c.serviceCount + c.packageCount} active={!selectedSub} onClick={() => selectSub('')} />
+                            {subCategories.map((s) => (
+                              <SubRow
+                                key={s.name}
+                                label={s.name}
+                                count={s.serviceCount + s.packageCount}
+                                active={selectedSub === s.name}
+                                onClick={() => selectSub(s.name)}
+                              />
+                            ))}
+                            {/* Ekleme KUTUSU tek yerde (sağdaki başlık kartı) durur; buradaki
+                                buton yalnızca onu açar. İki ayrı kutu aynı state'i paylaşıp
+                                çift odak/çift alan sorunu çıkarırdı. */}
+                            {canManage && !isUncategorized && !addingSub && (
+                              <button type="button" onClick={() => { setAddingSub(true); setNewSubName('') }}
+                                className="flex w-full items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[12px] font-medium text-[#c85776] transition-colors hover:bg-[#fff1f6]">
+                                <Plus className="h-3.5 w-3.5" /> Alt kategori ekle
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
+                )
+              })}
+
+              {railCats.length === 0 && (
+                <div className="px-3 py-8 text-center text-[12px] text-[#705a66]">
+                  {categories.length === 0 ? 'Henüz kategori yok.' : `“${catQuery}” ile eşleşen kategori yok.`}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* ---------------- SAĞ: SEÇİLİ KATEGORİ ---------------- */}
+          <section className="space-y-4">
+            {activeCat ? (
+              <>
+                {/* BAŞLIK KARTI — o an bakılan kategori/alt kategori ve ona ait TÜM işlemler. */}
+                <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] border border-[#efbfd0]/70 bg-[#fff1f6] text-[#c85776]">
+                        <ServiceIcon iconKey={suggestIcon(subject.name)} className="h-6 w-6" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {/* Kırıntı yolu: alt kategori seçiliyken nerede olduğun net kalsın. */}
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-[#705a66]">
+                          <button type="button" onClick={() => selectSub('')} className={selectedSub ? 'hover:text-[#c85776]' : ''}>{activeCat}</button>
+                          {selectedSub && <><ChevronRight className="h-3 w-3" /><span className="truncate text-[#b14d6c]">{selectedSub}</span></>}
+                        </div>
+
+                        {renaming ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') void applyRename(); if (e.key === 'Escape') setRenaming(false) }}
+                              className="min-w-0 flex-1 rounded-[10px] border border-[#efbfd0] bg-white px-3 py-1.5 font-display text-xl tracking-tight text-[#352432] outline-none focus:border-[#c85776]"
+                            />
+                            <button type="button" disabled={busy || !renameValue.trim()} onClick={applyRename}
+                              className="rounded-[10px] bg-[#c85776] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Kaydet</button>
+                            <button type="button" onClick={() => setRenaming(false)}
+                              className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8]">Vazgeç</button>
+                          </div>
+                        ) : (
+                          <div className="mt-0.5 truncate font-display text-[26px] leading-tight tracking-tight text-[#352432]">{subject.name}</div>
+                        )}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Chip tone="rose">{serviceCount} hizmet</Chip>
+                          <Chip tone="violet">{packageCount} paket</Chip>
+                          {subject.level === 'category' && (activeCatInfo?.subCount ?? 0) > 0 && <Chip tone="amber">{activeCatInfo?.subCount} alt kategori</Chip>}
+                          <Chip tone={subject.customId ? 'plain' : 'muted'}>
+                            {subject.customId ? 'Kayıtlı kategori' : 'Otomatik (kayıt üzerinden türedi)'}
+                          </Chip>
+                        </div>
+                        {renaming && (
+                          <div className="mt-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            Ad değişince bu adı taşıyan <span className="font-semibold tabular-nums">{subject.usage}</span> hizmet/paket de yeni adla güncellenir.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* İŞLEMLER — etiketli, her zaman görünür (hover'a gizlenmez). */}
+                    {!renaming && (canManage || canDelete) && !isUncategorized && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {canManage && subject.level === 'category' && (
+                          <button type="button" onClick={() => { setAddingSub(true); setNewSubName('') }}
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]">
+                            <Plus className="h-3.5 w-3.5" /> Alt kategori
+                          </button>
+                        )}
+                        {canManage && (
+                          <button type="button" onClick={startRename}
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                            <Pencil className="h-3.5 w-3.5" /> Yeniden adlandır
+                          </button>
+                        )}
+                        {canReorder && (
+                          <span className="inline-flex overflow-hidden rounded-[10px] border border-[#ead8df] bg-white">
+                            <button type="button" disabled={busy || orderIndex === 0} onClick={() => move(-1)} title="Sırada yukarı taşı"
+                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-30">
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                            <span className="w-px bg-[#f1e5ea]" />
+                            <button type="button" disabled={busy || orderIndex === siblingIds.length - 1} onClick={() => move(1)} title="Sırada aşağı taşı"
+                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-30">
+                              <ArrowDown className="h-4 w-4" />
+                            </button>
+                          </span>
+                        )}
+                        {canDelete && (subject.customId || subject.usage > 0) && (
+                          <button type="button" onClick={askDelete}
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-rose-200 bg-white px-3 py-2 text-[12px] font-semibold text-rose-600 transition-colors hover:bg-rose-50">
+                            <Trash2 className="h-3.5 w-3.5" /> Sil
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Alt kategori ekleme kutusu — başlık kartından açıldığında burada belirir. */}
+                  <AnimatePresence initial={false}>
+                    {addingSub && canManage && !isUncategorized && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#efbfd0]/70 bg-[#fff1f6]/60 p-2 pl-3.5">
+                          <span className="text-[12px] font-medium text-[#b14d6c]">{activeCat} altına yeni alt kategori:</span>
+                          <input
+                            autoFocus
+                            value={newSubName}
+                            onChange={(e) => setNewSubName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') void createSubCat(); if (e.key === 'Escape') setAddingSub(false) }}
+                            placeholder="Alt kategori adı…"
+                            className="min-w-[160px] flex-1 rounded-[9px] border border-[#efbfd0] bg-white px-3 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                          />
+                          <button type="button" disabled={busy || !newSubName.trim()} onClick={createSubCat}
+                            className="rounded-[9px] bg-[#c85776] px-3.5 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
+                          <button type="button" onClick={() => { setAddingSub(false); setNewSubName('') }}
+                            className="rounded-[9px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-white">Vazgeç</button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {isUncategorized && (
+                    <div className="mt-4 rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3.5 py-2.5 text-[12px] text-[#4a3a44]">
+                      Bu, kategorisi girilmemiş kayıtların toplandığı sistem grubudur — adlandırılamaz, silinemez.
+                      Kayıtları bir kategoriye taşımak için hizmet/paket formundan kategori seçin.
+                    </div>
+                  )}
                 </div>
 
-                {/* PAKETLER */}
-                <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-                  <div className="flex items-center justify-between border-b border-[#ead8df]/70 px-5 py-4">
-                    <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-violet-500/80">{activeCat}{selectedSub ? ` · ${selectedSub}` : ''} · Paketler</div>
-                      <div className="font-display text-2xl tracking-tight">{catPackages.length} paket</div>
+                {/* İÇERİK LİSTESİ */}
+                <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[#f1e5ea] px-4 py-3">
+                    <div className="inline-flex items-center gap-1 rounded-[11px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                      {TYPE_TABS.map((t) => {
+                        const count = t.key === 'all' ? rows.length : t.key === 'service' ? serviceCount : packageCount
+                        return (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => setTypeTab(t.key)}
+                            className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${typeTab === t.key ? 'bg-[#c85776] text-white' : 'text-[#4a3a44] hover:bg-white'}`}
+                          >
+                            {t.label} <span className="tabular-nums opacity-80">{count}</span>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-violet-50 text-violet-600"><Package className="h-5 w-5" /></span>
+                    <div className="relative ml-auto">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                      <input
+                        value={itemQuery}
+                        onChange={(e) => setItemQuery(e.target.value)}
+                        placeholder="Bu kategoride ara…"
+                        className="w-44 rounded-[10px] border border-[#ead8df] bg-white px-8 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                      />
+                    </div>
                   </div>
+
+                  <div className="hidden grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] gap-3 border-b border-[#f1e5ea] bg-[#fffafc] px-4 py-2.5 text-[11px] font-semibold text-[#705a66] lg:grid">
+                    <span>Kayıt</span>
+                    <span>Alt kategori</span>
+                    <span>Kapsam</span>
+                    <span>Durum</span>
+                    <span className="text-right">Fiyat</span>
+                    <span />
+                  </div>
+
                   <div className="divide-y divide-[#f1e5ea]">
-                    {catPackages.map((p) => (
-                      <div key={p.id} className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-violet-200/70 bg-violet-50 text-violet-600">
-                            <ServiceIcon iconKey={p.iconKey || suggestIcon(p.name || p.category)} className="h-5 w-5" />
+                    {visibleRows.map((r) => (
+                      <div
+                        key={`${r.kind}-${r.id}`}
+                        className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-[#fffafc] lg:grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] lg:items-center lg:gap-3"
+                      >
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border ${r.kind === 'service' ? 'border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]' : 'border-violet-200/70 bg-violet-50 text-violet-600'}`}>
+                            <ServiceIcon iconKey={r.iconKey} className="h-[18px] w-[18px]" />
                           </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[13px] font-medium text-[#352432]">{p.name}</div>
-                            <div className="flex items-center gap-2 text-[10px] text-[#352432]/45">
-                              <span className="flex items-center gap-1"><Layers3 className="h-3 w-3" /> {p.totalSessions} seans</span>
-                              {p.subCategory && <span className="rounded bg-[#f4ecf9] px-1 py-0.5 text-violet-600">{p.subCategory}</span>}
-                              <span className={`rounded px-1 py-0.5 text-[8px] font-mono uppercase ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>{p.isActive ? 'Aktif' : 'Pasif'}</span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate text-[13px] font-semibold text-[#352432]">{r.name}</span>
+                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${r.kind === 'service' ? 'bg-[#fff1f6] text-[#b14d6c]' : 'bg-violet-50 text-violet-700'}`}>
+                                {r.kind === 'service' ? 'Hizmet' : 'Paket'}
+                              </span>
                             </div>
+                            {r.parts.length > 0 && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                {r.parts.slice(0, 3).map((part) => (
+                                  <span key={part} className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-1.5 py-0.5 text-[10px] text-[#b14d6c]">{part}</span>
+                                ))}
+                                {r.parts.length > 3 && <span className="text-[10px] font-medium text-[#705a66]">+{r.parts.length - 3}</span>}
+                              </div>
+                            )}
                           </div>
-                          <div className="font-display text-[15px] tabular-nums text-[#352432]">{formatTL(p.totalPrice)}</div>
+                        </div>
+                        <div className="min-w-0">
+                          {r.sub
+                            ? <span className="inline-flex max-w-full truncate rounded-md border border-[#ead8df] bg-white px-2 py-0.5 text-[11px] font-medium text-[#4a3a44]">{r.sub}</span>
+                            : <span className="text-[12px] text-[#705a66]">—</span>}
+                        </div>
+                        <div className="text-[12px] font-medium text-[#4a3a44]">{r.meta}</div>
+                        <div>
+                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${r.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {r.active ? 'Aktif' : 'Pasif'}
+                          </span>
+                        </div>
+                        <div className="font-display text-[15px] tabular-nums text-[#352432] lg:text-right">{formatTL(r.price)}</div>
+                        <div className="lg:flex lg:justify-end">
                           <PackageSaleDialog
                             tenantId={tenantId}
-                            presetPackageId={p.id}
+                            {...(r.kind === 'service'
+                              ? { presetService: { id: r.id, name: r.name, price: r.price } }
+                              : { presetPackageId: r.id })}
                             triggerLabel="Sat"
-                            triggerClassName="inline-flex items-center gap-1 rounded-md border border-violet-300/60 bg-violet-50 px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-violet-700 transition-colors hover:bg-violet-100"
+                            triggerClassName={`inline-flex items-center justify-center rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition-colors ${r.kind === 'service' ? 'border-[#c85776]/40 bg-[#fff1f6] text-[#b14d6c] hover:bg-[#ffe6ef]' : 'border-violet-300/60 bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
                           />
                         </div>
-                        {p.items.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1 pl-12">
-                            {p.items.slice(0, 4).map((it) => (
-                              <span key={it.serviceDefinitionId} className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-1.5 py-0.5 text-[9px] text-[#b14d6c]">
-                                {it.serviceName} ×{it.sessionCount}
-                              </span>
-                            ))}
-                            {p.items.length > 4 && <span className="text-[10px] text-[#352432]/40">+{p.items.length - 4}</span>}
-                          </div>
-                        )}
                       </div>
                     ))}
-                    {catPackages.length === 0 && <div className="px-5 py-10 text-center text-[12px] text-[#352432]/45">Bu {selectedSub ? 'alt kategoride' : 'kategoride'} paket yok.</div>}
+
+                    {visibleRows.length === 0 && (
+                      <div className="px-4 py-14 text-center">
+                        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><Layers3 className="h-6 w-6" /></span>
+                        <div className="mt-3 text-[13px] font-semibold text-[#352432]">
+                          {itemQuery ? 'Aramayla eşleşen kayıt yok.' : `Bu ${selectedSub ? 'alt kategoride' : 'kategoride'} kayıt yok.`}
+                        </div>
+                        <div className="mt-1 text-[12px] text-[#705a66]">
+                          {itemQuery ? 'Farklı bir kelime deneyin.' : 'Hizmet veya paket eklerken bu kategoriyi seçtiğinizde burada listelenir.'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </>
+            ) : (
+              !loading && (
+                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-white/70 px-6 py-16 text-center">
+                  <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><FolderPlus className="h-7 w-7" /></span>
+                  <div className="mt-4 font-display text-xl tracking-tight text-[#352432]">Henüz kategori yok</div>
+                  <div className="mx-auto mt-1.5 max-w-md text-[12px] text-[#705a66]">
+                    Soldaki “Yeni kategori” ile başlayın. Hizmet ve paketlere kategori atandıkça bu kategoriler otomatik olarak burada gruplanır.
+                  </div>
+                </div>
+              )
+            )}
 
-        <div className="flex items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
-          <Tag className="h-4 w-4" /> Kategoriler hizmet ve paketlerde ortaktır — hizmet/paket formlarında bu kategorilerden ve alt kategorilerden seçim yapılır. <Plus className="h-3 w-3" /> ile yeni kategori/alt kategori herkese açılır.
+            <div className="flex items-start gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[12px] text-[#b14d6c]">
+              <Tag className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Kategoriler hizmet ve paketlerde ortaktır: burada oluşturduğunuz kategori ve alt kategoriler, hizmet/paket formlarındaki seçim listesinde çıkar.</span>
+            </div>
+          </section>
         </div>
       </div>
 
-      {/* Silme onayı — uygulama içi modal (tarayıcı confirm'i kullanılmaz). */}
+      {/* Silme onayı — uygulama içi modal (tarayıcı confirm'i kullanılmaz).
+          ModalPortal şart: panel yerleşiminde <main> kendi yığınlama bağlamını açar, portal
+          olmadan modal sidebar'ın altında kalır. */}
       <AnimatePresence>
         {pendingDelete && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] grid place-items-center bg-[#2b1620]/45 p-4 backdrop-blur-sm"
-            onClick={() => { if (!busy) setPendingDelete(null) }}
-          >
+          <ModalPortal>
             <motion.div
-              initial={{ opacity: 0, y: 12, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.97 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[420px] overflow-hidden rounded-[20px] border border-[#f3dde5] bg-white shadow-[0_40px_80px_-40px_rgba(120,71,88,0.6)]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[145] grid place-items-center bg-[#2b1620]/45 p-4 backdrop-blur-sm"
+              onClick={() => { if (!busy) setPendingDelete(null) }}
             >
-              <div className="flex items-start gap-3 border-b border-[#f6e8ee] px-5 py-4">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-rose-200 bg-rose-50 text-rose-600">
-                  <Trash2 className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <div className="font-display text-[17px] tracking-tight text-[#352432]">
-                    {pendingDelete.level === 'sub' ? 'Alt kategori silinsin mi?' : 'Kategori silinsin mi?'}
+              <motion.div
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-[440px] overflow-hidden rounded-[20px] border border-[#f3dde5] bg-white shadow-[0_40px_80px_-40px_rgba(120,71,88,0.6)]"
+              >
+                <div className="flex items-start gap-3 border-b border-[#f6e8ee] px-5 py-4">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-rose-200 bg-rose-50 text-rose-600">
+                    <Trash2 className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-display text-[17px] tracking-tight text-[#352432]">
+                      {pendingDelete.level === 'sub' ? 'Alt kategori silinsin mi?' : 'Kategori silinsin mi?'}
+                    </div>
+                    <div className="mt-0.5 truncate text-[12px] font-medium text-[#705a66]">{pendingDelete.name}</div>
                   </div>
-                  <div className="mt-0.5 truncate text-[12px] text-[#705a66]">{pendingDelete.name}</div>
                 </div>
-              </div>
 
-              <div className="space-y-2 px-5 py-4 text-[12px] text-[#4a3a44]">
-                {pendingDelete.kind === 'derived' ? (
-                  <p>
-                    Bu alt kategorinin ayrı bir kaydı yok; adı{' '}
-                    <span className="font-semibold">{pendingDelete.usageCount}</span> hizmet/pakette yazılı.
-                    Silince o kayıtlardan kaldırılacak — hizmet ve paketlerin kendisi silinmez.
-                  </p>
-                ) : (
-                  <>
-                    {pendingDelete.subCount > 0 && (
-                      <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                        <span className="font-semibold">{pendingDelete.subCount}</span> alt kategorisi de silinecek.
-                      </p>
-                    )}
+                <div className="space-y-2 px-5 py-4 text-[12px] text-[#4a3a44]">
+                  {pendingDelete.kind === 'derived' ? (
                     <p>
-                      Bu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.
+                      Bu {pendingDelete.level === 'sub' ? 'alt kategorinin' : 'kategorinin'} ayrı bir kaydı yok; adı{' '}
+                      <span className="font-semibold tabular-nums">{pendingDelete.usageCount}</span> hizmet/pakette yazılı.
+                      Silince o kayıtlardan kaldırılacak — hizmet ve paketlerin kendisi silinmez.
                     </p>
-                  </>
-                )}
-                <p className="text-[11px] text-[#705a66]">Bu işlem geri alınamaz.</p>
-                {error && <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">{error}</p>}
-              </div>
+                  ) : (
+                    <>
+                      {pendingDelete.subCount > 0 && (
+                        <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                          <span className="font-semibold tabular-nums">{pendingDelete.subCount}</span> alt kategorisi de silinecek.
+                        </p>
+                      )}
+                      <p>Bu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.</p>
+                    </>
+                  )}
+                  <p className="text-[11px] text-[#705a66]">Bu işlem geri alınamaz.</p>
+                  {error && <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 font-medium text-rose-700">{error}</p>}
+                </div>
 
-              <div className="flex justify-end gap-2 border-t border-[#f6e8ee] bg-[#fffafc] px-5 py-3">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setPendingDelete(null)}
-                  className="rounded-[11px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8] disabled:opacity-50"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void confirmDelete()}
-                  className="inline-flex items-center gap-1.5 rounded-[11px] bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> {busy ? 'Siliniyor…' : 'Sil'}
-                </button>
-              </div>
+                <div className="flex justify-end gap-2 border-t border-[#f6e8ee] bg-[#fffafc] px-5 py-3">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setPendingDelete(null)}
+                    className="rounded-[11px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8] disabled:opacity-50"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void confirmDelete()}
+                    className="inline-flex items-center gap-1.5 rounded-[11px] bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> {busy ? 'Siliniyor…' : 'Sil'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </ModalPortal>
         )}
       </AnimatePresence>
     </>
   )
+}
+
+/** Ağaçtaki alt kategori satırı — saf gezinme (işlem yok, bkz. tasarım notu 2). */
+function SubRow({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition-colors ${
+        active ? 'bg-[#fff1f6] text-[#b14d6c]' : 'text-[#4a3a44] hover:bg-[#fffafc]'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-[#c85776]' : 'bg-[#e2c9d4]'}`} />
+      <span className={`min-w-0 flex-1 truncate text-[12px] ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+      <span className={`shrink-0 text-[11px] tabular-nums ${active ? 'text-[#b14d6c]' : 'text-[#705a66]'}`}>{count}</span>
+    </button>
+  )
+}
+
+function Chip({ tone, children }: { tone: 'rose' | 'violet' | 'amber' | 'plain' | 'muted'; children: React.ReactNode }) {
+  const tones: Record<string, string> = {
+    rose: 'border-[#e7c7d4] bg-[#fff1f6] text-[#b14d6c]',
+    violet: 'border-violet-200 bg-violet-50 text-violet-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    plain: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    muted: 'border-[#ead8df] bg-[#fffafc] text-[#705a66]',
+  }
+  return <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}>{children}</span>
 }

@@ -6,7 +6,7 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
-import CatalogCategoryRail from '@/components/dashboard/CatalogCategoryRail'
+import CatalogCategoryRail, { buildCatalogCategoryItems } from '@/components/dashboard/CatalogCategoryRail'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
@@ -16,7 +16,7 @@ import ServiceFormDialog, { type ServiceFormDialogValues } from '@/components/da
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, FileUp, Layers3, PauseCircle,
@@ -71,6 +71,13 @@ function Sparkline({ values, stroke }: { values: number[]; stroke: string }) {
 
 interface ServiceStats { last30: number; total: number; revenue: number; rating: number; staffIds: string[] }
 
+/** Hizmet + gruplama/geri yazmada kullanılan HAM kategori adı. */
+type LibService = Service & { rawCategory: string }
+
+/** Ekranda gösterilen kategori adı — kategorisi olmayan hizmet "Kategorisiz" grubundadır
+ *  (normalizeService'in uydurduğu "Genel Hizmet" adı gösterilmez; ray/sayaçlarla tutarlı). */
+const catLabel = (s: LibService): string => s.rawCategory || 'Kategorisiz'
+
 export default function ServiceLibrary({
   tenantId, branchId, institutionName, branchLabel, scopeLabel, canCustomServiceCat,
 }: {
@@ -80,6 +87,9 @@ export default function ServiceLibrary({
   const [q, setQ] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
+  // Alt kategori süzgeci kategoriye BAĞLIDIR: kategori seçilince alt şeridi açılır, kategori
+  // değişince alt seçim düşer.
+  const [subFilter, setSubFilter] = useState('')
   const [durFilter, setDurFilter] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
@@ -109,7 +119,13 @@ export default function ServiceLibrary({
     { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [] } },
   )
 
-  const services = useMemo(() => (data?.services || []).map((s, i) => normalizeService(s, i)), [data])
+  // rawCategory = HAM kategori adı. normalizeService boş kategoriye "Genel Hizmet" uydurur;
+  // geri yazan her yol (durum değiştirme, düzenleme formu) o uydurma adı gerçek kategori olarak
+  // kaydeder ve hizmet sessizce var olmayan bir kategoriye taşınırdı.
+  const services = useMemo<LibService[]>(
+    () => (data?.services || []).map((s, i) => ({ ...normalizeService(s, i), rawCategory: (s?.category || s?.group || '').trim() })),
+    [data],
+  )
   const staff = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff])
   const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
@@ -178,28 +194,26 @@ export default function ServiceLibrary({
   const marginOf = (s: Service) => Math.min(60, Math.max(35, Math.round(35 + (s.price / maxPrice) * 25)))
   const prepOf = (s: Service) => Math.max(5, Math.round(s.duration / 6 / 5) * 5)
 
-  const categories = useMemo(() => {
-    const m = new Map<string, { name: string; count: number; customId?: string }>()
-    for (const c of customCategories) m.set(c.name, { name: c.name, count: 0, customId: c.id })
-    for (const s of services) {
-      const name = s.group || 'Genel'
-      const current = m.get(name) || { name, count: 0 }
-      current.count++
-      m.set(name, current)
-    }
-    // Manuel sıra (SortOrder) önce; türetilmiş adlar adete/alfabeye göre.
-    const orderOf = categoryOrderIndex(customCategories)
-    return Array.from(m.values()).sort((a, b) => orderOf(a.name) - orderOf(b.name) || b.count - a.count || a.name.localeCompare(b.name, 'tr'))
-  }, [services, customCategories])
+  // Kategori + alt kategori ağacı (alt kategoriler üst kategorisinin ardında, girintili çıkar).
+  const categories = useMemo(
+    () => buildCatalogCategoryItems(
+      customCategories,
+      services.map((s) => ({ category: s.rawCategory, subCategory: s.subGroup })),
+    ),
+    [services, customCategories],
+  )
+  /** Kategori ayarları kartı yalnız ÜST kategorileri yönetir (sıralama kardeşler arasında yapılır). */
+  const topCategories = useMemo(() => categories.filter((c) => c.kind !== 'sub'), [categories])
 
   const filtered = useMemo(() => {
     let list = services
     if (tab !== 'all') list = list.filter((s) => s.status === tab)
-    if (catFilter) list = list.filter((s) => s.group === catFilter)
+    if (catFilter) list = list.filter((s) => catLabel(s) === catFilter)
+    if (subFilter) list = list.filter((s) => (s.subGroup || '') === subFilter)
     if (durFilter) { const [lo, hi] = durFilter.split('-').map(Number); list = list.filter((s) => s.duration >= lo && (!hi || s.duration <= hi)) }
-    if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((s) => s.name.toLocaleLowerCase('tr').includes(t) || s.group.toLocaleLowerCase('tr').includes(t)) }
+    if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((s) => s.name.toLocaleLowerCase('tr').includes(t) || catLabel(s).toLocaleLowerCase('tr').includes(t) || (s.subGroup || '').toLocaleLowerCase('tr').includes(t)) }
     return list
-  }, [services, tab, catFilter, durFilter, q])
+  }, [services, tab, catFilter, subFilter, durFilter, q])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -209,8 +223,8 @@ export default function ServiceLibrary({
   const passiveCount = services.filter((s) => s.status !== 'Active').length
   const apptSeries = useMemo(() => bucketWeekly(appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t))), [appts])
 
-  const buildPayload = (s: Service, over: Record<string, unknown>) => ({
-    branchId: s.branchId || branchId || null, name: s.name, category: s.group || null, subCategory: s.subGroup || null,
+  const buildPayload = (s: LibService, over: Record<string, unknown>) => ({
+    branchId: s.branchId || branchId || null, name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null,
     durationMinutes: s.duration, price: s.price, isActive: s.status === 'Active',
     iconKey: s.iconKey || suggestIcon(s.name || s.group) || null, status: s.status,
     defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || null, ...over,
@@ -220,21 +234,40 @@ export default function ServiceLibrary({
     setBusy(true); setActionError('')
     try { await fn(); await reload() } catch (e) { setActionError(e instanceof Error ? e.message : 'İşlem başarısız') } finally { setBusy(false) }
   }
-  const setStatus = (s: Service, status: CatalogStatusKey) => run(() => adminApi.updateService(s.id, buildPayload(s, { status, isActive: status === 'Active' }), tenantId))
+  const setStatus = (s: LibService, status: CatalogStatusKey) => run(() => adminApi.updateService(s.id, buildPayload(s, { status, isActive: status === 'Active' }), tenantId))
 
   const onCreate = async (values: ServiceFormDialogValues) => {
     await adminApi.createService({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
     await reload()
   }
-  /** Hizmetlerde hâlihazırda kullanılan alt kategori adları — kaydı olmayanlar da seçilebilsin diye. */
-  const usedSubCategories = useMemo(
-    () => Array.from(new Set(services.map((s) => (s.subGroup || '').trim()).filter(Boolean)))
+  /**
+   * Form kategori kutuları HAM veriden beslenir: normalizeService kategorisi boş hizmete
+   * "Genel Hizmet" adını uydurur; o uydurma ad seçenek listesine düşerse kullanıcı gerçekte
+   * var olmayan bir kategoriyi seçebilir hâle gelir.
+   */
+  const usedCategories = useMemo(
+    () => Array.from(new Set((data?.services || []).map((s) => (s?.category || '').trim()).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b, 'tr')),
-    [services],
+    [data],
   )
+  /** Kategori adı → o kategoride kullanılan alt kategori adları (kaydı olmayanlar da seçilebilsin diye). */
+  const usedSubCategories = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const s of data?.services || []) {
+      const cat = (s?.category || '').trim()
+      const sub = (s?.subCategory || '').trim()
+      if (!cat || !sub) continue
+      if (!map[cat]) map[cat] = []
+      if (!map[cat].includes(sub)) map[cat].push(sub)
+    }
+    for (const key of Object.keys(map)) map[key].sort((a, b) => a.localeCompare(b, 'tr'))
+    return map
+  }, [data])
 
-  // Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır (CategoryExplorer).
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
+  /** Form içinden "Diğer → yeni kategori": Kategoriler sayfasına gitmeden kategori açılır. */
+  const handleCreateCat = async (name: string) => { await adminApi.createServiceCategory({ name, isActive: true }, tenantId); await reload() }
+  const canManageCat = canCustomServiceCat && can('Services.Manage')
   const handleReorderCat = async (orderedIds: string[]) => { await adminApi.reorderServiceCategories(orderedIds, tenantId); await reload() }
 
   const goPage = (p: number) => setPage(Math.min(totalPages, Math.max(1, p)))
@@ -254,7 +287,7 @@ export default function ServiceLibrary({
     return { topName, avgDur, soldThisMonth, activeRate }
   }, [services, appts, staff, statsByService])
 
-  const editInitial = (s: Service): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.group || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status })
+  const editInitial = (s: LibService): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status })
 
   return (
     <>
@@ -267,6 +300,8 @@ export default function ServiceLibrary({
             <ServiceFormDialog
               customCategories={customCategories}
               onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
+              onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
+              knownCategories={usedCategories}
               knownSubCategories={usedSubCategories}
               onSubmit={onCreate}
               trigger={
@@ -275,14 +310,14 @@ export default function ServiceLibrary({
                 </button>
               }
             />
-            <ExcelTransferActions<Service>
+            <ExcelTransferActions<LibService>
               featureKey="excel.services" moduleName="Hizmetler" context={`${institutionName || 'Kurum'} · ${branchLabel || ''}`}
               rows={filtered}
               sheet={{
                 subtitle: `${filtered.length} hizmet`,
                 columns: [
                   { key: 'name', header: 'Hizmet Adı', width: 30, type: 'text', accessor: (s) => s.name },
-                  { key: 'group', header: 'Kategori', width: 20, type: 'text', accessor: (s) => s.group },
+                  { key: 'group', header: 'Kategori', width: 20, type: 'text', accessor: (s) => catLabel(s) },
                   { key: 'duration', header: 'Süre (dk)', width: 12, type: 'number', accessor: (s) => s.duration },
                   { key: 'price', header: 'Fiyat', width: 16, type: 'currency', accessor: (s) => s.price },
                   { key: 'status', header: 'Durum', width: 12, type: 'text', accessor: (s) => STATUS_LABEL[s.status] },
@@ -358,7 +393,8 @@ export default function ServiceLibrary({
               <CatalogCategoryRail
                 items={categories}
                 value={catFilter}
-                onChange={(name) => { setCatFilter(name); setPage(1) }}
+                sub={subFilter}
+                onChange={(name, subName) => { setCatFilter(name); setSubFilter(subName); setPage(1) }}
                 total={services.length}
                 itemLabel="hizmet"
               />
@@ -387,7 +423,7 @@ export default function ServiceLibrary({
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
                       <span className="truncate text-[13px] font-medium text-[#352432]">{s.name}</span>
                     </div>
-                    <div><span className="inline-flex rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-2 py-0.5 text-[10px] text-[#b14d6c]">{s.group}</span></div>
+                    <div><span className="inline-flex rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-2 py-0.5 text-[10px] text-[#b14d6c]">{catLabel(s)}</span></div>
                     <div className="text-[12px] text-[#352432]/65">{s.duration} dk</div>
                     <div className="font-display text-[14px] tabular-nums">{formatTL(s.price)}</div>
                     <div className="flex items-center">
@@ -437,6 +473,8 @@ export default function ServiceLibrary({
                   />
                   <ServiceFormDialog mode="edit" customCategories={customCategories}
                     onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
+                    onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
+                    knownCategories={usedCategories}
                     knownSubCategories={usedSubCategories}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
                     onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await reload() }}
@@ -448,14 +486,14 @@ export default function ServiceLibrary({
                   <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#efbfd0]/75 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={sel.iconKey || suggestIcon(sel.name || sel.group)} className="h-6 w-6" /></span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2"><span className="truncate font-display text-2xl tracking-tight">{sel.name}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[sel.status]}`}>{STATUS_LABEL[sel.status]}</span></div>
-                    <div className="text-[12px] text-[#352432]/55">{sel.group} hizmeti · {sel.duration} dk</div>
+                    <div className="text-[12px] text-[#352432]/55">{catLabel(sel)} hizmeti · {sel.duration} dk</div>
                   </div>
                 </div>
 
                 <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Hizmet bilgileri</div>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {[['Kategori', sel.group], ['Süre', `${sel.duration} dk`], ['Fiyat', formatTL(sel.price)], ['Hazırlık', `${prepOf(sel)} dk`]].map(([k, v]) => (
+                    {[['Kategori', catLabel(sel)], ['Süre', `${sel.duration} dk`], ['Fiyat', formatTL(sel.price)], ['Hazırlık', `${prepOf(sel)} dk`]].map(([k, v]) => (
                       <div key={k}><div className="text-[9px] font-mono uppercase text-[#352432]/40">{k}</div><div className="mt-0.5 truncate text-[13px] font-medium text-[#352432]">{v}</div></div>
                     ))}
                   </div>
@@ -530,7 +568,7 @@ export default function ServiceLibrary({
               </div>
               <button
                 type="button"
-                onClick={() => setCatFilter('')}
+                onClick={() => { setCatFilter(''); setSubFilter('') }}
                 className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
               >
                 Kategori filtresini kaldır
@@ -556,10 +594,10 @@ export default function ServiceLibrary({
           title="Hizmet Kategori Ayarları"
           description="Kategoriye göre filtreleyin veya sırasını değiştirin. Yeni kategori Kategoriler sayfasından eklenir."
           itemLabel="hizmet"
-          categories={categories}
+          categories={topCategories}
           selectedCategory={catFilter}
           canManage={canCustomServiceCat}
-          onSelect={(name) => { setCatFilter(name); setPage(1) }}
+          onSelect={(name) => { setCatFilter(name); setSubFilter(''); setPage(1) }}
           onDelete={handleDeleteCat}
           onReorder={canCustomServiceCat ? handleReorderCat : undefined}
         />

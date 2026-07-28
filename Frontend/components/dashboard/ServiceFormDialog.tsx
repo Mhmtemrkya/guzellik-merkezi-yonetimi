@@ -27,16 +27,12 @@ const STATUS_OPTIONS: { value: CatalogStatusKey; label: string }[] = [
   { value: 'Archived', label: 'Arşiv' },
 ]
 
-// Standart kategoriler — kuruma özel olanlar bu listeye eklenir
-const PREDEFINED_CATEGORIES = [
-  'Lazer Epilasyon',
-  'Cilt Bakımı',
-  'Bölgesel İncelme',
-  'Kaş & Kalıcı Makyaj',
-  'Masaj',
-  'Tırnak Bakımı',
-] as const
-
+/**
+ * Kategori listesi ARTIK sabit değil: kurumun gerçek kategorileri (kayıtlı kategoriler +
+ * hizmetlerde fiilen kullanılan adlar) listelenir. Eskiden 6 adet uydurma kategori sabiti
+ * vardı; kurum kendi kategorilerini kursa bile form onları göstermiyor, üstelik varsayılan
+ * "Cilt Bakımı" olduğu için dokunulmayan her hizmet bu kategoriye yazılıyordu.
+ */
 const OTHER_SENTINEL = '__OTHER__'
 
 export interface ServiceFormDialogValues {
@@ -59,8 +55,12 @@ export interface ServiceFormDialogProps {
   customCategories: CustomServiceCategory[]
   onSubmit: (values: ServiceFormDialogValues) => Promise<void>
   onDeleteCustomCategory?: (id: string) => Promise<void>
-  /** Hâlihazırda hizmetlerde kullanılan alt kategori adları (kaydı olmayanlar da seçilebilsin). */
-  knownSubCategories?: string[]
+  /** Kaydı olmayan ama hizmetlerde KULLANILAN kategori adları — listeden düşmesinler. */
+  knownCategories?: string[]
+  /** Kategori adı → o kategoride fiilen kullanılan alt kategori adları (kaydı olmayanlar dâhil). */
+  knownSubCategories?: Record<string, string[]>
+  /** Verilirse kategori kutusundaki "Yeni kategori ekle" seçeneği çıkar. */
+  onCreateCustomCategory?: (name: string) => Promise<void>
   initialValues?: Partial<ServiceFormDialogValues>
   title?: string
   submitLabel?: string
@@ -78,7 +78,9 @@ export default function ServiceFormDialog({
   customCategories,
   onSubmit,
   onDeleteCustomCategory,
-  knownSubCategories = [],
+  knownCategories = [],
+  knownSubCategories = {},
+  onCreateCustomCategory,
   initialValues,
   title = 'Yeni Hizmet Tanımla',
   submitLabel = 'Hizmeti oluştur',
@@ -86,7 +88,9 @@ export default function ServiceFormDialog({
 }: ServiceFormDialogProps) {
   const defaults: ServiceFormDialogValues = {
     name: '',
-    category: 'Cilt Bakımı',
+    // Varsayılan kategori YOK: uydurma bir varsayılan, dokunulmayan her hizmeti yanlış
+    // kategoriye yazıyordu. Kullanıcı gerçek kategorilerden seçer.
+    category: null,
     subCategory: null,
     durationMinutes: 60,
     price: 1500,
@@ -98,16 +102,12 @@ export default function ServiceFormDialog({
   }
   const merged: ServiceFormDialogValues = { ...defaults, ...(initialValues || {}) }
 
-  const initialIsKnown = (cat: string | null): boolean => {
-    if (!cat) return false
-    if ((PREDEFINED_CATEGORIES as readonly string[]).includes(cat)) return true
-    return customCategories.some((c) => c.name === cat)
-  }
-  const startWithOther = Boolean(merged.category) && !initialIsKnown(merged.category)
-
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<ServiceFormDialogValues>(merged)
-  const [showCustomList, setShowCustomList] = useState(startWithOther)
+  /** "Yeni kategori ekle" satırı seçilince açılan ekleme kutusu. */
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [categoryBusy, setCategoryBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -120,7 +120,8 @@ export default function ServiceFormDialog({
       setValues(merged)
       setSaved(false)
       setError('')
-      setShowCustomList(Boolean(merged.category) && !initialIsKnown(merged.category))
+      setCreatingCategory(false)
+      setNewCategoryName('')
       setCategoryError('')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,8 +142,8 @@ export default function ServiceFormDialog({
       setError('Süre pozitif olmalı.')
       return
     }
-    if (showCustomList && !values.category) {
-      setError('"Diğer" seçildi ama özel kategori seçmedin. Mevcut bir kategoriyi seç veya yenisini ekle.')
+    if (creatingCategory && newCategoryName.trim()) {
+      setError('Yeni kategoriyi önce “Ekle” ile kaydedin ya da vazgeçin.')
       return
     }
     setBusy(true)
@@ -157,30 +158,65 @@ export default function ServiceFormDialog({
     }
   }
 
-  const sortedCustomCategories = useMemo(
-    () => [...customCategories].filter((c) => c.isActive).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr-TR')),
+  /** Kurumun KAYITLI üst kategorileri (Kategoriler sayfasında tanımlı olanlar). */
+  const registeredCategories = useMemo(
+    () => customCategories
+      .filter((c) => c.isActive && !c.parentId)
+      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr'))
+      .map((c) => c.name),
     [customCategories],
   )
+  /** Kaydı olmayan ama hizmetlerde kullanılan adlar — ayrı grupta, kaybolmasınlar. */
+  const derivedCategories = useMemo(() => {
+    const known = new Set(registeredCategories)
+    const out = knownCategories.filter((n) => n && !known.has(n))
+    // Düzenlenen hizmetin kategorisi hiçbir listede yoksa yine de seçili kalabilmeli.
+    if (values.category && !known.has(values.category) && !out.includes(values.category)) out.push(values.category)
+    return out.sort((a, b) => a.localeCompare(b, 'tr'))
+  }, [registeredCategories, knownCategories, values.category])
 
-  // Seçili üst kategorinin alt kategorileri (öneri). Üst kategori özel kayıtsa parentId ile eşleşir;
-  // standart kategoride tüm alt kategoriler önerilir.
-  const parentCategoryId = useMemo(
-    () => customCategories.find((c) => !c.parentId && c.name === values.category)?.id ?? null,
+  const selectedCategoryRecord = useMemo(
+    () => customCategories.find((c) => !c.parentId && c.name === values.category) ?? null,
     [customCategories, values.category],
   )
-  // Tanımlı alt kategoriler + KULLANIMDA olan adlar. İkincisi şart: serbest yazım kaldırılmadan
-  // önce girilmiş alt kategorilerin kaydı yoktur; yalnızca tanımlılar listelenirse mevcut hizmetin
-  // alt kategorisi listede çıkmaz ve kaydedince sessizce silinirdi.
+
+  /**
+   * Alt kategori listesi YALNIZCA seçili kategoriye aittir: kayıtlı alt kategoriler
+   * (parentId eşleşen) + o kategorideki hizmetlerde fiilen kullanılan adlar. Eskiden tüm
+   * kategorilerin alt kategorileri karışık listeleniyordu.
+   */
   const subCategoryOptions = useMemo(() => {
-    const names = customCategories
-      .filter((c) => c.isActive && c.parentId && (!parentCategoryId || c.parentId === parentCategoryId))
-      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr'))
-      .map((c) => c.name)
+    if (!values.category) return []
+    const parentId = selectedCategoryRecord?.id ?? null
+    const names = parentId
+      ? customCategories
+        .filter((c) => c.isActive && c.parentId === parentId)
+        .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'tr'))
+        .map((c) => c.name)
+      : []
     const set = new Set(names)
-    for (const n of knownSubCategories) if (n && !set.has(n)) { set.add(n); names.push(n) }
+    for (const n of knownSubCategories[values.category] || []) if (n && !set.has(n)) { set.add(n); names.push(n) }
     if (values.subCategory && !set.has(values.subCategory)) names.push(values.subCategory)
     return names
-  }, [customCategories, parentCategoryId, knownSubCategories, values.subCategory])
+  }, [customCategories, selectedCategoryRecord, knownSubCategories, values.category, values.subCategory])
+
+  const createCategory = async (): Promise<void> => {
+    const name = newCategoryName.trim()
+    if (!name || !onCreateCustomCategory) return
+    setCategoryBusy(true)
+    setCategoryError('')
+    try {
+      await onCreateCustomCategory(name)
+      // Yeni kategori seçili gelir; alt kategori önceki kategoriye aitti, sıfırlanır.
+      setValues((v) => ({ ...v, category: name, subCategory: null }))
+      setCreatingCategory(false)
+      setNewCategoryName('')
+    } catch (e: unknown) {
+      setCategoryError(e instanceof Error ? e.message : 'Kategori eklenemedi.')
+    } finally {
+      setCategoryBusy(false)
+    }
+  }
 
   const previewIcon = values.iconKey || suggestIcon(values.name || values.category)
 
@@ -270,39 +306,65 @@ export default function ServiceFormDialog({
                 />
               </div>
 
-              {/* Kategori */}
+              {/* Kategori — kurumun GERÇEK kategorileri */}
               <div className="flex flex-col gap-2">
                 <label className={labelStyle}>Kategori</label>
-                <div className="relative">
-                  <select
-                    value={showCustomList ? OTHER_SENTINEL : (values.category || '')}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      if (v === OTHER_SENTINEL) {
-                        setShowCustomList(true)
-                        if (values.category && (PREDEFINED_CATEGORIES as readonly string[]).includes(values.category)) {
-                          setValues((cur) => ({ ...cur, category: null }))
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <select
+                      value={creatingCategory ? OTHER_SENTINEL : (values.category || '')}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (v === OTHER_SENTINEL) {
+                          setCreatingCategory(true)
+                          setCategoryError('')
+                          return
                         }
-                      } else {
-                        setShowCustomList(false)
-                        setValues((cur) => ({ ...cur, category: v }))
-                      }
-                    }}
-                    className={`${fieldStyle} appearance-none pr-10`}
-                  >
-                    <optgroup label="Standart kategoriler">
-                      {PREDEFINED_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </optgroup>
-                    <option value={OTHER_SENTINEL}>── Diğer (özel kategori)</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+                        setCreatingCategory(false)
+                        // Kategori değişince alt kategori artık geçerli değil → sıfırlanır.
+                        setValues((cur) => ({ ...cur, category: v || null, subCategory: null }))
+                      }}
+                      className={`${fieldStyle} appearance-none pr-10`}
+                    >
+                      <option value="">— Kategori seçilmedi —</option>
+                      {registeredCategories.length > 0 && (
+                        <optgroup label="Kayıtlı kategoriler">
+                          {registeredCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                        </optgroup>
+                      )}
+                      {derivedCategories.length > 0 && (
+                        <optgroup label="Hizmetlerde kullanılanlar">
+                          {derivedCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                        </optgroup>
+                      )}
+                      {onCreateCustomCategory && <option value={OTHER_SENTINEL}>＋ Diğer — yeni kategori ekle…</option>}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+                  </div>
+                  {onDeleteCustomCategory && selectedCategoryRecord && !creatingCategory && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!onDeleteCustomCategory || !selectedCategoryRecord) return
+                        setCategoryError('')
+                        try {
+                          await onDeleteCustomCategory(selectedCategoryRecord.id)
+                          setValues((v) => ({ ...v, category: null, subCategory: null }))
+                        } catch (err: unknown) {
+                          setCategoryError(err instanceof Error ? err.message : 'Silinemedi.')
+                        }
+                      }}
+                      title={`“${selectedCategoryRecord.name}” kategorisini sil`}
+                      className="grid w-12 shrink-0 place-items-center rounded-[14px] border border-[#f3c9d4] bg-[#fff1f4] text-[#cf4d68] transition-colors hover:bg-[#ffe4ea]"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
 
-                {/* "Diğer" → kuruma özel kategoriler */}
+                {/* "Diğer" → yeni kategori ekleme kutusu */}
                 <AnimatePresence>
-                  {showCustomList && (
+                  {creatingCategory && onCreateCustomCategory && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
@@ -311,44 +373,41 @@ export default function ServiceFormDialog({
                       className="overflow-hidden"
                     >
                       <div className="mt-1 rounded-2xl border border-[#efbfd0]/80 bg-[#f7ecf1] p-4">
-                        <div className="flex items-center justify-between">
-                          <span className={labelStyle}>Kuruma özel kategoriler</span>
-                          <span className="text-[11px] text-[#705a66]">{sortedCustomCategories.length} adet</span>
+                        <div className="flex items-center gap-2">
+                          <Plus className="h-4 w-4 text-[#c85776]" />
+                          <span className={labelStyle}>Yeni kategori ekle</span>
                         </div>
-                        <div className="mt-2.5 flex gap-2">
-                          <select
-                            value={values.category && sortedCustomCategories.some((c) => c.name === values.category) ? values.category : ''}
-                            onChange={(e) => setValues((v) => ({ ...v, category: e.target.value || null }))}
-                            className={`flex-1 ${fieldStyle}`}
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); void createCategory() }
+                              if (e.key === 'Escape') { setCreatingCategory(false); setNewCategoryName('') }
+                            }}
+                            placeholder="Örn. Medikal Estetik"
+                            className={`min-w-[180px] flex-1 ${fieldStyle}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={createCategory}
+                            disabled={categoryBusy || !newCategoryName.trim()}
+                            className="inline-flex items-center gap-1.5 rounded-[14px] bg-[#c85776] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                           >
-                            <option value="">— Özel kategori seç —</option>
-                            {sortedCustomCategories.map((c) => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                          </select>
-                          {onDeleteCustomCategory && values.category && sortedCustomCategories.find((c) => c.name === values.category) && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const target = sortedCustomCategories.find((c) => c.name === values.category)
-                                if (!target || !onDeleteCustomCategory) return
-                                try {
-                                  await onDeleteCustomCategory(target.id)
-                                  setValues((v) => ({ ...v, category: null }))
-                                } catch (err: unknown) {
-                                  setCategoryError(err instanceof Error ? err.message : 'Silinemedi.')
-                                }
-                              }}
-                              title="Seçili kategoriyi sil"
-                              className="grid w-12 shrink-0 place-items-center rounded-[14px] border border-[#f3c9d4] bg-[#fff1f4] text-[#cf4d68] transition-colors hover:bg-[#ffe4ea]"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
+                            {categoryBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ekle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setCreatingCategory(false); setNewCategoryName(''); setCategoryError('') }}
+                            className="rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3 text-[13px] font-medium text-[#705a66] transition-colors hover:text-[#241923]"
+                          >
+                            Vazgeç
+                          </button>
                         </div>
-                        {/* Kategori EKLEME buradan yapılmaz — tek kaynak Kategoriler sayfasıdır. */}
                         <p className="mt-2 text-[11px] text-[#705a66]">
-                          Yeni kategori eklemek için <span className="font-medium">Paket &amp; Hizmet › Kategoriler</span> sayfasını kullanın.
+                          Eklenen kategori tüm hizmet/paket formlarında ve <span className="font-medium">Paket &amp; Hizmet › Kategoriler</span> sayfasında görünür.
                         </p>
                         {categoryError && <div className="mt-2 text-[12px] font-medium text-rose-600">{categoryError}</div>}
                       </div>
@@ -356,25 +415,27 @@ export default function ServiceFormDialog({
                   )}
                 </AnimatePresence>
 
+                {!creatingCategory && categoryError && <div className="text-[12px] font-medium text-rose-600">{categoryError}</div>}
                 <p className={helperStyle}>Raporlarda hizmet gruplaması bu alana göre yapılır.</p>
 
-                {/* Alt kategori (opsiyonel) — kategorinin altında daha ince gruplama */}
+                {/* Alt kategori — kategori seçilene kadar kapalı, sonra O kategorinin alt kategorileri */}
                 <div className="mt-1 flex flex-col gap-1.5">
                   <label className={labelStyle}>Alt kategori <span className="font-normal text-[#705a66]">(opsiyonel)</span></label>
-                  {/* Serbest yazılmaz: yalnızca Kategoriler sayfasında tanımlı alt kategorilerden seçilir. */}
                   <select
                     value={values.subCategory || ''}
                     onChange={(e) => setValues((v) => ({ ...v, subCategory: e.target.value || null }))}
-                    disabled={subCategoryOptions.length === 0}
-                    className={`${fieldStyle} disabled:opacity-60`}
+                    disabled={!values.category || subCategoryOptions.length === 0}
+                    className={`${fieldStyle} disabled:cursor-not-allowed disabled:bg-[#f7ecf1] disabled:opacity-70`}
                   >
                     <option value="">— Alt kategorisiz —</option>
                     {subCategoryOptions.map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                   <p className={helperStyle}>
-                    {subCategoryOptions.length === 0
-                      ? 'Seçili kategorinin alt kategorisi yok. Kategoriler sayfasından ekleyebilirsiniz.'
-                      : 'Kategoriler sayfasında tanımlı alt kategorilerden seçilir.'}
+                    {!values.category
+                      ? 'Önce kategori seçin; alt kategoriler seçtiğiniz kategoriye göre listelenir.'
+                      : subCategoryOptions.length === 0
+                        ? `“${values.category}” kategorisinin alt kategorisi yok. Kategoriler sayfasından ekleyebilirsiniz.`
+                        : `“${values.category}” kategorisinin alt kategorileri.`}
                   </p>
                 </div>
               </div>
