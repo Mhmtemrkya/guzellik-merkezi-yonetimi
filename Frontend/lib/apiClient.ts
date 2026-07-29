@@ -250,13 +250,21 @@ function activeApiScope(): ApiScope {
   return { tenantId: null, branchId: null }
 }
 
-type QueryValue = string | number | boolean | null | undefined
+// Dizi değerler tekrarlanan anahtar olarak yazılır (?periods=a&periods=b) — ASP.NET minimal API
+// bunu string[] parametresine bağlar. Rapor karşılaştırmasında çoklu dönem böyle gönderilir.
+type QueryValue = string | number | boolean | null | undefined | readonly string[]
 export type QueryRecord = Record<string, QueryValue>
 
 function normalizeQuery(query: QueryRecord | undefined): string {
   const params = new URLSearchParams()
   Object.entries(query || {}).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined && item !== null && item !== '') params.append(key, String(item))
+      })
+      return
+    }
     params.set(key, String(value))
   })
   const str = params.toString()
@@ -775,9 +783,6 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { query: { tenantId } }),
   setStaffWorkingHours: <T = unknown>(staffId: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { method: 'PUT', query: { tenantId }, body }),
-  /** Kâr raporu: aylık gelir-gider-net + hizmet kârlılığı (prim düşülmüş). */
-  profitReport: <T = unknown>(tenantId?: string, months = 6): Promise<T> =>
-    apiRequest<T>('/api/admin/cash-flow/profit-report', { query: { tenantId, months } }),
   /** Personel ICS takvim aboneliği linki (Google/Apple/Outlook "URL ile abone ol"). */
   staffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}`, { query: { tenantId } }),
@@ -1124,6 +1129,28 @@ export const adminApi = {
     apiRequest<T[]>('/api/admin/cash-flow/', { query }),
   cashFlowSummary: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
     apiRequest<T>('/api/admin/cash-flow/summary', { query }),
+
+  // --- Raporlar --------------------------------------------------------------
+  // Hepsi aynı sorgu sözleşmesini paylaşır: fromUtc/toUtc + (opsiyonel) compareFromUtc/compareToUtc
+  // + granularity ('day' | 'week' | 'month'). Karşılaştırma verilmezse "önceki" değerler 0 döner.
+  reportSummary: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/summary', { query }),
+  /**
+   * Çoklu dönem kıyası. `periods` her biri `<başlangıçISO>~<bitişISO>~<etiket>` biçiminde;
+   * tekrarlanan `periods=` anahtarı olarak gider (2–6 dönem).
+   */
+  reportCompare: <T = unknown>(periods: string[], query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/compare', { query: { ...query, periods } }),
+  reportCatalog: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/catalog', { query }),
+  reportStaff: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/staff', { query }),
+  reportBranches: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/branches', { query }),
+  reportCustomers: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/customers', { query }),
+  reportInventory: <T = unknown>(query: QueryRecord = {}): Promise<T> =>
+    apiRequest<T>('/api/admin/reports/inventory', { query }),
 
   products: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/products/', { query: { page: 1, pageSize: 200, ...query } }),

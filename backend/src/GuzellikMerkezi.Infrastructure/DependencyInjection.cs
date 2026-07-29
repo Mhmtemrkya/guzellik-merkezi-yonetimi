@@ -22,6 +22,7 @@ using GuzellikMerkezi.Application.Features.Loyalty;
 using GuzellikMerkezi.Application.Features.PendingOperations;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
 using GuzellikMerkezi.Application.Features.Ratings;
+using GuzellikMerkezi.Application.Features.Reports;
 using GuzellikMerkezi.Application.Features.Schedule;
 using GuzellikMerkezi.Application.Features.ServiceCatalog;
 using GuzellikMerkezi.Application.Features.Notifications;
@@ -108,6 +109,7 @@ public static class DependencyInjection
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<ICustomExpenseCategoryService, CustomExpenseCategoryService>();
         services.AddScoped<ICashFlowService, CashFlowService>();
+        services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IStockService, StockService>();
         services.AddScoped<IApprovalDispatcher, ApprovalDispatcher>();
         services.AddScoped<IPendingOperationService, PendingOperationService>();

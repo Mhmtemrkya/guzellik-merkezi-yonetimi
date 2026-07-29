@@ -32,7 +32,8 @@ export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS'
   headers?: HeadersInit
   body?: unknown
-  query?: Record<string, string | number | boolean | null | undefined>
+  /** Dizi değerler tekrarlanan anahtar olarak yazılır (?periods=a&periods=b). */
+  query?: Record<string, string | number | boolean | null | undefined | readonly string[]>
   token?: string | null
   scope?: ApiScope | false
   cache?: RequestCache

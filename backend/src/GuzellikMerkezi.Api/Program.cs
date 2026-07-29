@@ -231,6 +231,7 @@ app.MapLoyaltyEndpoints();
 app.MapExpenseEndpoints();
 app.MapCustomExpenseCategoryEndpoints();
 app.MapCashFlowEndpoints();
+app.MapReportsEndpoints();
 app.MapStockEndpoints();
 app.MapPendingOperationEndpoints();
 app.MapNotificationEndpoints();
