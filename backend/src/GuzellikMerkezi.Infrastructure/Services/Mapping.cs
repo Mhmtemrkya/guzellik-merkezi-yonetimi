@@ -198,6 +198,8 @@ internal static class Mapping
             account.SoldAtUtc == default ? account.CreatedAtUtc : account.SoldAtUtc,
             account.SoldByStaffMemberId,
             account.SoldByStaffMember?.FullName,
+            account.AppliedByStaffMemberId,
+            account.AppliedByStaffMember?.FullName,
             account.IsHistorical,
             account.CancelledAtUtc,
             account.CancellationReason);

@@ -896,6 +896,7 @@ export function normalizeAccount(account: ApiCustomerAccount | null | undefined,
     // Satış kimliği — eski kayıtlarda satış tarihi yoksa kayıt tarihine düşülür.
     soldAtUtc: account?.soldAtUtc || account?.createdAtUtc || '',
     soldByStaffName: account?.soldByStaffName || '',
+    appliedByStaffName: account?.appliedByStaffName || '',
     isHistorical: Boolean(account?.isHistorical),
     cancelledAtUtc: account?.cancelledAtUtc ?? null,
     cancellationReason: account?.cancellationReason || '',

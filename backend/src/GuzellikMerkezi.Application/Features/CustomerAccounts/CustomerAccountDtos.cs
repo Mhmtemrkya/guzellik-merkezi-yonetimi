@@ -45,6 +45,9 @@ public sealed record CustomerAccountDto(
     DateTime SoldAtUtc = default,
     Guid? SoldByStaffMemberId = null,
     string? SoldByStaffName = null,
+    /// <summary>Geçmiş satışta seansları uygulayan personel ("kim yaptı").</summary>
+    Guid? AppliedByStaffMemberId = null,
+    string? AppliedByStaffName = null,
     /// <summary>Yazılıma geçmeden önceki satışın elle girilmiş kaydı.</summary>
     bool IsHistorical = false,
     DateTime? CancelledAtUtc = null,
@@ -94,7 +97,17 @@ public sealed record CreateHistoricalSaleRequest(
     /// </summary>
     int? PaidInstallmentCount = null,
     /// <summary>Geçmiş tahsilatın yöntemi (cash/card/transfer) — ödeme dökümünde görünsün.</summary>
-    string? PaymentMethod = null);
+    string? PaymentMethod = null,
+    /// <summary>Kullanılmış seansları uygulayan personel ("seansı kim yaptı").</summary>
+    Guid? AppliedByStaffMemberId = null,
+    /// <summary>
+    /// true ise kullanılmış seanslar için TAMAMLANMIŞ geçmiş randevu kaydı da açılır — geçmiş
+    /// seanslar randevular sayfasında/müşteri kartında görünür. Fiyat 0 yazılır: satış tutarı
+    /// zaten caride, randevuya da yazılsa ciro iki kez sayılırdı.
+    /// </summary>
+    bool CreateSessionAppointments = false,
+    /// <summary>Geçmiş randevular arasındaki gün aralığı (varsayılan 15).</summary>
+    int SessionIntervalDays = 15);
 
 /// <summary>Satış iptali + gerekçesi.</summary>
 public sealed record CancelSaleRequest(string? Reason);

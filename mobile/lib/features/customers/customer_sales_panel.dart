@@ -460,6 +460,7 @@ class _CustomerSalesPanelState extends State<CustomerSalesPanel> {
     final su = numberOf(a, const ['sessionsUsed']).toInt();
     final pct = total > 0 ? (paid / total).clamp(0.0, 1.0) : 1.0;
     final staff = '${a['soldByStaffName'] ?? ''}'.trim();
+    final applier = '${a['appliedByStaffName'] ?? ''}'.trim();
     final reason = '${a['cancellationReason'] ?? ''}'.trim();
 
     return Container(
@@ -501,6 +502,7 @@ class _CustomerSalesPanelState extends State<CustomerSalesPanel> {
                   if (a['isHistorical'] == true) _pill('Geçmiş kayıt', const Color(0xFF6B4AA0)),
                   _meta(Icons.event_rounded, _fmtDate(a['soldAtUtc'] ?? a['createdAtUtc'])),
                   if (staff.isNotEmpty) _meta(Icons.person_rounded, staff),
+                  if (applier.isNotEmpty) _meta(Icons.auto_awesome_rounded, applier),
                   if (st > 0) _meta(Icons.confirmation_number_rounded, '$su/$st seans'),
                 ],
               ),
@@ -655,6 +657,7 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     final installments = apiItems(_a['installments'])
       ..sort((x, y) => numberOf(x, const ['no']).compareTo(numberOf(y, const ['no'])));
     final staff = '${_a['soldByStaffName'] ?? ''}'.trim();
+    final applier = '${_a['appliedByStaffName'] ?? ''}'.trim();
 
     return PopScope(
       canPop: false,
@@ -707,6 +710,8 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                         _metaRow(Icons.person_rounded, widget.customerName),
                         _metaRow(Icons.event_rounded, _fmtDate(_a['soldAtUtc'] ?? _a['createdAtUtc'])),
                         if (staff.isNotEmpty) _metaRow(Icons.badge_rounded, 'Satan: $staff'),
+                        if (applier.isNotEmpty)
+                          _metaRow(Icons.auto_awesome_rounded, 'Uygulayan: $applier'),
                       ],
                     ),
 
@@ -1165,6 +1170,13 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   /// Vade sırasıyla kaç taksitin ödendiği.
   int _paidCount = 0;
 
+  // --- seanslar: kim yaptı + geçmiş randevu kaydı (web paritesi) ---
+  /// Kullanılmış seansları uygulayan personel.
+  String? _appliedStaffId;
+  /// Yapılan seanslar için tamamlanmış geçmiş randevu açılsın mı.
+  bool _makeAppointments = true;
+  final _sessionInterval = TextEditingController(text: '15');
+
   @override
   void initState() {
     super.initState();
@@ -1184,7 +1196,7 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
 
   @override
   void dispose() {
-    for (final c in [_name, _total, _paid, _sessionsTotal, _sessionsUsed, _installments, _notes]) {
+    for (final c in [_name, _total, _paid, _sessionsTotal, _sessionsUsed, _installments, _notes, _sessionInterval]) {
       c.dispose();
     }
     super.dispose();
@@ -1216,6 +1228,26 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
       : (double.tryParse(_paid.text.replaceAll(',', '.')) ?? 0);
 
   int get _instCount => (int.tryParse(_installments.text) ?? 0).clamp(0, 36);
+
+  int get _sessionsTotalNum => (int.tryParse(_sessionsTotal.text) ?? 0).clamp(0, 999);
+  int get _sessionsUsedNum =>
+      (int.tryParse(_sessionsUsed.text) ?? 0).clamp(0, _sessionsTotalNum);
+  bool get _sessionsDone => _sessionsTotalNum > 0 && _sessionsUsedNum >= _sessionsTotalNum;
+  int get _intervalNum => (int.tryParse(_sessionInterval.text) ?? 15).clamp(1, 365);
+
+  /// Oluşacak geçmiş randevuların tarihleri (önizleme) — bugünü aşan tarih bugüne çekilir.
+  List<DateTime> get _appointmentDates {
+    final soldAt = _soldAt;
+    if (!_makeAppointments || _sessionsUsedNum <= 0 || soldAt == null) return const [];
+    final now = DateTime.now();
+    return [
+      for (var i = 0; i < (_sessionsUsedNum > 6 ? 6 : _sessionsUsedNum); i++)
+        () {
+          final d = soldAt.add(Duration(days: _intervalNum * i));
+          return d.isAfter(now) ? now : d;
+        }(),
+    ];
+  }
 
   /// Vade verilmezse backend satıştan bir ay sonrasını kullanır — önizleme de öyle gösterir.
   DateTime? get _effectiveFirstDue {
@@ -1296,6 +1328,10 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
         // geçmiş satış geçmiş cariye de düşer.
         'paidInstallmentCount': _payKind == 'installment' ? _paidCount : 0,
         'paymentMethod': _method,
+        // Seansı kim yaptı + yapılan seanslar randevu geçmişine işlensin mi.
+        'appliedByStaffMemberId': _appliedStaffId,
+        'createSessionAppointments': _makeAppointments && su > 0,
+        'sessionIntervalDays': _intervalNum,
         'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       });
       if (mounted) Navigator.pop(context, true);
@@ -1505,11 +1541,13 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                               child: TextField(
                                 controller: _sessionsUsed,
                                 keyboardType: TextInputType.number,
+                                onChanged: (_) => setState(() {}),
                                 decoration: const InputDecoration(labelText: 'Kullanılan seans'),
                               ),
                             ),
                           ],
                         ),
+                        if (_sessionsTotalNum > 0) _sessionsExtra(),
 
                         // Serbest kayıtta seans girilecekse hangi hizmetten düşeceği seçilir.
                         if (_kind == 'free' && (int.tryParse(_sessionsTotal.text) ?? 0) > 0) ...[
@@ -1566,6 +1604,129 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  /// Seans durumu + "kim yaptı" + yapılan seansların randevu geçmişine işlenmesi.
+  Widget _sessionsExtra() {
+    final dates = _appointmentDates;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Seanslar bitti mi? Tek dokunuşla "hepsi yapıldı".
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceSoft.withValues(alpha: .45),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle_rounded,
+                    size: 17,
+                    color: _sessionsDone ? AppColors.success : AppColors.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _sessionsDone
+                        ? 'Tüm seanslar tamamlandı'
+                        : '$_sessionsUsedNum/$_sessionsTotalNum seans yapıldı · ${_sessionsTotalNum - _sessionsUsedNum} kaldı',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _sessionsUsed.text =
+                      _sessionsDone ? '0' : '$_sessionsTotalNum'),
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor:
+                          _sessionsDone ? AppColors.muted : AppColors.success),
+                  child: Text(_sessionsDone ? 'Sıfırla' : 'Tümü tamam',
+                      style: const TextStyle(fontSize: 11.5)),
+                ),
+              ],
+            ),
+          ),
+          if (_sessionsUsedNum > 0) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: _appliedStaffId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Seansları uygulayan personel'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Belirtilmedi')),
+                for (final s in _staff)
+                  DropdownMenuItem(
+                    value: '${s['id']}',
+                    child: Text(valueOf(s, const ['fullName', 'name']),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _appliedStaffId = v),
+            ),
+            const SizedBox(height: 10),
+            // Geçmiş seanslar randevular sayfasında da görünsün.
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSoft.withValues(alpha: .45),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    value: _makeAppointments,
+                    onChanged: (v) => setState(() => _makeAppointments = v ?? false),
+                    title: const Text('Yapılan seanslar randevu geçmişine işlensin',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                      '$_sessionsUsedNum adet tamamlanmış geçmiş randevu açılır; randevular '
+                      'sayfasında görünür. Ciro iki kez sayılmasın diye tutarı 0 yazılır.',
+                      style: const TextStyle(fontSize: 11, color: AppColors.muted, height: 1.35),
+                    ),
+                  ),
+                  if (_makeAppointments) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          child: TextField(
+                            controller: _sessionInterval,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                                isDense: true, labelText: 'Aralık (gün)'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            dates.isEmpty
+                                ? 'Satış tarihini girin.'
+                                : dates
+                                    .map((d) => DateFormat('d MMM yyyy', 'tr_TR').format(d))
+                                    .join(' · '),
+                            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

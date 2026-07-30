@@ -377,6 +377,10 @@ function MusterilerPageInner() {
       // TARİHLERİYLE tahsilat yazar → geçmiş satış geçmiş cariye de düşer.
       paidInstallmentCount: values.paidInstallmentCount,
       paymentMethod: values.paymentMethod,
+      // Seansı kim yaptı + yapılan seanslar randevu geçmişine işlensin mi.
+      appliedByStaffMemberId: values.appliedByStaffMemberId,
+      createSessionAppointments: values.createSessionAppointments,
+      sessionIntervalDays: values.sessionIntervalDays,
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))

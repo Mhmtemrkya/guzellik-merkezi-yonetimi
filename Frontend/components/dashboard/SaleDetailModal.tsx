@@ -13,6 +13,7 @@ import {
   Package,
   RotateCcw,
   Scissors,
+  Sparkles,
   User,
   Wallet,
   X,
@@ -146,6 +147,7 @@ export default function SaleDetailModal({
                 <span className="inline-flex items-center gap-1 font-semibold text-[#4a3a44]"><User className="h-3.5 w-3.5 text-[#c85776]" /> {customerName}</span>
                 <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-[#c85776]" /> {formatLongDate(account.soldAtUtc)}</span>
                 {account.soldByStaffName && <span className="inline-flex items-center gap-1">Satan: <b className="font-semibold text-[#4a3a44]">{account.soldByStaffName}</b></span>}
+                {account.appliedByStaffName && <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5 text-[#c85776]" /> Uygulayan: <b className="font-semibold text-[#4a3a44]">{account.appliedByStaffName}</b></span>}
               </div>
             </div>
             <button type="button" onClick={onClose} aria-label="Kapat" className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] shadow-sm transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]">

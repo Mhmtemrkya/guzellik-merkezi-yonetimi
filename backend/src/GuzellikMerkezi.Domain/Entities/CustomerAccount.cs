@@ -45,6 +45,13 @@ public sealed class CustomerAccount : Entity
     public Guid? SoldByStaffMemberId { get; private set; }
     public StaffMember? SoldByStaffMember { get; private set; }
 
+    /// <summary>
+    /// GEÇMİŞ satışta kullanılmış seansları uygulayan personel ("kim yaptı"). Normal satışta
+    /// bu bilgi seans başına randevudan gelir; geçmiş kayıtta randevu olmadığı için burada tutulur.
+    /// </summary>
+    public Guid? AppliedByStaffMemberId { get; private set; }
+    public StaffMember? AppliedByStaffMember { get; private set; }
+
     /// <summary>Yazılıma geçmeden önce yapılmış satışın elle girilen kaydı — raporlarda ayırt edilebilsin.</summary>
     public bool IsHistorical { get; private set; }
 
@@ -167,6 +174,13 @@ public sealed class CustomerAccount : Entity
         SoldAtUtc = DateTime.SpecifyKind(soldAtUtc, DateTimeKind.Utc);
         SoldByStaffMemberId = soldByStaffMemberId == Guid.Empty ? null : soldByStaffMemberId;
         IsHistorical = isHistorical;
+        Touch();
+    }
+
+    /// <summary>Geçmiş seansları uygulayan personeli işaretler.</summary>
+    public void SetAppliedBy(Guid? staffMemberId)
+    {
+        AppliedByStaffMemberId = staffMemberId == Guid.Empty ? null : staffMemberId;
         Touch();
     }
 

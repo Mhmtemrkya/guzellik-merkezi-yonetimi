@@ -1028,6 +1028,9 @@ export interface ApiCustomerAccount {
   soldAtUtc?: string
   soldByStaffMemberId?: string | null
   soldByStaffName?: string | null
+  /** Geçmiş satışta seansları uygulayan personel ("kim yaptı"). */
+  appliedByStaffMemberId?: string | null
+  appliedByStaffName?: string | null
   isHistorical?: boolean
   cancelledAtUtc?: string | null
   cancellationReason?: string | null
@@ -1097,6 +1100,8 @@ export interface CustomerAccount {
   /** Satışın gerçekte yapıldığı tarih (geçmiş kayıtta geçmiş bir tarih). */
   soldAtUtc: string
   soldByStaffName: string
+  /** Geçmiş satışta seansları uygulayan personel. */
+  appliedByStaffName: string
   /** Yazılıma geçmeden önceki satışın elle girilmiş kaydı. */
   isHistorical: boolean
   cancelledAtUtc: string | null

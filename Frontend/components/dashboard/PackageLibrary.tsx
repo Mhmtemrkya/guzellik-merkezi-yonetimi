@@ -183,6 +183,10 @@ export default function PackageLibrary({
       // Ödeme geçmişi (peşin / kaçıncı aya kadar ödendi) — geçmiş cariye de tarihleriyle düşsün.
       paidInstallmentCount: values.paidInstallmentCount,
       paymentMethod: values.paymentMethod,
+      // Seansı kim yaptı + yapılan seanslar randevu geçmişine işlensin mi.
+      appliedByStaffMemberId: values.appliedByStaffMemberId,
+      createSessionAppointments: values.createSessionAppointments,
+      sessionIntervalDays: values.sessionIntervalDays,
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))

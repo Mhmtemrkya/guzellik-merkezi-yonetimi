@@ -9,6 +9,7 @@ import {
   ChevronRight,
   History,
   Package,
+  Sparkles,
   User,
   XCircle,
 } from 'lucide-react'
@@ -235,6 +236,9 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
           <span className="inline-flex items-center gap-1"><CalendarClock className="h-3 w-3 text-[#c85776]" /> {formatSaleDate(account.soldAtUtc)}</span>
           {account.soldByStaffName && (
             <span className="inline-flex items-center gap-1"><User className="h-3 w-3 text-[#c85776]" /> {account.soldByStaffName}</span>
+          )}
+          {account.appliedByStaffName && (
+            <span className="inline-flex items-center gap-1" title="Seansları uygulayan"><Sparkles className="h-3 w-3 text-[#c85776]" /> {account.appliedByStaffName}</span>
           )}
           {account.sessionsTotal > 0 && (
             <span className="font-semibold text-[#4a3a44]">{account.sessionsUsed}/{account.sessionsTotal} seans</span>

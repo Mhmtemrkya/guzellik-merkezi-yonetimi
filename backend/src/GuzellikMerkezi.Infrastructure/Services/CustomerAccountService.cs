@@ -155,6 +155,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Include(x => x.Installments)
             .Include(x => x.Payments)
             .Include(x => x.SoldByStaffMember)
+            .Include(x => x.AppliedByStaffMember)
             .OrderByDescending(x => x.CreatedAtUtc)
             .AsQueryable();
 
@@ -431,6 +432,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, 0m);
             account.SetNotes(request.Notes);
             account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+            account.SetAppliedBy(request.AppliedByStaffMemberId);
 
             if (request.InstallmentCount > 0)
             {
@@ -459,6 +461,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, paid);
             account.SetNotes(request.Notes);
             account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+            account.SetAppliedBy(request.AppliedByStaffMemberId);
 
             var remaining = request.TotalAmount - paid;
             if (request.InstallmentCount > 0 && remaining > 0)
@@ -486,19 +489,33 @@ public sealed class CustomerAccountService : ICustomerAccountService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        // Geçmişte KULLANILMIŞ seanslar düşülür (kart "3/8 kaldı" desin).
+        // Geçmişte KULLANILMIŞ seanslar düşülür (kart "3/8 kaldı" desin) ve istenirse her biri için
+        // TAMAMLANMIŞ geçmiş randevu açılır — geçmiş seanslar randevular sayfasında da görünsün.
         if (request.SessionsUsed > 0)
         {
             var sessions = await _db.CustomerPackageSessions
                 .Where(x => x.TenantId == tenantId && x.CustomerAccountId == account.Id)
                 .ToListAsync(cancellationToken);
             var toConsume = request.SessionsUsed;
+            // Hangi hizmetten kaç seans düşüldüğü: geçmiş randevular doğru hizmetle açılsın.
+            var consumedByService = new List<Guid>();
             foreach (var session in sessions)
             {
-                while (toConsume > 0 && session.TryConsume()) toConsume--;
+                while (toConsume > 0 && session.TryConsume())
+                {
+                    consumedByService.Add(session.ServiceDefinitionId);
+                    toConsume--;
+                }
                 if (toConsume == 0) break;
             }
             await _db.SaveChangesAsync(cancellationToken);
+
+            if (request.CreateSessionAppointments && consumedByService.Count > 0)
+            {
+                await CreateHistoricalSessionAppointmentsAsync(
+                    tenantId, account, consumedByService, request.AppliedByStaffMemberId,
+                    soldAtUtc, request.SessionIntervalDays, cancellationToken);
+            }
         }
 
         await _audit.LogAsync(tenantId, account.BranchId, "CreateHistorical", "CustomerAccount", account.Id,
@@ -513,10 +530,79 @@ public sealed class CustomerAccountService : ICustomerAccountService
                 request.PaidInstallmentCount,
                 request.SessionsTotal,
                 request.SessionsUsed,
+                request.AppliedByStaffMemberId,
+                request.CreateSessionAppointments,
             }, cancellationToken);
 
         var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, 0m, 0, cancellationToken));
+    }
+
+    /// <summary>
+    /// Geçmiş satışta kullanılmış her seans için TAMAMLANMIŞ bir geçmiş randevu açar; böylece
+    /// geçmiş seanslar randevular sayfasında, müşteri kartında ve personel performansında görünür.
+    ///
+    /// Kurallar: fiyat <b>0</b> (satış tutarı zaten caride — randevuya da yazılsa ciro iki kez
+    /// sayılırdı), tarihler satış gününden başlayıp `intervalDays` aralıklarla ilerler ve BUGÜNÜ
+    /// AŞMAZ (geçmiş kayıt geleceğe düşmesin), çakışma/mesai kontrolü yapılmaz (geçmişe yazılıyor).
+    /// Personel seçilmemişse randevu açılmaz — randevunun personeli zorunludur.
+    /// </summary>
+    private async Task CreateHistoricalSessionAppointmentsAsync(
+        Guid tenantId,
+        CustomerAccount account,
+        IReadOnlyList<Guid> consumedServiceIds,
+        Guid? staffMemberId,
+        DateTime soldAtUtc,
+        int intervalDays,
+        CancellationToken cancellationToken)
+    {
+        if (account.BranchId is not { } branchId) return;
+
+        // Personel: seçilen ya da (yoksa) satışı yapan. İkisi de yoksa randevu açılamaz.
+        var staffId = staffMemberId is { } s && s != Guid.Empty ? s : account.SoldByStaffMemberId;
+        if (staffId is not { } staff || staff == Guid.Empty) return;
+        var staffExists = await _db.StaffMembers.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.Id == staff, cancellationToken);
+        if (!staffExists) return;
+
+        // DİKKAT: Guid listesiyle `.Contains()` MySql.EntityFrameworkCore'da SQL'e çevrilemiyor (500).
+        // Kurumun hizmetleri çekilip bellekte süzülür.
+        var wanted = consumedServiceIds.ToHashSet();
+        var durations = await _db.ServiceDefinitions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new { x.Id, x.DurationMinutes })
+            .ToListAsync(cancellationToken);
+        var durationById = durations
+            .Where(x => wanted.Contains(x.Id))
+            .ToDictionary(x => x.Id, x => x.DurationMinutes <= 0 ? 60 : x.DurationMinutes);
+
+        var maxNumber = await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Number != null)
+            .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
+
+        var step = intervalDays <= 0 ? 15 : Math.Min(intervalDays, 365);
+        var now = DateTime.UtcNow;
+
+        for (var i = 0; i < consumedServiceIds.Count; i++)
+        {
+            var serviceId = consumedServiceIds[i];
+            var start = soldAtUtc.AddDays((double)step * i);
+            // Geçmiş kayıt geleceğe düşmesin: taşarsa bugüne (bir saat öncesine) çekilir.
+            if (start > now) start = now.AddHours(-1);
+            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+            var minutes = durationById.TryGetValue(serviceId, out var d) ? d : 60;
+            var end = start.AddMinutes(minutes);
+
+            var appointment = new Appointment(
+                tenantId, branchId, account.CustomerId, staff, serviceId, start, end,
+                price: 0m,
+                notes: $"Geçmiş kayıt · {account.Name}");
+            appointment.AssignNumber(++maxNumber);
+            appointment.Complete();
+            _db.Appointments.Add(appointment);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default)
@@ -1359,6 +1445,7 @@ public sealed class CustomerAccountService : ICustomerAccountService
             .Include(x => x.Installments)
             .Include(x => x.Payments)
             .Include(x => x.SoldByStaffMember)
+            .Include(x => x.AppliedByStaffMember)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
     }
 

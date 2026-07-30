@@ -596,6 +596,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Müşteri kartındaki satış listesi satış tarihine göre sıralanır.
         accBuilder.HasIndex(x => new { x.TenantId, x.CustomerId, x.SoldAtUtc });
         accBuilder.HasOne(x => x.SoldByStaffMember).WithMany().HasForeignKey(x => x.SoldByStaffMemberId).OnDelete(DeleteBehavior.SetNull);
+        accBuilder.HasOne(x => x.AppliedByStaffMember).WithMany().HasForeignKey(x => x.AppliedByStaffMemberId).OnDelete(DeleteBehavior.SetNull);
         accBuilder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         accBuilder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         accBuilder.HasOne(x => x.ServicePackage).WithMany().HasForeignKey(x => x.ServicePackageId).OnDelete(DeleteBehavior.SetNull);

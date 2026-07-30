@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Archive, Banknote, CalendarClock, Check, CheckCircle2, CreditCard, Loader2, Package, Scissors, User, Wallet, X,
+  Archive, Banknote, CalendarClock, CalendarCheck, Check, CheckCircle2, CreditCard, Loader2, Package, Scissors,
+  Sparkles, User, Wallet, X,
 } from 'lucide-react'
 import { formatTL } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
@@ -52,6 +53,12 @@ export interface HistoricalSaleValues {
   paidInstallmentCount: number
   /** cash | card | transfer */
   paymentMethod: string
+  /** Kullanılmış seansları uygulayan personel ("seansı kim yaptı"). */
+  appliedByStaffMemberId: string | null
+  /** true ise kullanılan seanslar için tamamlanmış geçmiş randevu kaydı da açılır. */
+  createSessionAppointments: boolean
+  /** Geçmiş randevular arasındaki gün aralığı. */
+  sessionIntervalDays: number
 }
 
 const FIELD = 'w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#9d8590]'
@@ -124,6 +131,10 @@ export default function HistoricalSaleDialog({
   const [total, setTotal] = useState(preset ? String(preset.price) : '')
   const [sessionsTotal, setSessionsTotal] = useState('')
   const [sessionsUsed, setSessionsUsed] = useState('')
+  /** Seansları uygulayan personel + geçmiş randevu kaydı ayarları. */
+  const [appliedStaffId, setAppliedStaffId] = useState('')
+  const [makeAppointments, setMakeAppointments] = useState(true)
+  const [sessionInterval, setSessionInterval] = useState('15')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -202,6 +213,24 @@ export default function HistoricalSaleDialog({
   const remaining = Math.max(0, totalNum - paidNum)
   const paidPct = totalNum > 0 ? Math.min(100, Math.round((paidNum / totalNum) * 100)) : 0
 
+  const sessionsTotalNum = Math.max(0, Number(sessionsTotal) || 0)
+  const sessionsUsedNum = Math.min(Math.max(0, Number(sessionsUsed) || 0), sessionsTotalNum)
+  const sessionsDone = sessionsTotalNum > 0 && sessionsUsedNum >= sessionsTotalNum
+  const intervalNum = Math.min(365, Math.max(1, Number(sessionInterval) || 15))
+
+  /** Oluşacak geçmiş randevuların tarihleri (önizleme) — bugünü aşan tarih bugüne çekilir. */
+  const appointmentDates = useMemo(() => {
+    if (!makeAppointments || sessionsUsedNum <= 0 || !soldAt) return []
+    const out: string[] = []
+    const today = new Date()
+    for (let i = 0; i < Math.min(sessionsUsedNum, 12); i++) {
+      const d = new Date(`${soldAt}T12:00:00`)
+      d.setDate(d.getDate() + intervalNum * i)
+      out.push((d > today ? today : d).toLocaleDateString('tr-TR'))
+    }
+    return out
+  }, [makeAppointments, sessionsUsedNum, soldAt, intervalNum])
+
   const effectiveName = useMemo(() => {
     if (kind === 'package') return packageOptions.find((p) => p.id === packageId)?.name || name
     if (kind === 'service') return serviceOptions.find((s) => s.id === serviceId)?.name || name
@@ -236,6 +265,9 @@ export default function HistoricalSaleDialog({
         paidAmount: Math.round(paidNum * 100) / 100,
         sessionsTotal: st,
         sessionsUsed: su,
+        appliedByStaffMemberId: appliedStaffId || null,
+        createSessionAppointments: makeAppointments && su > 0,
+        sessionIntervalDays: intervalNum,
         installmentCount: payKind === 'installment' ? instCount : 0,
         firstDueDate: payKind === 'installment' ? (firstDue || null) : null,
         paidInstallmentCount: payKind === 'installment' ? paidCount : 0,
@@ -475,6 +507,9 @@ export default function HistoricalSaleDialog({
 
             {/* Seanslar */}
             <div className={CARD}>
+              <span className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+                <Sparkles className="h-3.5 w-3.5" /> Seanslar
+              </span>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <span className={LABEL}>Toplam seans</span>
@@ -485,6 +520,81 @@ export default function HistoricalSaleDialog({
                   <input type="number" min={0} value={sessionsUsed} onChange={(e) => setSessionsUsed(e.target.value)} placeholder="0" className={`${FIELD} tabular-nums`} />
                 </label>
               </div>
+
+              {sessionsTotalNum > 0 && (
+                <div className="mt-2.5 space-y-2.5">
+                  {/* Seanslar bitti mi? Tek dokunuşla "hepsi yapıldı". */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[#efd6df] bg-[#fffafc] px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
+                      <CheckCircle2 className={`h-4 w-4 ${sessionsDone ? 'text-emerald-600' : 'text-[#c9b3bd]'}`} />
+                      {sessionsDone
+                        ? 'Tüm seanslar tamamlandı'
+                        : `${sessionsUsedNum}/${sessionsTotalNum} seans yapıldı · ${sessionsTotalNum - sessionsUsedNum} kaldı`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSessionsUsed(sessionsDone ? '0' : String(sessionsTotalNum))}
+                      className={`cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                        sessionsDone
+                          ? 'border-[#ead8df] bg-white text-[#705a66] hover:bg-[#fff4f8]'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {sessionsDone ? 'Sıfırla' : 'Tümü tamamlandı'}
+                    </button>
+                  </div>
+
+                  {sessionsUsedNum > 0 && (
+                    <>
+                      <label className="block">
+                        <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Seansları uygulayan personel</span>
+                        <select value={appliedStaffId} onChange={(e) => setAppliedStaffId(e.target.value)} className={FIELD}>
+                          <option value="">Belirtilmedi{staffId ? ' — satan personel yazılır' : ''}</option>
+                          {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </label>
+
+                      {/* Geçmiş seanslar randevular sayfasında da görünsün. */}
+                      <div className="rounded-[12px] border border-[#efd6df] bg-[#fffafc] p-3">
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={makeAppointments}
+                            onChange={(e) => setMakeAppointments(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 accent-[#c85776]"
+                          />
+                          <span>
+                            <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#352432]">
+                              <CalendarCheck className="h-4 w-4 text-[#c85776]" />
+                              Yapılan seanslar randevu geçmişine işlensin
+                            </span>
+                            <span className={`mt-0.5 block ${HINT}`}>
+                              {sessionsUsedNum} adet <b className="font-semibold text-[#4a3a44]">tamamlanmış</b> geçmiş randevu
+                              açılır; randevular sayfasında ve müşteri kartında görünür. Ciro iki kez sayılmasın diye
+                              randevu tutarı 0 yazılır.
+                            </span>
+                          </span>
+                        </label>
+
+                        {makeAppointments && (
+                          <div className="mt-2.5 flex flex-wrap items-end gap-3">
+                            <label className="block w-32">
+                              <span className={LABEL}>Seans aralığı (gün)</span>
+                              <input type="number" min={1} max={365} value={sessionInterval} onChange={(e) => setSessionInterval(e.target.value)} className={`${FIELD} tabular-nums`} />
+                            </label>
+                            {appointmentDates.length > 0 && (
+                              <span className={`flex-1 ${HINT}`}>
+                                Tarihler: {appointmentDates.join(' · ')}
+                                {sessionsUsedNum > appointmentDates.length ? ` … (+${sessionsUsedNum - appointmentDates.length})` : ''}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               {kind === 'package' && packageId && Number(sessionsTotal) > 0 && (
                 <p className={`mt-2 ${HINT}`}>Paket seçildiğinde seanslar paketin kalemlerinden açılır; buradaki &quot;kullanılan&quot; sayısı düşülür.</p>
               )}
@@ -551,8 +661,23 @@ export default function HistoricalSaleDialog({
                   )}
                 </>
               )}
-              {Number(sessionsTotal) > 0 && (
-                <SummaryRow label="Seans" value={`${Math.max(0, Number(sessionsUsed) || 0)}/${Number(sessionsTotal)}`} />
+              {sessionsTotalNum > 0 && (
+                <SummaryRow
+                  label="Seans"
+                  value={`${sessionsUsedNum}/${sessionsTotalNum}${sessionsDone ? ' · tamam' : ''}`}
+                  tone={sessionsDone ? 'text-[#2c7d63]' : undefined}
+                />
+              )}
+              {sessionsUsedNum > 0 && (
+                <SummaryRow
+                  label="Uygulayan"
+                  value={staffOptions.find((x) => x.id === appliedStaffId)?.name
+                    || staffOptions.find((x) => x.id === staffId)?.name
+                    || '—'}
+                />
+              )}
+              {sessionsUsedNum > 0 && makeAppointments && (
+                <SummaryRow label="Geçmiş randevu" value={`${sessionsUsedNum} kayıt`} />
               )}
             </div>
 
