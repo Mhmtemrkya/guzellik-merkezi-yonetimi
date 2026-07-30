@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/widgets/catalog_picker_field.dart';
 import 'customer_picker.dart';
 
 /// Müşteri kartındaki "Paket & Hizmet Satışları" paneli (web paritesi).
@@ -32,6 +33,312 @@ String _fmtDate(dynamic iso) {
 
 String _money(num? v) => NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0)
     .format(v ?? 0);
+
+// ------------------------------------------------------------------ özet ---
+
+/// Müşterinin satışlarının tek bakışta özeti (kart rozeti + satış modalı başlığı aynı kaynağı kullanır).
+class SalesSummary {
+  const SalesSummary({
+    required this.count,
+    required this.active,
+    required this.completed,
+    required this.cancelled,
+    required this.total,
+    required this.paid,
+    required this.remaining,
+    required this.sessionsTotal,
+    required this.sessionsUsed,
+    this.lastSaleName,
+    this.lastSaleAt,
+  });
+
+  /// İptaller dahil toplam satış kaydı.
+  final int count;
+  final int active;
+  final int completed;
+  final int cancelled;
+
+  /// Tutarlar İPTAL EDİLEN satışları saymaz — iptal, ciroyu şişirmemeli.
+  final double total;
+  final double paid;
+  final double remaining;
+  final int sessionsTotal;
+  final int sessionsUsed;
+  final String? lastSaleName;
+  final DateTime? lastSaleAt;
+
+  double get paidPct => total > 0 ? (paid / total).clamp(0.0, 1.0) : 0;
+}
+
+SalesSummary salesSummaryOf(List<Map<String, dynamic>> accounts) {
+  var active = 0, completed = 0, cancelled = 0, st = 0, su = 0;
+  var total = 0.0, paid = 0.0, remaining = 0.0;
+  String? lastName;
+  DateTime? lastAt;
+  for (final a in accounts) {
+    final status = _saleStatus(a);
+    if (status == 'Cancelled') {
+      cancelled++;
+      continue;
+    }
+    if (status == 'Active') {
+      active++;
+    } else {
+      completed++;
+    }
+    total += numberOf(a, const ['totalAmount']).toDouble();
+    paid += numberOf(a, const ['paidAmount']).toDouble();
+    final rem = numberOf(a, const ['remainingAmount']).toDouble();
+    remaining += rem > 0 ? rem : 0;
+    st += numberOf(a, const ['sessionsTotal']).toInt();
+    su += numberOf(a, const ['sessionsUsed']).toInt();
+    final soldAt = parseUtcToLocal(a['soldAtUtc'] ?? a['createdAtUtc']);
+    if (soldAt != null && (lastAt == null || soldAt.isAfter(lastAt))) {
+      lastAt = soldAt;
+      lastName = valueOf(a, const ['name']);
+    }
+  }
+  return SalesSummary(
+    count: accounts.length,
+    active: active,
+    completed: completed,
+    cancelled: cancelled,
+    total: total,
+    paid: paid,
+    remaining: remaining,
+    sessionsTotal: st,
+    sessionsUsed: su,
+    lastSaleName: lastName,
+    lastSaleAt: lastAt,
+  );
+}
+
+/// Satış listesini ayrı bir tam sayfa sheet'te açar (web'deki `CustomerSalesModal` karşılığı).
+Future<void> openCustomerSalesSheet(
+  BuildContext context, {
+  required ApiClient api,
+  required String customerId,
+  required String customerName,
+  required List<Map<String, dynamic>> accounts,
+  required Future<void> Function() onChanged,
+  bool canManage = true,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => CustomerSalesSheet(
+      api: api,
+      customerId: customerId,
+      customerName: customerName,
+      accounts: accounts,
+      onChanged: onChanged,
+      canManage: canManage,
+    ),
+  );
+}
+
+/// "Paket & Hizmet Satışları" sheet'i — müşteri kartında yalnız özet durur, tam liste burada.
+class CustomerSalesSheet extends StatefulWidget {
+  const CustomerSalesSheet({
+    required this.api,
+    required this.customerId,
+    required this.customerName,
+    required this.accounts,
+    required this.onChanged,
+    this.canManage = true,
+    super.key,
+  });
+
+  final ApiClient api;
+  final String customerId;
+  final String customerName;
+  final List<Map<String, dynamic>> accounts;
+  final Future<void> Function() onChanged;
+  final bool canManage;
+
+  @override
+  State<CustomerSalesSheet> createState() => _CustomerSalesSheetState();
+}
+
+class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
+  late List<Map<String, dynamic>> _accounts = widget.accounts;
+
+  /// Sheet ana ekranın state'inden kopya taşır; satış değişince hem ana ekranı
+  /// hem de kendi listesini tazeler (yoksa sheet eski veriyi göstermeye devam ederdi).
+  Future<void> _handleChanged() async {
+    await widget.onChanged();
+    try {
+      final res = await widget.api.get('/api/admin/accounts/',
+          query: {'page': 1, 'pageSize': 200, 'customerId': widget.customerId});
+      final list = apiItems(res)
+          .where((a) => '${a['customerId']}' == widget.customerId)
+          .toList();
+      if (mounted) setState(() => _accounts = list);
+    } catch (_) {
+      // ana ekran zaten tazelendi; sheet kapanınca güncel veri görünür
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = salesSummaryOf(_accounts);
+    return DraggableScrollableSheet(
+      initialChildSize: .92,
+      minChildSize: .5,
+      maxChildSize: .96,
+      expand: false,
+      builder: (context, controller) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSoft,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Başlık + özet şeridi
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSoft,
+                          borderRadius: BorderRadius.circular(13),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Icon(Icons.inventory_2_rounded,
+                            size: 20, color: AppColors.primaryDark),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Paket & Hizmet Satışları',
+                                style: TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.ink)),
+                            Text('${widget.customerName} · ${s.count} satış kaydı',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11.5, color: AppColors.muted)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Kapat',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                        color: AppColors.muted,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: _summaryTile('Toplam', _money(s.total), AppColors.ink)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _summaryTile('Tahsil', _money(s.paid), AppColors.success)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _summaryTile('Kalan', _money(s.remaining),
+                          s.remaining > .5 ? AppColors.danger : AppColors.success)),
+                    ],
+                  ),
+                  if (s.total > 0) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: s.paidPct,
+                              minHeight: 6,
+                              backgroundColor: AppColors.rose,
+                              valueColor: AlwaysStoppedAnimation(
+                                  s.remaining > .5 ? AppColors.primary : AppColors.success),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('%${(s.paidPct * 100).round()} tahsil edildi',
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink)),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                children: [
+                  CustomerSalesPanel(
+                    api: widget.api,
+                    customerId: widget.customerId,
+                    customerName: widget.customerName,
+                    accounts: _accounts,
+                    canManage: widget.canManage,
+                    onChanged: _handleChanged,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryTile(String label, String value, Color tone) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .6,
+                    color: AppColors.muted)),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w900, color: tone)),
+            ),
+          ],
+        ),
+      );
+}
 
 class CustomerSalesPanel extends StatefulWidget {
   const CustomerSalesPanel({
@@ -846,11 +1153,17 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   final _paid = TextEditingController();
   final _sessionsTotal = TextEditingController();
   final _sessionsUsed = TextEditingController();
-  final _installments = TextEditingController(text: '0');
+  final _installments = TextEditingController(text: '3');
   final _notes = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
+
+  // --- ödeme geçmişi (web paritesi): peşin mi taksitli mi, hangi aylar ödendi ---
+  String _payKind = 'cash'; // cash | installment
+  String _method = 'cash'; // cash | card | transfer
+  /// Vade sırasıyla kaç taksitin ödendiği.
+  int _paidCount = 0;
 
   @override
   void initState() {
@@ -896,7 +1209,43 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   }
 
   double get _totalNum => double.tryParse(_total.text.replaceAll(',', '.')) ?? 0;
-  double get _paidNum => double.tryParse(_paid.text.replaceAll(',', '.')) ?? 0;
+
+  /// Peşin satışta girilen tahsilat; boş bırakılırsa "tamamı ödendi" sayılır.
+  double get _cashPaid => _paid.text.trim().isEmpty
+      ? _totalNum
+      : (double.tryParse(_paid.text.replaceAll(',', '.')) ?? 0);
+
+  int get _instCount => (int.tryParse(_installments.text) ?? 0).clamp(0, 36);
+
+  /// Vade verilmezse backend satıştan bir ay sonrasını kullanır — önizleme de öyle gösterir.
+  DateTime? get _effectiveFirstDue {
+    if (_firstDue != null) return _firstDue;
+    if (_soldAt == null) return null;
+    return DateTime(_soldAt!.year, _soldAt!.month + 1, _soldAt!.day);
+  }
+
+  /// Taksit planı: backend `RebuildInstallments` ile aynı bölme (artan kuruş son takside).
+  List<({int no, DateTime due, double amount})> get _plan {
+    final first = _effectiveFirstDue;
+    if (_payKind != 'installment' || _instCount <= 0 || _totalNum <= 0 || first == null) {
+      return const [];
+    }
+    final per = (_totalNum / _instCount * 100).round() / 100;
+    final drift = ((_totalNum - per * _instCount) * 100).round() / 100;
+    return [
+      for (var i = 0; i < _instCount; i++)
+        (
+          no: i + 1,
+          due: DateTime(first.year, first.month + i, first.day),
+          amount: i == _instCount - 1 ? per + drift : per,
+        ),
+    ];
+  }
+
+  double get _paidNum => _payKind == 'cash'
+      ? _cashPaid.clamp(0, _totalNum)
+      : _plan.take(_paidCount).fold<double>(0, (s, x) => s + x.amount);
+
   double get _remaining => (_totalNum - _paidNum.clamp(0, _totalNum)).clamp(0, double.infinity);
 
   Future<void> _save() async {
@@ -909,7 +1258,14 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
     if (name.isEmpty) { setState(() => _error = 'Paket / hizmet adı zorunludur.'); return; }
     if (_soldAt == null) { setState(() => _error = 'Satış tarihi zorunludur.'); return; }
     if (_totalNum <= 0) { setState(() => _error = 'Tutar sıfırdan büyük olmalı.'); return; }
-    if (_paidNum > _totalNum) { setState(() => _error = 'Tahsil edilen tutar toplamdan fazla olamaz.'); return; }
+    if (_payKind == 'cash' && _cashPaid > _totalNum) {
+      setState(() => _error = 'Tahsil edilen tutar toplamdan fazla olamaz.');
+      return;
+    }
+    if (_payKind == 'installment' && _instCount <= 0) {
+      setState(() => _error = 'Taksitli satışta taksit sayısı en az 1 olmalı.');
+      return;
+    }
     final st = int.tryParse(_sessionsTotal.text) ?? 0;
     final su = int.tryParse(_sessionsUsed.text) ?? 0;
     if (su > st) { setState(() => _error = 'Kullanılan seans toplamdan fazla olamaz.'); return; }
@@ -932,10 +1288,14 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
         'serviceDefinitionId': _kind != 'package' ? _serviceId : null,
         'sessionsTotal': st,
         'sessionsUsed': su,
-        'installmentCount': _remaining > 0 ? (int.tryParse(_installments.text) ?? 0) : 0,
-        'firstDueDate': _firstDue == null
-            ? null
-            : DateFormat('yyyy-MM-dd').format(_firstDue!),
+        'installmentCount': _payKind == 'installment' ? _instCount : 0,
+        'firstDueDate': _payKind == 'installment' && _firstDue != null
+            ? DateFormat('yyyy-MM-dd').format(_firstDue!)
+            : null,
+        // Ödeme geçmişi: ödenen aylar kendi vade tarihleriyle tahsilata yazılır →
+        // geçmiş satış geçmiş cariye de düşer.
+        'paidInstallmentCount': _payKind == 'installment' ? _paidCount : 0,
+        'paymentMethod': _method,
         'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       });
       if (mounted) Navigator.pop(context, true);
@@ -1047,19 +1407,15 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                           ),
                         const SizedBox(height: 10),
 
+                        // Satış modalindeki gibi kategori + alt kategori + aramalı seçici
+                        // (düz dropdown'da 200 kalemli katalogda arama yoktu).
                         if (widget.preset == null && _kind == 'package')
-                          DropdownButtonFormField<String>(
-                            initialValue: _packageId,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Paket'),
-                            items: [
-                              for (final p in _packages)
-                                DropdownMenuItem(
-                                  value: '${p['id']}',
-                                  child: Text(valueOf(p, const ['name']),
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                            ],
+                          CatalogPickerField(
+                            items: _packages,
+                            selectedId: _packageId,
+                            label: 'Paket',
+                            emptyText: 'Paket bulunamadı.',
+                            clearable: true,
                             onChanged: (v) => setState(() {
                               _packageId = v;
                               final p = _packages.firstWhere((x) => '${x['id']}' == v,
@@ -1073,18 +1429,12 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                             }),
                           ),
                         if (widget.preset == null && _kind == 'service')
-                          DropdownButtonFormField<String>(
-                            initialValue: _serviceId,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Hizmet'),
-                            items: [
-                              for (final s in _services)
-                                DropdownMenuItem(
-                                  value: '${s['id']}',
-                                  child: Text(valueOf(s, const ['name']),
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                            ],
+                          CatalogPickerField(
+                            items: _services,
+                            selectedId: _serviceId,
+                            label: 'Hizmet',
+                            emptyText: 'Hizmet bulunamadı.',
+                            clearable: true,
                             onChanged: (v) => setState(() {
                               _serviceId = v;
                               final s = _services.firstWhere((x) => '${x['id']}' == v,
@@ -1129,28 +1479,17 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                         ),
                         const SizedBox(height: 10),
 
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _total,
-                                keyboardType: TextInputType.number,
-                                onChanged: (_) => setState(() {}),
-                                decoration: const InputDecoration(labelText: 'Toplam tutar (₺) *'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _paid,
-                                keyboardType: TextInputType.number,
-                                onChanged: (_) => setState(() {}),
-                                decoration: const InputDecoration(labelText: 'Tahsil edilen (₺)'),
-                              ),
-                            ),
-                          ],
+                        TextField(
+                          controller: _total,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(labelText: 'Toplam tutar (₺) *'),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 14),
+
+                        // NASIL ÖDENDİ — peşin mi, taksitliyse hangi aylar ödendi (web paritesi).
+                        _paymentSection(),
+                        const SizedBox(height: 14),
                         Row(
                           children: [
                             Expanded(
@@ -1193,35 +1532,6 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                           ),
                         ],
 
-                        if (_remaining > 0) ...[
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.all(11),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceSoft,
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Kalan borç: ${_money(_remaining)}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w800, fontSize: 12)),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: _installments,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(labelText: 'Taksit sayısı'),
-                                ),
-                                const SizedBox(height: 8),
-                                _dateField('İlk vade (opsiyonel)', _firstDue,
-                                    (d) => setState(() => _firstDue = d),
-                                    lastDate: DateTime.now().add(const Duration(days: 3650))),
-                              ],
-                            ),
-                          ),
-                        ],
-
                         const SizedBox(height: 10),
                         TextField(
                           controller: _notes,
@@ -1256,6 +1566,209 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  /// "Nasıl ödendi?" bloğu: peşin / taksitli + yöntem + hangi ayların ödendiği.
+  Widget _paymentSection() {
+    final plan = _plan;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSoft.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet_rounded,
+                  size: 15, color: AppColors.primary),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('Nasıl ödendi?',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryDark)),
+              ),
+              DropdownButton<String>(
+                value: _method,
+                underline: const SizedBox.shrink(),
+                isDense: true,
+                style: const TextStyle(fontSize: 12.5, color: AppColors.ink),
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('Nakit')),
+                  DropdownMenuItem(value: 'card', child: Text('Kart')),
+                  DropdownMenuItem(value: 'transfer', child: Text('Havale/EFT')),
+                ],
+                onChanged: (v) => setState(() => _method = v ?? 'cash'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                  value: 'cash', label: Text('Peşin'), icon: Icon(Icons.payments_rounded, size: 15)),
+              ButtonSegment(
+                  value: 'installment',
+                  label: Text('Taksitli'),
+                  icon: Icon(Icons.credit_card_rounded, size: 15)),
+            ],
+            selected: {_payKind},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => setState(() => _payKind = s.first),
+          ),
+          const SizedBox(height: 10),
+
+          if (_payKind == 'cash') ...[
+            TextField(
+              controller: _paid,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Tahsil edilen (₺)',
+                hintText: _totalNum > 0 ? '${_totalNum.toInt()} (tamamı)' : '0',
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text('Boş bırakırsanız tamamı ödendi sayılır; tahsilat satış tarihine yazılır.',
+                style: TextStyle(fontSize: 11, color: AppColors.muted)),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _installments,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {
+                      if (_paidCount > _instCount) _paidCount = _instCount;
+                    }),
+                    decoration: const InputDecoration(labelText: 'Taksit sayısı *'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _dateField('İlk taksit ayı', _firstDue,
+                      (d) => setState(() => _firstDue = d),
+                      lastDate: DateTime.now().add(const Duration(days: 3650))),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (plan.isEmpty)
+              const Text('Plan için satış tarihi, tutar ve taksit sayısını girin.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.muted))
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Hangi aylar ödendi? $_paidCount/${plan.length}',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _paidCount = plan.length),
+                    style: TextButton.styleFrom(
+                        foregroundColor: AppColors.success,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    child: const Text('Tümü', style: TextStyle(fontSize: 11.5)),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _paidCount = 0),
+                    style: TextButton.styleFrom(
+                        foregroundColor: AppColors.muted,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    child: const Text('Hiçbiri', style: TextStyle(fontSize: 11.5)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // Bir aya dokununca o ay ve öncesi ödenmiş sayılır (taksitler vade sırasıyla kapanır).
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final p in plan)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(11),
+                      onTap: () => setState(
+                          () => _paidCount = _paidCount == p.no ? p.no - 1 : p.no),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: p.no <= _paidCount
+                              ? AppColors.success.withValues(alpha: .10)
+                              : AppColors.surface,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                              color: p.no <= _paidCount
+                                  ? AppColors.success.withValues(alpha: .45)
+                                  : AppColors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              p.no <= _paidCount
+                                  ? Icons.check_circle_rounded
+                                  : Icons.circle_outlined,
+                              size: 15,
+                              color: p.no <= _paidCount ? AppColors.success : AppColors.muted,
+                            ),
+                            const SizedBox(width: 6),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(DateFormat('MMM yyyy', 'tr_TR').format(p.due),
+                                    style: const TextStyle(
+                                        fontSize: 11.5, fontWeight: FontWeight.w800)),
+                                Text(_money(p.amount),
+                                    style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: p.no <= _paidCount
+                                            ? AppColors.success
+                                            : AppColors.muted)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                  'Bir aya dokununca o ay ve öncesi ödenmiş sayılır; ödemeler kendi vade tarihiyle cariye işlenir.',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted)),
+            ],
+          ],
+
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Tahsil edilen ${_money(_paidNum)}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ),
+              Text(
+                _remaining > .5 ? '${_money(_remaining)} kalan' : 'Borç kalmadı',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: _remaining > .5 ? AppColors.danger : AppColors.success),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

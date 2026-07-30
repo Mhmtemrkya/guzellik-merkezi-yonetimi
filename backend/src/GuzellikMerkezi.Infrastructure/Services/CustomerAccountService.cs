@@ -419,18 +419,54 @@ public sealed class CustomerAccountService : ICustomerAccountService
         }
 
         var branchId = request.BranchId ?? customer.BranchId;
-        // Peşinat = geçmişte tahsil edilmiş tutar; kalan borç taksitlere bölünür.
         var paid = Math.Min(request.PaidAmount, request.TotalAmount);
-        var account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, paid);
-        account.SetNotes(request.Notes);
-        account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+        var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "cash" : request.PaymentMethod.Trim();
 
-        var remaining = request.TotalAmount - paid;
-        if (request.InstallmentCount > 0 && remaining > 0)
+        CustomerAccount account;
+        if (request.PaidInstallmentCount is { } paidInstallments)
         {
-            // Vade verilmediyse satış tarihinin bir ay sonrasından başlatılır.
-            var firstDue = request.FirstDueDate ?? DateOnly.FromDateTime(soldAtUtc.AddMonths(1));
-            account.RebuildInstallments(request.InstallmentCount, firstDue);
+            // YENİ AKIŞ — ödeme geçmişi de kaydedilir: peşinat yok, plan TOPLAM tutar üzerinden
+            // kurulur ve ödenmiş her taksit KENDİ VADE TARİHİYLE tahsilat olarak yazılır. Böylece
+            // geçmiş satış, geçmiş cari/tahsilat dökümünde (ay ay) doğru tarihlerle görünür.
+            account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, 0m);
+            account.SetNotes(request.Notes);
+            account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+
+            if (request.InstallmentCount > 0)
+            {
+                var firstDue = request.FirstDueDate ?? DateOnly.FromDateTime(soldAtUtc.AddMonths(1));
+                account.RebuildInstallments(request.InstallmentCount, firstDue);
+
+                var payCount = Math.Clamp(paidInstallments, 0, request.InstallmentCount);
+                foreach (var inst in account.Installments.OrderBy(i => i.No).Take(payCount))
+                {
+                    if (inst.Amount <= 0) continue;
+                    // Vade günü öğlen UTC: gün kayması olmadan o aya düşsün.
+                    var occurred = DateTime.SpecifyKind(inst.DueDate.ToDateTime(new TimeOnly(12, 0)), DateTimeKind.Utc);
+                    account.RegisterPayment(inst.Amount, method, "Geçmiş satış", occurred);
+                }
+            }
+            else if (paid > 0)
+            {
+                // Peşin: tek tahsilat, satış gününde.
+                account.RegisterPayment(paid, method, "Geçmiş satış (peşin)", soldAtUtc);
+            }
+        }
+        else
+        {
+            // ESKİ AKIŞ (alan göndermeyen istemciler): peşinat = geçmişte tahsil edilmiş tutar;
+            // kalan borç taksitlere bölünür.
+            account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, paid);
+            account.SetNotes(request.Notes);
+            account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
+
+            var remaining = request.TotalAmount - paid;
+            if (request.InstallmentCount > 0 && remaining > 0)
+            {
+                // Vade verilmediyse satış tarihinin bir ay sonrasından başlatılır.
+                var firstDue = request.FirstDueDate ?? DateOnly.FromDateTime(soldAtUtc.AddMonths(1));
+                account.RebuildInstallments(request.InstallmentCount, firstDue);
+            }
         }
 
         _db.CustomerAccounts.Add(account);
@@ -467,7 +503,17 @@ public sealed class CustomerAccountService : ICustomerAccountService
 
         await _audit.LogAsync(tenantId, account.BranchId, "CreateHistorical", "CustomerAccount", account.Id,
             $"Geçmiş satış girildi: {account.Name} · {soldAtUtc:dd.MM.yyyy} · {account.TotalAmount:N2}",
-            new { account.Name, account.TotalAmount, paid, soldAtUtc, request.SessionsTotal, request.SessionsUsed }, cancellationToken);
+            new
+            {
+                account.Name,
+                account.TotalAmount,
+                paid = account.PaidAmount,
+                soldAtUtc,
+                request.InstallmentCount,
+                request.PaidInstallmentCount,
+                request.SessionsTotal,
+                request.SessionsUsed,
+            }, cancellationToken);
 
         var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, 0m, 0, cancellationToken));

@@ -57,14 +57,16 @@ export default function SessionProgressRing({
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 360, damping: 18, delay: 0.6 }}
-            className="grid h-6 w-6 place-items-center rounded-full bg-emerald-50 text-emerald-600"
+            className="grid place-items-center rounded-full bg-emerald-50 text-emerald-600"
+            style={{ width: size * 0.42, height: size * 0.42 }}
           >
-            <Check className="h-3.5 w-3.5" strokeWidth={2.6} />
+            <Check style={{ width: size * 0.26, height: size * 0.26 }} strokeWidth={2.6} />
           </motion.span>
         ) : (
+          /* Punto halka boyuna göre ölçeklenir: kompakt ızgarada (44px) sabit 17px taşıyordu. */
           <div className="text-center leading-none">
-            <div className="font-display text-[17px] tabular-nums text-[#c85776]">{remaining}</div>
-            <div className="text-[8px] font-mono tracking-wide text-[#352432]/40">/ {total}</div>
+            <div className="font-display tabular-nums text-[#c85776]" style={{ fontSize: Math.max(12, size * 0.3) }}>{remaining}</div>
+            <div className="tracking-wide text-[#705a66]" style={{ fontSize: Math.max(9, size * 0.17) }}>/ {total}</div>
           </div>
         )}
       </div>

@@ -17,7 +17,8 @@ import { createPortal } from 'react-dom'
  * KATMAN ÖLÇEĞİ (tek kaynak — yeni modal eklerken buraya bak):
  *   0–70   panel iskeleti: PanelBackdrop 0 · main 10 · sidebar 30 · mobil çekmece/QuickMenu 70
  *   120    müşteri detay modali (CustomerDetailModal)
- *   130    satış detay modali (SaleDetailModal) — müşteri modalinin içinden açılır
+ *   125    paket & hizmet satışları modali (CustomerSalesModal) — müşteri modalinin içinden açılır
+ *   130    satış detay modali (SaleDetailModal) — satış listesinin içinden açılır
  *   135    geçmiş satış modali (HistoricalSaleDialog)
  *   140    gün çizelgesi tam ekran (DayScheduleModal)
  *   145    sayfa seviyesi elle yazılmış modaller (içeri aktarma, cihaz, takvim linki)

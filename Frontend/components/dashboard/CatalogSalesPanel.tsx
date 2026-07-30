@@ -20,7 +20,7 @@ import { apiItems, formatTL, normalizeAccount } from '@/lib/apiMappers'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiCustomerAccount, CustomerAccount, SaleStatusKey } from '@/lib/types'
 import SaleDetailModal from '@/components/dashboard/SaleDetailModal'
-import HistoricalSaleDialog, { type HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
+import HistoricalSaleDialog, { type HistoricalCatalogOption, type HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import { formatSaleDate } from '@/components/dashboard/CustomerSalesPanel'
 
 /**
@@ -70,8 +70,8 @@ export default function CatalogSalesPanel({
   kind: 'service' | 'package' | 'category'
   tenantId?: string
   staffOptions: { id: string; name: string }[]
-  packageOptions: { id: string; name: string; price: number }[]
-  serviceOptions: { id: string; name: string; price: number }[]
+  packageOptions: HistoricalCatalogOption[]
+  serviceOptions: HistoricalCatalogOption[]
   canManage?: boolean
   busy?: boolean
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>

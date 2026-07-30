@@ -768,16 +768,19 @@ class _OverviewTab extends StatelessWidget {
                   children: [for (final a in recent) _ApptRow(appt: a)],
                 ),
         ),
-        // Paket & hizmet satışları: aktif / biten / iptal + geçmiş satış girişi (web paritesi).
-        _Section(
-          title: 'Paket & Hizmet Satışları',
-          icon: Icons.inventory_2_rounded,
-          child: CustomerSalesPanel(
-            api: state.widget.api,
-            customerId: '${c['id']}',
-            customerName: state._name,
-            accounts: state._accounts,
-            onChanged: state._reload,
+        // Paket & hizmet satışları: kartta yalnız ÖZET durur; tam liste ayrı sheet'te
+        // açılır (web'deki CustomerSalesModal paritesi).
+        Builder(
+          builder: (ctx) => _SalesSummaryCard(
+            summary: salesSummaryOf(state._accounts),
+            onOpen: () => openCustomerSalesSheet(
+              ctx,
+              api: state.widget.api,
+              customerId: '${c['id']}',
+              customerName: state._name,
+              accounts: state._accounts,
+              onChanged: state._reload,
+            ),
           ),
         ),
       ],
@@ -1109,6 +1112,8 @@ class _SessionsCard extends StatefulWidget {
 
 class _SessionsCardState extends State<_SessionsCard> {
   late Future<List<Map<String, dynamic>>> _future;
+  /// Biten seanslar varsayılan olarak katlanır — kalabalığın asıl sebebi bunlardı.
+  bool _showDone = false;
 
   @override
   void initState() {
@@ -1134,28 +1139,121 @@ class _SessionsCardState extends State<_SessionsCard> {
         }
         final sessions = snapshot.data ?? const [];
         if (sessions.isEmpty) return const SizedBox.shrink();
+
+        // HİZMETE GÖRE GRUPLAMA (web paritesi): her paket kalemi ayrı seans kaydı açtığı için
+        // aynı hizmet "0/1" satırıyla defalarca listeleniyordu; tek kutuda toplanır.
+        final groups = <String, _SessionGroup>{};
+        for (final s in sessions) {
+          final name = valueOf(s, const ['serviceName'], fallback: 'Hizmet');
+          final key = '${s['serviceDefinitionId'] ?? name}';
+          final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
+          final used = (s['usedSessions'] as num?)?.toInt() ?? 0;
+          final rem = (s['remainingSessions'] as num?)?.toInt() ?? (total - used);
+          final g = groups[key] ?? _SessionGroup(name);
+          g.total += total;
+          g.remaining += rem > 0 ? rem : 0;
+          g.bundles += 1;
+          groups[key] = g;
+        }
+        final list = groups.values.toList()
+          ..sort((a, b) => a.remaining.compareTo(b.remaining));
+        final totalAll = list.fold<int>(0, (s, g) => s + g.total);
+        final remainingAll = list.fold<int>(0, (s, g) => s + g.remaining);
+        final usedAll = totalAll - remainingAll;
+        final open = list.where((g) => g.remaining > 0).toList();
+        final finished = list.where((g) => g.remaining <= 0).toList();
+
         return _Section(
           title: 'Satılan Paket / Seanslar',
           icon: Icons.layers_rounded,
+          trailing: Text('${list.length} hizmet',
+              style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.muted)),
           child: Column(
-            children: [for (final s in sessions) _sessionRow(s)],
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _summaryPill('$remainingAll seans kaldı', AppColors.primaryDark),
+                  const SizedBox(width: 6),
+                  _summaryPill('$usedAll/$totalAll kullanıldı', AppColors.muted),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: totalAll == 0 ? 0 : (usedAll / totalAll).clamp(0.0, 1.0),
+                  minHeight: 6,
+                  backgroundColor: AppColors.rose,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final g in open) _groupRow(g),
+              if (finished.isNotEmpty) ...[
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setState(() => _showDone = !_showDone),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: .07),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.success.withValues(alpha: .3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded,
+                            size: 16, color: AppColors.success),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text('${finished.length} hizmetin seansları tamamlandı',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.success)),
+                        ),
+                        Icon(_showDone
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            size: 20, color: AppColors.success),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_showDone) ...[
+                  const SizedBox(height: 8),
+                  for (final g in finished) _groupRow(g),
+                ],
+              ],
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _sessionRow(Map<String, dynamic> s) {
-    final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
-    final used = (s['usedSessions'] as num?)?.toInt() ?? 0;
-    final remaining =
-        (s['remainingSessions'] as num?)?.toInt() ?? (total - used);
-    final ratio = total == 0 ? 0.0 : (used / total).clamp(0.0, 1.0);
-    final done = remaining <= 0;
+  Widget _summaryPill(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .09),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: .3)),
+        ),
+        child: Text(text,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+      );
+
+  Widget _groupRow(_SessionGroup g) {
+    final used = g.total - g.remaining;
+    final ratio = g.total == 0 ? 0.0 : (used / g.total).clamp(0.0, 1.0);
+    final done = g.remaining <= 0;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
           color: done
               ? AppColors.success.withValues(alpha: .06)
@@ -1171,33 +1269,46 @@ class _SessionsCardState extends State<_SessionsCard> {
             Row(
               children: [
                 Expanded(
-                  child: Text(valueOf(s, const ['serviceName'], fallback: 'Hizmet'),
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  child: Text(
+                      g.bundles > 1 ? '${g.name}  ×${g.bundles}' : g.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                 ),
-                Text(done ? 'Tamamlandı' : '$remaining kaldı',
+                Text(done ? 'Tamamlandı' : '${g.remaining} kaldı',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
                         color: done ? AppColors.success : AppColors.primaryDark)),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 7),
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: ratio,
-                minHeight: 8,
-                backgroundColor: AppColors.surfaceSoft,
+                minHeight: 7,
+                backgroundColor: AppColors.rose,
                 color: done ? AppColors.success : AppColors.primary,
               ),
             ),
-            const SizedBox(height: 6),
-            Text('$used / $total seans kullanıldı',
-                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            const SizedBox(height: 5),
+            Text('$used / ${g.total} seans kullanıldı',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
           ],
         ),
       ),
     );
   }
+}
+
+/// Aynı hizmetin tüm paketlerinden toplanan seans bakiyesi.
+class _SessionGroup {
+  _SessionGroup(this.name);
+  final String name;
+  int total = 0;
+  int remaining = 0;
+  int bundles = 0;
 }
 
 // ===========================================================================
@@ -2115,6 +2226,196 @@ class _ApptRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Genel Bakış'taki satış özeti — dokununca tam satış listesi sheet'i açılır (web paritesi).
+class _SalesSummaryCard extends StatelessWidget {
+  const _SalesSummaryCard({required this.summary, required this.onOpen});
+
+  final SalesSummary summary;
+  final VoidCallback onOpen;
+
+  static final _money = NumberFormat.currency(
+      locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
+
+  @override
+  Widget build(BuildContext context) {
+    final s = summary;
+    return _Section(
+      title: 'Paket & Hizmet Satışları',
+      icon: Icons.inventory_2_rounded,
+      trailing: TextButton(
+        onPressed: onOpen,
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primaryDark,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          visualDensity: VisualDensity.compact,
+        ),
+        child: const Text('Tümünü aç',
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onOpen,
+        child: s.count == 0
+            ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Column(
+                  children: [
+                    Text('Satış kaydı yok.',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                    SizedBox(height: 4),
+                    Text('Geçmiş satış ekle →',
+                        style: TextStyle(
+                            color: AppColors.primaryDark,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('TOPLAM SATIŞ TUTARI',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: .6,
+                                    color: AppColors.muted)),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(_money.format(s.total),
+                                  style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.ink)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSoft,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('${s.count} satış',
+                                style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primaryDark)),
+                            const Icon(Icons.chevron_right_rounded,
+                                size: 16, color: AppColors.primaryDark),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: s.paidPct,
+                            minHeight: 6,
+                            backgroundColor: AppColors.rose,
+                            valueColor: AlwaysStoppedAnimation(
+                                s.remaining > .5 ? AppColors.primary : AppColors.success),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('%${(s.paidPct * 100).round()}',
+                          style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Tahsil edilen ${_money.format(s.paid)}',
+                            style: const TextStyle(
+                                fontSize: 11.5, color: AppColors.muted)),
+                      ),
+                      Text(
+                        s.remaining > .5
+                            ? '${_money.format(s.remaining)} kalan'
+                            : 'Borç yok',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: s.remaining > .5
+                                ? AppColors.danger
+                                : AppColors.success),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (s.active > 0) _statChip('Devam eden ${s.active}', AppColors.success),
+                      if (s.completed > 0)
+                        _statChip('Biten ${s.completed}', const Color(0xFF3B82F6)),
+                      if (s.cancelled > 0) _statChip('İptal ${s.cancelled}', AppColors.danger),
+                      if (s.sessionsTotal > 0)
+                        _statChip('${s.sessionsUsed}/${s.sessionsTotal} seans',
+                            AppColors.primaryDark),
+                    ],
+                  ),
+                  if (s.lastSaleName != null) ...[
+                    const SizedBox(height: 10),
+                    const Divider(height: 1, color: AppColors.border),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Son satış: ${s.lastSaleName}'
+                      '${s.lastSaleAt == null ? '' : ' · ${DateFormat('d MMM yyyy', 'tr_TR').format(s.lastSaleAt!)}'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+                    ),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _statChip(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: .35)),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 10.5, fontWeight: FontWeight.w800, color: color)),
+      );
 }
 
 class _Section extends StatelessWidget {

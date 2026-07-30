@@ -85,7 +85,16 @@ public sealed record CreateHistoricalSaleRequest(
     int InstallmentCount = 0,
     DateOnly? FirstDueDate = null,
     string? Notes = null,
-    Guid? BranchId = null);
+    Guid? BranchId = null,
+    /// <summary>
+    /// Geçmiş satışın taksitlerinden KAÇININ ödendiği (vade sırasıyla). Verildiğinde taksit planı
+    /// TOPLAM tutar üzerinden kurulur ve ödenmiş her ay, KENDİ VADE TARİHİYLE tahsilat olarak
+    /// yazılır — böylece geçmiş satış, geçmiş cari/tahsilat dökümünde de görünür.
+    /// <c>null</c> ise eski davranış korunur (ödenen tutar peşinat sayılır, taksitler kalan borcu böler).
+    /// </summary>
+    int? PaidInstallmentCount = null,
+    /// <summary>Geçmiş tahsilatın yöntemi (cash/card/transfer) — ödeme dökümünde görünsün.</summary>
+    string? PaymentMethod = null);
 
 /// <summary>Satış iptali + gerekçesi.</summary>
 public sealed record CancelSaleRequest(string? Reason);

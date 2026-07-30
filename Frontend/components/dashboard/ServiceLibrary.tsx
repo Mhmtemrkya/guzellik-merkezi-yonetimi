@@ -138,8 +138,9 @@ export default function ServiceLibrary({
   // Satışlar panelin kendi içinde, seçili hizmete göre SUNUCUDA süzülerek çekilir
   // (bkz. CatalogSalesPanel) — burada tüm cari listesi tutulmaz.
   const staffOptions = useMemo(() => staff.map((s) => ({ id: s.id, name: s.name })), [staff])
-  const packageOptions = useMemo(() => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice })), [packages])
-  const serviceOptions = useMemo(() => services.map((s) => ({ id: s.id, name: s.name, price: s.price })), [services])
+  // Kategori bilgisi de taşınır: geçmiş satış modalindeki aramalı seçici süzgeç pill'lerini bundan çıkarır.
+  const packageOptions = useMemo(() => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice, cat: p.category, sub: p.subCategory, meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans` })), [packages])
+  const serviceOptions = useMemo(() => services.map((s) => ({ id: s.id, name: s.name, price: s.price, cat: s.group, sub: s.subGroup, meta: formatTL(s.price) })), [services])
 
   const [salesBusy, setSalesBusy] = useState(false)
   const runSaleAction = async (fn: () => Promise<unknown>): Promise<void> => {
@@ -160,6 +161,9 @@ export default function ServiceLibrary({
       sessionsUsed: values.sessionsUsed,
       installmentCount: values.installmentCount,
       firstDueDate: values.firstDueDate,
+      // Ödeme geçmişi (peşin / kaçıncı aya kadar ödendi) — geçmiş cariye de tarihleriyle düşsün.
+      paidInstallmentCount: values.paidInstallmentCount,
+      paymentMethod: values.paymentMethod,
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))

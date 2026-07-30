@@ -301,7 +301,8 @@ export default function AccountDetailModal({
               {account.items.length > 0 && (
                 <div className="rounded-[16px] border border-[#ead8df] bg-white p-3.5">
                   <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Satış kalemleri</div>
-                  <div className="mt-2 space-y-1.5">
+                  {/* Kalem çoksa liste uzayıp kartı boğuyordu: geniş ekranda iki sütuna açılır. */}
+                  <div className="mt-2 grid gap-1.5 lg:grid-cols-2">
                     {account.items.map((it, i) => (
                       <div key={`${it.serviceDefinitionId || 'x'}-${i}`} className="flex items-center justify-between gap-2 rounded-[11px] bg-[#fffafc] px-3 py-2 text-[12px]">
                         <span className="flex min-w-0 items-center gap-1.5">

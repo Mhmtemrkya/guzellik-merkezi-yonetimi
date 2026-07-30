@@ -373,6 +373,10 @@ function MusterilerPageInner() {
       sessionsUsed: values.sessionsUsed,
       installmentCount: values.installmentCount,
       firstDueDate: values.firstDueDate,
+      // Ödeme geçmişi: kaç taksit ödenmiş + yöntem. Backend ödenen ayları KENDİ VADE
+      // TARİHLERİYLE tahsilat yazar → geçmiş satış geçmiş cariye de düşer.
+      paidInstallmentCount: values.paidInstallmentCount,
+      paymentMethod: values.paymentMethod,
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))
@@ -689,11 +693,12 @@ function MusterilerPageInner() {
             onDelete={handleDeleteCustomer}
             salesPanel={selected ? (
               <CustomerSalesPanel
+                variant="flush"
                 customerName={selected.name}
                 accounts={accounts}
                 staffOptions={staffList.map((s) => ({ id: s.id, name: s.name }))}
-                packageOptions={packagesList.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice }))}
-                serviceOptions={servicesList.map((s) => ({ id: s.id, name: s.name, price: s.price }))}
+                packageOptions={packagesList.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice, cat: p.category, sub: p.subCategory, meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans` }))}
+                serviceOptions={servicesList.map((s) => ({ id: s.id, name: s.name, price: s.price, cat: s.group, sub: s.subGroup, meta: formatTL(s.price) }))}
                 busy={salesBusy}
                 onCreateHistorical={handleCreateHistoricalSale}
                 onCancelSale={handleCancelSale}
