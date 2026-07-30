@@ -55,6 +55,18 @@ class ConsentForm {
   List<String> get checkItems => _list(raw['checkItems']);
   List<String> get checkedItems => _list(raw['checkedItems']);
 
+  /// Formdaki Evet/Hayır soruları (şablondan kopyalanır).
+  List<ConsentQuestion> get questions => [
+        for (final q in (raw['questions'] as List? ?? const []))
+          if (q is Map) ConsentQuestion(q.cast<String, dynamic>()),
+      ];
+
+  /// Müşterinin verdiği yanıtlar (yalnız imzalanmış formda dolu).
+  List<ConsentAnswer> get answers => [
+        for (final a in (raw['answers'] as List? ?? const []))
+          if (a is Map) ConsentAnswer(a.cast<String, dynamic>()),
+      ];
+
   static String? _text(dynamic v) {
     final s = '${v ?? ''}'.trim();
     return s.isEmpty ? null : s;
@@ -63,6 +75,35 @@ class ConsentForm {
   static List<String> _list(dynamic v) {
     if (v is List) return v.map((e) => '$e').where((e) => e.trim().isNotEmpty).toList();
     return const [];
+  }
+}
+
+/// Onam formunda müşteriye sorulan EVET/HAYIR sorusu (anamnez/beyan).
+class ConsentQuestion {
+  ConsentQuestion(this.raw);
+  final Map<String, dynamic> raw;
+
+  String get id => '${raw['id'] ?? ''}';
+  String get text => '${raw['text'] ?? ''}';
+
+  /// Varsayılan zorunlu — sunucu da aynı kabulü yapar.
+  bool get required => raw['required'] != false;
+
+  /// true ise yanıtın altında serbest açıklama alanı çıkar.
+  bool get note => raw['note'] == true;
+}
+
+/// Müşterinin bir soruya verdiği yanıt.
+class ConsentAnswer {
+  ConsentAnswer(this.raw);
+  final Map<String, dynamic> raw;
+
+  String get id => '${raw['id'] ?? ''}';
+  String get text => '${raw['text'] ?? ''}';
+  bool get answer => raw['answer'] == true;
+  String? get note {
+    final s = '${raw['note'] ?? ''}'.trim();
+    return s.isEmpty ? null : s;
   }
 }
 
@@ -99,3 +140,39 @@ class ConsentStatus {
   List<ConsentRequirement> get missing => requirements.where((r) => !r.isSigned).toList();
   bool get complete => missing.isEmpty;
 }
+
+/// Salonlarda en sık sorulan sağlık beyanları — yeni formda hazır gelir, silinebilir.
+List<QuestionDraft> starterQuestions() => [
+      QuestionDraft(id: 'q-hamile', text: 'Hamile misiniz veya emziriyor musunuz?'),
+      QuestionDraft(id: 'q-ilac', text: 'Düzenli kullandığınız ilaç var mı?', note: true),
+      QuestionDraft(id: 'q-alerji', text: 'Bilinen bir alerjiniz var mı?', note: true),
+      QuestionDraft(id: 'q-kronik', text: 'Kronik bir rahatsızlığınız var mı?', required: false, note: true),
+    ];
+
+/// Düzenlenebilir soru taslağı (JSON'a `{id,text,required,note}` olarak gider).
+class QuestionDraft {
+  QuestionDraft({
+    required this.id,
+    required this.text,
+    this.required = true,
+    this.note = false,
+  });
+
+  factory QuestionDraft.fromJson(Map<String, dynamic> raw) => QuestionDraft(
+        id: '${raw['id'] ?? ''}'.isEmpty ? newQuestionId() : '${raw['id']}',
+        text: '${raw['text'] ?? ''}',
+        required: raw['required'] != false,
+        note: raw['note'] == true,
+      );
+
+  String id;
+  String text;
+  bool required;
+  bool note;
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'text': text.trim(), 'required': required, 'note': note};
+}
+
+String newQuestionId() =>
+    'q-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';

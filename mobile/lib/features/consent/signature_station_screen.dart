@@ -34,6 +34,8 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
   String? _station;
   ConsentForm? _form;
   final Set<String> _checked = {};
+  /// Soru kimliği → (yanıt, açıklama). Yanıtlanmayan soru haritada bulunmaz.
+  final Map<String, ({bool answer, String note})> _answers = {};
   String? _signature;
   bool _busy = false;
   bool _online = true;
@@ -122,6 +124,7 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
       _station = null;
       _form = null;
       _checked.clear();
+      _answers.clear();
       _signature = null;
       _error = null;
       _doneTitle = null;
@@ -142,6 +145,7 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
         setState(() {
           _form = incoming;
           _checked.clear();
+          _answers.clear();
           _signature = null;
           _signerName.text = incoming.customerName ?? '';
           _error = null;
@@ -170,6 +174,16 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
     try {
       await widget.api.post('/api/consent/session/$token/sign', {
         'checkedItems': _checked.toList(),
+        'answers': [
+          for (final q in form.questions)
+            if (_answers[q.id] != null)
+              {
+                'id': q.id,
+                'text': q.text,
+                'answer': _answers[q.id]!.answer,
+                'note': _answers[q.id]!.note.trim().isEmpty ? null : _answers[q.id]!.note.trim(),
+              },
+        ],
         'signatureImage': _signature,
         'signerName': _signerName.text.trim().isEmpty ? form.customerName : _signerName.text.trim(),
       });
@@ -178,6 +192,7 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
         _doneTitle = form.title;
         _form = null;
         _checked.clear();
+        _answers.clear();
         _signature = null;
       });
       Timer(const Duration(seconds: 6), () {
@@ -195,10 +210,17 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
     return items.every(_checked.contains);
   }
 
+  /// Zorunlu soruların tamamı yanıtlandı mı? (Sunucu da ayrıca doğrular.)
+  bool get _allAnswered {
+    final questions = _form?.questions ?? const <ConsentQuestion>[];
+    return questions.every((q) => !q.required || _answers.containsKey(q.id));
+  }
+
   bool get _canSubmit {
     final form = _form;
     if (form == null || _busy) return false;
     if (!_allChecked) return false;
+    if (!_allAnswered) return false;
     if (form.requiresSignature && (_signature == null || _signature!.isEmpty)) return false;
     return true;
   }
@@ -377,6 +399,7 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
     }
 
     final items = form.checkItems;
+    final questions = form.questions;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
       children: [
@@ -468,6 +491,41 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
             ],
           ),
         ),
+
+        // Evet / Hayır soruları — beyan; "Hayır" da geçerli bir yanıttır.
+        if (questions.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('SORULAR',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.8,
+                            color: AppColors.primaryDark,
+                          )),
+                    ),
+                    Text('${_answers.length}/${questions.length} yanıtlandı',
+                        style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                for (var i = 0; i < questions.length; i++) _questionRow(questions[i], i),
+              ],
+            ),
+          ),
+        ],
 
         // Onay maddeleri
         if (items.isNotEmpty) ...[
@@ -602,6 +660,102 @@ class _SignatureStationScreenState extends State<SignatureStationScreen> {
           const Text('Son adım: imza alanına imzanızı atın.',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.muted)),
       ],
+    );
+  }
+
+  /// Tek soru satırı: metin + iri Evet/Hayır düğmeleri + (istenmişse) açıklama alanı.
+  Widget _questionRow(ConsentQuestion q, int index) {
+    final picked = _answers[q.id];
+    final missing = q.required && picked == null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: missing ? AppColors.surfaceSoft.withValues(alpha: .45) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: missing ? AppColors.rose : AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceSoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text('${index + 1}',
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: q.text),
+                      if (q.required)
+                        const TextSpan(
+                            text: ' *', style: TextStyle(color: AppColors.primaryDark)),
+                    ]),
+                    style: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _answerButton(q, true, 'Evet', picked?.answer == true)),
+                const SizedBox(width: 8),
+                Expanded(child: _answerButton(q, false, 'Hayır', picked?.answer == false)),
+              ],
+            ),
+            // Açıklama alanı: şablonda istendiyse ve yanıt verildiyse çıkar.
+            if (q.note && picked != null) ...[
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: picked.note,
+                onChanged: (v) => setState(() => _answers[q.id] = (answer: picked.answer, note: v)),
+                decoration: const InputDecoration(
+                  hintText: 'Açıklama (isteğe bağlı)',
+                  isDense: true,
+                ),
+                style: const TextStyle(fontSize: 13.5),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _answerButton(ConsentQuestion q, bool value, String label, bool selected) {
+    final color = value ? AppColors.success : AppColors.primaryDark;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(() {
+        _answers[q.id] = (answer: value, note: _answers[q.id]?.note ?? '');
+      }),
+      child: Container(
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? color : AppColors.border, width: selected ? 1.6 : 1),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.white : AppColors.ink)),
+      ),
     );
   }
 

@@ -7,6 +7,7 @@
 import pdfMakeOrig from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions, Content, StyleDictionary, Margins } from 'pdfmake/interfaces'
+import type { ConsentAnswer, ConsentQuestion } from '@/lib/types'
 
 const m = (top: number, right: number, bottom: number, left: number): Margins => [top, right, bottom, left]
 
@@ -89,6 +90,10 @@ export interface ConsentPdfOptions {
   checkItems?: string[]
   /** İmzalı belgede müşterinin işaretlediği maddeler; boşsa madde listesi kutucuklu (boş) basılır. */
   checkedItems?: string[]
+  /** Evet/Hayır soruları (şablon önizlemesinde boş kutucuklu basılır). */
+  questions?: ConsentQuestion[]
+  /** İmzalı belgede müşterinin verdiği yanıtlar. */
+  answers?: ConsentAnswer[]
   customerName?: string | null
   serviceName?: string | null
   staffName?: string | null
@@ -168,6 +173,46 @@ export function generateConsentPdf(options: ConsentPdfOptions): void {
     })
   }
 
+  // ---- Evet / Hayır soruları ----
+  // İmzalı belgede yanıtlar, şablon önizlemesinde boş kutucuklar basılır — ıslak imzalı
+  // kullanımda müşteri kâğıt üzerinde işaretleyebilsin.
+  const questions = options.questions ?? []
+  const answers = options.answers ?? []
+  if (questions.length > 0 || answers.length > 0) {
+    const rows = questions.length > 0
+      ? questions.map((q) => ({ text: q.text, hit: answers.find((a) => a.id === q.id) }))
+      : answers.map((a) => ({ text: a.text, hit: a }))
+    content.push({ text: 'Sorular ve Yanıtlar', style: 'heading', margin: m(12, 0, 4, 0) })
+    content.push({
+      table: {
+        widths: ['*', 'auto'],
+        body: rows.map(({ text, hit }) => [
+          {
+            stack: [
+              { text, style: 'para' },
+              ...(hit?.note ? [{ text: hit.note, style: 'meta', margin: m(2, 0, 0, 0) } as Content] : []),
+            ],
+          },
+          {
+            text: hit ? (hit.answer ? 'EVET' : 'HAYIR') : '[  ] Evet   [  ] Hayır',
+            style: hit ? (hit.answer ? 'answerYes' : 'answerNo') : 'bullet',
+            alignment: 'right',
+          },
+        ]),
+      },
+      layout: {
+        hLineWidth: (i: number, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
+        vLineWidth: () => 0,
+        hLineColor: () => '#E7D6DE',
+        paddingTop: () => 4,
+        paddingBottom: () => 4,
+        paddingLeft: () => 0,
+        paddingRight: () => 0,
+      },
+      margin: m(0, 0, 8, 2),
+    })
+  }
+
   if (options.staffNotes) {
     content.push({ text: 'Uygulama Notları', style: 'heading', margin: m(10, 0, 4, 0) })
     content.push({ text: options.staffNotes, style: 'para', margin: m(0, 0, 8, 0) })
@@ -215,6 +260,8 @@ export function generateConsentPdf(options: ConsentPdfOptions): void {
     para: { fontSize: 9.5, color: COLORS.ink, lineHeight: 1.25 },
     bullet: { fontSize: 9.5, color: COLORS.ink, lineHeight: 1.2 },
     checkOn: { fontSize: 9.5, color: COLORS.ok, bold: true, lineHeight: 1.2 },
+    answerYes: { fontSize: 9.5, color: COLORS.ok, bold: true },
+    answerNo: { fontSize: 9.5, color: COLORS.roseGold, bold: true },
     infoKey: { fontSize: 8.5, color: COLORS.inkSoft, bold: true, margin: m(0, 0, 8, 0) },
     infoValue: { fontSize: 9.5, color: COLORS.ink },
     signLabel: { fontSize: 8.5, color: COLORS.inkSoft, bold: true },

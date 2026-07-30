@@ -2265,11 +2265,33 @@ export interface Appointment {
 /** Backend ConsentFormStatus enum'u JSON'da string olarak gelir. */
 export type ConsentFormStatusKey = 'Draft' | 'AwaitingSignature' | 'Signed' | 'Cancelled'
 
+/**
+ * Onam formunda müşteriye sorulan EVET/HAYIR sorusu.
+ * Onay maddesinden farkı: madde "işaretlenmiş olmalı", soruda "Hayır" da geçerli bir yanıttır.
+ */
+export interface ConsentQuestion {
+  id: string
+  text: string
+  /** true ise imza öncesi cevaplanması zorunlu. */
+  required?: boolean
+  /** true ise yanıtın yanında serbest açıklama alanı çıkar. */
+  note?: boolean
+}
+
+/** Müşterinin bir soruya verdiği yanıt (soru metni de saklanır — şablon değişse de belge okunur). */
+export interface ConsentAnswer {
+  id: string
+  text: string
+  answer: boolean
+  note?: string | null
+}
+
 export interface ApiConsentTemplate {
   id?: string
   title?: string
   body?: string
   checkItems?: string[]
+  questions?: ConsentQuestion[]
   requiresSignature?: boolean
   isActive?: boolean
   sortOrder?: number
@@ -2289,6 +2311,8 @@ export interface ApiConsentForm {
   body?: string
   checkItems?: string[]
   checkedItems?: string[]
+  questions?: ConsentQuestion[]
+  answers?: ConsentAnswer[]
   requiresSignature?: boolean
   status?: ConsentFormStatusKey | number
   /** Aktif imza oturumu anahtarı — tablet imzalarken kullanır. */

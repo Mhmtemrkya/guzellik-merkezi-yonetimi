@@ -6,6 +6,25 @@ namespace GuzellikMerkezi.Application.Features.Consents;
 // Şablon (kurumun yazdığı onam formu metni)
 // ---------------------------------------------------------------------------
 
+/// <summary>
+/// Müşteriye sorulan EVET/HAYIR sorusu (anamnez/beyan). Onay maddesinden farkı: madde
+/// "işaretlenmiş olmalı", soru ise iki yanıttan biriyle cevaplanır ve "Hayır" da geçerli bir yanıttır.
+/// </summary>
+public sealed record ConsentQuestionDto(
+    string Id,
+    string Text,
+    /// <summary>true ise imza öncesi cevaplanması ZORUNLU.</summary>
+    bool Required = false,
+    /// <summary>true ise yanıtın yanında serbest açıklama alanı çıkar (ör. "Hangi ilaç?").</summary>
+    bool Note = false);
+
+/// <summary>Müşterinin bir soruya verdiği yanıt. Soru metni de saklanır (şablon değişse de belge okunur kalsın).</summary>
+public sealed record ConsentAnswerDto(
+    string Id,
+    string Text,
+    bool Answer,
+    string? Note = null);
+
 public sealed record ConsentTemplateDto(
     Guid Id,
     string Title,
@@ -19,7 +38,8 @@ public sealed record ConsentTemplateDto(
     IReadOnlyList<string> ServiceNames,
     // Bu formun zorunlu olduğu paketler — paketi SATIN ALAN müşteride gerekli olur.
     IReadOnlyList<Guid> PackageIds,
-    IReadOnlyList<string> PackageNames);
+    IReadOnlyList<string> PackageNames,
+    IReadOnlyList<ConsentQuestionDto> Questions);
 
 public sealed record UpsertConsentTemplateRequest(
     string Title,
@@ -28,7 +48,11 @@ public sealed record UpsertConsentTemplateRequest(
     bool RequiresSignature,
     bool IsActive,
     IReadOnlyList<Guid>? ServiceIds,
-    IReadOnlyList<Guid>? PackageIds = null);
+    // DİKKAT: aşağıdaki üç alanda `null` = "DEĞİŞTİRME". Şablon PUT'u birden çok yerden
+    // (Ayarlar kartı, hizmet/paket bağlama) yapılıyor; alanı taşımayan bir çağrı mevcut
+    // bağları/soruları silmesin.
+    IReadOnlyList<Guid>? PackageIds = null,
+    IReadOnlyList<ConsentQuestionDto>? Questions = null);
 
 // ---------------------------------------------------------------------------
 // Müşteri kaydı (şablonun o müşteri/işlem için alınmış kopyası)
@@ -44,6 +68,8 @@ public sealed record ConsentFormDto(
     string Body,
     IReadOnlyList<string> CheckItems,
     IReadOnlyList<string> CheckedItems,
+    IReadOnlyList<ConsentQuestionDto> Questions,
+    IReadOnlyList<ConsentAnswerDto> Answers,
     bool RequiresSignature,
     ConsentFormStatus Status,
     // Aktif imza oturumu anahtarı (yalnız AwaitingSignature iken dolu; imzadan sonra silinir).
@@ -77,7 +103,9 @@ public sealed record StartConsentSessionRequest(string? StationName, int? Lifeti
 public sealed record SignConsentFormRequest(
     IReadOnlyList<string>? CheckedItems,
     string? SignatureImage,
-    string? SignerName);
+    string? SignerName,
+    /// <summary>Evet/Hayır sorularının yanıtları — zorunlu soruların tamamı cevaplanmalı.</summary>
+    IReadOnlyList<ConsentAnswerDto>? Answers = null);
 
 // ---------------------------------------------------------------------------
 // Durum (randevu tamamlama kapısı + müşteri/cari/adisyon uyarısı)

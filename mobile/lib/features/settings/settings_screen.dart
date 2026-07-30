@@ -1546,6 +1546,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _linksCard() {
     final links = [
+      ['Onam Formları', Icons.assignment_turned_in_rounded, '/consent-templates'],
       ['Hizmet Kategorileri', Icons.category_rounded, '/service-categories'],
       [
         'Gider Kategorileri',

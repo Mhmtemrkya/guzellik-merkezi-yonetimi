@@ -44,6 +44,8 @@ class ConsentPdf {
     String? logoBase64,
     List<String> checkItems = const [],
     List<String> checkedItems = const [],
+    List<Map<String, dynamic>> questions = const [],
+    List<Map<String, dynamic>> answers = const [],
     String? customerName,
     String? serviceName,
     String? staffName,
@@ -194,6 +196,44 @@ class ConsentPdf {
               ),
           ],
 
+          // Sorular ve yanıtlar — imzalı belgede EVET/HAYIR, boş şablonda kutucuklar.
+          if (questions.isNotEmpty || answers.isNotEmpty) ...[
+            pw.SizedBox(height: 10),
+            pw.Text('Sorular ve Yanıtlar',
+                style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold, color: _burgundy)),
+            pw.SizedBox(height: 4),
+            for (final row in _questionRows(questions, answers))
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 4),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(row.text,
+                              style: const pw.TextStyle(fontSize: 9.5, lineSpacing: 1.3)),
+                          if ((row.note ?? '').isNotEmpty)
+                            pw.Text(row.note!,
+                                style: pw.TextStyle(fontSize: 8, color: _inkSoft)),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(width: 10),
+                    pw.Text(
+                      row.answered ? (row.answer ? 'EVET' : 'HAYIR') : '[  ] Evet   [  ] Hayır',
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: row.answered ? (row.answer ? _ok : _roseGold) : _inkSoft,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+
           if ((staffNotes ?? '').trim().isNotEmpty) ...[
             pw.SizedBox(height: 10),
             pw.Text('Uygulama Notları',
@@ -262,6 +302,8 @@ class ConsentPdf {
     String? logoBase64,
     List<String> checkItems = const [],
     List<String> checkedItems = const [],
+    List<Map<String, dynamic>> questions = const [],
+    List<Map<String, dynamic>> answers = const [],
     String? customerName,
     String? serviceName,
     String? staffName,
@@ -277,6 +319,8 @@ class ConsentPdf {
       logoBase64: logoBase64,
       checkItems: checkItems,
       checkedItems: checkedItems,
+      questions: questions,
+      answers: answers,
       customerName: customerName,
       serviceName: serviceName,
       staffName: staffName,
@@ -290,6 +334,26 @@ class ConsentPdf {
       _slug(title).isEmpty ? 'Onam-Formu' : _slug(title),
     ].where((e) => e.isNotEmpty).join('-');
     await Printing.sharePdf(bytes: bytes, filename: '$name.pdf');
+  }
+
+  /// Soru listesi + yanıtları tek satıra indirger (yanıt yoksa boş kutucuk basılır).
+  static List<_QaRow> _questionRows(
+      List<Map<String, dynamic>> questions, List<Map<String, dynamic>> answers) {
+    final byId = {for (final a in answers) '${a['id'] ?? ''}': a};
+    if (questions.isEmpty) {
+      return [
+        for (final a in answers)
+          _QaRow('${a['text'] ?? ''}', true, a['answer'] == true, '${a['note'] ?? ''}'),
+      ];
+    }
+    return [
+      for (final q in questions)
+        () {
+          final hit = byId['${q['id'] ?? ''}'];
+          return _QaRow('${q['text'] ?? ''}', hit != null, hit?['answer'] == true,
+              '${hit?['note'] ?? ''}');
+        }(),
+    ];
   }
 
   static String _slug(String s) => s
@@ -370,4 +434,14 @@ class ConsentPdf {
           pw.Text('__________________________', style: const pw.TextStyle(fontSize: 9)),
         ],
       );
+}
+
+/// PDF'te tek soru satırı.
+class _QaRow {
+  _QaRow(this.text, this.answered, this.answer, String note)
+      : note = note.trim().isEmpty ? null : note.trim();
+  final String text;
+  final bool answered;
+  final bool answer;
+  final String? note;
 }

@@ -10,7 +10,7 @@ import SignaturePad from '@/components/dashboard/SignaturePad'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { consentApi } from '@/lib/apiClient'
 import { fillConsentPlaceholders } from '@/lib/consentPdf'
-import type { ApiConsentForm } from '@/lib/types'
+import type { ApiConsentForm, ConsentAnswer } from '@/lib/types'
 
 const STATION_KEY = 'beautyasist.consentStation'
 /** Bekleyen form yoklama sıklığı — tablet başındaki müşteri beklememeli. */
@@ -47,6 +47,8 @@ function StationInner() {
   const [stationDraft, setStationDraft] = useState('')
   const [form, setForm] = useState<ApiConsentForm | null>(null)
   const [checked, setChecked] = useState<string[]>([])
+  /** Soru kimliği → yanıt (Evet/Hayır) ve açıklama. */
+  const [answers, setAnswers] = useState<Record<string, { answer: boolean; note: string }>>({})
   const [signature, setSignature] = useState<string | null>(null)
   const [signerName, setSignerName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -86,6 +88,7 @@ function StationInner() {
         activeFormId.current = id
         setForm(pending)
         setChecked([])
+        setAnswers({})
         setSignature(null)
         setSignerName(pending?.customerName || '')
         setError('')
@@ -106,12 +109,21 @@ function StationInner() {
   }, [station, poll])
 
   const items = useMemo(() => form?.checkItems ?? [], [form])
+  const questions = useMemo(() => form?.questions ?? [], [form])
   const allChecked = items.length === 0 || items.every((i) => checked.includes(i))
+  // Zorunlu soruların TAMAMI yanıtlanmadan imza düğmesi açılmaz (sunucu da ayrıca doğrular).
+  const allAnswered = questions.every((q) => q.required === false || answers[q.id] !== undefined)
   const needsSignature = form?.requiresSignature !== false
-  const canSubmit = Boolean(form) && allChecked && (!needsSignature || Boolean(signature)) && !busy
+  const canSubmit = Boolean(form) && allChecked && allAnswered && (!needsSignature || Boolean(signature)) && !busy
 
   const toggle = (item: string): void =>
     setChecked((prev) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]))
+
+  const answerQuestion = (id: string, answer: boolean): void =>
+    setAnswers((prev) => ({ ...prev, [id]: { answer, note: prev[id]?.note ?? '' } }))
+
+  const noteQuestion = (id: string, note: string): void =>
+    setAnswers((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], note } } : prev))
 
   const submit = async (): Promise<void> => {
     if (!form?.id || !canSubmit) return
@@ -122,8 +134,17 @@ function StationInner() {
       // aktif oturum kullanılır. Tablet yalnızca kendisine gönderilen formu görür.
       const token = form.sessionToken || ''
       if (!token) throw new Error('İmza oturumu bulunamadı. Personelden formu yeniden göndermesini isteyin.')
+      const payload: ConsentAnswer[] = questions
+        .filter((q) => answers[q.id] !== undefined)
+        .map((q) => ({
+          id: q.id,
+          text: q.text,
+          answer: answers[q.id].answer,
+          note: answers[q.id].note.trim() || null,
+        }))
       await consentApi.sign(token, {
         checkedItems: checked,
+        answers: payload,
         signatureImage: signature,
         signerName: signerName.trim() || form.customerName || null,
       })
@@ -237,6 +258,70 @@ function StationInner() {
               </div>
             </div>
 
+            {/* Evet / Hayır soruları — beyan; "Hayır" da geçerli bir yanıttır. */}
+            {questions.length > 0 && (
+              <div className="rounded-[20px] border border-[#ead8df] bg-white p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[12px] font-semibold uppercase tracking-widest text-[#b14d6c]">Sorular</div>
+                  <span className="text-[12px] text-[#705a66]">
+                    {questions.filter((q) => answers[q.id] !== undefined).length}/{questions.length} yanıtlandı
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2.5">
+                  {questions.map((q, i) => {
+                    const picked = answers[q.id]
+                    const missing = q.required !== false && picked === undefined
+                    return (
+                      <div key={q.id} className={`rounded-[14px] border px-4 py-3.5 transition-colors ${missing ? 'border-[#f0d3dc] bg-[#fffafc]' : 'border-[#ead8df] bg-white'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex min-w-[220px] flex-1 items-start gap-2.5">
+                            <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[12px] font-bold text-[#a34a62]">{i + 1}</span>
+                            <span className="text-[14.5px] leading-relaxed text-[#352432]">
+                              {q.text}
+                              {q.required !== false && <span className="ml-1 text-[#c85776]">*</span>}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => answerQuestion(q.id, true)}
+                              className={`min-w-[92px] rounded-[12px] border px-4 py-2.5 text-[14px] font-semibold transition-colors ${
+                                picked?.answer === true
+                                  ? 'border-emerald-500 bg-emerald-500 text-white'
+                                  : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-emerald-300 hover:bg-emerald-50'
+                              }`}
+                            >
+                              Evet
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => answerQuestion(q.id, false)}
+                              className={`min-w-[92px] rounded-[12px] border px-4 py-2.5 text-[14px] font-semibold transition-colors ${
+                                picked?.answer === false
+                                  ? 'border-[#c85776] bg-[#c85776] text-white'
+                                  : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0] hover:bg-[#fff1f6]'
+                              }`}
+                            >
+                              Hayır
+                            </button>
+                          </div>
+                        </div>
+                        {/* Açıklama alanı: şablonda istendiyse, yanıt verilince açılır. */}
+                        {q.note && picked !== undefined && (
+                          <input
+                            value={picked.note}
+                            onChange={(e) => noteQuestion(q.id, e.target.value)}
+                            placeholder="Açıklama (isteğe bağlı)"
+                            className="mt-2.5 w-full rounded-[10px] border border-[#ead8df] bg-[#fffafc] px-3 py-2.5 text-[13.5px] outline-none focus:border-[#c85776]"
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Onay maddeleri */}
             {items.length > 0 && (
               <div className="rounded-[20px] border border-[#ead8df] bg-white p-5">
@@ -296,8 +381,9 @@ function StationInner() {
                 <span className="inline-flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Onaylıyorum ve İmzalıyorum</span>
               )}
             </button>
-            {!allChecked && <p className="text-center text-[12px] text-[#705a66]">Devam etmek için tüm onay maddelerini işaretleyin.</p>}
-            {allChecked && needsSignature && !signature && <p className="text-center text-[12px] text-[#705a66]">Son adım: imza alanına imzanızı atın.</p>}
+            {!allAnswered && <p className="text-center text-[12px] text-[#705a66]">Devam etmek için zorunlu soruları yanıtlayın.</p>}
+            {allAnswered && !allChecked && <p className="text-center text-[12px] text-[#705a66]">Devam etmek için tüm onay maddelerini işaretleyin.</p>}
+            {allChecked && allAnswered && needsSignature && !signature && <p className="text-center text-[12px] text-[#705a66]">Son adım: imza alanına imzanızı atın.</p>}
           </motion.div>
         ) : (
           <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6 grid place-items-center rounded-[24px] border border-dashed border-[#ead8df] bg-white/70 px-6 py-24 text-center">

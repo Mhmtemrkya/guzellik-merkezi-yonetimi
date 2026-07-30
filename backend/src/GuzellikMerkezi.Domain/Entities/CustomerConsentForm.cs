@@ -28,6 +28,7 @@ public sealed class CustomerConsentForm : Entity
         string body,
         string? checkItemsJson,
         bool requiresSignature,
+        string? questionsJson,
         string? customerName,
         Guid? serviceDefinitionId,
         string? serviceName,
@@ -46,6 +47,7 @@ public sealed class CustomerConsentForm : Entity
         Body = body.Trim();
         CheckItemsJson = string.IsNullOrWhiteSpace(checkItemsJson) ? null : checkItemsJson.Trim();
         RequiresSignature = requiresSignature;
+        QuestionsJson = string.IsNullOrWhiteSpace(questionsJson) ? null : questionsJson.Trim();
         CustomerName = Clip(customerName, 200);
         ServiceDefinitionId = serviceDefinitionId;
         ServiceName = Clip(serviceName, 200);
@@ -65,6 +67,8 @@ public sealed class CustomerConsentForm : Entity
     public string Title { get; private set; } = string.Empty;
     public string Body { get; private set; } = string.Empty;
     public string? CheckItemsJson { get; private set; }
+    /// <summary>Şablondan kopyalanan EVET/HAYIR soruları (bkz. <see cref="ConsentFormTemplate.QuestionsJson"/>).</summary>
+    public string? QuestionsJson { get; private set; }
     public bool RequiresSignature { get; private set; } = true;
 
     // --- bağlam ---
@@ -88,6 +92,12 @@ public sealed class CustomerConsentForm : Entity
     // --- imza sonucu ---
     /// <summary>Müşterinin işaretlediği onay maddeleri — JSON string dizisi.</summary>
     public string? CheckedItemsJson { get; private set; }
+    /// <summary>
+    /// Müşterinin sorulara verdiği yanıtlar — JSON dizisi:
+    /// <c>[{ "id": "...", "text": "…", "answer": true, "note": "…" }]</c>. Soru metni de kopyalanır ki
+    /// şablon sonradan değişse bile imzalı belgede hangi soruya ne yanıt verildiği okunabilsin.
+    /// </summary>
+    public string? AnswersJson { get; private set; }
     /// <summary>İmza görseli (base64 PNG data-URL).</summary>
     public string? SignatureImage { get; private set; }
     public DateTime? SignedAtUtc { get; private set; }
@@ -139,7 +149,7 @@ public sealed class CustomerConsentForm : Entity
         && nowUtc <= SessionExpiresAtUtc.Value;
 
     /// <summary>Müşteri onay kutularını işaretleyip imzaladı — kayıt kilitlenir.</summary>
-    public void Sign(string? checkedItemsJson, string? signatureImage, string? signerName, string? device, string? ip, DateTime nowUtc)
+    public void Sign(string? checkedItemsJson, string? answersJson, string? signatureImage, string? signerName, string? device, string? ip, DateTime nowUtc)
     {
         if (Status == ConsentFormStatus.Signed) throw new BusinessRuleException("Bu form zaten imzalanmış.");
         if (Status == ConsentFormStatus.Cancelled) throw new BusinessRuleException("İptal edilmiş form imzalanamaz.");
@@ -149,6 +159,7 @@ public sealed class CustomerConsentForm : Entity
             throw new BusinessRuleException("İmza alınmadan form tamamlanamaz.");
 
         CheckedItemsJson = string.IsNullOrWhiteSpace(checkedItemsJson) ? null : checkedItemsJson.Trim();
+        AnswersJson = string.IsNullOrWhiteSpace(answersJson) ? null : answersJson.Trim();
         SignatureImage = string.IsNullOrWhiteSpace(signatureImage) ? null : signatureImage.Trim();
         SignerName = Clip(signerName, 200) ?? CustomerName;
         SignerDevice = Clip(device, 300);

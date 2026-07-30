@@ -911,6 +911,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Form metni ve onay maddeleri uzun olabilir.
         t.Property(x => x.Body).HasColumnType("LONGTEXT").IsRequired();
         t.Property(x => x.CheckItemsJson).HasColumnType("LONGTEXT");
+        // Evet/Hayır soruları (JSON dizisi).
+        t.Property(x => x.QuestionsJson).HasColumnType("LONGTEXT");
         t.HasIndex(x => new { x.TenantId, x.SortOrder });
         t.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
@@ -934,6 +936,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         f.Property(x => x.Body).HasColumnType("LONGTEXT").IsRequired();
         f.Property(x => x.CheckItemsJson).HasColumnType("LONGTEXT");
         f.Property(x => x.CheckedItemsJson).HasColumnType("LONGTEXT");
+        // Sorular (şablondan kopya) + müşterinin yanıtları.
+        f.Property(x => x.QuestionsJson).HasColumnType("LONGTEXT");
+        f.Property(x => x.AnswersJson).HasColumnType("LONGTEXT");
         // base64 PNG imza görseli
         f.Property(x => x.SignatureImage).HasColumnType("LONGTEXT");
         f.Property(x => x.ServiceName).HasMaxLength(200);

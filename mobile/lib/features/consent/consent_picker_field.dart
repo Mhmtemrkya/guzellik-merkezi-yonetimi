@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import 'consent_models.dart';
 
 const _starterBody = '''Sayın {{musteri}},
 
@@ -67,7 +68,10 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
   final _title = TextEditingController();
   final _body = TextEditingController(text: _starterBody);
   final _itemDraft = TextEditingController();
+  final _questionDraft = TextEditingController();
   List<String> _items = [..._starterItems];
+  /// Evet/Hayır soruları — tam düzenleme Ayarlar › Onam Formları'nda.
+  List<QuestionDraft> _questions = starterQuestions();
 
   @override
   void initState() {
@@ -91,6 +95,7 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
     _title.dispose();
     _body.dispose();
     _itemDraft.dispose();
+    _questionDraft.dispose();
     super.dispose();
   }
 
@@ -122,6 +127,10 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
         'title': title,
         'body': _body.text.trim().isEmpty ? _starterBody : _body.text.trim(),
         'checkItems': _items,
+        'questions': [
+          for (final q in _questions)
+            if (q.text.trim().isNotEmpty) q.toJson(),
+        ],
         'requiresSignature': true,
         'isActive': true,
         'serviceIds': const <String>[],
@@ -136,6 +145,7 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
         _title.clear();
         _body.text = _starterBody;
         _items = [..._starterItems];
+        _questions = starterQuestions();
       });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -314,6 +324,67 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
               TextButton(onPressed: _addItem, child: const Text('Ekle')),
             ],
           ),
+          const SizedBox(height: 10),
+          const Text('Evet / Hayır soruları',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+          const SizedBox(height: 6),
+          for (var i = 0; i < _questions.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.help_outline_rounded, size: 15, color: AppColors.muted),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(_questions[i].text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+                  // Zorunluluk hızlı anahtar; ayrıntılı ayar (açıklama alanı) Ayarlar'da.
+                  InkWell(
+                    onTap: () => setState(() => _questions[i].required = !_questions[i].required),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: _questions[i].required
+                            ? AppColors.primary.withValues(alpha: .12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                            color: _questions[i].required ? AppColors.primary : AppColors.border),
+                      ),
+                      child: Text(_questions[i].required ? 'Zorunlu' : 'İsteğe bağlı',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _questions[i].required
+                                  ? AppColors.primaryDark
+                                  : AppColors.muted)),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() => _questions = [..._questions]..removeAt(i)),
+                    child: const Icon(Icons.close_rounded, size: 15, color: AppColors.muted),
+                  ),
+                ],
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _questionDraft,
+                  decoration: const InputDecoration(
+                      isDense: true, hintText: 'Yeni soru… (ör. Hamile misiniz?)'),
+                  onSubmitted: (_) => _addQuestion(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(onPressed: _addQuestion, child: const Text('Ekle')),
+            ],
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -343,6 +414,15 @@ class _ConsentPickerFieldState extends State<ConsentPickerField> {
     setState(() {
       _items = [..._items, v];
       _itemDraft.clear();
+    });
+  }
+
+  void _addQuestion() {
+    final v = _questionDraft.text.trim();
+    if (v.isEmpty) return;
+    setState(() {
+      _questions = [..._questions, QuestionDraft(id: newQuestionId(), text: v)];
+      _questionDraft.clear();
     });
   }
 }

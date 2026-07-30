@@ -70,7 +70,7 @@ public sealed class ConsentService : IConsentService
         var nextOrder = await _db.ConsentFormTemplates.Where(x => x.TenantId == tenantId)
             .Select(x => (int?)x.SortOrder).MaxAsync(cancellationToken) ?? -1;
 
-        var template = new ConsentFormTemplate(tenantId, request.Title, request.Body, Serialize(request.CheckItems), request.RequiresSignature);
+        var template = new ConsentFormTemplate(tenantId, request.Title, request.Body, Serialize(request.CheckItems), request.RequiresSignature, SerializeQuestions(request.Questions));
         template.SetSortOrder(nextOrder + 1);
         if (!request.IsActive) template.SetActive(false);
         _db.ConsentFormTemplates.Add(template);
@@ -88,7 +88,7 @@ public sealed class ConsentService : IConsentService
         var template = await _db.ConsentFormTemplates.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (template is null) return Result<ConsentTemplateDto>.Failure(Error.NotFound("Onam formu bulunamadı."));
 
-        template.Update(request.Title, request.Body, Serialize(request.CheckItems), request.RequiresSignature);
+        template.Update(request.Title, request.Body, Serialize(request.CheckItems), request.RequiresSignature, SerializeQuestions(request.Questions));
         template.SetActive(request.IsActive);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -199,7 +199,7 @@ public sealed class ConsentService : IConsentService
 
         var form = new CustomerConsentForm(
             tenantId, customer.BranchId, customer.Id, appointmentId, template.Id,
-            template.Title, body, template.CheckItemsJson, template.RequiresSignature,
+            template.Title, body, template.CheckItemsJson, template.RequiresSignature, template.QuestionsJson,
             customer.FullName, serviceId, serviceName,
             staffId, staffName,
             request.StaffNotes);
@@ -306,9 +306,36 @@ public sealed class ConsentService : IConsentService
         if (missing.Count > 0)
             return Result<ConsentFormDto>.Failure(Error.Validation($"Onay maddelerinin tamamı işaretlenmeli. Eksik: {string.Join(", ", missing)}"));
 
+        // Evet/Hayır soruları: zorunlu olanların tamamı cevaplanmalı. Yanıtın kendisi (Evet ya da
+        // Hayır) serbesttir — beyan neyse o kaydedilir.
+        var questions = DeserializeQuestions(form.QuestionsJson);
+        var answers = (request.Answers ?? Array.Empty<ConsentAnswerDto>())
+            .Where(a => !string.IsNullOrWhiteSpace(a.Id))
+            .GroupBy(a => a.Id.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Last())
+            .ToDictionary(a => a.Id.Trim(), StringComparer.OrdinalIgnoreCase);
+        var unanswered = questions
+            .Where(q => q.Required && !answers.ContainsKey(q.Id))
+            .Select(q => q.Text)
+            .ToList();
+        if (unanswered.Count > 0)
+            return Result<ConsentFormDto>.Failure(Error.Validation($"Zorunlu soruların tamamı cevaplanmalı. Eksik: {string.Join(", ", unanswered)}"));
+
+        // Yanıtlar soru listesine göre normalize edilir: metin şablondan alınır (istemci
+        // uydurmasın), listede olmayan yanıt atılır.
+        var normalized = questions
+            .Where(q => answers.ContainsKey(q.Id))
+            .Select(q =>
+            {
+                var a = answers[q.Id];
+                var note = string.IsNullOrWhiteSpace(a.Note) ? null : a.Note.Trim();
+                return new ConsentAnswerDto(q.Id, q.Text, a.Answer, note);
+            })
+            .ToList();
+
         try
         {
-            form.Sign(Serialize(checkedItems), request.SignatureImage, request.SignerName, _currentUser.DeviceInfoJson ?? _currentUser.DeviceId, _currentUser.IpAddress, DateTime.UtcNow);
+            form.Sign(Serialize(checkedItems), SerializeAnswers(normalized), request.SignatureImage, request.SignerName, _currentUser.DeviceInfoJson ?? _currentUser.DeviceId, _currentUser.IpAddress, DateTime.UtcNow);
         }
         catch (Exception ex)
         {
@@ -460,9 +487,16 @@ public sealed class ConsentService : IConsentService
     // =======================================================================
 
     /// <summary>Şablonun hizmet ve paket bağlarını istenen listeyle eşitler (fazlalar soft-delete, eksikler eklenir).</summary>
+    /// <summary>
+    /// Şablonun hizmet/paket bağlarını istenen listeye eşitler.
+    /// <b>null liste = O TÜRE DOKUNMA.</b> Şablon PUT'u birden çok yerden yapılıyor (Ayarlar kartı
+    /// yalnız hizmetleri, paket/hizmet kütüphaneleri yalnız kendi bağını yönetir); alanı taşımayan
+    /// bir çağrı diğer bağları sessizce siliyordu.
+    /// </summary>
     private async Task ReplaceLinksAsync(Guid tenantId, Guid templateId,
         IReadOnlyList<Guid>? serviceIds, IReadOnlyList<Guid>? packageIds, CancellationToken cancellationToken)
     {
+        if (serviceIds is null && packageIds is null) return;
         var wantedServices = (serviceIds ?? Array.Empty<Guid>()).Distinct().ToList();
         var wantedPackages = (packageIds ?? Array.Empty<Guid>()).Distinct().ToList();
         var current = await _db.ServiceConsentForms
@@ -472,8 +506,8 @@ public sealed class ConsentService : IConsentService
         foreach (var link in current)
         {
             var keep = link.ServiceDefinitionId.HasValue
-                ? wantedServices.Contains(link.ServiceDefinitionId.Value)
-                : link.ServicePackageId.HasValue && wantedPackages.Contains(link.ServicePackageId.Value);
+                ? (serviceIds is null || wantedServices.Contains(link.ServiceDefinitionId.Value))
+                : link.ServicePackageId.HasValue && (packageIds is null || wantedPackages.Contains(link.ServicePackageId.Value));
             if (!keep) link.SoftDelete();
         }
 
@@ -560,12 +594,14 @@ public sealed class ConsentService : IConsentService
         return new ConsentTemplateDto(
             t.Id, t.Title, t.Body, Deserialize(t.CheckItemsJson), t.RequiresSignature, t.IsActive, t.SortOrder,
             services.Select(l => l.ServiceId!.Value).ToList(), services.Select(l => l.Name ?? "—").ToList(),
-            packages.Select(l => l.PackageId!.Value).ToList(), packages.Select(l => l.Name ?? "—").ToList());
+            packages.Select(l => l.PackageId!.Value).ToList(), packages.Select(l => l.Name ?? "—").ToList(),
+            DeserializeQuestions(t.QuestionsJson));
     }
 
     private static ConsentFormDto ToFormDto(CustomerConsentForm f) =>
         new(f.Id, f.CustomerId, f.CustomerName, f.AppointmentId, f.ConsentFormTemplateId,
             f.Title, f.Body, Deserialize(f.CheckItemsJson), Deserialize(f.CheckedItemsJson),
+            DeserializeQuestions(f.QuestionsJson), DeserializeAnswers(f.AnswersJson),
             f.RequiresSignature, f.Status, f.SessionToken, f.ServiceDefinitionId, f.ServiceName,
             f.StaffName, f.StaffNotes, f.SignatureImage, f.SignedAtUtc, f.SignerName,
             f.StationName, f.SessionExpiresAtUtc, f.CreatedAtUtc);
@@ -589,6 +625,63 @@ public sealed class ConsentService : IConsentService
         catch (JsonException)
         {
             return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>camelCase — JSON istemcilere aynen gider, Dart/TS tarafı bu adlarla okur.</summary>
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    /// <summary><c>null</c> girdi <c>null</c> döner: "değiştirme" anlamı korunur (bkz. UpsertConsentTemplateRequest).</summary>
+    private static string? SerializeQuestions(IReadOnlyList<ConsentQuestionDto>? questions)
+    {
+        if (questions is null) return null;
+        var clean = new List<ConsentQuestionDto>();
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var q in questions)
+        {
+            var text = (q.Text ?? string.Empty).Trim();
+            if (text.Length == 0) continue;
+            // Kimlik boşsa/çakışıyorsa üretilir — yanıtlar soruya bu kimlikle bağlanır.
+            var id = (q.Id ?? string.Empty).Trim();
+            if (id.Length == 0 || !used.Add(id))
+            {
+                id = Guid.NewGuid().ToString("N")[..8];
+                used.Add(id);
+            }
+            clean.Add(new ConsentQuestionDto(id, text, q.Required, q.Note));
+        }
+        return clean.Count == 0 ? "[]" : JsonSerializer.Serialize(clean, JsonOpts);
+    }
+
+    private static IReadOnlyList<ConsentQuestionDto> DeserializeQuestions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<ConsentQuestionDto>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<ConsentQuestionDto>>(json, JsonOpts) ?? new List<ConsentQuestionDto>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<ConsentQuestionDto>();
+        }
+    }
+
+    private static string? SerializeAnswers(IReadOnlyList<ConsentAnswerDto>? answers)
+    {
+        if (answers is null || answers.Count == 0) return null;
+        return JsonSerializer.Serialize(answers, JsonOpts);
+    }
+
+    private static IReadOnlyList<ConsentAnswerDto> DeserializeAnswers(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<ConsentAnswerDto>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<ConsentAnswerDto>>(json, JsonOpts) ?? new List<ConsentAnswerDto>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<ConsentAnswerDto>();
         }
     }
 }

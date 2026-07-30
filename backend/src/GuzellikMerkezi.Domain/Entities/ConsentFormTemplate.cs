@@ -14,10 +14,10 @@ public sealed class ConsentFormTemplate : Entity
 {
     private ConsentFormTemplate() { }
 
-    public ConsentFormTemplate(Guid tenantId, string title, string body, string? checkItemsJson, bool requiresSignature = true)
+    public ConsentFormTemplate(Guid tenantId, string title, string body, string? checkItemsJson, bool requiresSignature = true, string? questionsJson = null)
     {
         TenantId = tenantId;
-        Update(title, body, checkItemsJson, requiresSignature);
+        Update(title, body, checkItemsJson, requiresSignature, questionsJson);
     }
 
     public Guid TenantId { get; private set; }
@@ -29,19 +29,33 @@ public sealed class ConsentFormTemplate : Entity
     /// <summary>Müşterinin işaretlemesi gereken onay maddeleri — JSON string dizisi.</summary>
     public string? CheckItemsJson { get; private set; }
 
+    /// <summary>
+    /// Müşteriye sorulacak EVET/HAYIR soruları — JSON dizisi:
+    /// <c>[{ "id": "...", "text": "Hamile misiniz?", "required": true, "note": false }]</c>.
+    /// Anamnez/kontrendikasyon beyanı formun kendi içinde alınabilsin diye vardır; cevaplar
+    /// müşteri kaydında (<see cref="CustomerConsentForm.AnswersJson"/>) saklanır.
+    /// </summary>
+    public string? QuestionsJson { get; private set; }
+
     /// <summary>false ise form yalnız okunur/bilgilendirir; imza istenmez.</summary>
     public bool RequiresSignature { get; private set; } = true;
 
     public bool IsActive { get; private set; } = true;
     public int SortOrder { get; private set; }
 
-    public void Update(string title, string body, string? checkItemsJson, bool requiresSignature)
+    /// <param name="questionsJson">
+    /// <c>null</c> ise sorular DEĞİŞTİRİLMEZ (alanı taşımayan kısmi güncellemeler soruları silmesin);
+    /// boş dizi göndermek soruları temizler.
+    /// </param>
+    public void Update(string title, string body, string? checkItemsJson, bool requiresSignature, string? questionsJson = null)
     {
         if (string.IsNullOrWhiteSpace(title)) throw new DomainException("Form başlığı boş olamaz.");
         if (string.IsNullOrWhiteSpace(body)) throw new DomainException("Form metni boş olamaz.");
         Title = title.Trim();
         Body = body.Trim();
         CheckItemsJson = string.IsNullOrWhiteSpace(checkItemsJson) ? null : checkItemsJson.Trim();
+        if (questionsJson is not null)
+            QuestionsJson = string.IsNullOrWhiteSpace(questionsJson) || questionsJson.Trim() == "[]" ? null : questionsJson.Trim();
         RequiresSignature = requiresSignature;
         Touch();
     }

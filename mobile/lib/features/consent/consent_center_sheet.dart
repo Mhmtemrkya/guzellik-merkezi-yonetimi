@@ -259,6 +259,8 @@ class _ConsentCenterSheetState extends State<ConsentCenterSheet> {
         logoBase64: _logo,
         checkItems: form.checkItems,
         checkedItems: form.checkedItems,
+        questions: [for (final q in form.questions) q.raw],
+        answers: [for (final a in form.answers) a.raw],
         customerName: form.customerName ?? widget.customerName,
         serviceName: form.serviceName,
         staffName: form.staffName,
@@ -568,6 +570,59 @@ class _ConsentCenterSheetState extends State<ConsentCenterSheet> {
             ),
           ),
         ),
+        // Sorular: imzalanmışsa yanıtlar, değilse müşteriye sorulacaklar.
+        if (form.questions.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(form.answers.isNotEmpty ? 'Soru yanıtları' : 'Müşteriye sorulacak',
+              style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+          const SizedBox(height: 6),
+          for (final q in form.questions)
+            () {
+              final hit = form.answers.where((a) => a.id == q.id).firstOrNull;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(q.text, style: const TextStyle(fontSize: 12.5)),
+                          if (hit?.note != null)
+                            Text(hit!.note!,
+                                style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (hit == null)
+                      const Text('Evet / Hayır',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.muted))
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: (hit.answer ? AppColors.success : AppColors.primaryDark)
+                              .withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                              color: (hit.answer ? AppColors.success : AppColors.primaryDark)
+                                  .withValues(alpha: .35)),
+                        ),
+                        child: Text(hit.answer ? 'Evet' : 'Hayır',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: hit.answer ? AppColors.success : AppColors.primaryDark)),
+                      ),
+                  ],
+                ),
+              );
+            }(),
+        ],
+
         if (form.checkItems.isNotEmpty) ...[
           const SizedBox(height: 10),
           const Text('Müşteri onaylayacak',

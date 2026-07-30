@@ -185,6 +185,8 @@ export default function ConsentCenterModal({
       }),
       checkItems: form.checkItems,
       checkedItems: form.checkedItems,
+      questions: form.questions,
+      answers: form.answers,
       customerName: form.customerName || customerName,
       serviceName: form.serviceName,
       staffName: form.staffName,
@@ -416,6 +418,37 @@ function ConsentEditor({
             })}
           </p>
         </div>
+
+        {/* Sorular: imzalanmışsa yanıtlar, değilse müşteriye sorulacaklar listesi. */}
+        {(form.questions?.length ?? 0) > 0 && (
+          <div className="rounded-[12px] border border-[#f1e5ea] bg-white px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#b14d6c]">
+              {(form.answers?.length ?? 0) > 0 ? 'Soru yanıtları' : 'Müşteriye sorulacak'}
+            </div>
+            <ul className="mt-1.5 space-y-1.5">
+              {(form.questions || []).map((q) => {
+                const hit = (form.answers || []).find((a) => a.id === q.id)
+                return (
+                  <li key={q.id} className="flex flex-wrap items-start justify-between gap-2 text-[12.5px] text-[#4a3a44]">
+                    <span className="min-w-0 flex-1">
+                      {q.text}
+                      {hit?.note && <span className="mt-0.5 block text-[11.5px] text-[#705a66]">{hit.note}</span>}
+                    </span>
+                    {hit ? (
+                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                        hit.answer ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#efbfd0] bg-[#fff1f6] text-[#a34a62]'
+                      }`}>
+                        {hit.answer ? 'Evet' : 'Hayır'}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-[11.5px] text-[#705a66]">Evet / Hayır</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
 
         {(form.checkItems?.length ?? 0) > 0 && (
           <div className="rounded-[12px] border border-[#f1e5ea] bg-white px-4 py-3">

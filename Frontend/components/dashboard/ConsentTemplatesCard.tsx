@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Check, Download, FileSignature, Loader2, Plus, Save, Trash2, X,
+  Check, Download, FileSignature, HelpCircle, Loader2, Plus, Save, Trash2, X,
 } from 'lucide-react'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, guidOrUndefined, normalizeService } from '@/lib/apiMappers'
 import { generateConsentPdf, fillConsentPlaceholders } from '@/lib/consentPdf'
-import type { ApiConsentTemplate, ApiService } from '@/lib/types'
+import type { ApiConsentTemplate, ApiService, ConsentQuestion } from '@/lib/types'
 
 interface PublicProfileLite { logoData?: string | null }
 
@@ -40,11 +40,22 @@ const STARTER_ITEMS = [
   'İşlemin uygulanmasına onay veriyorum.',
 ]
 
+/** Salonlarda en sık sorulan sağlık beyanları — yeni formda hazır gelir, silinebilir. */
+const STARTER_QUESTIONS: ConsentQuestion[] = [
+  { id: 'q-hamile', text: 'Hamile misiniz veya emziriyor musunuz?', required: true, note: false },
+  { id: 'q-ilac', text: 'Düzenli kullandığınız ilaç var mı?', required: true, note: true },
+  { id: 'q-alerji', text: 'Bilinen bir alerjiniz var mı?', required: true, note: true },
+  { id: 'q-kronik', text: 'Kronik bir rahatsızlığınız var mı?', required: false, note: true },
+]
+
+const newQuestionId = (): string => `q-${Math.random().toString(36).slice(2, 10)}`
+
 interface Draft {
   id: string | null
   title: string
   body: string
   checkItems: string[]
+  questions: ConsentQuestion[]
   requiresSignature: boolean
   isActive: boolean
   serviceIds: string[]
@@ -52,6 +63,7 @@ interface Draft {
 
 const emptyDraft = (): Draft => ({
   id: null, title: '', body: STARTER_BODY, checkItems: [...STARTER_ITEMS],
+  questions: STARTER_QUESTIONS.map((q) => ({ ...q })),
   requiresSignature: true, isActive: true, serviceIds: [],
 })
 
@@ -78,6 +90,7 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
   const [error, setError] = useState('')
   const [draft, setDraft] = useState<Draft | null>(null)
   const [newItem, setNewItem] = useState('')
+  const [newQuestion, setNewQuestion] = useState('')
 
   const load = useCallback(async (): Promise<void> => {
     if (!allowed) { setLoading(false); return }
@@ -120,6 +133,7 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
       title: t.title || '',
       body: t.body || '',
       checkItems: [...(t.checkItems || [])],
+      questions: (t.questions || []).map((q) => ({ ...q })),
       requiresSignature: t.requiresSignature !== false,
       isActive: t.isActive !== false,
       serviceIds: [...(t.serviceIds || [])],
@@ -139,9 +153,12 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
         title: draft.title.trim(),
         body: draft.body.trim(),
         checkItems: draft.checkItems,
+        // Boş dizi = "soruları temizle"; alanı hiç göndermemek "dokunma" demek olurdu.
+        questions: draft.questions.filter((q) => q.text.trim().length > 0),
         requiresSignature: draft.requiresSignature,
         isActive: draft.isActive,
         serviceIds: draft.serviceIds,
+        // packageIds GÖNDERİLMEZ: bu kart paket bağını yönetmiyor, sunucu mevcut bağı korur.
       }
       if (draft.id) await adminApi.updateConsentTemplate(draft.id, payload, resolvedTenantId)
       else await adminApi.createConsentTemplate(payload, resolvedTenantId)
@@ -177,6 +194,7 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
       title: t.title || 'Onam Formu',
       body: fillConsentPlaceholders(t.body || '', { institutionName }),
       checkItems: t.checkItems,
+      questions: t.questions,
     })
   }
 
@@ -189,6 +207,16 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
     setDraft({ ...draft, checkItems: [...draft.checkItems, value] })
     setNewItem('')
   }
+
+  const addQuestion = (): void => {
+    const value = newQuestion.trim()
+    if (!value || !draft) return
+    setDraft({ ...draft, questions: [...draft.questions, { id: newQuestionId(), text: value, required: true, note: false }] })
+    setNewQuestion('')
+  }
+
+  const patchQuestion = (index: number, patch: Partial<ConsentQuestion>): void =>
+    setDraft((d) => (d ? { ...d, questions: d.questions.map((q, i) => (i === index ? { ...q, ...patch } : q)) } : d))
 
   if (!allowed) return null
 
@@ -249,7 +277,7 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
                     {t.requiresSignature === false && <span className="rounded-md bg-[#fff1f6] px-2 py-0.5 text-[11px] font-semibold text-[#b14d6c]">İmzasız</span>}
                   </div>
                   <div className="mt-1 text-[12px] text-[#705a66]">
-                    {(t.checkItems?.length ?? 0)} onay maddesi ·{' '}
+                    {(t.checkItems?.length ?? 0)} onay maddesi · {(t.questions?.length ?? 0)} soru ·{' '}
                     {(t.serviceNames?.length ?? 0) > 0 ? `Hizmetler: ${t.serviceNames!.join(', ')}` : 'Hiçbir hizmete bağlı değil'}
                   </div>
                 </div>
@@ -341,6 +369,65 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
                   <Plus className="h-3.5 w-3.5" /> Ekle
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* EVET / HAYIR SORULARI — anamnez beyanı formun kendi içinde alınır. */}
+          <div>
+            <label className="flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
+              <HelpCircle className="h-3.5 w-3.5 text-[#c85776]" /> Evet / Hayır soruları
+              <span className="font-normal text-[#705a66]">(müşteri tablette her soruyu Evet ya da Hayır olarak yanıtlar)</span>
+            </label>
+            <div className="mt-2 space-y-1.5">
+              {draft.questions.map((q, index) => (
+                <div key={q.id || index} className="rounded-[12px] border border-[#ead8df] bg-white p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-2 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[11px] font-bold text-[#a34a62]">{index + 1}</span>
+                    <input
+                      value={q.text}
+                      onChange={(e) => patchQuestion(index, { text: e.target.value })}
+                      placeholder="Soru metni…"
+                      className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#c85776]"
+                    />
+                    <button type="button" onClick={() => setDraft({ ...draft, questions: draft.questions.filter((_, i) => i !== index) })}
+                      title="Soruyu sil"
+                      className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#705a66] hover:bg-rose-50 hover:text-rose-600">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 pl-7">
+                    {/* Önizleme: müşteri tablette bu iki düğmeyi görecek. */}
+                    <span className="flex items-center gap-1">
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Evet</span>
+                      <span className="rounded-full border border-[#ead8df] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#705a66]">Hayır</span>
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[12px] text-[#4a3a44]">
+                      <input type="checkbox" checked={q.required !== false} onChange={(e) => patchQuestion(index, { required: e.target.checked })} className="h-3.5 w-3.5 accent-[#c85776]" />
+                      Zorunlu
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[12px] text-[#4a3a44]">
+                      <input type="checkbox" checked={Boolean(q.note)} onChange={(e) => patchQuestion(index, { note: e.target.checked })} className="h-3.5 w-3.5 accent-[#c85776]" />
+                      Açıklama alanı ekle
+                    </label>
+                  </div>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuestion() } }}
+                  placeholder="Yeni soru… (ör. Hamile misiniz?)"
+                  className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#c85776]"
+                />
+                <button type="button" onClick={addQuestion} disabled={!newQuestion.trim()}
+                  className="inline-flex items-center gap-1 rounded-[10px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2 text-[12.5px] font-semibold text-[#b14d6c] disabled:opacity-50">
+                  <Plus className="h-3.5 w-3.5" /> Soru ekle
+                </button>
+              </div>
+              {draft.questions.length === 0 && (
+                <p className="text-[11.5px] text-[#705a66]">Soru eklemezseniz formda yalnız onay maddeleri görünür.</p>
+              )}
             </div>
           </div>
 

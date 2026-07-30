@@ -106,4 +106,5 @@ const Map<String, String> routePagePermissions = {
   '/whatsapp-messages': Perm.notifications,
   '/logs': Perm.logs,
   '/settings': Perm.settings,
+  '/consent-templates': Perm.settings,
 };
