@@ -26,6 +26,7 @@ import {
   Search,
   Sparkles,
   Star,
+  Trash2,
   TrendingDown,
   TrendingUp,
   UserRound,
@@ -321,6 +322,11 @@ export interface DayScheduleModalProps {
   onComplete?: (id: string) => void | Promise<void>
   /** Randevuyu iptal et (yalnızca yönetici). */
   onCancel?: (id: string) => void | Promise<void>
+  /**
+   * Randevuyu kalıcı SİL (yalnızca yönetici). İptalden farklıdır: iptal kaydı durumuyla
+   * birlikte listede kalır, silme kaydı tamamen kaldırır. Panelde yerinde onay istenir.
+   */
+  onDelete?: (id: string) => void | Promise<void>
   /** Seçilen randevunun müşterisinin açık adisyonunu + cari borcunu getir (panelde ödeme/cari için). */
   loadOpenAdisyon?: (customerId: string, customerName?: string) => Promise<PaymentInfo | null>
   /** Müşterinin adisyon kartını modal olarak aç (kalem/satış, ödeme/peşinat, onay, silme). */
@@ -362,6 +368,7 @@ export default function DayScheduleModal({
   onStartService,
   onComplete,
   onCancel,
+  onDelete,
   loadOpenAdisyon,
   onOpenAdisyon,
   onCollect,
@@ -1131,6 +1138,7 @@ export default function DayScheduleModal({
                     onStartService={onStartService}
                     onComplete={onComplete}
                     onCancel={onCancel}
+                    onDelete={onDelete}
                     onOpenAdisyon={onOpenAdisyon}
                     onCollect={onCollect}
                     onClose={() => setSelectedId(null)}
@@ -1195,6 +1203,7 @@ function DetailPanel({
   onStartService,
   onComplete,
   onCancel,
+  onDelete,
   onOpenAdisyon,
   onCollect,
   onClose,
@@ -1208,10 +1217,19 @@ function DetailPanel({
   onStartService?: (id: string) => void | Promise<void>
   onComplete?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
+  onDelete?: (id: string) => void | Promise<void>
   onOpenAdisyon?: (customerId: string, customerName?: string) => void
   onCollect?: (customerId: string, customerName?: string, accountId?: string) => void
   onClose: () => void
 }) {
+  // Silme onayı PANELİN İÇİNDE sorulur. ConfirmDialog kullanılamaz: overlay'i z-[150],
+  // bu modal z-[200] → onay kutusu takvimin ALTINDA kalırdı ([[project_modal_portal_yiginlama]]).
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Başka bir randevuya geçilince açık kalan onay taşınmasın.
+  useEffect(() => { setConfirmDelete(false); setDeleting(false) }, [appt.id])
+
   const st = statusStyle[appt.status] || statusStyle.bekliyor
   const startMin = parseMinutes(appt.time)
   const dur = apptDur(appt)
@@ -1420,6 +1438,55 @@ function DetailPanel({
             {canCancel && onCancel && (
               <button type="button" onClick={() => void onCancel(appt.id)} className={`inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-200 bg-white px-3 py-2 text-[12px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 ${canApprove && onApprove ? '' : 'col-span-2'}`}>
                 <Ban className="h-3.5 w-3.5" /> İptal Et
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* KALICI SİLME — iptalden ayrı tutulur: iptal kaydı listede bırakır, silme kaldırır.
+            Yanlışlıkla basmaya karşı yerinde onay istenir. */}
+        {canManage && onDelete && (
+          <div className="border-t border-[#f2e2e9] pt-2">
+            {confirmDelete ? (
+              <div className="rounded-[12px] border border-rose-200 bg-rose-50/70 p-2.5">
+                <div className="flex items-start gap-1.5 text-[11.5px] leading-snug text-rose-700">
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                  <span><b>{appt.musteri}</b> · {minutesToLabel(startMin)} randevusu kalıcı olarak silinsin mi? Bu işlem geri alınamaz.</span>
+                </div>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setConfirmDelete(false)}
+                    className="inline-flex items-center justify-center rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#fff4f8] disabled:opacity-60"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={async () => {
+                      setDeleting(true)
+                      try {
+                        await onDelete(appt.id)
+                        onClose() // kayıt yok artık; panel özet görünümüne dönsün
+                      } finally {
+                        setDeleting(false)
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-rose-600 px-3 py-1.5 text-[11.5px] font-bold text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> {deleting ? 'Siliniyor…' : 'Evet, sil'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] border border-rose-200 bg-rose-50/50 px-3 py-2 text-[12px] font-semibold text-rose-700 transition-colors hover:bg-rose-100/70"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Randevuyu Sil
               </button>
             )}
           </div>

@@ -1879,6 +1879,19 @@ function RandevularPageInner() {
               }
             : undefined
         }
+        onDelete={
+          !isStaffUser
+            ? async (id) => {
+                setActionError('')
+                try {
+                  await adminApi.deleteAppointment(id, tenantId)
+                  await reload()
+                } catch (e) {
+                  setActionError(e instanceof Error ? e.message : 'Randevu silinemedi.')
+                }
+              }
+            : undefined
+        }
         loadOpenAdisyon={loadOpenAdisyon}
         onOpenAdisyon={
           canAdisyon

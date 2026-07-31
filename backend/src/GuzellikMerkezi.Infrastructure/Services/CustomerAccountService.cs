@@ -1330,8 +1330,14 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // Kategori seçiliyse seanslar da o kategorinin paketleriyle sınırlanır. Aksi halde aynı
         // satışa bağlı BAŞKA paketlerin (ya da pakete bağlı olmayan manuel) seansları "Kalan Seans"a
         // sızar ve "Toplam/Aktif Paket" ile çelişirdi.
+        //
+        // PAKETSİZ HİZMET SATIŞI BU RAPORA GİRMEZ: tekil hizmet satışında da seans bakiyesi açılır
+        // ama ServicePackageId = Guid.Empty olur (bkz. AdisyonService "2a-2" ve geçmiş satış).
+        // Süzülmezse tek bir hizmet satışı "Toplam Paket"/"Aktif Paket" sayaçlarını artırıyordu.
+        // Hizmet satışları ayrı blokta (GetServiceReportAsync) sayılır.
         var scopedSessions = sessionRows
             .Where(s => inScopeAccountIds.Contains(s.CustomerAccountId)
+                        && s.ServicePackageId != Guid.Empty
                         && (categoryPackageIds is null || categoryPackageIds.Contains(s.ServicePackageId)))
             .ToList();
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
@@ -1357,6 +1363,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var cancelledSummaries = await LoadCancelledSummariesAsync(tenantId, fromUtc, toUtc, cancellationToken);
         var cancelledSoldPackageCount = cancelledSummaries
             .SelectMany(c => c.Sessions.Select(s => new { c.OriginalAccountId, s.PackageId }))
+            // Paketsiz hizmet satışı (PackageId = Guid.Empty) paket sayacına girmez — canlı
+            // taraftaki scopedSessions süzgeciyle aynı kural.
+            .Where(x => x.PackageId != Guid.Empty)
             .Where(x => categoryPackageIds is null || categoryPackageIds.Contains(x.PackageId))
             .GroupBy(x => new { x.OriginalAccountId, x.PackageId })
             .Count();

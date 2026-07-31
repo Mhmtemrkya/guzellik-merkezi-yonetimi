@@ -121,6 +121,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       widget.api
           .get('/api/admin/accounts/report', query: {'months': 6})
           .catchError((_) => const <String, dynamic>{}),
+      // HİZMET raporu paket raporundan AYRI uçtur: tekil (paketsiz) hizmet satışları
+      // burada sayılır, paket kartlarında değil.
+      widget.api
+          .get('/api/admin/accounts/service-report')
+          .catchError((_) => const <String, dynamic>{}),
       widget.api
           .get('/api/admin/customers/passive')
           .catchError((_) => const <String, dynamic>{}),
@@ -152,12 +157,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       report: values[6] is Map
           ? (values[6] as Map).cast<String, dynamic>()
           : const <String, dynamic>{},
-      passive: values[7] is Map
+      serviceReport: values[7] is Map
           ? (values[7] as Map).cast<String, dynamic>()
           : const <String, dynamic>{},
-      cashEntries: apiItems(values[8]),
-      reviews: values[9] is Map
-          ? (values[9] as Map).cast<String, dynamic>()
+      passive: values[8] is Map
+          ? (values[8] as Map).cast<String, dynamic>()
+          : const <String, dynamic>{},
+      cashEntries: apiItems(values[9]),
+      reviews: values[10] is Map
+          ? (values[10] as Map).cast<String, dynamic>()
           : const <String, dynamic>{},
       summary: {
         'customers': (customerStats['total'] as num?)?.toInt() ?? 0,
@@ -351,6 +359,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         report: data.report,
                         api: widget.api,
                       ),
+                      const SizedBox(height: 22),
+                      // Paket raporundan AYRI blok: tekil hizmet satışları burada sayılır.
+                      _ServiceReportCard(report: data.serviceReport),
                       const SizedBox(height: 22),
                       _InstallmentChartCard(report: data.report),
                       const SizedBox(height: 22),
@@ -1532,6 +1543,7 @@ class _DashboardData {
     this.staff = const <Map<String, dynamic>>[],
     this.products = const <Map<String, dynamic>>[],
     this.report = const <String, dynamic>{},
+    this.serviceReport = const <String, dynamic>{},
     this.passive = const <String, dynamic>{},
     this.cashEntries = const <Map<String, dynamic>>[],
     this.reviews = const <String, dynamic>{},
@@ -1547,6 +1559,9 @@ class _DashboardData {
   final List<Map<String, dynamic>> staff;
   final List<Map<String, dynamic>> products;
   final Map<String, dynamic> report;
+
+  /// /accounts/service-report çıktısı — PAKET raporundan ayrı: tekil hizmet satışları burada.
+  final Map<String, dynamic> serviceReport;
   final Map<String, dynamic> passive;
   final List<Map<String, dynamic>> cashEntries;
 
@@ -1766,29 +1781,32 @@ class _PackageReportCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final overdue = numberOf(report, const ['overdueAmount']);
     // (etiket, değer, ikon, ton, tehlike mi)
+    // Kartlar KATALOĞU değil SATIŞI sayar; hepsi dönem süzgecine uyar (web ile birebir).
+    // DİKKAT: alan adları API yanıtıyla eşleşmeli — `catalogPackageCount` /
+    // `packagesInUseCount` API'de YOKTU ve kartlar sessizce hep 0 gösteriyordu.
+    final cancelledPackages =
+        numberOf(report, const ['cancelledSoldPackageCount']).toInt();
     final stats = <(String, String, IconData, _MetricTone, bool)>[
-      // Paket kataloğu kartları (web ile aynı alanlar): Toplam = tanımlı paket adedi
-      // (Paketler sayfasıyla aynı), Aktif = kaç çeşidinin seansı süren satışı var.
       (
         'Toplam Paket',
-        '${numberOf(report, const ['catalogPackageCount']).toInt()}',
+        '${numberOf(report, const ['packageSalesCount']).toInt()}',
         Icons.inventory_2_rounded,
         _MetricTone.violet,
         false,
       ),
       (
         'Aktif Paket',
-        '${numberOf(report, const ['packagesInUseCount']).toInt()}',
+        '${numberOf(report, const ['activeSoldPackageCount']).toInt()}',
         Icons.autorenew_rounded,
         _MetricTone.violet,
         false,
       ),
       (
-        'Satılan Paket',
-        '${numberOf(report, const ['packageSalesCount']).toInt()}',
-        Icons.shopping_bag_rounded,
-        _MetricTone.violet,
-        false,
+        'İptal Edilen',
+        '$cancelledPackages',
+        Icons.cancel_rounded,
+        _MetricTone.rose,
+        cancelledPackages > 0,
       ),
       (
         'Kalan Seans',
@@ -1844,6 +1862,155 @@ class _PackageReportCard extends StatelessWidget {
         children: stats.map((s) {
           final (label, value, icon, tone, danger) = s;
           // Web ReportKpi anatomisi: tonlu üst bant + cam ikon → rakam → etiket.
+          return Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: danger ? const Color(0xFFF2C4C4) : AppColors.border,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 24,
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: danger
+                          ? const [Color(0xFFFFE2E2), Color(0xFFFFD0D0)]
+                          : [tone.from, tone.to],
+                    ),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: 17,
+                      height: 17,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .85),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 11,
+                        color: danger ? AppColors.danger : tone.ink,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(9, 6, 7, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                            color: danger ? AppColors.danger : AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 10,
+                            height: 1.1,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+/// HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok (web paritesi).
+///
+/// Buradaki sayım HİZMETtir, paket değil: tekil (paketsiz) hizmet satışları ve paket
+/// içindeki hizmetler birlikte sayılır. Paket kartları ise yalnız gerçek paketleri sayar —
+/// bir hizmet satışı paket sayacını ARTIRMAZ.
+class _ServiceReportCard extends StatelessWidget {
+  const _ServiceReportCard({required this.report});
+  final Map<String, dynamic> report;
+
+  @override
+  Widget build(BuildContext context) {
+    final cancelled = numberOf(report, const ['cancelledSoldServiceCount']).toInt();
+    final total = numberOf(report, const ['sessionsTotal']).toInt();
+    final used = numberOf(report, const ['sessionsUsed']).toInt();
+    final stats = <(String, String, IconData, _MetricTone, bool)>[
+      (
+        'Toplam Hizmet',
+        '${numberOf(report, const ['serviceSalesCount']).toInt()}',
+        Icons.spa_rounded,
+        _MetricTone.mint,
+        false,
+      ),
+      (
+        'Aktif Hizmet',
+        '${numberOf(report, const ['activeSoldServiceCount']).toInt()}',
+        Icons.autorenew_rounded,
+        _MetricTone.mint,
+        false,
+      ),
+      (
+        'İptal Edilen',
+        '$cancelled',
+        Icons.cancel_rounded,
+        _MetricTone.rose,
+        cancelled > 0,
+      ),
+      (
+        'Kalan Seans',
+        '${numberOf(report, const ['sessionsRemaining']).toInt()}',
+        Icons.bolt_rounded,
+        _MetricTone.gold,
+        false,
+      ),
+      (
+        'Ciro',
+        _compactMoney(numberOf(report, const ['revenue'])),
+        Icons.payments_rounded,
+        _MetricTone.violet,
+        false,
+      ),
+      (
+        'Kullanılan',
+        '$used/$total',
+        Icons.check_circle_rounded,
+        _MetricTone.mint,
+        false,
+      ),
+    ];
+
+    return _DashCard(
+      icon: Icons.spa_rounded,
+      title: 'Hizmet Raporu',
+      child: AdaptiveStatGrid(
+        phoneCols: 3,
+        height: 92,
+        spacing: 8,
+        children: stats.map((s) {
+          final (label, value, icon, tone, danger) = s;
           return Container(
             decoration: BoxDecoration(
               color: AppColors.surface,

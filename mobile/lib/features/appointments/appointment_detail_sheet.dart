@@ -70,6 +70,34 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     }, 'Randevu iptal edildi.');
   }
 
+  /// Randevuyu KALICI sil. İptalden farklıdır: iptal kaydı durumuyla listede bırakır,
+  /// silme kaydı tamamen kaldırır. Geri alınamaz olduğu için onay istenir.
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Randevuyu sil'),
+        content: Text(
+          '${valueOf(appt, const ['customerName'], fallback: 'Müşteri')} randevusu '
+          'kalıcı olarak silinsin mi? Bu işlem geri alınamaz.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Evet, sil'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(() async {
+      await widget.api.delete('/api/admin/appointments/${appt['id']}');
+    }, 'Randevu silindi.');
+  }
+
   /// Müşteri koltukta — randevuyu "İşlemde" yap (çizelgede mor kart).
   Future<void> _startService() async {
     await _run(() async {
@@ -455,12 +483,32 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _OutlineAction(
-                      icon: Icons.delete_outline_rounded,
+                      icon: Icons.block_rounded,
                       label: 'Randevuyu İptal Et',
                       onTap: _busy ? null : _cancel,
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              // KALICI SİLME — iptalden ayrı, en altta ve tehlikeli renkte.
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    backgroundColor: AppColors.danger.withValues(alpha: .07),
+                    foregroundColor: AppColors.danger,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(color: AppColors.danger.withValues(alpha: .3)),
+                    ),
+                  ),
+                  onPressed: _busy ? null : _delete,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                  label: const Text('Randevuyu Sil',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
               ),
               const SizedBox(height: 10),
               SizedBox(
