@@ -123,6 +123,14 @@ public sealed record CreateHistoricalSaleRequest(
 /// <param name="RefundMethod">İadenin yapıldığı yöntem: cash / card / transfer. Boşsa nakit sayılır.</param>
 public sealed record CancelSaleRequest(string? Reason, decimal? RefundedAmount = null, string? RefundMethod = null);
 
+/// <summary>Satış iptalini geri alma isteği.</summary>
+/// <param name="VoidRefund">
+/// İptalde girilen iade FİİLEN YAPILMAMIŞSA (yanlış kayıt) true gönderilir: kasa çıkışı kaydı da
+/// geri alınır. Varsayılan false — para gerçekten müşteriye ödendiyse o kasa hareketi yerinde kalır.
+/// Geçmişteki bir ödemeyi bugünkü bir düzeltme yüzünden raporlardan silmek mali izi bozardı.
+/// </param>
+public sealed record RestoreSaleRequest(bool VoidRefund = false);
+
 /// <summary>
 /// Arşivdeki iptal edilmiş satış. Canlı cari listesinde YER ALMAZ — "İptal Edilenler" ekranı
 /// bu kayıtları ayrı okur. <see cref="CollectedAmount"/> iptal anında tahsil edilmiş olan paradır.
@@ -146,12 +154,9 @@ public sealed record CancelledSaleDto(
     /// <summary>
     /// Kurumda kalan nakit (tahsil edilen − iade edilen).
     /// <para>
-    /// DİKKAT — bu tutar ŞU AN GELİR RAPORLARINDA GÖRÜNMEZ: iptalde tahsilat satırları
-    /// (account_payments) canlı tablodan silindiği için kasa akışı / kâr-zarar / günlük kart
-    /// tahsilatın TAMAMINI kaybeder, yalnız iade edilen kısmı değil. Yani burada "kurumda kaldı"
-    /// yazan para gelir tablosunda sayılmaz. Bilinçli bir tercih değil, açık bir eksiktir;
-    /// düzeltmek gelir tanıma kuralını değiştirmek demektir (iptal tarihinde gelir yazmak ya da
-    /// ödeme tarihini korumak) — karar kurum yöneticisinindir.
+    /// Gelir raporlarında da bu tutar kalır: iptalde tahsilat satırları canlı tablodan silinir ama
+    /// kalıcı kopyaları <c>archived_sale_payments</c>'a taşınır (kasa akışı/kâr-zarar oradan okur),
+    /// iade edilen kısım ise <c>refund_transactions</c> ile gider yazılır. Net etki = kurumda kalan.
     /// </para>
     /// </summary>
     decimal RetainedAmount,

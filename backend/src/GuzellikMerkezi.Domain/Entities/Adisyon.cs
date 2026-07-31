@@ -179,12 +179,22 @@ public sealed class Adisyon : Entity
         Touch();
     }
 
-    /// <summary>Satış iptali geri alınınca fişi onaylı hâline ve cari bağına döndürür.</summary>
-    public void ReopenAfterSaleRestore(Guid accountId, DateTime? approvedAtUtc, Guid? decidedByUserId)
+    /// <summary>
+    /// Satış iptali geri alınınca fişi İPTALDEN ÖNCEKİ hâline döndürür.
+    /// <para>
+    /// Eskiden her fiş koşulsuz Approved yapılıyor ve onay tarihi carinin oluşturma tarihiyle
+    /// eziliyordu: açık kalmış ya da zaten iptal edilmiş bir adisyon geri almada onaylıya dönüyor,
+    /// dönem raporları da yanlış tarihe kayıyordu. Özgün değerler yedekten gelir.
+    /// </para>
+    /// </summary>
+    public void RestoreAfterSaleCancellation(Guid accountId, AdisyonStatus status, DateTime? approvedAtUtc, Guid? decidedByUserId)
     {
-        Status = AdisyonStatus.Approved;
+        Status = status;
         CustomerAccountId = accountId;
-        ApprovedAtUtc = approvedAtUtc ?? ApprovedAtUtc ?? DateTime.UtcNow;
+        // Onaylı fişin tarihi kaybolmasın; onaylı değilse onay damgası hiç olmamalı.
+        ApprovedAtUtc = status == AdisyonStatus.Approved
+            ? approvedAtUtc ?? ApprovedAtUtc ?? DateTime.UtcNow
+            : approvedAtUtc;
         DecidedByUserId = decidedByUserId;
         Touch();
     }

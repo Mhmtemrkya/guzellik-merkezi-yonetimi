@@ -47,10 +47,12 @@ public static class CustomerAccountEndpoints
         });
 
         // id: arşiv kaydının Id'si ya da (eski istemciler için) silinen carinin Id'si olabilir.
-        group.MapPost("/{id:guid}/restore-sale", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        // Gövde OPSİYONELDİR (eski istemciler boş gönderiyor): voidRefund=true yalnızca "iade fiilen
+        // yapılmamıştı" denildiğinde kasa çıkışı kaydını da geri alır.
+        group.MapPost("/{id:guid}/restore-sale", async (Guid id, RestoreSaleRequest? request, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RestoreSaleAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RestoreSaleAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
         group.MapGet("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>

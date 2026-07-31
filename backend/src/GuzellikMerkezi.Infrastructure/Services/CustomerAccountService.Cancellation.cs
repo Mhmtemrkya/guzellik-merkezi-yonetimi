@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,11 @@ public sealed partial class CustomerAccountService
     private static string BuildSaleSnapshot(
         CustomerAccount account,
         IReadOnlyList<CustomerPackageSession> sessions,
-        IReadOnlyList<Adisyon> adisyonlar) => SaleSnapshotReader.Build(account, sessions, adisyonlar);
+        IReadOnlyList<Adisyon> adisyonlar,
+        IReadOnlyDictionary<Guid, (AdisyonStatus Status, DateTime? ApprovedAtUtc)> adisyonStatuses,
+        IReadOnlyList<AdisyonReversalRecord> reversals,
+        IReadOnlyList<Guid> cancelledAppointmentIds) =>
+        SaleSnapshotReader.Build(account, sessions, adisyonlar, adisyonStatuses, reversals, cancelledAppointmentIds);
 
     private static SaleSnapshot? ParseSaleSnapshot(string json) => SaleSnapshotReader.Parse(json);
 
@@ -121,54 +126,195 @@ public sealed partial class CustomerAccountService
     /// gerektirir (FK sırası) ve arada bağlantı koparsa yarım kalmış bir durum kalırdı —
     /// ör. arşiv kaydı oluşmuş ama canlı cari hâlâ dururken.
     /// <para>
-    /// InMemory sağlayıcı transaction desteklemez (birim testleri onu kullanır); orada iş
-    /// doğrudan çalıştırılır. Zaten süren bir transaction varsa yenisi açılmaz.
+    /// Başarısız <see cref="Result{TValue}"/> de geri alınır: iş yarıda "hata" dönerse o ana kadar
+    /// yazılanlar commit edilmemeli (ör. arşiv yazıldı ama doğrulama sonradan patladı).
+    /// </para>
+    /// <para>
+    /// Zaten süren bir transaction varsa (servis dışarıdan bir işlemin içinde çağrılırsa) SAVEPOINT
+    /// açılır; hata/başarısızlıkta yalnız buradaki değişiklikler geri alınır. Savepoint olmadan dış
+    /// çağıran hatayı yutup commit ederse yarım kalmış bir iptal kalıcı olurdu.
+    /// InMemory sağlayıcı transaction desteklemez (birim testleri onu kullanır) → iş doğrudan çalışır.
     /// </para>
     /// </summary>
-    private async Task<T> InTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct)
+    private async Task<Result<TValue>> InTransactionAsync<TValue>(Func<Task<Result<TValue>>> work, CancellationToken ct)
     {
-        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null)
-            return await work();
+        if (!_db.Database.IsRelational()) return await work();
+
+        if (_db.Database.CurrentTransaction is { } outer)
+        {
+            if (!outer.SupportsSavepoints) return await work();
+
+            var savepoint = "sp_cancel_" + Guid.NewGuid().ToString("N")[..12];
+            await outer.CreateSavepointAsync(savepoint, ct);
+            try
+            {
+                var nested = await work();
+                if (nested.IsFailure) await outer.RollbackToSavepointAsync(savepoint, ct);
+                else await outer.ReleaseSavepointAsync(savepoint, ct);
+                return nested;
+            }
+            catch
+            {
+                await outer.RollbackToSavepointAsync(savepoint, ct);
+                throw;
+            }
+        }
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         try
         {
             var result = await work();
+            if (result.IsFailure)
+            {
+                await tx.RollbackAsync(ct);
+                _db.ChangeTracker.Clear();
+                return result;
+            }
             await tx.CommitAsync(ct);
             return result;
         }
         catch
         {
             await tx.RollbackAsync(ct);
+            _db.ChangeTracker.Clear();
             throw;
         }
     }
 
+    private enum CancelLockState { Locked, NotFound, AlreadyArchived }
+
     /// <summary>
-    /// İptal edilecek cariyi SATIR KİLİDİYLE okur ve aynı satış için zaten aktif bir arşiv
-    /// kaydı varsa false döner.
+    /// İptal edilecek cari satırını <c>FOR UPDATE</c> ile kilitler.
     /// <para>
     /// İki kullanıcı aynı satışı aynı anda iptal ederse ikisi de cariyi silinmeden okuyabilir ve
-    /// çift arşiv kaydı / yarım kalmış istek oluşurdu. <c>FOR UPDATE</c> ikinci isteği ilkinin
-    /// commit'ine kadar bekletir; sonra aktif arşiv kontrolü onu nazikçe reddeder.
+    /// çift arşiv kaydı / yarım kalmış istek oluşurdu. Kilit ikinci isteği ilkinin commit'ine kadar
+    /// bekletir; sonra aktif arşiv kontrolü onu nazikçe reddeder.
+    /// </para>
+    /// <para>
+    /// KRİTİK: çağıran cariyi bu kilitten SONRA okumalıdır. Kilit öncesi okunan tutarlar araya giren
+    /// bir tahsilatı kaçırır ve o tahsilat yedeğe girmeden kalıcı olarak silinirdi.
     /// </para>
     /// </summary>
-    private async Task<bool> TryLockForCancelAsync(Guid tenantId, Guid accountId, CancellationToken ct)
+    private async Task<CancelLockState> LockForCancelAsync(Guid tenantId, Guid accountId, CancellationToken ct)
     {
         if (_db.Database.IsRelational())
         {
             // Guid kolonu char(36): parametre olarak string geçilir.
             var rows = await _db.Database.SqlQueryRaw<Guid>(
-                    "SELECT Id AS Value FROM customer_accounts WHERE Id = {0} AND TenantId = {1} FOR UPDATE",
+                    "SELECT Id AS Value FROM customer_accounts WHERE Id = {0} AND TenantId = {1} AND IsDeleted = 0 FOR UPDATE",
                     accountId.ToString(), tenantId.ToString())
                 .ToListAsync(ct);
-            if (rows.Count == 0) return false;
+            if (rows.Count == 0)
+            {
+                return await IsArchivedAsync(tenantId, accountId, ct)
+                    ? CancelLockState.AlreadyArchived
+                    : CancelLockState.NotFound;
+            }
         }
 
         // Kilit alındıktan sonra bak: bu satış zaten arşivlenmiş mi?
-        return !await _db.CancelledSales
-            .AnyAsync(x => x.TenantId == tenantId && x.OriginalAccountId == accountId && x.RestoredAtUtc == null, ct);
+        return await _db.CancelledSales
+            .AnyAsync(x => x.TenantId == tenantId && x.OriginalAccountId == accountId && x.RestoredAtUtc == null, ct)
+            ? CancelLockState.AlreadyArchived
+            : CancelLockState.Locked;
     }
+
+    /// <summary>
+    /// İptal edilen satıştan doğan ve BAŞKA hiçbir paketten karşılanmayan aktif randevuları kapatır
+    /// (Planlandı/Onaylandı/Taslak). Kapatılan Id'ler yedeğe yazılır; geri alma yalnız onları canlandırır.
+    /// <para>
+    /// Neden gerekli: satış ve seans bakiyeleri iptal ediliyor ama randevu takvimde kalıyordu —
+    /// personel karşılığı olmayan bir işe gidiyordu. Tamamlanmış/iptal randevulara DOKUNULMAZ.
+    /// </para>
+    /// <para>
+    /// Neden "karşılıksız" süzgeci: müşterinin aynı hizmet için başka bir paketi hâlâ duruyorsa
+    /// randevusu geçerlidir; hepsini silmek iptal edilmeyen bir satışın randevusunu da götürürdü.
+    /// </para>
+    /// </summary>
+    private async Task<List<Guid>> CancelOrphanAppointmentsAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid accountId,
+        IReadOnlyList<CustomerPackageSession> cancelledSessions,
+        CancellationToken ct)
+    {
+        var soldServiceIds = cancelledSessions.Select(s => s.ServiceDefinitionId).ToHashSet();
+        if (soldServiceIds.Count == 0) return [];
+
+        // Bu satış dışında kalan seans bakiyeleri — kalanı olan hizmetin randevusu ayakta kalır.
+        var stillCovered = (await _db.CustomerPackageSessions
+                .Where(s => s.TenantId == tenantId && s.CustomerId == customerId && s.CustomerAccountId != accountId)
+                .Select(s => new { s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
+                .ToListAsync(ct))
+            .Where(s => s.TotalSessions - s.UsedSessions > 0)
+            .Select(s => s.ServiceDefinitionId)
+            .ToHashSet();
+
+        var orphanServiceIds = soldServiceIds.Where(x => !stillCovered.Contains(x)).ToHashSet();
+        if (orphanServiceIds.Count == 0) return [];
+
+        // Guid listesi .Contains() MySQL'de çevrilemez → müşteri+durum sunucuda, hizmet bellekte süzülür.
+        var appointments = (await _db.Appointments
+                .Where(a => a.TenantId == tenantId && a.CustomerId == customerId
+                            && (a.Status == AppointmentStatus.Scheduled
+                                || a.Status == AppointmentStatus.Confirmed
+                                || a.Status == AppointmentStatus.Draft))
+                .ToListAsync(ct))
+            .Where(a => orphanServiceIds.Contains(a.ServiceDefinitionId))
+            .ToList();
+        if (appointments.Count == 0) return [];
+
+        // Soft-delete (HardDeleteEnabled açılmadan önce çalışır) → geri almada Restore() ile canlanır.
+        _db.Appointments.RemoveRange(appointments);
+        return appointments.Select(a => a.Id).ToList();
+    }
+
+    /// <summary>
+    /// Geri alınacak ARŞİV satırını kilitler ve Id'sini döner (bulunamazsa null).
+    /// <para>
+    /// İptalde olduğu gibi burada da yarış vardı: iki eşzamanlı "iptali geri al" isteği arşivi aktif
+    /// görüp ikisi de cariyi AYNI Id ile yeniden eklemeye çalışıyor, biri duplicate-key hatası
+    /// alıyordu. <c>FOR UPDATE</c> ikinciyi bekletir; kilit sonrası okuma onu nazikçe reddeder.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> LockArchiveForRestoreAsync(Guid tenantId, Guid id, CancellationToken ct)
+    {
+        if (_db.Database.IsRelational())
+        {
+            var locked = await _db.Database.SqlQueryRaw<Guid>(
+                    "SELECT Id AS Value FROM cancelled_sales " +
+                    "WHERE TenantId = {1} AND IsDeleted = 0 AND RestoredAtUtc IS NULL " +
+                    "AND (Id = {0} OR OriginalAccountId = {0}) " +
+                    "ORDER BY CancelledAtUtc DESC FOR UPDATE",
+                    id.ToString(), tenantId.ToString())
+                .ToListAsync(ct);
+            return locked.Count == 0 ? null : locked[0];
+        }
+
+        // InMemory (birim testleri): kilit yok, seçim mantığı aynı kalsın.
+        var row = await _db.CancelledSales.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.RestoredAtUtc == null && (x.Id == id || x.OriginalAccountId == id))
+            .OrderByDescending(x => x.CancelledAtUtc)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(ct);
+        return row;
+    }
+
+    /// <summary>
+    /// Silinecek tahsilatların KALICI defter kopyasını üretir.
+    /// <para>
+    /// Cari silinince <c>account_payments</c> cascade ile gider; gelir raporları yalnız canlı
+    /// satırları okuduğu için geçmişte tahsil edilen para sıfırlanıyor, üstüne iade gider yazılınca
+    /// net kasa EKSİYE düşüyordu. Bu kopya sayesinde tahsilat defterden silinmez, yer değiştirir.
+    /// </para>
+    /// </summary>
+    private static List<ArchivedSalePayment> BuildArchivedPayments(
+        Guid tenantId, CancelledSale archive, CustomerAccount account) =>
+        account.Payments
+            .Select(p => new ArchivedSalePayment(
+                tenantId, account.BranchId, archive.Id, account.Id, p.Id, account.CustomerId,
+                account.Name, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc)))
+            .ToList();
 
     /// <summary>
     /// Rapor kartlarındaki "İptal Edilen" sayacı için arşiv özeti. İptal edilen satışın satırları

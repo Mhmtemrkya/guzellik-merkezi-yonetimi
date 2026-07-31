@@ -219,9 +219,31 @@ public sealed class CancelledSaleGuardTests
             Assert.Equal("iade", refund.Reason);
         }
 
-        // İptal geri alınınca iade kaydı da düşer (para geri ödenmemiş sayılır).
+        // İptal geri alınınca iade kaydı KALIR: para fiilen müşteriye ödendi, bugünkü bir düzeltme
+        // dünkü kasa çıkışını raporlardan silemez.
         await using (var db = NewDb(options))
             Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId)).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.Equal(250m, (await db.RefundTransactions.SingleAsync()).Amount);
+    }
+
+    /// <summary>İade YANLIŞ girilmişse yönetici açıkça isteyerek kasa hareketini de geri alabilir.</summary>
+    [Fact]
+    public async Task RestoreSale_VoidsRefund_OnlyWhenExplicitlyRequested()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(600m, "card", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId,
+                new CancelSaleRequest("iade", RefundedAmount: 250m, RefundMethod: "card"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId, new RestoreSaleRequest(VoidRefund: true))).IsSuccess);
 
         await using (var db = NewDb(options))
             Assert.Empty(await db.RefundTransactions.ToListAsync());

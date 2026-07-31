@@ -136,6 +136,11 @@ else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var 
 // (migration uygulanmamış) sessizce uyarı loglar. Bitene kadar arama tam-tarama moduna düşer, sonuç doğrudur.
 await DatabaseBootstrap.BackfillCustomerSearchIndexAsync(app.Services);
 
+// İptal arşivi bakımı: ham SQL migration'ının bıraktığı DÜZ METİN yedekleri şifreler ve iptal edilmiş
+// satışların tahsilatlarını kalıcı deftere (archived_sale_payments) taşır. Yedek şifreli olduğundan
+// bu iş SQL'de yapılamaz. Veri-only + idempotent → her ortamda, her açılışta güvenle çalışır.
+await DatabaseBootstrap.BackfillCancelledSaleArchivesAsync(app.Services);
+
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
 // rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
 // Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:

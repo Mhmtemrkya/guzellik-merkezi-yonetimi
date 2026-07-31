@@ -1119,8 +1119,8 @@ function OnMuhasebePageInner() {
               open={cancelledOpen}
               onOpenChange={setCancelledOpen}
               busy={busy}
-              onRestore={async (originalAccountId) => {
-                await adminApi.restoreSale(originalAccountId, tenantId)
+              onRestore={async (originalAccountId, voidRefund) => {
+                await adminApi.restoreSale(originalAccountId, tenantId, voidRefund)
                 await reload()
               }}
             />

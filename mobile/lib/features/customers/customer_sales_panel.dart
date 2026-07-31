@@ -825,8 +825,11 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                       const SizedBox(height: 16),
                       if (status == 'Cancelled')
                         OutlinedButton.icon(
-                          onPressed: _busy ? null : () => _run(() =>
-                              widget.api.post('/api/admin/accounts/${_a['id']}/restore-sale', const {})),
+                          // voidRefund=false: gerçekten ödenmiş bir iade varsa kasa çıkışı korunur.
+                          // İadeyi de geri almak İptal Arşivi ekranından açıkça seçilir.
+                          onPressed: _busy ? null : () => _run(() => widget.api.post(
+                              '/api/admin/accounts/${_a['id']}/restore-sale',
+                              const {'voidRefund': false})),
                           icon: const Icon(Icons.replay_rounded, size: 17),
                           label: const Text('İptali geri al'),
                           style: OutlinedButton.styleFrom(
@@ -1037,71 +1040,102 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     final reasonCtrl = TextEditingController();
     final refundCtrl = TextEditingController();
     final collected = (_a['paidAmount'] as num?)?.toDouble() ?? 0;
+    // Paranın hangi kanaldan çıktığı. Gönderilmezse sunucu NAKİT varsayar ve kart/havale iadesi
+    // kasa kırılımında nakit çıkışı gibi görünür.
+    var method = 'cash';
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Satışı iptal et'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('İptal gerekçesini yazın (kayıtta görünür).',
-                  style: TextStyle(fontSize: 12.5)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: reasonCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'örn. müşteri vazgeçti, paket iade edildi',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Satışı iptal et'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('İptal gerekçesini yazın (kayıtta görünür).',
+                    style: TextStyle(fontSize: 12.5)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reasonCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'örn. müşteri vazgeçti, paket iade edildi',
+                  ),
                 ),
-              ),
-              if (collected > 0.005) ...[
-                const SizedBox(height: 14),
-                Text('Müşteriye iade edilen tutar (tahsil edilmiş: ${_money(collected)})',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: refundCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(hintText: '0'),
+                if (collected > 0.005) ...[
+                  const SizedBox(height: 14),
+                  Text('Müşteriye iade edilen tutar (tahsil edilmiş: ${_money(collected)})',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: refundCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(hintText: '0'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () => refundCtrl.text = collected.toStringAsFixed(2),
-                      child: const Text('Tamamı'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text('Boş bırakılırsa para kurumda kaldı sayılır ve gelirde görünmeye devam eder.',
-                    style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => refundCtrl.text = collected.toStringAsFixed(2),
+                        child: const Text('Tamamı'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('İade yöntemi',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final option in const [
+                        ('cash', 'Nakit'),
+                        ('card', 'Kart'),
+                        ('transfer', 'Havale/EFT'),
+                      ])
+                        ChoiceChip(
+                          label: Text(option.$2, style: const TextStyle(fontSize: 11.5)),
+                          selected: method == option.$1,
+                          onSelected: (_) => setLocal(() => method = option.$1),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'Boş bırakılırsa para kurumda kaldı sayılır ve gelirde görünmeye devam eder.',
+                      style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                ],
               ],
-            ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('İptal et'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('İptal et'),
-          ),
-        ],
       ),
     );
     if (ok != true) return;
 
+    // SESSİZ KIRPMA YOK: tahsil edileni aşan tutar sunucuda doğrulama hatası döner ve kullanıcı
+    // ne kaydedilmediğini görür (eskiden fark ettirmeden tahsil edilene çekiliyordu).
     final parsed = double.tryParse(refundCtrl.text.trim().replaceAll(',', '.')) ?? 0;
-    final refunded = parsed <= 0 ? 0.0 : (parsed > collected ? collected : parsed);
+    final refunded = parsed <= 0 ? 0.0 : parsed;
     await _run(() => widget.api.post(
           '/api/admin/accounts/${_a['id']}/cancel-sale',
-          {'reason': reasonCtrl.text.trim(), 'refundedAmount': refunded},
+          {
+            'reason': reasonCtrl.text.trim(),
+            'refundedAmount': refunded,
+            'refundMethod': method,
+          },
         ));
   }
 

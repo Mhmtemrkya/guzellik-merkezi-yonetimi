@@ -189,7 +189,7 @@ public sealed partial class ReportsService : IReportsService
     /// Dönemdeki tahsilatlar. AccountPayment tablosunda kiracı/şube kolonu yoktur; kapsam bağlı
     /// olduğu cariden gelir — böylece şube filtresi otomatik uygulanır.
     /// </summary>
-    private async Task<List<PaymentRow>> LoadPaymentsAsync(IReadOnlyDictionary<Guid, AccountRow> accounts, DateTime from, DateTime to, CancellationToken ct)
+    private async Task<List<PaymentRow>> LoadPaymentsAsync(Guid tenantId, IReadOnlyDictionary<Guid, AccountRow> accounts, DateTime from, DateTime to, CancellationToken ct)
     {
         var raw = await _db.AccountPayments.AsNoTracking()
             .Where(p => p.OccurredAtUtc >= from && p.OccurredAtUtc < to)
@@ -202,6 +202,16 @@ public sealed partial class ReportsService : IReportsService
             if (!accounts.TryGetValue(p.CustomerAccountId, out var acc)) continue;
             result.Add(new PaymentRow(acc.Id, acc.BranchId, acc.CustomerId, p.Amount, p.Method, p.OccurredAtUtc));
         }
+
+        // İptal edilen satışın tahsilatları canlı tabloda yok (cari silindi) ama para geçmişte
+        // kasaya girmiştir — kalıcı defterden eklenir, iade kısmı gider tarafında düşülür.
+        var archived = await _db.ArchivedSalePayments.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.OccurredAtUtc >= from && p.OccurredAtUtc < to)
+            .Select(p => new { p.OriginalAccountId, p.BranchId, p.CustomerId, p.Amount, p.Method, p.OccurredAtUtc })
+            .ToListAsync(ct);
+        result.AddRange(archived.Select(p =>
+            new PaymentRow(p.OriginalAccountId, p.BranchId, p.CustomerId, p.Amount, p.Method, p.OccurredAtUtc)));
+
         return result;
     }
 
@@ -402,7 +412,7 @@ public sealed partial class ReportsService : IReportsService
         string granularity,
         CancellationToken ct)
     {
-        var payments = await LoadPaymentsAsync(accountsById, from, to, ct);
+        var payments = await LoadPaymentsAsync(tenantId, accountsById, from, to, ct);
         var expenses = await LoadExpensesAsync(tenantId, from, to, ct);
         var appointments = await LoadAppointmentsAsync(tenantId, from, to, ct);
 

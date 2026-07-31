@@ -997,15 +997,31 @@ export const adminApi = {
    * Satış iptali + gerekçe. Kayıt canlı tablolardan silinip `cancelled_sales` arşivine taşınır
    * (finansal iz kaybolmaz, yer değiştirir — listCancelledSales ile okunur).
    * `refundedAmount`: tahsil edilmiş paradan müşteriye geri ödenen kısım; kalan gelirde sayılır.
+   * `refundMethod`: paranın hangi kanaldan çıktığı (cash/card/transfer) — gönderilmezse sunucu
+   * NAKİT varsayar ve kart/havale iadesi kasada yanlış kırılımda görünür.
    */
-  cancelSale: <T = unknown>(id: string, reason: string | null, refundedAmount?: number | null, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/accounts/${id}/cancel-sale`, { method: 'POST', query: { tenantId }, body: { reason, refundedAmount: refundedAmount ?? 0 } }),
+  cancelSale: <T = unknown>(
+    id: string,
+    reason: string | null,
+    refundedAmount?: number | null,
+    tenantId?: string,
+    refundMethod?: string | null,
+  ): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/cancel-sale`, {
+      method: 'POST',
+      query: { tenantId },
+      body: { reason, refundedAmount: refundedAmount ?? 0, refundMethod: refundMethod ?? null },
+    }),
   /** İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç). */
   listCancelledSales: <T = unknown>(params?: { customerId?: string; servicePackageId?: string }, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/accounts/cancelled', { query: { tenantId, ...params } }),
-  /** id: arşiv kaydının ya da iptal edilen carinin Id'si olabilir. */
-  restoreSale: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, { method: 'POST', query: { tenantId } }),
+  /**
+   * id: arşiv kaydının ya da iptal edilen carinin Id'si olabilir.
+   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true — kasa çıkışı da geri alınır.
+   * Varsayılan false: gerçekten ödenen para geriye dönük raporlardan silinmez.
+   */
+  restoreSale: <T = unknown>(id: string, tenantId?: string, voidRefund = false): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, { method: 'POST', query: { tenantId }, body: { voidRefund } }),
   registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/payments`, { method: 'POST', query: { tenantId }, body }),
   deleteAccount: (id: string, tenantId?: string): Promise<unknown> =>

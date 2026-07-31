@@ -39,7 +39,7 @@ public sealed partial class ReportsService
         var appointments = await LoadAppointmentsAsync(tenantId, from, to, cancellationToken);
         var accounts = await LoadAccountsAsync(tenantId, cancellationToken);
         var accountsById = accounts.ToDictionary(a => a.Id);
-        var payments = await LoadPaymentsAsync(accountsById, from, to, cancellationToken);
+        var payments = await LoadPaymentsAsync(tenantId, accountsById, from, to, cancellationToken);
 
         // Dönem sayaçları
         var visitsByCustomer = appointments
@@ -78,7 +78,7 @@ public sealed partial class ReportsService
             prevNew = customers.Count(c => c.CreatedAtUtc >= compareFrom.Value && c.CreatedAtUtc < compareTo.Value);
             var prevAppts = await LoadAppointmentsAsync(tenantId, compareFrom.Value, compareTo.Value, cancellationToken);
             prevActive = prevAppts.Select(a => a.CustomerId).Distinct().Count();
-            var prevPayments = await LoadPaymentsAsync(accountsById, compareFrom.Value, compareTo.Value, cancellationToken);
+            var prevPayments = await LoadPaymentsAsync(tenantId, accountsById, compareFrom.Value, compareTo.Value, cancellationToken);
             prevSpent = prevPayments.Sum(p => p.Amount);
         }
 

@@ -76,7 +76,7 @@ export default function SaleDetailModal({
   canManage?: boolean
   busy?: boolean
   onClose: () => void
-  onCancelSale: (accountId: string, reason: string, refundedAmount: number) => Promise<void>
+  onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
   onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
 }) {
@@ -88,6 +88,9 @@ export default function SaleDetailModal({
   // İptalde tahsil edilmiş paranın ne kadarı müşteriye geri ödendi? Geri ödenen kısım gelirden
   // de düşer; kalan kurumda sayılmaya devam eder. Boş = iade yok.
   const [refund, setRefund] = useState('')
+  // Paranın hangi kanaldan çıktığı. Sunucu boş bırakılırsa NAKİT varsayar; kart/havale iadesi
+  // nakit kasadan çıkmış görünmesin diye burada açıkça seçilir.
+  const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'transfer'>('cash')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
 
@@ -433,6 +436,32 @@ export default function SaleDetailModal({
                     <p className="mt-1 text-[10.5px] text-[#705a66]">
                       Boş bırakılırsa para kurumda kaldı sayılır ve gelirde görünmeye devam eder.
                     </p>
+
+                    {/* Yöntem seçilmezse sunucu nakit varsayar; kart/havale iadesi kasa
+                        kırılımında nakit çıkışı gibi görünürdü. */}
+                    <div className="mt-2">
+                      <span className="block text-[11px] font-semibold text-[#4a3a44]">İade yöntemi</span>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {([
+                          { key: 'cash', label: 'Nakit' },
+                          { key: 'card', label: 'Kart' },
+                          { key: 'transfer', label: 'Havale/EFT' },
+                        ] as const).map((m) => (
+                          <button
+                            key={m.key}
+                            type="button"
+                            onClick={() => setRefundMethod(m.key)}
+                            className={`cursor-pointer rounded-[10px] border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                              refundMethod === m.key
+                                ? 'border-[#cf4d68] bg-[#fff2f6] text-[#a34a62]'
+                                : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-[#fff7f9]'
+                            }`}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -442,10 +471,13 @@ export default function SaleDetailModal({
                     type="button"
                     disabled={working || busy}
                     onClick={() => run(async () => {
+                      // SESSİZ KIRPMA YOK: tahsil edileni aşan tutar sunucuda doğrulama hatası
+                      // döner ve kullanıcı ne kaydedilmediğini görür (eskiden fark ettirmeden
+                      // tahsil edilene çekiliyordu).
                       const parsed = Number(refund.replace(/\./g, '').replace(',', '.'))
-                      const refunded = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, account.paidAmount) : 0
-                      await onCancelSale(account.id, reason.trim(), refunded)
-                      setCancelling(false); setRefund('')
+                      const refunded = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+                      await onCancelSale(account.id, reason.trim(), refunded, refundMethod)
+                      setCancelling(false); setRefund(''); setRefundMethod('cash')
                     })}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-[11px] bg-[#cf4d68] px-3.5 py-1.5 text-[11.5px] font-bold text-white transition-colors hover:bg-[#b8405a] disabled:opacity-60"
                   >

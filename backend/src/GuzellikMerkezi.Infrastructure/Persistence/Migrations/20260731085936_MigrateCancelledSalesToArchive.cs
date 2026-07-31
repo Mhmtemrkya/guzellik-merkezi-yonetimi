@@ -160,11 +160,20 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                 WHERE CancelledAtUtc IS NOT NULL AND IsDeleted = 0;");
         }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            // Geri alınamaz: silinen cari satırları yalnızca arşivdeki snapshot'tan,
-            // uygulamadaki "iptali geri al" akışıyla kurulabilir.
-        }
+        /// <summary>
+        /// BU MIGRATION GERİ ALINAMAZ ve sessizce geçilmez.
+        /// <para>
+        /// Up() canlı satırları GERÇEKTEN sildi; tek kopyaları <c>cancelled_sales.Snapshot</c>
+        /// içinde. Down boş bırakılırsa downgrade sorunsuz görünür, ardından bir önceki migration
+        /// arşiv tablosunu düşürür ve iptal edilmiş TÜM satışlar geri dönülemez biçimde kaybolur.
+        /// Bu yüzden burada yüksek sesle hata verilir: geri dönmek isteyen önce yedekten dönmeli.
+        /// </para>
+        /// </summary>
+        protected override void Down(MigrationBuilder migrationBuilder) =>
+            throw new InvalidOperationException(
+                "MigrateCancelledSalesToArchive geri alınamaz: iptal edilmiş satışların canlı satırları " +
+                "silindi ve tek kopyaları cancelled_sales arşivindedir. Downgrade, bir sonraki adımda " +
+                "arşiv tablosu düşürüldüğünde kalıcı veri kaybına yol açar. Geri dönmek için veritabanı " +
+                "yedeğinden restore edin.");
     }
 }

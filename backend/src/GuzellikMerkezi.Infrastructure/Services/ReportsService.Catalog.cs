@@ -425,7 +425,18 @@ public sealed partial class ReportsService
             .GroupBy(p => p.CustomerAccountId)
             .Select(g => new { AccountId = g.Key, Paid = g.Sum(x => x.Amount) })
             .ToListAsync(ct);
-        return rows.ToDictionary(r => r.AccountId, r => r.Paid);
+        var result = rows.ToDictionary(r => r.AccountId, r => r.Paid);
+
+        // İptal edilen satışın tahsilatı canlı tabloda yok; katalog/paket raporunda "ne kadar
+        // tahsil edilmişti" sorusu kalıcı defterden yanıtlanır (satır silindi ≠ para alınmadı).
+        var archived = await ArchivedPaymentQuery(tenantId, ignoreBranchFilter)
+            .GroupBy(p => p.OriginalAccountId)
+            .Select(g => new { AccountId = g.Key, Paid = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+        foreach (var row in archived)
+            result[row.AccountId] = (result.TryGetValue(row.AccountId, out var cur) ? cur : 0m) + row.Paid;
+
+        return result;
     }
 
     private async Task<Dictionary<Guid, CatalogMeta>> LoadPackageMetaAsync(Guid tenantId, CancellationToken ct)

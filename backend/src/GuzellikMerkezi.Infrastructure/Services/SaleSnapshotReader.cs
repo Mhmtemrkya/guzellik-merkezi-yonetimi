@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -49,16 +50,36 @@ internal static class SaleSnapshotReader
             => writer.WriteBooleanValue(value);
     }
 
-    /// <summary>Şema sürümü — ileride alan eklenirse eski kayıtlar okunmaya devam etsin.</summary>
-    public const int Version = 1;
+    /// <summary>
+    /// Şema sürümü — ileride alan eklenirse eski kayıtlar okunmaya devam etsin.
+    /// <para>v2: adisyonların ÖZGÜN statüsü/onay tarihi + ters kayıt dökümü + iptalde kapatılan
+    /// randevular eklendi. Eski (v1) yedeklerde bu alanlar null gelir ve geri alma eski
+    /// davranışına düşer.</para>
+    /// </summary>
+    public const int Version = 2;
 
+    /// <param name="AdisyonIds">v1 uyumluluğu — yalnız Id listesi (statü bilgisi yok).</param>
+    /// <param name="Adisyonlar">v2: her adisyonun iptalden ÖNCEKİ statüsü ve onay tarihi.</param>
+    /// <param name="Reversals">v2: iptalde fiilen pasifleştirilen prim/sadakat/seans dökümü.</param>
+    /// <param name="CancelledAppointmentIds">v2: iptalde kapatılan aktif randevular (geri almada canlanır).</param>
     public sealed record SaleSnapshot(
         int Version,
         SnapshotAccount Account,
         IReadOnlyList<SnapshotInstallment> Installments,
         IReadOnlyList<SnapshotPayment> Payments,
         IReadOnlyList<SnapshotSession> Sessions,
-        IReadOnlyList<Guid> AdisyonIds);
+        IReadOnlyList<Guid> AdisyonIds,
+        IReadOnlyList<SnapshotAdisyon>? Adisyonlar = null,
+        IReadOnlyList<AdisyonReversalRecord>? Reversals = null,
+        IReadOnlyList<Guid>? CancelledAppointmentIds = null)
+    {
+        /// <summary>Ters kayıt dökümünü adisyona göre bulur (yoksa null → eski davranış).</summary>
+        public AdisyonReversalRecord? ReversalFor(Guid adisyonId) =>
+            Reversals?.FirstOrDefault(r => r.AdisyonId == adisyonId);
+    }
+
+    /// <param name="Status">İptalden önceki adisyon statüsü (Open/Approved/Cancelled).</param>
+    public sealed record SnapshotAdisyon(Guid Id, string Status, DateTime? ApprovedAtUtc);
 
     public sealed record SnapshotAccount(
         Guid Id,
@@ -95,10 +116,16 @@ internal static class SaleSnapshotReader
 
     public static DateTime? Utc(DateTime? value) => value is { } v ? Utc(v) : null;
 
+    /// <param name="adisyonStatuses">Adisyonların iptalden ÖNCEKİ (Status, ApprovedAtUtc) hâli.</param>
+    /// <param name="reversals">Ters kayıtta fiilen değiştirilen satırların dökümü.</param>
+    /// <param name="cancelledAppointmentIds">İptalde kapatılan aktif randevular.</param>
     public static string Build(
         CustomerAccount account,
         IReadOnlyList<CustomerPackageSession> sessions,
-        IReadOnlyList<Adisyon> adisyonlar)
+        IReadOnlyList<Adisyon> adisyonlar,
+        IReadOnlyDictionary<Guid, (AdisyonStatus Status, DateTime? ApprovedAtUtc)>? adisyonStatuses = null,
+        IReadOnlyList<AdisyonReversalRecord>? reversals = null,
+        IReadOnlyList<Guid>? cancelledAppointmentIds = null)
     {
         var snapshot = new SaleSnapshot(
             Version,
@@ -116,7 +143,20 @@ internal static class SaleSnapshotReader
             sessions
                 .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc)))
                 .ToList(),
-            adisyonlar.Select(a => a.Id).ToList());
+            adisyonlar.Select(a => a.Id).ToList(),
+            adisyonlar
+                .Select(a =>
+                {
+                    // Statü ters kayıttan ÖNCE alınmalı: adisyon o sırada Cancelled'a çekilmiş olur
+                    // ve canlı nesneden okunursa geri alma her fişi Approved yapardı.
+                    var original = adisyonStatuses is not null && adisyonStatuses.TryGetValue(a.Id, out var s)
+                        ? s
+                        : (a.Status, a.ApprovedAtUtc);
+                    return new SnapshotAdisyon(a.Id, original.Status.ToString(), Utc(original.ApprovedAtUtc));
+                })
+                .ToList(),
+            reversals ?? [],
+            cancelledAppointmentIds ?? []);
 
         return JsonSerializer.Serialize(snapshot, Options);
     }

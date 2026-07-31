@@ -113,17 +113,63 @@ public sealed class CashFlowService : ICashFlowService
             null,
             e.IsApproved)).ToList();
 
+        // ---------- GELİR: İPTAL EDİLEN SATIŞLARIN TAHSİLATLARI ----------
+        // İptalde cari silinir ve account_payments cascade ile gider; ama o para geçmişte kasaya
+        // GİRMİŞTİR. Kalıcı kopya olmadan gelir sıfırlanıp yalnız iade gider kalıyor, net kasa
+        // eksiye düşüyordu (1.200 tahsil / 500 iade → −500). Arşiv defteri bu deliği kapatır.
+        var archivedIncome = await LoadArchivedPaymentEntriesAsync(tenantId, from, to, cancellationToken);
+
         // ---------- GİDER: MÜŞTERİYE İADELER ----------
         // Satış iptalinde müşteriye geri ödenen para GERÇEK bir kasa çıkışıdır. Bu satır
         // eklenmeden önce iade yalnızca arşivde bilgi olarak duruyordu; kasa/kâr-zarar görmüyordu.
         var refundEntries = await LoadRefundEntriesAsync(tenantId, from, to, cancellationToken);
 
         // Birleştir + tarih sırasına göre desc
-        var all2 = incomeEntries.Concat(expenseEntries).Concat(refundEntries)
+        var all2 = incomeEntries.Concat(archivedIncome).Concat(expenseEntries).Concat(refundEntries)
             .OrderByDescending(x => x.OccurredAtUtc)
             .ToArray();
 
         return Result<IReadOnlyCollection<CashFlowEntryDto>>.Success(all2);
+    }
+
+    /// <summary>
+    /// İptal edilen satışların dönemdeki tahsilatları — canlı tahsilatlarla aynı "Tahsilat"
+    /// kategorisinde gelir satırı olur; açıklamasında iptalden geldiği belirtilir.
+    /// </summary>
+    private async Task<List<CashFlowEntryDto>> LoadArchivedPaymentEntriesAsync(
+        Guid tenantId, DateTime from, DateTime to, CancellationToken cancellationToken)
+    {
+        var rows = await _db.ArchivedSalePayments.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.OccurredAtUtc >= from && p.OccurredAtUtc < to)
+            .Select(p => new
+            {
+                p.Id,
+                p.Amount,
+                p.Method,
+                p.Reference,
+                p.OccurredAtUtc,
+                p.AccountName,
+                CustomerName = p.Customer != null ? p.Customer.FullName : null,
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(p =>
+        {
+            var name = string.IsNullOrWhiteSpace(p.AccountName) ? "Satış" : p.AccountName;
+            return new CashFlowEntryDto(
+                p.Id,
+                CashFlowEntryType.Income,
+                p.OccurredAtUtc,
+                p.Amount,
+                p.Method,
+                "Tahsilat",
+                $"{name} — iptal edilen satış",
+                p.Reference,
+                p.CustomerName,
+                null,
+                name,
+                true);
+        }).ToList();
     }
 
     /// <summary>Dönemdeki müşteri iadeleri — kasa akışında gider satırı olarak görünür.</summary>
@@ -186,6 +232,18 @@ public sealed class CashFlowService : ICashFlowService
             .Where(p => tenantAccountIds.Contains(p.CustomerAccountId))
             .GroupBy(p => MonthKey(p.OccurredAtUtc, offset))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        // İptal edilen satışların tahsilatları da gelirdir: para geçmişte kasaya girmiştir, iade
+        // edilen kısmı aşağıda gider olarak düşülür (net = kurumda kalan).
+        var archivedRows = await _db.ArchivedSalePayments.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.OccurredAtUtc >= fromUtc)
+            .Select(p => new { p.Amount, p.OccurredAtUtc })
+            .ToListAsync(cancellationToken);
+        foreach (var group in archivedRows.GroupBy(p => MonthKey(p.OccurredAtUtc, offset)))
+        {
+            incomeByMonth[group.Key] =
+                (incomeByMonth.TryGetValue(group.Key, out var cur) ? cur : 0m) + group.Sum(x => x.Amount);
+        }
 
         // GİDER — işletme giderleri (maaş/kira/prim ödemeleri dahil).
         var expenseRows = await _db.BusinessExpenses.AsNoTracking()

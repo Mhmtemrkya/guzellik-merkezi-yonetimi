@@ -346,6 +346,20 @@ public sealed partial class ReportsService
             acc.Bucketize(key, label, 0, p.Amount);
         }
 
+        // Gelir — iptal edilen satışların tahsilatları (canlı tabloda yok, kalıcı defterden).
+        var archivedPayments = await ArchivedPaymentQuery(tenantId, crossBranch)
+            .Where(p => p.OccurredAtUtc >= from && p.OccurredAtUtc < to)
+            .Select(p => new { p.BranchId, p.Amount, p.OccurredAtUtc })
+            .ToListAsync(ct);
+        foreach (var p in archivedPayments)
+        {
+            var acc = slice.Get(p.BranchId);
+            acc.Income += p.Amount;
+            acc.PaymentCount++;
+            var (key, label) = Bucket(p.OccurredAtUtc, granularity);
+            acc.Bucketize(key, label, 0, p.Amount);
+        }
+
         // Gider
         var expenses = await ExpenseQuery(tenantId, crossBranch)
             .Where(e => e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
@@ -357,6 +371,20 @@ public sealed partial class ReportsService
             acc.Expense += e.Amount;
             var (key, label) = Bucket(e.OccurredAtUtc, granularity);
             acc.Bucketize(key, label, 1, e.Amount);
+        }
+
+        // Gider — müşteri iadeleri. Genel rapor bunları giderde sayıyor; burada sayılmayınca
+        // "Genel Bakış" ile "Şube Karşılaştırma" farklı net rakam gösteriyordu.
+        var refunds = await RefundQuery(tenantId, crossBranch)
+            .Where(r => r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
+            .Select(r => new { r.BranchId, r.Amount, r.RefundedAtUtc })
+            .ToListAsync(ct);
+        foreach (var r in refunds)
+        {
+            var acc = slice.Get(r.BranchId);
+            acc.Expense += r.Amount;
+            var (key, label) = Bucket(r.RefundedAtUtc, granularity);
+            acc.Bucketize(key, label, 1, r.Amount);
         }
 
         // Satış
@@ -439,6 +467,16 @@ public sealed partial class ReportsService
     private IQueryable<BusinessExpense> ExpenseQuery(Guid tenantId, bool crossBranch) => crossBranch
         ? _db.BusinessExpenses.AsNoTracking().IgnoreQueryFilters().Where(e => !e.IsDeleted && e.TenantId == tenantId)
         : _db.BusinessExpenses.AsNoTracking().Where(e => e.TenantId == tenantId);
+
+    /// <summary>Müşteriye yapılan iadeler — genel raporda gider sayıldığı için şube kırılımında da sayılır.</summary>
+    private IQueryable<RefundTransaction> RefundQuery(Guid tenantId, bool crossBranch) => crossBranch
+        ? _db.RefundTransactions.AsNoTracking().IgnoreQueryFilters().Where(r => !r.IsDeleted && r.TenantId == tenantId)
+        : _db.RefundTransactions.AsNoTracking().Where(r => r.TenantId == tenantId);
+
+    /// <summary>İptal edilen satışların tahsilatları — genel raporda gelir sayıldığı için şube kırılımında da sayılır.</summary>
+    private IQueryable<ArchivedSalePayment> ArchivedPaymentQuery(Guid tenantId, bool crossBranch) => crossBranch
+        ? _db.ArchivedSalePayments.AsNoTracking().IgnoreQueryFilters().Where(p => !p.IsDeleted && p.TenantId == tenantId)
+        : _db.ArchivedSalePayments.AsNoTracking().Where(p => p.TenantId == tenantId);
 
     private IQueryable<Customer> CustomerQuery(Guid tenantId, bool crossBranch) => crossBranch
         ? _db.Customers.AsNoTracking().IgnoreQueryFilters().Where(c => !c.IsDeleted && c.TenantId == tenantId)

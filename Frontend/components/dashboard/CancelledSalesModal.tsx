@@ -21,8 +21,11 @@ interface Props {
   sales: CancelledSale[]
   open: boolean
   onOpenChange: (next: boolean) => void
-  /** İptali geri al — arşivdeki yedekten cari, taksit, tahsilat ve seanslar yeniden kurulur. */
-  onRestore?: (originalAccountId: string) => Promise<void>
+  /**
+   * İptali geri al — arşivdeki yedekten cari, taksit, tahsilat ve seanslar yeniden kurulur.
+   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır.
+   */
+  onRestore?: (originalAccountId: string, voidRefund: boolean) => Promise<void>
   busy?: boolean
   /** Modal hangi sekmeyle açılsın (Ön Muhasebe'deki iki ayrı butondan gelir). */
   initialTab?: CancelledTab
@@ -41,9 +44,17 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
   const [query, setQuery] = useState('')
   const [restoring, setRestoring] = useState<string | null>(null)
   const [tab, setTab] = useState<CancelledTab>(initialTab)
+  /** İadeli bir iptal geri alınırken "para gerçekten ödendi mi?" sorusunun açık olduğu satır. */
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
   // Modal her açılışta çağıranın istediği sekmeyle başlar (iki ayrı buton var).
-  useEffect(() => { if (open) { setTab(initialTab); setQuery('') } }, [open, initialTab])
+  useEffect(() => { if (open) { setTab(initialTab); setQuery(''); setConfirmId(null) } }, [open, initialTab])
+
+  const restore = async (originalAccountId: string, rowId: string, voidRefund: boolean): Promise<void> => {
+    if (!onRestore) return
+    setRestoring(rowId)
+    try { await onRestore(originalAccountId, voidRefund) } finally { setRestoring(null); setConfirmId(null) }
+  }
 
   const refundedCount = useMemo(() => sales.filter((a) => a.refundedAmount > 0.005).length, [sales])
 
@@ -172,19 +183,56 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
                 </div>
               )}
               {onRestore && (
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    disabled={busy || restoring === a.id}
-                    onClick={async () => {
-                      setRestoring(a.id)
-                      try { await onRestore(a.originalAccountId) } finally { setRestoring(null) }
-                    }}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"
-                  >
-                    <RotateCcw className={`h-3 w-3 ${restoring === a.id ? 'animate-spin' : ''}`} /> İptali geri al
-                  </button>
-                </div>
+                confirmId === a.id ? (
+                  // İADE KARARI YÖNETİCİNİN. Geri alma, müşteriye fiilen ödenmiş parayı
+                  // kendiliğinden "olmamış" sayamaz — dünkü kasa çıkışı bugünkü bir düzeltme
+                  // yüzünden raporlardan silinirse mali iz bozulur.
+                  <div className="mt-2 rounded-[11px] border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-amber-900">
+                      Bu iptalde müşteriye {formatTL(a.refundedAmount)} iade edilmişti. Para gerçekten ödendi mi?
+                    </p>
+                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmId(null)}
+                        className="cursor-pointer rounded-[9px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#705a66]"
+                      >
+                        Vazgeç
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || restoring === a.id}
+                        onClick={() => void restore(a.originalAccountId, a.id, true)}
+                        className="cursor-pointer rounded-[9px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] disabled:opacity-60"
+                      >
+                        Hayır, yanlış girilmiş — iadeyi de geri al
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || restoring === a.id}
+                        onClick={() => void restore(a.originalAccountId, a.id, false)}
+                        className="cursor-pointer rounded-[9px] bg-[#a34a62] px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-60"
+                      >
+                        Evet, ödendi — kasa çıkışı kalsın
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      disabled={busy || restoring === a.id}
+                      onClick={() => {
+                        // İade yoksa soracak bir şey yok; doğrudan geri al.
+                        if (a.refundedAmount > 0.005) { setConfirmId(a.id); return }
+                        void restore(a.originalAccountId, a.id, false)
+                      }}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"
+                    >
+                      <RotateCcw className={`h-3 w-3 ${restoring === a.id ? 'animate-spin' : ''}`} /> İptali geri al
+                    </button>
+                  </div>
+                )
               )}
             </div>
           ))}

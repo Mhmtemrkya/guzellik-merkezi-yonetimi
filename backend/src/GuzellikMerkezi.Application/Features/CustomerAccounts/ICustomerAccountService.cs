@@ -26,10 +26,11 @@ public interface ICustomerAccountService
 
     /// <summary>
     /// Yanlış iptal edilen satışı geri alır: arşivdeki snapshot'tan cari, taksitler, tahsilatlar ve
-    /// seans bakiyeleri AYNI Id'lerle yeniden kurulur; adisyon onaylı hâline döner.
+    /// seans bakiyeleri AYNI Id'lerle yeniden kurulur; adisyonlar iptalden ÖNCEKİ statülerine döner.
     /// <paramref name="id"/> hem arşiv kaydının hem de silinen carinin Id'si olabilir.
+    /// <paramref name="request"/> boşsa iade kasa hareketi korunur (bkz. <see cref="RestoreSaleRequest"/>).
     /// </summary>
-    Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+    Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, RestoreSaleRequest? request = null, CancellationToken cancellationToken = default);
 
     /// <summary>İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç).</summary>
     Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(Guid tenantId, Guid? customerId = null, Guid? servicePackageId = null, CancellationToken cancellationToken = default);

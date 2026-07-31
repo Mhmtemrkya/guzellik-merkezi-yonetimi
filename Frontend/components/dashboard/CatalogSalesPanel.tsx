@@ -75,7 +75,7 @@ export default function CatalogSalesPanel({
   canManage?: boolean
   busy?: boolean
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
-  onCancelSale: (accountId: string, reason: string, refundedAmount: number) => Promise<void>
+  onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
   onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
 }) {
@@ -307,7 +307,7 @@ export default function CatalogSalesPanel({
               canManage={canManage}
               busy={busy}
               onClose={() => setDetailId(null)}
-              onCancelSale={async (id, reason, refunded) => { await onCancelSale(id, reason, refunded); setDetailId(null); await reloadAll() }}
+              onCancelSale={async (id, reason, refunded, method) => { await onCancelSale(id, reason, refunded, method); setDetailId(null); await reloadAll() }}
               onRestoreSale={async (id) => { await onRestoreSale(id); await reloadAll() }}
               onCollectInstallment={
                 onCollectInstallment && (async (id, amount) => { await onCollectInstallment(id, amount); await reload() })

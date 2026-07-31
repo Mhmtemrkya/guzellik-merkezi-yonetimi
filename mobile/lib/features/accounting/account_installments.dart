@@ -579,7 +579,8 @@ class CancelledSalesSheet extends StatefulWidget {
   final List<Map<String, dynamic>> sales;
 
   /// İptali geri al — yedekten cari, taksit, tahsilat ve seanslar aynı Id'lerle kurulur.
-  final Future<void> Function(String originalAccountId)? onRestore;
+  /// [voidRefund]: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır.
+  final Future<void> Function(String originalAccountId, bool voidRefund)? onRestore;
 
   /// true → "İade Edilenler" sekmesiyle açılır (Ön Muhasebe'deki ayrı buton).
   final bool initialRefundTab;
@@ -591,6 +592,50 @@ class CancelledSalesSheet extends StatefulWidget {
 class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
   String? _restoring;
   late bool _refundTab = widget.initialRefundTab;
+
+  /// İptali geri al. İADE VARSA KARAR YÖNETİCİNİN: müşteriye fiilen ödenmiş para geri alma
+  /// yüzünden kendiliğinden "olmamış" sayılamaz — dünkü kasa çıkışı bugünkü bir düzeltmeyle
+  /// raporlardan silinirse mali iz bozulur. Yanlış girilmişse ayrıca seçilir.
+  Future<void> _restore(Map<String, dynamic> sale) async {
+    final id = '${sale['originalAccountId']}';
+    final refunded = numberOf(sale, const ['refundedAmount']);
+
+    var voidRefund = false;
+    if (refunded > 0.005) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('İptali geri al'),
+          content: Text(
+            'Bu iptalde müşteriye ${CalendarText.tl(refunded)} iade edilmişti. '
+            'Para gerçekten ödendi mi?',
+            style: const TextStyle(fontSize: 12.5),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'void'),
+              child: const Text('Hayır, yanlış girilmiş'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'keep'),
+              child: const Text('Evet, ödendi'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      voidRefund = choice == 'void';
+    }
+
+    setState(() => _restoring = id);
+    try {
+      await widget.onRestore!(id, voidRefund);
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _restoring = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -763,16 +808,7 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
                             child: TextButton.icon(
                               onPressed: _restoring != null
                                   ? null
-                                  : () async {
-                                      final id = '${a['originalAccountId']}';
-                                      setState(() => _restoring = id);
-                                      try {
-                                        await widget.onRestore!(id);
-                                        if (context.mounted) Navigator.pop(context);
-                                      } finally {
-                                        if (mounted) setState(() => _restoring = null);
-                                      }
-                                    },
+                                  : () => _restore(a),
                               icon: const Icon(Icons.undo_rounded, size: 16),
                               label: const Text('İptali geri al', style: TextStyle(fontSize: 12)),
                             ),

@@ -385,8 +385,8 @@ function MusterilerPageInner() {
       branchId: branchId ?? null,
     }, tenantId))
 
-  const handleCancelSale = (accountId: string, reason: string, refundedAmount = 0): Promise<void> =>
-    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId))
+  const handleCancelSale = (accountId: string, reason: string, refundedAmount = 0, refundMethod = 'cash'): Promise<void> =>
+    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId, refundMethod))
 
   const handleRestoreSale = (accountId: string): Promise<void> =>
     runSaleAction(() => adminApi.restoreSale(accountId, tenantId))

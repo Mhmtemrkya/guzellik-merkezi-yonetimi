@@ -63,6 +63,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<CustomerPackageSession> CustomerPackageSessions => Set<CustomerPackageSession>();
     public DbSet<CancelledSale> CancelledSales => Set<CancelledSale>();
     public DbSet<RefundTransaction> RefundTransactions => Set<RefundTransaction>();
+    public DbSet<ArchivedSalePayment> ArchivedSalePayments => Set<ArchivedSalePayment>();
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
@@ -240,6 +241,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         Opt(typeof(CancelledSale), nameof(CancelledSale.CancellationReason));
 
         Opt(typeof(RefundTransaction), nameof(RefundTransaction.Reference), nameof(RefundTransaction.Reason));
+
+        // Arşivlenen tahsilat: satış adı + referans canlı karşılıklarıyla aynı gizlilikte tutulur.
+        // (Method şifrelenmez — kasa kırılımı SQL'de gruplanabilsin, PII değildir.)
+        Opt(typeof(ArchivedSalePayment), nameof(ArchivedSalePayment.AccountName), nameof(ArchivedSalePayment.Reference));
 
         Opt(typeof(AccountPayment), nameof(AccountPayment.Method), nameof(AccountPayment.Reference));
 
@@ -692,6 +697,19 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         refund.HasIndex(x => x.CancelledSaleId);
         refund.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         refund.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+
+        // İptal edilen satışın TAHSİLATLARI. Cari silinince account_payments cascade ile gider;
+        // gelir raporları burayı okur, böylece geçmişte alınan para defterden düşmez.
+        var archivedPayment = modelBuilder.Entity<ArchivedSalePayment>();
+        archivedPayment.ToTable("archived_sale_payments");
+        archivedPayment.HasKey(x => x.Id);
+        archivedPayment.Property(x => x.Amount).HasPrecision(18, 2);
+        archivedPayment.Property(x => x.Method).HasMaxLength(24).IsRequired();
+        archivedPayment.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+        archivedPayment.HasIndex(x => x.CancelledSaleId);
+        archivedPayment.HasIndex(x => x.OriginalAccountId);
+        archivedPayment.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        archivedPayment.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }
 
     private void ConfigureCustomerTreatmentPhoto(ModelBuilder modelBuilder)

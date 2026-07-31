@@ -1,5 +1,7 @@
 ﻿using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -178,6 +180,93 @@ public static class DatabaseBootstrap
         {
             // Şema henüz yoksa veya DB erişilemiyorsa uygulama açılışı bundan ötürü durmamalı.
             logger.LogWarning(ex, "Müşteri arama indeksi backfill'i tamamlanamadı; arama tam-tarama moduna düşecek.");
+        }
+    }
+
+    /// <summary>
+    /// İPTAL ARŞİVİ BAKIMI — her ortamda çalışır, veri-only ve idempotenttir.
+    /// <list type="number">
+    ///   <item>
+    ///     <b>Düz metin yedekleri şifreler.</b> Eski iptalleri arşive taşıyan migration ham SQL
+    ///     yazdığı için EF'in şifreleme dönüştürücüsü devreye girmedi: tutarlar, tarihler, kimlikler
+    ///     ve seans yapısı <c>cancelled_sales.Snapshot</c> içinde AÇIK kaldı. Burada satır EF üzerinden
+    ///     yeniden yazılır → değer <c>ENC:v1:</c> olarak kaydedilir.
+    ///   </item>
+    ///   <item>
+    ///     <b>Eksik tahsilat defteri satırlarını üretir.</b> <c>archived_sale_payments</c> eklenmeden
+    ///     önce iptal edilmiş satışların tahsilatları yalnızca yedeğin içindedir; yedek şifreli
+    ///     olduğu için SQL migration'ı bunu yapamaz — okuma/çözme uygulama tarafında olmak zorunda.
+    ///   </item>
+    /// </list>
+    /// Şema henüz yoksa ya da DB erişilemiyorsa uyarı loglanır, açılış engellenmez.
+    /// </summary>
+    public static async Task BackfillCancelledSaleArchivesAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("CancelledSaleArchiveBackfill");
+
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            if (db.Database.IsInMemory()) return;
+
+            // Startup'ta kiracı bağlamı yok → global filtreler devre dışı, silinmişler elle atlanır.
+            var archives = await db.CancelledSales.IgnoreQueryFilters()
+                .Where(x => !x.IsDeleted)
+                .ToListAsync();
+            if (archives.Count == 0) return;
+
+            // 1) Ham SQL ile yazılmış DÜZ METİN yedekler. Değer okunurken çözücüden geçtiği için
+            //    şifreli mi ayırt edilemez; ham kolona bakmak gerekir.
+            var plaintextIds = (await db.Database
+                    .SqlQueryRaw<Guid>(
+                        "SELECT Id AS Value FROM cancelled_sales " +
+                        "WHERE IsDeleted = 0 AND Snapshot IS NOT NULL AND Snapshot <> '' AND Snapshot NOT LIKE 'ENC:v1:%'")
+                    .ToListAsync())
+                .ToHashSet();
+
+            var encrypted = 0;
+            foreach (var archive in archives.Where(a => plaintextIds.Contains(a.Id)))
+            {
+                // Değer aynı kalır; kolonu "değişti" işaretlemek EF'in dönüştürücüsünü çalıştırır.
+                db.Entry(archive).Property(x => x.Snapshot).IsModified = true;
+                encrypted++;
+            }
+
+            // 2) Tahsilat defteri: geri alınmamış her arşivin tahsilatları bir kez yazılır.
+            var covered = (await db.ArchivedSalePayments.IgnoreQueryFilters()
+                    .Where(p => !p.IsDeleted)
+                    .Select(p => p.CancelledSaleId)
+                    .Distinct()
+                    .ToListAsync())
+                .ToHashSet();
+
+            var addedPayments = 0;
+            foreach (var archive in archives.Where(a => a.RestoredAtUtc == null && !covered.Contains(a.Id)))
+            {
+                var snapshot = SaleSnapshotReader.Parse(archive.Snapshot);
+                if (snapshot is null) continue;
+
+                foreach (var payment in snapshot.Payments)
+                {
+                    db.ArchivedSalePayments.Add(new ArchivedSalePayment(
+                        archive.TenantId, archive.BranchId, archive.Id, archive.OriginalAccountId,
+                        payment.Id, archive.CustomerId, archive.Name, payment.Amount,
+                        payment.Method, payment.Reference, SaleSnapshotReader.Utc(payment.OccurredAtUtc)));
+                    addedPayments++;
+                }
+            }
+
+            if (encrypted == 0 && addedPayments == 0) return;
+
+            await db.SaveChangesAsync();
+            if (encrypted > 0) logger.LogInformation("{Count} iptal yedeği şifrelendi (düz metin → ENC:v1).", encrypted);
+            if (addedPayments > 0) logger.LogInformation("{Count} arşiv tahsilatı kalıcı deftere taşındı.", addedPayments);
+        }
+        catch (Exception ex)
+        {
+            // Şema henüz yoksa (migration uygulanmamış) ya da DB erişilemiyorsa açılış durmamalı.
+            logger.LogWarning(ex, "İptal arşivi bakımı tamamlanamadı; tahsilat defteri eksik kalabilir.");
         }
     }
 
@@ -575,6 +664,11 @@ public static class DatabaseBootstrap
             ("appointments", new[] { "Notes", "CancellationReason" }),
             ("customer_accounts", new[] { "Name", "Notes" }),
             ("account_payments", new[] { "Method", "Reference" }),
+            // İptal arşivi: Snapshot'ın bir kısmı ham SQL migration'ı tarafından üretildiği için
+            // EF şifreleme dönüştürücüsünden geçmemiş olabilir (bkz. BackfillCancelledSaleArchivesAsync).
+            ("cancelled_sales", new[] { "Name", "Snapshot", "CancellationReason" }),
+            ("refund_transactions", new[] { "Reference", "Reason" }),
+            ("archived_sale_payments", new[] { "AccountName", "Reference" }),
             ("business_expenses", new[] { "Description", "Reference", "PeriodLabel" }),
             ("custom_expense_categories", new[] { "Name" }),
             ("custom_service_categories", new[] { "Name" }),
