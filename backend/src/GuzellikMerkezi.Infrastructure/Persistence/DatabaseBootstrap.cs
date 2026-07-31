@@ -304,15 +304,22 @@ public static class DatabaseBootstrap
                 .ToListAsync();
             if (accounts.Count == 0) return;
 
-            // Zaten taşınmış olanlar. Reference ŞİFRELİ → SQL'de süzülemez; yalnız peşinatlı
-            // carilerin tahsilatları çekilip bellekte eşlenir (korele alt sorgu çevrilebilir).
+            // Zaten taşınmış olanlar İKİ ŞEKİLDE bulunabilir:
+            //   1) Deterministik Id (peşinat satırının Id'si = carinin Id'si) — yeni kayıtlar.
+            //   2) "Peşinat" referanslı satır — bu iş deterministik Id'ye geçmeden ÖNCE çalışmış
+            //      kurulumlar. Yalnız (1)'e bakmak o satırları görmez ve peşinatı İKİNCİ kez
+            //      ekleyip geliri şişirir (dev ortamında bir kez yaşandı).
+            // Reference ŞİFRELİ olduğu için karşılaştırma bellekte yapılır.
+            var accountIds = accounts.Select(a => a.Id).ToHashSet();
             var covered = (await db.AccountPayments.IgnoreQueryFilters()
-                    .Where(p => !p.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
-                        .Any(a => a.Id == p.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
-                    .Select(p => new { p.CustomerAccountId, p.Reference })
+                    .Where(x => db.CustomerAccounts.IgnoreQueryFilters()
+                        .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
+                    .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
                     .ToListAsync())
-                .Where(p => string.Equals(p.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
-                .Select(p => p.CustomerAccountId)
+                .Where(x => x.Id == x.CustomerAccountId
+                            || string.Equals(x.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.CustomerAccountId)
+                .Where(accountIds.Contains)
                 .ToHashSet();
 
             var added = 0;
@@ -322,22 +329,154 @@ public static class DatabaseBootstrap
 
                 // Tahsilat DOĞRUDAN eklenir: cari nesnesini izlemeye almak (ve Touch ile UPDATE
                 // üretmek) gereksiz — kolon değişmiyor, yalnız yeni bir satır doğuyor.
-                db.AccountPayments.Add(new AccountPayment(
+                // Id CARININ Id'sidir: iki backend ayni anda acilirsa ikinci ekleme birincil anahtar
+                // catismasiyla reddedilir -> mukerrer pesinat tahsilati olusamaz.
+                db.AccountPayments.Add(AccountPayment.ForDeposit(
                     account.Id,
                     account.DepositAmount,
                     "cash",
-                    CustomerAccount.DepositPaymentReference,
                     DateTime.SpecifyKind(account.SoldAtUtc, DateTimeKind.Utc)));
                 added++;
             }
 
             if (added == 0) return;
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // Yarisi baska bir ornek kazandi; veri zaten dogru -> sessizce gec.
+                logger.LogInformation(ex, "Peşinat taşıma yarışı başka bir örnek tarafından tamamlandı.");
+                return;
+            }
             logger.LogInformation("{Count} peşinat gerçek tahsilat hareketine taşındı.", added);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Peşinat taşıma işi tamamlanamadı; peşinatlar kasa defterinde görünmeyebilir.");
+        }
+    }
+
+    /// <summary>
+    /// ESKİ TAHSİLAT VE STOK HAREKETLERİNE KAYNAK ADİSYON BAĞI YAZAR (idempotent, her ortamda).
+    /// <para>
+    /// Bağ eskiden yalnız <c>Reference</c> metnindeydi ("ADS-…"). Bu kolon AES-GCM ile ve RASTGELE
+    /// nonce ile şifreli olduğundan aynı metin her seferinde farklı ciphertext üretir → SQL
+    /// eşitliği hiçbir zaman eşleşmiyordu. Sonuç: onaylı adisyon silinirken tahsilat bulunamıyor ve
+    /// para kasada kalıyor, stok ters kaydı satış anındaki maliyeti bulamıyordu.
+    /// </para>
+    /// <para>
+    /// Burada değer uygulama içinde ÇÖZÜLÜP ("ADS-" + adisyon Id'sinin ilk 12 hex hanesi) mevcut
+    /// adisyonlarla eşlenir ve deterministik kolona yazılır. Eşleşmeyen satırlara dokunulmaz.
+    /// </para>
+    /// </summary>
+    public static async Task BackfillAdisyonSourceLinksAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("AdisyonSourceLinkBackfill");
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            if (db.Database.IsInMemory()) return;
+
+            // Referans, adisyon Id'sinin ilk 12 hex hanesini taşır (16 karaktere kırpılmış "ADS-…").
+            var adisyonByPrefix = (await db.Adisyonlar.IgnoreQueryFilters()
+                    .Select(a => a.Id).ToListAsync())
+                .GroupBy(id => "ADS-" + id.ToString("N")[..12])
+                .Where(g => g.Count() == 1) // aynı önekte iki fiş varsa (astronomik) dokunma
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            if (adisyonByPrefix.Count == 0) return;
+
+            var linkedPayments = 0;
+            foreach (var payment in await db.AccountPayments.IgnoreQueryFilters()
+                         .Where(x => x.SourceAdisyonId == null && x.Reference != null)
+                         .ToListAsync())
+            {
+                if (payment.Reference is not { } r || !adisyonByPrefix.TryGetValue(r.Trim(), out var adisyonId)) continue;
+                payment.LinkToAdisyon(adisyonId);
+                linkedPayments++;
+            }
+
+            var linkedMovements = 0;
+            foreach (var movement in await db.StockMovements.IgnoreQueryFilters()
+                         .Where(x => x.SourceAdisyonId == null && x.Reference != null)
+                         .ToListAsync())
+            {
+                if (movement.Reference is not { } r || !adisyonByPrefix.TryGetValue(r.Trim(), out var adisyonId)) continue;
+                movement.LinkToAdisyon(adisyonId);
+                linkedMovements++;
+            }
+
+            if (linkedPayments == 0 && linkedMovements == 0) return;
+            await db.SaveChangesAsync();
+            logger.LogInformation(
+                "Kaynak adisyon bağı yazıldı: {Payments} tahsilat, {Movements} stok hareketi.",
+                linkedPayments, linkedMovements);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Adisyon kaynak bağı backfill'i tamamlanamadı; eski kayıtlar eşleşmeyebilir.");
+        }
+    }
+
+    /// <summary>
+    /// ESKİ PAKET KULLANIMLARINA KESİN SEANS BAĞI ÜRETİR (idempotent, her ortamda).
+    /// <para>
+    /// <c>package_session_usages</c> yalnız YENİ onaylarda doluyor. Bağı olmayan eski adisyonlarda
+    /// satış iptali tahminî yönteme düşüyor; müşterinin aynı hizmeti içeren ikinci bir paketi varsa
+    /// YANLIŞ pakete kredi yazılabiliyor. Burada tahminin hâlâ TEK doğru cevabı olduğu durumlar
+    /// (o hizmet için kullanılmış tek seans kaydı) kalıcı bağa çevrilir; birden çok aday varsa
+    /// DOKUNULMAZ — yanlış bağ yazmaktansa eski davranışta kalmak yeğdir.
+    /// </para>
+    /// </summary>
+    public static async Task BackfillPackageSessionUsagesAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("PackageUsageBackfill");
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            if (db.Database.IsInMemory()) return;
+
+            var linkedAdisyonIds = (await db.PackageSessionUsages.IgnoreQueryFilters()
+                .Select(u => u.AdisyonId).Distinct().ToListAsync()).ToHashSet();
+
+            var items = await db.AdisyonItems.IgnoreQueryFilters()
+                .Where(i => !i.IsDeleted && i.Type == Domain.Enums.AdisyonItemType.PackageUse && i.RefId != null)
+                .Join(db.Adisyonlar.IgnoreQueryFilters().Where(a => !a.IsDeleted && a.Status == Domain.Enums.AdisyonStatus.Approved),
+                      i => i.AdisyonId, a => a.Id,
+                      (i, a) => new { Item = i, a.TenantId, a.CustomerId })
+                .ToListAsync();
+            if (items.Count == 0) return;
+
+            var added = 0;
+            foreach (var row in items.Where(x => !linkedAdisyonIds.Contains(x.Item.AdisyonId)))
+            {
+                var serviceId = row.Item.RefId!.Value;
+                var candidates = await db.CustomerPackageSessions.IgnoreQueryFilters()
+                    .Where(x => !x.IsDeleted && x.TenantId == row.TenantId && x.CustomerId == row.CustomerId
+                                && x.ServiceDefinitionId == serviceId && x.UsedSessions > 0)
+                    .Select(x => x.Id)
+                    .ToListAsync();
+
+                // Tek aday = tahmin ile kesin bilgi aynı → güvenle bağla. Birden çoksa atla.
+                if (candidates.Count != 1) continue;
+
+                var quantity = (int)Math.Max(1, Math.Round(row.Item.Quantity, MidpointRounding.AwayFromZero));
+                db.PackageSessionUsages.Add(new PackageSessionUsage(
+                    row.TenantId, row.Item.AdisyonId, row.Item.Id, candidates[0],
+                    row.CustomerId, serviceId, quantity, row.Item.CreatedAtUtc));
+                added++;
+            }
+
+            if (added == 0) return;
+            await db.SaveChangesAsync();
+            logger.LogInformation("{Count} eski paket kullanımı kesin seans bağına taşındı.", added);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Paket kullanımı bağ backfill'i tamamlanamadı; eski kayıtlar tahminî yolda kalır.");
         }
     }
 

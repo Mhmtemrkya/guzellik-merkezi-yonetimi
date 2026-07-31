@@ -45,9 +45,20 @@ public sealed partial class ReportsService
         var visitsByCustomer = appointments
             .GroupBy(a => a.CustomerId)
             .ToDictionary(g => g.Key, g => g.Count());
+        // NET harcama: müşteriye geri ödenen para "harcama" değildir. Brüt tahsilat kullanılırsa
+        // tamamı iade edilmiş bir satış müşteriyi hâlâ "en çok harcayan" gösterebiliyordu.
+        var refundsByCustomer = (await _db.RefundTransactions.AsNoTracking()
+                .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
+                .Select(r => new { r.CustomerId, r.Amount })
+                .ToListAsync(cancellationToken))
+            .GroupBy(r => r.CustomerId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
         var spentByCustomer = payments
             .GroupBy(p => p.CustomerId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Max(0m, g.Sum(x => x.Amount) - (refundsByCustomer.TryGetValue(g.Key, out var r) ? r : 0m)));
 
         var newCustomers = customers.Count(c => c.CreatedAtUtc >= from && c.CreatedAtUtc < to);
         var activeCustomers = visitsByCustomer.Count;

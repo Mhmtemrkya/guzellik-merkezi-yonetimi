@@ -658,6 +658,35 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 return Result<CustomerAccountDto>.Failure(Error.Validation(
                     $"İade tutarı tahsil edilmiş tutarı aşamaz (tahsil edilen: {collected:N2})."));
 
+            // ---- KİLİT ÖNCE, OKUMA SONRA (yan etki satırları için de) ---------------------
+            // Bu satırlar kilitlenmeden okunursa araya giren bir işlemin değişikliği ChangeTracker'da
+            // bayat kalır: kullanılmış bir seans "kullanılmamış" gibi yedeğe girip silinebilirdi.
+            // Bu yüzden ilk okuma yalnız KİMLİKLERİ toplar; kilit alındıktan sonra her şey yeniden yüklenir.
+            var sessionIdsForLock = await _db.CustomerPackageSessions
+                .Where(s => s.TenantId == tenantId && s.CustomerId == account.CustomerId)
+                .Select(s => s.Id).ToListAsync(cancellationToken);
+            var adisyonIdsForLock = await _db.Adisyonlar
+                .Where(a => a.TenantId == tenantId && a.CustomerAccountId == id)
+                .Select(a => a.Id).ToListAsync(cancellationToken);
+            // Guid listesiyle .Contains() MySQL sağlayıcısında SQL'e çevrilemez ("type mapping" hatası)
+            // → korele EXISTS kullanılır. [[project_mysql_query_gotchas]]
+            var refIdsForLock = await _db.AdisyonItems
+                .Where(i => i.RefId != null && _db.Adisyonlar
+                    .Any(a => a.Id == i.AdisyonId && a.TenantId == tenantId && a.CustomerAccountId == id))
+                .Select(i => new { i.Type, RefId = i.RefId!.Value })
+                .ToListAsync(cancellationToken);
+
+            await LockSideEffectRowsAsync(
+                account.CustomerId, adisyonIdsForLock,
+                refIdsForLock.Where(x => x.Type == AdisyonItemType.Product).Select(x => x.RefId),
+                refIdsForLock.Where(x => x.Type == AdisyonItemType.Discount).Select(x => x.RefId),
+                sessionIdsForLock, cancellationToken);
+
+            // Kilitler alındı → bayat kopyaları at ve HER ŞEYİ yeniden oku.
+            _db.ChangeTracker.Clear();
+            account = (await LoadAsync(tenantId, id, cancellationToken))!;
+            if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Satış kaydı bulunamadı."));
+
             var sessions = await _db.CustomerPackageSessions
                 .Where(s => s.TenantId == tenantId && s.CustomerAccountId == id)
                 .ToListAsync(cancellationToken);
@@ -668,11 +697,6 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .Include(a => a.Items)
                 .Where(a => a.TenantId == tenantId && a.CustomerAccountId == id)
                 .ToListAsync(cancellationToken);
-
-            // Yan etki satırlarını (ürün stoğu, hediye çeki, paket seansı, müşteri/sadakat) da
-            // kilitle: kilit yalnız caride olduğu için eşzamanlı bir satış ile iptal birbirinin
-            // stok/bakiye güncellemesini eziyordu.
-            await LockSideEffectRowsAsync(tenantId, adisyonlar, account.CustomerId, cancellationToken);
 
             // Statüler ters kayıttan ÖNCE dondurulur: geri alma her fişi Approved yapmasın, herkes
             // kendi eski hâline dönsün (açık kalmış bir adisyon geri almada onaylı olmamalı).
@@ -808,6 +832,30 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 "Devam etmek için adisyonu ve prim/sadakat kayıtlarını kontrol edip işlemi onaylayın."));
         }
 
+        // Yan etkiler YENİDEN uygulanacak (stok düşer, kupon harcanır, seans tüketilir, prim/sadakat
+        // canlanır). İptalle aynı kilit protokolü kullanılmazsa eşzamanlı bir satış/onay ile yarışta
+        // kayıp güncelleme oluşur. Sıra RowLock.TableOrder ile aynıdır → deadlock olmaz.
+        var restoreAdisyonIds = snapshot.AdisyonIds.ToList();
+        // Guid listesiyle .Contains() MySQL'de çevrilemez; yedekteki adisyon sayısı küçük olduğu
+        // için fiş başına ayrı sorgu yapılır. [[project_mysql_query_gotchas]]
+        var restoreRefIds = new List<(AdisyonItemType Type, Guid RefId)>();
+        foreach (var adisyonId in restoreAdisyonIds)
+        {
+            restoreRefIds.AddRange((await _db.AdisyonItems
+                    .Where(i => i.RefId != null && i.AdisyonId == adisyonId)
+                    .Select(i => new { i.Type, RefId = i.RefId!.Value })
+                    .ToListAsync(cancellationToken))
+                .Select(x => (x.Type, x.RefId)));
+        }
+        await LockSideEffectRowsAsync(
+            archive.CustomerId, restoreAdisyonIds,
+            restoreRefIds.Where(x => x.Type == AdisyonItemType.Product).Select(x => x.RefId),
+            restoreRefIds.Where(x => x.Type == AdisyonItemType.Discount).Select(x => x.RefId),
+            await _db.CustomerPackageSessions
+                .Where(x => x.TenantId == tenantId && x.CustomerId == archive.CustomerId)
+                .Select(x => x.Id).ToListAsync(cancellationToken),
+            cancellationToken);
+
         var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot);
         var nowUtc = DateTime.UtcNow;
 
@@ -847,11 +895,27 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         }
 
         // İptalde kapatılan randevular canlanır (yalnız o anda kapatılanlar — Id'ler yedekte).
+        // ÇAKIŞMA KONTROLÜ: iptalden sonra boşalan saate başka randevu alınmış olabilir; körü körüne
+        // Restore() aynı personele üst üste iki aktif randevu koyardı. Çakışanlar kapalı bırakılır
+        // ve yöneticiye bildirilir (sessizce çakıştırmak da sessizce atlamak da yanlış olurdu).
+        var skippedAppointments = 0;
         foreach (var appointmentId in snapshot.CancelledAppointmentIds ?? [])
         {
             var appointment = await _db.Appointments.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == appointmentId && a.IsDeleted, cancellationToken);
-            appointment?.Restore(nowUtc);
+            if (appointment is null) continue;
+
+            var clash = await _db.Appointments
+                .AnyAsync(a => a.TenantId == tenantId
+                               && a.StaffMemberId == appointment.StaffMemberId
+                               && a.Id != appointment.Id
+                               && a.Status != AppointmentStatus.Cancelled
+                               && a.Status != AppointmentStatus.NoShow
+                               && a.StartUtc < appointment.EndUtc
+                               && appointment.StartUtc < a.EndUtc, cancellationToken);
+            if (clash) { skippedAppointments++; continue; }
+
+            appointment.Restore(nowUtc);
         }
 
         // Tahsilat defteri: canlı account_payments satırları aynı Id'lerle geri geldiği için arşiv
@@ -872,7 +936,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         {
             // GERÇEKLEŞMİŞ bir kasa çıkışını yok etmek ayrı bir yetkidir: normal cari/tahsilat izni
             // olan personel geçmiş bir para hareketini silememeli. Gerekçe de zorunludur (denetim izi).
-            if (_currentUser.Role == UserRole.Staff && !_currentUser.HasPermission(GuzellikMerkezi.Domain.Permissions.AccountingVoidRefund))
+            // Kurum sahibi ve platform yöneticisi dışındaki HER rol açık izin ister. Eskiden yalnız
+            // Staff kontrol ediliyordu; şube yöneticisi ayrı izin olmadan gerçekleşmiş bir kasa
+            // çıkışını silebiliyordu.
+            var mayVoidRefund = _currentUser.IsPlatformAdmin
+                || _currentUser.Role == UserRole.InstitutionOwner
+                || _currentUser.HasPermission(GuzellikMerkezi.Domain.Permissions.AccountingVoidRefund);
+            if (!mayVoidRefund)
             {
                 return Result<CustomerAccountDto>.Failure(Error.Unauthorized(
                     "Yapılmış para iadesini geçersiz kılma yetkiniz yok. Yöneticinize başvurun."));
@@ -921,6 +991,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 RefundsVoided = voidRefunds,
                 VoidReason = voidRefunds ? request?.VoidReason : null,
                 LegacySnapshot = isLegacySnapshot,
+                SkippedAppointments = skippedAppointments,
             },
             cancellationToken);
 
@@ -1030,6 +1101,17 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 : Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
         }
 
+        // PEŞİNAT DEĞİŞTİRİLEMEZ. Peşinat açılışta gerçek bir tahsilat satırına dönüşür; kolonu
+        // sonradan değiştirmek finans defterini SESSİZCE ayrıştırırdı (2.000 tahsilat dururken
+        // kolon 5.000 olur, aradaki 3.000 hiçbir kasada görünmez). Para değiştiyse tahsilat/iade
+        // hareketi girilmelidir — plan alanı elle oynanmaz.
+        if (Math.Round(request.DepositAmount, 2) != Math.Round(account.DepositAmount, 2))
+        {
+            return Result<CustomerAccountDto>.Failure(Error.Validation(
+                "Peşinat tutarı sonradan değiştirilemez: açılışta gerçek bir tahsilat olarak kaydedildi. " +
+                "Ek para alındıysa tahsilat girin, geri ödendiyse satışı iptal edip iade kaydedin."));
+        }
+
         account.Rename(request.Name);
         account.ChangeTotal(request.TotalAmount, request.DepositAmount);
         account.SetNotes(request.Notes);
@@ -1119,7 +1201,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // Tahsilatı kaydet (sadece INSERT). Taksit planına dokunulmaz — "ödenen/kalan",
         // okuma anında AllocatePayments ile tahsilatların vade sırasına dağıtılmasıyla hesaplanır.
         // Böylece eksik ödeme ilgili taksiti kısmen, fazla ödeme birden çok taksiti kapatır.
-        var payment = new AccountPayment(id, request.Amount, request.Method, request.Reference, occurredAt);
+        var payment = new AccountPayment(id, request.Amount, request.Method, request.Reference, occurredAt, request.SourceAdisyonId);
         _db.AccountPayments.Add(payment);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, null, "RegisterPayment", "AccountPayment", payment.Id,

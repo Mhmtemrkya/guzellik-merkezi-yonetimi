@@ -155,11 +155,11 @@ public sealed class CustomerAccount : Entity
     /// <see cref="AllocatePayments"/> ile vade sırasına göre taksitlere dağıtılır.
     /// Böylece eksik ödemede ilgili taksit kısmen, fazla ödemede birden çok taksit kapanır.
     /// </summary>
-    public void RegisterPayment(decimal amount, string? method, string? reference, DateTime occurredAt)
+    public void RegisterPayment(decimal amount, string? method, string? reference, DateTime occurredAt, Guid? sourceAdisyonId = null)
     {
         if (amount <= 0) throw new DomainException("Tahsilat tutarı pozitif olmalı.");
         if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
-        _payments.Add(new AccountPayment(Id, amount, method, reference, occurredAt));
+        _payments.Add(new AccountPayment(Id, amount, method, reference, occurredAt, sourceAdisyonId));
         Touch();
     }
 
@@ -173,8 +173,10 @@ public sealed class CustomerAccount : Entity
     public void RegisterDepositPayment(string? method, DateTime occurredAt)
     {
         if (DepositAmount <= 0) return;
-        RegisterPayment(DepositAmount, string.IsNullOrWhiteSpace(method) ? "cash" : method,
-            DepositPaymentReference, occurredAt);
+        if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
+        _payments.Add(AccountPayment.ForDeposit(
+            Id, DepositAmount, string.IsNullOrWhiteSpace(method) ? "cash" : method, occurredAt));
+        Touch();
     }
 
     /// <summary>
@@ -328,19 +330,55 @@ public sealed class AccountPayment : Entity
 {
     private AccountPayment() { }
 
-    public AccountPayment(Guid accountId, decimal amount, string? method, string? reference, DateTime occurredAtUtc)
+    public AccountPayment(Guid accountId, decimal amount, string? method, string? reference, DateTime occurredAtUtc, Guid? sourceAdisyonId = null)
     {
         CustomerAccountId = accountId;
         Amount = amount;
         Method = string.IsNullOrWhiteSpace(method) ? null : method.Trim();
         Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim();
         OccurredAtUtc = occurredAtUtc;
+        SourceAdisyonId = sourceAdisyonId;
     }
 
     public Guid CustomerAccountId { get; private set; }
     public CustomerAccount? Account { get; private set; }
     public decimal Amount { get; private set; }
     public string? Method { get; private set; }
+
+    /// <summary>
+    /// Serbest metin açıklama. ŞİFRELİ saklanır (AES-GCM, rastgele nonce) → aynı düz metin her
+    /// seferinde farklı ciphertext üretir. Bu yüzden <b>SQL eşitliğiyle ARANAMAZ</b>; kaynak
+    /// eşleştirmesi için <see cref="SourceAdisyonId"/> kullanılır.
+    /// </summary>
     public string? Reference { get; private set; }
     public DateTime OccurredAtUtc { get; private set; }
+
+    /// <summary>
+    /// Bu tahsilatı doğuran adisyon. Eskiden bağ yalnız <see cref="Reference"/> metnindeydi ve
+    /// şifreli kolonda eşitlik araması hiçbir zaman eşleşmiyordu: adisyon silinirken tahsilat
+    /// bulunamıyor, para kasada kalıyordu. Deterministik kolon bu sınıf hatasını bitirir.
+    /// </summary>
+    public Guid? SourceAdisyonId { get; private set; }
+
+    /// <summary>
+    /// Peşinat tahsilatını AÇAR ve Id'sini carinin Id'sine sabitler.
+    /// <para>
+    /// Neden deterministik Id: peşinat taşıma işi birden çok backend örneğinde aynı anda
+    /// çalışabilir. Şifreli <c>Reference</c> doğal anahtar olamadığı için mükerrer koruması
+    /// birincil anahtardan gelir — ikinci ekleme duplicate-key ile reddedilir.
+    /// </para>
+    /// </summary>
+    public static AccountPayment ForDeposit(Guid accountId, decimal amount, string? method, DateTime occurredAtUtc)
+    {
+        var payment = new AccountPayment(accountId, amount, method, CustomerAccount.DepositPaymentReference, occurredAtUtc);
+        payment.Id = accountId;
+        return payment;
+    }
+
+    /// <summary>Geriye dönük eşleştirme için kaynak adisyonu işaretler (backfill).</summary>
+    public void LinkToAdisyon(Guid adisyonId)
+    {
+        if (SourceAdisyonId is not null) return;
+        SourceAdisyonId = adisyonId;
+    }
 }

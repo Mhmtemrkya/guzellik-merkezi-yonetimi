@@ -20,7 +20,8 @@ public sealed class StockMovement : Entity
         decimal? unitCost = null,
         string? reference = null,
         string? notes = null,
-        Guid? staffMemberId = null)
+        Guid? staffMemberId = null,
+        Guid? sourceAdisyonId = null)
     {
         TenantId = tenantId;
         ProductId = productId;
@@ -33,6 +34,7 @@ public sealed class StockMovement : Entity
         Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim();
         Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
         StaffMemberId = staffMemberId;
+        SourceAdisyonId = sourceAdisyonId;
     }
 
     public Guid TenantId { get; private set; }
@@ -48,6 +50,20 @@ public sealed class StockMovement : Entity
 
     public Guid? StaffMemberId { get; private set; }
     public StaffMember? StaffMember { get; private set; }
+
+    /// <summary>
+    /// Hareketi doğuran adisyon. <see cref="Reference"/> ŞİFRELİ olduğu için (rastgele nonce'lu
+    /// AES-GCM) SQL eşitliğiyle aranamaz; satış anındaki maliyeti bulmak ve ters kayıt yapmak için
+    /// deterministik bağ şart.
+    /// </summary>
+    public Guid? SourceAdisyonId { get; private set; }
+
+    /// <summary>Geriye dönük eşleştirme için kaynak adisyonu işaretler (backfill).</summary>
+    public void LinkToAdisyon(Guid adisyonId)
+    {
+        if (SourceAdisyonId is not null) return;
+        SourceAdisyonId = adisyonId;
+    }
 
     public decimal TotalCost => UnitCost.HasValue ? UnitCost.Value * Quantity : 0m;
 

@@ -151,22 +151,20 @@ public sealed partial class CustomerAccountService
             try
             {
                 var nested = await work();
-                if (nested.IsFailure)
-                {
-                    await outer.RollbackToSavepointAsync(savepoint, ct);
-                    // DB geri alındı ama EF hâlâ eski state'i izliyor; temizlenmezse dış işlem
-                    // bellekteki hayalet değişikliklerle devam eder ve DB'den ayrışır.
-                    _db.ChangeTracker.Clear();
-                }
+                if (nested.IsFailure) await outer.RollbackToSavepointAsync(savepoint, ct);
                 else await outer.ReleaseSavepointAsync(savepoint, ct);
                 return nested;
             }
             catch
             {
                 await outer.RollbackToSavepointAsync(savepoint, ct);
-                _db.ChangeTracker.Clear();
                 throw;
             }
+            // NOT: burada ChangeTracker TEMİZLENMEZ. Temizlemek dış transaction'ın HENÜZ
+            // KAYDEDİLMEMİŞ değişikliklerini de detach edip sessizce kaybettirirdi. Savepoint'e
+            // dönen çağıran, bu akışın dokunduğu satırları kendisi yeniden yüklemelidir.
+            // (Kendi transaction'ımızı açtığımız yolda temizlemek güvenlidir — orada bize ait
+            // olmayan izlenen değişiklik yoktur.)
         }
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -297,58 +295,27 @@ public sealed partial class CustomerAccountService
     }
 
     /// <summary>
-    /// İptal transaction'ında değiştirilecek YAN ETKİ satırlarını (ürün, hediye çeki, paket seansı)
-    /// deterministik sırayla <c>FOR UPDATE</c> ile kilitler.
+    /// İptalde değiştirilecek YAN ETKİ satırlarını ortak protokolle kilitler (bkz. <see cref="RowLock"/>).
     /// <para>
-    /// Neden: kilit yalnız cari satırındaydı. Eşzamanlı bir satış aynı ürünün stoğunu okurken iptal
-    /// de okuyup yazınca son yazan diğerini eziyordu (10 → iptal 12 yazar, satış 9 yazar; doğrusu 11).
-    /// Aynı şey hediye çeki bakiyesi ve paket seansı sayacı için de geçerliydi.
+    /// Kilit yalnız caride olduğu için eşzamanlı bir satış/onay ile iptal birbirinin stok, kupon,
+    /// seans ve sadakat güncellemesini eziyordu. Sıra adisyon onayıyla AYNIDIR → deadlock olmaz.
     /// </para>
-    /// <para>Sıra HER ZAMAN aynı (tablo, sonra Id) — iki işlem ters sırayla kilitleyip deadlock olmasın.</para>
     /// </summary>
     private async Task LockSideEffectRowsAsync(
-        Guid tenantId, IReadOnlyList<Adisyon> adisyonlar, Guid customerId, CancellationToken ct)
+        Guid customerId,
+        IEnumerable<Guid> adisyonIds,
+        IEnumerable<Guid> productIds,
+        IEnumerable<Guid> giftCardIds,
+        IEnumerable<Guid> sessionIds,
+        CancellationToken ct)
     {
-        if (!_db.Database.IsRelational()) return;
-
-        var productIds = adisyonlar
-            .SelectMany(a => a.Items)
-            .Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue)
-            .Select(i => i.RefId!.Value)
-            .Distinct().OrderBy(x => x).ToList();
-
-        var giftCardIds = adisyonlar
-            .SelectMany(a => a.Items)
-            .Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue)
-            .Select(i => i.RefId!.Value)
-            .Distinct().OrderBy(x => x).ToList();
-
         // Müşteri satırı: sadakat BAKİYESİ bir toplam olduğu için tek satır kilitlenemez; aynı
-        // müşterinin iki iptali müşteri satırında serileşince ikisi de aynı bayat bakiyeyi okuyup
-        // puanı eksiye düşüremez.
-        await LockRowsAsync("customers", [customerId], ct);
-        await LockRowsAsync("products", productIds, ct);
-        await LockRowsAsync("gift_cards", giftCardIds, ct);
-
-        // Paket seansları: müşterinin TÜM bakiyeleri (hangisinin geri kredileneceği sonra belli olur).
-        var sessionIds = await _db.CustomerPackageSessions
-            .Where(s => s.TenantId == tenantId && s.CustomerId == customerId)
-            .Select(s => s.Id)
-            .ToListAsync(ct);
-        await LockRowsAsync("customer_package_sessions", sessionIds.OrderBy(x => x).ToList(), ct);
-    }
-
-    /// <summary>Verilen Id'leri artan sırada <c>FOR UPDATE</c> ile kilitler (tablo adı sabit listeden gelir).</summary>
-    private async Task LockRowsAsync(string table, IReadOnlyList<Guid> ids, CancellationToken ct)
-    {
-        foreach (var id in ids)
-        {
-#pragma warning disable EF1002 // tablo adı çağıranın sabit listesinden; Id parametreli.
-            await _db.Database.SqlQueryRaw<Guid>(
-                    $"SELECT Id AS Value FROM `{table}` WHERE Id = {{0}} FOR UPDATE", id.ToString())
-                .ToListAsync(ct);
-#pragma warning restore EF1002
-        }
+        // müşterinin iki işlemi burada serileşir ve puan eksiye düşemez.
+        await RowLock.LockRowAsync(_db, "customers", customerId, ct);
+        await RowLock.LockRowsAsync(_db, "adisyonlar", adisyonIds, ct);
+        await RowLock.LockRowsAsync(_db, "products", productIds, ct);
+        await RowLock.LockRowsAsync(_db, "gift_cards", giftCardIds, ct);
+        await RowLock.LockRowsAsync(_db, "customer_package_sessions", sessionIds, ct);
     }
 
     /// <summary>

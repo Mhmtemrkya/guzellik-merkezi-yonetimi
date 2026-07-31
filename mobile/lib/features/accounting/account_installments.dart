@@ -608,7 +608,10 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
       final reasonCtrl = TextEditingController();
       final choice = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
+        // StatefulBuilder: gerekçe yazıldıkça "Hayır" butonu etkinleşmeli. Aksi hâlde buton
+        // durumu ilk build'de donuyor ve kullanıcı gerekçeyi yazsa bile ilerleyemiyordu.
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
           title: const Text('İptali geri al'),
           content: SingleChildScrollView(
             child: Column(
@@ -629,6 +632,7 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
                 // "Hayır" gerçek bir kasa hareketini siler → gerekçe zorunlu (denetim izi).
                 TextField(
                   controller: reasonCtrl,
+                  onChanged: (_) => setLocal(() {}),
                   decoration: const InputDecoration(
                     hintText: 'Yanlış girildiyse gerekçe yazın',
                     isDense: true,
@@ -641,8 +645,7 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
             TextButton(
               onPressed: reasonCtrl.text.trim().isEmpty
-                  ? () => ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                      content: Text('İadeyi geçersiz kılmak için gerekçe yazın.')))
+                  ? null
                   : () => Navigator.pop(ctx, 'void'),
               child: const Text('Hayır, yanlış girilmiş'),
             ),
@@ -651,6 +654,7 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
               child: const Text('Evet, ödendi'),
             ),
           ],
+          ),
         ),
       );
       if (choice == null) return;

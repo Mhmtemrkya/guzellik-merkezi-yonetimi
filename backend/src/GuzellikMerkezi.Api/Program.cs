@@ -157,6 +157,14 @@ await DatabaseBootstrap.BackfillCancelledSaleArchivesAsync(app.Services);
 // tahsilat satırlarını okuyor. Veri-only + idempotent.
 await DatabaseBootstrap.BackfillDepositPaymentsAsync(app.Services);
 
+// Eski paket kullanımlarına kesin seans bağı üret (yalnız tek aday varsa — bkz. metot notu).
+// Veri-only + idempotent; bağ olmadan satış iptali tahminî yola düşer.
+await DatabaseBootstrap.BackfillPackageSessionUsagesAsync(app.Services);
+
+// Eski tahsilat/stok satırlarına kaynak adisyon bağı yaz. Reference ŞİFRELİ olduğu için
+// eşleştirme SQL'de yapılamaz; çözülmüş değer uygulama içinde adisyon Id'siyle eşlenir.
+await DatabaseBootstrap.BackfillAdisyonSourceLinksAsync(app.Services);
+
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
 // rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
 // Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:

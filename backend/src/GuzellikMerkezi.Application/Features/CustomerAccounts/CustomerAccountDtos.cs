@@ -201,7 +201,11 @@ public sealed record UpdateCustomerAccountRequest(
 
 public sealed record RescheduleAccountRequest(int InstallmentCount, DateOnly FirstDueDate);
 
-public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc);
+/// <param name="SourceAdisyonId">
+/// Tahsilatı doğuran adisyon (varsa). Reference ŞİFRELİ olduğu için kaynak eşleştirmesi bu
+/// deterministik alanla yapılır — adisyon silinirken tahsilat bu sayede bulunur.
+/// </param>
+public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null);
 
 public sealed record CustomerPackageSessionDto(
     Guid Id,

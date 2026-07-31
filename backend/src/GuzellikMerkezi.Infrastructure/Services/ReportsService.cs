@@ -151,7 +151,11 @@ public sealed partial class ReportsService : IReportsService
         DateTime SoldAt,
         DateTime? CancelledAtUtc,
         Guid? SoldByStaffMemberId,
-        Guid? CreatedBy);
+        Guid? CreatedBy,
+        /// <summary>Peşinat PLAN alanıdır: taksitler zaten "toplam − peşinat" üzerinden kurulur.</summary>
+        decimal DepositAmount = 0m,
+        /// <summary>Geri alma sırasında KORUNMUŞ iade — bu kadarı müşteride değil, borç yeniden doğar.</summary>
+        decimal RefundedAmount = 0m);
 
     private async Task<List<AccountRow>> LoadAccountsAsync(Guid tenantId, CancellationToken ct)
     {
@@ -170,12 +174,15 @@ public sealed partial class ReportsService : IReportsService
                 a.CancelledAtUtc,
                 a.SoldByStaffMemberId,
                 a.CreatedBy,
+                a.DepositAmount,
+                a.RefundedAmount,
             })
             .ToListAsync(ct);
 
         var live = rows.Select(a => new AccountRow(
                 a.Id, a.BranchId, a.CustomerId, a.ServicePackageId, a.Name ?? string.Empty, a.TotalAmount,
-                EffectiveSoldAt(a.SoldAtUtc, a.CreatedAtUtc), a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy))
+                EffectiveSoldAt(a.SoldAtUtc, a.CreatedAtUtc), a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy,
+                a.DepositAmount, a.RefundedAmount))
             .ToList();
 
         // İptal edilenler canlı tabloda yok (arşive taşındı); "İptal Edilen" kartları için eklenir.

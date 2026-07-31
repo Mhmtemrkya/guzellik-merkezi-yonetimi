@@ -129,7 +129,7 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             _db.StockMovements.Add(new StockMovement(
                 tenantId, product.Id, StockMovementType.Inbound, qty, nowUtc,
                 unitCost: unitCost, reference: reference,
-                notes: "Satış iptali — stok iadesi", staffMemberId: item.StaffMemberId));
+                notes: "Satış iptali — stok iadesi", staffMemberId: item.StaffMemberId, sourceAdisyonId: adisyon.Id));
         }
 
         // 4) Hediye çeki / kupon kullanımını geri aç.
@@ -178,7 +178,7 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             _db.StockMovements.Add(new StockMovement(
                 tenantId, product.Id, StockMovementType.Sale, qty, nowUtc,
                 unitCost: unitCost, reference: reference,
-                notes: "İptal geri alındı — satış yeniden işlendi", staffMemberId: item.StaffMemberId));
+                notes: "İptal geri alındı — satış yeniden işlendi", staffMemberId: item.StaffMemberId, sourceAdisyonId: adisyon.Id));
         }
 
         // 4) Hediye çekini yeniden harca.
@@ -318,9 +318,9 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             .ToDictionary(p => p.Id);
 
         // Satış anındaki maliyet: bu adisyonun referansıyla yazılmış Sale hareketleri.
-        var reference = ReferenceOf(adisyon);
+        // Reference ŞİFRELİ → eşitlik araması eşleşmez; deterministik bağ kullanılır.
         var originalCost = (await _db.StockMovements
-                .Where(m => m.TenantId == tenantId && m.Reference == reference && m.Type == StockMovementType.Sale)
+                .Where(m => m.TenantId == tenantId && m.SourceAdisyonId == adisyon.Id && m.Type == StockMovementType.Sale)
                 .Select(m => new { m.ProductId, m.UnitCost })
                 .ToListAsync(cancellationToken))
             .GroupBy(m => m.ProductId)

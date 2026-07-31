@@ -70,7 +70,10 @@ public sealed class MonthlyReportBackgroundService : BackgroundService
                 var income = await (
                     from p in db.AccountPayments.IgnoreQueryFilters()
                     join a in db.CustomerAccounts.IgnoreQueryFilters() on p.CustomerAccountId equals a.Id
-                    where a.TenantId == tenantId && p.OccurredAtUtc >= fromUtc && p.OccurredAtUtc < toUtc
+                    // IgnoreQueryFilters soft-delete süzgecini de kapatır → silinmiş satırlar
+                    // rapora geri sızmasın diye !IsDeleted ELLE eklenir (silme/void sonrası şart).
+                    where !p.IsDeleted && !a.IsDeleted
+                          && a.TenantId == tenantId && p.OccurredAtUtc >= fromUtc && p.OccurredAtUtc < toUtc
                     select (decimal?)p.Amount).SumAsync(ct) ?? 0m;
                 // İptal edilen satışların tahsilatı canlı tabloda yok (cari silindi) ama para
                 // kasaya girmiştir — rapor ekranıyla aynı defterden okunmazsa bildirim farklı çıkar.
@@ -80,7 +83,7 @@ public sealed class MonthlyReportBackgroundService : BackgroundService
                     .SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
 
                 var expense = await db.BusinessExpenses.IgnoreQueryFilters()
-                    .Where(e => e.TenantId == tenantId && e.OccurredAtUtc >= fromUtc && e.OccurredAtUtc < toUtc)
+                    .Where(e => !e.IsDeleted && e.TenantId == tenantId && e.OccurredAtUtc >= fromUtc && e.OccurredAtUtc < toUtc)
                     .SumAsync(e => (decimal?)e.Amount, ct) ?? 0m;
                 // Müşteriye iadeler de gider (kasa/kâr-zarar aynı şekilde sayıyor).
                 expense += await db.RefundTransactions.IgnoreQueryFilters()

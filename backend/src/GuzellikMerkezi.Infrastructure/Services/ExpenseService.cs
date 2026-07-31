@@ -225,6 +225,28 @@ public sealed class ExpenseService : IExpenseService
                 .Where(s => staffIds.Contains(s.Id))
                 .ToDictionary(s => s.Id, s => s.FullName);
 
+        // MÜŞTERİ İADELERİ de giderdir: genel rapor, kasa akışı ve kasa kapanışı onları gider
+        // sayıyor; özet saymazsa aynı dönem için iki farklı gider rakamı çıkıyordu.
+        // Kategori olarak "Other" kullanılır (mevcut kırılım/etiket seti bozulmasın).
+        var refundQuery = _db.RefundTransactions.AsNoTracking().Where(r => r.TenantId == tenantId);
+        if (filter.FromUtc.HasValue)
+        {
+            var from = filter.FromUtc.Value.Kind == DateTimeKind.Utc ? filter.FromUtc.Value : DateTime.SpecifyKind(filter.FromUtc.Value, DateTimeKind.Utc);
+            refundQuery = refundQuery.Where(r => r.RefundedAtUtc >= from);
+        }
+        if (filter.ToUtc.HasValue)
+        {
+            var to = filter.ToUtc.Value.Kind == DateTimeKind.Utc ? filter.ToUtc.Value : DateTime.SpecifyKind(filter.ToUtc.Value, DateTimeKind.Utc);
+            refundQuery = refundQuery.Where(r => r.RefundedAtUtc < to);
+        }
+        var refunds = await refundQuery.Select(r => r.Amount).ToListAsync(cancellationToken);
+        if (refunds.Count > 0)
+        {
+            expenses = expenses
+                .Concat(refunds.Select(a => new { Category = ExpenseCategory.Other, Amount = a, StaffMemberId = (Guid?)null }))
+                .ToList();
+        }
+
         var byCategory = expenses
             .GroupBy(x => x.Category)
             .Select(g => new ExpenseCategoryTotalDto(g.Key, g.Sum(x => x.Amount), g.Count()))

@@ -450,7 +450,15 @@ public sealed partial class ReportsService
         foreach (var row in installments)
         {
             if (!accountsById.TryGetValue(row.AccountId, out var account) || account.CancelledAtUtc != null) continue;
-            var remaining = Math.Max(0m, row.Planned - (paid.TryGetValue(row.AccountId, out var p) ? p : 0m));
+
+            // PEŞİNAT ÇİFT DÜŞÜLMEZ. Taksit planı zaten "toplam − peşinat" üzerinden kurulur;
+            // peşinat artık gerçek bir tahsilat satırı olduğu için `paid` içinde de yer alır.
+            // Doğrudan çıkarmak açık alacağı peşinat kadar EKSİK gösteriyordu (canlıda 12.000 ₺).
+            // Korunmuş iade ise müşterinin borcunu yeniden doğurur → havuzdan düşülür.
+            // (Aynı hesap: CustomerAccount.AllocatePayments)
+            var totalPaid = paid.TryGetValue(row.AccountId, out var p) ? p : 0m;
+            var allocatable = Math.Max(0m, totalPaid - account.DepositAmount - account.RefundedAmount);
+            var remaining = Math.Max(0m, row.Planned - allocatable);
             var key = account.BranchId ?? Guid.Empty;
             result[key] = (result.TryGetValue(key, out var cur) ? cur : 0m) + remaining;
         }
@@ -496,12 +504,14 @@ public sealed partial class ReportsService
             {
                 a.Id, a.BranchId, a.CustomerId, a.ServicePackageId, a.Name, a.TotalAmount,
                 a.SoldAtUtc, a.CreatedAtUtc, a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy,
+                a.DepositAmount, a.RefundedAmount,
             })
             .ToListAsync(ct);
 
         var live = rows.Select(a => new AccountRow(
                 a.Id, a.BranchId, a.CustomerId, a.ServicePackageId, a.Name ?? string.Empty, a.TotalAmount,
-                EffectiveSoldAt(a.SoldAtUtc, a.CreatedAtUtc), a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy))
+                EffectiveSoldAt(a.SoldAtUtc, a.CreatedAtUtc), a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy,
+                a.DepositAmount, a.RefundedAmount))
             .ToList();
 
         // İptal edilenler canlı tabloda yok (arşive taşındı); "İptal Edilen" kartları için eklenir.
