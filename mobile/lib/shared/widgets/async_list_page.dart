@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/responsive.dart';
+import '../export/export_helper.dart';
+import '../guide/guide_content.dart';
+import '../guide/page_guide.dart';
 import '../json_helpers.dart';
 import 'app_background.dart';
 import 'page_header.dart';
@@ -51,6 +54,9 @@ class AsyncListPage extends StatefulWidget {
     this.itemActionIcon,
     this.onItemTap,
     this.headerExtra,
+    this.canExport = false,
+    this.guideKey,
+    this.guideUid,
     this.onBulkDelete,
     this.bulkActions = const [],
     this.remoteSearch,
@@ -77,6 +83,17 @@ class AsyncListPage extends StatefulWidget {
   /// Verilirse listede toplu seçim açılır: karta uzun basınca seçim modu başlar,
   /// sonraki dokunuşlar seçer/kaldırır ve alt çubuktan seçilenler topluca silinir.
   final Future<void> Function(List<Map<String, dynamic>> items)? onBulkDelete;
+
+  /// true ise başlıkta "Dışa aktar" düğmesi çıkar: ekrandaki (filtrelenmiş) satırlar
+  /// Excel/PDF olarak paylaşılır. Kolonlar title/subtitle/trailing/status anahtarlarından
+  /// türetilir — her ekran için ayrı tablo tanımlamaya gerek kalmaz.
+  final bool canExport;
+
+  /// Verilirse başlıkta kılavuz düğmesi çıkar (GuideContent anahtarı).
+  final String? guideKey;
+
+  /// Kılavuzun "görüldü" kaydı kullanıcı başına tutulur.
+  final String? guideUid;
 
   /// Silme dışındaki toplu işlemler (ör. "KVKK onay mesajı gönder"). Dolu ise
   /// silme yetkisi olmasa bile seçim modu açılır.
@@ -109,6 +126,32 @@ class _AsyncListPageState extends State<AsyncListPage> {
 
   void refresh() => setState(() => future = widget.loader());
 
+  /// Ekranda görünen (filtre + arama uygulanmış) satırlar — dışa aktarmanın kaynağı.
+  List<Map<String, dynamic>> _exportable = const [];
+
+  /// Listeyi Excel/PDF olarak dışa aktarır. Kolonlar liste kartındaki alan
+  /// anahtarlarından türetilir; her ekran için ayrı tablo tanımına gerek kalmaz.
+  Future<void> _exportList() async {
+    final keyGroups = <(String, List<String>)>[
+      ('Kayıt', widget.titleKeys),
+      ('Detay', widget.subtitleKeys),
+      if (widget.trailingKeys.isNotEmpty) ('Tutar', widget.trailingKeys),
+      if (widget.statusKeys.isNotEmpty) ('Durum', widget.statusKeys),
+    ];
+
+    await ExportHelper.showMenu(
+      context,
+      title: widget.title,
+      subtitle: widget.subtitle,
+      headers: keyGroups.map((g) => g.$1).toList(),
+      rows: _exportable
+          .map((item) => keyGroups
+              .map((g) => valueOf(item, g.$2, fallback: ''))
+              .toList())
+          .toList(),
+    );
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -138,10 +181,39 @@ class _AsyncListPageState extends State<AsyncListPage> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(18, 22, 18, 12),
                   sliver: SliverToBoxAdapter(
-                    child: PageHeader(
-                      eyebrow: widget.eyebrow,
-                      title: widget.title,
-                      subtitle: widget.subtitle,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: PageHeader(
+                            eyebrow: widget.eyebrow,
+                            title: widget.title,
+                            subtitle: widget.subtitle,
+                          ),
+                        ),
+                        // Sayfa kılavuzu (web Topbar'daki kitap simgesi).
+                        if (widget.guideKey != null)
+                          IconButton(
+                            tooltip: 'Sayfa kılavuzu',
+                            onPressed: () {
+                              final guide = GuideContent.forKey(widget.guideKey!);
+                              if (guide == null) return;
+                              showPageGuide(
+                                context,
+                                pageKey: widget.guideKey!,
+                                uid: widget.guideUid ?? 'anon',
+                                content: guide,
+                              );
+                            },
+                            icon: const Icon(Icons.menu_book_rounded),
+                          ),
+                        if (widget.canExport)
+                          IconButton(
+                            tooltip: 'Dışa aktar',
+                            onPressed: _exportList,
+                            icon: const Icon(Icons.ios_share_rounded),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -233,6 +305,9 @@ class _AsyncListPageState extends State<AsyncListPage> {
                           .toLowerCase()
                           .contains(query);
                     }).toList();
+                    // Dışa aktarma, EKRANDA GÖRÜNEN (filtre + arama uygulanmış) satırları
+                    // kullanır — kullanıcı ne görüyorsa onu alır.
+                    _exportable = items;
                     if (items.isEmpty) {
                       return SliverFillRemaining(
                         hasScrollBody: false,

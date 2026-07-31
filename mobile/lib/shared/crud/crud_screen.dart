@@ -153,6 +153,9 @@ class CrudListScreen extends StatefulWidget {
     this.decorateUpdate,
     this.onCreated,
     this.headerExtra,
+    this.canExport = false,
+    this.guideKey,
+    this.guideUid,
     this.onItemTap,
     this.emptyText = 'Henüz kayıt bulunmuyor.',
     this.canCreate = true,
@@ -185,6 +188,13 @@ class CrudListScreen extends StatefulWidget {
   final String deleteLabel;
   final String deleteConfirm;
   final Widget? headerExtra;
+
+  /// true ise başlıkta "Dışa aktar" (Excel/PDF) düğmesi görünür.
+  final bool canExport;
+
+  /// Verilirse başlıkta sayfa kılavuzu düğmesi çıkar (GuideContent anahtarı).
+  final String? guideKey;
+  final String? guideUid;
   final String emptyText;
 
   /// Hooks to inject extra keys (e.g. branchId) into the outgoing payload.
@@ -339,6 +349,9 @@ class _CrudListScreenState extends State<CrudListScreen> {
       filters: widget.filters,
       emptyText: widget.emptyText,
       headerExtra: widget.headerExtra,
+      canExport: widget.canExport,
+      guideKey: widget.guideKey,
+      guideUid: widget.guideUid,
       onItemTap: widget.onItemTap ?? (_canOpenSheet ? _openEdit : null),
       // Toplu silme: kartlara uzun basınca seçim modu açılır (web toplu silme paritesi).
       onBulkDelete: widget.onDelete == null || !widget.canDelete

@@ -8,6 +8,8 @@ import '../../core/theme/app_theme.dart';
 import '../consent/consent_warning_banner.dart';
 import '../../shared/crud/crud_options.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/guide/guide_content.dart';
+import '../../shared/guide/page_guide.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
@@ -114,6 +116,21 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     return !d.isBefore(_rangeStart) && d.isBefore(_rangeEnd);
   }
 
+  /// Sayfa kılavuzu düğmesi (web Topbar'daki kitap simgesi).
+  Widget _guideButton(String key) => IconButton(
+        tooltip: 'Sayfa kılavuzu',
+        color: AppColors.primaryDark,
+        onPressed: () {
+          final guide = GuideContent.forKey(key);
+          if (guide == null) return;
+          showPageGuide(context,
+              pageKey: key,
+              uid: widget.api.auth?.user?.email ?? 'anon',
+              content: guide);
+        },
+        icon: const Icon(Icons.menu_book_rounded),
+      );
+
   Future<void> _guard(Future<void> Function() task, String ok) async {
     try {
       await task();
@@ -152,6 +169,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                           eyebrow: 'Finans',
                           title: 'Ön Muhasebe',
                           subtitle: _period.label(),
+                          action: _guideButton('accounting'),
                         ),
                         const SizedBox(height: 12),
                         PeriodSelector(

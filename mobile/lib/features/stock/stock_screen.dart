@@ -6,6 +6,8 @@ import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/guide/guide_content.dart';
+import '../../shared/guide/page_guide.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
@@ -252,10 +254,24 @@ class _StockScreenState extends State<StockScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 110),
                   children: [
-                    const PageHeader(
+                    PageHeader(
                       eyebrow: 'İşletme',
                       title: 'Stok & Ürün',
                       subtitle: 'Ürün, sarf, kritik stok ve depo görünümü.',
+                      // Sayfa kılavuzu (web Topbar'daki kitap simgesi).
+                      action: IconButton(
+                        tooltip: 'Sayfa kılavuzu',
+                        color: AppColors.primaryDark,
+                        onPressed: () {
+                          final guide = GuideContent.forKey('stock');
+                          if (guide == null) return;
+                          showPageGuide(context,
+                              pageKey: 'stock',
+                              uid: widget.api.auth?.user?.email ?? 'anon',
+                              content: guide);
+                        },
+                        icon: const Icon(Icons.menu_book_rounded),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _statsGrid(data.products, data.movements),

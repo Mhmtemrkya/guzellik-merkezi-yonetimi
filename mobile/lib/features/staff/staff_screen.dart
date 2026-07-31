@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_options.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/export/export_helper.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/photo_utils.dart';
 import '../../shared/widgets/app_background.dart';
@@ -193,6 +194,27 @@ class _StaffScreenState extends State<StaffScreen> {
       staff: apiItems(results[0]),
       appts: apiItems(results[1]),
       catalog: _parseCatalog(results[2]),
+    );
+  }
+
+  /// Kadro listesini Excel/PDF olarak dışa aktarır (web personel sayfası paritesi).
+  Future<void> _exportStaff(List<Map<String, dynamic>> all) async {
+    await ExportHelper.showMenu(
+      context,
+      title: 'Personel Listesi',
+      subtitle: 'Kadro, unvan, iletişim ve durum',
+      headers: const ['Ad Soyad', 'Unvan', 'Telefon', 'Uzmanlık', 'Komisyon', 'Durum'],
+      rows: all.map((s) {
+        final rate = numberOf(s, const ['commissionRate']);
+        return [
+          valueOf(s, const ['fullName'], fallback: 'Personel'),
+          valueOf(s, const ['title'], fallback: ''),
+          valueOf(s, const ['phone'], fallback: ''),
+          valueOf(s, const ['specialties'], fallback: ''),
+          rate > 0 ? '%${rate.toStringAsFixed(0)}' : '',
+          s['isActive'] == false ? 'Pasif' : 'Aktif',
+        ];
+      }).toList(),
     );
   }
 
@@ -412,10 +434,17 @@ class _StaffScreenState extends State<StaffScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 110),
                   children: [
-                    const PageHeader(
+                    PageHeader(
                       eyebrow: 'Yönetim',
                       title: 'Personel & Roller',
                       subtitle: 'Kadro, rol, yetki ve performans görünümü.',
+                      // Excel/PDF dışa aktarma (web personel sayfası paritesi).
+                      action: IconButton(
+                        tooltip: 'Dışa aktar',
+                        color: AppColors.primaryDark,
+                        onPressed: () => _exportStaff(all),
+                        icon: const Icon(Icons.ios_share_rounded),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _teamPulse(all, stats, data.catalog),

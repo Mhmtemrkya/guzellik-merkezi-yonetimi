@@ -144,6 +144,10 @@ class CustomersScreen extends StatelessWidget {
       title: 'Müşteriler',
       subtitle: 'Müşteri kartları, iletişim ve KVKK durumu.',
       icon: Icons.person_rounded,
+      // Excel/PDF dışa aktarma (web müşteriler sayfası paritesi) — görünen liste alınır.
+      canExport: true,
+      guideKey: 'customers',
+      guideUid: me?.email,
       // ÖLÇEK: tüm müşteri listesi ÇEKİLMEZ (12 bin+ kayıtta uygulama donuyordu).
       // İlk sayfa sunucudan en yeni kayıtlarla gelir; arama sunucu tarafında yapılır.
       loader: () => api.get(

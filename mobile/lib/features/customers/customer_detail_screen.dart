@@ -13,6 +13,7 @@ import '../consent/consent_warning_banner.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
+import 'operations_journal.dart';
 import 'customer_sales_panel.dart';
 import '../accounting/on_muhasebe_screen.dart' show AccountDetailSheet;
 import '../appointments/appointment_form.dart';
@@ -390,6 +391,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                                   customerId: _id,
                                   customerName: _name,
                                   accounts: _accounts,
+                                  appointments: _appts,
                                   onChanged: _reload,
                                 ),
                                 _HealthTab(
@@ -1472,6 +1474,7 @@ class _AdisyonTab extends StatefulWidget {
     required this.customerId,
     required this.customerName,
     required this.accounts,
+    required this.appointments,
     required this.onChanged,
     super.key,
   });
@@ -1479,6 +1482,9 @@ class _AdisyonTab extends StatefulWidget {
   final String customerId;
   final String customerName;
   final List<Map<String, dynamic>> accounts;
+
+  /// İşlem defterindeki "seans" satırları tamamlanmış randevulardan gelir.
+  final List<Map<String, dynamic>> appointments;
   final Future<void> Function() onChanged;
 
   @override
@@ -1508,14 +1514,17 @@ class _AdisyonTabState extends State<_AdisyonTab> {
     final open = results[0] is Map
         ? (results[0] as Map).cast<String, dynamic>()
         : null;
-    final history = apiItems(results[1])
-        .where((a) =>
-            '${a['customerId']}' == widget.customerId &&
-            '${a['status']}' != 'Open')
+    // İşlem defteri TÜM adisyonları (açık dahil) kalemleriyle kullanır; aşağıdaki
+    // "geçmiş" listesi ise yalnız kapanmışları gösterir.
+    final mine = apiItems(results[1])
+        .where((a) => '${a['customerId']}' == widget.customerId)
+        .toList();
+    final history = mine
+        .where((a) => '${a['status']}' != 'Open')
         .toList()
       ..sort((x, y) =>
           '${y['createdAtUtc'] ?? ''}'.compareTo('${x['createdAtUtc'] ?? ''}'));
-    return _AdisyonData(open: open, history: history);
+    return _AdisyonData(open: open, history: history, all: mine);
   }
 
   Future<void> _refresh() async {
@@ -1601,11 +1610,23 @@ class _AdisyonTabState extends State<_AdisyonTab> {
                   ],
                 ),
               ),
+            // BİRLEŞİK İŞLEM DEFTERİ (web paritesi): adisyon kalemleri + tamamlanmış
+            // randevular tek kronolojik akışta, dönem süzgeci ve toplamlarıyla.
             _Section(
               title: 'İşlem Defteri',
               icon: Icons.history_edu_rounded,
+              child: OperationsJournal(
+                adisyonlar: data.all,
+                appointments: widget.appointments,
+                customerId: widget.customerId,
+                onOpenAdisyon: _openSheet,
+              ),
+            ),
+            _Section(
+              title: 'Kapanmış Adisyonlar',
+              icon: Icons.receipt_long_rounded,
               child: data.history.isEmpty
-                  ? _empty('Geçmiş işlem yok.')
+                  ? _empty('Kapanmış adisyon yok.')
                   : Column(
                       children: [
                         for (final a in data.history) _historyRow(a),
@@ -1777,9 +1798,18 @@ class _AdisyonTabState extends State<_AdisyonTab> {
 }
 
 class _AdisyonData {
-  const _AdisyonData({required this.open, required this.history});
+  const _AdisyonData({
+    required this.open,
+    required this.history,
+    this.all = const [],
+  });
   final Map<String, dynamic>? open;
+
+  /// Kapanmış adisyonlar (özet kartları).
   final List<Map<String, dynamic>> history;
+
+  /// Müşterinin TÜM adisyonları — işlem defteri kalem bazında bunları tarar.
+  final List<Map<String, dynamic>> all;
 }
 
 // ===========================================================================

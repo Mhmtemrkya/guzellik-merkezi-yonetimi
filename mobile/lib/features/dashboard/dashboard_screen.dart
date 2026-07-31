@@ -15,6 +15,8 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../accounting/package_sale_sheet.dart';
+import '../../shared/guide/guide_content.dart';
+import '../../shared/guide/page_guide.dart';
 import '../customers/passive_customers_sheet.dart';
 import '../import/import_sheet.dart';
 import '../../shared/widgets/status_badge.dart';
@@ -45,6 +47,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     future = load();
+    // Sayfa kılavuzu: ilk girişte kendiliğinden açılır (web PageGuide paritesi).
+    // İlk kare çizildikten sonra çağrılır ki context hazır olsun.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowGuide());
+  }
+
+  Future<void> _maybeShowGuide() async {
+    final user = widget.auth.user;
+    if (user == null || user.isPlatform) return;
+    final guide = GuideContent.forKey('home');
+    if (guide == null || !mounted) return;
+    await showPageGuide(
+      context,
+      pageKey: 'home',
+      uid: user.email,
+      content: guide,
+      auto: true,
+    );
   }
 
   void _onPeriodChanged(PeriodValue v) {
@@ -213,11 +232,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final heroTrailing = Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (!user.isPlatform)
+                    if (!user.isPlatform) ...[
+                      // Kılavuzu elle yeniden açma (web Topbar'daki kitap simgesi).
+                      IconButton(
+                        tooltip: 'Sayfa kılavuzu',
+                        onPressed: () {
+                          final guide = GuideContent.forKey('home');
+                          if (guide == null) return;
+                          showPageGuide(context,
+                              pageKey: 'home', uid: user.email, content: guide);
+                        },
+                        icon: const Icon(Icons.menu_book_rounded, size: 20),
+                        color: AppColors.primaryDark,
+                      ),
                       NotificationBell(
                         center: widget.notifications,
                         onOpen: () => context.push('/notification-inbox'),
                       ),
+                    ],
                     CircleAvatar(
                       backgroundColor: AppColors.rose,
                       child: Text(

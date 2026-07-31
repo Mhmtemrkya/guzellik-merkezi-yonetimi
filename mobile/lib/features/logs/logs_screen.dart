@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme/responsive.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/export/export_helper.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
@@ -86,6 +87,26 @@ class _LogsScreenState extends State<LogsScreen> {
   void _reload() => setState(() {
         _future = _load();
       });
+
+  /// Görünen log kayıtlarını Excel/PDF olarak dışa aktarır (web loglar sayfası paritesi).
+  Future<void> _export(List<Map<String, dynamic>> items) async {
+    await ExportHelper.showMenu(
+      context,
+      title: 'Log Kayıtları',
+      subtitle: 'Kullanıcı, eylem ve modül bazlı denetim kayıtları',
+      headers: const ['Tarih', 'Kullanıcı', 'Eylem', 'Modül', 'Özet'],
+      rows: items.map((l) {
+        final at = parseUtcToLocal(l['createdAtUtc']);
+        return [
+          at == null ? '' : DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(at),
+          valueOf(l, const ['actorName'], fallback: 'Sistem'),
+          '${l['action'] ?? ''}',
+          _entityLabel('${l['entityName'] ?? ''}'),
+          _sanitizeSummary('${l['summary'] ?? ''}'),
+        ];
+      }).toList(),
+    );
+  }
 
   void _onSearchChanged(String v) {
     _debounce?.cancel();
@@ -189,6 +210,15 @@ class _LogsScreenState extends State<LogsScreen> {
                             icon: const Icon(Icons.refresh_rounded),
                             color: AppColors.primaryDark,
                             tooltip: 'Yenile',
+                          ),
+                          // Excel/PDF dışa aktarma (web loglar sayfası paritesi).
+                          IconButton(
+                            onPressed: (_busy || data == null)
+                                ? null
+                                : () => _export(data.items),
+                            icon: const Icon(Icons.ios_share_rounded),
+                            color: AppColors.primaryDark,
+                            tooltip: 'Dışa aktar',
                           ),
                           IconButton(
                             onPressed: _busy ? null : _clearAll,

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/export/export_helper.dart';
+import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
 
 /// Günlük adisyon kartı — gün içinde kime ne yapıldı (saatli), kim yaptı ve tahsilatlar.
@@ -98,6 +100,31 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
 
   List<Map<String, dynamic>> get _rows =>
       ((_data?['rows'] as List?) ?? const []).map((r) => (r as Map).cast<String, dynamic>()).toList();
+
+  /// Ekrandaki (filtrelenmiş) satırları Excel/PDF olarak dışa aktarır.
+  Future<void> _export() async {
+    final rows = _filteredRows;
+    await ExportHelper.showMenu(
+      context,
+      title: 'Günlük Adisyon · ${_dateLabel()}',
+      subtitle: rows.length == _rows.length
+          ? null
+          : 'Filtrelenmiş görünüm (${rows.length}/${_rows.length} satır)',
+      headers: const ['Saat', 'Tür', 'Açıklama', 'Danışan', 'Personel', 'Yöntem', 'Tutar'],
+      rows: rows.map((r) {
+        final at = parseUtcToLocal(r['occurredAtUtc']);
+        return [
+          at == null ? '' : CalendarText.hm(at),
+          _typeLabels[(r['type'] as num?)?.toInt() ?? 3] ?? 'İşlem',
+          valueOf(r, const ['description'], fallback: ''),
+          valueOf(r, const ['customerName'], fallback: ''),
+          valueOf(r, const ['staffName'], fallback: ''),
+          valueOf(r, const ['method'], fallback: ''),
+          CalendarText.tl(numberOf(r, const ['amount'])),
+        ];
+      }).toList(),
+    );
+  }
 
   List<Map<String, dynamic>> get _filteredRows {
     final q = _search.trim().toLowerCase();
@@ -199,6 +226,12 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
                     child: const Text('Bugün', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                   IconButton(onPressed: _busy ? null : () => _shift(1), icon: const Icon(Icons.chevron_right_rounded)),
+                  // Excel / PDF dışa aktarma (web DailyAdisyonModal paritesi).
+                  IconButton(
+                    tooltip: 'Dışa aktar',
+                    onPressed: _busy ? null : _export,
+                    icon: const Icon(Icons.ios_share_rounded),
+                  ),
                   IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
                 ],
               ),

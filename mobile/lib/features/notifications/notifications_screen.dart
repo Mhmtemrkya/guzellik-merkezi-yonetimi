@@ -190,6 +190,8 @@ class NotificationsScreen extends StatelessWidget {
       title: 'Bildirimler',
       subtitle: 'SMS, WhatsApp ve e-posta şablonları.',
       icon: Icons.notifications_active_rounded,
+      guideKey: 'notifications',
+      guideUid: me?.email,
       loader: () => api.get(
         '/api/admin/notification-templates/',
         query: {'page': 1, 'pageSize': 200},
