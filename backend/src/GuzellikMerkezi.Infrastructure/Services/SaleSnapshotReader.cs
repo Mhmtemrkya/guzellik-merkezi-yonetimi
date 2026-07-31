@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GuzellikMerkezi.Domain.Entities;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
@@ -17,8 +18,36 @@ internal static class SaleSnapshotReader
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = false,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new TolerantBoolConverter() },
     };
+
+    /// <summary>
+    /// bool alanlarını true/false DIŞINDA 1/0 ve "true"/"false" olarak da kabul eder.
+    /// <para>
+    /// Gerekçe: yedeğin bir kısmı SQL migration'ı tarafından üretiliyor ve MySQL/MariaDB'nin
+    /// JSON boolean yazma yolları farklı (MariaDB <c>CAST(x AS JSON)</c> desteklemez, tinyint
+    /// kolonlar kolayca 1/0 olarak sızabilir). Katı okuyucu böyle bir yedekte istisna atar ve
+    /// "iptali geri al" TAMAMEN çalışmaz hâle gelirdi — bu, veri kurtarmayı bloklayan bir hata olur.
+    /// </para>
+    /// </summary>
+    private sealed class TolerantBoolConverter : JsonConverter<bool>
+    {
+        public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
+        {
+            JsonTokenType.True => true,
+            JsonTokenType.False => false,
+            JsonTokenType.Number => reader.TryGetInt64(out var n) ? n != 0 : reader.GetDouble() != 0,
+            JsonTokenType.String => bool.TryParse(reader.GetString(), out var b)
+                ? b
+                : reader.GetString() is "1",
+            JsonTokenType.Null => false,
+            _ => throw new JsonException($"Yedekteki boolean alan okunamadı: {reader.TokenType}"),
+        };
+
+        public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+            => writer.WriteBooleanValue(value);
+    }
 
     /// <summary>Şema sürümü — ileride alan eklenirse eski kayıtlar okunmaya devam etsin.</summary>
     public const int Version = 1;

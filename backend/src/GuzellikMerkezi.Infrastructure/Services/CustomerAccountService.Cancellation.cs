@@ -117,6 +117,60 @@ public sealed partial class CustomerAccountService
             .AnyAsync(x => x.TenantId == tenantId && x.OriginalAccountId == accountId && x.RestoredAtUtc == null, ct);
 
     /// <summary>
+    /// Verilen işi TEK transaction içinde çalıştırır: iptal/geri alma birden çok SaveChanges
+    /// gerektirir (FK sırası) ve arada bağlantı koparsa yarım kalmış bir durum kalırdı —
+    /// ör. arşiv kaydı oluşmuş ama canlı cari hâlâ dururken.
+    /// <para>
+    /// InMemory sağlayıcı transaction desteklemez (birim testleri onu kullanır); orada iş
+    /// doğrudan çalıştırılır. Zaten süren bir transaction varsa yenisi açılmaz.
+    /// </para>
+    /// </summary>
+    private async Task<T> InTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct)
+    {
+        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null)
+            return await work();
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var result = await work();
+            await tx.CommitAsync(ct);
+            return result;
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// İptal edilecek cariyi SATIR KİLİDİYLE okur ve aynı satış için zaten aktif bir arşiv
+    /// kaydı varsa false döner.
+    /// <para>
+    /// İki kullanıcı aynı satışı aynı anda iptal ederse ikisi de cariyi silinmeden okuyabilir ve
+    /// çift arşiv kaydı / yarım kalmış istek oluşurdu. <c>FOR UPDATE</c> ikinci isteği ilkinin
+    /// commit'ine kadar bekletir; sonra aktif arşiv kontrolü onu nazikçe reddeder.
+    /// </para>
+    /// </summary>
+    private async Task<bool> TryLockForCancelAsync(Guid tenantId, Guid accountId, CancellationToken ct)
+    {
+        if (_db.Database.IsRelational())
+        {
+            // Guid kolonu char(36): parametre olarak string geçilir.
+            var rows = await _db.Database.SqlQueryRaw<Guid>(
+                    "SELECT Id AS Value FROM customer_accounts WHERE Id = {0} AND TenantId = {1} FOR UPDATE",
+                    accountId.ToString(), tenantId.ToString())
+                .ToListAsync(ct);
+            if (rows.Count == 0) return false;
+        }
+
+        // Kilit alındıktan sonra bak: bu satış zaten arşivlenmiş mi?
+        return !await _db.CancelledSales
+            .AnyAsync(x => x.TenantId == tenantId && x.OriginalAccountId == accountId && x.RestoredAtUtc == null, ct);
+    }
+
+    /// <summary>
     /// Rapor kartlarındaki "İptal Edilen" sayacı için arşiv özeti. İptal edilen satışın satırları
     /// canlı tablolarda YOKTUR; paket/hizmet kırılımı yalnızca yedekteki seans listesinden çıkar.
     /// </summary>

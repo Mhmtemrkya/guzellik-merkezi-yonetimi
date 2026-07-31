@@ -54,6 +54,11 @@
     (eski kayıtlar canlı tabloda damgalı kalmaya devam eder, veri kaybı olmaz).
   - Doğrulama: `SELECT COUNT(*) FROM cancelled_sales;` > 0 ve
     `SELECT COUNT(*) FROM customer_accounts WHERE CancelledAtUtc IS NOT NULL AND IsDeleted=0;` = 0.
+- [ ] **İade kasa hareketi migration'ı:** `RefundTransactions` (`20260731135553`) — `refund_transactions` tablosu.
+  - Satış iptalinde müşteriye geri ödenen para artık GERÇEK kasa çıkışıdır: kasa akışı, kâr-zarar ve
+    gider raporlarında görünür. Uygulanmazsa iptal ekranındaki iade alanı 500 verir.
+- [ ] **Adisyon satış tarihi migration'ı:** `AdisyonSaleDate` (`20260731132510`) — `adisyonlar.SaleDateUtc` (nullable).
+  - Geriye uyumlu: boş kalan eski kayıtlar onay anını kullanmaya devam eder.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).

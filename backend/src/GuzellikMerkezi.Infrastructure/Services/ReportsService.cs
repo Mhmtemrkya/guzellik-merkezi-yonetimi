@@ -213,7 +213,18 @@ public sealed partial class ReportsService : IReportsService
             .Where(e => e.TenantId == tenantId && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
             .Select(e => new { e.BranchId, e.Category, e.Amount, e.OccurredAtUtc })
             .ToListAsync(ct);
-        return rows.Select(e => new ExpenseRow(e.BranchId, e.Category, e.Amount, e.OccurredAtUtc)).ToList();
+        var result = rows.Select(e => new ExpenseRow(e.BranchId, e.Category, e.Amount, e.OccurredAtUtc)).ToList();
+
+        // MÜŞTERİ İADELERİ: satış iptalinde geri ödenen para da giderdir. "Other" kategorisine
+        // yazılır — ayrı bir ExpenseCategory eklemek mevcut kırılım/etiket setini bozardı.
+        var refunds = await _db.RefundTransactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
+            .Select(r => new { r.BranchId, r.Amount, r.RefundedAtUtc })
+            .ToListAsync(ct);
+        result.AddRange(refunds.Select(r =>
+            new ExpenseRow(r.BranchId, ExpenseCategory.Other, r.Amount, r.RefundedAtUtc)));
+
+        return result;
     }
 
     private sealed record ApptRow(

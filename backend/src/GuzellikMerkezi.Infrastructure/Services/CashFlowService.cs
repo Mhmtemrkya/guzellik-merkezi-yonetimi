@@ -113,12 +113,50 @@ public sealed class CashFlowService : ICashFlowService
             null,
             e.IsApproved)).ToList();
 
+        // ---------- GİDER: MÜŞTERİYE İADELER ----------
+        // Satış iptalinde müşteriye geri ödenen para GERÇEK bir kasa çıkışıdır. Bu satır
+        // eklenmeden önce iade yalnızca arşivde bilgi olarak duruyordu; kasa/kâr-zarar görmüyordu.
+        var refundEntries = await LoadRefundEntriesAsync(tenantId, from, to, cancellationToken);
+
         // Birleştir + tarih sırasına göre desc
-        var all2 = incomeEntries.Concat(expenseEntries)
+        var all2 = incomeEntries.Concat(expenseEntries).Concat(refundEntries)
             .OrderByDescending(x => x.OccurredAtUtc)
             .ToArray();
 
         return Result<IReadOnlyCollection<CashFlowEntryDto>>.Success(all2);
+    }
+
+    /// <summary>Dönemdeki müşteri iadeleri — kasa akışında gider satırı olarak görünür.</summary>
+    private async Task<List<CashFlowEntryDto>> LoadRefundEntriesAsync(
+        Guid tenantId, DateTime from, DateTime to, CancellationToken cancellationToken)
+    {
+        var rows = await _db.RefundTransactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
+            .Select(r => new
+            {
+                r.Id,
+                r.Amount,
+                r.Method,
+                r.Reference,
+                r.RefundedAtUtc,
+                r.Reason,
+                CustomerName = r.Customer != null ? r.Customer.FullName : null,
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new CashFlowEntryDto(
+            r.Id,
+            CashFlowEntryType.Expense,
+            r.RefundedAtUtc,
+            r.Amount,
+            r.Method,
+            "İade",
+            string.IsNullOrWhiteSpace(r.Reason) ? "Müşteriye iade" : $"Müşteriye iade — {r.Reason}",
+            r.Reference,
+            r.CustomerName,
+            null,
+            null,
+            true)).ToList();
     }
 
     public async Task<Result<ProfitReportDto>> ProfitReportAsync(Guid tenantId, int months, CancellationToken cancellationToken = default)
@@ -157,6 +195,17 @@ public sealed class CashFlowService : ICashFlowService
         var expenseByMonth = expenseRows
             .GroupBy(e => MonthKey(e.OccurredAtUtc, offset))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        // MÜŞTERİ İADELERİ de giderdir: iptalde geri ödenen para kasadan çıkar.
+        var refundRows = await _db.RefundTransactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= fromUtc)
+            .Select(r => new { r.Amount, r.RefundedAtUtc })
+            .ToListAsync(cancellationToken);
+        foreach (var group in refundRows.GroupBy(r => MonthKey(r.RefundedAtUtc, offset)))
+        {
+            expenseByMonth[group.Key] =
+                (expenseByMonth.TryGetValue(group.Key, out var cur) ? cur : 0m) + group.Sum(x => x.Amount);
+        }
 
         var monthRows = new List<ProfitMonthDto>(months);
         for (var i = 0; i < months; i++)

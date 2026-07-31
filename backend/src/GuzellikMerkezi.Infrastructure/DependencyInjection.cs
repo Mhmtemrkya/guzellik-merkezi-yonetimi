@@ -97,6 +97,7 @@ public static class DependencyInjection
         services.AddScoped<IServiceCatalogService, ServiceCatalogService>();
         services.AddScoped<ICustomServiceCategoryService, CustomServiceCategoryService>();
         services.AddScoped<IServicePackageService, ServicePackageService>();
+        services.AddScoped<IAdisyonEffectsReversal, AdisyonEffectsReversal>();
         services.AddScoped<ICustomerAccountService, CustomerAccountService>();
         services.AddScoped<IAdisyonService, AdisyonService>();
         services.AddScoped<ICommissionService, CommissionService>();

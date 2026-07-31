@@ -21,6 +21,14 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
     /// <para>Idempotent: <c>NOT EXISTS</c> koruması sayesinde tekrar çalıştırılabilir.
     /// Down BOŞTUR — silinen satırlar yalnızca arşiv snapshot'ından, uygulamadaki
     /// "iptali geri al" akışıyla kurulabilir.</para>
+    ///
+    /// <para>
+    /// MOTOR UYUMU: JSON boolean üretmek için <c>JSON_EXTRACT('true','$')</c> kullanılır.
+    /// <c>CAST(x AS JSON)</c> MariaDB'de DESTEKLENMEZ (orada JSON, LONGTEXT takma adıdır) ve
+    /// migration üretim sunucusunda patlardı. tinyint 1/0 doğrudan da yazılamaz: snapshot'ı okuyan
+    /// System.Text.Json sayıyı bool'a çeviremez — gerçek JSON boolean şart. Okuma tarafında
+    /// ayrıca toleranslı converter vardır (bkz. <c>SaleSnapshotReader.TolerantBoolConverter</c>).
+    /// </para>
     /// </summary>
     public partial class MigrateCancelledSalesToArchive : Migration
     {
@@ -75,11 +83,11 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                             'TotalAmount', a.TotalAmount,
                             'DepositAmount', a.DepositAmount,
                             'Notes', a.Notes,
-                            'IsActive', IF(a.IsActive = 1, CAST('true' AS JSON), CAST('false' AS JSON)),
+                            'IsActive', IF(a.IsActive = 1, JSON_EXTRACT('true', '$'), JSON_EXTRACT('false', '$')),
                             'SoldAtUtc', DATE_FORMAT(a.SoldAtUtc, '%Y-%m-%dT%H:%i:%s.%fZ'),
                             'SoldByStaffMemberId', a.SoldByStaffMemberId,
                             'AppliedByStaffMemberId', a.AppliedByStaffMemberId,
-                            'IsHistorical', IF(a.IsHistorical = 1, CAST('true' AS JSON), CAST('false' AS JSON)),
+                            'IsHistorical', IF(a.IsHistorical = 1, JSON_EXTRACT('true', '$'), JSON_EXTRACT('false', '$')),
                             'CreatedAtUtc', DATE_FORMAT(a.CreatedAtUtc, '%Y-%m-%dT%H:%i:%s.%fZ'),
                             'CreatedBy', a.CreatedBy
                         ),

@@ -169,6 +169,81 @@ public sealed class CancelledSaleGuardTests
         }
     }
 
+    /// <summary>
+    /// İade tutarı SESSİZCE KIRPILMAZ. Eskiden Math.Clamp ile tahsilata indiriliyordu; kullanıcı
+    /// 5000 yazıp 500 kaydedildiğini fark etmiyordu. Artık doğrulama hatası döner.
+    /// </summary>
+    [Fact]
+    public async Task CancelSale_RejectsRefund_AboveCollected()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(300m, "cash", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var tooMuch = await NewService(db).CancelSaleAsync(tenantId, accountId, new CancelSaleRequest("test", RefundedAmount: 5000m));
+            Assert.True(tooMuch.IsFailure);
+            Assert.Equal("Validation", tooMuch.Error.Code);
+
+            var negative = await NewService(db).CancelSaleAsync(tenantId, accountId, new CancelSaleRequest("test", RefundedAmount: -10m));
+            Assert.True(negative.IsFailure);
+        }
+
+        // Reddedilen istek hiçbir şey değiştirmemeli — satış hâlâ canlı olmalı.
+        await using (var db = NewDb(options))
+            Assert.True(await db.CustomerAccounts.AnyAsync(a => a.Id == accountId));
+    }
+
+    /// <summary>İade edilen tutar için gerçek bir kasa çıkışı (refund_transactions) yazılmalı.</summary>
+    [Fact]
+    public async Task CancelSale_WritesRefundTransaction()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(600m, "card", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId,
+                new CancelSaleRequest("iade", RefundedAmount: 250m, RefundMethod: "card"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var refund = await db.RefundTransactions.SingleAsync();
+            Assert.Equal(250m, refund.Amount);
+            Assert.Equal("card", refund.Method);
+            Assert.Equal("iade", refund.Reason);
+        }
+
+        // İptal geri alınınca iade kaydı da düşer (para geri ödenmemiş sayılır).
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId)).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.Empty(await db.RefundTransactions.ToListAsync());
+    }
+
+    /// <summary>İade girilmediyse kasa hareketi de olmamalı (para kurumda kaldı).</summary>
+    [Fact]
+    public async Task CancelSale_WithoutRefund_WritesNoCashMovement()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(400m, "cash", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId, new CancelSaleRequest("vazgeçti"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.Empty(await db.RefundTransactions.ToListAsync());
+    }
+
     [Fact]
     public async Task RegisterPayment_WorksAgain_AfterSaleRestored()
     {

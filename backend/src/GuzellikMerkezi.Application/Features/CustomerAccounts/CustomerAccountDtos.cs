@@ -116,10 +116,12 @@ public sealed record CreateHistoricalSaleRequest(
 /// <param name="Reason">İptal gerekçesi (müşteri vazgeçti, paket iadesi vb.).</param>
 /// <param name="RefundedAmount">
 /// Tahsil edilmiş paradan müşteriye GERİ ÖDENEN kısım. Kısmi iade desteklenir.
-/// null/0 → para kurumda kaldı (gelirde sayılmaya devam eder, arşivde "iade edilmedi" olarak durur).
-/// Tahsil edilmiş tutarı aşan değerler tahsilata kırpılır.
+/// null/0 → para kurumda kaldı. Pozitifse gerçek bir kasa çıkışı (<c>refund_transactions</c>)
+/// yazılır ve kasa akışı/kâr-zarar bu tutarı gider olarak görür.
+/// Negatif ya da tahsil edileni AŞAN değer sessizce kırpılmaz — doğrulama hatası döner.
 /// </param>
-public sealed record CancelSaleRequest(string? Reason, decimal? RefundedAmount = null);
+/// <param name="RefundMethod">İadenin yapıldığı yöntem: cash / card / transfer. Boşsa nakit sayılır.</param>
+public sealed record CancelSaleRequest(string? Reason, decimal? RefundedAmount = null, string? RefundMethod = null);
 
 /// <summary>
 /// Arşivdeki iptal edilmiş satış. Canlı cari listesinde YER ALMAZ — "İptal Edilenler" ekranı

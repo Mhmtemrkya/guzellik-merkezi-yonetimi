@@ -13,6 +13,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     private readonly GuzellikDbContext _db;
     private readonly IAuditLogger _audit;
     private readonly ICurrentUser _currentUser;
+    /// <summary>Satış iptalinde adisyonun prim/sadakat/stok/kupon etkilerini geri alır.</summary>
+    private readonly IAdisyonEffectsReversal _adisyonReversal;
 
     /// <summary>
     /// SoldAtUtc kolonu eklenmeden önce oluşmuş cariler bu eşiğin altında (0001-01-01) kalır.
@@ -20,11 +22,17 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     /// </summary>
     private static readonly DateTime LegacySoldAtThreshold = new(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    public CustomerAccountService(GuzellikDbContext db, IAuditLogger audit, ICurrentUser currentUser)
+    public CustomerAccountService(
+        GuzellikDbContext db,
+        IAuditLogger audit,
+        ICurrentUser currentUser,
+        IAdisyonEffectsReversal? adisyonReversal = null)
     {
         _db = db;
         _audit = audit;
         _currentUser = currentUser;
+        // Birim testleri servisi 3 bağımlılıkla kuruyor; varsayılan gerçek uygulamaya düşer.
+        _adisyonReversal = adisyonReversal ?? new AdisyonEffectsReversal(db, new Time.SystemDateTimeProvider());
     }
 
     // Personel müşteri telefonunu yalnızca son 4 hane görür; ham numara API'den hiç çıkmaz.
@@ -622,71 +630,101 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var account = await LoadAsync(tenantId, id, cancellationToken);
         if (account is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Satış kaydı bulunamadı."));
 
-        var sessions = await _db.CustomerPackageSessions
-            .Where(s => s.TenantId == tenantId && s.CustomerAccountId == id)
-            .ToListAsync(cancellationToken);
-
-        // Satışı doğuran adisyon(lar). Onaylı olsalar da iptale çekilir: karşılığı olmayan bir
-        // satışın fişi ciroda kalmamalı. Cari bağı da koparılır (satır siliniyor).
-        var adisyonlar = await _db.Adisyonlar
-            .Where(a => a.TenantId == tenantId && a.CustomerAccountId == id)
-            .ToListAsync(cancellationToken);
-
+        // İADE DOĞRULAMASI: geçersiz tutar sessizce kırpılmaz — kullanıcı ne kaydedildiğini bilmeli.
         var collected = account.PaidAmount;
-        var refunded = Math.Clamp(Math.Round(request.RefundedAmount ?? 0m, 2, MidpointRounding.AwayFromZero), 0m, collected);
+        var refunded = Math.Round(request.RefundedAmount ?? 0m, 2, MidpointRounding.AwayFromZero);
+        if (refunded < 0)
+            return Result<CustomerAccountDto>.Failure(Error.Validation("İade tutarı negatif olamaz."));
+        if (refunded > collected)
+            return Result<CustomerAccountDto>.Failure(Error.Validation(
+                $"İade tutarı tahsil edilmiş tutarı aşamaz (tahsil edilen: {collected:N2})."));
 
-        // Yanıt DTO'su SİLMEDEN ÖNCE üretilir — sonrasında kayıt yok.
-        var dto = await PresentAsync(tenantId, account, 0m, 0, cancellationToken);
-        var snapshot = BuildSaleSnapshot(account, sessions, adisyonlar);
-        var accountName = account.Name;
-        var branchId = account.BranchId;
-
-        var archive = new CancelledSale(
-            tenantId, branchId, account.Id, account.CustomerId, account.ServicePackageId, account.Name,
-            account.TotalAmount, account.DepositAmount, collected, refunded,
-            account.SoldAtUtc, account.SoldByStaffMemberId, account.IsHistorical,
-            sessions.Sum(s => s.TotalSessions), sessions.Sum(s => s.UsedSessions),
-            adisyonlar.FirstOrDefault()?.Id, request.Reason, snapshot);
-        _db.CancelledSales.Add(archive);
-
-        foreach (var adisyon in adisyonlar) adisyon.CancelBySaleCancellation(_currentUser.UserId);
-
-        // 1. kayıt: arşiv + adisyon durumu. Silme AYRI save'de yapılır ki adisyonun cari bağını
-        //    koparan UPDATE, cari satırı silinmeden önce kesin uygulansın (FK sırası garantisi).
-        await _db.SaveChangesAsync(cancellationToken);
-
-        // 2. kayıt: canlı satırları GERÇEKTEN sil. Remove() normalde soft-delete'e çevrilir;
-        //    taşıma tamamlandığı için hard-delete kapısı açılır. Taksit ve tahsilatlar cariye
-        //    cascade bağlı olduğundan Remove(account) ile birlikte gider.
-        _db.CustomerPackageSessions.RemoveRange(sessions);
-        _db.CustomerAccounts.Remove(account);
-        _db.HardDeleteEnabled = true;
-        try
+        return await InTransactionAsync(async () =>
         {
+            // Eşzamanlı iptal koruması: satırı kilitle, zaten arşivlenmişse ikinci isteği reddet.
+            if (!await TryLockForCancelAsync(tenantId, id, cancellationToken))
+                return Result<CustomerAccountDto>.Failure(Error.Conflict("Bu satış az önce iptal edildi."));
+
+            var sessions = await _db.CustomerPackageSessions
+                .Where(s => s.TenantId == tenantId && s.CustomerAccountId == id)
+                .ToListAsync(cancellationToken);
+
+            // Satışı doğuran adisyon(lar). Onaylı olsalar da iptale çekilir: karşılığı olmayan bir
+            // satışın fişi ciroda kalmamalı. Cari bağı da koparılır (satır siliniyor).
+            var adisyonlar = await _db.Adisyonlar
+                .Include(a => a.Items)
+                .Where(a => a.TenantId == tenantId && a.CustomerAccountId == id)
+                .ToListAsync(cancellationToken);
+
+            // Yanıt DTO'su SİLMEDEN ÖNCE üretilir — sonrasında kayıt yok.
+            var dto = await PresentAsync(tenantId, account, 0m, 0, cancellationToken);
+            var snapshot = BuildSaleSnapshot(account, sessions, adisyonlar);
+            var accountName = account.Name;
+            var branchId = account.BranchId;
+
+            var archive = new CancelledSale(
+                tenantId, branchId, account.Id, account.CustomerId, account.ServicePackageId, account.Name,
+                account.TotalAmount, account.DepositAmount, collected, refunded,
+                account.SoldAtUtc, account.SoldByStaffMemberId, account.IsHistorical,
+                sessions.Sum(s => s.TotalSessions), sessions.Sum(s => s.UsedSessions),
+                adisyonlar.FirstOrDefault()?.Id, request.Reason, snapshot);
+            _db.CancelledSales.Add(archive);
+
+            // Adisyonun onayda oluşturduğu yan etkileri (prim, sadakat, stok, kupon, randevu)
+            // GERİ AL. Yalnız statüyü Cancelled yapmak yetmiyordu: cari kaybolurken personel
+            // primi ve stok düşümü sistemde kalıyordu.
+            foreach (var adisyon in adisyonlar)
+            {
+                await _adisyonReversal.ReverseAsync(tenantId, adisyon, cancellationToken);
+                adisyon.CancelBySaleCancellation(_currentUser.UserId);
+            }
+
+            // İADE = gerçek para çıkışı. Kasa akışı/kâr-zarar/günlük kart bu kaydı görür.
+            if (refunded > 0)
+            {
+                _db.RefundTransactions.Add(new RefundTransaction(
+                    tenantId, branchId, archive.Id, account.CustomerId, refunded,
+                    request.RefundMethod, reference: null, refundedAtUtc: null,
+                    refundedByUserId: _currentUser.UserId, reason: request.Reason));
+            }
+
+            // 1. kayıt: arşiv + adisyon durumu + iade. Silme AYRI save'de yapılır ki adisyonun cari
+            //    bağını koparan UPDATE, cari satırı silinmeden önce kesin uygulansın (FK sırası).
             await _db.SaveChangesAsync(cancellationToken);
-        }
-        finally
-        {
-            _db.HardDeleteEnabled = false;
-        }
 
-        // Silinen satırlar hâlâ ChangeTracker'da; temizlenmezse sonraki SaveChanges (audit log)
-        // yok olan satıra UPDATE denemesi yapabilir.
-        _db.ChangeTracker.Clear();
+            // 2. kayıt: canlı satırları GERÇEKTEN sil. Remove() normalde soft-delete'e çevrilir;
+            //    taşıma tamamlandığı için hard-delete kapısı açılır. Taksit ve tahsilatlar cariye
+            //    cascade bağlı olduğundan Remove(account) ile birlikte gider.
+            _db.CustomerPackageSessions.RemoveRange(sessions);
+            _db.CustomerAccounts.Remove(account);
+            _db.HardDeleteEnabled = true;
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            finally
+            {
+                _db.HardDeleteEnabled = false;
+            }
 
-        await _audit.LogAsync(tenantId, branchId, "Cancel", "CustomerAccount", id,
-            $"Satış iptal edildi ve arşive taşındı: {accountName} · tahsil {collected:N2} · iade {refunded:N2}",
-            new { request.Reason, Collected = collected, Refunded = refunded, ArchiveId = archive.Id, AdisyonCount = adisyonlar.Count },
-            cancellationToken);
+            // Silinen satırlar hâlâ ChangeTracker'da; temizlenmezse sonraki SaveChanges (audit log)
+            // yok olan satıra UPDATE denemesi yapabilir.
+            _db.ChangeTracker.Clear();
 
-        return Result<CustomerAccountDto>.Success(dto with
-        {
-            IsActive = false,
-            SaleStatus = "Cancelled",
-            CancelledAtUtc = archive.CancelledAtUtc,
-            CancellationReason = archive.CancellationReason,
-            RemainingAmount = 0m,
-        });
+            await _audit.LogAsync(tenantId, branchId, "Cancel", "CustomerAccount", id,
+                $"Satış iptal edildi ve arşive taşındı: {accountName} · tahsil {collected:N2} · iade {refunded:N2}",
+                new { request.Reason, Collected = collected, Refunded = refunded, ArchiveId = archive.Id, AdisyonCount = adisyonlar.Count },
+                cancellationToken);
+
+            return Result<CustomerAccountDto>.Success(dto with
+            {
+                IsActive = false,
+                SaleStatus = "Cancelled",
+                CancelledAtUtc = archive.CancelledAtUtc,
+                CancellationReason = archive.CancellationReason,
+                RemainingAmount = 0m,
+            });
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -694,6 +732,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     /// Id'lerle yeniden kurulur (randevu/adisyon referansları tutsun diye), adisyon onaylıya döner.
     /// </summary>
     public async Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+        => await InTransactionAsync(async () =>
     {
         // id hem arşiv kaydının hem de silinen carinin Id'si olabilir (eski istemciler cari Id gönderir).
         var archive = await _db.CancelledSales
@@ -714,9 +753,22 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         foreach (var adisyonId in snapshot.AdisyonIds)
         {
-            var adisyon = await _db.Adisyonlar.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == adisyonId, cancellationToken);
-            adisyon?.ReopenAfterSaleRestore(accountId, snapshot.Account.CreatedAtUtc, _currentUser.UserId);
+            var adisyon = await _db.Adisyonlar
+                .Include(a => a.Items)
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == adisyonId, cancellationToken);
+            if (adisyon is null) continue;
+            adisyon.ReopenAfterSaleRestore(accountId, snapshot.Account.CreatedAtUtc, _currentUser.UserId);
+            // İptalde geri alınan yan etkiler (prim, sadakat, stok, kupon) yeniden uygulanır —
+            // aksi halde satış geri gelir ama primi/stok düşümü eksik kalırdı.
+            await _adisyonReversal.ReapplyAsync(tenantId, adisyon, cancellationToken);
         }
+
+        // İade kaydı da geri alınır: para fiilen müşteriye geri ödenmemiş sayılır, kasadan düşen
+        // hareket kalkar. (Gerçekten iade edildiyse yönetici elle gider/tahsilat kaydı girmeli.)
+        var refunds = await _db.RefundTransactions
+            .Where(r => r.TenantId == tenantId && r.CancelledSaleId == archive.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var refund in refunds) refund.SoftDelete();
 
         archive.MarkRestored();
         await _db.SaveChangesAsync(cancellationToken);
@@ -728,13 +780,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         _db.ChangeTracker.Clear();
         await _audit.LogAsync(tenantId, archive.BranchId, "Restore", "CustomerAccount", accountId,
-            $"Satış iptali geri alındı: {archive.Name}", new { ArchiveId = archive.Id }, cancellationToken);
+            $"Satış iptali geri alındı: {archive.Name}", new { ArchiveId = archive.Id, RefundsReverted = refunds.Count }, cancellationToken);
 
         var restored = await LoadAsync(tenantId, accountId, cancellationToken);
         if (restored is null) return Result<CustomerAccountDto>.Failure(Error.Conflict("Satış geri yüklendi ancak okunamadı."));
         var (revenue, count) = await GetAppointmentStatsAsync(tenantId, restored.CustomerId, cancellationToken);
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, restored, revenue, count, cancellationToken));
-    }
+    }, cancellationToken);
 
     public async Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(
         Guid tenantId, Guid? customerId = null, Guid? servicePackageId = null, CancellationToken cancellationToken = default)

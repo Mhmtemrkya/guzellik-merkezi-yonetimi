@@ -62,6 +62,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<AccountPayment> AccountPayments => Set<AccountPayment>();
     public DbSet<CustomerPackageSession> CustomerPackageSessions => Set<CustomerPackageSession>();
     public DbSet<CancelledSale> CancelledSales => Set<CancelledSale>();
+    public DbSet<RefundTransaction> RefundTransactions => Set<RefundTransaction>();
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
@@ -237,6 +238,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // yöntemi/referansı gibi PII var) → canlı karşılıkları gibi şifreli tutulur.
         Req(typeof(CancelledSale), nameof(CancelledSale.Name), nameof(CancelledSale.Snapshot));
         Opt(typeof(CancelledSale), nameof(CancelledSale.CancellationReason));
+
+        Opt(typeof(RefundTransaction), nameof(RefundTransaction.Reference), nameof(RefundTransaction.Reason));
 
         Opt(typeof(AccountPayment), nameof(AccountPayment.Method), nameof(AccountPayment.Reference));
 
@@ -677,6 +680,18 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         b.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.SoldByStaffMember).WithMany().HasForeignKey(x => x.SoldByStaffMemberId).OnDelete(DeleteBehavior.SetNull);
         b.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+
+        // İADE = gerçek kasa çıkışı. Arşiv kaydına bağlıdır ama FK VERİLMEZ: arşiv satırı
+        // kalıcıdır, iade ise iptal geri alınınca soft-delete edilir (kayıt izi korunur).
+        var refund = modelBuilder.Entity<RefundTransaction>();
+        refund.ToTable("refund_transactions");
+        refund.HasKey(x => x.Id);
+        refund.Property(x => x.Amount).HasPrecision(18, 2);
+        refund.Property(x => x.Method).HasMaxLength(24).IsRequired();
+        refund.HasIndex(x => new { x.TenantId, x.RefundedAtUtc });
+        refund.HasIndex(x => x.CancelledSaleId);
+        refund.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        refund.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }
 
     private void ConfigureCustomerTreatmentPhoto(ModelBuilder modelBuilder)
