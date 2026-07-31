@@ -1,14 +1,21 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-import { Ban, RotateCcw, Search, XCircle } from 'lucide-react'
+import { Ban, RotateCcw, Search, Undo2, XCircle } from 'lucide-react'
 import type { CancelledSale } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
 
 // İPTAL ARŞİVİ. İptalde cari kaydı (taksit/tahsilat/seans dahil) canlı tablolardan silinip
 // `cancelled_sales`e taşınır — finansal iz kaybolmaz, yer değiştirir. Bu yüzden liste artık
 // cari listesinden süzülmez; ayrı bir uçtan (adminApi.listCancelledSales) gelir.
+//
+// İKİ SEKME:
+//   İptal Edilenler → arşivdeki tüm kayıtlar
+//   İade Edilenler  → yalnızca müşteriye PARA GERİ ÖDENENLER (refundedAmount > 0)
+// İade yalnızca iptal anında girilebildiği için ikisi aynı kaynaktan okunur.
+
+export type CancelledTab = 'all' | 'refunded'
 
 interface Props {
   sales: CancelledSale[]
@@ -17,6 +24,8 @@ interface Props {
   /** İptali geri al — arşivdeki yedekten cari, taksit, tahsilat ve seanslar yeniden kurulur. */
   onRestore?: (originalAccountId: string) => Promise<void>
   busy?: boolean
+  /** Modal hangi sekmeyle açılsın (Ön Muhasebe'deki iki ayrı butondan gelir). */
+  initialTab?: CancelledTab
 }
 
 const MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
@@ -28,21 +37,30 @@ function formatDay(iso: string | null | undefined): string {
   return `${d} ${MONTHS_SHORT[Number(m) - 1] ?? ''} ${y}`
 }
 
-export default function CancelledSalesModal({ sales, open, onOpenChange, onRestore, busy = false }: Props) {
+export default function CancelledSalesModal({ sales, open, onOpenChange, onRestore, busy = false, initialTab = 'all' }: Props) {
   const [query, setQuery] = useState('')
   const [restoring, setRestoring] = useState<string | null>(null)
+  const [tab, setTab] = useState<CancelledTab>(initialTab)
+
+  // Modal her açılışta çağıranın istediği sekmeyle başlar (iki ayrı buton var).
+  useEffect(() => { if (open) { setTab(initialTab); setQuery('') } }, [open, initialTab])
+
+  const refundedCount = useMemo(() => sales.filter((a) => a.refundedAmount > 0.005).length, [sales])
 
   const list = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('tr')
+    const scoped = tab === 'refunded' ? sales.filter((a) => a.refundedAmount > 0.005) : sales
     const filtered = q
-      ? sales.filter((a) => `${a.customerName} ${a.name}`.toLocaleLowerCase('tr').includes(q))
-      : sales
+      ? scoped.filter((a) => `${a.customerName} ${a.name}`.toLocaleLowerCase('tr').includes(q))
+      : scoped
     return [...filtered].sort((a, b) => (b.cancelledAtUtc || '').localeCompare(a.cancelledAtUtc || ''))
-  }, [sales, query])
+  }, [sales, query, tab])
 
   const totalCancelled = list.reduce((s, a) => s + a.totalAmount, 0)
   const totalPaid = list.reduce((s, a) => s + a.collectedAmount, 0)
   const totalRefunded = list.reduce((s, a) => s + a.refundedAmount, 0)
+  const totalRetained = list.reduce((s, a) => s + a.retainedAmount, 0)
+  const isRefundTab = tab === 'refunded'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -52,18 +70,50 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
       >
         <div className="shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f6] via-white to-[#fff2f4] px-5 py-4">
           <div className="flex items-start gap-3 pr-10">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-rose-200 bg-rose-50 text-rose-600">
-              <Ban className="h-5 w-5" />
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border ${isRefundTab ? 'border-amber-200 bg-amber-50 text-amber-600' : 'border-rose-200 bg-rose-50 text-rose-600'}`}>
+              {isRefundTab ? <Undo2 className="h-5 w-5" /> : <Ban className="h-5 w-5" />}
             </span>
             <div className="min-w-0">
-              <DialogTitle className="text-[16px] font-bold text-[#2b1e29]">İptal edilen satışlar</DialogTitle>
+              <DialogTitle className="text-[16px] font-bold text-[#2b1e29]">
+                {isRefundTab ? 'İade edilen satışlar' : 'İptal edilen satışlar'}
+              </DialogTitle>
               <DialogDescription className="mt-0.5 text-[11.5px] text-[#705a66]">
-                {list.length} kayıt · toplam {formatTL(totalCancelled)} · tahsil edilmiş {formatTL(totalPaid)}
-                {totalRefunded > 0.005 ? ` · iade edilen ${formatTL(totalRefunded)}` : ''}
+                {isRefundTab ? (
+                  <>
+                    {list.length} kayıt · müşteriye iade <b className="text-[#a34a62]">{formatTL(totalRefunded)}</b>
+                    {' · '}kurumda kalan {formatTL(totalRetained)}
+                  </>
+                ) : (
+                  <>
+                    {list.length} kayıt · toplam {formatTL(totalCancelled)} · tahsil edilmiş {formatTL(totalPaid)}
+                    {totalRefunded > 0.005 ? ` · iade edilen ${formatTL(totalRefunded)}` : ''}
+                  </>
+                )}
               </DialogDescription>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
+
+          {/* Sekmeler */}
+          <div className="mt-3 inline-flex items-center rounded-full border border-[#ead8df] bg-white p-0.5">
+            {([
+              { key: 'all' as const, label: 'İptal Edilenler', count: sales.length },
+              { key: 'refunded' as const, label: 'İade Edilenler', count: refundedCount },
+            ]).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`cursor-pointer rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${
+                  tab === t.key ? 'bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a]' : 'text-[#9a8590] hover:text-[#7a6570]'
+                }`}
+              >
+                {t.label}
+                <span className={`ml-1.5 tabular-nums ${tab === t.key ? 'text-[#7a2f4a]' : 'text-[#b499a6]'}`}>{t.count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2.5 flex items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
             <input
               value={query} onChange={(e) => setQuery(e.target.value)}
@@ -85,20 +135,42 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
                   <div className="truncate text-[11px] text-[#705a66]">{a.name}</div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-display text-[15px] tabular-nums text-[#352432]">{formatTL(a.totalAmount)}</div>
-                  <div className="text-[10px] text-[#705a66]">tahsil {formatTL(a.collectedAmount)}</div>
-                  {a.refundedAmount > 0.005 && (
-                    <div className="text-[10px] text-[#a34a62]">iade {formatTL(a.refundedAmount)}</div>
+                  {/* İade sekmesinde başrol iade tutarı; satış toplamı ikinci planda. */}
+                  {isRefundTab ? (
+                    <>
+                      <div className="font-display text-[15px] tabular-nums text-[#a34a62]">−{formatTL(a.refundedAmount)}</div>
+                      <div className="text-[10px] text-[#705a66]">tahsil {formatTL(a.collectedAmount)}</div>
+                      <div className="text-[10px] text-emerald-700">kurumda {formatTL(a.retainedAmount)}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-display text-[15px] tabular-nums text-[#352432]">{formatTL(a.totalAmount)}</div>
+                      <div className="text-[10px] text-[#705a66]">tahsil {formatTL(a.collectedAmount)}</div>
+                      {a.refundedAmount > 0.005 && (
+                        <div className="text-[10px] text-[#a34a62]">iade {formatTL(a.refundedAmount)}</div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-              <div className="mt-2 flex items-start gap-1.5 rounded-[10px] bg-rose-50 px-2.5 py-1.5 text-[10.5px] text-rose-700">
-                <XCircle className="mt-px h-3 w-3 shrink-0" />
-                <span>
-                  <b>İptal · {formatDay(a.cancelledAtUtc)}</b>
-                  {a.cancellationReason ? ` — ${a.cancellationReason}` : ' — gerekçe belirtilmemiş'}
-                </span>
-              </div>
+              {isRefundTab ? (
+                <div className="mt-2 flex items-start gap-1.5 rounded-[10px] bg-amber-50 px-2.5 py-1.5 text-[10.5px] text-amber-800">
+                  <Undo2 className="mt-px h-3 w-3 shrink-0" />
+                  <span>
+                    <b>İade · {formatDay(a.cancelledAtUtc)}</b>
+                    {a.refundedAmount >= a.collectedAmount - 0.005 ? ' — tamamı iade edildi' : ' — kısmi iade'}
+                    {a.cancellationReason ? ` · ${a.cancellationReason}` : ''}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-start gap-1.5 rounded-[10px] bg-rose-50 px-2.5 py-1.5 text-[10.5px] text-rose-700">
+                  <XCircle className="mt-px h-3 w-3 shrink-0" />
+                  <span>
+                    <b>İptal · {formatDay(a.cancelledAtUtc)}</b>
+                    {a.cancellationReason ? ` — ${a.cancellationReason}` : ' — gerekçe belirtilmemiş'}
+                  </span>
+                </div>
+              )}
               {onRestore && (
                 <div className="mt-2 flex justify-end">
                   <button
@@ -118,7 +190,9 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
           ))}
           {list.length === 0 && (
             <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-10 text-center text-[12px] text-[#705a66]">
-              İptal edilmiş satış yok.
+              {isRefundTab
+                ? 'Müşteriye iade edilmiş tutar yok. İade, satış iptal edilirken girilir.'
+                : 'İptal edilmiş satış yok.'}
             </div>
           )}
         </div>

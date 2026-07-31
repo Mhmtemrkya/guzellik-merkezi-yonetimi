@@ -141,7 +141,17 @@ public sealed record CancelledSaleDto(
     decimal CollectedAmount,
     /// <summary>Bunun müşteriye geri ödenen kısmı.</summary>
     decimal RefundedAmount,
-    /// <summary>Kurumda kalan (tahsil edilen − iade edilen) — gelirde sayılmaya devam eden tutar.</summary>
+    /// <summary>
+    /// Kurumda kalan nakit (tahsil edilen − iade edilen).
+    /// <para>
+    /// DİKKAT — bu tutar ŞU AN GELİR RAPORLARINDA GÖRÜNMEZ: iptalde tahsilat satırları
+    /// (account_payments) canlı tablodan silindiği için kasa akışı / kâr-zarar / günlük kart
+    /// tahsilatın TAMAMINI kaybeder, yalnız iade edilen kısmı değil. Yani burada "kurumda kaldı"
+    /// yazan para gelir tablosunda sayılmaz. Bilinçli bir tercih değil, açık bir eksiktir;
+    /// düzeltmek gelir tanıma kuralını değiştirmek demektir (iptal tarihinde gelir yazmak ya da
+    /// ödeme tarihini korumak) — karar kurum yöneticisinindir.
+    /// </para>
+    /// </summary>
     decimal RetainedAmount,
     DateTime SoldAtUtc,
     Guid? SoldByStaffMemberId,

@@ -637,6 +637,13 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     bool cancelled(Map<String, dynamic> a) => '${a['saleStatus']}' == 'Cancelled';
     final live = data.accounts.where((a) => !cancelled(a)).toList();
     final cancelledCount = data.cancelled.length;
+    // İADE: iptal edilirken müşteriye para geri ödenmiş kayıtlar.
+    final refundedRows = data.cancelled
+        .where((c) => numberOf(c, const ['refundedAmount']) > 0.005)
+        .toList();
+    final refundedCount = refundedRows.length;
+    final refundedTotal =
+        refundedRows.fold<double>(0, (s, c) => s + numberOf(c, const ['refundedAmount']));
 
     bool hasOverdue(Map<String, dynamic> a) =>
         parseInstallments(a).any((i) => i.overdue);
@@ -708,21 +715,40 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           (v) => setState(() => _accountFilter = v),
         ),
         const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () => _openCancelledSales(data.cancelled),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.danger,
-              side: BorderSide(color: AppColors.danger.withValues(alpha: .35)),
-              visualDensity: VisualDensity.compact,
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _openCancelledSales(data.cancelled),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.danger,
+                side: BorderSide(color: AppColors.danger.withValues(alpha: .35)),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.block_rounded, size: 16),
+              label: Text(
+                cancelledCount > 0 ? 'İptal edilenler · $cancelledCount' : 'İptal edilenler',
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
-            icon: const Icon(Icons.block_rounded, size: 16),
-            label: Text(
-              cancelledCount > 0 ? 'İptal edilenler · $cancelledCount' : 'İptal edilenler',
-              style: const TextStyle(fontSize: 12),
+            // İADE = müşteriye para geri ödenmiş iptaller; ayrı buton, iade sekmesini açar.
+            OutlinedButton.icon(
+              onPressed: () => _openCancelledSales(data.cancelled, refundTab: true),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.warning,
+                side: BorderSide(color: AppColors.warning.withValues(alpha: .35)),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.undo_rounded, size: 16),
+              label: Text(
+                refundedTotal > 0.005
+                    ? 'İade edilenler · $refundedCount · ${CalendarText.tl(refundedTotal)}'
+                    : 'İade edilenler',
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
-          ),
+          ],
         ),
         const SizedBox(height: 10),
         if (filtered.isEmpty)
@@ -918,13 +944,17 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     );
   }
 
-  Future<void> _openCancelledSales(List<Map<String, dynamic>> cancelled) async {
+  Future<void> _openCancelledSales(
+    List<Map<String, dynamic>> cancelled, {
+    bool refundTab = false,
+  }) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => CancelledSalesSheet(
         sales: cancelled,
+        initialRefundTab: refundTab,
         // Geri alma arşivdeki yedekten cari, taksit, tahsilat ve seansları yeniden kurar.
         onRestore: (originalAccountId) =>
             widget.api.post('/api/admin/accounts/$originalAccountId/restore-sale', const {}),

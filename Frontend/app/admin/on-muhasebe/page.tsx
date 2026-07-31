@@ -10,7 +10,7 @@ import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
 import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
 import InstallmentCollectionDialog from '@/components/dashboard/InstallmentCollectionDialog'
 import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
-import CancelledSalesModal from '@/components/dashboard/CancelledSalesModal'
+import CancelledSalesModal, { type CancelledTab } from '@/components/dashboard/CancelledSalesModal'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import AdisyonReceiptModal from '@/components/dashboard/AdisyonReceiptModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
@@ -29,7 +29,7 @@ import {
 import {
   Ban, Banknote, Boxes, Briefcase, Building2, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
   CreditCard, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
-  Trash2, TrendingDown, TrendingUp, Users, Wallet, Wrench, Zap,
+  Trash2, TrendingDown, TrendingUp, Undo2, Users, Wallet, Wrench, Zap,
 } from 'lucide-react'
 import type {
   Adisyon, ApiAdisyon, ApiAppointment, ApiBusinessExpense, ApiCustomExpenseCategory, ApiCustomer,
@@ -119,6 +119,8 @@ function OnMuhasebePageInner() {
   const [accountDetailOpen, setAccountDetailOpen] = useState(false)
   const [collectMode, setCollectMode] = useState<'general' | 'monthly' | null>(null)
   const [cancelledOpen, setCancelledOpen] = useState(false)
+  /** Arşiv modalı hangi sekmeyle açılacak — "İptal edilenler" / "İade edilenler" butonları. */
+  const [cancelledTab, setCancelledTab] = useState<CancelledTab>('all')
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -284,6 +286,11 @@ function OnMuhasebePageInner() {
   }, [cancelledSales])
 
   const cancelledCount = cancelledSales.length
+
+  // İADE = iptal edilirken müşteriye para geri ödenmiş kayıtlar. Ayrı listede toplanır.
+  const refundedSales = useMemo(() => cancelledSales.filter((c) => c.refundedAmount > 0.005), [cancelledSales])
+  const refundedCount = refundedSales.length
+  const refundedTotal = useMemo(() => refundedSales.reduce((s, c) => s + c.refundedAmount, 0), [refundedSales])
 
   // ---------- cari hesaplar ----------
   // Arşive taşıma sayesinde liste zaten temiz gelir; süzgeç, migration'ı henüz uygulanmamış
@@ -973,12 +980,26 @@ function OnMuhasebePageInner() {
                   </button>
                 ))}
               </div>
-              <button
-                type="button" onClick={() => setCancelledOpen(true)}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-[12px] border border-rose-200 bg-rose-50 px-3 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100"
-              >
-                <Ban className="h-3.5 w-3.5" /> İptal edilenler{cancelledCount > 0 ? ` · ${cancelledCount}` : ''}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button" onClick={() => { setCancelledTab('all'); setCancelledOpen(true) }}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-[12px] border border-rose-200 bg-rose-50 px-3 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                >
+                  <Ban className="h-3.5 w-3.5" /> İptal edilenler{cancelledCount > 0 ? ` · ${cancelledCount}` : ''}
+                </button>
+                {/* İade = müşteriye para geri ödenmiş iptaller. Ayrı buton: yönetici "ne kadar
+                    para geri çıktı" sorusunu tek tıkla görebilsin. */}
+                <button
+                  type="button" onClick={() => { setCancelledTab('refunded'); setCancelledOpen(true) }}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-[12px] border border-amber-200 bg-amber-50 px-3 text-[11.5px] font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                >
+                  <Undo2 className="h-3.5 w-3.5" /> İade edilenler
+                  {refundedCount > 0 ? ` · ${refundedCount}` : ''}
+                  {refundedTotal > 0.005 && (
+                    <span className="ml-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] tabular-nums">{formatTL(Math.round(refundedTotal))}</span>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* ---- Cari listesi ---- */}
@@ -1094,6 +1115,7 @@ function OnMuhasebePageInner() {
 
             <CancelledSalesModal
               sales={cancelledSales}
+              initialTab={cancelledTab}
               open={cancelledOpen}
               onOpenChange={setCancelledOpen}
               busy={busy}

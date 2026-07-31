@@ -567,13 +567,22 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
 /// İPTAL ARŞİVİ (cancelled_sales). İptalde cari kaydı taksit/tahsilat/seanslarıyla birlikte
 /// canlı tablolardan silinip arşive taşınır — finansal iz kaybolmaz, yer değiştirir. Bu yüzden
 /// liste cari listesinden süzülmez; `/api/admin/accounts/cancelled` ucundan gelir.
+/// İKİ SEKME: tüm iptaller ve yalnızca PARA GERİ ÖDENENLER (iade).
 class CancelledSalesSheet extends StatefulWidget {
-  const CancelledSalesSheet({required this.sales, this.onRestore, super.key});
+  const CancelledSalesSheet({
+    required this.sales,
+    this.onRestore,
+    this.initialRefundTab = false,
+    super.key,
+  });
 
   final List<Map<String, dynamic>> sales;
 
   /// İptali geri al — yedekten cari, taksit, tahsilat ve seanslar aynı Id'lerle kurulur.
   final Future<void> Function(String originalAccountId)? onRestore;
+
+  /// true → "İade Edilenler" sekmesiyle açılır (Ön Muhasebe'deki ayrı buton).
+  final bool initialRefundTab;
 
   @override
   State<CancelledSalesSheet> createState() => _CancelledSalesSheetState();
@@ -581,13 +590,19 @@ class CancelledSalesSheet extends StatefulWidget {
 
 class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
   String? _restoring;
+  late bool _refundTab = widget.initialRefundTab;
 
   @override
   Widget build(BuildContext context) {
-    final list = [...widget.sales]
+    final all = [...widget.sales]
       ..sort((a, b) => '${b['cancelledAtUtc']}'.compareTo('${a['cancelledAtUtc']}'));
+    final refundedRows =
+        all.where((a) => numberOf(a, const ['refundedAmount']) > 0.005).toList();
+    final list = _refundTab ? refundedRows : all;
+
     final total = list.fold<double>(0, (s, a) => s + numberOf(a, const ['totalAmount']));
     final refunded = list.fold<double>(0, (s, a) => s + numberOf(a, const ['refundedAmount']));
+    final retained = list.fold<double>(0, (s, a) => s + numberOf(a, const ['retainedAmount']));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
@@ -601,34 +616,81 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: AppColors.danger.withValues(alpha: .10),
+                  color: (_refundTab ? AppColors.warning : AppColors.danger)
+                      .withValues(alpha: .10),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.block_rounded, color: AppColors.danger, size: 20),
+                child: Icon(_refundTab ? Icons.undo_rounded : Icons.block_rounded,
+                    color: _refundTab ? AppColors.warning : AppColors.danger, size: 20),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('İptal edilen satışlar',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Text(_refundTab ? 'İade edilen satışlar' : 'İptal edilen satışlar',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                     Text(
-                        '${list.length} kayıt · toplam ${CalendarText.tl(total)}'
-                        '${refunded > 0.005 ? ' · iade ${CalendarText.tl(refunded)}' : ''}',
+                        _refundTab
+                            ? '${list.length} kayıt · iade ${CalendarText.tl(refunded)}'
+                                ' · kurumda ${CalendarText.tl(retained)}'
+                            : '${list.length} kayıt · toplam ${CalendarText.tl(total)}'
+                                '${refunded > 0.005 ? ' · iade ${CalendarText.tl(refunded)}' : ''}',
                         style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
                   ],
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // Sekmeler
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final t in [
+                  (false, 'İptal Edilenler', all.length),
+                  (true, 'İade Edilenler', refundedRows.length),
+                ])
+                  GestureDetector(
+                    onTap: () => setState(() => _refundTab = t.$1),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _refundTab == t.$1 ? AppColors.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${t.$2} ${t.$3}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: _refundTab == t.$1 ? Colors.white : AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           if (list.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
-                child: Text('İptal edilmiş satış yok.',
-                    style: TextStyle(color: AppColors.muted)),
+                child: Text(
+                    _refundTab
+                        ? 'Müşteriye iade edilmiş tutar yok.\nİade, satış iptal edilirken girilir.'
+                        : 'İptal edilmiş satış yok.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppColors.muted)),
               ),
             ),
           Flexible(
@@ -655,15 +717,24 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
                                 style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                             ),
-                            Text(CalendarText.tl(numberOf(a, const ['totalAmount'])),
-                                style: const TextStyle(fontWeight: FontWeight.w800)),
+                            // İade sekmesinde başrol iade tutarı; satış toplamı ikinci planda.
+                            Text(
+                                _refundTab
+                                    ? '−${CalendarText.tl(numberOf(a, const ['refundedAmount']))}'
+                                    : CalendarText.tl(numberOf(a, const ['totalAmount'])),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: _refundTab ? AppColors.danger : AppColors.ink)),
                           ],
                         ),
                         Text(valueOf(a, const ['name'], fallback: ''),
                             style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
                         Text(
-                          'Tahsil ${CalendarText.tl(numberOf(a, const ['collectedAmount']))}'
-                          '${numberOf(a, const ['refundedAmount']) > 0.005 ? ' · iade ${CalendarText.tl(numberOf(a, const ['refundedAmount']))}' : ''}',
+                          _refundTab
+                              ? 'Tahsil ${CalendarText.tl(numberOf(a, const ['collectedAmount']))}'
+                                  ' · kurumda ${CalendarText.tl(numberOf(a, const ['retainedAmount']))}'
+                              : 'Tahsil ${CalendarText.tl(numberOf(a, const ['collectedAmount']))}'
+                                  '${numberOf(a, const ['refundedAmount']) > 0.005 ? ' · iade ${CalendarText.tl(numberOf(a, const ['refundedAmount']))}' : ''}',
                           style: const TextStyle(fontSize: 11, color: AppColors.muted),
                         ),
                         const SizedBox(height: 6),
@@ -671,13 +742,19 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                           decoration: BoxDecoration(
-                            color: AppColors.danger.withValues(alpha: .07),
+                            color: (_refundTab ? AppColors.warning : AppColors.danger)
+                                .withValues(alpha: .07),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'İptal · ${shortDay('${a['cancelledAtUtc']}'.split('T').first)}'
-                            ' — ${valueOf(a, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş')}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.danger),
+                            _refundTab
+                                ? 'İade · ${shortDay('${a['cancelledAtUtc']}'.split('T').first)}'
+                                    '${numberOf(a, const ['refundedAmount']) >= numberOf(a, const ['collectedAmount']) - 0.005 ? ' — tamamı iade edildi' : ' — kısmi iade'}'
+                                : 'İptal · ${shortDay('${a['cancelledAtUtc']}'.split('T').first)}'
+                                    ' — ${valueOf(a, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş')}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: _refundTab ? AppColors.warning : AppColors.danger),
                           ),
                         ),
                         if (widget.onRestore != null)
