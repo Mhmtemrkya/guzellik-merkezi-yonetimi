@@ -36,6 +36,13 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
 
     public async Task<Result<PlatformIntegrationSettingsDto>> SaveSettingsAsync(SavePlatformMessagingRequest r, CancellationToken ct = default)
     {
+        // SSRF FRENİ: bu değerler doğrudan ağ hedefine dönüşüyor. Kaydetmeden önce allowlist'ten
+        // geçir — sonradan "test gönder" ile iç ağa/metadata ucuna istek attırılabilirdi.
+        var smsUrlError = OutboundEndpointGuard.ValidateSmsApiUrl(r.SmsApiUrl);
+        if (smsUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smsUrlError));
+        var smtpError = OutboundEndpointGuard.ValidateSmtp(r.SmtpHost, r.SmtpPort);
+        if (smtpError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smtpError));
+
         var s = await _db.PlatformIntegrationSettings.FirstOrDefaultAsync(ct);
         if (s is null) { s = new PlatformIntegrationSettings(); _db.PlatformIntegrationSettings.Add(s); }
         var smsKeyEnc = string.IsNullOrWhiteSpace(r.SmsApiKey) ? null : _encryption.Encrypt(r.SmsApiKey!.Trim());
@@ -106,6 +113,8 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
                 IsBodyHtml = true,
             };
             msg.To.Add(toEmail);
+            var smtpError = OutboundEndpointGuard.ValidateSmtp(s.SmtpHost, s.SmtpPort);
+            if (smtpError is not null) return new MessagingTestResult(false, false, null, smtpError);
             using var client = new SmtpClient(s.SmtpHost!, s.SmtpPort) { EnableSsl = s.SmtpUseSsl };
             if (!string.IsNullOrWhiteSpace(s.SmtpUsername))
                 client.Credentials = new NetworkCredential(s.SmtpUsername, pw);
@@ -179,6 +188,10 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
     private async Task<MessagingTestResult> SendViaNetgsmAsync(string usercode, string password, string header, string to, string body, string? apiUrl, CancellationToken ct)
     {
         var client = _httpFactory.CreateClient("Sms");
+        // İkinci kapı: kayıt sırasında doğrulansa da gönderim anında da kontrol edilir (ayar
+        // başka bir yoldan değişmiş olabilir). Geçersizse ağa HİÇ çıkılmaz.
+        var urlError = OutboundEndpointGuard.ValidateSmsApiUrl(apiUrl);
+        if (urlError is not null) return new MessagingTestResult(false, false, null, urlError);
         var baseUrl = string.IsNullOrWhiteSpace(apiUrl) ? "https://api.netgsm.com.tr/sms/send/get" : apiUrl!;
         var qs = $"?usercode={Uri.EscapeDataString(usercode)}&password={Uri.EscapeDataString(password)}" +
                  $"&gsmno={Uri.EscapeDataString(to)}&message={Uri.EscapeDataString(body)}&msgheader={Uri.EscapeDataString(header)}";

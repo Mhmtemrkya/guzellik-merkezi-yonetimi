@@ -22,6 +22,8 @@ export default function StaffCalendarLinkButton({
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [url, setUrl] = useState('')
+  // Aktif link var ama ham token sunucuda saklanmadığı için yeniden gösterilemez → yenile.
+  const [hasActiveLink, setHasActiveLink] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -30,10 +32,26 @@ export default function StaffCalendarLinkButton({
     setLoading(true)
     setError('')
     try {
-      const res = await adminApi.staffCalendarLink<{ url?: string }>(staffId, tenantId)
+      const res = await adminApi.staffCalendarLink<{ url?: string | null; hasActiveLink?: boolean }>(staffId, tenantId)
       setUrl(res?.url || '')
+      setHasActiveLink(Boolean(res?.hasActiveLink))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Link alınamadı.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /** Yeni link üretir; eski URL anında geçersizleşir (sızıntı şüphesinde de kullanılır). */
+  const rotate = async (): Promise<void> => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await adminApi.rotateStaffCalendarLink<{ url?: string | null }>(staffId, tenantId)
+      setUrl(res?.url || '')
+      setHasActiveLink(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Link yenilenemedi.')
     } finally {
       setLoading(false)
     }
@@ -77,6 +95,20 @@ export default function StaffCalendarLinkButton({
               <div className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div>
             ) : (
               <>
+                {!url && hasActiveLink ? (
+                  <div className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11.5px] text-amber-900">
+                    Bu takvim için zaten aktif bir bağlantı var. Güvenlik gereği bağlantı sunucuda
+                    saklanmaz, bu yüzden tekrar gösterilemez. Yeni bağlantı oluşturursanız eskisi
+                    anında geçersiz olur.
+                    <button
+                      type="button"
+                      onClick={() => void rotate()}
+                      className="mt-2 block cursor-pointer rounded-[9px] border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900"
+                    >
+                      Yeni bağlantı oluştur
+                    </button>
+                  </div>
+                ) : (
                 <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#efe1e7] bg-[#fffafc] px-3 py-2">
                   <code className="min-w-0 flex-1 truncate text-[11px] text-[#4a3a44]">{url}</code>
                   <button type="button" onClick={() => void copy()}
@@ -84,11 +116,12 @@ export default function StaffCalendarLinkButton({
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
                 </div>
+                )}
                 <div className="mt-3 space-y-1.5 text-[11.5px] leading-relaxed text-[#705a66]">
                   <div><strong className="text-[#4a3a44]">Google Takvim:</strong> Ayarlar → Takvim ekle → <em>URL ile</em> → linki yapıştır.</div>
                   <div><strong className="text-[#4a3a44]">iPhone/Apple:</strong> Ayarlar → Takvim → Hesaplar → Takvim Aboneliği ekle.</div>
                   <div><strong className="text-[#4a3a44]">Outlook:</strong> Takvim ekle → İnternetten abone ol.</div>
-                  <div className="pt-1 text-[10.5px] text-[#9d7386]">Takvim uygulamaları beslemeyi birkaç saatte bir yeniler. Linki yalnızca ilgili personelle paylaşın.</div>
+                  <div className="pt-1 text-[10.5px] text-[#9d7386]">Takvim uygulamaları beslemeyi birkaç saatte bir yeniler. Bağlantı 180 gün geçerlidir ve yenilendiğinde eskisi anında geçersiz olur — yalnızca ilgili kişiyle paylaşın.</div>
                 </div>
               </>
             )}

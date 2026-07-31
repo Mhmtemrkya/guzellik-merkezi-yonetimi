@@ -42,7 +42,9 @@ public sealed class TreatmentPhotoService : ITreatmentPhotoService
 
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId, cancellationToken);
         if (customer is null) return Result<TreatmentPhotoDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
-        if (string.IsNullOrWhiteSpace(request.ImageUrl)) return Result<TreatmentPhotoDto>.Failure(Error.Validation("İşlem fotoğrafı zorunlu."));
+        // Tip/boyut doğrulaması: harici URL, SVG/HTML veya limit üstü base64 kabul edilmez.
+        var imageError = ImageDataUrl.Validate(request.ImageUrl, ImageDataUrl.MaxPhotoBytes, "İşlem fotoğrafı");
+        if (imageError is not null) return Result<TreatmentPhotoDto>.Failure(Error.Validation(imageError));
 
         var photo = new CustomerTreatmentPhoto(
             tenantId, customer.BranchId, customerId, request.ServiceDefinitionId, request.Kind,
@@ -65,9 +67,14 @@ public sealed class TreatmentPhotoService : ITreatmentPhotoService
             photo.Kind, photo.ImageUrl, photo.TakenAtUtc, photo.Note));
     }
 
-    public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Fotoğrafı siler. <paramref name="customerId"/> route'taki PARENT kaynaktır ve sorguya dahil
+    /// edilir: aksi hâlde yanlış müşteri URL'siyle başka müşterinin fotoğrafı silinebiliyordu.
+    /// </summary>
+    public async Task<Result> DeleteAsync(Guid tenantId, Guid customerId, Guid id, CancellationToken cancellationToken = default)
     {
-        var photo = await _db.CustomerTreatmentPhotos.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var photo = await _db.CustomerTreatmentPhotos
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Id == id, cancellationToken);
         if (photo is null) return Result.Failure(Error.NotFound("Fotoğraf bulunamadı."));
         photo.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);

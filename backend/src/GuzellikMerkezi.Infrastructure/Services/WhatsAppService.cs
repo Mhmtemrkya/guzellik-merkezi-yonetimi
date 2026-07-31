@@ -603,7 +603,13 @@ public sealed class WhatsAppService : IWhatsAppService
 
     /// <summary>
     /// Meta webhook imzasını doğrular. Anahtar kaynağı: önce platform App Secret (DB, şifreli), yoksa
-    /// <c>WhatsApp:AppSecret</c> config. App secret tanımlı değilse Development'ta izin, Production'da RED.
+    /// <c>WhatsApp:AppSecret</c> config.
+    /// <para>
+    /// FAIL-CLOSED — her ortamda. Eskiden App Secret yoksa <c>Development</c>'ta imzasız gövde KABUL
+    /// ediliyordu; webhook mesaj durumu değiştirebiliyor, kontör kesinleştirip iade edebiliyor, KVKK
+    /// onayı işleyebiliyor ve randevu iptal edebiliyor. Yanlışlıkla Development olarak çalışan ya da
+    /// dışarı açılmış bir staging kopyası imzasız payload'larla veri bütünlüğünü bozabilirdi.
+    /// </para>
     /// </summary>
     private async Task<bool> VerifyInboundSignatureAsync(string rawBody, string? signatureHeader, CancellationToken ct)
     {
@@ -615,12 +621,9 @@ public sealed class WhatsAppService : IWhatsAppService
 
         if (string.IsNullOrWhiteSpace(appSecret))
         {
-            var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-            var isDevelopment = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
-            if (!isDevelopment)
-                _logger.LogError("WhatsApp App Secret tanımlı değil — webhook imzası doğrulanamıyor, istek reddedildi. " +
-                                 "Platform ayarlarından App Secret girin ya da WhatsApp__AppSecret ortam değişkenini tanımlayın.");
-            return isDevelopment;
+            _logger.LogError("WhatsApp App Secret tanımlı değil — webhook imzası doğrulanamıyor, istek reddedildi. " +
+                             "Platform ayarlarından App Secret girin ya da WhatsApp__AppSecret ortam değişkenini tanımlayın.");
+            return false;
         }
 
         const string prefix = "sha256=";

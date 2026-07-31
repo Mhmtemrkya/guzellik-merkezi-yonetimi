@@ -36,7 +36,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   authError: string
   setAuthError: (value: string) => void
-  loginScope: (input: { email: string; roleKey?: RoleKey | UserRole | null }) => Promise<NormalizedScopeResponse>
+  loginScope: (input: { email: string; roleKey?: RoleKey | UserRole | null; password?: string }) => Promise<NormalizedScopeResponse>
   login: (input: LoginInput) => Promise<AuthSession | null>
   logout: () => Promise<void>
   refresh: () => Promise<AuthSession | null>
@@ -167,10 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loginScope = useCallback(
-    async ({ email, roleKey }: { email: string; roleKey?: RoleKey | UserRole | null }): Promise<NormalizedScopeResponse> => {
+    async ({ email, roleKey, password }: { email: string; roleKey?: RoleKey | UserRole | null; password?: string }): Promise<NormalizedScopeResponse> => {
       setAuthError('')
       const role = roleKey ? resolveRole(roleKey) : null
-      const response = await authApi.loginScope(email, role)
+      const response = await authApi.loginScope(email, role, password)
       return {
         ...response,
         role: role ?? response?.role ?? null,
@@ -205,29 +205,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async (): Promise<void> => {
-    const refreshToken = session?.refreshToken
+    // Çıkışta da token gövdede taşınmaz; proxy çerezden ekler ve çerezi siler.
     try {
-      if (refreshToken) await authApi.logout(refreshToken)
+      await authApi.logout('')
     } catch {
       // Sunucu revoke başarısız olsa bile local oturum temizlenir.
     }
     clearSession()
     setSessionState(null)
-  }, [session?.refreshToken])
+  }, [])
 
   // Tek-uçuş: aynı anda gelen yenileme çağrıları (proaktif zamanlayıcı + 401 tetikli) tek bir
   // refresh isteğini paylaşır; aksi halde refresh token rotasyonu çifte tetiklenip biri başarısız olur.
   const refreshingRef = useRef<Promise<AuthSession | null> | null>(null)
   const refresh = useCallback(async (): Promise<AuthSession | null> => {
-    // Refresh token'ı state yerine STORAGE'dan oku: sayfa ilk yüklenirken (hydration tamamlanmadan)
-    // gelen 401'lerde React state henüz dolmamış olabilir; storage her zaman güncel kaynaktır.
+    // Refresh token artık tarayıcıda DEĞİL, HttpOnly çerezde. Proxy katmanı istek gövdesine onu
+    // ekler; burada yalnız "yenilenecek bir oturum var mı" bilgisi gerekir. Storage'dan okunur:
+    // ilk yüklemede (hydration bitmeden) gelen 401'lerde React state henüz dolmamış olabilir.
     const stored = getStoredSession()
-    const refreshToken = session?.refreshToken ?? stored?.refreshToken
-    if (!refreshToken) return null
+    if (!session?.accessToken && !stored?.accessToken) return null
     if (refreshingRef.current) return refreshingRef.current
     const p = (async () => {
       try {
-        const response = await authApi.refresh(refreshToken)
+        const response = await authApi.refresh('')
         const nextSession = normalizeSession(response, {
           scope: session?.scope ?? stored?.scope ?? null,
           selectedTenantId: session?.selectedTenantId ?? stored?.selectedTenantId ?? null,
@@ -257,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (özellikle "beni hatırla" açıkken) token süresi dolduğu için ASLA otomatik atılmaz. Yenileme
   // başarısız olursa (refresh token bitti) sessiz kalır; sonraki istek 401'inde modal devreye girer.
   useEffect(() => {
-    if (!session?.accessToken || !session.refreshToken) return
+    if (!session?.accessToken) return
     const expMs = parseUtcMs(session.expiresAtUtc)
     const delay = expMs ? Math.max(0, expMs - Date.now() - 60_000) : 50 * 60_000
     const id = window.setTimeout(() => {

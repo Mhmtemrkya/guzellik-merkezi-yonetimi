@@ -130,8 +130,13 @@ export function getCustomerSession(): CustomerSession | null {
 
 export function storeCustomerSession(session: CustomerSession | null): void {
   if (typeof window === 'undefined') return
-  if (!session) window.localStorage.removeItem(CUSTOMER_SESSION_KEY)
-  else window.localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(session))
+  if (!session) {
+    window.localStorage.removeItem(CUSTOMER_SESSION_KEY)
+    return
+  }
+  // GÜVENLİK: uzun ömürlü refresh token tarayıcı depolamasına YAZILMAZ — /api/proxy onu HttpOnly
+  // çereze taşır (bkz. app/api/[[...path]]/route.ts). Burada yalnız access token + profil durur.
+  window.localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify({ ...session, refreshToken: '' }))
 }
 
 export class PortalApiError extends Error {
@@ -175,45 +180,52 @@ async function portalRequest<T>(
 
 // ---- Auth ----
 
-export async function customerLogin(input: CustomerLoginInput): Promise<CustomerSession> {
-  const session = await portalRequest<CustomerSession>('/api/auth/customer/login', {
-    method: 'POST',
-    auth: false,
-    body: { fullName: input.fullName, phone: input.phone, birthDate: input.birthDate },
-  })
-  storeCustomerSession(session)
-  return session
-}
+/**
+ * KİMLİK KAPISI = OTP. Doğrudan token veren `/customer/login` ve `/customer/register` uçları
+ * kapatıldı (410): ad + telefon + doğum tarihi bilinen bir müşterinin hesabı OTP'siz ele
+ * geçirilebiliyordu. Giriş de kayıt da iki adımlıdır: kod iste → kodu doğrula.
+ */
+export type CustomerOtpPurpose = 'login' | 'register'
 
-/** OTP adım 1: kimlik eşleşirse telefona 6 haneli kod SMS'lenir (dev ortamında kod yanıtta döner). */
-export function customerOtpRequest(input: CustomerLoginInput): Promise<{ message?: string; devCode?: string | null }> {
+const purposeCode = (purpose: CustomerOtpPurpose): number => (purpose === 'register' ? 1 : 0)
+
+/** OTP adım 1: telefona 6 haneli kod gönderilir (dev ortamında kod yanıtta döner). */
+export function customerOtpRequest(
+  input: CustomerLoginInput,
+  purpose: CustomerOtpPurpose = 'login',
+): Promise<{ message?: string; devCode?: string | null }> {
   return portalRequest<{ message?: string; devCode?: string | null }>('/api/auth/customer/otp/request', {
-    method: 'POST',
-    auth: false,
-    body: { fullName: input.fullName, phone: input.phone, birthDate: input.birthDate },
-  })
-}
-
-/** OTP adım 2: kod doğruysa normal giriş (JWT) tamamlanır. */
-export async function customerOtpVerify(input: CustomerLoginInput & { code: string }): Promise<CustomerSession> {
-  const session = await portalRequest<CustomerSession>('/api/auth/customer/otp/verify', {
-    method: 'POST',
-    auth: false,
-    body: { fullName: input.fullName, phone: input.phone, birthDate: input.birthDate, code: input.code },
-  })
-  storeCustomerSession(session)
-  return session
-}
-
-export async function customerRegister(input: CustomerRegisterInput): Promise<CustomerSession> {
-  const session = await portalRequest<CustomerSession>('/api/auth/customer/register', {
     method: 'POST',
     auth: false,
     body: {
       fullName: input.fullName,
       phone: input.phone,
       birthDate: input.birthDate,
-      gender: input.gender,
+      purpose: purposeCode(purpose),
+    },
+  })
+}
+
+/** OTP adım 2: kod doğruysa giriş yapılır; kayıt akışında hesap açılıp giriş yapılır. */
+export async function customerOtpVerify(
+  input: CustomerLoginInput & {
+    code: string
+    purpose?: CustomerOtpPurpose
+    gender?: number
+    email?: string | null
+  },
+): Promise<CustomerSession> {
+  const purpose = input.purpose ?? 'login'
+  const session = await portalRequest<CustomerSession>('/api/auth/customer/otp/verify', {
+    method: 'POST',
+    auth: false,
+    body: {
+      fullName: input.fullName,
+      phone: input.phone,
+      birthDate: input.birthDate,
+      code: input.code,
+      purpose: purposeCode(purpose),
+      gender: input.gender ?? 0,
       email: input.email || null,
     },
   })
@@ -221,15 +233,17 @@ export async function customerRegister(input: CustomerRegisterInput): Promise<Cu
   return session
 }
 
+
 export async function customerLogout(): Promise<void> {
   const session = getCustomerSession()
   storeCustomerSession(null)
-  if (!session?.refreshToken) return
+  if (!session) return
   try {
+    // Refresh token gövdede taşınmaz: proxy HttpOnly çerezden ekler ve çerezi siler.
     await fetch(`${API_BASE_URL}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: session.refreshToken }),
+      body: JSON.stringify({ refreshToken: '' }),
     })
   } catch {
     /* çevrimdışı çıkışta sessiz geç */

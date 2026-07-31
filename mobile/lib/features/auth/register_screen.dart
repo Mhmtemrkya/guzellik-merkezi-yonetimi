@@ -24,11 +24,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool loading = false;
   String? error;
 
+  // Kayıt akışı iki adımlıdır: kod iste (otpStage=false) → kodu doğrula (otpStage=true).
+  bool otpStage = false;
+  String? otpInfo;
+  final otpCodeController = TextEditingController();
+
   @override
   void dispose() {
     nameController.dispose();
     phoneController.dispose();
     emailController.dispose();
+    otpCodeController.dispose();
     super.dispose();
   }
 
@@ -44,11 +50,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
     try {
       final d = birthDate!;
-      await widget.auth.customerRegister(
+      final birth =
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+      // KAYIT DA OTP'DEN GEÇER: hesap yalnız telefon sahipliği kanıtlandıktan sonra açılır.
+      if (!otpStage) {
+        final res = await widget.auth.customerOtpRequest(
+          fullName: nameController.text,
+          phone: phoneController.text,
+          birthDate: birth,
+          purpose: 1,
+        );
+        final devCode = res['devCode'];
+        if (mounted) {
+          setState(() {
+            otpStage = true;
+            otpInfo = devCode == null
+                ? 'WhatsApp numaranıza 6 haneli doğrulama kodu gönderildi. Kod 5 dakika geçerlidir.'
+                : 'Doğrulama kodu gönderildi. (Test ortamı kodu: $devCode)';
+          });
+        }
+        return;
+      }
+
+      final code = otpCodeController.text.trim();
+      if (code.length != 6) {
+        setState(() => error = 'WhatsApp ile gelen 6 haneli kodu girin.');
+        return;
+      }
+      await widget.auth.customerOtpVerify(
         fullName: nameController.text,
         phone: phoneController.text,
-        birthDate:
-            '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+        birthDate: birth,
+        code: code,
+        purpose: 1,
         gender: gender,
         email: emailController.text,
       );
@@ -199,6 +234,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 prefixIcon: Icon(Icons.mail_outline_rounded),
                               ),
                             ),
+                            // Adım 2: WhatsApp'a gelen kod. Hesap yalnız kod doğrulanınca açılır.
+                            if (otpStage) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: otpCodeController,
+                                keyboardType: TextInputType.number,
+                                maxLength: 6,
+                                decoration: const InputDecoration(
+                                  labelText: 'WhatsApp doğrulama kodu',
+                                  prefixIcon: Icon(Icons.sms_outlined),
+                                  counterText: '',
+                                ),
+                              ),
+                              if (otpInfo != null)
+                                Text(
+                                  otpInfo!,
+                                  style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+                                ),
+                            ],
                             if (error != null) ...[
                               const SizedBox(height: 12),
                               Text(
@@ -219,8 +273,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2, color: Colors.white),
                                     )
-                                  : const Icon(Icons.check_rounded),
-                              label: const Text('Kayıt Ol ve Devam Et'),
+                                  : Icon(otpStage ? Icons.check_rounded : Icons.sms_rounded),
+                              label: Text(otpStage
+                                  ? 'Kodu Doğrula ve Kaydı Tamamla'
+                                  : 'Doğrulama Kodu Gönder'),
                             ),
                             const SizedBox(height: 8),
                             Center(

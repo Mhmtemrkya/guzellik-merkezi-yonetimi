@@ -1,5 +1,7 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Application.Features.Consents;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -16,7 +18,8 @@ public static class ConsentEndpoints
     public static IEndpointRouteBuilder MapConsentEndpoints(this IEndpointRouteBuilder app)
     {
         // ---- şablonlar (kurum yöneticisi) ----
-        var templates = app.MapGroup("/api/admin/consent-templates").WithTags("Consents").RequireAuthorization();
+        var templates = app.MapGroup("/api/admin/consent-templates").WithTags("Consents")
+            .RequireAuthorization().RequirePermission(Permissions.Customers);
 
         templates.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, IConsentService service, HttpContext http, CancellationToken ct) =>
         {
@@ -44,7 +47,10 @@ public static class ConsentEndpoints
 
         // ---- müşteri kayıtları + imza oturumu ----
         // /api/admin ALTINDA DEĞİL: imza akışı anlık çalışmalı, personel onay kapısına takılmamalı.
-        var forms = app.MapGroup("/api/consent").WithTags("Consents").RequireAuthorization();
+        // GÜVENLİK: /api/admin dışında olduğu için onay kapısına da girmiyor; izin kontrolü
+        // BURADA yapılmazsa izinsiz personel imzalı onam ve dijital imza görsellerine erişebilir.
+        var forms = app.MapGroup("/api/consent").WithTags("Consents")
+            .RequireAuthorization().RequirePermission(Permissions.Customers);
 
         forms.MapGet("/customers/{customerId:guid}", async (Guid customerId, Guid? tenantId, ICurrentUser currentUser, IConsentService service, HttpContext http, CancellationToken ct) =>
         {

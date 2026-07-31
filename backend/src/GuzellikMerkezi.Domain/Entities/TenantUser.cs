@@ -27,6 +27,51 @@ public sealed class TenantUser : Entity
     public bool IsActive { get; private set; } = true;
     public DateTime? LastLoginUtc { get; private set; }
 
+    // --- Hesap kilitleme -------------------------------------------------------------------
+    // Tek savunma IP bazlı hız sınırıydı; proxy zincirinde sahte X-Forwarded-For ile aşılabildiği
+    // için parola püskürtme/brute force'a karşı HESAP bazlı bir fren gerekiyor.
+
+    /// <summary>Ardışık başarısız giriş sayısı. Başarılı girişte sıfırlanır.</summary>
+    public int FailedLoginCount { get; private set; }
+
+    /// <summary>Dolu ve gelecekteyse giriş reddedilir (doğru parolayla bile).</summary>
+    public DateTime? LockedUntilUtc { get; private set; }
+
+    /// <summary>
+    /// Bu andan ÖNCE üretilmiş access token'lar geçersiz sayılır. Parola değişimi/şüpheli
+    /// aktivitede ileri alınır; refresh token'lar ayrıca DB'de iptal edilir.
+    /// </summary>
+    public DateTime? SecurityStampUtc { get; private set; }
+
+    public bool IsLockedOut(DateTime utcNow) => LockedUntilUtc is { } until && until > utcNow;
+
+    /// <summary>Başarısız denemeyi işler; eşiğe ulaşınca hesabı geçici olarak kilitler.</summary>
+    public void RegisterFailedLogin(DateTime utcNow, int threshold, TimeSpan lockDuration)
+    {
+        FailedLoginCount++;
+        if (FailedLoginCount >= threshold)
+        {
+            LockedUntilUtc = utcNow.Add(lockDuration);
+            FailedLoginCount = 0; // kilit süresi bitince temiz sayfa
+        }
+        Touch(utcNow);
+    }
+
+    public void ResetFailedLogins()
+    {
+        if (FailedLoginCount == 0 && LockedUntilUtc is null) return;
+        FailedLoginCount = 0;
+        LockedUntilUtc = null;
+        Touch();
+    }
+
+    /// <summary>Mevcut tüm oturumları geçersiz kılar (parola değişimi, admin sıfırlama, devre dışı bırakma).</summary>
+    public void InvalidateSessions(DateTime utcNow)
+    {
+        SecurityStampUtc = utcNow;
+        Touch(utcNow);
+    }
+
     /// <summary>
     /// İlk giriş veya admin tarafından şifre sıfırlama sonrası true. True ise login yapılır
     /// ama kullanıcı şifresini değiştirmeden başka işlem yapamaz.

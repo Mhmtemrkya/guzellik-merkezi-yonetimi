@@ -10,6 +10,15 @@ public static class DevelopmentDataSeeder
 {
     public static async Task SeedDevelopmentDataAsync(this WebApplication app)
     {
+        // İKİNCİ KAPI (Program.cs'teki fail-fast'e ek). Bu metot bilinen parolalı ayrıcalıklı hesap
+        // açar ve DB silebilir; çağrı yolu değişse bile Development dışında ASLA çalışmamalı.
+        if (!app.Environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(
+                "Demo seeder yalnız Development ortamında çalıştırılabilir. " +
+                $"Geçerli ortam: {app.Environment.EnvironmentName}.");
+        }
+
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
         var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();

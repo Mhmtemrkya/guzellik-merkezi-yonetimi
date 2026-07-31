@@ -158,6 +158,14 @@ public sealed class CustomerConsentForm : Entity
         if (RequiresSignature && string.IsNullOrWhiteSpace(signatureImage))
             throw new BusinessRuleException("İmza alınmadan form tamamlanamaz.");
 
+        // İmza görseli TİP + BOYUT doğrulamasından geçer: eskiden yalnız "boş değil" kontrolü vardı;
+        // harici URL, SVG/HTML veya devasa base64 doğrudan kaydedilip render edilebiliyordu.
+        if (!string.IsNullOrWhiteSpace(signatureImage))
+        {
+            var signatureError = ImageDataUrl.Validate(signatureImage, ImageDataUrl.MaxSignatureBytes, "İmza görseli");
+            if (signatureError is not null) throw new BusinessRuleException(signatureError);
+        }
+
         CheckedItemsJson = string.IsNullOrWhiteSpace(checkedItemsJson) ? null : checkedItemsJson.Trim();
         AnswersJson = string.IsNullOrWhiteSpace(answersJson) ? null : answersJson.Trim();
         SignatureImage = string.IsNullOrWhiteSpace(signatureImage) ? null : signatureImage.Trim();

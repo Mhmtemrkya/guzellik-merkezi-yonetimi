@@ -17,10 +17,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import {
-  customerLogin,
   customerOtpRequest,
   customerOtpVerify,
-  customerRegister,
   getCustomerSession,
 } from '@/lib/customerPortalApi'
 
@@ -115,7 +113,10 @@ export default function CustomerLoginPage() {
     if (!id) return
     try {
       setLoading(true)
-      const res = await customerOtpRequest({ fullName: id.name, phone: id.normalizedPhone, birthDate })
+      const res = await customerOtpRequest(
+        { fullName: id.name, phone: id.normalizedPhone, birthDate },
+        mode === 'register' ? 'register' : 'login',
+      )
       setOtpStage('code')
       setOtpCode('')
       setOtpInfo(
@@ -138,23 +139,24 @@ export default function CustomerLoginPage() {
     const { name, normalizedPhone } = id
     try {
       setLoading(true)
-      if (mode === 'login' && otpStage === 'code') {
-        if (otpCode.trim().length !== 6) {
-          setError('WhatsApp ile gelen 6 haneli kodu girin.')
-          return
-        }
-        await customerOtpVerify({ fullName: name, phone: normalizedPhone, birthDate, code: otpCode.trim() })
-      } else if (mode === 'login') {
-        await customerLogin({ fullName: name, phone: normalizedPhone, birthDate })
-      } else {
-        await customerRegister({
-          fullName: name,
-          phone: normalizedPhone,
-          birthDate,
-          gender,
-          email: email.trim() || null,
-        })
+      // GİRİŞ DE KAYIT DA OTP'DEN GEÇER: token yalnız telefon doğrulandıktan sonra üretilir.
+      if (otpStage !== 'code') {
+        await handleOtpRequest()
+        return
       }
+      if (otpCode.trim().length !== 6) {
+        setError('WhatsApp ile gelen 6 haneli kodu girin.')
+        return
+      }
+      await customerOtpVerify({
+        fullName: name,
+        phone: normalizedPhone,
+        birthDate,
+        code: otpCode.trim(),
+        purpose: mode === 'register' ? 'register' : 'login',
+        gender,
+        email: email.trim() || null,
+      })
       router.push(nextTarget())
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : ''
@@ -434,7 +436,7 @@ export default function CustomerLoginPage() {
 
               {/* OTP kod adımı — WhatsApp ile gelen 6 haneli kod */}
               <AnimatePresence>
-                {mode === 'login' && otpStage === 'code' && (
+                {otpStage === 'code' && (
                   <motion.div
                     key="otp-code"
                     initial={{ opacity: 0, height: 0 }}
@@ -509,30 +511,25 @@ export default function CustomerLoginPage() {
                     </>
                   ) : (
                     <>
-                      {mode === 'login' ? (otpStage === 'code' ? 'Kodu Doğrula ve Giriş Yap' : 'Giriş Yap ve Randevu Al') : 'Kayıt Ol ve Randevu Al'}
+                      {otpStage === 'code'
+                        ? (mode === 'login' ? 'Kodu Doğrula ve Giriş Yap' : 'Kodu Doğrula ve Kaydı Tamamla')
+                        : 'Doğrulama Kodu Gönder'}
                       <ArrowRight className="absolute right-5 h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </>
                   )}
                 </span>
               </motion.button>
 
-              {/* WhatsApp kodlu giriş — daha güvenli alternatif (2FA) */}
-              {mode === 'login' && otpStage === 'idle' && (
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void handleOtpRequest()}
-                  className="mt-2 w-full rounded-2xl border border-[#ead8df] bg-white/80 py-3 text-[12.5px] font-semibold text-[#c85776] transition-colors hover:border-[#e798b4] hover:bg-[#fff0f5] disabled:opacity-50"
-                >
-                  💬 WhatsApp Kodu ile Giriş (önerilen)
-                </button>
-              )}
+              {/* Ayrı "WhatsApp kodu ile giriş" butonu kaldırıldı: kod artık ALTERNATİF değil,
+                  tek yol. Ana buton önce kodu gönderir, sonra doğrular. */}
 
               <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
                 <Lock className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />
-                {mode === 'login'
-                  ? 'Kaydınız yoksa "Kayıt Ol" sekmesinden saniyeler içinde hesap oluşturabilirsiniz.'
-                  : 'Bilgileriniz yalnızca randevu işlemleriniz için kullanılır.'}
+                {otpStage === 'code'
+                  ? 'Güvenliğiniz için WhatsApp numaranıza gönderilen kodu girmeniz gerekir.'
+                  : mode === 'login'
+                    ? 'Kaydınız yoksa "Kayıt Ol" sekmesinden saniyeler içinde hesap oluşturabilirsiniz.'
+                    : 'Bilgileriniz yalnızca randevu işlemleriniz için kullanılır.'}
               </p>
             </div>
           </form>

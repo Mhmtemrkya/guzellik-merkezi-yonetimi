@@ -5,8 +5,25 @@ using GuzellikMerkezi.Application.Features.Auth;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
-/// <summary>OTP doğrulama isteği — kimlik alanları + SMS'teki 6 haneli kod.</summary>
-public sealed record CustomerOtpVerifyRequest(string FullName, string Phone, DateOnly BirthDate, string Code);
+/// <summary>OTP kod isteği — kimlik alanları + akış (giriş / kayıt).</summary>
+public sealed record CustomerOtpRequestBody(
+    string FullName,
+    string Phone,
+    DateOnly BirthDate,
+    Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login);
+
+/// <summary>
+/// OTP doğrulama isteği — kimlik alanları + WhatsApp'a gelen 6 haneli kod.
+/// Kayıt akışında ayrıca cinsiyet/e-posta taşınır (kod doğrulanınca hesap açılır).
+/// </summary>
+public sealed record CustomerOtpVerifyRequest(
+    string FullName,
+    string Phone,
+    DateOnly BirthDate,
+    string Code,
+    Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login,
+    GuzellikMerkezi.Domain.Enums.Gender Gender = GuzellikMerkezi.Domain.Enums.Gender.Unspecified,
+    string? Email = null);
 
 public static class AuthEndpoints
 {
@@ -20,22 +37,34 @@ public static class AuthEndpoints
         group.MapPost("/login", async (LoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.LoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
 
-        // Online portal müşteri girişi: ad soyad + telefon (baştaki 0 ile) + doğum tarihi eşleşmesi.
-        // Şifresiz giriş brute-force'a açık olduğundan IP bazlı hız sınırına tabidir.
-        group.MapPost("/customer/login", async (CustomerLoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.CustomerLoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+        // --- Müşteri portalı kimlik doğrulaması: TEK KAPI = OTP ------------------------------
+        // Doğrudan token üreten eski uçlar KAPATILDI. Ad + telefon + doğum tarihi bilinen bir
+        // müşterinin hesabı OTP'siz ele geçirilebiliyordu; kayıt ucu ise mevcut müşteriyi yalnız
+        // telefon + doğum tarihiyle eşleyip onun adına token veriyordu. 410 Gone: istemci eski
+        // sürümdeyse kullanıcıya "güncelleyin" diyebilsin diye sessizce 404 dönülmüyor.
+        static IResult OtpRequired() => Results.Json(
+            new { success = false, error = new { code = "OtpRequired", message = "Girişte telefon doğrulaması zorunlu. Uygulamayı güncelleyin." } },
+            statusCode: StatusCodes.Status410Gone);
 
-        // OTP'li müşteri girişi (opsiyonel, daha güvenli): kimlik eşleşirse SMS ile 6 haneli kod,
-        // kod doğrulanınca JWT verilir. Simülasyon modunda SMS gitmez; Development'ta kod yanıtta döner.
-        group.MapPost("/customer/otp/request", async (CustomerLoginRequest request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
-            (await otp.RequestAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+        group.MapPost("/customer/login", OtpRequired).RequireRateLimiting("customer-auth");
+        group.MapPost("/customer/register", OtpRequired).RequireRateLimiting("customer-auth");
 
+        // Adım 1: kimlik eşleşirse (kayıtta her hâlükârda) WhatsApp'a 6 haneli kod gider.
+        // Simülasyon modunda gerçek gönderim yapılmaz; Development'ta kod yanıtta döner.
+        group.MapPost("/customer/otp/request", async (CustomerOtpRequestBody request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
+            (await otp.RequestAsync(
+                new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate),
+                request.Purpose, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+
+        // Adım 2: kod doğruysa giriş yapılır ya da (kayıt akışında) hesap açılıp giriş yapılır.
         group.MapPost("/customer/otp/verify", async (CustomerOtpVerifyRequest request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
-            (await otp.VerifyAsync(new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate), request.Code, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
-
-        // Kuruma bağlı olmayan müşteri kaydı (kayıt ol) — herkese açık, kayıt sonrası otomatik giriş.
-        group.MapPost("/customer/register", async (CustomerRegisterRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.CustomerRegisterAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+        {
+            var identity = new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate);
+            var registration = request.Purpose == Services.CustomerOtpPurpose.Register
+                ? new CustomerRegisterRequest(request.FullName, request.Phone, request.BirthDate, request.Gender, request.Email)
+                : null;
+            return (await otp.VerifyAsync(identity, request.Code, request.Purpose, registration, ct)).ToHttpResult(http);
+        }).RequireRateLimiting("customer-auth");
 
         group.MapPost("/refresh", async (RefreshTokenRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.RefreshAsync(request, ct)).ToHttpResult(http));

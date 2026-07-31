@@ -46,9 +46,21 @@ public sealed class PendingOperationService : IPendingOperationService
         return Result<PagedResult<PendingOperationDto>>.Success(new PagedResult<PendingOperationDto>(items, total, pageRequest.SafePage, pageRequest.SafePageSize));
     }
 
-    public async Task<Result<PendingOperationDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Tekil bekleyen işlem. NESNE SAHİPLİĞİ SERVİSTE zorunlu tutulur: liste ucu personeli kendi
+    /// isteklerine süzüyordu ama detay/iptal uçları yalnız tenant + Id ile sorguluyordu. DTO çözülmüş
+    /// <c>PayloadJson</c> içerdiğinden (klinik kayıt, fotoğraf data URL'i, müşteri PII) Id'yi bilen bir
+    /// personel başkasının isteğini okuyabiliyordu.
+    /// </summary>
+    /// <param name="actorUserId">İsteği yapan kullanıcı.</param>
+    /// <param name="actorRole">Personel yalnız kendi kaydını görür; yönetici roller kurum içindeki tümünü.</param>
+    public async Task<Result<PendingOperationDto>> GetAsync(Guid tenantId, Guid id, Guid actorUserId, UserRole? actorRole, CancellationToken cancellationToken = default)
     {
-        var op = await _db.PendingOperations.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var query = _db.PendingOperations.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id);
+        if (actorRole == UserRole.Staff) query = query.Where(x => x.RequestedByUserId == actorUserId);
+
+        var op = await query.FirstOrDefaultAsync(cancellationToken);
+        // Yetkisiz erişimde "yok" denir: var/yok bilgisi de sızmasın.
         return op is null ? Result<PendingOperationDto>.Failure(Error.NotFound("İşlem bulunamadı.")) : Result<PendingOperationDto>.Success(op.ToDto());
     }
 
@@ -118,9 +130,13 @@ public sealed class PendingOperationService : IPendingOperationService
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 
-    public async Task<Result> CancelAsync(Guid tenantId, Guid id, Guid decidedByUserId, CancellationToken cancellationToken = default)
+    /// <summary>Bekleyen isteği geri çeker. Personel YALNIZ kendi isteğini iptal edebilir (bkz. <see cref="GetAsync"/>).</summary>
+    public async Task<Result> CancelAsync(Guid tenantId, Guid id, Guid decidedByUserId, UserRole? actorRole, CancellationToken cancellationToken = default)
     {
-        var op = await _db.PendingOperations.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var query = _db.PendingOperations.Where(x => x.TenantId == tenantId && x.Id == id);
+        if (actorRole == UserRole.Staff) query = query.Where(x => x.RequestedByUserId == decidedByUserId);
+
+        var op = await query.FirstOrDefaultAsync(cancellationToken);
         if (op is null) return Result.Failure(Error.NotFound("İşlem bulunamadı."));
         if (op.Status != PendingOperationStatus.Pending) return Result.Failure(Error.Conflict("Bu işlem zaten karara bağlanmış."));
 

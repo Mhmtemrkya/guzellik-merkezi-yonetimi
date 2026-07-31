@@ -3,7 +3,16 @@ using GuzellikMerkezi.Domain.Enums;
 namespace GuzellikMerkezi.Application.Features.Auth;
 
 // Role boş gönderilirse backend e-postadan en yetkili aktif rolü tespit edip yanıtın Role alanında döner.
-public sealed record LoginScopeRequest(string Email, UserRole? Role = null);
+/// <summary>
+/// Kurum/şube seçimi için kapsam sorgusu.
+/// <para>
+/// <paramref name="Password"/> ZORUNLUDUR: uç eskiden yalnız e-postayla kurum adı/durumu, şube
+/// adı/şehri ve rolü döndürüyordu; geçerli kullanıcılar, kurumlar ve şubeler anonim olarak
+/// keşfedilebiliyordu (hedefli phishing/credential stuffing için bağlam). Parola doğrulanmazsa
+/// yanıt BOŞ döner — hesabın var olup olmadığı ayırt edilemez.
+/// </para>
+/// </summary>
+public sealed record LoginScopeRequest(string Email, UserRole? Role = null, string? Password = null);
 public sealed record LoginScopeTenantDto(Guid TenantId, string TenantName, string Status, IReadOnlyCollection<LoginScopeBranchDto> Branches);
 public sealed record LoginScopeBranchDto(Guid BranchId, string BranchName, string City, bool IsDefault);
 public sealed record LoginScopeResponse(string Email, UserRole? Role, IReadOnlyCollection<LoginScopeTenantDto> Tenants);

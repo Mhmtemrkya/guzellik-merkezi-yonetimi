@@ -9,7 +9,7 @@ public interface IAuthService
     /// <summary>Online portal müşteri girişi (ad soyad + telefon + doğum tarihi eşleşmesi).</summary>
     Task<Result<LoginResponse>> CustomerLoginAsync(CustomerLoginRequest request, CancellationToken cancellationToken = default);
     /// <summary>Kuruma bağlı olmayan müşteri kaydı (kayıt ol) + otomatik giriş.</summary>
-    Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, CancellationToken cancellationToken = default);
+    Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, bool phoneVerified = false, CancellationToken cancellationToken = default);
     Task<Result<LoginResponse>> RefreshAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default);
     Task<Result> LogoutAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default);
     Task<Result<UserProfileDto>> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);

@@ -201,9 +201,10 @@ export function storeSession(session: AuthSession | null): void {
     clearApiScope()
     return
   }
-  // "Beni hatırla" işaretliyse kalıcı (localStorage), değilse oturumluk (sessionStorage) sakla;
-  // ikisinin de eşzamanlı kalmaması için diğerini temizle.
-  const raw = JSON.stringify(session)
+  // GÜVENLİK: refresh token TARAYICI DEPOLAMASINA YAZILMAZ. Uzun ömürlü kimlik bilgisi olduğu için
+  // /api/proxy katmanı onu HttpOnly çereze taşır (bkz. app/api/[[...path]]/route.ts); JavaScript
+  // hiç görmez. Burada yalnız kısa ömürlü access token + profil saklanır.
+  const raw = JSON.stringify({ ...session, refreshToken: '' })
   if (getRememberMe()) {
     window.localStorage.setItem(AUTH_STORAGE_KEY, raw)
     window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
@@ -529,10 +530,15 @@ interface LoginPayload {
 }
 
 export const authApi = {
-  loginScope: (email: string, role?: UserRole | string | null): Promise<ApiLoginScopeResponse> =>
+  /**
+   * Kurum/şube kapsamı. PAROLA ZORUNLU: uç eskiden yalnız e-postayla kurum/şube/rol döndürüyor,
+   * geçerli hesapların ve kurumların anonim keşfine izin veriyordu. Parola yanlışsa yanıt BOŞ
+   * gelir (hata değil) — hesabın var olup olmadığı anlaşılmaz.
+   */
+  loginScope: (email: string, role?: UserRole | string | null, password?: string): Promise<ApiLoginScopeResponse> =>
     apiRequest<ApiLoginScopeResponse>('/api/auth/login-scope', {
       method: 'POST',
-      body: { email, role: role ?? null },
+      body: { email, role: role ?? null, password: password ?? null },
       token: null,
       scope: false,
     }),
@@ -544,6 +550,7 @@ export const authApi = {
       token: null,
       scope: false,
     }),
+  /** Refresh token gövdede GÖNDERİLMEZ: proxy HttpOnly çerezden ekler (boş string uyumluluk içindir). */
   refresh: (refreshToken: string): Promise<ApiLoginResponse> =>
     apiRequest<ApiLoginResponse>('/api/auth/refresh', {
       method: 'POST',
@@ -783,12 +790,25 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { query: { tenantId } }),
   setStaffWorkingHours: <T = unknown>(staffId: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/working-hours/${staffId}`, { method: 'PUT', query: { tenantId }, body }),
-  /** Personel ICS takvim aboneliği linki (Google/Apple/Outlook "URL ile abone ol"). */
+  /**
+   * Personel ICS takvim aboneliği linki. Token yalnız ÜRETİLDİĞİ AN döner (sunucuda özeti saklanır);
+   * aktif bir link zaten varsa `url` null gelir → kullanıcı "yenile" ile yeni link alır.
+   */
   staffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}`, { query: { tenantId } }),
+  /** Personel takvim linkini yeniler — eski URL anında geçersizleşir. */
+  rotateStaffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}/rotate`, { method: 'POST', query: { tenantId } }),
+  /** Personel takvim linkini tamamen kapatır (sızdıysa erişimi keser). */
+  revokeStaffCalendarLink: <T = unknown>(staffId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/schedule/calendar-link/${staffId}`, { method: 'DELETE', query: { tenantId } }),
   /** Kurum geneli randevu ICS takvim aboneliği linki (tüm randevular). */
   appointmentsCalendarLink: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/schedule/appointments-calendar-link', { query: { tenantId } }),
+  rotateAppointmentsCalendarLink: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/schedule/appointments-calendar-link/rotate', { method: 'POST', query: { tenantId } }),
+  revokeAppointmentsCalendarLink: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/schedule/appointments-calendar-link', { method: 'DELETE', query: { tenantId } }),
   workingHoursEnforcement: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/schedule/working-hours-enforcement', { query: { tenantId } }),
   setWorkingHoursEnforcement: <T = unknown>(enabled: boolean, tenantId?: string): Promise<T> =>

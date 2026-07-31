@@ -103,15 +103,26 @@ var app = builder.Build();
     }
 }
 
-// Veritabanı bootstrap + seed. Development'ta HER ZAMAN; başka cihaz/sunucu veya CANLI'da ise
-// AÇIK opt-in ile: Database:SeedDemoData=true  (ör. ortam değişkeni: Database__SeedDemoData=true).
-// Bu yol yeni bir kuruluma tek hamlede: DB oluşturma + EF migration + demo seed sağlar.
+// Veritabanı bootstrap + seed — YALNIZ Development. Demo hesaplar bilinen bir parolayla gelir ve
+// PlatformAdmin dahil ayrıcalıklı roller açar; bu yüzden başka hiçbir ortamda çalıştırılamaz.
 // Seed IDEMPOTENT'tir: kurum zaten varsa hiçbir demo verisi eklemez ve mevcut şifrelere DOKUNMAZ.
-// GÜVENLİK: Demo hesaplar bilinen "Guzellik123!" parolasıyla gelir — canlıda kullandıktan sonra bu
-// parolaları DERHAL değiştirin; bu bayrağı yalnızca ilk kurulum/staging için açık tutmak en güvenlisidir.
+// Yeni bir CANLI kurulumda şema migration'ları ELLE uygulanır; ilk yönetici hesabı platform
+// tarafından oluşturulur (demo seeder ile değil).
 var seedDemoData = bool.TryParse(app.Configuration["Database:SeedDemoData"], out var demoFlag) && demoFlag;
+var recreateOnStartup = bool.TryParse(app.Configuration["Database:RecreateOnStartup"], out var recreateFlag) && recreateFlag;
 
-if (app.Environment.IsDevelopment() || seedDemoData)
+// GÜVENLİK KAPISI: demo seed BİLİNEN parolalı PlatformAdmin/owner/staff hesapları açar,
+// RecreateOnStartup ise EnsureDeleted ile TÜM veritabanını silebilir. İkisi de yalnız
+// Development'ta anlamlıdır; yanlış bir ortam değişkeni production/staging'de ayrıcalıklı hesap
+// yaratmamalı ya da veriyi silmemeli. DB'ye dokunmadan ÖNCE fail-fast.
+if (!app.Environment.IsDevelopment() && (seedDemoData || recreateOnStartup))
+{
+    throw new InvalidOperationException(
+        "Database:SeedDemoData ve Database:RecreateOnStartup yalnız Development ortamında kullanılabilir. " +
+        $"Geçerli ortam: {app.Environment.EnvironmentName}. Bu bayrakları kaldırın.");
+}
+
+if (app.Environment.IsDevelopment())
 {
     // DB yoksa otomatik oluştur (MySQL için)
     await DatabaseBootstrap.EnsureDatabaseAsync(app.Services, app.Configuration);

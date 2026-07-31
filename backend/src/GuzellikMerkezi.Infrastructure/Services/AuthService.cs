@@ -48,10 +48,34 @@ public sealed class AuthService : IAuthService
     public async Task<Result<LoginScopeResponse>> GetLoginScopeAsync(LoginScopeRequest request, CancellationToken cancellationToken = default)
     {
         var email = TenantUser.NormalizeEmail(request.Email);
+        // BOŞ KAPSAM: hesap yok, parola yanlış ya da hesap kilitli — üçünde de AYNI yanıt.
+        var empty = Result<LoginScopeResponse>.Success(new LoginScopeResponse(email, null, []));
+
+        if (string.IsNullOrEmpty(request.Password)) return empty;
+
         var users = await _db.TenantUsers.AsNoTracking()
             .Include(x => x.Tenant)!.ThenInclude(x => x!.Branches)
             .Where(x => x.Email == email && x.IsActive && (request.Role == null || x.Role == request.Role))
             .ToArrayAsync(cancellationToken);
+
+        // Parola bu e-postaya ait HERHANGİ bir kullanıcıyla eşleşmeli (aynı e-posta birden çok
+        // kurumda/rolde olabilir; hepsinde aynı parola kullanılır).
+        var verified = users.Any(u => _passwordHasher.Verify(request.Password!, u.PasswordHash));
+        if (!verified)
+        {
+            // Kapsam ucu parola doğruladığı için lockout sayacı BURADA da işler; aksi hâlde
+            // /login'deki kilit bu uçtan denemeyle atlatılabilirdi.
+            var tracked = await _db.TenantUsers
+                .FirstOrDefaultAsync(x => x.Email == email && x.IsActive, cancellationToken);
+            if (tracked is not null && !tracked.IsLockedOut(_clock.UtcNow))
+            {
+                tracked.RegisterFailedLogin(_clock.UtcNow, LockoutThreshold, LockoutDuration);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            return empty;
+        }
+
+        if (users.Any(u => u.IsLockedOut(_clock.UtcNow))) return empty;
 
         // Rol gönderilmediyse en yetkili rol seçilir (enum değeri küçük olan üstündür).
         var resolvedRole = request.Role ?? (users.Length > 0 ? users.Min(x => x.Role) : (UserRole?)null);
@@ -78,10 +102,27 @@ public sealed class AuthService : IAuthService
         var user = await _db.TenantUsers.Include(x => x.Tenant)
             .FirstOrDefaultAsync(x => x.Email == email && x.Role == request.Role && x.IsActive, cancellationToken);
 
+        // HESAP KİLİDİ: IP hız sınırı proxy zincirinde sahte forwarded header'la aşılabildiği için
+        // parola püskürtmeye karşı HESAP bazlı bir fren gerekiyor. Kilitliyken doğru parola da geçmez.
+        if (user is not null && user.IsLockedOut(_clock.UtcNow))
+        {
+            var minutes = Math.Max(1, (int)Math.Ceiling((user.LockedUntilUtc!.Value - _clock.UtcNow).TotalMinutes));
+            return Result<LoginResponse>.Failure(Error.Unauthorized(
+                $"Çok fazla hatalı giriş nedeniyle hesap geçici olarak kilitlendi. {minutes} dakika sonra tekrar deneyin."));
+        }
+
         if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            if (user is not null)
+            {
+                user.RegisterFailedLogin(_clock.UtcNow, LockoutThreshold, LockoutDuration);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            // Yanıt her iki durumda da AYNI: hesap var/yok bilgisi sızmasın.
             return Result<LoginResponse>.Failure(Error.Unauthorized("E-posta, rol veya parola hatalı."));
         }
+
+        user.ResetFailedLogins();
 
         if (request.Role != UserRole.PlatformAdmin)
         {
@@ -241,8 +282,13 @@ public sealed class AuthService : IAuthService
             return Result<UserProfileDto>.Failure(Error.Validation("Yeni parola öncekiyle aynı olamaz."));
 
         user.ConfirmOwnPassword(_passwordHasher.Hash(request.NewPassword));
+        // TÜM OTURUMLARI KAPAT: parola değişimi tek başına eski refresh token'ları geçersiz kılmıyordu;
+        // ele geçirilmiş bir token, kullanıcı parolasını değiştirse bile 14 gün boyunca yeni access
+        // token üretmeye devam edebiliyordu.
+        user.InvalidateSessions(_clock.UtcNow);
+        await RevokeAllRefreshTokensAsync(user.Id, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
-        await LogAuthActivityAsync(user, user.BranchId, "ChangePassword", "Parolasını değiştirdi.", cancellationToken);
+        await LogAuthActivityAsync(user, user.BranchId, "ChangePassword", "Parolasını değiştirdi; tüm oturumlar kapatıldı.", cancellationToken);
         return Result<UserProfileDto>.Success(BuildProfile(user, user.BranchId));
     }
 
@@ -300,8 +346,23 @@ public sealed class AuthService : IAuthService
         return collapsed.ToLowerInvariant();
     }
 
-    public async Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Bireysel müşteri kaydı + otomatik giriş.
+    /// <para>
+    /// KRİTİK: bu metot mevcut bir müşteriyi YALNIZ telefon + doğum tarihiyle eşleyip onun adına token
+    /// üretebilir. Bu yüzden yalnızca telefon sahipliği OTP ile KANITLANDIKTAN sonra çağrılabilir;
+    /// <paramref name="phoneVerified"/> false ise reddeder. Anonim <c>/customer/register</c> ucu
+    /// kapatılmıştır (bkz. AuthEndpoints).
+    /// </para>
+    /// </summary>
+    public async Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, bool phoneVerified = false, CancellationToken cancellationToken = default)
     {
+        if (!phoneVerified)
+        {
+            return Result<LoginResponse>.Failure(Error.Unauthorized(
+                "Telefon doğrulaması gerekli. WhatsApp'a gelen kodla devam edin."));
+        }
+
         var name = request.FullName?.Trim() ?? string.Empty;
         var key = PhoneMask.LoginKey(request.Phone);
         if (name.Length < 3 || key.Length < 10 || request.BirthDate == default)
@@ -310,8 +371,11 @@ public sealed class AuthService : IAuthService
         var (tenantId, branchId) = await GetOrCreateIndividualTenantAsync(cancellationToken);
 
         // Aynı kişi (bireysel kayıtta telefon+doğum tarihi) zaten varsa yeni kayıt açma — onunla giriş yap.
+        // Eşleşme TELEFONA göre yapılır: OTP ile kanıtlanan şey telefon sahipliğidir. Eskiden
+        // (telefon + doğum tarihi) aranıyordu; aynı telefonla farklı doğum tarihi girilerek mükerrer
+        // hesap açılabiliyordu.
         var existingIndividuals = await _db.Customers.IgnoreQueryFilters()
-            .Where(c => c.TenantId == tenantId && !c.IsDeleted && c.BirthDate == request.BirthDate)
+            .Where(c => c.TenantId == tenantId && !c.IsDeleted)
             .ToListAsync(cancellationToken);
         var customer = existingIndividuals.FirstOrDefault(c => PhoneMask.LoginKey(c.Phone) == key);
 
@@ -558,4 +622,33 @@ public sealed class AuthService : IAuthService
 
     private bool IsInMemoryProvider() =>
         _db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>Ardışık kaç hatalı denemeden sonra hesap kilitlenir.</summary>
+    private const int LockoutThreshold = 8;
+
+    /// <summary>Kilit süresi — otomatik açılır, yönetici müdahalesi gerekmez.</summary>
+    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Kullanıcının TÜM aktif refresh token'larını iptal eder (parola değişimi, sıfırlama, devre dışı).
+    /// InMemory sağlayıcı <c>ExecuteUpdate</c> desteklemediği için orada tek tek işaretlenir.
+    /// </summary>
+    private async Task RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+        if (IsInMemoryProvider())
+        {
+            var tokens = await _db.RefreshTokens
+                .Where(t => t.TenantUserId == userId && t.RevokedAtUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var token in tokens) token.Revoke(now);
+            return;
+        }
+
+        await _db.RefreshTokens
+            .Where(t => t.TenantUserId == userId && t.RevokedAtUtc == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.RevokedAtUtc, now)
+                .SetProperty(t => t.UpdatedAtUtc, now), cancellationToken);
+    }
 }

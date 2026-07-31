@@ -65,6 +65,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<RefundTransaction> RefundTransactions => Set<RefundTransaction>();
     public DbSet<ArchivedSalePayment> ArchivedSalePayments => Set<ArchivedSalePayment>();
     public DbSet<PackageSessionUsage> PackageSessionUsages => Set<PackageSessionUsage>();
+    public DbSet<CalendarFeedToken> CalendarFeedTokens => Set<CalendarFeedToken>();
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
@@ -662,6 +663,17 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         sessionBuilder.HasOne(x => x.CustomerAccount).WithMany().HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
         sessionBuilder.HasOne(x => x.ServiceDefinition).WithMany().HasForeignKey(x => x.ServiceDefinitionId).OnDelete(DeleteBehavior.Restrict);
         sessionBuilder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        // ICS takvim beslemesi token'ı. Özet ARANIR (anonim uç her istekte bakar) → unique index.
+        // Tenant query filter YOK: besleme anonimdir, kiracı bağlamı olmadan doğrulanır.
+        var feedToken = modelBuilder.Entity<CalendarFeedToken>();
+        feedToken.ToTable("calendar_feed_tokens");
+        feedToken.HasKey(x => x.Id);
+        feedToken.Property(x => x.Kind).HasConversion<string>().HasMaxLength(24).IsRequired();
+        feedToken.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+        feedToken.HasIndex(x => x.TokenHash).IsUnique();
+        feedToken.HasIndex(x => new { x.TenantId, x.Kind, x.StaffMemberId });
+        feedToken.HasQueryFilter(x => !x.IsDeleted);
 
         // Paket kullanımının KESİN seans bağı — iptal/geri alma tahmin yapmasın diye.
         // Şube süzgeci yok: kayıt seansın kendisine bağlı ve seans zaten şubeye göre süzülüyor.

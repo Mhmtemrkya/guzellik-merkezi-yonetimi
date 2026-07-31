@@ -3,6 +3,7 @@ using System;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GuzellikDbContext))]
-    partial class GuzellikDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260731212203_SecurityHardening")]
+    partial class SecurityHardening
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -840,65 +843,6 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OccurredAtUtc");
 
                     b.ToTable("business_expenses", (string)null);
-                });
-
-            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.CalendarFeedToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("DeletedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("varchar(24)");
-
-                    b.Property<DateTime?>("LastUsedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("RevokedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("StaffMemberId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "Kind", "StaffMemberId");
-
-                    b.ToTable("calendar_feed_tokens", (string)null);
                 });
 
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.Campaign", b =>

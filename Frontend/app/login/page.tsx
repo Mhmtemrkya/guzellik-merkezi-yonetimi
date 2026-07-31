@@ -166,29 +166,32 @@ export default function LoginPage() {
     if (meta) router.replace(meta.href)
   }, [hydrated, isAuthenticated, session, router])
 
-  // E-posta yazıldıkça rol + kurum kapsamı otomatik tespit edilir (rol gönderilmez, backend bulur).
+  // Kapsam artık e-posta yazılırken DEĞİL, giriş denemesinde çekilir (bkz. resolveScope).
+  // Uç eskiden yalnız e-postayla kurum adı/durumu, şube adı/şehri ve rolü döndürüyordu; geçerli
+  // hesaplar, kurumlar ve şubeler anonim olarak keşfedilebiliyordu. Artık parola doğrulanmadan
+  // boş yanıt gelir. Yazarken tetiklemiyoruz: her yanlış deneme hesap kilidi sayacını artırırdı.
   useEffect(() => {
     setScope(null)
     setError('')
-    if (!emailLooksReady) return
-    const run = setTimeout(async () => {
-      try {
-        setScopeLoading(true)
-        const response = await loginScope({ email: normalizedEmail })
-        setScope({ role: response.role, tenants: response.tenants })
-        const firstTenant = response.tenants?.[0]
-        const firstBranch = firstTenant?.branches?.find((b) => b.isDefault) || firstTenant?.branches?.[0]
-        setInstitutionId(firstTenant?.id ?? null)
-        setBranchId(firstBranch?.id ?? null)
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Hesap kapsamı alınamadı.'
-        setError(message || 'Hesap kapsamı alınamadı.')
-      } finally {
-        setScopeLoading(false)
-      }
-    }, 400)
-    return () => clearTimeout(run)
-  }, [emailLooksReady, normalizedEmail, loginScope])
+  }, [normalizedEmail])
+
+  /** Parolayla kapsamı çeker; boşsa (e-posta/parola hatalı) null döner. */
+  const resolveScope = async (): Promise<ScopeState | null> => {
+    setScopeLoading(true)
+    try {
+      const response = await loginScope({ email: normalizedEmail, password })
+      const next = { role: response.role, tenants: response.tenants }
+      if (!next.role || next.tenants.length === 0) return null
+      setScope(next)
+      const firstTenant = next.tenants[0]
+      const firstBranch = firstTenant?.branches?.find((b) => b.isDefault) || firstTenant?.branches?.[0]
+      setInstitutionId(firstTenant?.id ?? null)
+      setBranchId(firstBranch?.id ?? null)
+      return next
+    } finally {
+      setScopeLoading(false)
+    }
+  }
 
   const chooseInstitution = (institution: Institution): void => {
     const defaultBranch = institution.branches?.find((b) => b.isDefault) || institution.branches?.[0]
@@ -199,12 +202,32 @@ export default function LoginPage() {
   const handleLogin = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setError('')
-    if (!detectedMeta) {
-      setError('Bu e-posta için tanımlı bir rol bulunamadı.')
+    if (!emailLooksReady) {
+      setError('Geçerli bir e-posta girin.')
       return
     }
     if (!password) {
       setError('Parola zorunlu.')
+      return
+    }
+    // İlk denemede kapsamı parolayla çek. Boş dönerse e-posta ya da parola hatalıdır
+    // (hesabın var olup olmadığı ayırt edilmez).
+    if (!scope) {
+      try {
+        const resolved = await resolveScope()
+        if (!resolved) {
+          setError('E-posta veya parola hatalı.')
+          return
+        }
+        // Birden çok kurum/şube varsa kullanıcı seçsin; giriş ikinci adımda tamamlanır.
+        if (resolved.tenants.length > 1 || (resolved.tenants[0]?.branches?.length ?? 0) > 1) return
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Giriş yapılamadı.')
+        return
+      }
+    }
+    if (!detectedMeta) {
+      setError('E-posta veya parola hatalı.')
       return
     }
     if (!isPlatform && (!selectedInstitution?.id || !selectedBranch?.id)) {

@@ -67,10 +67,13 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> loginScope(String email) async {
+  /// Kurum/şube kapsamı. PAROLA ZORUNLU: uç eskiden yalnız e-postayla kurum/şube/rol
+  /// döndürüyordu ve geçerli hesaplar anonim keşfedilebiliyordu. Parola yanlışsa yanıt BOŞ gelir.
+  Future<List<Map<String, dynamic>>> loginScope(String email, {String? password}) async {
     final data = await api.postPublic('/api/auth/login-scope', {
       'email': email.trim().toLowerCase(),
       'role': null,
+      'password': password,
     });
     final result = data as Map<String, dynamic>;
     return [result];
@@ -126,74 +129,48 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Online portal müşteri girişi: ad soyad + telefon (baştaki 0 ile) + doğum tarihi (YYYY-MM-DD).
-  Future<void> customerLogin({
-    required String fullName,
-    required String phone,
-    required String birthDate,
-  }) async {
-    final data = await api.postPublic('/api/auth/customer/login', {
-      'fullName': fullName.trim(),
-      'phone': phone.trim(),
-      'birthDate': birthDate,
-    });
-    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
-    _remember = true;
-    await _persistSession();
-    status = AuthStatus.signedIn;
-    notifyListeners();
-  }
+  /// MÜŞTERİ KİMLİK KAPISI = OTP.
+  ///
+  /// Doğrudan token veren `/customer/login` ve `/customer/register` uçları kapatıldı (410):
+  /// ad + telefon + doğum tarihi bilinen bir müşterinin hesabı OTP'siz ele geçirilebiliyordu.
+  /// Giriş de kayıt da iki adımlıdır: kod iste → kodu doğrula.
 
-  /// OTP adım 1 (opsiyonel, daha güvenli giriş): kimlik eşleşirse telefona 6 haneli
-  /// kod SMS'lenir. Güvenlik için eşleşmese de aynı yanıt döner. Development ortamında
-  /// kod yanıtta ('devCode') gelir (simülasyonda gerçek SMS gitmez).
+  /// OTP adım 1: telefona 6 haneli kod gönderilir. Güvenlik için kimlik eşleşmese de aynı yanıt
+  /// döner (hesap keşfi engellenir). Development ortamında kod yanıtta ('devCode') gelir.
+  /// [purpose]: 0 giriş, 1 kayıt.
   Future<Map<String, dynamic>> customerOtpRequest({
     required String fullName,
     required String phone,
     required String birthDate,
+    int purpose = 0,
   }) async {
     final data = await api.postPublic('/api/auth/customer/otp/request', {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
       'birthDate': birthDate,
+      'purpose': purpose,
     });
     return (data as Map).cast<String, dynamic>();
   }
 
-  /// OTP adım 2: SMS kodu doğruysa müşteri girişi tamamlanır (JWT).
+  /// OTP adım 2: kod doğruysa giriş yapılır; [purpose] = 1 ise hesap açılıp giriş yapılır.
+  /// gender: 0 Belirtilmemiş, 1 Kadın, 2 Erkek, 3 Diğer (Domain.Enums.Gender ile aynı).
   Future<void> customerOtpVerify({
     required String fullName,
     required String phone,
     required String birthDate,
     required String code,
+    int purpose = 0,
+    int gender = 0,
+    String? email,
   }) async {
+    final trimmedEmail = email?.trim();
     final data = await api.postPublic('/api/auth/customer/otp/verify', {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
       'birthDate': birthDate,
       'code': code.trim(),
-    });
-    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
-    _remember = true;
-    await _persistSession();
-    status = AuthStatus.signedIn;
-    notifyListeners();
-  }
-
-  /// Kuruma bağlı olmayan müşteri kaydı (kayıt ol). Başarılıysa otomatik giriş yapılır.
-  /// gender: 0 Belirtilmemiş, 1 Kadın, 2 Erkek, 3 Diğer (Domain.Enums.Gender ile aynı).
-  Future<void> customerRegister({
-    required String fullName,
-    required String phone,
-    required String birthDate,
-    required int gender,
-    String? email,
-  }) async {
-    final trimmedEmail = email?.trim();
-    final data = await api.postPublic('/api/auth/customer/register', {
-      'fullName': fullName.trim(),
-      'phone': phone.trim(),
-      'birthDate': birthDate,
+      'purpose': purpose,
       'gender': gender,
       'email': (trimmedEmail == null || trimmedEmail.isEmpty) ? null : trimmedEmail,
     });

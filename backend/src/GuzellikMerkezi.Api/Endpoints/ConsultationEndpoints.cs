@@ -1,5 +1,7 @@
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Application.Features.Consultations;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -8,8 +10,9 @@ public static class ConsultationEndpoints
 {
     public static IEndpointRouteBuilder MapConsultationEndpoints(this IEndpointRouteBuilder app)
     {
+        // GÜVENLİK: anamnez gebelik/ilaç/kronik hastalık/alerji içerir — sayfa izni zorunlu.
         var group = app.MapGroup("/api/admin/customers/{customerId:guid}/consultation")
-            .WithTags("Consultations").RequireAuthorization();
+            .WithTags("Consultations").RequireAuthorization().RequirePermission(Permissions.Customers);
 
         group.MapGet("/", async (Guid customerId, Guid? tenantId, ICurrentUser currentUser, IConsultationService service, HttpContext http, CancellationToken ct) =>
         {
@@ -24,7 +27,8 @@ public static class ConsultationEndpoints
         });
 
         // "Özel" bölümü — kuruma/şubeye özel işaretlenebilir seçenek kütüphanesi.
-        var options = app.MapGroup("/api/admin/consultation-options").WithTags("Consultations").RequireAuthorization();
+        var options = app.MapGroup("/api/admin/consultation-options").WithTags("Consultations")
+            .RequireAuthorization().RequirePermission(Permissions.Customers);
 
         options.MapGet("/", async (Guid? branchId, Guid? tenantId, ICurrentUser currentUser, IConsultationService service, HttpContext http, CancellationToken ct) =>
         {

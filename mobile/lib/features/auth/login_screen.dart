@@ -99,7 +99,8 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
     try {
-      final scope = (await widget.auth.loginScope(normalizedEmail)).first;
+      // Parola ile birlikte istenir: kapsam ucu artık parola doğrulanmadan bilgi vermez.
+      final scope = (await widget.auth.loginScope(normalizedEmail, password: passwordController.text)).first;
       if (!mounted ||
           emailController.text.trim().toLowerCase() != normalizedEmail) {
         return false;
@@ -156,27 +157,22 @@ class _LoginScreenState extends State<LoginScreen> {
         error = null;
       });
       try {
-        if (otpStage) {
-          // WhatsApp kodlu giriş: 6 haneli kodu doğrula.
-          final code = otpCodeController.text.trim();
-          if (code.length != 6) {
-            setState(() => error = 'WhatsApp ile gelen 6 haneli kodu girin.');
-            return;
-          }
-          await widget.auth.customerOtpVerify(
-            fullName: nameController.text,
-            phone: phoneController.text,
-            birthDate: _birthStr(d),
-            code: code,
-          );
-        } else {
-          // Şifresiz giriş: bilgiler eşleşirse doğrudan girer.
-          await widget.auth.customerLogin(
-            fullName: nameController.text,
-            phone: phoneController.text,
-            birthDate: _birthStr(d),
-          );
+        if (!otpStage) {
+          // KOD ZORUNLU: token yalnız telefon doğrulandıktan sonra üretilir.
+          await _requestOtp();
+          return;
         }
+        final code = otpCodeController.text.trim();
+        if (code.length != 6) {
+          setState(() => error = 'WhatsApp ile gelen 6 haneli kodu girin.');
+          return;
+        }
+        await widget.auth.customerOtpVerify(
+          fullName: nameController.text,
+          phone: phoneController.text,
+          birthDate: _birthStr(d),
+          code: code,
+        );
       } catch (e) {
         if (mounted) setState(() => error = '$e');
       } finally {
