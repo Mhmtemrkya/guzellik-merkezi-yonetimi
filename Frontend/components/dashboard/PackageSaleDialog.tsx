@@ -110,6 +110,13 @@ export default function PackageSaleDialog({
   const [payMode, setPayMode] = useState<'pesin' | 'taksit'>('pesin')
   const [installmentCount, setInstallmentCount] = useState(3)
   const [firstDueDate, setFirstDueDate] = useState('')
+  /**
+   * SATIŞ TARİHİ — geçmişe dönük giriş için (ör. ürün dün satıldı, bugün kaydediliyor).
+   * Cariye bu tarih yazılır ve peşinat tahsilatı da bu güne düşer; boş/bugün ise eski davranış.
+   * Yalnız ürün satışında gösterilir: hizmet/paket satışı ilk randevu tamamlanınca işlendiği için
+   * kullanıcının verdiği tarih orada anlamını yitirir.
+   */
+  const [saleDate, setSaleDate] = useState('')
 
   // Ön-seçimler modal her açılışta tazelensin
   useEffect(() => {
@@ -126,6 +133,10 @@ export default function PackageSaleDialog({
       const d = new Date()
       d.setMonth(d.getMonth() + 1)
       setFirstDueDate(d.toISOString().slice(0, 10))
+      // Satış tarihi varsayılan: BUGÜN (yerel). toISOString() UTC verir; gece yarısından sonra
+      // (UTC+3) bir önceki güne kayar ve satış düne yazılırdı.
+      const t = new Date()
+      setSaleDate(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -285,6 +296,9 @@ export default function PackageSaleDialog({
           notes: notes.trim() || null,
           installmentCount: isInstallment ? installmentCount : 0,
           firstDueDate: isInstallment ? firstDueDate : null,
+          // Geçmişe dönük satış tarihi (ürün satışı). Günün ortasına sabitlenir: saat dilimi
+          // kayması yüzünden tarih bir gün öne/arkaya geçmesin.
+          saleDateUtc: isProductSale && saleDate ? new Date(`${saleDate}T12:00:00`).toISOString() : null,
           // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
           forceNew: true,
           // Faz 2: hizmet/paket satışı ilk randevu tamamlanınca otomatik onaylanır (ürün hariç).
@@ -534,6 +548,13 @@ export default function PackageSaleDialog({
                     <div className="mt-0.5 text-[11px] text-[#352432]/50">
                       {presetCustomer?.name || 'Müşteri'} · {qty > 1 ? `${qty} adet · ` : ''}birim {formatTL(unitPrice)}
                     </div>
+                    {/* Geçmişe dönük satışta tarih onayda da görünsün — yanlış tarih fark edilsin. */}
+                    {isProductSale && saleDate && (
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] text-[#8a7480]">
+                        <CalendarDays className="h-3 w-3 text-[#c85776]" />
+                        Satış tarihi: {new Date(`${saleDate}T12:00:00`).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </div>
+                    )}
                   </div>
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]">
                     {isProductSale ? <Box className="h-5 w-5" /> : isServiceSale ? <Sparkles className="h-5 w-5" /> : <Package className="h-5 w-5" />}
@@ -745,6 +766,28 @@ export default function PackageSaleDialog({
 
               {/* Ödeme planı: peşin ya da taksit — taksit cariye onayda kurulur */}
               <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
+                {/* SATIŞ TARİHİ — yalnız üründe. Hizmet/paket satışı ilk randevu tamamlanınca
+                    cariye işlendiği için orada kullanıcının verdiği tarih anlamını yitirir. */}
+                {isProductSale && (
+                  <div className="mb-4">
+                    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+                      <CalendarDays className="h-3.5 w-3.5" /> Satış tarihi
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,220px)_1fr] sm:items-center">
+                      <input
+                        type="date"
+                        value={saleDate}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setSaleDate(e.target.value)}
+                        className={inputCls}
+                      />
+                      <span className="text-[11px] leading-snug text-[#8a7480]">
+                        Geçmişe dönük satış girebilirsin. Cari kaydı ve peşinat tahsilatı bu tarihe yazılır.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
                   <Wallet className="h-3.5 w-3.5" /> Ödeme planı
                 </div>

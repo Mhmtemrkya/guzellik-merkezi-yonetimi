@@ -13,14 +13,23 @@ class SalesScreen extends StatelessWidget {
   const SalesScreen({required this.api, super.key});
   final ApiClient api;
 
-  Future<void> _openSale(BuildContext context, {required bool serviceSale}) async {
+  Future<void> _openSale(
+    BuildContext context, {
+    bool serviceSale = false,
+    bool productSale = false,
+  }) async {
     final sold = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => PackageSaleSheet(api: api, serviceSale: serviceSale),
+      builder: (_) => PackageSaleSheet(
+        api: api,
+        serviceSale: serviceSale,
+        productSale: productSale,
+      ),
     );
-    if (sold == true && context.mounted) {
+    // Ürün satışı kendi sonucunu (tamamlandı / onaya düştü) bildirir — burada tekrar edilmez.
+    if (sold == true && !productSale && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Satış adisyona eklendi. Yönetici onaylayınca cariye işlenir.')));
@@ -40,7 +49,7 @@ class SalesScreen extends StatelessWidget {
                 eyebrow: 'İşletme',
                 title: 'Satış',
                 subtitle:
-                    'Paket veya hizmet satışı yap; satış adisyona eklenir, onayda cariye ve seans bakiyesine işlenir.',
+                    'Paket, hizmet veya ürün satışı yap. Paket/hizmet ilk randevu tamamlanınca, ürün ise anında cariye işlenir.',
               ),
               const SizedBox(height: 16),
               _SaleCard(
@@ -57,6 +66,14 @@ class SalesScreen extends StatelessWidget {
                 subtitle:
                     'Tekil hizmet sat — adet ve fiyat belirlenir, onayda cariye işlenir.',
                 onTap: () => _openSale(context, serviceSale: true),
+              ),
+              const SizedBox(height: 12),
+              _SaleCard(
+                icon: Icons.shopping_bag_rounded,
+                title: 'Ürün Satışı',
+                subtitle:
+                    'Stoktan ürün sat — geçmiş tarih girilebilir; kaydedilince cariye işlenir ve stoktan düşer.',
+                onTap: () => _openSale(context, productSale: true),
               ),
               const SizedBox(height: 18),
               Container(

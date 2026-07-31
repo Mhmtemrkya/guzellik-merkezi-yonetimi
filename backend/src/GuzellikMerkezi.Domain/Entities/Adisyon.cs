@@ -37,6 +37,13 @@ public sealed class Adisyon : Entity
     public Guid? DecidedByUserId { get; private set; }
     public string? Notes { get; private set; }
 
+    /// <summary>
+    /// Satışın GERÇEKTEN yapıldığı tarih. Boşsa onay anı kullanılır (eski davranış).
+    /// Dolu olduğunda onayda açılan carinin <c>SoldAtUtc</c>'si ve peşinat tahsilatının
+    /// tarihi bu değerdir — böylece dün yapılmış bir satış bugünün cirosuna düşmez.
+    /// </summary>
+    public DateTime? SaleDateUtc { get; private set; }
+
     /// <summary>Taksit planı: satış adisyonda taksitlendirilirse, onayda cariye bu sayıda eşit taksit kurulur (0 = peşin).</summary>
     public int PlannedInstallmentCount { get; private set; }
     /// <summary>Taksit planının ilk vade tarihi (taksit varsa). Sonraki taksitler aydan aya ilerler.</summary>
@@ -70,6 +77,24 @@ public sealed class Adisyon : Entity
     public void SetCustomerAccount(Guid? accountId)
     {
         CustomerAccountId = accountId;
+        Touch();
+    }
+
+    /// <summary>
+    /// Satış tarihini belirler (geçmişe dönük satış girişi için). null → onay anı kullanılır.
+    /// Gelecek bir tarih kabul edilmez: ciro/rapor ileri tarihe kaymasın.
+    /// </summary>
+    public void SetSaleDate(DateTime? saleDateUtc)
+    {
+        if (saleDateUtc is not { } value)
+        {
+            SaleDateUtc = null;
+            Touch();
+            return;
+        }
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        var now = DateTime.UtcNow;
+        SaleDateUtc = utc > now ? now : utc;
         Touch();
     }
 

@@ -154,6 +154,12 @@ export default function AccountDetailModal({
                       <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 text-[#c85776]" />{account.customerPhone}</span>
                     )}
                     <span className="truncate">{[account.name, account.servicePackageName].filter(Boolean).join(' • ')}</span>
+                    {/* SATIŞ TARİHİ — geçmişe dönük girilen satışlarda kayıt tarihinden farklıdır. */}
+                    {account.soldAtUtc && (
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarDays className="h-3 w-3 text-[#c85776]" />{formatDay(account.soldAtUtc)}
+                      </span>
+                    )}
                     {account.soldByStaffName && <span className="truncate">Satan: <b className="text-[#4a3a44]">{account.soldByStaffName}</b></span>}
                   </DialogDescription>
                 </div>

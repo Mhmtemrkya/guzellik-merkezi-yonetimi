@@ -610,6 +610,15 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
             required: true,
             searchLoader: CrudOptions(widget.api).customerSearch,
           ),
+          // SATIŞ TARİHİ — geçmişe dönük giriş (ör. ürün dün satıldı, bugün kaydediliyor).
+          // Onayda açılan carinin satış tarihi ve peşinat tahsilatı bu güne yazılır.
+          const CrudField(
+            key: 'saleDateUtc',
+            label: 'Satış tarihi',
+            type: CrudFieldType.date,
+            dateOnly: false,
+            defaultValue: 'today',
+          ),
           const CrudField(
               key: 'notes', label: 'Not', type: CrudFieldType.multiline),
         ],
@@ -622,6 +631,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         'customerId': result!.body!['customerId'],
         'customerAccountId': null,
         'notes': result.body!['notes'],
+        'saleDateUtc': result.body!['saleDateUtc'],
       }),
       'Adisyon açıldı.',
     );

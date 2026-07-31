@@ -102,6 +102,8 @@ public sealed class AdisyonService : IAdisyonService
 
         var adisyon = new Adisyon(tenantId, request.BranchId ?? customer.BranchId, customer.Id, request.CustomerAccountId, request.Notes);
         if (request.InstallmentCount.HasValue) adisyon.SetInstallmentPlan(request.InstallmentCount, request.FirstDueDate);
+        // Geçmişe dönük satış tarihi (ör. ürün satışı dün yapıldı) — onayda cariye bu tarih yazılır.
+        if (request.SaleDateUtc.HasValue) adisyon.SetSaleDate(request.SaleDateUtc);
         // Faz 2: satış modalından açılan adisyon "ilk randevu tamamlanınca otomatik işle" bayrağıyla gelir.
         if (request.AutoApproveOnFirstAppointment) adisyon.SetAutoApproveOnFirstAppointment(true);
         _db.Adisyonlar.Add(adisyon);
@@ -208,6 +210,10 @@ public sealed class AdisyonService : IAdisyonService
         var charge = adisyon.ChargeTotal;
         var payment = adisyon.PaymentTotal;
         var nowUtc = DateTime.UtcNow;
+        // SATIŞ TARİHİ: kullanıcı geçmişe dönük tarih girdiyse (ör. ürün dün satıldı) cari kaydı ve
+        // peşinat tahsilatı O tarihe yazılır; girilmediyse onay anı (eski davranış). Stok hareketi
+        // ve prim tahakkuku nowUtc'de kalır — onlar fiziksel/operasyonel olayın anıdır.
+        var saleAtUtc = adisyon.SaleDateUtc ?? nowUtc;
 
         // Ürün satışını onaylamadan önce tüm kalemleri birlikte doğrula. Aynı ürün fişte birden
         // fazla satırda bulunabilir; stok kontrolü toplam miktar üzerinden yapılır.
@@ -298,9 +304,10 @@ public sealed class AdisyonService : IAdisyonService
                 // İsim: tek paket/hizmet/ürün satışıysa onun adı, değilse genel. (ServicePackageId NULL bırakılır —
                 // adisyon satışı paketi kalemde tutar; cariye de bağlanırsa rapor paketi çift sayar.)
                 var name = namedSaleItems.Count == 1 ? namedSaleItems[0].Description
-                    : $"Taksitli satış · {nowUtc:dd.MM.yyyy}";
+                    : $"Taksitli satış · {saleAtUtc:dd.MM.yyyy}";
                 var account = new CustomerAccount(tenantId, adisyon.BranchId, adisyon.CustomerId, null,
                     name, Math.Max(0, charge), 0m);
+                account.SetSaleInfo(saleAtUtc, null);
                 account.RebuildInstallments(adisyon.PlannedInstallmentCount, adisyon.PlannedFirstDueDate!.Value);
                 _db.CustomerAccounts.Add(account);
                 accountId = account.Id;
@@ -320,7 +327,8 @@ public sealed class AdisyonService : IAdisyonService
                 else
                 {
                     var account = new CustomerAccount(tenantId, adisyon.BranchId, adisyon.CustomerId, null,
-                        $"Adisyon · {nowUtc:dd.MM.yyyy}", Math.Max(0, charge), 0m);
+                        $"Adisyon · {saleAtUtc:dd.MM.yyyy}", Math.Max(0, charge), 0m);
+                    account.SetSaleInfo(saleAtUtc, null);
                     _db.CustomerAccounts.Add(account);
                     accountId = account.Id;
                     newlyCreated = true;
@@ -434,8 +442,9 @@ public sealed class AdisyonService : IAdisyonService
                 byMethod = new[] { new { Method = "cash", Amount = payment } }.ToList();
             foreach (var m in byMethod)
             {
+                // Peşinat da satış tarihine yazılır: dün yapılan satışın tahsilatı bugünkü kasada görünmesin.
                 var payResult = await _accounts.RegisterPaymentAsync(tenantId, accountId.Value,
-                    new RegisterAccountPaymentRequest(m.Amount, m.Method, reference, nowUtc), cancellationToken);
+                    new RegisterAccountPaymentRequest(m.Amount, m.Method, reference, saleAtUtc), cancellationToken);
                 if (payResult.IsFailure) return Result<AdisyonDto>.Failure(payResult.Error);
             }
         }
@@ -784,5 +793,6 @@ public sealed class AdisyonService : IAdisyonService
                 i.StaffMemberId.HasValue && staffMap.TryGetValue(i.StaffMemberId.Value, out var sn) ? sn : null,
                 i.CoveredByPackage,
                 i.CreatedAtUtc))
-            .ToArray());
+            .ToArray(),
+        a.SaleDateUtc);
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
 import '../consent/consent_sale_notice.dart';
@@ -9,22 +10,26 @@ import 'adisyon_detail_sheet.dart';
 
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
-/// - Varsayılan mod paket satışı; [serviceSale] true ise hizmet satışı
-///   (katalogdan hizmet seçilir, adet girilebilir).
+/// - Varsayılan mod paket satışı; [serviceSale] hizmet, [productSale] ürün satışıdır.
 /// - [customerId] verilirse müşteri sabittir (ör. randevu formundan);
 ///   verilmezse müşteri listeden seçilir (menüdeki Satış sayfası).
 ///
-/// Akış web ile birebir: paket/hizmet kategori + alt kategori + aramayla bulunur,
-/// açık adisyon bulunur/açılır (taksit planı adisyona yazılır), PackageSale/Service
-/// kalemi eklenir, peşinat varsa Payment kalemi eklenir ve adisyon **anında onaylanır**
-/// → cari borç (+paketse seans bakiyesi) oluşur, satılan hizmet/paket randevuda hemen
-/// kullanılabilir. Onay yetkisi olmayan personelde adisyon yönetici onayına düşer.
+/// Akış web ile birebir: katalog kategori + alt kategori + aramayla bulunur, açık adisyon
+/// bulunur/açılır (taksit planı adisyona yazılır), satış kalemi eklenir, peşinat varsa
+/// Payment kalemi eklenir.
+///
+/// ÜRÜN SATIŞI FARKLIDIR (web ile aynı kural):
+///  • Randevuya bağlı olmadığı için "ilk randevuda işle" ertelemesine GİRMEZ — anında onaylanır,
+///    cariye borç yazılır ve stoktan düşer.
+///  • Geçmişe dönük SATIŞ TARİHİ girilebilir; cari kaydı ve peşinat tahsilatı o güne yazılır.
+///  • Stok kontrolü yapılır (satılabilir = salePrice > 0 ve stok > 0).
 class PackageSaleSheet extends StatefulWidget {
   const PackageSaleSheet({
     required this.api,
     this.customerId,
     this.customerName,
     this.serviceSale = false,
+    this.productSale = false,
     super.key,
   });
 
@@ -32,6 +37,7 @@ class PackageSaleSheet extends StatefulWidget {
   final String? customerId;
   final String? customerName;
   final bool serviceSale;
+  final bool productSale;
 
   @override
   State<PackageSaleSheet> createState() => _PackageSaleSheetState();
@@ -41,6 +47,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   late Future<void> loading;
   List<Map<String, dynamic>> packages = [];
   List<Map<String, dynamic>> services = [];
+  List<Map<String, dynamic>> products = [];
   List<Map<String, dynamic>> customers = [];
   List<Map<String, dynamic>> staff = [];
   List<String> categoryOrder = []; // özel kategori adları (SortOrder sırasında) — pill sırası
@@ -48,36 +55,43 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   String? customerId;
   String? packageId;
   String? serviceId;
+  String? productId;
   int quantity = 1;
   String? staffId;
   bool installment = false;
   int installmentCount = 3;
   late DateTime firstDueDate;
+
+  /// Ürün satışında satışın gerçekte yapıldığı gün (geçmişe dönük giriş).
+  late DateTime saleDate;
   bool saving = false;
   final price = TextEditingController();
   final downPayment = TextEditingController();
   final notes = TextEditingController();
+
+  bool get _isProduct => widget.productSale;
+  bool get _isService => !_isProduct && widget.serviceSale;
+
+  /// Ürün randevuya bağlı olmadığından ertelemeye girmez — anında cariye işlenir.
+  bool get _deferToFirstAppointment => !_isProduct;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     firstDueDate = DateTime(now.year, now.month + 1, now.day);
+    saleDate = DateTime(now.year, now.month, now.day);
     loading = _loadLookups();
   }
 
   Future<void> _loadLookups() async {
     customerId = widget.customerId;
     final values = await Future.wait([
-      widget.serviceSale
-          ? widget.api.get(
-              '/api/admin/services/',
-              query: {'page': 1, 'pageSize': 300},
-            )
-          : widget.api.get(
-              '/api/admin/packages/',
-              query: {'page': 1, 'pageSize': 300},
-            ),
+      _isProduct
+          ? widget.api.get('/api/admin/products/', query: {'page': 1, 'pageSize': 300})
+          : _isService
+              ? widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
+              : widget.api.get('/api/admin/packages/', query: {'page': 1, 'pageSize': 300}),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       widget.api.get('/api/admin/service-categories/'),
     ]);
@@ -86,7 +100,15 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     final catalog = apiItems(
       values[0],
     ).where((p) => p['isActive'] != false).toList(growable: false);
-    if (widget.serviceSale) {
+    if (_isProduct) {
+      // Satılabilir ürün: satış fiyatı tanımlı VE stokta var (web ile aynı süzgeç).
+      products = catalog
+          .where((p) =>
+              ((p['salePrice'] as num?)?.toDouble() ?? 0) > 0 &&
+              ((p['currentStock'] as num?)?.toDouble() ?? 0) > 0)
+          .toList(growable: false);
+      productId = products.isEmpty ? null : '${products.first['id']}';
+    } else if (_isService) {
       services = catalog;
       serviceId = services.isEmpty ? null : '${services.first['id']}';
     } else {
@@ -107,19 +129,26 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   }
 
   List<Map<String, dynamic>> get _catalog =>
-      widget.serviceSale ? services : packages;
+      _isProduct ? products : (_isService ? services : packages);
+
+  String? get _selectedId => _isProduct ? productId : (_isService ? serviceId : packageId);
 
   Map<String, dynamic>? get _selectedItem {
-    final id = widget.serviceSale ? serviceId : packageId;
     for (final p in _catalog) {
-      if ('${p['id']}' == id) return p;
+      if ('${p['id']}' == _selectedId) return p;
     }
     return null;
   }
 
-  double get _basePrice => widget.serviceSale
-      ? (_selectedItem?['price'] as num?)?.toDouble() ?? 0
-      : (_selectedItem?['totalPrice'] as num?)?.toDouble() ?? 0;
+  double get _basePrice => _isProduct
+      ? (_selectedItem?['salePrice'] as num?)?.toDouble() ?? 0
+      : _isService
+          ? (_selectedItem?['price'] as num?)?.toDouble() ?? 0
+          : (_selectedItem?['totalPrice'] as num?)?.toDouble() ?? 0;
+
+  /// Seçili ürünün stok adedi (ürün dışı satışta anlamsız).
+  double get _stock => (_selectedItem?['currentStock'] as num?)?.toDouble() ?? 0;
+  String get _unitLabel => valueOf(_selectedItem ?? const {}, const ['unit'], fallback: 'adet');
 
   double get _unitPrice {
     final raw = price.text.trim().replaceAll(',', '.');
@@ -127,7 +156,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     return double.tryParse(raw) ?? _basePrice;
   }
 
-  int get _qty => widget.serviceSale ? quantity : 1;
+  int get _qty => (_isService || _isProduct) ? quantity : 1;
 
   double get _total => _unitPrice * _qty;
 
@@ -155,6 +184,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   String _isoDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// Stok gösteriminde "3.0 adet" yerine "3 adet".
+  static String _trimQty(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
   Future<void> _pickDueDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -163,6 +196,18 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       lastDate: DateTime.now().add(const Duration(days: 730)),
     );
     if (picked != null) setState(() => firstDueDate = picked);
+  }
+
+  /// Satış tarihi — geçmişe dönük giriş. Gelecek seçilemez (ciro ileri tarihe kaymasın).
+  Future<void> _pickSaleDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: saleDate,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (picked != null) setState(() => saleDate = picked);
   }
 
   void _snack(String message) {
@@ -176,9 +221,16 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     if (cid == null || cid.isEmpty) return _snack('Müşteri seçin.');
     final selected = _selectedItem;
     if (selected == null) {
-      return _snack(widget.serviceSale ? 'Hizmet seçin.' : 'Paket seçin.');
+      return _snack(_isProduct
+          ? 'Ürün seçin.'
+          : _isService
+              ? 'Hizmet seçin.'
+              : 'Paket seçin.');
     }
     if (_unitPrice <= 0) return _snack('Satış fiyatı pozitif olmalı.');
+    if (_isProduct && _qty > _stock) {
+      return _snack('Yetersiz stok — kullanılabilir ${_trimQty(_stock)} $_unitLabel');
+    }
     final total = _total;
     final pay = _downPaymentValue;
     if (pay < 0 || pay > total) {
@@ -202,8 +254,14 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         'firstDueDate': installment ? _isoDate(firstDueDate) : null,
         // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
         'forceNew': true,
-        // Faz 2: satış cariye şimdi işlenmez; müşteri ilk randevusunu tamamlayınca otomatik onaylanır.
-        'autoApproveOnFirstAppointment': true,
+        // Faz 2: hizmet/paket cariye şimdi işlenmez; ilk randevu tamamlanınca otomatik onaylanır.
+        // Ürün randevuya bağlı olmadığından bu ertelemeye girmez.
+        'autoApproveOnFirstAppointment': _deferToFirstAppointment,
+        // Geçmişe dönük satış tarihi (yalnız ürün). Günün ortasına sabitlenir ki saat dilimi
+        // kayması tarihi bir gün öne/arkaya almasın.
+        'saleDateUtc': _isProduct
+            ? DateTime.utc(saleDate.year, saleDate.month, saleDate.day, 12).toIso8601String()
+            : null,
       });
       final adisyonMap = adisyon is Map
           ? adisyon.cast<String, dynamic>()
@@ -218,11 +276,15 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         return;
       }
 
-      // 2) Satış kalemi — onayda cariye borç (+ paketse müşteriye seans bakiyesi).
+      // 2) Satış kalemi — onayda cariye borç (+ paketse seans bakiyesi, üründe stok düşümü).
       await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
-        'type': widget.serviceSale ? 'Service' : 'PackageSale',
-        'refId': widget.serviceSale ? serviceId : packageId,
-        'description': widget.serviceSale
+        'type': _isProduct
+            ? 'Product'
+            : _isService
+                ? 'Service'
+                : 'PackageSale',
+        'refId': _selectedId,
+        'description': _isProduct || _isService
             ? '${selected['name']}'
             : 'Paket satışı: ${selected['name']}',
         'quantity': _qty,
@@ -236,14 +298,34 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
           'type': 'Payment',
           'refId': null,
-          'description': widget.serviceSale
-              ? 'Peşinat: ${selected['name']}'
-              : 'Paket peşinatı: ${selected['name']}',
+          'description': _isProduct
+              ? 'Ürün peşinatı: ${selected['name']}'
+              : _isService
+                  ? 'Peşinat: ${selected['name']}'
+                  : 'Paket peşinatı: ${selected['name']}',
           'quantity': 1,
           'unitPrice': pay,
           'staffMemberId': null,
           'coveredByPackage': false,
         });
+      }
+
+      // 3b) ÜRÜN: erteleme yok — hemen onayla (cariye borç + peşinat kasaya + stok düşümü).
+      //     Onay yetkisi olmayan personelde istek onay kapısına düşer; satış açık adisyon kalır.
+      if (_isProduct) {
+        var approved = true;
+        try {
+          await widget.api.post('/api/admin/adisyonlar/$adisyonId/approve', const {});
+        } catch (_) {
+          approved = false;
+        }
+        if (mounted) {
+          Navigator.pop(context, true);
+          _snack(approved
+              ? 'Ürün satışı tamamlandı · cariye işlendi, stoktan düşüldü.'
+              : 'Satış oluşturuldu · yönetici onayına düştü.');
+        }
+        return;
       }
 
       // 4) Faz 2: onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu tamamlayınca
@@ -307,16 +389,27 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.serviceSale ? 'Hizmet satışı' : 'Paket satışı',
+                        _isProduct
+                            ? 'Ürün satışı'
+                            : _isService
+                                ? 'Hizmet satışı'
+                                : 'Paket satışı',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        widget.customerId != null
-                            ? '$_customerLabel · ilk randevu tamamlanınca cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir'
-                            : 'İlk randevu tamamlanınca cariye${widget.serviceSale ? '' : ' ve seans bakiyesine'} işlenir',
+                        () {
+                          final prefix = widget.customerId != null ? '$_customerLabel · ' : '';
+                          if (_isProduct) {
+                            return '${prefix}Kaydedilince cariye işlenir ve stoktan düşer';
+                          }
+                          final seans = _isService ? '' : ' ve seans bakiyesine';
+                          return widget.customerId != null
+                              ? '${prefix}ilk randevu tamamlanınca cariye$seans işlenir'
+                              : 'İlk randevu tamamlanınca cariye$seans işlenir';
+                        }(),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.black54,
@@ -342,14 +435,19 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
                       // Katalog seçimi — arama + kategori + alt kategori + liste (web paritesi).
                       CatalogPickerField(
-                        label: widget.serviceSale ? 'Hizmet' : 'Paket',
+                        label: _isProduct ? 'Ürün' : (_isService ? 'Hizmet' : 'Paket'),
                         items: _catalog,
-                        selectedId: widget.serviceSale ? serviceId : packageId,
-                        priceKeys: widget.serviceSale
-                            ? const ['price']
-                            : const ['totalPrice'],
+                        selectedId: _selectedId,
+                        priceKeys: _isProduct
+                            ? const ['salePrice']
+                            : _isService
+                                ? const ['price']
+                                : const ['totalPrice'],
                         onChanged: (id) => setState(() {
-                          if (widget.serviceSale) {
+                          if (_isProduct) {
+                            productId = id;
+                            quantity = 1; // yeni üründe adet sıfırlanır (stok farklı olabilir)
+                          } else if (_isService) {
                             serviceId = id;
                           } else {
                             packageId = id;
@@ -359,14 +457,65 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                         categoryOrder: categoryOrder,
                       ),
 
-                      // Onam formu bilgisi — satışı engellemez, personeli baştan haberdar eder.
-                      ConsentSaleNotice(
-                        api: widget.api,
-                        packageId: widget.serviceSale ? null : packageId,
-                        serviceId: widget.serviceSale ? serviceId : null,
-                      ),
+                      // Stok rozeti — kaç adet satılabileceği seçimden hemen sonra görünsün.
+                      if (_isProduct && _selectedItem != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceSoft,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.inventory_2_rounded,
+                                  size: 15, color: AppColors.primaryDark),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Stok ${_trimQty(_stock)} $_unitLabel · birim ${_basePrice.toStringAsFixed(0)} ₺',
+                                  style: const TextStyle(
+                                      fontSize: 11.5, color: AppColors.muted),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
-                      if (widget.serviceSale) ...[
+                      // Onam formu bilgisi — satışı engellemez, personeli baştan haberdar eder.
+                      // Ürün satışında onam formu kavramı yok.
+                      if (!_isProduct)
+                        ConsentSaleNotice(
+                          api: widget.api,
+                          packageId: _isService ? null : packageId,
+                          serviceId: _isService ? serviceId : null,
+                        ),
+
+                      // SATIŞ TARİHİ — yalnız üründe (geçmişe dönük giriş).
+                      if (_isProduct) ...[
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFEAD8DF)),
+                          ),
+                          leading: const Icon(Icons.event_rounded),
+                          title: const Text('Satış tarihi'),
+                          subtitle: Text(
+                            '${_fmtDate(saleDate)} · cari ve peşinat bu güne yazılır',
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          trailing: const Icon(Icons.edit_calendar_rounded, size: 18),
+                          onTap: _pickSaleDate,
+                        ),
+                      ],
+
+                      if (_isService || _isProduct) ...[
                         const SizedBox(height: 12),
                         Row(
                           children: [
@@ -394,7 +543,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                               ),
                             ),
                             IconButton.outlined(
-                              onPressed: () => setState(() => quantity++),
+                              // Üründe stok tavanı: satılamayacak adet seçilemesin.
+                              onPressed: (_isProduct && quantity >= _stock)
+                                  ? null
+                                  : () => setState(() => quantity++),
                               icon: const Icon(Icons.add_rounded),
                             ),
                           ],
@@ -522,7 +674,11 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                 child: FilledButton(
                   onPressed: saving ? null : _submit,
                   child: Text(
-                    saving ? 'Kaydediliyor...' : 'Satışı kaydet · adisyonu aç',
+                    saving
+                        ? 'Kaydediliyor...'
+                        : _isProduct
+                            ? 'Satışı tamamla · cariye işle'
+                            : 'Satışı kaydet · adisyonu aç',
                   ),
                 ),
               ),

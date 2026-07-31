@@ -32,7 +32,9 @@ public sealed record AdisyonDto(
     DateOnly? PlannedFirstDueDate,
     // Faz 2: true ise satış cariye şimdi işlenmedi; müşterinin ilk randevusu tamamlanınca otomatik işlenir.
     bool AutoApproveOnFirstAppointment,
-    IReadOnlyCollection<AdisyonItemDto> Items);
+    IReadOnlyCollection<AdisyonItemDto> Items,
+    /// <summary>Satışın gerçekte yapıldığı tarih (geçmişe dönük giriş). null → onay anı.</summary>
+    DateTime? SaleDateUtc = null);
 
 public sealed record CreateAdisyonRequest(
     Guid? BranchId,
@@ -44,7 +46,12 @@ public sealed record CreateAdisyonRequest(
     // true = mevcut açık fişi yeniden KULLANMA, her seferinde YENİ adisyon aç (satış = kendi adisyonu).
     bool ForceNew = false,
     // Faz 2: true = satış cariye şimdi işlenmez; müşterinin ilk randevusu tamamlanınca otomatik işlenir.
-    bool AutoApproveOnFirstAppointment = false);
+    bool AutoApproveOnFirstAppointment = false,
+    /// <summary>
+    /// Satışın gerçekte yapıldığı tarih. Boş → onay anı (eski davranış). Onayda açılan carinin
+    /// satış tarihi ve peşinat tahsilatının tarihi bu değer olur; geleceğe verilirse bugüne kırpılır.
+    /// </summary>
+    DateTime? SaleDateUtc = null);
 
 public sealed record AddAdisyonItemRequest(
     AdisyonItemType Type,

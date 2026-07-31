@@ -12,6 +12,7 @@ import '../../shared/widgets/app_background.dart';
 import '../consent/consent_warning_banner.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
+import '../accounting/package_sale_sheet.dart';
 import 'customer_sales_panel.dart';
 import '../accounting/on_muhasebe_screen.dart' show AccountDetailSheet;
 import '../appointments/appointment_form.dart';
@@ -218,6 +219,22 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   Future<void> _reload() async {
     setState(() => _refreshKey++);
     await _load();
+  }
+
+  /// Ürün satışı — müşteri sabit gelir. Kaydedilince cariye işlenir ve stoktan düşer.
+  Future<void> _sellProduct() async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => PackageSaleSheet(
+        api: _api,
+        customerId: _id,
+        customerName: _name,
+        productSale: true,
+      ),
+    );
+    if (mounted) await _reload();
   }
 
   /// Tahsilat alınabilecek cariler: kalan borcu olanlar. İptal edilen satışlar zaten canlı
@@ -849,6 +866,8 @@ class _OverviewTab extends StatelessWidget {
                 ),
               _quickAction(Icons.point_of_sale_rounded, 'Adisyon / Satış',
                   () => DefaultTabController.of(context).animateTo(2)),
+              // Ürün satışı müşteri sabitken tek dokunuşla (web müşteri kartındaki "Ürün Sat").
+              _quickAction(Icons.shopping_bag_rounded, 'Ürün Sat', state._sellProduct),
               _quickAction(
                   Icons.workspace_premium_rounded,
                   c['isVip'] == true ? 'VIP Etiketini Kaldır' : 'VIP Yap',

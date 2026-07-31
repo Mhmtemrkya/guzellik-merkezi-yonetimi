@@ -1677,25 +1677,27 @@ class _QuickActions extends StatelessWidget {
 
   final ApiClient api;
 
-  // Yol yerine 'sale' geçen kayıt, sayfaya gitmek yerine satış sayfasını doğrudan açar
-  // (web'de navbar'daki "Paket Sat" butonunun karşılığı — paket listesinde dolaşmaya gerek yok).
+  // Yol yerine 'sale'/'product-sale' geçen kayıt, sayfaya gitmek yerine ilgili satış
+  // sayfasını doğrudan açar (web'de navbar'daki "Paket Sat" / "Ürün Sat" butonlarının karşılığı).
   static const _actions = <(String, IconData, String)>[
     ('Yeni Randevu', Icons.event_available_rounded, '/appointments'),
     ('Müşteri Ekle', Icons.person_add_alt_1_rounded, '/customers'),
     ('Paket Sat', Icons.workspaces_rounded, 'sale'),
+    ('Ürün Sat', Icons.shopping_bag_rounded, 'product-sale'),
     ('Ödeme Al', Icons.account_balance_wallet_rounded, '/accounting'),
     ('Stok', Icons.inventory_2_rounded, '/stock'),
     ('Kampanya', Icons.campaign_rounded, '/campaigns'),
   ];
 
-  Future<void> _openSale(BuildContext context) async {
+  Future<void> _openSale(BuildContext context, {bool productSale = false}) async {
     final sold = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => PackageSaleSheet(api: api),
+      builder: (_) => PackageSaleSheet(api: api, productSale: productSale),
     );
-    if (sold == true && context.mounted) {
+    // Ürün satışı kendi sonucunu bildirir (tamamlandı / onaya düştü) — tekrar etme.
+    if (sold == true && !productSale && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Satış adisyona eklendi. Yönetici onaylayınca cariye işlenir.')));
@@ -1705,6 +1707,8 @@ class _QuickActions extends StatelessWidget {
   void _go(BuildContext context, String path) {
     if (path == 'sale') {
       _openSale(context);
+    } else if (path == 'product-sale') {
+      _openSale(context, productSale: true);
     } else if (path == '/appointments' || path == '/customers') {
       context.go(path);
     } else {
