@@ -89,6 +89,14 @@ String _apptGroup(String status) {
   }
 }
 
+/// Ön Muhasebe'deki tahsilat formuyla AYNI yöntem listesi (backend aynı değerleri bekler).
+const _customerPaymentMethods = <CrudOption>[
+  CrudOption('Cash', 'Nakit'),
+  CrudOption('Card', 'Kart'),
+  CrudOption('BankTransfer', 'Havale/EFT'),
+  CrudOption('Check', 'Çek'),
+];
+
 const _apptFilters = <(String, String)>[
   ('all', 'Tümü'),
   ('tamamlandi', 'Tamamlandı'),
@@ -210,6 +218,113 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   Future<void> _reload() async {
     setState(() => _refreshKey++);
     await _load();
+  }
+
+  /// Tahsilat alınabilecek cariler: kalan borcu olanlar. İptal edilen satışlar zaten canlı
+  /// listeye girmez (arşive taşınır) ama eski damgalı kayıtlara karşı süzgeç burada da var.
+  List<Map<String, dynamic>> get _collectableAccounts => _accounts
+      .where((a) =>
+          '${a['saleStatus']}' != 'Cancelled' &&
+          ((a['remainingAmount'] as num?)?.toDouble() ?? 0) > 0.005)
+      .toList();
+
+  /// Hızlı işlemlerden tahsilat. Birden çok açık cari varsa önce hangisine yazılacağı sorulur;
+  /// tek cari varsa doğrudan tutar/yöntem formuna geçilir (gereksiz adım olmasın).
+  Future<void> _collectPayment() async {
+    final open = _collectableAccounts;
+    if (open.isEmpty) return;
+
+    var account = open.first;
+    if (open.length > 1) {
+      final picked = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(18, 16, 18, 8),
+                child: Text('Hangi satıştan tahsilat?',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final a in open)
+                      ListTile(
+                        title: Text(valueOf(a, const ['name'], fallback: 'Satış'),
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                        subtitle: Text(
+                            'Kalan ${CalendarText.tl((a['remainingAmount'] as num?)?.toDouble() ?? 0)}',
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                        onTap: () => Navigator.pop(ctx, a),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      );
+      if (picked == null) return;
+      account = picked;
+    }
+
+    if (!mounted) return;
+    final remaining = (account['remainingAmount'] as num?)?.toDouble() ?? 0;
+    final result = await showModalBottomSheet<CrudSheetResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => CrudFormSheet(
+        title: 'Tahsilat kaydet',
+        icon: Icons.payments_rounded,
+        fields: [
+          CrudField(
+              key: 'amount',
+              label: 'Tutar',
+              type: CrudFieldType.decimal,
+              required: true,
+              // Varsayılan = kalan borç; kısmi tahsilatta kullanıcı düşürebilir.
+              defaultValue: remaining > 0 ? remaining.toStringAsFixed(0) : null),
+          const CrudField(
+            key: 'method',
+            label: 'Ödeme yöntemi',
+            type: CrudFieldType.select,
+            options: _customerPaymentMethods,
+            defaultValue: 'Cash',
+          ),
+          const CrudField(key: 'reference', label: 'Referans'),
+          const CrudField(
+            key: 'occurredAtUtc',
+            label: 'Tarih',
+            type: CrudFieldType.date,
+            dateOnly: false,
+            defaultValue: 'today',
+          ),
+        ],
+      ),
+    );
+    if (result?.body == null) return;
+
+    try {
+      await _api.post('/api/admin/accounts/${account['id']}/payments', result!.body!);
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Tahsilat kaydedildi.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   // --- Türetilen değerler ---
@@ -723,6 +838,15 @@ class _OverviewTab extends StatelessWidget {
             children: [
               _quickAction(Icons.calendar_month_rounded, 'Randevu Oluştur',
                   state._createAppointment),
+              // Tahsilat yalnızca açık borç varsa; tahsil edilecek bir şey yoksa buton anlamsız.
+              if (state._collectableAccounts.isNotEmpty)
+                _quickAction(
+                  Icons.payments_rounded,
+                  'Tahsilat Al',
+                  state._collectPayment,
+                  trailingText: CalendarText.tl(state._debt),
+                  accent: AppColors.success,
+                ),
               _quickAction(Icons.point_of_sale_rounded, 'Adisyon / Satış',
                   () => DefaultTabController.of(context).animateTo(2)),
               _quickAction(
@@ -889,9 +1013,12 @@ class _OverviewTab extends StatelessWidget {
     ];
   }
 
+  /// [accent] verilirse satır o renkte vurgulanır (ör. tahsilat = yeşil).
+  /// [trailingText] sağda, ok işaretinden önce gösterilir (ör. kalan borç tutarı).
   Widget _quickAction(IconData icon, String label, VoidCallback onTap,
-      {bool danger = false}) {
+      {bool danger = false, Color? accent, String? trailingText}) {
     final color = danger ? AppColors.danger : AppColors.ink;
+    final tint = danger ? AppColors.danger : (accent ?? AppColors.primary);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -900,27 +1027,33 @@ class _OverviewTab extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: danger
-                ? AppColors.danger.withValues(alpha: .06)
+            color: danger || accent != null
+                ? tint.withValues(alpha: .06)
                 : AppColors.surfaceSoft.withValues(alpha: .5),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: (danger ? AppColors.danger : AppColors.border)
-                    .withValues(alpha: danger ? .3 : 1)),
+                color: (danger || accent != null ? tint : AppColors.border)
+                    .withValues(alpha: danger || accent != null ? .3 : 1)),
           ),
           child: Row(
             children: [
-              Icon(icon, size: 19, color: danger ? AppColors.danger : AppColors.primary),
+              Icon(icon, size: 19, color: tint),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(label,
                     style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: color)),
+                        color: accent != null ? tint : color)),
               ),
+              if (trailingText != null) ...[
+                Text(trailingText,
+                    style: TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w800, color: tint)),
+                const SizedBox(width: 6),
+              ],
               Icon(Icons.chevron_right_rounded,
-                  size: 18, color: color.withValues(alpha: .4)),
+                  size: 18, color: (accent ?? color).withValues(alpha: .4)),
             ],
           ),
         ),

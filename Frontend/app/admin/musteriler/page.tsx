@@ -695,6 +695,16 @@ function MusterilerPageInner() {
             onUploadPhoto={(file) => { if (selected) void uploadPhoto(selected, file) }}
             onCreateAppointment={() => setApptOpen(true)}
             onDelete={handleDeleteCustomer}
+            // Hızlı işlemlerdeki "Tahsilat Al". Cari/tutar/yöntem modalde seçilir; kayıt
+            // sonrası satış listesi + seans/istatistikler tazelenir (runSaleAction).
+            onCollectPayment={async (payload) => {
+              await runSaleAction(() => adminApi.registerAccountPayment(payload.accountId, {
+                amount: payload.amount,
+                method: payload.method,
+                reference: payload.reference,
+                occurredAtUtc: payload.occurredAtUtc,
+              }, tenantId))
+            }}
             salesPanel={selected ? (
               <CustomerSalesPanel
                 variant="flush"

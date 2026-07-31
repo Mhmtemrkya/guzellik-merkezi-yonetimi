@@ -15,6 +15,7 @@ import CustomerBlacklistCard from '@/components/dashboard/CustomerBlacklistCard'
 import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import CustomerSalesModal, { summarizeCustomerSales } from '@/components/dashboard/CustomerSalesModal'
+import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
 import { formatTL } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import type { Appointment, CustomerAccount } from '@/lib/types'
@@ -353,6 +354,7 @@ export default function CustomerDetailModal({
   editSlot,
   saleSlot,
   salesPanel,
+  onCollectPayment,
 }: {
   open: boolean
   onClose: () => void
@@ -375,6 +377,11 @@ export default function CustomerDetailModal({
   saleSlot?: ReactNode
   /** "Paket & Hizmet Satışları" listesi — kartta özet durur, tam liste ayrı modalde açılır. */
   salesPanel?: ReactNode
+  /**
+   * Hızlı işlemlerdeki "Tahsilat Al" akışı. Verilmezse buton çizilmez; verilse de yalnızca
+   * müşterinin AÇIK BORÇLU carisi varsa görünür (tahsil edilecek bir şey yoksa buton anlamsız).
+   */
+  onCollectPayment?: (payload: CollectionSubmitPayload) => Promise<void>
 }) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [noteDraft, setNoteDraft] = useState('')
@@ -386,6 +393,8 @@ export default function CustomerDetailModal({
   const [apptStatus, setApptStatus] = useState<ApptFilterKey>('all')
   /** Satış listesi ayrı (geniş) modalde açılır — kartın sağ sütununa sığmıyordu. */
   const [salesOpen, setSalesOpen] = useState(false)
+  /** Hızlı işlemlerden açılan "Tahsilat Al" modalı. */
+  const [collectOpen, setCollectOpen] = useState(false)
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
   // Modal açıldığında / müşteri değiştiğinde sekmeyi ve notu tazele.
@@ -433,7 +442,7 @@ export default function CustomerDetailModal({
   // Satış modali açıkken Esc'i O kapatır; yoksa tek tuşla iki modal birden kapanıyordu.
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !salesOpen) onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !salesOpen && !collectOpen) onClose() }
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -441,7 +450,7 @@ export default function CustomerDetailModal({
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [open, onClose, salesOpen])
+  }, [open, onClose, salesOpen, collectOpen])
 
   const cid = customer?.id
 
@@ -451,6 +460,20 @@ export default function CustomerDetailModal({
   )
   const customerAccounts = useMemo(() => accounts.filter((a) => a.customerId === cid), [accounts, cid])
   const salesSummary = useMemo(() => summarizeCustomerSales(customerAccounts), [customerAccounts])
+
+  /**
+   * Tahsilat alınabilecek cariler: kalan borcu olanlar. İptal edilen satışlar zaten canlı listeye
+   * girmez (arşive taşınır) ama eski damgalı kayıtlara karşı süzgeç burada da uygulanır.
+   */
+  const collectableAccounts = useMemo(
+    () => customerAccounts.filter((a) => a.saleStatus !== 'Cancelled' && a.remainingAmount > 0.005),
+    [customerAccounts],
+  )
+  const totalDebt = useMemo(
+    () => collectableAccounts.reduce((s, a) => s + a.remainingAmount, 0),
+    [collectableAccounts],
+  )
+  const canCollect = Boolean(onCollectPayment) && collectableAccounts.length > 0
 
   /** Süzgeç çiplerindeki sayaçlar — hangi durumda kaç kayıt olduğu tıklamadan görünür. */
   const apptStatusCounts = useMemo(() => {
@@ -810,6 +833,21 @@ export default function CustomerDetailModal({
                           <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
                         </button>
                         {saleSlot}
+                        {/* Tahsilat: yalnızca açık borç varsa. Kalan borç butonda görünür ki
+                            kullanıcı modalı açmadan ne kadar tahsil edeceğini bilsin. */}
+                        {canCollect && (
+                          <button
+                            type="button"
+                            onClick={() => setCollectOpen(true)}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 text-[12.5px] font-semibold text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-100/70"
+                          >
+                            <span className="flex items-center gap-2"><Wallet className="h-4 w-4 text-emerald-600" /> Tahsilat Al</span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-display text-[12px] tabular-nums text-emerald-700">{formatTL(Math.round(totalDebt))}</span>
+                              <ChevronRight className="h-4 w-4 text-emerald-300" />
+                            </span>
+                          </button>
+                        )}
                         {hasSalesPanel && (
                           <button
                             type="button"
@@ -1090,6 +1128,21 @@ export default function CustomerDetailModal({
             >
               {salesPanel}
             </CustomerSalesModal>
+          )}
+
+          {/* Tahsilat — Ön Muhasebe ve Günlük Kasa ile AYNI modal; yalnızca bu müşterinin
+              açık borçlu carileri listelenir, ilki ön-seçili gelir. */}
+          {canCollect && onCollectPayment && (
+            <CollectionDialog
+              accounts={collectableAccounts}
+              initialAccountId={collectableAccounts[0]?.id ?? null}
+              open={collectOpen}
+              onOpenChange={setCollectOpen}
+              hideTrigger
+              title={`Tahsilat Al · ${customer.name}`}
+              description="Cariyi seçin, tutar kalan borca göre önerilir."
+              onSubmit={onCollectPayment}
+            />
           )}
         </motion.div>
       )}
