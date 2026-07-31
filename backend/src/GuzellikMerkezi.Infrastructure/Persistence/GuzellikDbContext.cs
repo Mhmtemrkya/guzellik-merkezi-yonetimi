@@ -64,6 +64,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<CancelledSale> CancelledSales => Set<CancelledSale>();
     public DbSet<RefundTransaction> RefundTransactions => Set<RefundTransaction>();
     public DbSet<ArchivedSalePayment> ArchivedSalePayments => Set<ArchivedSalePayment>();
+    public DbSet<PackageSessionUsage> PackageSessionUsages => Set<PackageSessionUsage>();
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
@@ -661,6 +662,15 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         sessionBuilder.HasOne(x => x.CustomerAccount).WithMany().HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
         sessionBuilder.HasOne(x => x.ServiceDefinition).WithMany().HasForeignKey(x => x.ServiceDefinitionId).OnDelete(DeleteBehavior.Restrict);
         sessionBuilder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        // Paket kullanımının KESİN seans bağı — iptal/geri alma tahmin yapmasın diye.
+        // Şube süzgeci yok: kayıt seansın kendisine bağlı ve seans zaten şubeye göre süzülüyor.
+        var usage = modelBuilder.Entity<PackageSessionUsage>();
+        usage.ToTable("package_session_usages");
+        usage.HasKey(x => x.Id);
+        usage.HasIndex(x => new { x.TenantId, x.AdisyonId });
+        usage.HasIndex(x => x.CustomerPackageSessionId);
+        usage.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
     /// <summary>
@@ -708,6 +718,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         archivedPayment.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
         archivedPayment.HasIndex(x => x.CancelledSaleId);
         archivedPayment.HasIndex(x => x.OriginalAccountId);
+        // MÜKERRER GELİR KORUMASI (DB seviyesinde). Açılıştaki backfill "eksikse ekle" mantığıyla
+        // çalışıyor; iki backend aynı anda açılırsa ikisi de eksik görüp aynı tahsilatı ekleyebilir
+        // ve 1.200 ₺ raporda 2.400 ₺ olurdu. Aynı arşiv + aynı tahsilat çifti ikinci kez yazılamaz.
+        // (Geri alma soft-delete eder; sonraki iptal YENİ bir arşiv Id'si ürettiği için çakışmaz.)
+        archivedPayment.HasIndex(x => new { x.CancelledSaleId, x.OriginalPaymentId }).IsUnique();
         archivedPayment.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         archivedPayment.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }

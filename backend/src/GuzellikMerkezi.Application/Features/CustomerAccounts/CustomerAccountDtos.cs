@@ -129,7 +129,18 @@ public sealed record CancelSaleRequest(string? Reason, decimal? RefundedAmount =
 /// geri alınır. Varsayılan false — para gerçekten müşteriye ödendiyse o kasa hareketi yerinde kalır.
 /// Geçmişteki bir ödemeyi bugünkü bir düzeltme yüzünden raporlardan silmek mali izi bozardı.
 /// </param>
-public sealed record RestoreSaleRequest(bool VoidRefund = false);
+/// <param name="AllowLegacySnapshot">
+/// Eski (v1) yedekler adisyon durumunu ve iptalde değiştirilen prim/sadakat kayıtlarını taşımaz;
+/// otomatik geri alma bunları yanlış kurabilir. Yönetici kontrol edip onayladığında true gönderilir.
+/// </param>
+/// <param name="VoidReason">
+/// <c>VoidRefund</c> true iken ZORUNLU: gerçekleşmiş bir kasa çıkışı yok ediliyor, denetim izinde
+/// niçin yapıldığı yazmalı.
+/// </param>
+public sealed record RestoreSaleRequest(
+    bool VoidRefund = false,
+    bool AllowLegacySnapshot = false,
+    string? VoidReason = null);
 
 /// <summary>
 /// Arşivdeki iptal edilmiş satış. Canlı cari listesinde YER ALMAZ — "İptal Edilenler" ekranı

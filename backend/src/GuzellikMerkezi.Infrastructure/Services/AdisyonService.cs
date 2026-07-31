@@ -249,17 +249,32 @@ public sealed class AdisyonService : IAdisyonService
         }
 
         // 1) Paket-kullanımı kalemleri: müşterinin paketteki ilgili hizmet seansından düş.
+        //    HANGİ seanstan düşüldüğü KALICI olarak kaydedilir (package_session_usages): satış
+        //    iptalinde ters kayıt tahmin yapmasın. Aynı hizmeti içeren birden çok paket varsa
+        //    A'dan düşen seans B'ye geri yazılabiliyordu.
+        //    Adaylar bir kez belleğe alınır: kaydedilmemiş TryConsume sonucu DB sorgusunda görünmez.
+        var usableSessions = adisyon.Items.Any(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue)
+            ? (await _db.CustomerPackageSessions
+                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+                    .ToListAsync(cancellationToken))
+                .OrderBy(s => s.CreatedAtUtc)
+                .ToList()
+            : [];
         foreach (var item in adisyon.Items.Where(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue))
         {
             var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
+            var consumed = new Dictionary<Guid, int>();
             for (var k = 0; k < qty; k++)
             {
-                var session = await _db.CustomerPackageSessions
-                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId
-                             && s.ServiceDefinitionId == item.RefId!.Value && (s.TotalSessions - s.UsedSessions) > 0)
-                    .OrderBy(s => s.CreatedAtUtc)
-                    .FirstOrDefaultAsync(cancellationToken);
+                var session = usableSessions.FirstOrDefault(
+                    s => s.ServiceDefinitionId == item.RefId!.Value && s.RemainingSessions > 0);
                 if (session is null || !session.TryConsume()) break;
+                consumed[session.Id] = consumed.GetValueOrDefault(session.Id) + 1;
+            }
+            foreach (var (sessionId, count) in consumed)
+            {
+                _db.PackageSessionUsages.Add(new PackageSessionUsage(
+                    tenantId, adisyon.Id, item.Id, sessionId, adisyon.CustomerId, item.RefId!.Value, count, nowUtc));
             }
         }
 
@@ -581,19 +596,40 @@ public sealed class AdisyonService : IAdisyonService
             }
         }
 
-        // 4) Paket-kullanımı (PackageUse) tüketimini geri kredile — ilgili hizmetin kullanılmış seansını geri al.
-        foreach (var item in adisyon.Items.Where(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue))
+        // 4) Paket-kullanımı (PackageUse) tüketimini geri kredile — KESİN bağdan (onayda yazıldı).
+        //    Bağ yoksa (eski adisyon) tahminî eski davranışa düşülür.
+        var usageLinks = await _db.PackageSessionUsages
+            .Where(u => u.TenantId == tenantId && u.AdisyonId == adisyon.Id)
+            .ToListAsync(cancellationToken);
+        if (usageLinks.Count > 0)
         {
-            var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
-            for (var k = 0; k < qty; k++)
+            var sessionsById = (await _db.CustomerPackageSessions
+                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+                    .ToListAsync(cancellationToken))
+                .ToDictionary(s => s.Id);
+            foreach (var link in usageLinks)
             {
-                var session = await _db.CustomerPackageSessions
-                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId
-                             && s.ServiceDefinitionId == item.RefId!.Value && s.UsedSessions > 0)
-                    .OrderByDescending(s => s.UpdatedAtUtc)
-                    .FirstOrDefaultAsync(cancellationToken);
-                if (session is null) break;
-                session.RestoreOne();
+                if (!sessionsById.TryGetValue(link.CustomerPackageSessionId, out var session)) continue;
+                for (var k = 0; k < link.Quantity && session.UsedSessions > 0; k++) session.RestoreOne();
+            }
+            // Adisyon siliniyor: bağ da kalkar, yoksa ileride ikinci kez kredi verilebilirdi.
+            _db.PackageSessionUsages.RemoveRange(usageLinks);
+        }
+        else
+        {
+            foreach (var item in adisyon.Items.Where(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue))
+            {
+                var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
+                for (var k = 0; k < qty; k++)
+                {
+                    var session = await _db.CustomerPackageSessions
+                        .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId
+                                 && s.ServiceDefinitionId == item.RefId!.Value && s.UsedSessions > 0)
+                        .OrderByDescending(s => s.UpdatedAtUtc)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (session is null) break;
+                    session.RestoreOne();
+                }
             }
         }
 
@@ -739,6 +775,33 @@ public sealed class AdisyonService : IAdisyonService
                     null, null, AdisyonStatus.Approved, p.Method);
             })
             .ToList();
+
+        // İPTAL EDİLEN SATIŞIN TAHSİLATI + MÜŞTERİ İADESİ. Cari silindiği için canlı tabloda yoklar;
+        // günlük kart bunları saymazsa kasa sayfasıyla aynı günde farklı rakam gösterir.
+        var archivedRows = (await _db.ArchivedSalePayments.AsNoTracking()
+                .Where(p => p.TenantId == tenantId && p.OccurredAtUtc >= fromUtc && p.OccurredAtUtc < toUtc)
+                .Select(p => new { p.Id, p.CustomerId, p.Amount, p.Method, p.OccurredAtUtc, p.AccountName })
+                .ToListAsync(cancellationToken))
+            .Select(p => new DailyAdisyonRowDto(
+                Guid.Empty, p.Id, p.OccurredAtUtc, p.CustomerId, null,
+                AdisyonItemType.Payment,
+                string.IsNullOrWhiteSpace(p.AccountName) ? "Tahsilat — iptal edilen satış" : $"Tahsilat — {p.AccountName} (iptal)",
+                1m, p.Amount, null, null, AdisyonStatus.Approved, p.Method))
+            .ToList();
+
+        var refundRows = (await _db.RefundTransactions.AsNoTracking()
+                .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= fromUtc && r.RefundedAtUtc < toUtc)
+                .Select(r => new { r.Id, r.CustomerId, r.Amount, r.Method, r.RefundedAtUtc })
+                .ToListAsync(cancellationToken))
+            // İade NEGATİF tahsilattır: günün tahsilat toplamından düşer.
+            .Select(r => new DailyAdisyonRowDto(
+                Guid.Empty, r.Id, r.RefundedAtUtc, r.CustomerId, null,
+                AdisyonItemType.Payment, "Müşteriye iade", 1m, -r.Amount,
+                null, null, AdisyonStatus.Approved, r.Method))
+            .ToList();
+
+        paymentRows.AddRange(archivedRows);
+        paymentRows.AddRange(refundRows);
 
         var rows = chargeRows.Concat(paymentRows).OrderBy(r => r.OccurredAtUtc).ToArray();
 

@@ -141,6 +141,11 @@ await DatabaseBootstrap.BackfillCustomerSearchIndexAsync(app.Services);
 // bu iş SQL'de yapılamaz. Veri-only + idempotent → her ortamda, her açılışta güvenle çalışır.
 await DatabaseBootstrap.BackfillCancelledSaleArchivesAsync(app.Services);
 
+// Peşinatları gerçek tahsilat hareketine taşı. Cari onları "tahsil edilmiş" sayarken kasa/rapor
+// hiç görmüyordu. İSTEK ALMADAN ÖNCE çalışması şart: PaidAmount artık peşinat kolonunu değil
+// tahsilat satırlarını okuyor. Veri-only + idempotent.
+await DatabaseBootstrap.BackfillDepositPaymentsAsync(app.Services);
+
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
 // rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
 // Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:

@@ -392,6 +392,259 @@ public sealed class SaleCancellationLedgerTests
             Assert.Equal(1, (await db.CustomerPackageSessions.SingleAsync(s => s.Id == otherSessionId)).UsedSessions);
     }
 
+    // =====================================================================================
+    // 7) Korunmuş iade — cari bakiyesine yansır, ikinci iadeyi kapsamaz
+    // =====================================================================================
+
+    /// <summary>
+    /// 1.000 tahsil → 1.000 iade ile iptal → geri al (iade korunur). Para artık kurumda değildir:
+    /// cari "ödendi" görünmemeli ve satış tekrar iptal edilirse AYNI para bir daha iade edilememeli
+    /// (aksi hâlde 1.000 tahsilata karşı 2.000 iade mümkün olurdu).
+    /// </summary>
+    [Fact]
+    public async Task RestoreSale_PreservedRefund_ReducesPaidAmount_AndCapsSecondRefund()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(seed.TenantId, seed.AccountId,
+                new RegisterAccountPaymentRequest(1000m, "cash", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId,
+                new CancelSaleRequest("tam iade", RefundedAmount: 1000m, RefundMethod: "cash"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RestoreSaleAsync(seed.TenantId, seed.AccountId)).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var account = await db.CustomerAccounts.Include(a => a.Payments).SingleAsync();
+            Assert.Equal(1000m, account.RefundedAmount);
+            Assert.Equal(0m, account.PaidAmount);        // para geri ödendi → tahsilat kalmadı
+            Assert.Equal(1000m, account.RemainingAmount); // borç yeniden doğdu
+        }
+
+        // İkinci iptalde iade üst sınırı 0'dır — aynı para ikinci kez iade edilemez.
+        await using (var db = NewDb(options))
+        {
+            var again = await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId,
+                new CancelSaleRequest("tekrar", RefundedAmount: 1000m, RefundMethod: "cash"));
+            Assert.True(again.IsFailure);
+            Assert.Equal("Validation", again.Error.Code);
+        }
+    }
+
+    // =====================================================================================
+    // 8) Peşinat gerçek bir tahsilat hareketidir
+    // =====================================================================================
+
+    [Fact]
+    public async Task CreateAccount_WithDeposit_WritesRealPayment_AndShowsInCashFlow()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+        {
+            var created = await NewService(db).CreateAsync(seed.TenantId, new CreateCustomerAccountRequest(
+                seed.BranchId, seed.CustomerId, null, "Peşinatlı paket", 5000m, 2000m, 0,
+                DateOnly.FromDateTime(DateTime.UtcNow), null));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            // Peşinat artık kolonda ASILI KALMIYOR; gerçek bir tahsilat satırı var.
+            var deposit = await db.AccountPayments.SingleAsync(p => p.Amount == 2000m);
+            Assert.Equal(CustomerAccount.DepositPaymentReference, deposit.Reference);
+
+            var now = DateTime.UtcNow;
+            var summary = await new CashFlowService(db).SummaryAsync(
+                seed.TenantId, new CashFlowFilter(now.AddDays(-1), now.AddDays(1)));
+            Assert.Equal(2000m, summary.Value!.TotalIncome);
+        }
+    }
+
+    /// <summary>
+    /// Peşinat tahsilat satırına dönüştü diye taksitler ÇİFT kapanmamalı: plan zaten
+    /// "toplam − peşinat" üzerinden kuruluyor.
+    /// </summary>
+    [Fact]
+    public async Task DepositPayment_DoesNotDoubleCloseInstallments()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+        {
+            var created = await NewService(db).CreateAsync(seed.TenantId, new CreateCustomerAccountRequest(
+                seed.BranchId, seed.CustomerId, null, "Taksitli paket", 12000m, 2000m, 10,
+                DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)), null));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var account = await db.CustomerAccounts
+                .Include(a => a.Payments).Include(a => a.Installments)
+                .SingleAsync(a => a.Id != seed.AccountId);
+
+            // 10 taksit × 1.000 = finanse edilen 10.000; peşinat hiçbirini kapatmamalı.
+            Assert.Equal(10, account.Installments.Count);
+            Assert.All(account.AllocatePayments().Values, allocated => Assert.Equal(0m, allocated));
+            // Tahsil edilen yine 2.000 (peşinat) — kasa da bunu görüyor.
+            Assert.Equal(2000m, account.PaidAmount);
+            Assert.Equal(10000m, account.RemainingAmount);
+        }
+    }
+
+    // =====================================================================================
+    // 9) Paket kullanımı — KESİN seans bağı (tahmin yok)
+    // =====================================================================================
+
+    /// <summary>
+    /// Müşterinin aynı hizmeti içeren İKİ paketi varsa, iptal tam olarak tüketilen paketi geri
+    /// kredilemeli. Eskiden "en son güncellenmiş" seçildiği için yanlış pakete yazılabiliyordu.
+    /// </summary>
+    [Fact]
+    public async Task CancelSale_CreditsBackExactSessionConsumed_WhenCustomerHasTwoPackages()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var serviceId = Guid.CreateVersion7();
+        Guid oldSessionId, newSessionId, adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var otherAccount = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Diğer", 500m, 0m);
+            db.CustomerAccounts.Add(otherAccount);
+            await db.SaveChangesAsync();
+
+            // ESKİ paket (onay bundan düşer) + YENİ paket (yanlışlıkla kredilenme adayı).
+            var older = new CustomerPackageSession(seed.TenantId, seed.CustomerId, otherAccount.Id, Guid.CreateVersion7(), serviceId, 5);
+            older.MarkCreated(DateTime.UtcNow.AddDays(-30));
+            var newer = new CustomerPackageSession(seed.TenantId, seed.CustomerId, otherAccount.Id, Guid.CreateVersion7(), serviceId, 5);
+            newer.MarkCreated(DateTime.UtcNow.AddDays(-1));
+            newer.TryConsume(); // yeni pakette de kullanım var → "en son güncellenen" O olur
+            db.CustomerPackageSessions.AddRange(older, newer);
+            await db.SaveChangesAsync();
+            oldSessionId = older.Id;
+            newSessionId = newer.Id;
+
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, seed.AccountId, null);
+            var item = adisyon.AddItem(AdisyonItemType.PackageUse, serviceId, "Paketten kullanım", 1m, 0m, null, true);
+            adisyon.Approve(null);
+            db.Adisyonlar.Add(adisyon);
+            adisyonId = adisyon.Id;
+
+            // Onay akışının yazdığı KESİN bağ: tüketim ESKİ paketten yapıldı.
+            older.TryConsume();
+            db.PackageSessionUsages.Add(new PackageSessionUsage(
+                seed.TenantId, adisyonId, item.Id, oldSessionId, seed.CustomerId, serviceId, 1, DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId, new CancelSaleRequest("iptal"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            // Doğru paket geri kredilendi, yanlış paket olduğu gibi kaldı.
+            Assert.Equal(0, (await db.CustomerPackageSessions.SingleAsync(s => s.Id == oldSessionId)).UsedSessions);
+            Assert.Equal(1, (await db.CustomerPackageSessions.SingleAsync(s => s.Id == newSessionId)).UsedSessions);
+        }
+    }
+
+    /// <summary>Geri verilen seans aradaki sürede harcanmışsa geri alma SESSİZCE geçmemeli.</summary>
+    [Fact]
+    public async Task RestoreSale_Fails_WhenCreditedSessionWasSpentMeanwhile()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var serviceId = Guid.CreateVersion7();
+        Guid sessionId;
+
+        await using (var db = NewDb(options))
+        {
+            var otherAccount = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Diğer", 500m, 0m);
+            db.CustomerAccounts.Add(otherAccount);
+            await db.SaveChangesAsync();
+
+            var session = new CustomerPackageSession(seed.TenantId, seed.CustomerId, otherAccount.Id, Guid.CreateVersion7(), serviceId, 1);
+            session.TryConsume();
+            db.CustomerPackageSessions.Add(session);
+
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, seed.AccountId, null);
+            var item = adisyon.AddItem(AdisyonItemType.PackageUse, serviceId, "Paketten kullanım", 1m, 0m, null, true);
+            adisyon.Approve(null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            sessionId = session.Id;
+
+            db.PackageSessionUsages.Add(new PackageSessionUsage(
+                seed.TenantId, adisyon.Id, item.Id, sessionId, seed.CustomerId, serviceId, 1, DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId, new CancelSaleRequest("iptal"))).IsSuccess);
+
+        // İptalden sonra geri verilen tek hak BAŞKA bir işlemde harcandı.
+        await using (var db = NewDb(options))
+        {
+            var session = await db.CustomerPackageSessions.SingleAsync(s => s.Id == sessionId);
+            Assert.True(session.TryConsume());
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var restore = await NewService(db).RestoreSaleAsync(seed.TenantId, seed.AccountId);
+            Assert.True(restore.IsFailure);
+            Assert.Equal("Conflict", restore.Error.Code);
+        }
+    }
+
+    // =====================================================================================
+    // 10) Ücretli randevuya dokunulmaz
+    // =====================================================================================
+
+    [Fact]
+    public async Task CancelSale_DoesNotTouchPaidAppointments()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var serviceId = Guid.CreateVersion7();
+        Guid paidApptId, packageApptId;
+
+        await using (var db = NewDb(options))
+        {
+            db.CustomerPackageSessions.Add(new CustomerPackageSession(
+                seed.TenantId, seed.CustomerId, seed.AccountId, Guid.CreateVersion7(), serviceId, 4));
+
+            var start = DateTime.UtcNow.AddDays(2);
+            // Nakit ödenecek randevu (Price > 0) — iptal edilen paketle ilgisi yok.
+            var paid = new Appointment(seed.TenantId, seed.BranchId, seed.CustomerId, Guid.CreateVersion7(), serviceId, start, start.AddMinutes(30), 750m);
+            var covered = new Appointment(seed.TenantId, seed.BranchId, seed.CustomerId, Guid.CreateVersion7(), serviceId, start.AddHours(3), start.AddHours(4), 0m);
+            db.Appointments.AddRange(paid, covered);
+            await db.SaveChangesAsync();
+            paidApptId = paid.Id;
+            packageApptId = covered.Id;
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId, new CancelSaleRequest("iptal"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var alive = await db.Appointments.Select(a => a.Id).ToListAsync();
+            Assert.Contains(paidApptId, alive);
+            Assert.DoesNotContain(packageApptId, alive);
+        }
+    }
+
     private static async Task<Guid> AddProductAsync(DbContextOptions<GuzellikDbContext> options, Seed seed, decimal stock)
     {
         await using var db = NewDb(options);

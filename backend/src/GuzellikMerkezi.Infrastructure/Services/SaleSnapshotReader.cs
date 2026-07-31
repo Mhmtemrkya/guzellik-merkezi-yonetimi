@@ -98,7 +98,9 @@ internal static class SaleSnapshotReader
         bool IsHistorical,
         DateTime CreatedAtUtc,
         /// <summary>Kaydı oluşturan kullanıcı — "kim sattı" düşümü personel seçilmemişse buna bakar.</summary>
-        Guid? CreatedBy = null);
+        Guid? CreatedBy = null,
+        /// <summary>Önceki geri almalarda KORUNMUŞ iade toplamı; tahsilattan düşülür (v2, eski yedekte 0).</summary>
+        decimal RefundedAmount = 0m);
 
     public sealed record SnapshotInstallment(
         Guid Id, int No, DateOnly DueDate, decimal Amount, string Status, DateTime? PaidAtUtc, DateTime CreatedAtUtc);
@@ -133,7 +135,7 @@ internal static class SaleSnapshotReader
                 account.Id, account.TenantId, account.BranchId, account.CustomerId, account.ServicePackageId,
                 account.Name, account.TotalAmount, account.DepositAmount, account.Notes, account.IsActive,
                 Utc(account.SoldAtUtc), account.SoldByStaffMemberId, account.AppliedByStaffMemberId,
-                account.IsHistorical, Utc(account.CreatedAtUtc), account.CreatedBy),
+                account.IsHistorical, Utc(account.CreatedAtUtc), account.CreatedBy, account.RefundedAmount),
             account.Installments
                 .Select(i => new SnapshotInstallment(i.Id, i.No, i.DueDate, i.Amount, i.Status.ToString(), Utc(i.PaidAtUtc), Utc(i.CreatedAtUtc)))
                 .ToList(),

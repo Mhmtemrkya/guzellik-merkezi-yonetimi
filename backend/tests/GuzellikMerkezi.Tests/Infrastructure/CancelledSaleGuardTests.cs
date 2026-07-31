@@ -242,8 +242,17 @@ public sealed class CancelledSaleGuardTests
             Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId,
                 new CancelSaleRequest("iade", RefundedAmount: 250m, RefundMethod: "card"))).IsSuccess);
 
+        // Gerekçesiz geçersiz kılma reddedilir — gerçek bir kasa hareketi siliniyor.
         await using (var db = NewDb(options))
-            Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId, new RestoreSaleRequest(VoidRefund: true))).IsSuccess);
+        {
+            var noReason = await NewService(db).RestoreSaleAsync(tenantId, accountId, new RestoreSaleRequest(VoidRefund: true));
+            Assert.True(noReason.IsFailure);
+            Assert.Equal("Validation", noReason.Error.Code);
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId,
+                new RestoreSaleRequest(VoidRefund: true, VoidReason: "iade fiilen yapılmamış"))).IsSuccess);
 
         await using (var db = NewDb(options))
             Assert.Empty(await db.RefundTransactions.ToListAsync());

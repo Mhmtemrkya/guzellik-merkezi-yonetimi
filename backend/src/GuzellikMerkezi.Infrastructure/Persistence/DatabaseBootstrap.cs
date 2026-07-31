@@ -234,21 +234,25 @@ public static class DatabaseBootstrap
             }
 
             // 2) Tahsilat defteri: geri alınmamış her arşivin tahsilatları bir kez yazılır.
+            //    Kontrol ÖDEME BAZINDA: yalnız arşiv bazında bakılsaydı çok ödemeli bir arşivde tek
+            //    satır bulunması kalan ödemeleri sonsuza dek eksik bırakırdı. Mükerrer eklemeye karşı
+            //    ayrıca (CancelledSaleId, OriginalPaymentId) üzerinde UNIQUE index var — iki backend
+            //    aynı anda açılırsa ikincisi DB tarafından reddedilir.
             var covered = (await db.ArchivedSalePayments.IgnoreQueryFilters()
-                    .Where(p => !p.IsDeleted)
-                    .Select(p => p.CancelledSaleId)
-                    .Distinct()
+                    .Select(p => new { p.CancelledSaleId, p.OriginalPaymentId })
                     .ToListAsync())
+                .Select(x => (x.CancelledSaleId, x.OriginalPaymentId))
                 .ToHashSet();
 
             var addedPayments = 0;
-            foreach (var archive in archives.Where(a => a.RestoredAtUtc == null && !covered.Contains(a.Id)))
+            foreach (var archive in archives.Where(a => a.RestoredAtUtc == null))
             {
                 var snapshot = SaleSnapshotReader.Parse(archive.Snapshot);
                 if (snapshot is null) continue;
 
                 foreach (var payment in snapshot.Payments)
                 {
+                    if (!covered.Add((archive.Id, payment.Id))) continue;
                     db.ArchivedSalePayments.Add(new ArchivedSalePayment(
                         archive.TenantId, archive.BranchId, archive.Id, archive.OriginalAccountId,
                         payment.Id, archive.CustomerId, archive.Name, payment.Amount,
@@ -267,6 +271,73 @@ public static class DatabaseBootstrap
         {
             // Şema henüz yoksa (migration uygulanmamış) ya da DB erişilemiyorsa açılış durmamalı.
             logger.LogWarning(ex, "İptal arşivi bakımı tamamlanamadı; tahsilat defteri eksik kalabilir.");
+        }
+    }
+
+    /// <summary>
+    /// PEŞİNATLARI GERÇEK TAHSİLAT HAREKETİNE TAŞIR — her ortamda çalışır, idempotenttir.
+    /// <para>
+    /// <c>DepositAmount</c> yalnız bir kolondu: cari onu "tahsil edilmiş" sayıyor ama kasa akışı,
+    /// kâr-zarar ve raporlar sadece <c>account_payments</c> okuduğu için para hiçbir finans
+    /// defterinde görünmüyordu. Satış iptal edilirse peşinat kadarına iade yapılabiliyor, ama
+    /// karşılığında arşivlenecek bir tahsilat bulunmuyordu (gelir 0 / gider peşinat).
+    /// </para>
+    /// <para>
+    /// Buradan sonra peşinat cari açılırken otomatik tahsilat satırı üretir; bu iş yalnızca ESKİ
+    /// kayıtlar içindir. Kolon PLAN alanı olarak yerinde kalır (taksit matematiği değişmesin).
+    /// Şifreli <c>Reference</c> alanı SQL'de süzülemediğinden kontrol uygulama tarafında yapılır.
+    /// </para>
+    /// </summary>
+    public static async Task BackfillDepositPaymentsAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DepositPaymentBackfill");
+
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            if (db.Database.IsInMemory()) return;
+
+            var accounts = await db.CustomerAccounts.IgnoreQueryFilters()
+                .Where(a => !a.IsDeleted && a.DepositAmount > 0m)
+                .Select(a => new { a.Id, a.DepositAmount, a.SoldAtUtc })
+                .ToListAsync();
+            if (accounts.Count == 0) return;
+
+            // Zaten taşınmış olanlar. Reference ŞİFRELİ → SQL'de süzülemez; yalnız peşinatlı
+            // carilerin tahsilatları çekilip bellekte eşlenir (korele alt sorgu çevrilebilir).
+            var covered = (await db.AccountPayments.IgnoreQueryFilters()
+                    .Where(p => !p.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
+                        .Any(a => a.Id == p.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
+                    .Select(p => new { p.CustomerAccountId, p.Reference })
+                    .ToListAsync())
+                .Where(p => string.Equals(p.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.CustomerAccountId)
+                .ToHashSet();
+
+            var added = 0;
+            foreach (var account in accounts)
+            {
+                if (covered.Contains(account.Id)) continue;
+
+                // Tahsilat DOĞRUDAN eklenir: cari nesnesini izlemeye almak (ve Touch ile UPDATE
+                // üretmek) gereksiz — kolon değişmiyor, yalnız yeni bir satır doğuyor.
+                db.AccountPayments.Add(new AccountPayment(
+                    account.Id,
+                    account.DepositAmount,
+                    "cash",
+                    CustomerAccount.DepositPaymentReference,
+                    DateTime.SpecifyKind(account.SoldAtUtc, DateTimeKind.Utc)));
+                added++;
+            }
+
+            if (added == 0) return;
+            await db.SaveChangesAsync();
+            logger.LogInformation("{Count} peşinat gerçek tahsilat hareketine taşındı.", added);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Peşinat taşıma işi tamamlanamadı; peşinatlar kasa defterinde görünmeyebilir.");
         }
     }
 

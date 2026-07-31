@@ -985,8 +985,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         initialRefundTab: refundTab,
         // Geri alma arşivdeki yedekten cari, taksit, tahsilat ve seansları yeniden kurar.
         // voidRefund=true yalnızca "iade fiilen yapılmamıştı" denildiğinde kasa çıkışını da siler.
-        onRestore: (originalAccountId, voidRefund) => widget.api.post(
-            '/api/admin/accounts/$originalAccountId/restore-sale', {'voidRefund': voidRefund}),
+        onRestore: (originalAccountId, voidRefund, voidReason) => widget.api.post(
+            '/api/admin/accounts/$originalAccountId/restore-sale',
+            {'voidRefund': voidRefund, 'voidReason': voidReason}),
       ),
     );
   }

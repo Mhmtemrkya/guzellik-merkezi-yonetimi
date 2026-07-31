@@ -1017,11 +1017,26 @@ export const adminApi = {
     apiRequest<T>('/api/admin/accounts/cancelled', { query: { tenantId, ...params } }),
   /**
    * id: arşiv kaydının ya da iptal edilen carinin Id'si olabilir.
-   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true — kasa çıkışı da geri alınır.
-   * Varsayılan false: gerçekten ödenen para geriye dönük raporlardan silinmez.
+   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true — kasa çıkışı da geri alınır
+   * (ayrı yetki + zorunlu `voidReason`). Varsayılan false: gerçekten ödenen para geriye dönük
+   * raporlardan silinmez, cari borcuna yansır.
+   * `allowLegacySnapshot`: eski (v1) yedekli iptaller otomatik geri alınmaz; yönetici onaylarsa true.
    */
-  restoreSale: <T = unknown>(id: string, tenantId?: string, voidRefund = false): Promise<T> =>
-    apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, { method: 'POST', query: { tenantId }, body: { voidRefund } }),
+  restoreSale: <T = unknown>(
+    id: string,
+    tenantId?: string,
+    voidRefund = false,
+    options?: { voidReason?: string; allowLegacySnapshot?: boolean },
+  ): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, {
+      method: 'POST',
+      query: { tenantId },
+      body: {
+        voidRefund,
+        voidReason: options?.voidReason ?? null,
+        allowLegacySnapshot: options?.allowLegacySnapshot ?? false,
+      },
+    }),
   registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/payments`, { method: 'POST', query: { tenantId }, body }),
   deleteAccount: (id: string, tenantId?: string): Promise<unknown> =>

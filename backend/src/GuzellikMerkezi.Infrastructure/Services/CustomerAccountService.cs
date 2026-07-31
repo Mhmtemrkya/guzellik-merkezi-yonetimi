@@ -478,6 +478,10 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 var firstDue = request.FirstDueDate ?? DateOnly.FromDateTime(soldAtUtc.AddMonths(1));
                 account.RebuildInstallments(request.InstallmentCount, firstDue);
             }
+
+            // Peşinat GERÇEK bir tahsilat satırına dönüşür: sadece kolonda kalırsa cari "tahsil
+            // edildi" sayıyor ama kasa/gelir defteri parayı hiç görmüyordu (bkz. RegisterDepositPayment).
+            account.RegisterDepositPayment("cash", soldAtUtc);
         }
 
         _db.CustomerAccounts.Add(account);
@@ -665,6 +669,11 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .Where(a => a.TenantId == tenantId && a.CustomerAccountId == id)
                 .ToListAsync(cancellationToken);
 
+            // Yan etki satırlarını (ürün stoğu, hediye çeki, paket seansı, müşteri/sadakat) da
+            // kilitle: kilit yalnız caride olduğu için eşzamanlı bir satış ile iptal birbirinin
+            // stok/bakiye güncellemesini eziyordu.
+            await LockSideEffectRowsAsync(tenantId, adisyonlar, account.CustomerId, cancellationToken);
+
             // Statüler ters kayıttan ÖNCE dondurulur: geri alma her fişi Approved yapmasın, herkes
             // kendi eski hâline dönsün (açık kalmış bir adisyon geri almada onaylı olmamalı).
             var originalStatuses = adisyonlar.ToDictionary(
@@ -786,6 +795,19 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .AnyAsync(a => a.Id == accountId, cancellationToken);
         if (exists) return Result<CustomerAccountDto>.Failure(Error.Conflict("Bu satış zaten geri alınmış."));
 
+        // ESKİ (v1) YEDEK KORUMASI. v1 kayıtları adisyonun özgün statüsünü ve iptalde FİİLEN
+        // değiştirilen prim/sadakat/stok satırlarını taşımaz; otomatik geri alma o fişi koşulsuz
+        // "onaylı" yapıp iptalle ilgisi olmayan pasif kayıtları da diriltebilir. Bu yüzden yönetici
+        // açıkça onaylamadan yürütülmez.
+        var isLegacySnapshot = snapshot.Adisyonlar is null or { Count: 0 } && snapshot.AdisyonIds.Count > 0;
+        if (isLegacySnapshot && request?.AllowLegacySnapshot != true)
+        {
+            return Result<CustomerAccountDto>.Failure(Error.Conflict(
+                "Bu iptal, adisyon durumunu ve yan etki dökümünü taşımayan ESKİ bir yedekle kaydedilmiş. " +
+                "Geri alma, bağlı fişin durumunu ve prim/sadakat kayıtlarını yanlış kurabilir. " +
+                "Devam etmek için adisyonu ve prim/sadakat kayıtlarını kontrol edip işlemi onaylayın."));
+        }
+
         var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot);
         var nowUtc = DateTime.UtcNow;
 
@@ -809,8 +831,19 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
             // Yan etkiler yalnız ONAYLI fişte oluşmuştu; yalnız onlar yeniden uygulanır. Döküm
             // (Reversals) sayesinde iptalde fiilen pasifleştirilen satırlar dışına taşılmaz.
-            if (status == AdisyonStatus.Approved)
-                await _adisyonReversal.ReapplyAsync(tenantId, adisyon, snapshot.ReversalFor(info.Id), cancellationToken);
+            if (status != AdisyonStatus.Approved) continue;
+
+            var reapplied = await _adisyonReversal.ReapplyAsync(
+                tenantId, adisyon, snapshot.ReversalFor(info.Id), cancellationToken);
+
+            // İptalle geri verilen paket hakkı, aradaki sürede BAŞKA bir işlemde kullanılmış olabilir.
+            // Sessizce devam etmek satışı canlandırıp paket bakiyesini eksik bırakırdı → işlem geri alınır.
+            if (reapplied.MissingSessions > 0)
+            {
+                return Result<CustomerAccountDto>.Failure(Error.Conflict(
+                    $"Bu satışın kullandığı paket seansı ({reapplied.MissingSessions} adet) iptalden sonra " +
+                    "başka bir işlemde harcanmış. Satış geri alınamıyor: önce ilgili paket kullanımını düzeltin."));
+            }
         }
 
         // İptalde kapatılan randevular canlanır (yalnız o anda kapatılanlar — Id'ler yedekte).
@@ -835,9 +868,33 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .Where(r => r.TenantId == tenantId && r.CancelledSaleId == archive.Id)
             .ToListAsync(cancellationToken);
         var voidRefunds = request?.VoidRefund == true;
+        if (voidRefunds && refunds.Count > 0)
+        {
+            // GERÇEKLEŞMİŞ bir kasa çıkışını yok etmek ayrı bir yetkidir: normal cari/tahsilat izni
+            // olan personel geçmiş bir para hareketini silememeli. Gerekçe de zorunludur (denetim izi).
+            if (_currentUser.Role == UserRole.Staff && !_currentUser.HasPermission(GuzellikMerkezi.Domain.Permissions.AccountingVoidRefund))
+            {
+                return Result<CustomerAccountDto>.Failure(Error.Unauthorized(
+                    "Yapılmış para iadesini geçersiz kılma yetkiniz yok. Yöneticinize başvurun."));
+            }
+            if (string.IsNullOrWhiteSpace(request?.VoidReason))
+            {
+                return Result<CustomerAccountDto>.Failure(Error.Validation(
+                    "İadeyi geçersiz kılmak için gerekçe zorunludur (ör. 'iade fiilen yapılmamış, yanlış girilmiş')."));
+            }
+        }
+
         if (voidRefunds)
         {
             foreach (var refund in refunds) refund.SoftDelete(nowUtc, _currentUser.UserId);
+        }
+        else
+        {
+            // İade KORUNDU: para artık kurumda değil. Tahsilat satırları aynen geri geldiği için
+            // cari "ödendi" görünür ve satış tekrar iptal edilirse AYNI para bir kez daha iade
+            // edilebilirdi. Korunan tutar tahsilattan düşülür → borç yeniden doğar, ikinci iade
+            // üst sınırı (tahsilat − korunmuş iade) doğru hesaplanır.
+            rebuilt.Account.ApplyPreservedRefund(refunds.Sum(r => r.Amount));
         }
 
         archive.MarkRestored();
@@ -856,7 +913,15 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 : refundTotal > 0
                     ? $"Satış iptali geri alındı: {archive.Name} · {refundTotal:N2} iade kasa çıkışı olarak KORUNDU"
                     : $"Satış iptali geri alındı: {archive.Name}",
-            new { ArchiveId = archive.Id, RefundCount = refunds.Count, RefundTotal = refundTotal, RefundsVoided = voidRefunds },
+            new
+            {
+                ArchiveId = archive.Id,
+                RefundCount = refunds.Count,
+                RefundTotal = refundTotal,
+                RefundsVoided = voidRefunds,
+                VoidReason = voidRefunds ? request?.VoidReason : null,
+                LegacySnapshot = isLegacySnapshot,
+            },
             cancellationToken);
 
         var restored = await LoadAsync(tenantId, accountId, cancellationToken);
@@ -924,6 +989,10 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var account = new CustomerAccount(tenantId, customer.BranchId, customer.Id, request.ServicePackageId, request.Name, request.TotalAmount, request.DepositAmount);
         account.SetNotes(request.Notes);
         account.RebuildInstallments(request.InstallmentCount, request.FirstDueDate);
+        // Peşinat GERÇEK bir tahsilat satırına dönüşür: sadece kolonda kalırsa cari "tahsil edildi"
+        // sayıyor ama kasa akışı/kâr-zarar/raporlar parayı hiç görmüyordu. DepositAmount kolonu
+        // PLAN alanı olarak yerinde kalır (taksit matematiği değişmesin).
+        account.RegisterDepositPayment("cash", account.SoldAtUtc);
 
         _db.CustomerAccounts.Add(account);
 

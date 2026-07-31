@@ -579,8 +579,10 @@ class CancelledSalesSheet extends StatefulWidget {
   final List<Map<String, dynamic>> sales;
 
   /// İptali geri al — yedekten cari, taksit, tahsilat ve seanslar aynı Id'lerle kurulur.
-  /// [voidRefund]: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır.
-  final Future<void> Function(String originalAccountId, bool voidRefund)? onRestore;
+  /// [voidRefund]: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır
+  /// (gerekçe zorunlu, [voidReason] yalnız o durumda dolar).
+  final Future<void> Function(String originalAccountId, bool voidRefund, String? voidReason)?
+      onRestore;
 
   /// true → "İade Edilenler" sekmesiyle açılır (Ön Muhasebe'deki ayrı buton).
   final bool initialRefundTab;
@@ -601,20 +603,47 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
     final refunded = numberOf(sale, const ['refundedAmount']);
 
     var voidRefund = false;
+    String? voidReason;
     if (refunded > 0.005) {
+      final reasonCtrl = TextEditingController();
       final choice = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('İptali geri al'),
-          content: Text(
-            'Bu iptalde müşteriye ${CalendarText.tl(refunded)} iade edilmişti. '
-            'Para gerçekten ödendi mi?',
-            style: const TextStyle(fontSize: 12.5),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bu iptalde müşteriye ${CalendarText.tl(refunded)} iade edilmişti. '
+                  'Para gerçekten ödendi mi?',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '"Evet" derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.',
+                  style: TextStyle(fontSize: 10.5, color: AppColors.muted),
+                ),
+                const SizedBox(height: 10),
+                // "Hayır" gerçek bir kasa hareketini siler → gerekçe zorunlu (denetim izi).
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Yanlış girildiyse gerekçe yazın',
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, 'void'),
+              onPressed: reasonCtrl.text.trim().isEmpty
+                  ? () => ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text('İadeyi geçersiz kılmak için gerekçe yazın.')))
+                  : () => Navigator.pop(ctx, 'void'),
               child: const Text('Hayır, yanlış girilmiş'),
             ),
             FilledButton(
@@ -626,12 +655,17 @@ class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
       );
       if (choice == null) return;
       voidRefund = choice == 'void';
+      voidReason = voidRefund ? reasonCtrl.text.trim() : null;
     }
 
     setState(() => _restoring = id);
     try {
-      await widget.onRestore!(id, voidRefund);
+      await widget.onRestore!(id, voidRefund, voidReason);
       if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
     } finally {
       if (mounted) setState(() => _restoring = null);
     }

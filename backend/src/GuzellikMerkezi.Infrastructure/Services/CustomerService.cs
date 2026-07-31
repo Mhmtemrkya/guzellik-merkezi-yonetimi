@@ -210,7 +210,7 @@ LIMIT 2000")
             // İptal edilen satış borç doğurmaz — "Borçlu" sekmesine düşmemeli.
             CustomerListFilter.Debt => q.Where(x => _db.CustomerAccounts
                 .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id && a.CancelledAtUtc == null)
-                .Any(a => a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount) > 0)),
+                .Any(a => a.TotalAmount + a.RefundedAmount - a.Payments.Sum(p => p.Amount) > 0)),
             _ => q,
         };
     }
@@ -225,12 +225,12 @@ LIMIT 2000")
         CustomerListSort.Debt => q
             .OrderByDescending(x => _db.CustomerAccounts
                 .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id && a.CancelledAtUtc == null)
-                .Sum(a => (decimal?)(a.TotalAmount - a.DepositAmount - a.Payments.Sum(p => p.Amount))) ?? 0m)
+                .Sum(a => (decimal?)(a.TotalAmount + a.RefundedAmount - a.Payments.Sum(p => p.Amount))) ?? 0m)
             .ThenByDescending(x => x.CreatedAtUtc),
         CustomerListSort.Spent => q
             .OrderByDescending(x => _db.CustomerAccounts
                 .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
-                .Sum(a => (decimal?)(a.DepositAmount + a.Payments.Sum(p => p.Amount))) ?? 0m)
+                .Sum(a => (decimal?)(a.Payments.Sum(p => p.Amount) - a.RefundedAmount)) ?? 0m)
             .ThenByDescending(x => x.CreatedAtUtc),
         CustomerListSort.LastVisit => q
             .OrderByDescending(x => _db.Appointments
@@ -270,9 +270,9 @@ LIMIT 2000")
 -- Tahsil edilen tutar (Spent) korunur — para gerçekten alınmıştır, yalnızca alacak düşer.
 SELECT a.CustomerId,
        COALESCE(SUM(CASE WHEN a.CancelledAtUtc IS NULL
-                         THEN GREATEST(a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0), 0)
+                         THEN GREATEST(a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0), 0)
                          ELSE 0 END), 0) AS Debt,
-       COALESCE(SUM(a.DepositAmount + COALESCE(p.Paid, 0)), 0) AS Spent
+       COALESCE(SUM(COALESCE(p.Paid, 0) - a.RefundedAmount), 0) AS Spent
 FROM customer_accounts a
 LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
        ON p.CustomerAccountId = a.Id
@@ -506,9 +506,9 @@ FROM (
   -- İptal edilen satış borç doğurmaz (bkz. LoadDebtSpent); tahsil edilen tutar korunur.
   SELECT a.CustomerId,
          SUM(CASE WHEN a.CancelledAtUtc IS NULL
-                  THEN a.TotalAmount - a.DepositAmount - COALESCE(p.Paid, 0)
+                  THEN a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0)
                   ELSE 0 END) AS Debt,
-         SUM(a.DepositAmount + COALESCE(p.Paid, 0)) AS Spent
+         SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
   FROM customer_accounts a
   LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
          ON p.CustomerAccountId = a.Id

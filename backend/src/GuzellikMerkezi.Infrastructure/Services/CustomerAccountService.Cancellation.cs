@@ -42,6 +42,8 @@ public sealed partial class CustomerAccountService
         account.SetNotes(a.Notes);
         account.SetSaleInfo(Utc(a.SoldAtUtc), a.SoldByStaffMemberId, a.IsHistorical);
         account.SetAppliedBy(a.AppliedByStaffMemberId);
+        // Önceki geri almalarda korunmuş iadeler kümülatiftir; yoksa (eski yedek) 0 gelir.
+        account.SetRefundedAmount(a.RefundedAmount);
         if (a.IsActive) account.Activate(); else account.Deactivate();
 
         _db.CustomerAccounts.Add(account);
@@ -149,13 +151,20 @@ public sealed partial class CustomerAccountService
             try
             {
                 var nested = await work();
-                if (nested.IsFailure) await outer.RollbackToSavepointAsync(savepoint, ct);
+                if (nested.IsFailure)
+                {
+                    await outer.RollbackToSavepointAsync(savepoint, ct);
+                    // DB geri alındı ama EF hâlâ eski state'i izliyor; temizlenmezse dış işlem
+                    // bellekteki hayalet değişikliklerle devam eder ve DB'den ayrışır.
+                    _db.ChangeTracker.Clear();
+                }
                 else await outer.ReleaseSavepointAsync(savepoint, ct);
                 return nested;
             }
             catch
             {
                 await outer.RollbackToSavepointAsync(savepoint, ct);
+                _db.ChangeTracker.Clear();
                 throw;
             }
         }
@@ -231,6 +240,18 @@ public sealed partial class CustomerAccountService
     /// randevusu geçerlidir; hepsini silmek iptal edilmeyen bir satışın randevusunu da götürürdü.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// SINIR: bu sistemde randevu bir satışa/seansa REZERVE EDİLMEZ (Appointment'ta böyle bir bağ
+    /// yok); seans ancak randevu "Tamamlandı" olunca düşer. Bu yüzden eşleştirme kaçınılmaz olarak
+    /// sezgiseldir ve bilerek TEMKİNLİ tutulur — şüphede randevu KORUNUR:
+    /// <list type="bullet">
+    ///   <item>Ücretli randevuya (Price &gt; 0) dokunulmaz: müşteri nakit ödeyecek demektir,
+    ///         iptal edilen paketle ilgisi yoktur.</item>
+    ///   <item>Başka paketten kalan seans SAYISI kadar randevu korunur (en yakın tarihliler);
+    ///         yalnız fazlası kapatılır. Eskiden tek bir kalan seans, aynı hizmete ait 5 randevunun
+    ///         tamamını koruyordu.</item>
+    /// </list>
+    /// </remarks>
     private async Task<List<Guid>> CancelOrphanAppointmentsAsync(
         Guid tenantId,
         Guid customerId,
@@ -241,32 +262,93 @@ public sealed partial class CustomerAccountService
         var soldServiceIds = cancelledSessions.Select(s => s.ServiceDefinitionId).ToHashSet();
         if (soldServiceIds.Count == 0) return [];
 
-        // Bu satış dışında kalan seans bakiyeleri — kalanı olan hizmetin randevusu ayakta kalır.
-        var stillCovered = (await _db.CustomerPackageSessions
+        // Bu satış dışında kalan seans bakiyeleri — hizmet başına KAÇ seans kaldığı önemli.
+        var remainingElsewhere = (await _db.CustomerPackageSessions
                 .Where(s => s.TenantId == tenantId && s.CustomerId == customerId && s.CustomerAccountId != accountId)
                 .Select(s => new { s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
                 .ToListAsync(ct))
-            .Where(s => s.TotalSessions - s.UsedSessions > 0)
-            .Select(s => s.ServiceDefinitionId)
-            .ToHashSet();
-
-        var orphanServiceIds = soldServiceIds.Where(x => !stillCovered.Contains(x)).ToHashSet();
-        if (orphanServiceIds.Count == 0) return [];
+            .GroupBy(s => s.ServiceDefinitionId)
+            .ToDictionary(g => g.Key, g => g.Sum(s => Math.Max(0, s.TotalSessions - s.UsedSessions)));
 
         // Guid listesi .Contains() MySQL'de çevrilemez → müşteri+durum sunucuda, hizmet bellekte süzülür.
-        var appointments = (await _db.Appointments
+        var candidates = (await _db.Appointments
                 .Where(a => a.TenantId == tenantId && a.CustomerId == customerId
                             && (a.Status == AppointmentStatus.Scheduled
                                 || a.Status == AppointmentStatus.Confirmed
                                 || a.Status == AppointmentStatus.Draft))
                 .ToListAsync(ct))
-            .Where(a => orphanServiceIds.Contains(a.ServiceDefinitionId))
+            // Ücretli randevu paketten karşılanmıyor → satış iptali onu ilgilendirmez.
+            .Where(a => a.Price <= 0m && soldServiceIds.Contains(a.ServiceDefinitionId))
             .ToList();
-        if (appointments.Count == 0) return [];
+        if (candidates.Count == 0) return [];
+
+        var doomed = new List<Appointment>();
+        foreach (var group in candidates.GroupBy(a => a.ServiceDefinitionId))
+        {
+            var keep = remainingElsewhere.TryGetValue(group.Key, out var left) ? left : 0;
+            // En yakın tarihliler korunur; kalan seansla karşılanamayanlar kapatılır.
+            doomed.AddRange(group.OrderBy(a => a.StartUtc).Skip(keep));
+        }
+        if (doomed.Count == 0) return [];
 
         // Soft-delete (HardDeleteEnabled açılmadan önce çalışır) → geri almada Restore() ile canlanır.
-        _db.Appointments.RemoveRange(appointments);
-        return appointments.Select(a => a.Id).ToList();
+        _db.Appointments.RemoveRange(doomed);
+        return doomed.Select(a => a.Id).ToList();
+    }
+
+    /// <summary>
+    /// İptal transaction'ında değiştirilecek YAN ETKİ satırlarını (ürün, hediye çeki, paket seansı)
+    /// deterministik sırayla <c>FOR UPDATE</c> ile kilitler.
+    /// <para>
+    /// Neden: kilit yalnız cari satırındaydı. Eşzamanlı bir satış aynı ürünün stoğunu okurken iptal
+    /// de okuyup yazınca son yazan diğerini eziyordu (10 → iptal 12 yazar, satış 9 yazar; doğrusu 11).
+    /// Aynı şey hediye çeki bakiyesi ve paket seansı sayacı için de geçerliydi.
+    /// </para>
+    /// <para>Sıra HER ZAMAN aynı (tablo, sonra Id) — iki işlem ters sırayla kilitleyip deadlock olmasın.</para>
+    /// </summary>
+    private async Task LockSideEffectRowsAsync(
+        Guid tenantId, IReadOnlyList<Adisyon> adisyonlar, Guid customerId, CancellationToken ct)
+    {
+        if (!_db.Database.IsRelational()) return;
+
+        var productIds = adisyonlar
+            .SelectMany(a => a.Items)
+            .Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue)
+            .Select(i => i.RefId!.Value)
+            .Distinct().OrderBy(x => x).ToList();
+
+        var giftCardIds = adisyonlar
+            .SelectMany(a => a.Items)
+            .Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue)
+            .Select(i => i.RefId!.Value)
+            .Distinct().OrderBy(x => x).ToList();
+
+        // Müşteri satırı: sadakat BAKİYESİ bir toplam olduğu için tek satır kilitlenemez; aynı
+        // müşterinin iki iptali müşteri satırında serileşince ikisi de aynı bayat bakiyeyi okuyup
+        // puanı eksiye düşüremez.
+        await LockRowsAsync("customers", [customerId], ct);
+        await LockRowsAsync("products", productIds, ct);
+        await LockRowsAsync("gift_cards", giftCardIds, ct);
+
+        // Paket seansları: müşterinin TÜM bakiyeleri (hangisinin geri kredileneceği sonra belli olur).
+        var sessionIds = await _db.CustomerPackageSessions
+            .Where(s => s.TenantId == tenantId && s.CustomerId == customerId)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+        await LockRowsAsync("customer_package_sessions", sessionIds.OrderBy(x => x).ToList(), ct);
+    }
+
+    /// <summary>Verilen Id'leri artan sırada <c>FOR UPDATE</c> ile kilitler (tablo adı sabit listeden gelir).</summary>
+    private async Task LockRowsAsync(string table, IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        foreach (var id in ids)
+        {
+#pragma warning disable EF1002 // tablo adı çağıranın sabit listesinden; Id parametreli.
+            await _db.Database.SqlQueryRaw<Guid>(
+                    $"SELECT Id AS Value FROM `{table}` WHERE Id = {{0}} FOR UPDATE", id.ToString())
+                .ToListAsync(ct);
+#pragma warning restore EF1002
+        }
     }
 
     /// <summary>

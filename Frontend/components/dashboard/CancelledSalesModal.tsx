@@ -23,9 +23,10 @@ interface Props {
   onOpenChange: (next: boolean) => void
   /**
    * İptali geri al — arşivdeki yedekten cari, taksit, tahsilat ve seanslar yeniden kurulur.
-   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır.
+   * `voidRefund`: iade FİİLEN yapılmamışsa (yanlış kayıt) true; kasa çıkışı da geri alınır
+   * (gerekçe zorunlu). `voidReason` yalnız o durumda dolar.
    */
-  onRestore?: (originalAccountId: string, voidRefund: boolean) => Promise<void>
+  onRestore?: (originalAccountId: string, voidRefund: boolean, voidReason?: string) => Promise<void>
   busy?: boolean
   /** Modal hangi sekmeyle açılsın (Ön Muhasebe'deki iki ayrı butondan gelir). */
   initialTab?: CancelledTab
@@ -46,14 +47,28 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
   const [tab, setTab] = useState<CancelledTab>(initialTab)
   /** İadeli bir iptal geri alınırken "para gerçekten ödendi mi?" sorusunun açık olduğu satır. */
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  /** İade geçersiz kılınacaksa zorunlu gerekçe (gerçek bir kasa hareketi siliniyor). */
+  const [voidReason, setVoidReason] = useState('')
+  const [error, setError] = useState('')
 
   // Modal her açılışta çağıranın istediği sekmeyle başlar (iki ayrı buton var).
-  useEffect(() => { if (open) { setTab(initialTab); setQuery(''); setConfirmId(null) } }, [open, initialTab])
+  useEffect(() => {
+    if (open) { setTab(initialTab); setQuery(''); setConfirmId(null); setVoidReason(''); setError('') }
+  }, [open, initialTab])
 
   const restore = async (originalAccountId: string, rowId: string, voidRefund: boolean): Promise<void> => {
     if (!onRestore) return
+    if (voidRefund && !voidReason.trim()) { setError('İadeyi geçersiz kılmak için gerekçe yazın.'); return }
     setRestoring(rowId)
-    try { await onRestore(originalAccountId, voidRefund) } finally { setRestoring(null); setConfirmId(null) }
+    setError('')
+    try {
+      await onRestore(originalAccountId, voidRefund, voidRefund ? voidReason.trim() : undefined)
+      setConfirmId(null); setVoidReason('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'İptal geri alınamadı.')
+    } finally {
+      setRestoring(null)
+    }
   }
 
   const refundedCount = useMemo(() => sales.filter((a) => a.refundedAmount > 0.005).length, [sales])
@@ -191,10 +206,21 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
                     <p className="text-[11px] font-semibold text-amber-900">
                       Bu iptalde müşteriye {formatTL(a.refundedAmount)} iade edilmişti. Para gerçekten ödendi mi?
                     </p>
+                    <p className="mt-1 text-[10.5px] text-amber-800">
+                      "Evet" derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.
+                    </p>
+                    {/* "Hayır" gerçek bir kasa hareketini siler → gerekçe zorunlu (denetim izi). */}
+                    <input
+                      value={voidReason}
+                      onChange={(e) => setVoidReason(e.target.value)}
+                      placeholder="Yanlış girildiyse gerekçe yazın (ör. iade fiilen yapılmadı)"
+                      className="mt-2 w-full rounded-[9px] border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] text-[#352432] outline-none focus:border-amber-400 placeholder:text-[#9d8590]"
+                    />
+                    {error && <p className="mt-1 text-[10.5px] font-semibold text-rose-700">{error}</p>}
                     <div className="mt-2 flex flex-wrap justify-end gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setConfirmId(null)}
+                        onClick={() => { setConfirmId(null); setVoidReason(''); setError('') }}
                         className="cursor-pointer rounded-[9px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#705a66]"
                       >
                         Vazgeç
@@ -224,7 +250,8 @@ export default function CancelledSalesModal({ sales, open, onOpenChange, onResto
                       disabled={busy || restoring === a.id}
                       onClick={() => {
                         // İade yoksa soracak bir şey yok; doğrudan geri al.
-                        if (a.refundedAmount > 0.005) { setConfirmId(a.id); return }
+                        setError('')
+                        if (a.refundedAmount > 0.005) { setConfirmId(a.id); setVoidReason(''); return }
                         void restore(a.originalAccountId, a.id, false)
                       }}
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"

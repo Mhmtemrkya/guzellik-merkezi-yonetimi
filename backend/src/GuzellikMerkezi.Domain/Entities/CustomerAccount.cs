@@ -61,7 +61,28 @@ public sealed class CustomerAccount : Entity
     public IReadOnlyCollection<Installment> Installments => _installments.AsReadOnly();
     public IReadOnlyCollection<AccountPayment> Payments => _payments.AsReadOnly();
 
-    public decimal PaidAmount => _payments.Sum(p => p.Amount) + DepositAmount;
+    /// <summary>
+    /// Bu cariden müşteriye GERİ ÖDENMİŞ ve iptal geri alınırken korunmuş toplam.
+    /// <para>
+    /// Neden gerekli: "iptali geri al" tahsilatları aynen geri kurar. İade gerçekten yapılmışsa
+    /// (kasa çıkışı korunduysa) o para artık kurumda DEĞİLDİR — ama tahsilat satırı geri geldiği
+    /// için cari "ödendi" görünüyor, üstelik satış tekrar iptal edilirse AYNI para bir kez daha
+    /// iade edilebiliyordu (1.000 tahsilata karşı 2.000 iade). Bu alan geri ödenen kısmı
+    /// tahsilattan düşer: borç yeniden doğar ve ikinci iade üst sınırı doğru hesaplanır.
+    /// </para>
+    /// </summary>
+    public decimal RefundedAmount { get; private set; }
+
+    /// <summary>
+    /// Kurumda kalan tahsilat = tahsilatlar − korunmuş iadeler.
+    /// <para>
+    /// Peşinat BURAYA EKLENMEZ: peşinat da oluşturulduğu anda gerçek bir tahsilat satırına
+    /// dönüşür (bkz. <c>CustomerAccountService</c>). Eskiden yalnız kolonda durduğu için cari
+    /// "tahsil edilmiş" sayıyor ama kasa/gelir defteri hiç görmüyordu.
+    /// <see cref="DepositAmount"/> artık yalnız PLAN alanıdır (taksitlendirilecek tutarı belirler).
+    /// </para>
+    /// </summary>
+    public decimal PaidAmount => _payments.Sum(p => p.Amount) - RefundedAmount;
     /// <summary>
     /// Kalan borç. İPTAL EDİLMİŞ satışta 0'dır: müşteriden artık tahsilat beklenmez.
     /// Tahsil edilmiş tutar (PaidAmount) korunur — ödemeler silinmez, yalnızca alacak düşer.
@@ -142,6 +163,37 @@ public sealed class CustomerAccount : Entity
         Touch();
     }
 
+    /// <summary>Peşinat için otomatik açılan tahsilatın referansı — geri yükleme/rapor bunu tanır.</summary>
+    public const string DepositPaymentReference = "Peşinat";
+
+    /// <summary>
+    /// Peşinatı GERÇEK bir tahsilat hareketine dönüştürür. Cari açılırken bir kez çağrılır.
+    /// <see cref="DepositAmount"/> plan alanı olarak yerinde kalır (taksit matematiği değişmesin).
+    /// </summary>
+    public void RegisterDepositPayment(string? method, DateTime occurredAt)
+    {
+        if (DepositAmount <= 0) return;
+        RegisterPayment(DepositAmount, string.IsNullOrWhiteSpace(method) ? "cash" : method,
+            DepositPaymentReference, occurredAt);
+    }
+
+    /// <summary>
+    /// İptal geri alınırken KORUNAN iade tutarını cariye işler: para fiilen müşteriye ödendiği için
+    /// tahsilattan düşülür, borç yeniden doğar ve sonraki iade bu tutarı bir daha kapsayamaz.
+    /// </summary>
+    public void ApplyPreservedRefund(decimal amount)
+    {
+        if (amount <= 0) return;
+        RefundedAmount += amount;
+        Touch();
+    }
+
+    /// <summary>Yedekten geri yüklemede birikmiş iade tutarını aynen kurar (kümülatif, sıfırlanmaz).</summary>
+    public void SetRefundedAmount(decimal amount)
+    {
+        RefundedAmount = amount < 0 ? 0m : amount;
+    }
+
     /// <summary>
     /// Tahsilatları (peşinat hariç) taksitlere vade sırasıyla dağıtır: taksit Id → ödenen tutar.
     /// Saf okuma — kalıcı durum değiştirmez. Bir taksit tutarınca karşılandıysa kapanır, eksik
@@ -149,7 +201,11 @@ public sealed class CustomerAccount : Entity
     /// </summary>
     public IReadOnlyDictionary<Guid, decimal> AllocatePayments()
     {
-        var pool = _payments.Sum(p => p.Amount);
+        // Peşinat ÇİFT SAYILMAZ: taksit planı zaten "toplam − peşinat" üzerinden kuruldu
+        // (bkz. RebuildInstallments). Peşinat artık gerçek bir tahsilat satırı olduğu için
+        // havuzdan ayrıca düşülür, yoksa ilk taksitleri bir kez daha kapatırdı.
+        // Korunmuş iade kadarı da müşteride değil kurumdadır → taksitleri kapatmaz.
+        var pool = _payments.Sum(p => p.Amount) - DepositAmount - RefundedAmount;
         var map = new Dictionary<Guid, decimal>();
         foreach (var inst in _installments
             .Where(i => i.Status != InstallmentStatus.Cancelled)

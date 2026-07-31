@@ -57,7 +57,18 @@ public interface IAdisyonEffectsReversal
     /// <paramref name="record"/> null ise (yedeği bu alan eklenmeden önce yazılmış eski iptaller)
     /// adisyona bağlı tüm pasif prim/sadakat satırlarına düşülür.
     /// </summary>
-    Task ReapplyAsync(Guid tenantId, Adisyon adisyon, AdisyonReversalRecord? record, CancellationToken cancellationToken = default);
+    /// <returns>Yeniden uygulanamayan (aradaki sürede harcanmış) paket seansı sayısı — çağıran işlemi geri alır.</returns>
+    Task<ReapplyOutcome> ReapplyAsync(Guid tenantId, Adisyon adisyon, AdisyonReversalRecord? record, CancellationToken cancellationToken = default);
+}
+
+/// <param name="MissingSessions">
+/// İptalde geri verilen ama geri almada YENİDEN TÜKETİLEMEYEN seans adedi. Sıfırdan büyükse paket
+/// hakkı aradaki sürede başka bir işlemde harcanmıştır; satışı sessizce canlandırmak cari ile paket
+/// bakiyesini kalıcı olarak ayrıştırırdı.
+/// </param>
+public sealed record ReapplyOutcome(int MissingSessions)
+{
+    public static readonly ReapplyOutcome Clean = new(0);
 }
 
 public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
@@ -111,13 +122,13 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         }
 
         // 3) Ürün satışı → stoğu geri ekle + iade hareketi kaydet.
-        foreach (var (item, product) in await ProductLinesAsync(tenantId, adisyon, cancellationToken))
+        foreach (var (item, product, unitCost) in await ProductLinesAsync(tenantId, adisyon, cancellationToken))
         {
             var qty = Math.Max(1, Math.Round(item.Quantity, 3, MidpointRounding.AwayFromZero));
             product.AdjustStock(StockMovementType.Inbound, qty);
             _db.StockMovements.Add(new StockMovement(
                 tenantId, product.Id, StockMovementType.Inbound, qty, nowUtc,
-                unitCost: product.Cost, reference: reference,
+                unitCost: unitCost, reference: reference,
                 notes: "Satış iptali — stok iadesi", staffMemberId: item.StaffMemberId));
         }
 
@@ -140,7 +151,7 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             packageUses);
     }
 
-    public async Task ReapplyAsync(Guid tenantId, Adisyon adisyon, AdisyonReversalRecord? record, CancellationToken cancellationToken = default)
+    public async Task<ReapplyOutcome> ReapplyAsync(Guid tenantId, Adisyon adisyon, AdisyonReversalRecord? record, CancellationToken cancellationToken = default)
     {
         var nowUtc = _clock.UtcNow;
         var reference = ReferenceOf(adisyon);
@@ -160,13 +171,13 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         foreach (var l in Scope(loyalty, record?.LoyaltyIds)) l.Restore(nowUtc);
 
         // 3) Ürünü yeniden stoktan düş.
-        foreach (var (item, product) in await ProductLinesAsync(tenantId, adisyon, cancellationToken))
+        foreach (var (item, product, unitCost) in await ProductLinesAsync(tenantId, adisyon, cancellationToken))
         {
             var qty = Math.Max(1, Math.Round(item.Quantity, 3, MidpointRounding.AwayFromZero));
             product.AdjustStock(StockMovementType.Sale, qty);
             _db.StockMovements.Add(new StockMovement(
                 tenantId, product.Id, StockMovementType.Sale, qty, nowUtc,
-                unitCost: product.Cost, reference: reference,
+                unitCost: unitCost, reference: reference,
                 notes: "İptal geri alındı — satış yeniden işlendi", staffMemberId: item.StaffMemberId));
         }
 
@@ -179,6 +190,9 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         }
 
         // 5) Geri kredilenen paket seanslarını yeniden tüket — AYNI seans kaydından, aynı adette.
+        //    Tüketilemeyen adet SAYILIR ve çağırana bildirilir: sessizce geçmek satışı canlandırıp
+        //    paket bakiyesini eksik bırakırdı (hak aradaki sürede başka işlemde harcanmış olabilir).
+        var missing = 0;
         foreach (var use in record?.PackageUses ?? [])
         {
             // Seans, iptal edilen satışın kendi seansı olabilir: geri almada henüz KAYDEDİLMEMİŞ
@@ -186,12 +200,17 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             var session = _db.CustomerPackageSessions.Local.FirstOrDefault(s => s.Id == use.SessionId)
                 ?? await _db.CustomerPackageSessions
                     .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == use.SessionId, cancellationToken);
-            if (session is null) continue;
+            if (session is null) { missing += use.Count; continue; }
+
             for (var k = 0; k < use.Count; k++)
             {
-                if (!session.TryConsume()) break;
+                if (session.TryConsume()) continue;
+                missing += use.Count - k;
+                break;
             }
         }
+
+        return missing == 0 ? ReapplyOutcome.Clean : new ReapplyOutcome(missing);
     }
 
     /// <summary>
@@ -205,9 +224,16 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
     }
 
     /// <summary>
-    /// Adisyondaki "paketten kullan" kalemlerinin tükettiği seansları geri verir.
-    /// Adayları TEK sorguda belleğe alır: aynı sorguyu döngü içinde tekrarlamak, henüz kaydedilmemiş
-    /// (UsedSessions düşürülmüş) satırı DB hâlâ dolu gördüğü için ikinci kez seçip sayacı şişiriyordu.
+    /// Adisyonun tükettiği paket seanslarını geri verir.
+    /// <para>
+    /// KAYNAK: onay anında yazılan <see cref="PackageSessionUsage"/> bağı — TAHMİN YOK. Eskiden
+    /// "aynı hizmet için en son güncellenmiş kullanılmış seans" seçiliyordu; müşterinin aynı hizmeti
+    /// içeren birden çok paketi varsa A paketinden düşen seans B paketine geri yazılabiliyordu.
+    /// </para>
+    /// <para>
+    /// Bağ kaydı olmayan ESKİ adisyonlarda eski (tahminî) davranışa düşülür — aksi hâlde o
+    /// adisyonların seansı hiç geri verilmezdi.
+    /// </para>
     /// </summary>
     private async Task<List<PackageUseCredit>> CreditPackageUsesAsync(
         Guid tenantId, Adisyon adisyon, CancellationToken cancellationToken)
@@ -215,15 +241,41 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         var items = adisyon.Items.Where(i => i.Type == AdisyonItemType.PackageUse && i.RefId.HasValue).ToList();
         if (items.Count == 0) return [];
 
-        var candidates = await _db.CustomerPackageSessions
-            .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+        var links = await _db.PackageSessionUsages
+            .Where(u => u.TenantId == tenantId && u.AdisyonId == adisyon.Id)
             .ToListAsync(cancellationToken);
-        if (candidates.Count == 0) return [];
-
-        // En son kullanılan seanstan geri al (adisyonun tükettiği büyük olasılıkla odur).
-        candidates = candidates.OrderByDescending(s => s.UpdatedAtUtc ?? s.CreatedAtUtc).ToList();
 
         var credits = new Dictionary<Guid, int>();
+
+        if (links.Count > 0)
+        {
+            var sessions = (await _db.CustomerPackageSessions
+                    .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+                    .ToListAsync(cancellationToken))
+                .ToDictionary(s => s.Id);
+
+            foreach (var link in links)
+            {
+                if (!sessions.TryGetValue(link.CustomerPackageSessionId, out var session)) continue;
+                var given = 0;
+                for (var k = 0; k < link.Quantity && session.UsedSessions > 0; k++)
+                {
+                    session.RestoreOne();
+                    given++;
+                }
+                if (given > 0) credits[session.Id] = credits.GetValueOrDefault(session.Id) + given;
+            }
+            return credits.Select(kv => new PackageUseCredit(kv.Key, kv.Value)).ToList();
+        }
+
+        // --- Bağ kaydı olmayan eski adisyonlar: en son kullanılandan geri al (tahminî) ---
+        var candidates = (await _db.CustomerPackageSessions
+                .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+                .ToListAsync(cancellationToken))
+            .OrderByDescending(s => s.UpdatedAtUtc ?? s.CreatedAtUtc)
+            .ToList();
+        if (candidates.Count == 0) return [];
+
         foreach (var item in items)
         {
             var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
@@ -241,14 +293,22 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
     }
 
     /// <summary>
-    /// Adisyondaki ürün kalemleri + karşılık gelen ürün kayıtları.
+    /// Adisyondaki ürün kalemleri + ürün kaydı + SATIŞ ANINDAKİ birim maliyet.
+    /// <para>
+    /// Kapsam onayla aynı olmalı: onay TÜM ürün kalemlerinden stok düşüyor, ters kayıt ise
+    /// <c>CoveredByPackage</c> işaretlileri hariç tutuyordu → o ürünlerin stoğu iptalde geri gelmiyordu.
+    /// </para>
+    /// <para>
+    /// Maliyet ürünün GÜNCEL maliyetinden değil, satış anındaki stok hareketinden alınır; aksi hâlde
+    /// adet doğru olsa da maliyet/kârlılık raporu sapardı.
+    /// </para>
     /// Guid listesiyle <c>.Contains()</c> MySQL sağlayıcısında SQL'e çevrilemez → bellekte eşlenir.
     /// </summary>
-    private async Task<List<(AdisyonItem Item, Product Product)>> ProductLinesAsync(
+    private async Task<List<(AdisyonItem Item, Product Product, decimal UnitCost)>> ProductLinesAsync(
         Guid tenantId, Adisyon adisyon, CancellationToken cancellationToken)
     {
         var items = adisyon.Items
-            .Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue && !i.CoveredByPackage)
+            .Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue)
             .ToList();
         if (items.Count == 0) return [];
 
@@ -257,10 +317,21 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             .Where(p => wanted.Contains(p.Id))
             .ToDictionary(p => p.Id);
 
-        var result = new List<(AdisyonItem, Product)>(items.Count);
+        // Satış anındaki maliyet: bu adisyonun referansıyla yazılmış Sale hareketleri.
+        var reference = ReferenceOf(adisyon);
+        var originalCost = (await _db.StockMovements
+                .Where(m => m.TenantId == tenantId && m.Reference == reference && m.Type == StockMovementType.Sale)
+                .Select(m => new { m.ProductId, m.UnitCost })
+                .ToListAsync(cancellationToken))
+            .GroupBy(m => m.ProductId)
+            .ToDictionary(g => g.Key, g => g.First().UnitCost);
+
+        var result = new List<(AdisyonItem, Product, decimal)>(items.Count);
         foreach (var item in items)
         {
-            if (products.TryGetValue(item.RefId!.Value, out var product)) result.Add((item, product));
+            if (!products.TryGetValue(item.RefId!.Value, out var product)) continue;
+            var cost = originalCost.TryGetValue(product.Id, out var c) && c.HasValue ? c.Value : product.Cost;
+            result.Add((item, product, cost));
         }
         return result;
     }

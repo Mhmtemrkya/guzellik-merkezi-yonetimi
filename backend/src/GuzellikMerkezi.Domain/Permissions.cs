@@ -51,6 +51,11 @@ public static class Permissions
     public const string AccountingAccounts = "Accounting.Accounts";
     public const string AccountingCollect = "Accounting.Collect";
     public const string AccountingExpenses = "Accounting.Expenses";
+    /// <summary>
+    /// GERÇEKLEŞMİŞ bir para iadesini geçersiz kılma (iptali geri alırken kasa çıkışını silme).
+    /// Ayrı izin: normal cari/tahsilat yetkisiyle geçmiş bir kasa hareketi yok edilememeli.
+    /// </summary>
+    public const string AccountingVoidRefund = "Accounting.VoidRefund";
     public const string NotificationsSend = "Notifications.Send";
     public const string NotificationsTemplates = "Notifications.Templates";
 
@@ -105,6 +110,7 @@ public static class Permissions
             new(AccountingAccounts, "Cari hesap oluşturma / düzenleme"),
             new(AccountingCollect, "Tahsilat kaydı alma"),
             new(AccountingExpenses, "Gider girişi"),
+            new(AccountingVoidRefund, "Yapılmış para iadesini geçersiz kılma"),
         }),
         new(Reports, "Raporlar", "Finans, müşteri, personel ve hizmet raporlarını görme (PDF/Excel)", Array.Empty<PermissionAction>()),
         new(Notifications, "Bildirimler", "Mesaj şablonları ve gönderim geçmişini görme", new PermissionAction[]
