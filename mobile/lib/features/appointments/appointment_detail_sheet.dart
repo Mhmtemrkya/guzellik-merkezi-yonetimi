@@ -27,6 +27,8 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
   late Map<String, dynamic> appt = Map.of(widget.appointment);
   Map<String, dynamic>? customer;
   bool _busy = false;
+  /// WhatsApp hatırlatması gönderilirken buton kilitlenir (çift gönderim olmasın).
+  bool _reminderBusy = false;
 
   @override
   void initState() {
@@ -68,6 +70,58 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
         'reason': reason.isEmpty ? null : reason,
       });
     }, 'Randevu iptal edildi.');
+  }
+
+  /// Müşterinin WhatsApp onay durumu — web'deki rozetin karşılığı.
+  /// (etiket, renk) döner; None ise rozet gösterilmez.
+  static (String, Color)? _confirmationMeta(String value) => switch (value) {
+        'Pending' => ('Onay bekliyor', const Color(0xFFA3701F)),
+        'Confirmed' => ('Onayladı', AppColors.success),
+        'Declined' => ('İptal etti', AppColors.danger),
+        'RescheduleRequested' => ('Erteleme istedi', Color(0xFF7C5CBF)),
+        _ => null,
+      };
+
+  /// WhatsApp hatırlatması gönder. Sonuç (gönderildi / simülasyon / onaya düştü)
+  /// kullanıcıya bildirilir; başarılıysa randevu tazelenir ki onay rozeti güncellensin.
+  Future<void> _sendWhatsappReminder() async {
+    setState(() => _reminderBusy = true);
+    try {
+      final res = await widget.api
+          .post('/api/admin/whatsapp/reminder/${appt['id']}', const {});
+      final map = res is Map ? res.cast<String, dynamic>() : const <String, dynamic>{};
+      // Personel onay kapısı: istek taslağa düşmüş olabilir (id dönmez).
+      final pending = map['pendingApproval'] == true || map.isEmpty;
+      final simulated = map['simulated'] == true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(pending
+            ? 'Hatırlatma onaya gönderildi.'
+            : simulated
+                ? 'Hatırlatma gönderildi (simülasyon).'
+                : 'WhatsApp hatırlatması gönderildi.'),
+      ));
+      await _refreshAppointment();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Hatırlatma gönderilemedi: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _reminderBusy = false);
+    }
+  }
+
+  /// Randevuyu sunucudan tazeler (onay durumu rozeti için).
+  Future<void> _refreshAppointment() async {
+    try {
+      final data = await widget.api.get('/api/admin/appointments/${appt['id']}');
+      if (mounted && data is Map) {
+        setState(() => appt = data.cast<String, dynamic>());
+      }
+    } catch (_) {
+      /* tazeleme başarısız olsa da akış bozulmasın */
+    }
   }
 
   /// Randevuyu KALICI sil. İptalden farklıdır: iptal kaydı durumuyla listede bırakır,
@@ -433,6 +487,63 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                 text: email.isEmpty ? '—' : email,
               ),
               const SizedBox(height: 18),
+              // WHATSAPP HATIRLATMA + müşteri onay durumu (web AppointmentReminderControl).
+              // Tamamlanmış/iptal randevuda hatırlatmanın anlamı yok.
+              if (status != 'Completed' && status != 'Cancelled') ...[
+                Builder(builder: (_) {
+                  final meta = _confirmationMeta('${appt['customerConfirmation'] ?? 'None'}');
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF25D366).withValues(alpha: .07),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF25D366).withValues(alpha: .3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.chat_rounded, size: 18, color: Color(0xFF1DA851)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('WhatsApp hatırlatma',
+                                  style: TextStyle(
+                                      fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              if (meta != null)
+                                Text('Müşteri: ${meta.$1}',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: meta.$2))
+                              else
+                                const Text('Henüz yanıt yok',
+                                    style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                            ],
+                          ),
+                        ),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF25D366),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: (_busy || _reminderBusy) ? null : _sendWhatsappReminder,
+                          icon: _reminderBusy
+                              ? const SizedBox(
+                                  width: 13,
+                                  height: 13,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.send_rounded, size: 15),
+                          label: const Text('Hatırlat', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+              ],
+
               // Şu an işlemde / işlemi bitir — duruma göre tek buton
               if (status == 'Scheduled' || status == 'Confirmed') ...[
                 SizedBox(

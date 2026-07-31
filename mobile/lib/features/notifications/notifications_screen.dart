@@ -5,6 +5,7 @@ import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/widgets/async_list_page.dart';
+import 'notification_summary_panel.dart';
 
 const _channels = [
   CrudOption('Sms', 'SMS'),
@@ -198,33 +199,43 @@ class NotificationsScreen extends StatelessWidget {
       statusKeys: const ['status', 'channel'],
       createLabel: 'Yeni şablon',
       headerExtra: Builder(
-        builder: (ctx) => Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        builder: (ctx) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            OutlinedButton.icon(
-              onPressed: () async {
-                try {
-                  final res = await api.post('/api/admin/notification-templates/payment-reminders/run');
-                  if (ctx.mounted) {
-                    final sent = res is Map ? res['sent'] : null;
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('Ödeme hatırlatmaları gönderildi: ${sent ?? '?'} mesaj.')),
-                    );
-                  }
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('$e')));
-                  }
-                }
-              },
-              icon: const Icon(Icons.payments_rounded),
-              label: const Text('Ödeme hatırlatmalarını çalıştır'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => _openPresets(ctx),
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('Hazır şablonlar'),
+            // ÖZET + OTOMASYON DURUMU (web StatCard'lar + AutomationStatusPanel).
+            // Mobilde yalnız şablon listesi vardı; kaç şablon aktif, bugün ne gitti,
+            // kuyrukta/başarısız kaç mesaj var ve hangi otomasyonun açık olduğu görünmüyordu.
+            NotificationSummaryPanel(api: api),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final res = await api.post('/api/admin/notification-templates/payment-reminders/run');
+                      if (ctx.mounted) {
+                        final sent = res is Map ? res['sent'] : null;
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('Ödeme hatırlatmaları gönderildi: ${sent ?? '?'} mesaj.')),
+                        );
+                      }
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('$e')));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.payments_rounded),
+                  label: const Text('Ödeme hatırlatmalarını çalıştır'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _openPresets(ctx),
+                  icon: const Icon(Icons.auto_awesome_rounded),
+                  label: const Text('Hazır şablonlar'),
+                ),
+              ],
             ),
           ],
         ),

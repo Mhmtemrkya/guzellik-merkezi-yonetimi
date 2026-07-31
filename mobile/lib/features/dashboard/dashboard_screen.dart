@@ -15,6 +15,8 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../accounting/package_sale_sheet.dart';
+import '../customers/passive_customers_sheet.dart';
+import '../import/import_sheet.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../notifications/notification_inbox_screen.dart';
 
@@ -377,6 +379,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _FollowUpsCard(
                         customerStats: data.customerStats,
                         passive: data.passive,
+                        api: widget.api,
+                        // Eşik değişince pano sayaçları tazelensin.
+                        onChanged: () => setState(() => future = load()),
                       ),
                     ],
                     if (data.secondary.isNotEmpty) ...[
@@ -1686,6 +1691,7 @@ class _QuickActions extends StatelessWidget {
     ('Ürün Sat', Icons.shopping_bag_rounded, 'product-sale'),
     ('Ödeme Al', Icons.account_balance_wallet_rounded, '/accounting'),
     ('Stok', Icons.inventory_2_rounded, '/stock'),
+    ('İçeri Aktar', Icons.upload_file_rounded, 'import'),
     ('Kampanya', Icons.campaign_rounded, '/campaigns'),
   ];
 
@@ -1709,6 +1715,14 @@ class _QuickActions extends StatelessWidget {
       _openSale(context);
     } else if (path == 'product-sale') {
       _openSale(context, productSale: true);
+    } else if (path == 'import') {
+      // Excel'den toplu içeri aktarma (web Topbar "İçeri Aktar" karşılığı).
+      showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => ImportSheet(api: api),
+      );
     } else if (path == '/appointments' || path == '/customers') {
       context.go(path);
     } else {
@@ -3065,9 +3079,16 @@ class _StockAlertsCard extends StatelessWidget {
 
 /// Takip gerektiren danışan grupları (web 'Takip Edilmesi Gereken Danışanlar').
 class _FollowUpsCard extends StatelessWidget {
-  const _FollowUpsCard({required this.customerStats, required this.passive});
+  const _FollowUpsCard({
+    required this.customerStats,
+    required this.passive,
+    required this.api,
+    this.onChanged,
+  });
   final Map<String, dynamic> customerStats;
   final Map<String, dynamic> passive;
+  final ApiClient api;
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -3094,37 +3115,60 @@ class _FollowUpsCard extends StatelessWidget {
       title: 'Takip Edilecek Danışanlar',
       onTap: () => context.go('/customers'),
       child: Column(
-        children: rows.map((r) {
-          final (label, count, icon) = r;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: Row(
-              children: [
-                Icon(icon, color: AppColors.primaryDark, size: 17),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5),
-                  ),
+        children: [
+          for (final (i, r) in rows.indexed)
+            Builder(builder: (context) {
+              final (label, count, icon) = r;
+              // İlk satır PASİF müşteriler: dokununca isim listesi + eşik ayarı açılır
+              // (web PassiveCustomersPanel). Diğer satırlar yalnız sayaç.
+              final row = Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: Row(
+                  children: [
+                    Icon(icon, color: AppColors.primaryDark, size: 17),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                    Text(
+                      '$count',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const Text(
+                      ' danışan',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                    ),
+                    if (i == 0) ...[
+                      const SizedBox(width: 2),
+                      const Icon(Icons.chevron_right_rounded,
+                          size: 16, color: AppColors.muted),
+                    ],
+                  ],
                 ),
-                Text(
-                  '$count',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
-                ),
-                const Text(
-                  ' danışan',
-                  style: TextStyle(color: AppColors.muted, fontSize: 11),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+              );
+              if (i != 0) return row;
+              return InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => showModalBottomSheet<bool>(
+                  context: context,
+                  isScrollControlled: true,
+                  useSafeArea: true,
+                  builder: (_) => PassiveCustomersSheet(api: api),
+                ).then((changed) {
+                  if (changed == true) onChanged?.call();
+                }),
+                child: row,
+              );
+            }),
+        ],
       ),
     );
   }

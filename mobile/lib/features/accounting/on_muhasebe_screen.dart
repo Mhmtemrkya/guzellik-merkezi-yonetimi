@@ -1187,10 +1187,37 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                   ),
                 ),
               ),
+              // ONAYLA — personelin girdiği gider yönetici onayına düşer; web'de olan bu
+              // aksiyon mobilde yoktu ve kayıt onaysız kalıyordu.
+              if (!approved && !(widget.api.auth?.user?.isStaff ?? false)) ...[
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 26,
+                  child: FilledButton.icon(
+                    onPressed: () => _approveExpense(e),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.check_rounded, size: 13),
+                    label: const Text('Onayla', style: TextStyle(fontSize: 10.5)),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
       ),
+    );
+  }
+
+  /// Bekleyen gideri onaylar (web'deki "ONAYLA" aksiyonunun karşılığı).
+  Future<void> _approveExpense(Map<String, dynamic> e) async {
+    await _guard(
+      () => widget.api.patch('/api/admin/expenses/${e['id']}/approve', const {}),
+      'Gider onaylandı.',
     );
   }
 
@@ -1928,23 +1955,94 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
           ),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.card_giftcard_rounded,
-                size: 20, color: Color(0xFFA3701F)),
-            const SizedBox(width: 9),
-            const Expanded(
-              child: Text('Sadakat puanı',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12.5,
-                      color: Color(0xFF7A5413))),
+            Row(
+              children: [
+                const Icon(Icons.card_giftcard_rounded,
+                    size: 20, color: Color(0xFFA3701F)),
+                const SizedBox(width: 9),
+                const Expanded(
+                  child: Text('Sadakat puanı',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                          color: Color(0xFF7A5413))),
+                ),
+                Text('$points',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        color: Color(0xFFA3701F))),
+              ],
             ),
-            Text('$points',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                    color: Color(0xFFA3701F))),
+            // PUAN YÖNETİMİ (web LoyaltyCard paritesi): mobilde yalnız görüntüleme vardı.
+            if (!(widget.api.auth?.user?.isStaff ?? false)) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _adjustLoyalty(a, add: true, balance: points),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.success,
+                        side: BorderSide(color: AppColors.success.withValues(alpha: .4)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.add_rounded, size: 15),
+                      label: const Text('Puan ekle', style: TextStyle(fontSize: 11.5)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: points <= 0
+                          ? null
+                          : () => _adjustLoyalty(a, add: false, balance: points),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.danger,
+                        side: BorderSide(color: AppColors.danger.withValues(alpha: .4)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.remove_rounded, size: 15),
+                      label: const Text('Puan kullan', style: TextStyle(fontSize: 11.5)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Son puan hareketleri — nereden kazanıldığı/harcandığı görünür.
+            if (_loyaltyHistory.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              for (final h in _loyaltyHistory.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          valueOf(h, const ['description', 'sourceType'], fallback: 'Puan hareketi'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF7A5413)),
+                        ),
+                      ),
+                      Builder(builder: (_) {
+                        final p = numberOf(h, const ['points']).toInt();
+                        return Text(
+                          p >= 0 ? '+$p' : '$p',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: p >= 0 ? AppColors.success : AppColors.danger,
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -2060,8 +2158,8 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
   }
 
   /// Seans & Sadakat sekmesi ilk açılışta yüklenir.
-  Future<void> _loadExtras() async {
-    if (_extrasLoaded || _extrasLoading) return;
+  Future<void> _loadExtras({bool force = false}) async {
+    if ((_extrasLoaded && !force) || _extrasLoading) return;
     final customerId = '${a['customerId'] ?? ''}';
     if (customerId.isEmpty || customerId == 'null') {
       setState(() => _extrasLoaded = true);
@@ -2085,6 +2183,73 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
       _extrasLoading = false;
       _extrasLoaded = true;
     });
+  }
+
+  /// Sadakat puan geçmişi (bakiye yanıtının içinde gelir).
+  List<Map<String, dynamic>> get _loyaltyHistory {
+    final raw = _loyalty['history'];
+    if (raw is! List) return const [];
+    return raw.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  }
+
+  /// Manuel puan ekleme/kullanma (web LoyaltyCard paritesi). Açıklama zorunlu değil ama
+  /// önerilir: puan neden değişti sorusunun cevabı hareket listesinde görünsün.
+  Future<void> _adjustLoyalty(
+    Map<String, dynamic> account, {
+    required bool add,
+    required int balance,
+  }) async {
+    final customerId = '${account['customerId'] ?? ''}';
+    if (customerId.isEmpty || customerId == 'null') return;
+
+    final result = await showModalBottomSheet<CrudSheetResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => CrudFormSheet(
+        title: add ? 'Puan ekle' : 'Puan kullan',
+        icon: add ? Icons.add_circle_rounded : Icons.remove_circle_rounded,
+        fields: [
+          CrudField(
+            key: 'points',
+            label: add ? 'Eklenecek puan' : 'Kullanılacak puan (bakiye $balance)',
+            type: CrudFieldType.number,
+            required: true,
+            defaultValue: '50',
+          ),
+          const CrudField(
+              key: 'description', label: 'Açıklama', type: CrudFieldType.multiline),
+        ],
+      ),
+    );
+    if (result?.body == null) return;
+
+    final raw = numberOf(result!.body!, const ['points']).toInt().abs();
+    if (raw <= 0) return;
+    if (!add && raw > balance) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Bakiye yetersiz — kullanılabilir $balance puan.')));
+      }
+      return;
+    }
+
+    try {
+      await widget.api.post('/api/admin/loyalty/adjust', {
+        'customerId': customerId,
+        'points': add ? raw : -raw,
+        'description': result.body!['description'],
+      });
+      await _loadExtras(force: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(add ? '$raw puan eklendi.' : '$raw puan kullanıldı.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   Widget _stat(String label, String value) => Expanded(

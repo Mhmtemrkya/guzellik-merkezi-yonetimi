@@ -59,6 +59,12 @@ dependencies:
   firebase_messaging: ^15.1.5
   mobile_scanner: ^7.4.0
 
+  # Excel ile toplu içeri aktarma (web ImportDialog paritesi):
+  #  - file_picker: cihazdan .xlsx/.xls seçimi (yerel eklenti)
+  #  - excel: saf Dart çözümleyici; sayfa/satır/hücre okur, native bağımlılığı yok
+  file_picker: ^11.0.3
+  excel: ^4.0.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
