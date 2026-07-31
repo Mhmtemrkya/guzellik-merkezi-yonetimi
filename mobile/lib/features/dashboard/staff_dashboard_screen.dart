@@ -29,10 +29,34 @@ class StaffDashboardScreen extends StatefulWidget {
 }
 
 class _StaffData {
-  const _StaffData({required this.appointments, this.me});
+  const _StaffData({
+    required this.appointments,
+    required this.upcoming,
+    this.me,
+  });
+
+  /// Seçili dönemdeki randevular — KPI, grafik ve işlem dağılımının kaynağı.
   final List<Map<String, dynamic>> appointments;
+
+  /// Bugün + önümüzdeki 14 gün. Dönemden BAĞIMSIZDIR: kullanıcı "Ay"a baksa da
+  /// "sıradaki iş" bugünden sonrasıdır.
+  final List<Map<String, dynamic>> upcoming;
   final Map<String, dynamic>? me;
 }
+
+enum _Period { today, week, month }
+
+const _periodLabels = <_Period, String>{
+  _Period.today: 'Bugün',
+  _Period.week: 'Hafta',
+  _Period.month: 'Ay',
+};
+
+const _periodPhrase = <_Period, String>{
+  _Period.today: 'bugün',
+  _Period.week: 'bu hafta',
+  _Period.month: 'bu ay',
+};
 
 const _permissionLabels = <String, String>{
   'Appointments': 'Randevu işlemleri',
@@ -75,6 +99,7 @@ String _greeting() {
 
 class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   late Future<_StaffData> future;
+  _Period _period = _Period.week;
 
   @override
   void initState() {
@@ -82,31 +107,100 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     future = _load();
   }
 
+  /// Seçili dönemin penceresi (yerel gün sınırlarıyla).
+  (DateTime, DateTime) _window(_Period p) {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    switch (p) {
+      case _Period.today:
+        return (day, day.add(const Duration(days: 1)));
+      case _Period.week:
+        final start = day.subtract(Duration(days: day.weekday - 1));
+        return (start, start.add(const Duration(days: 7)));
+      case _Period.month:
+        return (DateTime(now.year, now.month, 1), DateTime(now.year, now.month + 1, 1));
+    }
+  }
+
   Future<_StaffData> _load() async {
-    final dayStart = DateTime.now();
-    final from = DateTime(dayStart.year, dayStart.month, dayStart.day);
-    final to = from.add(const Duration(days: 7));
+    final (from, to) = _window(_period);
+    final now = DateTime.now();
+    final upFrom = DateTime(now.year, now.month, now.day);
+    final upTo = upFrom.add(const Duration(days: 14));
+
     final values = await Future.wait([
       // Randevu sayfa izni yoksa backend 403 döner; dashboard boş metriklerle açılır.
       widget.api.get('/api/admin/appointments/', query: {
         'page': 1,
-        'pageSize': 200,
+        'pageSize': 400,
         'fromUtc': from.toUtc().toIso8601String(),
         'toUtc': to.toUtc().toIso8601String(),
+      }).catchError((_) => const <dynamic>[]),
+      widget.api.get('/api/admin/appointments/', query: {
+        'page': 1,
+        'pageSize': 200,
+        'fromUtc': upFrom.toUtc().toIso8601String(),
+        'toUtc': upTo.toUtc().toIso8601String(),
       }).catchError((_) => const <dynamic>[]),
       // Personel için API kendi kaydına kapsar; web paritesi: ilk kayıt = ben.
       widget.api
           .get('/api/admin/staff/', query: {'page': 1, 'pageSize': 10})
           .catchError((_) => const <dynamic>[]),
     ]);
-    final staff = apiItems(values[1]);
+    final staff = apiItems(values[2]);
     final appts = apiItems(values[0])
+      ..sort((a, b) => '${a['startUtc']}'.compareTo('${b['startUtc']}'));
+    final upcoming = apiItems(values[1])
       ..sort((a, b) => '${a['startUtc']}'.compareTo('${b['startUtc']}'));
     return _StaffData(
       appointments: appts,
+      upcoming: upcoming,
       me: staff.isNotEmpty ? staff.first : null,
     );
   }
+
+  void _changePeriod(_Period p) {
+    if (p == _period) return;
+    setState(() {
+      _period = p;
+      future = _load();
+    });
+  }
+
+  /// Dönem seçici — web'deki pill sekmelerin mobil karşılığı.
+  Widget _periodTabs() => Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final p in _Period.values)
+              GestureDetector(
+                onTap: () => _changePeriod(p),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _period == p ? AppColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _periodLabels[p]!,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: _period == p ? Colors.white : AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -161,8 +255,11 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
 
     String st(Map<String, dynamic> a) => '${a['status']}'.toLowerCase();
 
+    // DÖNEM verisi: KPI, grafik ve işlem dağılımı buradan.
     final appts = data.appointments;
-    final todayAppts = appts.where(isToday).toList();
+    // YAKLAŞAN verisi: bugünkü akış ve sıradaki randevu dönemden bağımsızdır.
+    final todayAppts = data.upcoming.where(isToday).toList();
+
     final completed = appts.where((a) => st(a) == 'completed').length;
     final cancelled =
         appts.where((a) => st(a) == 'cancelled' || st(a) == 'noshow').length;
@@ -178,24 +275,74 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final resolved = completed + cancelled;
     final successRate =
         resolved > 0 ? ((completed / resolved) * 100).round() : 0;
-    final nextAppt = appts.cast<Map<String, dynamic>?>().firstWhere(
+    final nextAppt = data.upcoming.cast<Map<String, dynamic>?>().firstWhere(
           (a) => startOf(a!)?.isAfter(now) ?? false,
           orElse: () => null,
         );
 
-    // Haftalık dağılım (bugünden itibaren 7 gün).
-    final weekCounts = List<int>.filled(7, 0);
-    final weekLabels = List<String>.generate(7, (i) {
-      final d = todayKey.add(Duration(days: i));
-      return CalendarText.weekdayShort[d.weekday - 1];
-    });
-    for (final a in appts) {
-      final s = startOf(a);
-      if (s == null) continue;
-      final idx =
-          DateTime(s.year, s.month, s.day).difference(todayKey).inDays;
-      if (idx >= 0 && idx < 7) weekCounts[idx]++;
+    // Yaklaşanlar: bugünden SONRAKİ günler (iptaller hariç), ilk 5.
+    final later = data.upcoming
+        .where((a) {
+          final s = startOf(a);
+          if (s == null) return false;
+          return DateTime(s.year, s.month, s.day).isAfter(todayKey) &&
+              st(a) != 'cancelled';
+        })
+        .take(5)
+        .toList();
+
+    // --- Dönem dağılımı: bugün → saat dilimleri, diğer → günler ---
+    final (winFrom, winTo) = _window(_period);
+    final List<String> chartLabels;
+    final List<int> chartTotals;
+    final List<int> chartDone;
+
+    if (_period == _Period.today) {
+      const slots = [8, 10, 12, 14, 16, 18, 20];
+      chartLabels = slots.map((h) => h.toString().padLeft(2, '0')).toList();
+      chartTotals = List<int>.filled(slots.length, 0);
+      chartDone = List<int>.filled(slots.length, 0);
+      for (final a in appts) {
+        final s = startOf(a);
+        if (s == null) continue;
+        var idx = ((s.hour - 8) ~/ 2);
+        if (idx < 0) idx = 0;
+        if (idx >= slots.length) idx = slots.length - 1;
+        chartTotals[idx]++;
+        if (st(a) == 'completed') chartDone[idx]++;
+      }
+    } else {
+      final days = winTo.difference(winFrom).inDays;
+      chartLabels = List<String>.generate(days, (i) {
+        final d = winFrom.add(Duration(days: i));
+        // Ay uzun: her günü etiketlemek yerine 5'in katları yazılır.
+        if (_period == _Period.week) {
+          return CalendarText.weekdayShort[d.weekday - 1];
+        }
+        return (i == 0 || (i + 1) % 5 == 0) ? '${i + 1}' : '';
+      });
+      chartTotals = List<int>.filled(days, 0);
+      chartDone = List<int>.filled(days, 0);
+      for (final a in appts) {
+        final s = startOf(a);
+        if (s == null) continue;
+        final idx = DateTime(s.year, s.month, s.day).difference(winFrom).inDays;
+        if (idx < 0 || idx >= days) continue;
+        chartTotals[idx]++;
+        if (st(a) == 'completed') chartDone[idx]++;
+      }
     }
+
+    // --- En çok uygulanan işlemler (dönemde tamamlananlar) ---
+    final serviceCounts = <String, int>{};
+    for (final a in appts) {
+      if (st(a) != 'completed') continue;
+      final name =
+          valueOf(a, const ['serviceName', 'islem'], fallback: 'Hizmet').trim();
+      serviceCounts[name] = (serviceCounts[name] ?? 0) + 1;
+    }
+    final serviceRows = serviceCounts.entries.toList()
+      ..sort((x, y) => y.value.compareTo(x.value));
 
     final rating = (data.me?['averageRating'] as num?)?.toDouble();
     final ratingCount = (data.me?['ratingCount'] as num?)?.toInt() ?? 0;
@@ -324,18 +471,36 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         ),
         const SizedBox(height: 12),
 
+        // DÖNEM SEÇİCİ — aşağıdaki tüm KPI ve grafikler bu döneme bakar.
+        Row(
+          children: [
+            const Expanded(
+              child: Text('DÖNEM',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      letterSpacing: 1.6,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.muted)),
+            ),
+            _periodTabs(),
+          ],
+        ),
+        const SizedBox(height: 10),
+
         // METRİK KARTLARI
         Row(
           children: [
             Expanded(
-              child: _metric('Bugünkü randevum', '${todayAppts.length}',
-                  'sana atanmış', Icons.event_rounded, const Color(0xFFC85776),
+              child: _metric('Randevum', '${appts.length}',
+                  '${_periodPhrase[_period]} atanmış', Icons.event_rounded,
+                  const Color(0xFFC85776),
                   onTap: () => context.go('/appointments')),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _metric('Bekleyen işlem', '$waiting', 'onay / planlı',
-                  Icons.hourglass_top_rounded, const Color(0xFFB88938)),
+              child: _metric('Tamamladığım', '$completed',
+                  '${_periodPhrase[_period]} biten', Icons.check_circle_rounded,
+                  const Color(0xFF39846F)),
             ),
           ],
         ),
@@ -343,18 +508,38 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         Row(
           children: [
             Expanded(
-              child: _metric('Tamamlanan (hafta)', '$completed',
-                  '%$successRate başarı oranı', Icons.check_circle_rounded,
-                  const Color(0xFF39846F)),
+              child: _metric('Başarı oranım', '%$successRate',
+                  resolved > 0 ? '$completed/$resolved sonuçlanan' : 'henüz veri yok',
+                  Icons.insights_rounded, const Color(0xFFB88938)),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _metric('Atanmış müşteri', '$uniqueCustomers',
-                  'bu haftaki randevulardan', Icons.people_alt_rounded,
-                  const Color(0xFF8B5AA5),
+              child: _metric('Müşterim', '$uniqueCustomers',
+                  waiting > 0 ? '$waiting bekleyen işlem' : '${_periodPhrase[_period]} hizmet verilen',
+                  Icons.people_alt_rounded, const Color(0xFF8B5AA5),
                   onTap: () => context.go('/customers')),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+
+        // PERFORMANS GRAFİĞİ — iş hacmi (para DEĞİL; personel ciro görmez).
+        _sectionTitle(
+            'PERFORMANS',
+            _period == _Period.today
+                ? 'Bugünün saat dağılımı'
+                : _period == _Period.week
+                    ? 'Bu haftanın dağılımı'
+                    : 'Bu ayın dağılımı'),
+        Container(
+          decoration: _cardDeco,
+          padding: const EdgeInsets.fromLTRB(14, 18, 14, 12),
+          child: _PerformanceChart(
+            labels: chartLabels,
+            totals: chartTotals,
+            done: chartDone,
+            emptyLabel: '${_periodPhrase[_period]} sana atanmış randevu yok.',
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -388,12 +573,51 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         ),
         const SizedBox(height: 16),
 
-        // HAFTALIK AKTİVİTE
-        _sectionTitle('BU HAFTA', 'Haftalık aktivite'),
+        // YAKLAŞAN RANDEVULAR — dönemden bağımsız, sıradaki işler.
+        _sectionTitle('SIRADAKİLER', 'Yaklaşan randevularım'),
         Container(
           decoration: _cardDeco,
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-          child: _MiniBars(values: weekCounts, labels: weekLabels),
+          child: later.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: Text(
+                      'Önümüzdeki 14 günde planlanmış randevun yok.',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final (i, a) in later.indexed) ...[
+                      if (i > 0)
+                        const Divider(height: 1, color: AppColors.border),
+                      _upcomingRow(a, startOf(a)),
+                    ],
+                  ],
+                ),
+        ),
+        const SizedBox(height: 16),
+
+        // EN ÇOK YAPILAN İŞLEMLER
+        _sectionTitle('UZMANLIK', 'En çok yaptığım işlemler'),
+        Container(
+          decoration: _cardDeco,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: serviceRows.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(
+                    child: Text('Bu dönemde tamamlanmış işlem yok.',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final e in serviceRows.take(6))
+                      _serviceBar(e.key, e.value, serviceRows.first.value),
+                  ],
+                ),
         ),
         const SizedBox(height: 16),
 
@@ -703,68 +927,237 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       ),
     );
   }
-}
 
-class _MiniBars extends StatelessWidget {
-  const _MiniBars({required this.values, required this.labels});
-  final List<int> values;
-  final List<String> labels;
-
-  @override
-  Widget build(BuildContext context) {
-    final max = values.fold<int>(1, (m, v) => v > m ? v : m);
-    return SizedBox(
-      height: 110,
+  /// Yaklaşan randevu satırı — solda gün/ay rozeti, sağda saat.
+  Widget _upcomingRow(Map<String, dynamic> a, DateTime? start) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          for (var i = 0; i < values.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    '${values[i]}',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutCubic,
-                    height: 8 + (values[i] / max) * 52,
-                    decoration: BoxDecoration(
-                      gradient: values[i] > 0
-                          ? const LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [Color(0xFFE0617F), Color(0xFFF3A3BF)],
-                            )
-                          : null,
-                      color: values[i] > 0 ? null : const Color(0xFFF1E5EA),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    labels[i],
-                    style: const TextStyle(
-                      fontSize: 9.5,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ],
-              ),
+          Container(
+            width: 44,
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
             ),
-          ],
+            child: Column(
+              children: [
+                Text(start == null ? '—' : '${start.day}',
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w800, height: 1)),
+                const SizedBox(height: 2),
+                Text(
+                  start == null
+                      ? ''
+                      : CalendarText.months[start.month - 1].substring(0, 3),
+                  style: const TextStyle(fontSize: 9, color: AppColors.muted, height: 1),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  valueOf(a, const ['customerName', 'fullName']),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  valueOf(a, const ['serviceName'], fallback: ''),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            start == null ? '' : CalendarText.hm(start),
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primaryDark),
+          ),
         ],
       ),
     );
   }
+
+  /// İşlem dağılımı satırı — oransal yatay çubuk.
+  Widget _serviceBar(String name, int count, int max) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12)),
+              ),
+              Text('$count',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 5),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: max > 0 ? count / max : 0,
+              minHeight: 7,
+              backgroundColor: AppColors.surfaceSoft,
+              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dönem performansı: çubuklar toplam randevuyu, koyu üst dilim tamamlananı gösterir.
+/// Para DEĞİL iş hacmi gösterir — personel işletme cirosunu görmez.
+class _PerformanceChart extends StatelessWidget {
+  const _PerformanceChart({
+    required this.labels,
+    required this.totals,
+    required this.done,
+    required this.emptyLabel,
+  });
+
+  final List<String> labels;
+  final List<int> totals;
+  final List<int> done;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final max = totals.isEmpty ? 0 : totals.reduce((a, b) => a > b ? a : b);
+    if (max == 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 26),
+        child: Center(
+          child: Text(emptyLabel,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12.5)),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 132,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var i = 0; i < totals.length; i++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          totals[i] > 0 ? '${totals[i]}' : '',
+                          style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 2),
+                        // Toplam çubuğu; içindeki koyu kısım tamamlananı temsil eder.
+                        SizedBox(
+                          height: 96 * (totals[i] / max),
+                          width: double.infinity,
+                          child: Stack(
+                            alignment: Alignment.bottomCenter,
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: .18),
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(4)),
+                                ),
+                              ),
+                              FractionallySizedBox(
+                                heightFactor:
+                                    totals[i] > 0 ? done[i] / totals[i] : 0,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.success,
+                                    borderRadius: BorderRadius.vertical(
+                                        top: Radius.circular(4)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            for (final l in labels)
+              Expanded(
+                child: Text(l,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: const TextStyle(fontSize: 9, color: AppColors.muted)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Divider(height: 1, color: AppColors.border),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _Legend(color: AppColors.primary.withValues(alpha: .18), label: 'Randevu'),
+            SizedBox(width: 16),
+            _Legend(color: AppColors.success, label: 'Tamamlanan'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 14,
+            height: 8,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(label,
+              style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+        ],
+      );
 }
