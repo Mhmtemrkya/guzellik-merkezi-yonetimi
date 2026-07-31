@@ -88,12 +88,18 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       widget.api
           .get('/api/admin/staff/', query: {'page': 1, 'pageSize': 100})
           .catchError((_) => const <dynamic>[]),
+      // İptal edilen satışlar canlı cari listesinde YOK: iptalde kayıt (taksit/tahsilat/seans
+      // dahil) cancelled_sales arşivine taşınıp silinir. "İptal edilenler" bu uçtan okunur.
+      widget.api
+          .get('/api/admin/accounts/cancelled')
+          .catchError((_) => const <dynamic>[]),
     ]);
     final data = _AccData(
       accounts: apiItems(results[0]),
       expenses: apiItems(results[1]),
       adisyonlar: apiItems(results[2]),
       staff: apiItems(results[3]),
+      cancelled: apiItems(results[4]),
     );
     // Son yüklenen veri FAB'lardan da erişilebilir olsun (maaş sayfası personel listesi ister).
     _last = data;
@@ -625,11 +631,12 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   /// Cari hesaplar — web'deki yeni tasarımın karşılığı: arama + filtre,
   /// peşin/taksitli ayrımı, sıradaki vade ve karttan doğrudan tahsilat.
   Widget _accountList(_AccData data) {
-    // İptal edilen satış borç/vade akışının DIŞINDADIR: listede görünmez,
-    // ayrı "İptal edilenler" sayfasında toplanır.
+    // İptal edilen satış borç/vade akışının DIŞINDADIR: kayıt arşive taşındığı için listede
+    // zaten görünmez. Aşağıdaki süzgeç, migration'ı henüz uygulanmamış kurumlarda kalan eski
+    // damgalı satırlara karşı savunma olarak durur.
     bool cancelled(Map<String, dynamic> a) => '${a['saleStatus']}' == 'Cancelled';
     final live = data.accounts.where((a) => !cancelled(a)).toList();
-    final cancelledCount = data.accounts.length - live.length;
+    final cancelledCount = data.cancelled.length;
 
     bool hasOverdue(Map<String, dynamic> a) =>
         parseInstallments(a).any((i) => i.overdue);
@@ -704,7 +711,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: OutlinedButton.icon(
-            onPressed: () => _openCancelledSales(data.accounts),
+            onPressed: () => _openCancelledSales(data.cancelled),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.danger,
               side: BorderSide(color: AppColors.danger.withValues(alpha: .35)),
@@ -911,14 +918,16 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     );
   }
 
-  Future<void> _openCancelledSales(List<Map<String, dynamic>> accounts) async {
+  Future<void> _openCancelledSales(List<Map<String, dynamic>> cancelled) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => CancelledSalesSheet(
-        accounts: accounts,
-        onOpen: _openAccountDetail,
+        sales: cancelled,
+        // Geri alma arşivdeki yedekten cari, taksit, tahsilat ve seansları yeniden kurar.
+        onRestore: (originalAccountId) =>
+            widget.api.post('/api/admin/accounts/$originalAccountId/restore-sale', const {}),
       ),
     );
   }
@@ -1295,11 +1304,15 @@ class _AccData {
     required this.expenses,
     required this.adisyonlar,
     required this.staff,
+    required this.cancelled,
   });
   final List<Map<String, dynamic>> accounts;
   final List<Map<String, dynamic>> expenses;
   final List<Map<String, dynamic>> adisyonlar;
   final List<Map<String, dynamic>> staff;
+
+  /// İptal arşivi (cancelled_sales) — canlı cari listesinden AYRI kaynak.
+  final List<Map<String, dynamic>> cancelled;
 }
 
 // ---------------------------------------------------------------------------

@@ -1116,6 +1116,39 @@ export interface CustomerAccount {
 
 export type SaleStatusKey = 'Active' | 'Completed' | 'Cancelled'
 
+/**
+ * ARŞİVDEKİ iptal edilmiş satış. Canlı cari listesinde YER ALMAZ — iptalde kayıt
+ * `cancelled_sales` tablosuna taşınıp canlı tablolardan silinir. "İptal Edilenler" ekranı
+ * bu listeyi ayrı çeker (adminApi.listCancelledSales).
+ */
+export interface CancelledSale {
+  id: string
+  /** Silinen carinin Id'si — "iptali geri al" bununla da çağrılabilir. */
+  originalAccountId: string
+  branchId: string | null
+  customerId: string
+  customerName: string
+  customerPhone: string
+  servicePackageId: string | null
+  name: string
+  totalAmount: number
+  depositAmount: number
+  /** İptal anında müşteriden fiilen tahsil edilmiş toplam. */
+  collectedAmount: number
+  /** Bunun müşteriye geri ödenen kısmı. */
+  refundedAmount: number
+  /** Kurumda kalan (tahsil − iade) — gelirde sayılmaya devam eden tutar. */
+  retainedAmount: number
+  soldAtUtc: string
+  soldByStaffName: string
+  isHistorical: boolean
+  sessionsTotal: number
+  sessionsUsed: number
+  adisyonId: string | null
+  cancelledAtUtc: string
+  cancellationReason: string
+}
+
 export interface CustomerAccountItem {
   serviceDefinitionId: string | null
   name: string

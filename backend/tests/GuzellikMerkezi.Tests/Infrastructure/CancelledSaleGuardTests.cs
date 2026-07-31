@@ -91,6 +91,84 @@ public sealed class CancelledSaleGuardTests
         }
     }
 
+    /// <summary>
+    /// İptal = ARŞİVE TAŞIMA. Canlı satırlar gerçekten silinmeli, tam kopyaları arşivde durmalı.
+    /// (Eskiden satırlar yerinde kalıyordu; süzgeç koymayan raporlar iptal edilmiş satışın parasını
+    /// saymaya devam ediyordu — asıl düzeltilen hata bu.)
+    /// </summary>
+    [Fact]
+    public async Task CancelSale_MovesRowsToArchive_AndDeletesLiveRows()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(400m, "cash", null, null))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId, new CancelSaleRequest("paket iadesi", RefundedAmount: 150m))).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            Assert.False(await db.CustomerAccounts.IgnoreQueryFilters().AnyAsync(a => a.Id == accountId));
+            Assert.False(await db.AccountPayments.IgnoreQueryFilters().AnyAsync(p => p.CustomerAccountId == accountId));
+            Assert.False(await db.Installments.IgnoreQueryFilters().AnyAsync(i => i.CustomerAccountId == accountId));
+
+            var archive = await db.CancelledSales.SingleAsync(x => x.OriginalAccountId == accountId);
+            Assert.Equal(1000m, archive.TotalAmount);
+            Assert.Equal(400m, archive.CollectedAmount);   // peşinat 0 + tahsilat 400
+            Assert.Equal(150m, archive.RefundedAmount);
+            Assert.Equal(250m, archive.RetainedAmount);    // kurumda kalan
+            Assert.Equal("paket iadesi", archive.CancellationReason);
+        }
+
+        // Arşiv listesi "İptal Edilenler" ekranını besler.
+        await using (var db = NewDb(options))
+        {
+            var listed = await NewService(db).ListCancelledAsync(tenantId);
+            Assert.True(listed.IsSuccess);
+            var only = Assert.Single(listed.Value!);
+            Assert.Equal(accountId, only.OriginalAccountId);
+        }
+    }
+
+    /// <summary>
+    /// Geri alma yedekten kurar ve AYNI Id'leri korur — randevu/adisyon gibi bu satırlara Id ile
+    /// bakan kayıtlar kırılmasın diye.
+    /// </summary>
+    [Fact]
+    public async Task RestoreSale_RebuildsRowsWithOriginalIds()
+    {
+        var options = NewOptions();
+        var (tenantId, accountId) = await SeedAsync(options);
+
+        Guid paymentId;
+        await using (var db = NewDb(options))
+        {
+            Assert.True((await NewService(db).RegisterPaymentAsync(tenantId, accountId, new RegisterAccountPaymentRequest(300m, "card", "REF-1", null))).IsSuccess);
+            paymentId = await db.AccountPayments.Where(p => p.CustomerAccountId == accountId).Select(p => p.Id).SingleAsync();
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(tenantId, accountId, new CancelSaleRequest("yanlış iptal"))).IsSuccess);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RestoreSaleAsync(tenantId, accountId)).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var account = await db.CustomerAccounts.Include(a => a.Payments).SingleAsync(a => a.Id == accountId);
+            Assert.Equal(1000m, account.TotalAmount);
+            var payment = Assert.Single(account.Payments);
+            Assert.Equal(paymentId, payment.Id);       // Id korunmalı
+            Assert.Equal(300m, payment.Amount);
+            Assert.Equal("REF-1", payment.Reference);
+
+            // Geri alınan iptal arşiv listesinden düşer (iz olarak RestoredAtUtc ile durur).
+            Assert.Empty((await NewService(db).ListCancelledAsync(tenantId)).Value!);
+        }
+    }
+
     [Fact]
     public async Task RegisterPayment_WorksAgain_AfterSaleRestored()
     {

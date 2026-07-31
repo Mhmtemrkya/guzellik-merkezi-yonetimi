@@ -109,8 +109,49 @@ public sealed record CreateHistoricalSaleRequest(
     /// <summary>Geçmiş randevular arasındaki gün aralığı (varsayılan 15).</summary>
     int SessionIntervalDays = 15);
 
-/// <summary>Satış iptali + gerekçesi.</summary>
-public sealed record CancelSaleRequest(string? Reason);
+/// <summary>
+/// Satış iptali. İptalde cari kaydı (taksit/tahsilat/seans dahil) canlı tablolardan silinip
+/// <c>cancelled_sales</c> arşivine taşınır.
+/// </summary>
+/// <param name="Reason">İptal gerekçesi (müşteri vazgeçti, paket iadesi vb.).</param>
+/// <param name="RefundedAmount">
+/// Tahsil edilmiş paradan müşteriye GERİ ÖDENEN kısım. Kısmi iade desteklenir.
+/// null/0 → para kurumda kaldı (gelirde sayılmaya devam eder, arşivde "iade edilmedi" olarak durur).
+/// Tahsil edilmiş tutarı aşan değerler tahsilata kırpılır.
+/// </param>
+public sealed record CancelSaleRequest(string? Reason, decimal? RefundedAmount = null);
+
+/// <summary>
+/// Arşivdeki iptal edilmiş satış. Canlı cari listesinde YER ALMAZ — "İptal Edilenler" ekranı
+/// bu kayıtları ayrı okur. <see cref="CollectedAmount"/> iptal anında tahsil edilmiş olan paradır.
+/// </summary>
+public sealed record CancelledSaleDto(
+    Guid Id,
+    Guid OriginalAccountId,
+    Guid TenantId,
+    Guid? BranchId,
+    Guid CustomerId,
+    string? CustomerName,
+    string? CustomerPhone,
+    Guid? ServicePackageId,
+    string Name,
+    decimal TotalAmount,
+    decimal DepositAmount,
+    /// <summary>İptal anında müşteriden fiilen tahsil edilmiş toplam.</summary>
+    decimal CollectedAmount,
+    /// <summary>Bunun müşteriye geri ödenen kısmı.</summary>
+    decimal RefundedAmount,
+    /// <summary>Kurumda kalan (tahsil edilen − iade edilen) — gelirde sayılmaya devam eden tutar.</summary>
+    decimal RetainedAmount,
+    DateTime SoldAtUtc,
+    Guid? SoldByStaffMemberId,
+    string? SoldByStaffName,
+    bool IsHistorical,
+    int SessionsTotal,
+    int SessionsUsed,
+    Guid? AdisyonId,
+    DateTime CancelledAtUtc,
+    string? CancellationReason);
 
 public sealed record CreateCustomerAccountRequest(
     Guid? BranchId,

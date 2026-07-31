@@ -77,7 +77,7 @@ export default function CustomerSalesPanel({
   busy?: boolean
   variant?: 'card' | 'flush'
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
-  onCancelSale: (accountId: string, reason: string) => Promise<void>
+  onCancelSale: (accountId: string, reason: string, refundedAmount: number) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
   onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
 }) {

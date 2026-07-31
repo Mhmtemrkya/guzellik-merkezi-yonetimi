@@ -16,7 +16,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAccount } from '@/lib/apiMappers'
+import { apiItems, formatTL, mapCancelledSale, normalizeAccount } from '@/lib/apiMappers'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiCustomerAccount, CustomerAccount, SaleStatusKey } from '@/lib/types'
 import SaleDetailModal from '@/components/dashboard/SaleDetailModal'
@@ -75,7 +75,7 @@ export default function CatalogSalesPanel({
   canManage?: boolean
   busy?: boolean
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
-  onCancelSale: (accountId: string, reason: string) => Promise<void>
+  onCancelSale: (accountId: string, reason: string, refundedAmount: number) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
   onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
 }) {
@@ -106,22 +106,37 @@ export default function CatalogSalesPanel({
   )
   const accounts = useMemo(() => (data || []).map((a, i) => normalizeAccount(a, i)), [data])
 
+  // İPTAL EDİLENLER AYRI KAYNAKTAN GELİR: iptalde cari kaydı canlı tablolardan silinip
+  // cancelled_sales arşivine taşınır, bu yüzden yukarıdaki satış sorgusunda hiç görünmezler.
+  const { data: cancelledRaw, reload: reloadCancelled } = useApiQuery<unknown[]>(
+    async () => {
+      if (!tenantId || !item.id || kind !== 'package') return []
+      const res = await adminApi.listCancelledSales<unknown[]>({ servicePackageId: item.id }, tenantId)
+      return Array.isArray(res) ? res : []
+    },
+    [tenantId, item.id, kind],
+    { initialData: [] },
+  )
+  const cancelledSales = useMemo(() => (cancelledRaw || []).map(mapCancelledSale), [cancelledRaw])
+
+  const reloadAll = async (): Promise<void> => { await reload(); await reloadCancelled() }
+
   const sorted = useMemo(
     () => [...accounts].sort((a, b) => (b.soldAtUtc || '').localeCompare(a.soldAtUtc || '')),
     [accounts],
   )
 
   const counts = useMemo(() => {
-    const c: Record<FilterKey, number> = { all: sorted.length, Active: 0, Completed: 0, Cancelled: 0 }
+    const c: Record<FilterKey, number> = { all: sorted.length, Active: 0, Completed: 0, Cancelled: cancelledSales.length }
     for (const a of sorted) c[a.saleStatus]++
     return c
-  }, [sorted])
+  }, [sorted, cancelledSales])
 
   const filtered = useMemo(
     () => (filter === 'all' ? sorted : sorted.filter((a) => a.saleStatus === filter)),
     [sorted, filter],
   )
-  const visible = filtered.slice(0, limit)
+  const visible = filter === 'Cancelled' ? [] : filtered.slice(0, limit)
 
   // KPI: iptal edilen satışlar ciroya sayılmaz (geri alınmış işlem).
   const kpi = useMemo(() => {
@@ -230,9 +245,34 @@ export default function CatalogSalesPanel({
           </div>
         )}
 
-        {/* Satış listesi */}
+        {/* Satış listesi. "İptal" sekmesi arşivden okunur — o satışların canlı kaydı yoktur. */}
         <div className="mt-2 space-y-1.5">
-          {visible.length === 0 ? (
+          {filter === 'Cancelled' ? (
+            cancelledSales.length === 0 ? (
+              <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11px] text-[#705a66]">
+                İptal edilmiş satış yok.
+              </div>
+            ) : (
+              cancelledSales.map((c) => (
+                <div key={c.id} className="rounded-[11px] border border-rose-100 bg-rose-50/40 px-3 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold text-[#352432]">{c.customerName || c.name}</div>
+                      <div className="truncate text-[10.5px] text-[#705a66]">
+                        {c.cancellationReason || 'gerekçe belirtilmemiş'}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-[12.5px] font-bold tabular-nums text-[#352432]">{formatTL(c.totalAmount)}</div>
+                      <div className="text-[10px] text-[#705a66]">
+                        tahsil {formatTL(c.collectedAmount)}{c.refundedAmount > 0.005 ? ` · iade ${formatTL(c.refundedAmount)}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )
+          ) : visible.length === 0 ? (
             <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11px] text-[#705a66]">
               {sorted.length === 0
                 ? kind === 'category'
@@ -245,7 +285,7 @@ export default function CatalogSalesPanel({
           )}
         </div>
 
-        {filtered.length > visible.length && (
+        {filter !== 'Cancelled' && filtered.length > visible.length && (
           <button
             type="button"
             onClick={() => setLimit((v) => v + VISIBLE_STEP)}
@@ -267,8 +307,8 @@ export default function CatalogSalesPanel({
               canManage={canManage}
               busy={busy}
               onClose={() => setDetailId(null)}
-              onCancelSale={async (id, reason) => { await onCancelSale(id, reason); await reload() }}
-              onRestoreSale={async (id) => { await onRestoreSale(id); await reload() }}
+              onCancelSale={async (id, reason, refunded) => { await onCancelSale(id, reason, refunded); setDetailId(null); await reloadAll() }}
+              onRestoreSale={async (id) => { await onRestoreSale(id); await reloadAll() }}
               onCollectInstallment={
                 onCollectInstallment && (async (id, amount) => { await onCollectInstallment(id, amount); await reload() })
               }

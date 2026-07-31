@@ -17,7 +17,7 @@ import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSale
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, categoryOrderIndex, formatTL, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, categoryOrderIndex, formatTL, mapCancelledSale, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Gift, Loader2, Minus, PackagePlus, PencilLine,
   PauseCircle, Plus, RotateCcw, Search, ShoppingBag, Sparkles, Tag, Trash2, TrendingUp, Trophy, UploadCloud,
@@ -126,10 +126,11 @@ export default function PackageLibrary({
   const { data, loading, error, reload } = useApiQuery<{
     packages: ApiServicePackage[]; services: ApiService[]; cats: ApiCustomServiceCategory[]
     accounts: ApiCustomerAccount[]; campaigns: ApiCampaign[]; staff: ApiStaff[]; consents: ApiConsentTemplate[]
+    cancelled: unknown[]
   }>(
     async () => {
-      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [] }
-      const [packages, services, cats, accounts, campaigns, staff, consents] = await Promise.all([
+      if (!tenantId) return { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [], cancelled: [] }
+      const [packages, services, cats, accounts, campaigns, staff, consents, cancelled] = await Promise.all([
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         // TÜM hizmetleri çek (tek sayfa 200 tavanına takılıp hizmetler eksik görünmesin).
         fetchAllPaged<ApiService>((page, size) => adminApi.services<ApiService>({ tenantId, page, pageSize: size })).catch(() => [] as ApiService[]),
@@ -138,11 +139,13 @@ export default function PackageLibrary({
         adminApi.campaigns<ApiCampaign>({ tenantId }).catch(() => []),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.consentTemplates<ApiConsentTemplate>(tenantId).catch(() => []),
+        // "Müşteri İptali" sekmesi: iptal edilen satışlar canlı cari listesinde YOK, arşivde.
+        adminApi.listCancelledSales<unknown[]>(undefined, tenantId).catch(() => [] as unknown[]),
       ])
-      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [], staff: apiItems(staff), consents: Array.isArray(consents) ? consents : [] }
+      return { packages: apiItems(packages), services, cats: Array.isArray(cats) ? cats : [], accounts: apiItems(accounts), campaigns: Array.isArray(campaigns) ? campaigns : [], staff: apiItems(staff), consents: Array.isArray(consents) ? consents : [], cancelled: Array.isArray(cancelled) ? cancelled : [] }
     },
     [tenantId],
-    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [] } },
+    { initialData: { packages: [], services: [], cats: [], accounts: [], campaigns: [], staff: [], consents: [], cancelled: [] } },
   )
 
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
@@ -190,8 +193,8 @@ export default function PackageLibrary({
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))
-  const handleCancelSale = (accountId: string, reason: string): Promise<void> =>
-    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, tenantId))
+  const handleCancelSale = (accountId: string, reason: string, refundedAmount = 0): Promise<void> =>
+    runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId))
   const handleRestoreSale = (accountId: string): Promise<void> =>
     runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
   const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
@@ -207,12 +210,16 @@ export default function PackageLibrary({
 
   // ---- filtre + sayfalama
   // Müşteri satışı iptal edilmiş paketlerin id'leri — "Müşteri İptali" sekmesi bunları süzer.
-  // Kaynak: cari hesaplardaki gerekçeli satış iptali (CustomerAccount.CancelledAtUtc).
+  // Kaynak: İPTAL ARŞİVİ (cancelled_sales). İptalde cari kaydı canlı tablodan silinip arşive
+  // taşındığı için burayı `accounts` üzerinden aramak artık hiçbir şey bulmaz.
   const customerCancelledPackageIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const a of accounts) if (a.saleStatus === 'Cancelled' && a.servicePackageId) ids.add(a.servicePackageId)
+    for (const raw of data?.cancelled || []) {
+      const c = mapCancelledSale(raw)
+      if (c.servicePackageId) ids.add(c.servicePackageId)
+    }
     return ids
-  }, [accounts])
+  }, [data])
 
   const filtered = useMemo(() => {
     let list = packages

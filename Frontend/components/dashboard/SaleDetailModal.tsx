@@ -76,7 +76,7 @@ export default function SaleDetailModal({
   canManage?: boolean
   busy?: boolean
   onClose: () => void
-  onCancelSale: (accountId: string, reason: string) => Promise<void>
+  onCancelSale: (accountId: string, reason: string, refundedAmount: number) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
   onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
 }) {
@@ -85,6 +85,9 @@ export default function SaleDetailModal({
   const [openInstallment, setOpenInstallment] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [reason, setReason] = useState('')
+  // İptalde tahsil edilmiş paranın ne kadarı müşteriye geri ödendi? Geri ödenen kısım gelirden
+  // de düşer; kalan kurumda sayılmaya devam eder. Boş = iade yok.
+  const [refund, setRefund] = useState('')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
 
@@ -391,21 +394,59 @@ export default function SaleDetailModal({
                 </button>
               </div>
             ) : cancelling ? (
-              <div className="space-y-2">
-                <label className="block text-[11.5px] font-semibold text-[#4a3a44]">İptal gerekçesi</label>
-                <input
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  autoFocus
-                  placeholder="örn. müşteri vazgeçti, paket iade edildi"
-                  className="w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none focus:border-[#ef9ab5] placeholder:text-[#9d8590]"
-                />
+              <div className="space-y-2.5">
+                <div>
+                  <label className="block text-[11.5px] font-semibold text-[#4a3a44]">İptal gerekçesi</label>
+                  <input
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    autoFocus
+                    placeholder="örn. müşteri vazgeçti, paket iade edildi"
+                    className="mt-1 w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none focus:border-[#ef9ab5] placeholder:text-[#9d8590]"
+                  />
+                </div>
+
+                {/* Tahsil edilmiş para varsa: ne kadarı iade edildi? Geri ödenen kısım gelir
+                    raporlarından da düşer; kalan kurumda sayılmaya devam eder. */}
+                {account.paidAmount > 0.005 && (
+                  <div>
+                    <label className="block text-[11.5px] font-semibold text-[#4a3a44]">
+                      Müşteriye iade edilen tutar
+                      <span className="ml-1.5 font-normal text-[#705a66]">(tahsil edilmiş: {formatTL(account.paidAmount)})</span>
+                    </label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        value={refund}
+                        onChange={(e) => setRefund(e.target.value.replace(/[^\d.,]/g, ''))}
+                        inputMode="decimal"
+                        placeholder="0"
+                        className="w-40 rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] tabular-nums text-[#352432] outline-none focus:border-[#ef9ab5] placeholder:text-[#9d8590]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRefund(String(account.paidAmount))}
+                        className="cursor-pointer rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6]"
+                      >
+                        Tamamı
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[10.5px] text-[#705a66]">
+                      Boş bırakılırsa para kurumda kaldı sayılır ve gelirde görünmeye devam eder.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-end gap-2">
-                  <button type="button" onClick={() => { setCancelling(false); setReason('') }} disabled={working} className="cursor-pointer rounded-[11px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#705a66] disabled:opacity-60">Vazgeç</button>
+                  <button type="button" onClick={() => { setCancelling(false); setReason(''); setRefund('') }} disabled={working} className="cursor-pointer rounded-[11px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#705a66] disabled:opacity-60">Vazgeç</button>
                   <button
                     type="button"
                     disabled={working || busy}
-                    onClick={() => run(async () => { await onCancelSale(account.id, reason.trim()); setCancelling(false) })}
+                    onClick={() => run(async () => {
+                      const parsed = Number(refund.replace(/\./g, '').replace(',', '.'))
+                      const refunded = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, account.paidAmount) : 0
+                      await onCancelSale(account.id, reason.trim(), refunded)
+                      setCancelling(false); setRefund('')
+                    })}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-[11px] bg-[#cf4d68] px-3.5 py-1.5 text-[11.5px] font-bold text-white transition-colors hover:bg-[#b8405a] disabled:opacity-60"
                   >
                     {working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />} Satışı iptal et
@@ -415,7 +456,7 @@ export default function SaleDetailModal({
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5 text-[11px] text-[#705a66]">
-                  <AlertTriangle className="h-3.5 w-3.5 text-[#b88938]" /> İptalde tahsilat geçmişi korunur.
+                  <AlertTriangle className="h-3.5 w-3.5 text-[#b88938]" /> Kayıt "İptal Edilenler" arşivine taşınır; geri alınabilir.
                 </span>
                 <button
                   type="button"

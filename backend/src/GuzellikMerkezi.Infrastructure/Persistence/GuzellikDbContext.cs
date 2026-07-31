@@ -61,6 +61,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<Installment> Installments => Set<Installment>();
     public DbSet<AccountPayment> AccountPayments => Set<AccountPayment>();
     public DbSet<CustomerPackageSession> CustomerPackageSessions => Set<CustomerPackageSession>();
+    public DbSet<CancelledSale> CancelledSales => Set<CancelledSale>();
     public DbSet<CustomerTreatmentPhoto> CustomerTreatmentPhotos => Set<CustomerTreatmentPhoto>();
     public DbSet<ConsultationForm> ConsultationForms => Set<ConsultationForm>();
     public DbSet<ConsultationCustomOption> ConsultationCustomOptions => Set<ConsultationCustomOption>();
@@ -120,6 +121,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         ConfigureAppointment(modelBuilder);
         ConfigureAppointmentRating(modelBuilder);
         ConfigureCustomerAccount(modelBuilder);
+        ConfigureCancelledSale(modelBuilder);
         ConfigureCustomerTreatmentPhoto(modelBuilder);
         ConfigureConsultationForm(modelBuilder);
         ConfigureConsultationCustomOption(modelBuilder);
@@ -230,6 +232,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
         Req(typeof(CustomerAccount), nameof(CustomerAccount.Name));
         Opt(typeof(CustomerAccount), nameof(CustomerAccount.Notes));
+
+        // İptal arşivi: satış adı + gerekçe, ve silinen satırların tam kopyası (içinde tahsilat
+        // yöntemi/referansı gibi PII var) → canlı karşılıkları gibi şifreli tutulur.
+        Req(typeof(CancelledSale), nameof(CancelledSale.Name), nameof(CancelledSale.Snapshot));
+        Opt(typeof(CancelledSale), nameof(CancelledSale.CancellationReason));
 
         Opt(typeof(AccountPayment), nameof(AccountPayment.Method), nameof(AccountPayment.Reference));
 
@@ -367,6 +374,21 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         }
     }
 
+    /// <summary>
+    /// Açıkken <c>Remove()</c> GERÇEK DELETE üretir; kapalıyken (varsayılan) soft-delete'e çevrilir.
+    /// <para>
+    /// Yalnızca kaydın başka bir yere TAŞINDIĞI durumda açılmalıdır: satış iptalinde cari, taksit,
+    /// tahsilat ve seans satırları <c>cancelled_sales</c> arşivine tam kopyalanıp canlı tablodan
+    /// silinir (bkz. <c>CustomerAccountService.CancelSaleAsync</c>) — veri kaybolmaz, yer değiştirir.
+    /// </para>
+    /// <para>
+    /// <c>ExecuteDeleteAsync</c> yerine bu kapının kullanılması bilinçlidir: ExecuteDelete ilişkisel
+    /// sağlayıcıya özeldir ve birim testleri InMemory üzerinde çalışır. Tek kod yolu iki ortamda da
+    /// aynı sonucu verir. Kullanan taraf bayrağı <c>finally</c> ile kapatmalıdır.
+    /// </para>
+    /// </summary>
+    public bool HardDeleteEnabled { get; set; }
+
     private void ApplyAuditInfo()
     {
         var utcNow = _clock?.UtcNow ?? DateTime.UtcNow;
@@ -383,6 +405,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
                     entry.Entity.Touch(utcNow, userId);
                     break;
                 case EntityState.Deleted:
+                    // HardDeleteEnabled açıkken Remove() gerçek DELETE üretir (aşağıdaki nota bak).
+                    if (HardDeleteEnabled) break;
                     entry.State = EntityState.Modified;
                     entry.Entity.SoftDelete(utcNow, userId);
                     break;
@@ -629,6 +653,30 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         sessionBuilder.HasOne(x => x.CustomerAccount).WithMany().HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
         sessionBuilder.HasOne(x => x.ServiceDefinition).WithMany().HasForeignKey(x => x.ServiceDefinitionId).OnDelete(DeleteBehavior.Restrict);
         sessionBuilder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+    }
+
+    /// <summary>
+    /// İptal edilen satış arşivi. Canlı tablolardan SİLİNEN kaydın tam kopyasını taşır; bu yüzden
+    /// silinmiş satırlara FK VERİLMEZ (OriginalAccountId/AdisyonId/ServicePackageId salt referanstır).
+    /// Şube süzgeci carilerdekiyle aynıdır — arşiv de şube kapsamına uyar.
+    /// </summary>
+    private void ConfigureCancelledSale(ModelBuilder modelBuilder)
+    {
+        var b = modelBuilder.Entity<CancelledSale>();
+        b.ToTable("cancelled_sales");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.TotalAmount).HasPrecision(18, 2);
+        b.Property(x => x.DepositAmount).HasPrecision(18, 2);
+        b.Property(x => x.CollectedAmount).HasPrecision(18, 2);
+        b.Property(x => x.RefundedAmount).HasPrecision(18, 2);
+        b.Ignore(x => x.RetainedAmount);
+        b.HasIndex(x => new { x.TenantId, x.CancelledAtUtc });
+        b.HasIndex(x => new { x.TenantId, x.CustomerId });
+        b.HasIndex(x => x.OriginalAccountId);
+        // Müşteri adı arşivde kopyalanmaz (PII kopyası çoğaltmamak için) — okuma anında join'lenir.
+        b.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.SoldByStaffMember).WithMany().HasForeignKey(x => x.SoldByStaffMemberId).OnDelete(DeleteBehavior.SetNull);
+        b.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }
 
     private void ConfigureCustomerTreatmentPhoto(ModelBuilder modelBuilder)

@@ -564,18 +564,30 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
   }
 }
 
-/// İptal edilen satışlar — ana listeyi kirletmesin diye ayrı alt-sayfada.
-class CancelledSalesSheet extends StatelessWidget {
-  const CancelledSalesSheet({required this.accounts, required this.onOpen, super.key});
+/// İPTAL ARŞİVİ (cancelled_sales). İptalde cari kaydı taksit/tahsilat/seanslarıyla birlikte
+/// canlı tablolardan silinip arşive taşınır — finansal iz kaybolmaz, yer değiştirir. Bu yüzden
+/// liste cari listesinden süzülmez; `/api/admin/accounts/cancelled` ucundan gelir.
+class CancelledSalesSheet extends StatefulWidget {
+  const CancelledSalesSheet({required this.sales, this.onRestore, super.key});
 
-  final List<Map<String, dynamic>> accounts;
-  final void Function(Map<String, dynamic> account) onOpen;
+  final List<Map<String, dynamic>> sales;
+
+  /// İptali geri al — yedekten cari, taksit, tahsilat ve seanslar aynı Id'lerle kurulur.
+  final Future<void> Function(String originalAccountId)? onRestore;
+
+  @override
+  State<CancelledSalesSheet> createState() => _CancelledSalesSheetState();
+}
+
+class _CancelledSalesSheetState extends State<CancelledSalesSheet> {
+  String? _restoring;
 
   @override
   Widget build(BuildContext context) {
-    final list = accounts.where((a) => '${a['saleStatus']}' == 'Cancelled').toList()
+    final list = [...widget.sales]
       ..sort((a, b) => '${b['cancelledAtUtc']}'.compareTo('${a['cancelledAtUtc']}'));
     final total = list.fold<double>(0, (s, a) => s + numberOf(a, const ['totalAmount']));
+    final refunded = list.fold<double>(0, (s, a) => s + numberOf(a, const ['refundedAmount']));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
@@ -601,7 +613,9 @@ class CancelledSalesSheet extends StatelessWidget {
                   children: [
                     const Text('İptal edilen satışlar',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    Text('${list.length} kayıt · toplam ${CalendarText.tl(total)}',
+                    Text(
+                        '${list.length} kayıt · toplam ${CalendarText.tl(total)}'
+                        '${refunded > 0.005 ? ' · iade ${CalendarText.tl(refunded)}' : ''}',
                         style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
                   ],
                 ),
@@ -622,52 +636,71 @@ class CancelledSalesSheet extends StatelessWidget {
               shrinkWrap: true,
               children: [
                 for (final a in list)
-                  InkWell(
-                    onTap: () {
-                      Navigator.pop(context);
-                      onOpen(a);
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  valueOf(a, const ['customerName', 'name']),
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
-                                ),
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                valueOf(a, const ['customerName', 'name']),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              Text(CalendarText.tl(numberOf(a, const ['totalAmount'])),
-                                  style: const TextStyle(fontWeight: FontWeight.w800)),
-                            ],
-                          ),
-                          Text(valueOf(a, const ['servicePackageName', 'name'], fallback: ''),
-                              style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
-                          const SizedBox(height: 6),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.danger.withValues(alpha: .07),
-                              borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              'İptal · ${shortDay('${a['cancelledAtUtc']}'.split('T').first)}'
-                              ' — ${valueOf(a, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş')}',
-                              style: const TextStyle(fontSize: 11, color: AppColors.danger),
+                            Text(CalendarText.tl(numberOf(a, const ['totalAmount'])),
+                                style: const TextStyle(fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                        Text(valueOf(a, const ['name'], fallback: ''),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                        Text(
+                          'Tahsil ${CalendarText.tl(numberOf(a, const ['collectedAmount']))}'
+                          '${numberOf(a, const ['refundedAmount']) > 0.005 ? ' · iade ${CalendarText.tl(numberOf(a, const ['refundedAmount']))}' : ''}',
+                          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withValues(alpha: .07),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'İptal · ${shortDay('${a['cancelledAtUtc']}'.split('T').first)}'
+                            ' — ${valueOf(a, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş')}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.danger),
+                          ),
+                        ),
+                        if (widget.onRestore != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: _restoring != null
+                                  ? null
+                                  : () async {
+                                      final id = '${a['originalAccountId']}';
+                                      setState(() => _restoring = id);
+                                      try {
+                                        await widget.onRestore!(id);
+                                        if (context.mounted) Navigator.pop(context);
+                                      } finally {
+                                        if (mounted) setState(() => _restoring = null);
+                                      }
+                                    },
+                              icon: const Icon(Icons.undo_rounded, size: 16),
+                              label: const Text('İptali geri al', style: TextStyle(fontSize: 12)),
                             ),
                           ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
               ],

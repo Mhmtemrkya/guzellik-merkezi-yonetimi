@@ -397,10 +397,14 @@ public sealed partial class ReportsService
             })
             .ToListAsync(ct);
 
-        return rows.Select(s => new SessionRow(
+        var live = rows.Select(s => new SessionRow(
             s.CustomerAccountId, s.CustomerId, s.ServicePackageId, s.ServiceDefinitionId,
             string.IsNullOrWhiteSpace(s.ServiceName) ? "Hizmet" : s.ServiceName,
             s.Category, s.SubCategory, s.TotalSessions, s.UsedSessions, s.CreatedAtUtc)).ToList();
+
+        // İptal edilen satışın seansları silindi; paket/hizmet kırılımı yedekten beslenir.
+        live.AddRange((await LoadCancelledArchiveAsync(tenantId, crossBranch: false, ct)).Sessions);
+        return live;
     }
 
     /// <summary>

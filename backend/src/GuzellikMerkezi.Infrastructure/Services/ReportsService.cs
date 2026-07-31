@@ -173,10 +173,14 @@ public sealed partial class ReportsService : IReportsService
             })
             .ToListAsync(ct);
 
-        return rows.Select(a => new AccountRow(
+        var live = rows.Select(a => new AccountRow(
                 a.Id, a.BranchId, a.CustomerId, a.ServicePackageId, a.Name ?? string.Empty, a.TotalAmount,
                 EffectiveSoldAt(a.SoldAtUtc, a.CreatedAtUtc), a.CancelledAtUtc, a.SoldByStaffMemberId, a.CreatedBy))
             .ToList();
+
+        // İptal edilenler canlı tabloda yok (arşive taşındı); "İptal Edilen" kartları için eklenir.
+        live.AddRange((await LoadCancelledArchiveAsync(tenantId, crossBranch: false, ct)).Accounts);
+        return live;
     }
 
     private sealed record PaymentRow(Guid AccountId, Guid? BranchId, Guid CustomerId, decimal Amount, string? Method, DateTime OccurredAtUtc);

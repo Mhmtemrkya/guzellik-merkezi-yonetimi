@@ -39,6 +39,9 @@ class CatalogSalesPanel extends StatefulWidget {
 
 class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
   List<Map<String, dynamic>> _accounts = const [];
+
+  /// İptal arşivi (cancelled_sales) — canlı satış listesinden ayrı kaynak.
+  List<Map<String, dynamic>> _cancelled = const [];
   bool _loading = true;
   String _filter = 'all';
   bool _expanded = false;
@@ -65,9 +68,17 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
         if (widget.kind == 'service') 'serviceDefinitionId': widget.itemId,
         if (widget.kind == 'package') 'servicePackageId': widget.itemId,
       });
+      // İPTAL EDİLENLER AYRI KAYNAKTAN: iptalde cari kaydı canlı tablodan silinip
+      // cancelled_sales arşivine taşınır, bu yüzden yukarıdaki sorguda hiç görünmezler.
+      final cancelled = widget.kind == 'package'
+          ? await widget.api
+              .get('/api/admin/accounts/cancelled', query: {'servicePackageId': widget.itemId})
+              .catchError((_) => const <dynamic>[])
+          : const <dynamic>[];
       if (!mounted) return;
       setState(() {
         _accounts = apiItems(res);
+        _cancelled = apiItems(cancelled);
         _loading = false;
       });
     } catch (_) {
@@ -105,11 +116,19 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
     }
     final sellers = sellerMap.entries.toList()..sort((x, y) => y.value.$2.compareTo(x.value.$2));
 
-    final counts = <String, int>{'all': sorted.length, 'Active': 0, 'Completed': 0, 'Cancelled': 0};
+    final counts = <String, int>{
+      'all': sorted.length, 'Active': 0, 'Completed': 0, 'Cancelled': _cancelled.length,
+    };
     for (final a in sorted) {
-      counts[_saleStatus(a)] = (counts[_saleStatus(a)] ?? 0) + 1;
+      final s = _saleStatus(a);
+      if (s != 'Cancelled') counts[s] = (counts[s] ?? 0) + 1;
     }
-    final filtered = _filter == 'all' ? sorted : sorted.where((a) => _saleStatus(a) == _filter).toList();
+    // "İptal" sekmesi arşivden okunur; o satışların canlı kaydı yoktur.
+    final filtered = _filter == 'all'
+        ? sorted
+        : _filter == 'Cancelled'
+            ? _cancelled
+            : sorted.where((a) => _saleStatus(a) == _filter).toList();
     final visible = _expanded ? filtered : filtered.take(4).toList();
 
     return Column(
@@ -272,7 +291,9 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
             ),
           )
         else
-          for (final a in visible) _saleRow(a),
+          for (final a in visible)
+            // İptal edilenlerin canlı cari kaydı yok (arşivden gelirler) — ayrı, sade satır.
+            if (_filter == 'Cancelled') _cancelledRow(a) else _saleRow(a),
 
         if (filtered.length > visible.length)
           Align(
@@ -310,6 +331,56 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
           ],
         ),
       );
+
+  /// İptal arşivi satırı. Cari kaydı silindiği için tıklanabilir detay yoktur;
+  /// tutar, tahsil edilen/iade edilen ve gerekçe gösterilir.
+  Widget _cancelledRow(Map<String, dynamic> c) {
+    final refunded = numberOf(c, const ['refundedAmount']);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: .22)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  valueOf(c, const ['customerName', 'name'], fallback: 'Müşteri'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                ),
+                Text(
+                  valueOf(c, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_money(numberOf(c, const ['totalAmount'])),
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5)),
+              Text(
+                'tahsil ${_money(numberOf(c, const ['collectedAmount']))}'
+                '${refunded > 0.005 ? ' · iade ${_money(refunded)}' : ''}',
+                style: const TextStyle(fontSize: 10, color: AppColors.muted),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _saleRow(Map<String, dynamic> a) {
     final status = _saleStatus(a);

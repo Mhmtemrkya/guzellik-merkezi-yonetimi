@@ -1030,26 +1030,60 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     );
   }
 
+  /// Satış iptali. Kayıt canlı tablolardan silinip iptal arşivine taşınır (finansal iz korunur,
+  /// yer değiştirir). Tahsil edilmiş para varsa ne kadarının müşteriye iade edildiği sorulur:
+  /// iade edilen kısım gelir raporlarından da düşer, kalan kurumda sayılmaya devam eder.
   Future<void> _askCancel() async {
-    final controller = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    final refundCtrl = TextEditingController();
+    final collected = (_a['paidAmount'] as num?)?.toDouble() ?? 0;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Satışı iptal et'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('İptal gerekçesini yazın (kayıtta görünür).',
-                style: TextStyle(fontSize: 12.5)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'örn. müşteri vazgeçti, paket iade edildi',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('İptal gerekçesini yazın (kayıtta görünür).',
+                  style: TextStyle(fontSize: 12.5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: reasonCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'örn. müşteri vazgeçti, paket iade edildi',
+                ),
               ),
-            ),
-          ],
+              if (collected > 0.005) ...[
+                const SizedBox(height: 14),
+                Text('Müşteriye iade edilen tutar (tahsil edilmiş: ${_money(collected)})',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: refundCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(hintText: '0'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => refundCtrl.text = collected.toStringAsFixed(2),
+                      child: const Text('Tamamı'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text('Boş bırakılırsa para kurumda kaldı sayılır ve gelirde görünmeye devam eder.',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
@@ -1062,9 +1096,12 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
       ),
     );
     if (ok != true) return;
+
+    final parsed = double.tryParse(refundCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+    final refunded = parsed <= 0 ? 0.0 : (parsed > collected ? collected : parsed);
     await _run(() => widget.api.post(
           '/api/admin/accounts/${_a['id']}/cancel-sale',
-          {'reason': controller.text.trim()},
+          {'reason': reasonCtrl.text.trim(), 'refundedAmount': refunded},
         ));
   }
 

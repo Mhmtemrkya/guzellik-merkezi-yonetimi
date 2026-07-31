@@ -3,6 +3,7 @@ import type {
   AccountMonthlyInstallment,
   AccountPayment,
   AccountReport,
+  CancelledSale,
   ApiAccountReport,
   ApiAppointment,
   ApiBusinessExpense,
@@ -914,6 +915,40 @@ export function normalizeAccount(account: ApiCustomerAccount | null | undefined,
     nextDueDate: nextPending?.dueDate || null,
     nextDueAmount: nextPending?.remaining || 0,
     hasOverdue: installments.some((i) => i.overdue),
+  }
+}
+
+/**
+ * Arşivdeki iptal edilmiş satış. Canlı cariden AYRI bir kaynaktan gelir
+ * (`GET /api/admin/accounts/cancelled`) — iptalde kayıt canlı tablolardan silinip taşınır.
+ */
+export function mapCancelledSale(raw: unknown): CancelledSale {
+  const c = raw as Partial<Record<keyof CancelledSale, unknown>> | null
+  const collected = Number(c?.collectedAmount || 0)
+  const refunded = Number(c?.refundedAmount || 0)
+  return {
+    id: String(c?.id || ''),
+    originalAccountId: String(c?.originalAccountId || ''),
+    branchId: (c?.branchId as string | null) ?? null,
+    customerId: String(c?.customerId || ''),
+    customerName: String(c?.customerName || ''),
+    customerPhone: String(c?.customerPhone || ''),
+    servicePackageId: (c?.servicePackageId as string | null) ?? null,
+    name: String(c?.name || 'Satış'),
+    totalAmount: Number(c?.totalAmount || 0),
+    depositAmount: Number(c?.depositAmount || 0),
+    collectedAmount: collected,
+    refundedAmount: refunded,
+    // Sunucu da hesaplıyor; alan gelmezse (eski yanıt) burada türetilir.
+    retainedAmount: c?.retainedAmount == null ? Math.max(0, collected - refunded) : Number(c.retainedAmount),
+    soldAtUtc: String(c?.soldAtUtc || ''),
+    soldByStaffName: String(c?.soldByStaffName || ''),
+    isHistorical: Boolean(c?.isHistorical),
+    sessionsTotal: Number(c?.sessionsTotal || 0),
+    sessionsUsed: Number(c?.sessionsUsed || 0),
+    adisyonId: (c?.adisyonId as string | null) ?? null,
+    cancelledAtUtc: String(c?.cancelledAtUtc || ''),
+    cancellationReason: String(c?.cancellationReason || ''),
   }
 }
 

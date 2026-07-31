@@ -29,13 +29,24 @@ public static class CustomerAccountEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateHistoricalAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
         });
 
-        // Satış iptali + gerekçe (finansal iz silinmez, kayıt "iptal" işaretlenir).
+        // Satış iptali + gerekçe. Kayıt canlı tablolardan SİLİNİR ve tam kopyası cancelled_sales
+        // arşivine taşınır (finansal iz kaybolmaz, yer değiştirir). request.RefundedAmount =
+        // müşteriye geri ödenen kısım; kalan tutar gelirde sayılmaya devam eder.
         group.MapPost("/{id:guid}/cancel-sale", async (Guid id, CancelSaleRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CancelSaleAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
+        // İptal arşivi — "İptal Edilenler" ekranının kaynağı. ":guid" kısıtı sayesinde
+        // aşağıdaki "/{id:guid}" rotasıyla çakışmaz.
+        group.MapGet("/cancelled", async (Guid? tenantId, Guid? customerId, Guid? servicePackageId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListCancelledAsync(resolvedTenantId, customerId, servicePackageId, ct)).ToHttpResult(http);
+        });
+
+        // id: arşiv kaydının Id'si ya da (eski istemciler için) silinen carinin Id'si olabilir.
         group.MapPost("/{id:guid}/restore-sale", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

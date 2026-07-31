@@ -23,7 +23,7 @@ import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffA
 import { adminApi, fetchAllPaged, ApiClientError } from '@/lib/apiClient'
 import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
-  apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, normalizeAccount, normalizeAdisyon,
+  apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAdisyon,
   normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeStaff,
 } from '@/lib/apiMappers'
 import {
@@ -141,11 +141,11 @@ function OnMuhasebePageInner() {
   const { data, loading, error, reload } = useApiQuery<{
     accounts: ApiCustomerAccount[]; expenses: ApiBusinessExpense[]; adisyonlar: ApiAdisyon[]
     appts: ApiAppointment[]; customers: ApiCustomer[]; packages: ApiServicePackage[]
-    staff: ApiStaff[]; expenseCats: ApiCustomExpenseCategory[]
+    staff: ApiStaff[]; expenseCats: ApiCustomExpenseCategory[]; cancelled: unknown[]
   }>(
     async () => {
-      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [] }
-      const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats] = await Promise.all([
+      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [] }
+      const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, cancelled] = await Promise.all([
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -155,15 +155,18 @@ function OnMuhasebePageInner() {
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
+        // İptal edilen satışlar canlı cari listesinde YOK — arşivden ayrı çekilir.
+        adminApi.listCancelledSales<unknown[]>(undefined, tenantId).catch(() => [] as unknown[]),
       ])
       return {
         accounts: apiItems(accounts), expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
         appts: apiItems(appts), customers, packages: apiItems(packages),
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
+        cancelled: Array.isArray(cancelled) ? cancelled : [],
       }
     },
     [tenantId, monthStart.toISOString()],
-    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [] } },
+    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [] } },
   )
 
   const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
@@ -265,21 +268,26 @@ function OnMuhasebePageInner() {
   // Görüntülenen adisyon değişince "zorla sil" modunu sıfırla (bir sonraki adisyonda taze onay akışı).
   useEffect(() => { setForceDeleteAdisyon(false) }, [selAdisyon?.id])
 
-  // ---------- cari hesaplar ----------
-  // Adisyondan açılan cari sonradan iptal edilmiş olabilir. Adisyon kaydı "Onaylandı"
-  // kalır ama satışın iptal edildiği fişte de görünmeli (kullanıcı isteği).
-  const cancelledSaleByAccountId = useMemo(() => {
+  // ---------- iptal arşivi ----------
+  // İptalde cari kaydı (taksit/tahsilat/seans dahil) canlı tablolardan SİLİNİP cancelled_sales'e
+  // taşınır — finansal iz kaybolmaz, yer değiştirir. Bu yüzden iptaller `accounts` içinde aranmaz.
+  const cancelledSales = useMemo(() => (data?.cancelled || []).map(mapCancelledSale), [data])
+
+  // Adisyondan açılan satış iptal edilmişse fişte de görünsün. Eşleşme adisyon Id'si üzerinden:
+  // iptalde carinin bağı koparıldığı için (satır siliniyor) customerAccountId artık null kalır.
+  const cancelledSaleByAdisyonId = useMemo(() => {
     const m = new Map<string, { at: string | null; reason: string }>()
-    for (const a of accounts) {
-      if (a.saleStatus === 'Cancelled') m.set(a.id, { at: a.cancelledAtUtc, reason: a.cancellationReason })
+    for (const c of cancelledSales) {
+      if (c.adisyonId) m.set(c.adisyonId, { at: c.cancelledAtUtc, reason: c.cancellationReason })
     }
     return m
-  }, [accounts])
+  }, [cancelledSales])
 
-  const cancelledCount = useMemo(() => accounts.filter((a) => a.saleStatus === 'Cancelled').length, [accounts])
+  const cancelledCount = cancelledSales.length
 
-  // İptal edilen satışlar borç/vade akışının DIŞINDADIR: ana listede görünmez,
-  // ayrı "İptal edilenler" modalinde toplanır (kayıt durur, tahsil edilmez).
+  // ---------- cari hesaplar ----------
+  // Arşive taşıma sayesinde liste zaten temiz gelir; süzgeç, migration'ı henüz uygulanmamış
+  // kurumlarda eski damgalı (CancelledAtUtc dolu) satırlara karşı savunma olarak durur.
   const liveAccounts = useMemo(() => accounts.filter((a) => a.saleStatus !== 'Cancelled'), [accounts])
 
   const activeInstallments = (a: CustomerAccount) => a.installments.filter((i) => i.status !== 'Cancelled')
@@ -766,7 +774,7 @@ function OnMuhasebePageInner() {
             {/* ---- Adisyon fişleri ---- */}
             <div className="grid gap-3 lg:grid-cols-2">
               {filteredAdisyonlar.map((a) => {
-                const saleCancelled = a.customerAccountId ? cancelledSaleByAccountId.get(a.customerAccountId) : undefined
+                const saleCancelled = cancelledSaleByAdisyonId.get(a.id)
                 const net = a.chargeTotal - a.paymentTotal
                 const isOpen = a.status === 'Open'
                 const paidPct = a.chargeTotal > 0 ? Math.min(100, Math.round((a.paymentTotal / a.chargeTotal) * 100)) : 0
@@ -875,7 +883,7 @@ function OnMuhasebePageInner() {
               adisyon={selAdisyon}
               open={adisyonReceiptOpen}
               onOpenChange={setAdisyonReceiptOpen}
-              saleCancelled={selAdisyon?.customerAccountId ? cancelledSaleByAccountId.get(selAdisyon.customerAccountId) : undefined}
+              saleCancelled={selAdisyon ? cancelledSaleByAdisyonId.get(selAdisyon.id) : undefined}
               onShowInAccounts={() => { if (selAdisyon) { setAdisyonReceiptOpen(false); showInAccounts(selAdisyon) } }}
               deleteSlot={!isStaff && selAdisyon ? (
                 <ConfirmDialog
@@ -1085,10 +1093,14 @@ function OnMuhasebePageInner() {
             />
 
             <CancelledSalesModal
-              accounts={accounts}
+              sales={cancelledSales}
               open={cancelledOpen}
               onOpenChange={setCancelledOpen}
-              onSelect={(a) => openAccount(a.id)}
+              busy={busy}
+              onRestore={async (originalAccountId) => {
+                await adminApi.restoreSale(originalAccountId, tenantId)
+                await reload()
+              }}
             />
 
             {selAccount && (

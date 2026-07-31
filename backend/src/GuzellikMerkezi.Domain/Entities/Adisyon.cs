@@ -140,6 +140,30 @@ public sealed class Adisyon : Entity
         Touch();
     }
 
+    /// <summary>
+    /// SATIŞ İPTALİNE bağlı iptal — <see cref="Cancel"/>'ın aksine ONAYLI adisyonu da kapatır.
+    /// Satış iptal edilip cari arşive taşındığında bu fişin ciroda kalması tutarsız olurdu:
+    /// borç yazan kalemleri artık karşılığı olmayan bir satışa ait. Cari bağı da koparılır
+    /// (satır silindiği için FK dangling kalmasın). Geri almada <see cref="ReopenAfterSaleRestore"/>.
+    /// </summary>
+    public void CancelBySaleCancellation(Guid? decidedByUserId)
+    {
+        Status = AdisyonStatus.Cancelled;
+        CustomerAccountId = null;
+        DecidedByUserId = decidedByUserId;
+        Touch();
+    }
+
+    /// <summary>Satış iptali geri alınınca fişi onaylı hâline ve cari bağına döndürür.</summary>
+    public void ReopenAfterSaleRestore(Guid accountId, DateTime? approvedAtUtc, Guid? decidedByUserId)
+    {
+        Status = AdisyonStatus.Approved;
+        CustomerAccountId = accountId;
+        ApprovedAtUtc = approvedAtUtc ?? ApprovedAtUtc ?? DateTime.UtcNow;
+        DecidedByUserId = decidedByUserId;
+        Touch();
+    }
+
     private void EnsureOpen()
     {
         if (Status != AdisyonStatus.Open) throw new DomainException("Yalnızca açık adisyon düzenlenebilir.");

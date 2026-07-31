@@ -1,0 +1,109 @@
+using System.Text.Json;
+using GuzellikMerkezi.Domain.Entities;
+
+namespace GuzellikMerkezi.Infrastructure.Services;
+
+/// <summary>
+/// İptal edilen satış arşivindeki (<c>cancelled_sales.Snapshot</c>) yedeğin şeması ve okuyucusu.
+/// <para>
+/// Yedek, satış iptal edilirken canlı tablolardan SİLİNEN satırların birebir kopyasıdır — Id'ler
+/// dahil, böylece "iptali geri al" aynı Id'lerle kurabilir. Hem geri yükleme
+/// (<see cref="CustomerAccountService"/>) hem raporlardaki "İptal Edilen" kırılımı
+/// (<see cref="ReportsService"/>) buradan okur; şema tek yerde dursun diye ortak sınıfa alındı.
+/// </para>
+/// </summary>
+internal static class SaleSnapshotReader
+{
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = false,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    /// <summary>Şema sürümü — ileride alan eklenirse eski kayıtlar okunmaya devam etsin.</summary>
+    public const int Version = 1;
+
+    public sealed record SaleSnapshot(
+        int Version,
+        SnapshotAccount Account,
+        IReadOnlyList<SnapshotInstallment> Installments,
+        IReadOnlyList<SnapshotPayment> Payments,
+        IReadOnlyList<SnapshotSession> Sessions,
+        IReadOnlyList<Guid> AdisyonIds);
+
+    public sealed record SnapshotAccount(
+        Guid Id,
+        Guid TenantId,
+        Guid? BranchId,
+        Guid CustomerId,
+        Guid? ServicePackageId,
+        string Name,
+        decimal TotalAmount,
+        decimal DepositAmount,
+        string? Notes,
+        bool IsActive,
+        DateTime SoldAtUtc,
+        Guid? SoldByStaffMemberId,
+        Guid? AppliedByStaffMemberId,
+        bool IsHistorical,
+        DateTime CreatedAtUtc,
+        /// <summary>Kaydı oluşturan kullanıcı — "kim sattı" düşümü personel seçilmemişse buna bakar.</summary>
+        Guid? CreatedBy = null);
+
+    public sealed record SnapshotInstallment(
+        Guid Id, int No, DateOnly DueDate, decimal Amount, string Status, DateTime? PaidAtUtc, DateTime CreatedAtUtc);
+
+    public sealed record SnapshotPayment(
+        Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc, DateTime CreatedAtUtc);
+
+    public sealed record SnapshotSession(
+        Guid Id, Guid ServicePackageId, Guid ServiceDefinitionId, int TotalSessions, int UsedSessions,
+        Guid? SourceAdisyonId, DateTime CreatedAtUtc);
+
+    /// <summary>DB'den okunan DateTime Kind=Unspecified döner; değer UTC instant olduğundan işaretlenir.</summary>
+    public static DateTime Utc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    public static DateTime? Utc(DateTime? value) => value is { } v ? Utc(v) : null;
+
+    public static string Build(
+        CustomerAccount account,
+        IReadOnlyList<CustomerPackageSession> sessions,
+        IReadOnlyList<Adisyon> adisyonlar)
+    {
+        var snapshot = new SaleSnapshot(
+            Version,
+            new SnapshotAccount(
+                account.Id, account.TenantId, account.BranchId, account.CustomerId, account.ServicePackageId,
+                account.Name, account.TotalAmount, account.DepositAmount, account.Notes, account.IsActive,
+                Utc(account.SoldAtUtc), account.SoldByStaffMemberId, account.AppliedByStaffMemberId,
+                account.IsHistorical, Utc(account.CreatedAtUtc), account.CreatedBy),
+            account.Installments
+                .Select(i => new SnapshotInstallment(i.Id, i.No, i.DueDate, i.Amount, i.Status.ToString(), Utc(i.PaidAtUtc), Utc(i.CreatedAtUtc)))
+                .ToList(),
+            account.Payments
+                .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc)))
+                .ToList(),
+            sessions
+                .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc)))
+                .ToList(),
+            adisyonlar.Select(a => a.Id).ToList());
+
+        return JsonSerializer.Serialize(snapshot, Options);
+    }
+
+    /// <summary>Bozuk/eksik yedekte null döner — çağıran akışı durdurur, patlamaz.</summary>
+    public static SaleSnapshot? Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<SaleSnapshot>(json, Options);
+            return parsed?.Account is null ? null : parsed;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}

@@ -993,9 +993,17 @@ export const adminApi = {
   /** Geçmiş satış: yazılıma geçmeden önce yapılmış paket/hizmet satışını sisteme işler. */
   createHistoricalSale: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/accounts/historical', { method: 'POST', query: { tenantId }, body }),
-  /** Satış iptali + gerekçe (finansal iz korunur). */
-  cancelSale: <T = unknown>(id: string, reason: string | null, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/accounts/${id}/cancel-sale`, { method: 'POST', query: { tenantId }, body: { reason } }),
+  /**
+   * Satış iptali + gerekçe. Kayıt canlı tablolardan silinip `cancelled_sales` arşivine taşınır
+   * (finansal iz kaybolmaz, yer değiştirir — listCancelledSales ile okunur).
+   * `refundedAmount`: tahsil edilmiş paradan müşteriye geri ödenen kısım; kalan gelirde sayılır.
+   */
+  cancelSale: <T = unknown>(id: string, reason: string | null, refundedAmount?: number | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/cancel-sale`, { method: 'POST', query: { tenantId }, body: { reason, refundedAmount: refundedAmount ?? 0 } }),
+  /** İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç). */
+  listCancelledSales: <T = unknown>(params?: { customerId?: string; servicePackageId?: string }, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/cancelled', { query: { tenantId, ...params } }),
+  /** id: arşiv kaydının ya da iptal edilen carinin Id'si olabilir. */
   restoreSale: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/restore-sale`, { method: 'POST', query: { tenantId } }),
   registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>

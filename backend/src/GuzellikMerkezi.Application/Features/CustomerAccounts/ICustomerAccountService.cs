@@ -17,11 +17,22 @@ public interface ICustomerAccountService
     /// <summary>Geçmiş yıllarda yapılmış satışı sisteme elle işler (tahsilat + taksit + kullanılmış seans dahil).</summary>
     Task<Result<CustomerAccountDto>> CreateHistoricalAsync(Guid tenantId, CreateHistoricalSaleRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Satışı iptal eder ve gerekçeyi kaydeder (finansal iz silinmez).</summary>
+    /// <summary>
+    /// Satışı iptal eder: cari kaydı taksit/tahsilat/seanslarıyla birlikte canlı tablolardan SİLİNİR
+    /// ve tam kopyası <c>cancelled_sales</c> arşivine taşınır (finansal iz kaybolmaz, yer değiştirir).
+    /// Bağlı adisyon da iptale çekilir. Dönen DTO silinmeden önceki son hâldir.
+    /// </summary>
     Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Yanlış iptal edilen satışı geri alır.</summary>
+    /// <summary>
+    /// Yanlış iptal edilen satışı geri alır: arşivdeki snapshot'tan cari, taksitler, tahsilatlar ve
+    /// seans bakiyeleri AYNI Id'lerle yeniden kurulur; adisyon onaylı hâline döner.
+    /// <paramref name="id"/> hem arşiv kaydının hem de silinen carinin Id'si olabilir.
+    /// </summary>
     Task<Result<CustomerAccountDto>> RestoreSaleAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç).</summary>
+    Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(Guid tenantId, Guid? customerId = null, Guid? servicePackageId = null, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> UpdateAsync(Guid tenantId, Guid id, UpdateCustomerAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RegisterPaymentAsync(Guid tenantId, Guid id, RegisterAccountPaymentRequest request, CancellationToken cancellationToken = default);

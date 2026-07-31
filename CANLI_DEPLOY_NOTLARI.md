@@ -41,6 +41,19 @@
   - Meta kuralı: müşteri son **24 saat** içinde yazmadıysa serbest metin iletilmez, yalnızca onaylı şablon geçer.
     Yeni müşteriye giden KVKK isteği her zaman bu durumdadır → Meta panelinde şablonu oluşturup adını
     **Ayarlar → WhatsApp** ekranına yazın. Boş bırakılırsa serbest metin denenir (pencere açıksa çalışır).
+- [ ] ⚠️ **İptal arşivi migration'larını uygula (SIRAYLA):** `CancelledSalesArchive` (`20260731085829`) → `MigrateCancelledSalesToArchive` (`20260731085936`).
+  - Birincisi `cancelled_sales` tablosunu kurar. İkincisi **VERİ TAŞIR**: `CancelledAtUtc` dolu tüm cariler
+    (taksit + tahsilat + seans satırlarıyla birlikte) arşive kopyalanır ve **canlı tablolardan SİLİNİR**;
+    bu satışlardan doğan adisyonlar `Cancelled`'a çekilir.
+  - **Önce yedek al.** İkinci migration'ın `Down`'ı BOŞTUR — silinen satırlar yalnızca arşivdeki snapshot'tan,
+    uygulamadaki "iptali geri al" akışıyla kurulabilir. Taşıma `NOT EXISTS` korumasıyla idempotenttir.
+  - Neden: iptal eskiden yalnızca bir damgaydı; satırlar yerinde kaldığı için süzgeç koymayan okuma yolları
+    (kasa akışı, kâr-zarar, günlük adisyon kartı, müşteri harcaması) iptal edilmiş satışın parasını saymaya
+    devam ediyordu. Taşımadan sonra canlı tabloda satır olmadığı için bu hata sınıfı yapısal olarak biter.
+  - Uygulanmazsa: yeni kod iptalleri `cancelled_sales`ten okur → "İptal Edilenler" ekranları **boş** görünür
+    (eski kayıtlar canlı tabloda damgalı kalmaya devam eder, veri kaybı olmaz).
+  - Doğrulama: `SELECT COUNT(*) FROM cancelled_sales;` > 0 ve
+    `SELECT COUNT(*) FROM customer_accounts WHERE CancelledAtUtc IS NOT NULL AND IsDeleted=0;` = 0.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
