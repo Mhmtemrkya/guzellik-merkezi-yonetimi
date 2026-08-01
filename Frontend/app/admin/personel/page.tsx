@@ -18,7 +18,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, guidOrUndefined, initialsFromName, normalizeAppointment, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, formatTL, guidOrUndefined, initialsFromName, normalizeAppointment, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -117,6 +117,14 @@ function CountUp({ value, decimals = 0, suffix = '' }: { value: number; decimals
 }
 
 /** İnce SVG halka — yüzdeyi çizerek doldurur. */
+/** Rapor ucundan gelen personel bazlı parasal satır (/api/admin/reports/staff). */
+interface ApiStaffMoneyRow {
+  staffMemberId?: string
+  serviceRevenue?: number
+  salesAmount?: number
+  salesCount?: number
+}
+
 function Ring({ value, size = 74, stroke = 7, tone = '#e0617f', title, sub }: {
   value: number; size?: number; stroke?: number; tone?: string; title: string; sub?: string
 }) {
@@ -257,18 +265,56 @@ function PersonelPageInner() {
     [tenantBranches],
   )
 
-  const { data, loading, error, reload } = useApiQuery<{ staff: PagedResult<ApiStaff>; appts: ApiAppointment[]; perms: PermissionMeta[] }>(
+  const { data, loading, error, reload } = useApiQuery<{
+    staff: PagedResult<ApiStaff>
+    appts: ApiAppointment[]
+    perms: PermissionMeta[]
+    money: ApiStaffMoneyRow[]
+  }>(
     async () => {
-      const [staff, appts, perms] = await Promise.all([
+      // Bu ayın parasal üretimi rapor ucundan gelir: uygulanan hizmet cirosu + satış tutarı
+      // personel bazında zaten orada hesaplanıyor (randevu listesinden türetilemez).
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const [staff, appts, perms, money] = await Promise.all([
         adminApi.staff<ApiStaff>({ tenantId, search: filter || undefined, page: 1, pageSize: 100 }),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.staffPermissions<PermissionMeta>().catch(() => [] as PermissionMeta[]),
+        adminApi
+          .reportStaff<{ rows?: ApiStaffMoneyRow[] }>({
+            tenantId,
+            fromUtc: monthStart.toISOString(),
+            toUtc: now.toISOString(),
+          })
+          .then((r) => r?.rows ?? [])
+          .catch(() => [] as ApiStaffMoneyRow[]),
       ])
-      return { staff, appts: apiItems(appts), perms }
+      return { staff, appts: apiItems(appts), perms, money }
     },
     [tenantId, filter],
-    { initialData: { staff: { items: [] }, appts: [], perms: [] } },
+    { initialData: { staff: { items: [] }, appts: [], perms: [], money: [] } },
   )
+
+  /** Personel başına bu ayki üretim: hizmet cirosu + satış tutarı (rapor ucundan). */
+  const moneyByStaff = useMemo(() => {
+    const m = new Map<string, { revenue: number; salesAmount: number; serviceRevenue: number; salesCount: number }>()
+    for (const r of data?.money || []) {
+      const id = String(r.staffMemberId ?? '')
+      if (!id) continue
+      const serviceRevenue = Number(r.serviceRevenue ?? 0)
+      const salesAmount = Number(r.salesAmount ?? 0)
+      m.set(id, {
+        serviceRevenue,
+        salesAmount,
+        salesCount: Number(r.salesCount ?? 0),
+        revenue: serviceRevenue + salesAmount,
+      })
+    }
+    return m
+  }, [data])
+
+  const moneyOf = (id: string) =>
+    moneyByStaff.get(id) ?? { revenue: 0, salesAmount: 0, serviceRevenue: 0, salesCount: 0 }
 
   const allStaff = useMemo<Staff[]>(() => apiItems(data?.staff).map((m, i) => normalizeStaff(m, i)), [data])
   const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
@@ -294,14 +340,20 @@ function PersonelPageInner() {
     return m
   }, [allStaff, appts])
 
-  // Performans = bu ay tamamlanan iş + başarı oranı [tamamlanan / (tamamlanan + iptal/gelmedi)].
-  // Müşteri skoru artık personel kartında p.averageRating (gerçek yıldız ortalaması) ile gösterilir.
+  /**
+   * Performans = bu ay YAPILAN İŞ SAYISI + ÜRETİLEN TUTAR.
+   *
+   * "Başarı oranı" [tamamlanan / (tamamlanan + iptal + gelmedi)] KALDIRILDI: müşterinin
+   * gelmemesi ya da randevuyu iptal etmesi personelin performansı değildir, ama oran onu
+   * personelin hanesine yazıp cezalandırıyordu. Ölçtüğünü iddia ettiği şeyi ölçmüyordu.
+   *
+   * Müşteri skoru personel kartında p.averageRating (gerçek yıldız ortalaması) ile gösterilir.
+   */
   const scoreOf = (id: string) => {
     const s = staffStats.get(id)
-    if (!s) return { successRate: 0, monthCompleted: 0, monthTotal: 0, resolved: 0 }
-    const resolved = s.monthCompleted + s.monthCancelled
-    const successRate = resolved > 0 ? Math.round((s.monthCompleted / resolved) * 100) : 0
-    return { successRate, monthCompleted: s.monthCompleted, monthTotal: s.month, resolved }
+    const money = moneyOf(id)
+    if (!s) return { monthCompleted: 0, monthTotal: 0, ...money }
+    return { monthCompleted: s.monthCompleted, monthTotal: s.month, ...money }
   }
   const topServices = (id: string, n = 3) => {
     const s = staffStats.get(id); if (!s) return []
@@ -319,8 +371,9 @@ function PersonelPageInner() {
       if (sortKey === 'name') return a.name.localeCompare(b.name, 'tr')
       if (sortKey === 'rating') return (b.averageRating ?? -1) - (a.averageRating ?? -1)
       if (sortKey === 'appointments') return (staffStats.get(b.id)?.total ?? 0) - (staffStats.get(a.id)?.total ?? 0)
+      // Sıralama ÜRETİLEN TUTARA göre; eşitlikte işlem sayısı ayırır.
       const sa = scoreOf(a.id); const sb = scoreOf(b.id)
-      return sb.monthCompleted - sa.monthCompleted || sb.successRate - sa.successRate
+      return sb.revenue - sa.revenue || sb.monthCompleted - sa.monthCompleted
     })
     return sorted
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -376,16 +429,17 @@ function PersonelPageInner() {
 
   const activeCount = allStaff.filter((p) => p.active).length
   const teamPulse = useMemo(() => {
-    let monthCompleted = 0, monthResolved = 0, ratingSum = 0, ratingWeight = 0
+    let monthCompleted = 0, monthRevenue = 0, ratingSum = 0, ratingWeight = 0
     for (const s of allStaff) {
       const st = staffStats.get(s.id)
-      if (st) { monthCompleted += st.monthCompleted; monthResolved += st.monthCompleted + st.monthCancelled }
+      if (st) monthCompleted += st.monthCompleted
+      monthRevenue += moneyOf(s.id).revenue
       if (s.averageRating != null && (s.ratingCount ?? 0) > 0) { ratingSum += s.averageRating * (s.ratingCount ?? 0); ratingWeight += s.ratingCount ?? 0 }
     }
     const coveredPages = pageRows.filter((r) => r.holders.length > 0).length
     return {
       monthCompleted,
-      successRate: monthResolved > 0 ? Math.round((monthCompleted / monthResolved) * 100) : 0,
+      monthRevenue,
       rating: ratingWeight > 0 ? ratingSum / ratingWeight : 0,
       ratingCount: ratingWeight,
       coveredPages,
@@ -578,12 +632,16 @@ function PersonelPageInner() {
                 <div className="text-[11px] text-[#705a66]">tüm ekip · randevu bazlı</div>
               </div>
 
-              <div className="flex items-center gap-3 rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
-                <Ring value={teamPulse.successRate} title={`%${teamPulse.successRate}`} />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-[#705a66]">Ekip başarı oranı</div>
-                  <div className="mt-0.5 text-[12px] leading-snug text-[#4a3a44]">Tamamlanan / sonuçlanan (bu ay)</div>
+              {/* Başarı oranı yerine ÜRETİLEN TUTAR: müşteri kaynaklı iptal/gelmedi personeli
+                  cezalandırmasın (bkz. scoreOf). */}
+              <div className="rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]">
+                  <Wallet className="h-3.5 w-3.5 text-[#c85776]" /> Bu ay üretilen tutar
                 </div>
+                <div className="mt-1 font-display text-3xl tabular-nums tracking-tight text-[#352432]">
+                  {formatTL(teamPulse.monthRevenue)}
+                </div>
+                <div className="text-[11px] text-[#705a66]">tüm ekip · uygulama + satış</div>
               </div>
 
               <div className="rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
@@ -972,13 +1030,19 @@ function PersonelPageInner() {
                         </div>
                       </div>
 
+                      {/* Başarı oranı yerine bu ayki ÜRETİM: kaç iş yaptı ve ne kadar tutar üretti.
+                          Uygulama (tamamlanan randevu cirosu) ve satış ayrı ayrı okunabilir. */}
                       <div className="mt-2.5">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-[#705a66]">Başarı oranı (bu ay)</span>
-                          <span className="font-semibold text-[#352432]">%{sc.successRate}</span>
+                          <span className="text-[#705a66]">Bu ay üretim</span>
+                          <span className="font-semibold text-[#352432]">
+                            {sc.monthCompleted} işlem · {formatTL(sc.revenue)}
+                          </span>
                         </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#f4e6ec]">
-                          <motion.span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" initial={{ width: 0 }} animate={{ width: `${sc.successRate}%` }} transition={{ duration: 0.7, ease: 'easeOut' }} />
+                        <div className="mt-1 flex items-center gap-1 text-[10.5px] text-[#705a66]">
+                          <span>Uygulama {formatTL(sc.serviceRevenue)}</span>
+                          <span aria-hidden>·</span>
+                          <span>Satış {formatTL(sc.salesAmount)}</span>
                         </div>
                       </div>
 
@@ -1048,8 +1112,8 @@ function PersonelPageInner() {
                           <div className="relative mt-4 grid grid-cols-4 gap-2">
                             {[
                               { k: 'Randevu', v: String(st?.total ?? 0) },
-                              { k: 'Bu ay', v: String(sc.monthCompleted) },
-                              { k: 'Başarı', v: `%${sc.successRate}` },
+                              { k: 'Bu ay işlem', v: String(sc.monthCompleted) },
+                              { k: 'Bu ay tutar', v: formatTL(sc.revenue) },
                               { k: 'Yetki', v: String(selected.permissions.filter((x) => !x.includes('.')).length) },
                             ].map((m) => (
                               <div key={m.k} className="rounded-[12px] border border-white/70 bg-white/80 px-2 py-2 text-center">

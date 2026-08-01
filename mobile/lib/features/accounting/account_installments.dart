@@ -130,6 +130,16 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
 
   final _amountCtrl = TextEditingController();
   String _method = 'Cash';
+
+  /// İKİNCİ ÖDEME YÖNTEMİ (kırılım) — 3.000 ₺ borcun 2.000'i nakit + 1.000'i kart alınabilsin.
+  /// Boşken davranış eskisi gibi tek tahsilattır. Dolu olduğunda her yöntem AYRI tahsilat kaydı
+  /// olur; tek satırda toplamak kasa kapanışındaki yöntem kırılımını bozardı.
+  final _splitAmountCtrl = TextEditingController();
+  String _splitMethod = 'Card';
+  bool _splitOn = false;
+
+  double get _splitAmount =>
+      double.tryParse(_splitAmountCtrl.text.replaceAll(',', '.')) ?? 0;
   DateTime _date = DateTime.now();
   final _referenceCtrl = TextEditingController();
   int _count = 1;
@@ -147,6 +157,7 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
   @override
   void dispose() {
     _amountCtrl.dispose();
+    _splitAmountCtrl.dispose();
     _referenceCtrl.dispose();
     super.dispose();
   }
@@ -196,18 +207,36 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
       });
       return;
     }
+    // Kırılım: her yöntem AYRI kayıt. Aynı yöntem iki kez girildiyse tek satırda toplanır.
+    final parts = <String, double>{_method: _amount};
+    if (_splitOn && _splitAmount > 0) {
+      parts[_splitMethod] = (parts[_splitMethod] ?? 0) + _splitAmount;
+    }
+
+    final occurredAt =
+        DateTime(_date.year, _date.month, _date.day, 12).toUtc().toIso8601String();
+    final reference =
+        _referenceCtrl.text.trim().isEmpty ? null : _referenceCtrl.text.trim();
+    var done = 0;
     try {
-      await widget.api.post('/api/admin/accounts/${widget.account['id']}/payments', {
-        'amount': _amount,
-        'method': _method,
-        'reference': _referenceCtrl.text.trim().isEmpty ? null : _referenceCtrl.text.trim(),
-        'occurredAtUtc': DateTime(_date.year, _date.month, _date.day, 12).toUtc().toIso8601String(),
-      });
+      for (final entry in parts.entries) {
+        await widget.api
+            .post('/api/admin/accounts/${widget.account['id']}/payments', {
+          'amount': entry.value,
+          'method': entry.key,
+          'reference': reference,
+          'occurredAtUtc': occurredAt,
+        });
+        done++;
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = '$e';
+          // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz, kullanıcı ne kaldığını bilmeli.
+          _error = done > 0
+              ? '$e · $done/${parts.length} ödeme kaydedildi; kalanı tekrar deneyin.'
+              : '$e';
           _saving = false;
         });
       }
@@ -372,6 +401,54 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
                 ),
               ],
             ),
+
+            // ÖDEME KIRILIMI — ikinci yöntem (ör. 2.000 nakit + 1.000 kart).
+            if (_splitOn) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _splitAmountCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'Tutar (2. yöntem)', prefixText: '₺ '),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _splitMethod,
+                      decoration: const InputDecoration(labelText: 'Yöntem'),
+                      items: const [
+                        DropdownMenuItem(value: 'Cash', child: Text('Nakit')),
+                        DropdownMenuItem(value: 'Card', child: Text('Kart')),
+                        DropdownMenuItem(
+                            value: 'BankTransfer', child: Text('Havale/EFT')),
+                      ],
+                      onChanged: (v) => setState(() => _splitMethod = v ?? 'Card'),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Kırılımı kaldır',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => setState(() {
+                      _splitOn = false;
+                      _splitAmountCtrl.clear();
+                    }),
+                  ),
+                ],
+              ),
+            ] else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _splitOn = true),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Ödeme yöntemi ekle'),
+                ),
+              ),
             const SizedBox(height: 10),
             Row(
               children: [

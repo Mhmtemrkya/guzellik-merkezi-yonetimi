@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -75,16 +75,30 @@ export default function AdisyonPanel({
   customerId,
   tenantId,
   onChanged,
+  defaultStaffMemberId,
 }: {
   customerId?: string
   tenantId?: string
   onChanged?: () => unknown
+  /**
+   * Adisyon bir RANDEVUDAN açıldıysa o randevunun personeli. Kalem formunda hazır gelir.
+   * Personel boş bırakıldığında prim tahakkuk etmiyor ve satış "Kurum Yöneticisi"ne yazılıyordu;
+   * randevuda zaten seçilmiş kişiyi ikinci kez sordurmak bu hatayı davet ediyordu.
+   */
+  defaultStaffMemberId?: string
 }) {
   const canAdisyon = useFeature('billing.adisyon')
   const giftCardsAllowed = useFeature('marketing.giftcards')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState<AddForm>(emptyForm)
+  const [form, setForm] = useState<AddForm>(() => ({ ...emptyForm, staffMemberId: defaultStaffMemberId ?? '' }))
+
+  // Randevudan gelen personel değişirse (başka randevunun adisyonu açıldı) formu tazele —
+  // kullanıcı kendi seçimini yaptıysa ona dokunma.
+  useEffect(() => {
+    if (!defaultStaffMemberId) return
+    setForm((f) => (f.staffMemberId ? f : { ...f, staffMemberId: defaultStaffMemberId }))
+  }, [defaultStaffMemberId])
   const [refreshKey, setRefreshKey] = useState(0)
   const [loyaltyPointsInput, setLoyaltyPointsInput] = useState('')
   const [giftSel, setGiftSel] = useState('')
@@ -224,7 +238,9 @@ export default function AdisyonPanel({
     if (!adisyon) return
     run(async () => {
       await adminApi.addAdisyonItem(adisyon.id, body, tenantId)
-      setForm({ ...emptyForm, type: form.type, method: form.method })
+      // Personel seçimi KORUNUR: aynı fişe arka arkaya kalem eklenirken (aynı seansın hizmeti +
+      // ürünü) her seferinde yeniden seçtirmek, boş bırakılıp atıfın kaybolmasına yol açıyordu.
+      setForm({ ...emptyForm, type: form.type, method: form.method, staffMemberId: form.staffMemberId })
     })
   }
 
@@ -613,7 +629,7 @@ export default function AdisyonPanel({
                     <button
                       key={t}
                       type="button"
-                      onClick={() => setForm({ ...emptyForm, type: t, method: form.method })}
+                      onClick={() => setForm({ ...emptyForm, type: t, method: form.method, staffMemberId: form.staffMemberId })}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-colors ${
                         on ? `${TYPE_TONES[t]} ring-1 ring-current/20` : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-white'
                       }`}
@@ -710,11 +726,21 @@ export default function AdisyonPanel({
 
                 {(form.type === 'Service' || form.type === 'Product' || form.type === 'Extra' || form.type === 'PackageUse' || form.type === 'PackageSale') && (
                   <label className="col-span-2 block">
-                    <span className={labelClass}>Personel (opsiyonel)</span>
+                    {/* SATIŞ mı UYGULAMA mı: ürün/paket satışında "satış yapan" (prim + kim sattı),
+                        hizmet/paket kullanımında "işlem yapan" (uygulayan personel). Tek "Personel"
+                        etiketi hangi rolün sorulduğunu belirsiz bırakıyordu. */}
+                    <span className={labelClass}>
+                      {form.type === 'Product' || form.type === 'PackageSale' ? 'Satış yapan' : 'İşlem yapan'}
+                    </span>
                     <select value={form.staffMemberId} onChange={(e) => setForm({ ...form, staffMemberId: e.target.value })} className={fieldClass}>
                       <option value="">Seçilmedi</option>
                       {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
+                    {!form.staffMemberId && (
+                      <span className="mt-1 block text-[10.5px] leading-snug text-[#a3576f]">
+                        Boş bırakılırsa prim hesaplanmaz ve kayıt “Kurum Yöneticisi” adına geçer.
+                      </span>
+                    )}
                   </label>
                 )}
               </div>

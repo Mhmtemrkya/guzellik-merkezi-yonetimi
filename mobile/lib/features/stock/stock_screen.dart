@@ -876,6 +876,15 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
               required: true),
           const CrudField(
               key: 'unitCost', label: 'Birim maliyet', type: CrudFieldType.decimal),
+          // HAREKET TARİHİ — geçmişe dönük giriş (ör. mal dün geldi, bugün kaydediliyor).
+          // Boş bırakılırsa backend "şimdi" kabul eder; stok/maliyet raporu bu tarihe yazar.
+          const CrudField(
+            key: 'occurredAtUtc',
+            label: 'Hareket tarihi',
+            type: CrudFieldType.date,
+            dateOnly: false,
+            defaultValue: 'today',
+          ),
           const CrudField(key: 'reference', label: 'Referans / Fatura no'),
           const CrudField(key: 'notes', label: 'Not', type: CrudFieldType.multiline),
         ],

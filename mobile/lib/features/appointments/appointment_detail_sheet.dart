@@ -257,12 +257,20 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
       setState(() => _busy = false);
       final adisyonId = id;
       if (adisyonId != null && adisyonId.isNotEmpty && adisyonId != 'null') {
+        // Randevunun personeli adisyona taşınır: aynı kişi ikinci kez sorulmasın ve boş
+        // bırakılıp prim/satış atfı kaybolmasın.
+        final staffId = '${appt['staffMemberId'] ?? ''}'.trim();
         await showModalBottomSheet<bool>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
-          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+          builder: (_) => AdisyonDetailSheet(
+            api: widget.api,
+            adisyonId: adisyonId,
+            defaultStaffMemberId:
+                staffId.isEmpty || staffId.toLowerCase() == 'null' ? null : staffId,
+          ),
         );
       }
     } catch (e) {

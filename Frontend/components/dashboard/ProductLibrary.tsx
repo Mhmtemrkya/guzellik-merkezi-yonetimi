@@ -12,6 +12,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeProduct, normalizeStockMovement, productCategoryLabels } from '@/lib/apiMappers'
+import { localDateKey } from '@/lib/datetime'
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, Banknote, Barcode as BarcodeIcon, Boxes, Cake,
   ChevronLeft, ChevronRight, FileUp, Hash, ImagePlus, Layers3, Loader2, MapPin, Package, PackagePlus,
@@ -69,7 +70,7 @@ export default function ProductLibrary({
   const canDeleteProduct = usePermission().can('Stock.Delete')
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
-  const [moveDialog, setMoveDialog] = useState<{ type: 'Inbound' | 'Outbound'; qty: number; unitCost: number; notes: string } | null>(null)
+  const [moveDialog, setMoveDialog] = useState<{ type: 'Inbound' | 'Outbound'; qty: number; unitCost: number; notes: string; date: string } | null>(null)
   const [moveBusy, setMoveBusy] = useState(false)
   const { isStaff, performWrite } = useStaffApproval()
 
@@ -152,10 +153,14 @@ export default function ProductLibrary({
     if (moveDialog.qty <= 0) { setActionError('Miktar pozitif olmalı.'); return }
     setMoveBusy(true); setActionError('')
     try {
+      // HAREKET TARİHİ kullanıcıdan gelir: mal dün girdiyse stok/maliyet raporu bugüne yazılmamalı.
+      // Girilen gün YEREL yorumlanır; saat olarak günün başlangıcı alınır (ileri tarih engellenir).
+      const occurredAt = moveDialog.date ? new Date(`${moveDialog.date}T00:00:00`) : new Date()
       const payload = {
         type: moveDialog.type, quantity: moveDialog.qty,
         unitCost: moveDialog.unitCost ? moveDialog.unitCost : null,
-        occurredAtUtc: new Date().toISOString(), reference: null, notes: moveDialog.notes || null, staffMemberId: null,
+        occurredAtUtc: (Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt).toISOString(),
+        reference: null, notes: moveDialog.notes || null, staffMemberId: null,
       }
       const res = await performWrite({
         operationType: 'CreateStockMovement',
@@ -381,11 +386,11 @@ export default function ProductLibrary({
                       </button>
                     }
                   />
-                  <button type="button" onClick={() => setMoveDialog({ type: 'Inbound', qty: 1, unitCost: sel.cost, notes: '' })}
+                  <button type="button" onClick={() => setMoveDialog({ type: 'Inbound', qty: 1, unitCost: sel.cost, notes: '', date: localDateKey(new Date()) })}
                     className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-emerald-300/40 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">
                     <ArrowDownLeft className="h-3.5 w-3.5" /> Stok Girişi
                   </button>
-                  <button type="button" onClick={() => setMoveDialog({ type: 'Outbound', qty: 1, unitCost: 0, notes: '' })}
+                  <button type="button" onClick={() => setMoveDialog({ type: 'Outbound', qty: 1, unitCost: 0, notes: '', date: localDateKey(new Date()) })}
                     className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-sky-300/40 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-700 hover:bg-sky-100">
                     <ArrowUpRight className="h-3.5 w-3.5" /> Stok Çıkışı
                   </button>
@@ -408,6 +413,17 @@ export default function ProductLibrary({
                       </label>
                       <label className="text-[9px] font-mono uppercase text-[#352432]/45">Birim maliyet (₺)
                         <input type="number" min={0} value={moveDialog.unitCost || ''} onChange={(e) => setMoveDialog((m) => m && { ...m, unitCost: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]" />
+                      </label>
+                      {/* HAREKET TARİHİ: mal dün/geçen hafta girdiyse stok raporu o güne yazsın.
+                          Varsayılan bugün; ileri tarih kabul edilmez. */}
+                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#352432]/45">Hareket tarihi
+                        <input
+                          type="date"
+                          value={moveDialog.date}
+                          max={localDateKey(new Date())}
+                          onChange={(e) => setMoveDialog((m) => m && { ...m, date: e.target.value })}
+                          className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]"
+                        />
                       </label>
                       <label className="col-span-2 text-[9px] font-mono uppercase text-[#352432]/45">Not
                         <input value={moveDialog.notes} onChange={(e) => setMoveDialog((m) => m && { ...m, notes: e.target.value })} className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]" />

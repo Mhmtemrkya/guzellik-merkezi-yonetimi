@@ -1651,6 +1651,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        // İŞLEM SAYISININ PARASAL KARŞILIĞI (web StaffTab ile parite). Karnede işlem sayısı
+        // zaten var; çok iş yapanın çok ciro ürettiği varsayılamayacağı için tutar ayrıca
+        // sıralanır — kısa/ucuz işlemler burada ayrışır.
+        ReportSection(
+          title: 'En Çok Üreten',
+          subtitle: 'Uygulama + satış cirosu',
+          icon: Icons.account_balance_wallet_rounded,
+          child: RankBarList(
+            format: reportMoney,
+            emptyText: 'Bu dönemde ciro üretilmemiş.',
+            items: [
+              for (final r in sorted.take(8))
+                RankBarItem(
+                  label: _s(r['staffName']),
+                  value: _n(r['serviceRevenue']) + _n(r['salesAmount']),
+                  hint:
+                      'Uygulama ${reportMoney(_n(r['serviceRevenue']))} · '
+                      'Satış ${reportMoney(_n(r['salesAmount']))}',
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         if (hasCompare)
           ReportSection(
             title: 'Uygulama Cirosu Karşılaştırması',

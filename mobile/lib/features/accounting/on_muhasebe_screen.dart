@@ -1305,7 +1305,8 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           ),
           CrudField(
             key: 'staffMemberId',
-            label: 'Personel (opsiyonel)',
+            label: 'İşlem yapan / satış yapan',
+            hint: 'Boş bırakılırsa prim hesaplanmaz, kayıt Kurum Yöneticisi adına geçer.',
             type: CrudFieldType.select,
             optionsLoader: CrudOptions(widget.api).staff,
           ),

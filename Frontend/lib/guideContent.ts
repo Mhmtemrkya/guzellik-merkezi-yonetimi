@@ -485,7 +485,7 @@ const guides: Record<string, PageGuide> = {
         icon: TrendingUp,
         title: 'Performans ve şube aktarma',
         desc:
-          'Aylık tamamlanan randevu sayısı ve başarı oranı personel kartında görünür. Çok şubeli kurumlarda personeli başka şubeye buradan aktarırsınız.',
+          'Aylık yapılan işlem sayısı ve üretilen tutar (uygulama + satış) personel kartında görünür. Çok şubeli kurumlarda personeli başka şubeye buradan aktarırsınız.',
       },
       {
         icon: Lock,
@@ -700,7 +700,7 @@ const guides: Record<string, PageGuide> = {
         icon: UserCheck,
         title: 'Personel Performansı sekmesi',
         desc:
-          'Personel bazında tamamlanan randevu, üretilen ciro ve başarı oranı tablo + grafikle karşılaştırılır; prim hesabına temel veri buradan çıkar.',
+          'Personel bazında tamamlanan randevu, uygulama cirosu ve satış tutarı tablo + grafikle karşılaştırılır; prim hesabına temel veri buradan çıkar.',
       },
       {
         icon: BarChart3,
@@ -744,7 +744,7 @@ const guides: Record<string, PageGuide> = {
         icon: Star,
         title: 'Yıldız puanınız',
         desc:
-          'Seans sonrası müşterilerinize gösterdiğiniz QR ile aldığınız yıldızlar performans kartınızda birikir; yöneticiniz aylık başarı oranınızı buradan izler.',
+          'Seans sonrası müşterilerinize gösterdiğiniz QR ile aldığınız yıldızlar performans kartınızda birikir; yöneticiniz aylık işlem sayınızı ve üretiminizi buradan izler.',
       },
     ],
   },

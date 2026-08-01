@@ -261,8 +261,6 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final todayAppts = data.upcoming.where(isToday).toList();
 
     final completed = appts.where((a) => st(a) == 'completed').length;
-    final cancelled =
-        appts.where((a) => st(a) == 'cancelled' || st(a) == 'noshow').length;
     final waiting = appts
         .where((a) =>
             st(a) == 'scheduled' || st(a) == 'confirmed' || st(a) == 'draft')
@@ -272,9 +270,18 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         .where((id) => id.isNotEmpty && id != 'null')
         .toSet()
         .length;
-    final resolved = completed + cancelled;
-    final successRate =
-        resolved > 0 ? ((completed / resolved) * 100).round() : 0;
+    // "Başarı oranım" [tamamlanan / (tamamlanan + iptal)] KALDIRILDI: müşterinin gelmemesi ya da
+    // randevuyu iptal etmesi personelin performansı değil, ama oran onu personelin hanesine
+    // yazıp cezalandırıyordu. Yerine tamamen personelin kendi işine bağlı olan çalışma hacmi.
+    final workedMinutes = appts.where((a) => st(a) == 'completed').fold<int>(0, (sum, a) {
+      final start = startOf(a);
+      final endRaw = a['endUtc']?.toString();
+      final end = endRaw == null ? null : DateTime.tryParse(endRaw)?.toLocal();
+      if (start == null || end == null) return sum;
+      final minutes = end.difference(start).inMinutes;
+      return sum + (minutes > 0 ? minutes : 0);
+    });
+    final workedHours = (workedMinutes / 60).round();
     final nextAppt = data.upcoming.cast<Map<String, dynamic>?>().firstWhere(
           (a) => startOf(a!)?.isAfter(now) ?? false,
           orElse: () => null,
@@ -508,9 +515,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         Row(
           children: [
             Expanded(
-              child: _metric('Başarı oranım', '%$successRate',
-                  resolved > 0 ? '$completed/$resolved sonuçlanan' : 'henüz veri yok',
-                  Icons.insights_rounded, const Color(0xFFB88938)),
+              child: _metric('Hizmet saatim', '$workedHours sa',
+                  completed > 0 ? '$completed tamamlanan seans' : 'henüz veri yok',
+                  Icons.timelapse_rounded, const Color(0xFFB88938)),
             ),
             const SizedBox(width: 10),
             Expanded(

@@ -317,8 +317,10 @@ export default function PersonelDashboard() {
   const cancelled = periodAppts.filter((a) => a.status === 'iptal').length
   const waiting = periodAppts.filter((a) => a.status === 'bekliyor' || a.status === 'devam' || a.status === 'islemde').length
   const uniqueCustomers = new Set(periodAppts.map((a) => a.customerId).filter(Boolean)).size
-  const resolved = completed + cancelled
-  const successRate = resolved > 0 ? Math.round((completed / resolved) * 100) : 0
+  // Tamamlanan seansların toplam süresi — iptal/gelmedi bunu etkilemez (bkz. KPI kartı).
+  const workedMinutes = periodAppts
+    .filter((a) => a.status === 'tamamlandi')
+    .reduce((sum, a) => sum + Math.max(0, a.sure ?? 0), 0)
 
   // --- grafik serileri ---
   const { totalSeries, doneSeries } = useMemo(() => {
@@ -453,13 +455,16 @@ export default function PersonelDashboard() {
             detail={`${PERIOD_LABEL[period]} biten seans`}
             series={doneSeries}
           />
+          {/* "Başarı oranım" [tamamlanan / (tamamlanan + iptal)] KALDIRILDI: müşterinin gelmemesi
+              ya da randevuyu iptal etmesi personelin performansı değil, ama oran onu personelin
+              hanesine yazıyordu. Yerine, tamamen personelin kendi işine bağlı olan çalışma hacmi. */}
           <PanelMetricCard
             icon={Activity}
             tone="gold"
-            title="Başarı oranım"
-            value={`%${successRate}`}
-            detail={resolved > 0 ? `${completed}/${resolved} sonuçlanan` : 'henüz veri yok'}
-            visual={<DonutGauge value={successRate} label="Başarı oranı" />}
+            title="Hizmet saatim"
+            value={`${Math.round(workedMinutes / 60)} sa`}
+            detail={`${PERIOD_LABEL[period]} tamamlanan seans süresi`}
+            subDetail={completed > 0 ? `${completed} seans` : undefined}
           />
           <PanelMetricCard
             icon={Users}

@@ -21,10 +21,15 @@ class AdisyonDetailSheet extends StatefulWidget {
   const AdisyonDetailSheet({
     required this.api,
     required this.adisyonId,
+    this.defaultStaffMemberId,
     super.key,
   });
   final ApiClient api;
   final String adisyonId;
+
+  /// Adisyon bir RANDEVUDAN açıldıysa o randevunun personeli — kalem formunda hazır gelir.
+  /// Boş bırakıldığında prim tahakkuk etmiyor ve satış "Kurum Yöneticisi"ne yazılıyordu.
+  final String? defaultStaffMemberId;
 
   @override
   State<AdisyonDetailSheet> createState() => _AdisyonDetailSheetState();
@@ -114,9 +119,13 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
           ),
           CrudField(
             key: 'staffMemberId',
-            label: 'Personel (opsiyonel)',
+            // Hizmet/paket kullanımında UYGULAYAN, ürün/paket satışında SATAN kişi sorulur.
+            // Tek "Personel" etiketi hangi rolün istendiğini belirsiz bırakıyordu.
+            label: 'İşlem yapan / satış yapan',
+            hint: 'Boş bırakılırsa prim hesaplanmaz, kayıt Kurum Yöneticisi adına geçer.',
             type: CrudFieldType.select,
             optionsLoader: CrudOptions(widget.api).staff,
+            defaultValue: widget.defaultStaffMemberId,
           ),
         ],
       ),

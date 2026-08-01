@@ -139,6 +139,25 @@ export default function StaffTab({
           />
         </ReportCard>
 
+        {/* İŞLEM SAYISININ PARASAL KARŞILIĞI — yan yana okunsun diye hemen yanında durur.
+            Çok iş yapan her zaman çok ciro üretmez (ör. kısa/ucuz işlemler); iki grafiği
+            karşılaştırınca bu fark görünür hâle gelir. */}
+        <ReportCard title="En Çok Üreten" subtitle="Uygulama + satış cirosu" icon={Wallet}>
+          <RankBars
+            items={[...rows]
+              .sort((a, b) => b.serviceRevenue + b.salesAmount - (a.serviceRevenue + a.salesAmount))
+              .slice(0, 8)
+              .map((r) => ({
+                key: r.staffMemberId,
+                label: r.staffName,
+                value: r.serviceRevenue + r.salesAmount,
+                hint: `Uygulama ${formatTL(Math.round(r.serviceRevenue))} · Satış ${formatTL(Math.round(r.salesAmount))}`,
+              }))}
+            format={(v) => formatTL(Math.round(v))}
+            emptyText="Bu dönemde ciro üretilmemiş."
+          />
+        </ReportCard>
+
         {compareLabel ? (
           <ReportCard title={`${rangeLabel} ↔ ${compareLabel}`} subtitle="Uygulama cirosu karşılaştırması" icon={TrendingUp}>
             <ComparisonBars

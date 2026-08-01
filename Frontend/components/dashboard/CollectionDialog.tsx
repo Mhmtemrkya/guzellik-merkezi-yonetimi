@@ -12,12 +12,13 @@ import {
   Banknote,
   CalendarDays,
   Check,
-  CreditCard,
   FileText,
   Loader2,
+  Plus,
   Search,
   User,
   Wallet,
+  X,
 } from 'lucide-react'
 import type { CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
@@ -85,8 +86,13 @@ export default function CollectionDialog({
   }
 
   const [accountId, setAccountId] = useState<string>('')
-  const [amount, setAmount] = useState<number | ''>('')
-  const [method, setMethod] = useState<string>('cash')
+  /**
+   * ÖDEME SATIRLARI — tek satır = eski davranış, birden çok satır = KIRILIM.
+   * 3.000 ₺ borcun 2.000'i nakit + 1.000'i kartla alınabilmeli. Her satır AYRI bir tahsilat
+   * kaydına dönüşür; tek satırda toplayıp "karma" demek kasa kapanışındaki yöntem kırılımını
+   * ve günlük nakit sayımını bozardı.
+   */
+  const [rows, setRows] = useState<{ amount: number | ''; method: string }[]>([{ amount: '', method: 'cash' }])
   const [date, setDate] = useState<string>(todayIso())
   const [reference, setReference] = useState<string>('')
   const [query, setQuery] = useState<string>('')
@@ -102,8 +108,7 @@ export default function CollectionDialog({
     if (!open) return
     const initial = accounts.find((a) => a.id === initialAccountId) || accounts[0] || null
     setAccountId(initial?.id || '')
-    setAmount(initial ? Math.max(0, Math.round(initial.remainingAmount)) : '')
-    setMethod('cash')
+    setRows([{ amount: initial ? Math.max(0, Math.round(initial.remainingAmount)) : '', method: 'cash' }])
     setDate(todayIso())
     setReference('')
     setQuery('')
@@ -132,11 +137,27 @@ export default function CollectionDialog({
 
   const pickAccount = (a: CustomerAccount): void => {
     setAccountId(a.id)
-    // Seçilen carinin kalan borcunu tutara otomatik yaz.
-    setAmount(Math.max(0, Math.round(a.remainingAmount)))
+    // Seçilen carinin kalan borcunu tek satıra otomatik yaz (kırılım varsa sıfırlanır).
+    setRows([{ amount: Math.max(0, Math.round(a.remainingAmount)), method: 'cash' }])
     setPickerOpen(false)
     setQuery('')
   }
+
+  const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+  /** Kalan borcun henüz satırlara dağıtılmamış kısmı — yeni satırın varsayılanı olur. */
+  const unallocated = selected ? Math.max(0, Math.round(selected.remainingAmount) - totalAmount) : 0
+
+  const setRow = (index: number, patch: Partial<{ amount: number | ''; method: string }>): void =>
+    setRows((list) => list.map((r, i) => (i === index ? { ...r, ...patch } : r)))
+
+  const addRow = (): void => {
+    // Yeni satır, kalan dağıtılmamış tutarla açılır; kullanılmamış yöntemlerden biri seçilir.
+    const used = new Set(rows.map((r) => r.method))
+    const nextMethod = METHOD_OPTIONS.find((m) => !used.has(m.value))?.value ?? 'cash'
+    setRows((list) => [...list, { amount: unallocated > 0 ? unallocated : '', method: nextMethod }])
+  }
+
+  const removeRow = (index: number): void => setRows((list) => list.filter((_, i) => i !== index))
 
   const handleSubmit = async (): Promise<void> => {
     setError('')
@@ -144,23 +165,40 @@ export default function CollectionDialog({
       setError('Cari hesap seçimi zorunlu.')
       return
     }
-    const amt = Number(amount || 0)
-    if (!(amt > 0)) {
+    const payable = rows.filter((r) => Number(r.amount || 0) > 0)
+    if (payable.length === 0) {
       setError('Tutar 0’dan büyük olmalı.')
       return
     }
+    // Aynı yöntem iki kez girilirse tek satırda toplanır — kasa kırılımı sade kalsın.
+    const merged = new Map<string, number>()
+    for (const r of payable) merged.set(r.method, (merged.get(r.method) ?? 0) + Number(r.amount || 0))
+
     setSaving(true)
+    const occurredAtUtc = new Date(`${date || todayIso()}T12:00:00`).toISOString()
+    let done = 0
     try {
-      await onSubmit({
-        accountId,
-        amount: amt,
-        method,
-        reference: reference.trim() || null,
-        occurredAtUtc: new Date(`${date || todayIso()}T12:00:00`).toISOString(),
-      })
+      // Her yöntem AYRI tahsilat kaydı olur; sıralı gider ki kısmi hata net anlaşılsın.
+      for (const [m, amt] of merged) {
+        await onSubmit({
+          accountId,
+          amount: amt,
+          method: m,
+          reference: reference.trim() || null,
+          occurredAtUtc,
+        })
+        done++
+      }
       setOpen(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Tahsilat kaydedilemedi.')
+      const base = e instanceof Error ? e.message : 'Tahsilat kaydedilemedi.'
+      // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz, kullanıcı ne kaldığını bilmeli.
+      setError(
+        done > 0
+          ? `${base} · ${done}/${merged.size} ödeme kaydedildi; kalanı tekrar deneyin.`
+          : base,
+      )
+      if (done > 0) setRows(Array.from(merged).slice(done).map(([m, amt]) => ({ amount: amt, method: m })))
     } finally {
       setSaving(false)
     }
@@ -253,39 +291,67 @@ export default function CollectionDialog({
             )}
           </div>
 
-          {/* Tutar + yöntem */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                <Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar
+          {/* Tutar + yöntem — birden çok satır = ödeme kırılımı (ör. 2.000 nakit + 1.000 kart) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
+                <Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar ve yöntem
               </label>
-              <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#efbfd0]">
-                <span className="text-[13px] font-semibold text-[#a58d99]">₺</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#352432] outline-none"
-                />
+              {rows.length > 1 && (
+                <span className="text-[11px] font-semibold tabular-nums text-[#7e5f6e]">
+                  Toplam {formatTL(totalAmount)}
+                </span>
+              )}
+            </div>
+
+            {rows.map((row, i) => (
+              <div key={i} className="grid grid-cols-2 gap-3">
+                <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#efbfd0]">
+                  <span className="text-[13px] font-semibold text-[#a58d99]">₺</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={row.amount}
+                    onChange={(e) => setRow(i, { amount: e.target.value === '' ? '' : Number(e.target.value) })}
+                    className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#352432] outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={row.method}
+                    onChange={(e) => setRow(i, { method: e.target.value })}
+                    className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]"
+                  >
+                    {METHOD_OPTIONS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      aria-label="Ödeme satırını kaldır"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#a58d99] transition-colors hover:border-rose-200 hover:text-rose-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                <CreditCard className="h-3.5 w-3.5 text-[#c05277]" /> Yöntem
-              </label>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]"
+            ))}
+
+            {rows.length < METHOD_OPTIONS.length && (
+              <button
+                type="button"
+                onClick={addRow}
+                className="inline-flex items-center gap-1.5 rounded-[10px] border border-dashed border-[#efbfd0] bg-[#fffafc] px-2.5 py-1.5 text-[11px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#fff1f6]"
               >
-                {METHOD_OPTIONS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <Plus className="h-3.5 w-3.5" /> Ödeme yöntemi ekle
+                {unallocated > 0 && <span className="font-normal text-[#a58d99]">· {formatTL(unallocated)} kaldı</span>}
+              </button>
+            )}
           </div>
 
           {/* Tarih + referans */}

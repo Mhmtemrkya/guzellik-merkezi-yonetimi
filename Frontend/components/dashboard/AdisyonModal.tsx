@@ -20,6 +20,7 @@ export default function AdisyonModal({
   tenantId,
   onChanged,
   allowPick = false,
+  defaultStaffMemberId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -29,6 +30,8 @@ export default function AdisyonModal({
   onChanged?: () => unknown
   /** true ve müşteri verilmemişse: modalda önce müşteri seçtirir, sonra adisyonunu açar. */
   allowPick?: boolean
+  /** Adisyon bir randevudan açıldıysa o randevunun personeli — kalem formunda hazır gelir. */
+  defaultStaffMemberId?: string
 }) {
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null)
   const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
@@ -95,7 +98,12 @@ export default function AdisyonModal({
               <>
                 {/* Onam formu eksikse adisyonun başında uyarı — imzasız işlem gözden kaçmasın. */}
                 <ConsentWarningBanner customerId={effectiveId} customerName={effectiveName} className="mb-3" />
-                <AdisyonPanel customerId={effectiveId} tenantId={tenantId} onChanged={onChanged} />
+                <AdisyonPanel
+                  customerId={effectiveId}
+                  tenantId={tenantId}
+                  onChanged={onChanged}
+                  defaultStaffMemberId={defaultStaffMemberId}
+                />
               </>
             ) : allowPick ? (
               // Müşteri seçimi: arama kutusu ve sonuç listesi rahat sığsın diye ortada geniş bir alan.
