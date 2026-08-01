@@ -7,6 +7,7 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -192,6 +193,11 @@ public sealed class AuthService : IAuthService
         var newHash = _tokenService.HashRefreshToken(newRefreshToken);
         var nowUtc = _clock.UtcNow;
 
+        // İPTAL + EKLEME BÖLÜNEMEZ. Eskiden iptal ayrı bir ExecuteUpdate ile ANINDA commit oluyor,
+        // yeni token sonraki SaveChanges'te ekleniyordu: arada bir hata/çökme olursa eski token
+        // iptal edilmiş, yenisi hiç oluşmamış oluyor ve kullanıcının oturumu sebepsiz düşüyordu.
+        await using var tx = await BeginRotationTransactionAsync(cancellationToken);
+
         // 1) Eski token'ı ATOMİK iptal et — yalnızca henüz iptal edilmemişse (RevokedAtUtc == null).
         //    Aynı token'la eşzamanlı iki refresh (örn. telefon+tablet ya da proaktif+reaktif yenileme aynı anda)
         //    yarışırsa yalnızca biri 1 satır etkiler; diğeri 0 alır → ikinci geçerli token zinciri oluşmaz.
@@ -204,17 +210,31 @@ public sealed class AuthService : IAuthService
 
         // Yarış kaybedildiyse (0 satır) bu isteği reddet — paralel istek geçerli token'ı zaten almıştır.
         if (affected == 0)
+        {
+            if (tx is not null) await tx.RollbackAsync(cancellationToken);
             return Result<LoginResponse>.Failure(Error.Unauthorized("Refresh token geçersiz."));
+        }
 
         // 2) Yeni token'ı ekle — sadece INSERT.
         _db.RefreshTokens.Add(new RefreshToken(token.TenantUserId!.Value, newHash, nowUtc.AddDays(14)));
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         var profile = BuildProfile(token.TenantUser, token.TenantUser.BranchId);
         var expiresAt = nowUtc.AddMinutes(60);
         var accessToken = _tokenService.CreateAccessToken(profile, expiresAt);
         return Result<LoginResponse>.Success(new LoginResponse(accessToken, newRefreshToken, expiresAt, profile));
     }
+
+    /// <summary>
+    /// Refresh rotasyonu için transaction açar (ilişkisel sağlayıcıda ve zaten bir transaction
+    /// içinde değilsek). InMemory birim testlerinde ve iç içe çağrıda <c>null</c> döner —
+    /// çağıran <c>null</c> kontrolüyle ilerler.
+    /// </summary>
+    private async Task<IDbContextTransaction?> BeginRotationTransactionAsync(CancellationToken ct)
+        => _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
 
     /// <summary>Müşteri refresh token'ını döndürür (TenantUser akışının müşteri eşleniği).</summary>
     private async Task<Result<LoginResponse>> RotateCustomerRefreshAsync(RefreshToken token, CancellationToken cancellationToken)
@@ -229,6 +249,9 @@ public sealed class AuthService : IAuthService
         var newHash = _tokenService.HashRefreshToken(newRefreshToken);
         var nowUtc = _clock.UtcNow;
 
+        // İptal + ekleme tek transaction (bkz. personel akışı: yarım rotasyon oturumu düşürüyordu).
+        await using var tx = await BeginRotationTransactionAsync(cancellationToken);
+
         var affected = await _db.RefreshTokens
             .IgnoreQueryFilters()
             .Where(x => x.Id == token.Id && x.RevokedAtUtc == null)
@@ -236,10 +259,15 @@ public sealed class AuthService : IAuthService
                 .SetProperty(x => x.RevokedAtUtc, (DateTime?)nowUtc)
                 .SetProperty(x => x.ReplacedByTokenHash, newHash)
                 .SetProperty(x => x.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
-        if (affected == 0) return Result<LoginResponse>.Failure(Error.Unauthorized("Refresh token geçersiz."));
+        if (affected == 0)
+        {
+            if (tx is not null) await tx.RollbackAsync(cancellationToken);
+            return Result<LoginResponse>.Failure(Error.Unauthorized("Refresh token geçersiz."));
+        }
 
         _db.RefreshTokens.Add(RefreshToken.ForCustomer(customer.Id, newHash, nowUtc.AddDays(30)));
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         var profile = BuildCustomerProfile(customer);
         var expiresAt = nowUtc.AddMinutes(60);
@@ -636,6 +664,15 @@ public sealed class AuthService : IAuthService
     private async Task RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
     {
         var now = _clock.UtcNow;
+
+        // OTURUM DAMGASINI DA İLERİ AL: refresh iptali tek başına ELDEKİ access token'ı 60 dakikaya
+        // kadar canlı bırakıyordu. Damgayı bu tek primitife bağlamak, ileride eklenecek her
+        // "oturumları kapat" yolunun (admin sıfırlama, devre dışı bırakma) access token'ları da
+        // gerçekten öldürmesini garantiler. Doğrulama: OnTokenValidated (bkz. ApiServiceCollectionExtensions).
+        var user = await _db.TenantUsers.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        user?.InvalidateSessions(now);
+
         if (IsInMemoryProvider())
         {
             var tokens = await _db.RefreshTokens

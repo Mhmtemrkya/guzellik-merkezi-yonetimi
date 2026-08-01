@@ -95,17 +95,21 @@ export default function StaffCalendarLinkButton({
               <div className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div>
             ) : (
               <>
-                {!url && hasActiveLink ? (
+                {/* Link ÜRETİMİ yalnız bu butonla (POST) olur — bkz. AppointmentsCalendarLinkButton. */}
+                {!url ? (
                   <div className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11.5px] text-amber-900">
-                    Bu takvim için zaten aktif bir bağlantı var. Güvenlik gereği bağlantı sunucuda
-                    saklanmaz, bu yüzden tekrar gösterilemez. Yeni bağlantı oluşturursanız eskisi
-                    anında geçersiz olur.
+                    {hasActiveLink
+                      ? `Bu takvim için zaten aktif bir bağlantı var. Güvenlik gereği bağlantı sunucuda
+                         saklanmaz, bu yüzden tekrar gösterilemez. Yeni bağlantı oluşturursanız eskisi
+                         anında geçersiz olur.`
+                      : `Bu takvim için henüz bağlantı oluşturulmadı. Bağlantı yalnızca oluşturulduğu
+                         anda bir kez gösterilir; saklamayı unutmayın.`}
                     <button
                       type="button"
                       onClick={() => void rotate()}
                       className="mt-2 block cursor-pointer rounded-[9px] border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900"
                     >
-                      Yeni bağlantı oluştur
+                      {hasActiveLink ? 'Yeni bağlantı oluştur' : 'Bağlantı oluştur'}
                     </button>
                   </div>
                 ) : (

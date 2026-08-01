@@ -16,6 +16,9 @@ public sealed class DurableJobHostedService : BackgroundService
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(5);
     private const int BatchSize = 10;
 
+    /// <summary>Bir temizlik turunda en fazla parti — birikmiş tablo tek seferde kilitlenmesin.</summary>
+    private const int CleanupMaxBatches = 20;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DurableJobHostedService> _logger;
     private DateTime _lastCleanupUtc = DateTime.MinValue;
@@ -98,15 +101,17 @@ public sealed class DurableJobHostedService : BackgroundService
         return jobs.Count;
     }
 
-    /// <summary>Başarılı işleri 7 gün sonra temizler (tablo şişmesin); saatte bir dener.</summary>
+    /// <summary>
+    /// Başarılı işleri 7 gün sonra temizler (tablo şişmesin); saatte bir dener.
+    /// Silme sorgusu <see cref="BackgroundJobMaintenance"/> içinde — MariaDB uyumu ve testi orada.
+    /// </summary>
     private async Task CleanupIfDueAsync(GuzellikDbContext db, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         if (now - _lastCleanupUtc < TimeSpan.FromHours(1)) return;
         _lastCleanupUtc = now;
-        var cutoff = now.AddDays(-7);
-        await db.BackgroundJobs
-            .Where(j => j.Status == "Succeeded" && j.CompletedAtUtc != null && j.CompletedAtUtc < cutoff)
-            .ExecuteDeleteAsync(ct);
+
+        var removed = await BackgroundJobMaintenance.PurgeSucceededAsync(db, now.AddDays(-7), CleanupMaxBatches, ct);
+        if (removed > 0) _logger.LogInformation("Kalıcı iş kuyruğu temizlendi: {Count} başarılı iş silindi.", removed);
     }
 }

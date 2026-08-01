@@ -226,8 +226,9 @@ public sealed partial class ReportsService : IReportsService
 
     private async Task<List<ExpenseRow>> LoadExpensesAsync(Guid tenantId, DateTime from, DateTime to, CancellationToken ct)
     {
+        // Yalnız ONAYLI gider rapora girer (onay bekleyen personel kaydı gerçekleşmiş sayılmaz).
         var rows = await _db.BusinessExpenses.AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
+            .Where(e => e.TenantId == tenantId && e.IsApproved && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
             .Select(e => new { e.BranchId, e.Category, e.Amount, e.OccurredAtUtc })
             .ToListAsync(ct);
         var result = rows.Select(e => new ExpenseRow(e.BranchId, e.Category, e.Amount, e.OccurredAtUtc)).ToList();

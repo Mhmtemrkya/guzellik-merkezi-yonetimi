@@ -41,6 +41,30 @@ public sealed class Appointment : Entity
     /// <summary>Kurum içi sıralı randevu numarası (#RNDV-…). Yeni randevularda atanır; eski kayıtlar null.</summary>
     public int? Number { get; private set; }
 
+    /// <summary>
+    /// Bu randevunun DAYANDIĞI paket seansı — "hangi satıştan geliyor" sorusunun KESİN cevabı.
+    ///
+    /// <para>
+    /// Neden var: satış iptalinde hangi randevuların kapanacağı tahminle bulunuyordu (aynı müşteri +
+    /// aynı hizmet, kalan seans kadarını koru, gerisini kapat). Müşterinin aynı hizmeti içeren birden
+    /// çok paketi varsa YANLIŞ randevu kapanabiliyordu. Bağı olan randevularda artık tahmin yok.
+    /// </para>
+    /// <para>
+    /// REZERVASYON DEĞİLDİR: seans yalnızca randevu tamamlanınca tüketilir; bu alan sadece kaynağı
+    /// işaretler. Bağ oluşturmada tahminen atanır, tamamlamada GERÇEKTEN düşülen seansla düzeltilir.
+    /// Eski kayıtlarda null → sezgisel yol onlar için korunur.
+    /// </para>
+    /// </summary>
+    public Guid? SourceCustomerPackageSessionId { get; private set; }
+
+    /// <summary>Randevuyu bir paket seansına bağlar (kaynak işareti).</summary>
+    public void LinkToPackageSession(Guid? sessionId)
+    {
+        if (SourceCustomerPackageSessionId == sessionId) return;
+        SourceCustomerPackageSessionId = sessionId;
+        Touch();
+    }
+
     /// <summary>Sıralı randevu numarasını atar (yalnızca bir kez, oluşturma anında).</summary>
     public void AssignNumber(int number)
     {

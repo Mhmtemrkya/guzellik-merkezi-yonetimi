@@ -370,25 +370,29 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       var res = await widget.api.get('/api/admin/schedule/appointments-calendar-link');
       var url = res is Map ? '${res['url'] ?? ''}' : '';
 
-      // Aktif bir bağlantı varsa ham token sunucuda SAKLANMADIĞI için tekrar gösterilemez;
-      // yöneticiye sorup yenisini üretiyoruz (eski URL o anda geçersizleşir).
-      if (url.isEmpty && res is Map && res['hasActiveLink'] == true) {
+      // Görüntüleme isteği ARTIK token üretmez (üretseydi izinsiz personel de anonim takvim
+      // linki açabilirdi) → URL her zaman boş gelir. Üretim yalnızca onaylı POST /rotate ile olur.
+      if (url.isEmpty) {
         if (!mounted) return;
+        final hasActive = res is Map && res['hasActiveLink'] == true;
         final renew = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Takvim bağlantısı'),
-            content: const Text(
-              'Bu takvim için zaten aktif bir bağlantı var. Güvenlik gereği bağlantı sunucuda '
-              'saklanmaz, bu yüzden tekrar gösterilemez. Yeni bağlantı oluşturursanız eskisi '
-              'anında geçersiz olur.',
-              style: TextStyle(fontSize: 12.5),
+            content: Text(
+              hasActive
+                  ? 'Bu takvim için zaten aktif bir bağlantı var. Güvenlik gereği bağlantı sunucuda '
+                      'saklanmaz, bu yüzden tekrar gösterilemez. Yeni bağlantı oluşturursanız eskisi '
+                      'anında geçersiz olur.'
+                  : 'Bu takvim için henüz bağlantı oluşturulmadı. Bağlantı yalnızca oluşturulduğu '
+                      'anda bir kez gösterilir; saklamayı unutmayın.',
+              style: const TextStyle(fontSize: 12.5),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Yeni bağlantı oluştur'),
+                child: Text(hasActive ? 'Yeni bağlantı oluştur' : 'Bağlantı oluştur'),
               ),
             ],
           ),

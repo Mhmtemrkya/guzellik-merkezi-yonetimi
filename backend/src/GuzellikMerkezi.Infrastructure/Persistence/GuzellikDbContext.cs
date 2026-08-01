@@ -654,6 +654,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         payBuilder.Property(x => x.Method).HasMaxLength(40);
         payBuilder.Property(x => x.Reference).HasMaxLength(120);
         payBuilder.HasIndex(x => x.CustomerAccountId);
+        // Adisyon silme/ters kayıt bu kolondan arar; indekssiz tam tablo taraması transaction'ı
+        // ve satır kilitlerini gereksiz uzatıyordu.
+        payBuilder.HasIndex(x => x.SourceAdisyonId);
         payBuilder.HasQueryFilter(x => !x.IsDeleted);
 
         var sessionBuilder = modelBuilder.Entity<CustomerPackageSession>();
@@ -682,6 +685,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         usage.HasKey(x => x.Id);
         usage.HasIndex(x => new { x.TenantId, x.AdisyonId });
         usage.HasIndex(x => x.CustomerPackageSessionId);
+        // DOĞAL ANAHTAR: aynı fiş kalemi + aynı seans için TEK kullanım satırı olur. Açılışta çalışan
+        // provenance backfill'i birden çok backend örneğinde eşzamanlı koşarsa mükerrer satır
+        // ekleyebiliyordu; iptal sonradan bütün bağları okuyup AYNI seansı birden çok kez
+        // kredileyebilirdi. Koruma indeksten gelir — ikinci ekleme duplicate-key ile reddedilir.
+        usage.HasIndex(x => new { x.TenantId, x.AdisyonItemId, x.CustomerPackageSessionId }).IsUnique();
         usage.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
@@ -1249,6 +1257,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         movement.Property(x => x.Reference).HasMaxLength(120);
         movement.Property(x => x.Notes).HasMaxLength(500);
         movement.HasIndex(x => new { x.TenantId, x.ProductId, x.OccurredAtUtc });
+        // Ters kayıt kaynak adisyonu bu kolondan bulur (bkz. account_payments).
+        movement.HasIndex(x => x.SourceAdisyonId);
         movement.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
         movement.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.SetNull);
         movement.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));

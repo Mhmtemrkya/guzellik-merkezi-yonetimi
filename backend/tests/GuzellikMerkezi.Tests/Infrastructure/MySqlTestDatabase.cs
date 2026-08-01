@@ -1,5 +1,8 @@
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using MySql.Data.MySqlClient;
 
 namespace GuzellikMerkezi.Tests.Infrastructure;
@@ -95,6 +98,17 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
             .Options;
         return new GuzellikDbContext(options, null, new TestCurrentUser(), null, null, TestSearchIndex.Create());
     }
+
+    /// <summary>
+    /// Açılış işleri (<c>DatabaseBootstrap</c>) <c>IServiceProvider</c> alır ve kendi scope'unu açar.
+    /// Her scope AYRI bir DbContext (ve bağlantı) alır — iki backend örneğinin aynı anda açılması
+    /// böyle taklit edilir. Fabrika açıkça verilir; DI'nın ctor'u kendi çözmesine gerek yok.
+    /// </summary>
+    public ServiceProvider NewServiceProvider() =>
+        new ServiceCollection()
+            .AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance)
+            .AddScoped(_ => NewContext())
+            .BuildServiceProvider();
 
     public async ValueTask DisposeAsync()
     {

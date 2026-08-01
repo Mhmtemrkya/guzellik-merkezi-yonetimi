@@ -105,8 +105,14 @@ internal static class SaleSnapshotReader
     public sealed record SnapshotInstallment(
         Guid Id, int No, DateOnly DueDate, decimal Amount, string Status, DateTime? PaidAtUtc, DateTime CreatedAtUtc);
 
+    /// <param name="SourceAdisyonId">
+    /// Tahsilatı doğuran adisyon. Yedeğe eskiden HİÇ yazılmıyordu: iptal → geri al → onaylı adisyonu
+    /// sil zincirinde silme, tahsilatları bu kimlikle aradığı için geri yüklenmiş satırı bulamıyor ve
+    /// para kasada kalıyordu. Eski yedeklerde alan yok → null (davranış değişmez).
+    /// </param>
     public sealed record SnapshotPayment(
-        Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc, DateTime CreatedAtUtc);
+        Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc, DateTime CreatedAtUtc,
+        Guid? SourceAdisyonId = null);
 
     public sealed record SnapshotSession(
         Guid Id, Guid ServicePackageId, Guid ServiceDefinitionId, int TotalSessions, int UsedSessions,
@@ -140,7 +146,7 @@ internal static class SaleSnapshotReader
                 .Select(i => new SnapshotInstallment(i.Id, i.No, i.DueDate, i.Amount, i.Status.ToString(), Utc(i.PaidAtUtc), Utc(i.CreatedAtUtc)))
                 .ToList(),
             account.Payments
-                .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc)))
+                .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc), p.SourceAdisyonId))
                 .ToList(),
             sessions
                 .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc)))

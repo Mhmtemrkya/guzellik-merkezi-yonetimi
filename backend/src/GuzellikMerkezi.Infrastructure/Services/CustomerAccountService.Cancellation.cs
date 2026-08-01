@@ -65,7 +65,9 @@ public sealed partial class CustomerAccountService
         var payments = new List<AccountPayment>(snapshot.Payments.Count);
         foreach (var p in snapshot.Payments)
         {
-            var payment = new AccountPayment(accountId, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc));
+            // Kaynak adisyon bağı da geri kurulur: yoksa bu satışın adisyonu sonradan silindiğinde
+            // tahsilat bulunamıyor ve para kasada kalıyordu (eski yedeklerde alan null gelir).
+            var payment = new AccountPayment(accountId, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), p.SourceAdisyonId);
             _db.AccountPayments.Add(payment);
             _db.Entry(payment).Property(x => x.Id).CurrentValue = p.Id;
             payments.Add(payment);
@@ -132,9 +134,8 @@ public sealed partial class CustomerAccountService
     /// yazılanlar commit edilmemeli (ör. arşiv yazıldı ama doğrulama sonradan patladı).
     /// </para>
     /// <para>
-    /// Zaten süren bir transaction varsa (servis dışarıdan bir işlemin içinde çağrılırsa) SAVEPOINT
-    /// açılır; hata/başarısızlıkta yalnız buradaki değişiklikler geri alınır. Savepoint olmadan dış
-    /// çağıran hatayı yutup commit ederse yarım kalmış bir iptal kalıcı olurdu.
+    /// Bu akış KENDİ transaction'ına sahip olmalıdır: dış bir transaction içinden çağrılırsa
+    /// <see cref="InvalidOperationException"/> atar (gerekçe aşağıda).
     /// InMemory sağlayıcı transaction desteklemez (birim testleri onu kullanır) → iş doğrudan çalışır.
     /// </para>
     /// </summary>
@@ -142,29 +143,22 @@ public sealed partial class CustomerAccountService
     {
         if (!_db.Database.IsRelational()) return await work();
 
-        if (_db.Database.CurrentTransaction is { } outer)
+        // İÇ İÇE ÇAĞRI DESTEKLENMİYOR — bilinçli ve SESLİ bir sınır.
+        //
+        // Bu akış, satır kilidini aldıktan sonra taze okumayı garantilemek için
+        // `_db.ChangeTracker.Clear()` kullanır (birkaç yerde). Dış bir transaction içinden
+        // çağrılırsa o temizlik, çağıranın HENÜZ KAYDEDİLMEMİŞ değişikliklerini de detach edip
+        // sessizce kaybettirir. Savepoint yalnızca transaction'ı korur, ChangeTracker'ı KORUMAZ;
+        // bu yüzden eski "iç içe destekleniyor" garantisi gerçekte doğru değildi.
+        //
+        // Bugün böyle bir çağıran yok (iptal/geri alma yalnızca endpoint'ten çağrılır). İleride
+        // biri eklerse sessiz veri kaybı yerine burada yüksek sesle patlar.
+        if (_db.Database.CurrentTransaction is not null)
         {
-            if (!outer.SupportsSavepoints) return await work();
-
-            var savepoint = "sp_cancel_" + Guid.NewGuid().ToString("N")[..12];
-            await outer.CreateSavepointAsync(savepoint, ct);
-            try
-            {
-                var nested = await work();
-                if (nested.IsFailure) await outer.RollbackToSavepointAsync(savepoint, ct);
-                else await outer.ReleaseSavepointAsync(savepoint, ct);
-                return nested;
-            }
-            catch
-            {
-                await outer.RollbackToSavepointAsync(savepoint, ct);
-                throw;
-            }
-            // NOT: burada ChangeTracker TEMİZLENMEZ. Temizlemek dış transaction'ın HENÜZ
-            // KAYDEDİLMEMİŞ değişikliklerini de detach edip sessizce kaybettirirdi. Savepoint'e
-            // dönen çağıran, bu akışın dokunduğu satırları kendisi yeniden yüklemelidir.
-            // (Kendi transaction'ımızı açtığımız yolda temizlemek güvenlidir — orada bize ait
-            // olmayan izlenen değişiklik yoktur.)
+            throw new InvalidOperationException(
+                "Satış iptali/geri alma dış bir transaction içinden çağrılamaz: bu akış kilit " +
+                "sonrası ChangeTracker'ı temizler ve çağıranın kaydedilmemiş değişikliklerini " +
+                "kaybettirir. Çağrıyı kendi transaction'ının dışına alın.");
         }
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -280,8 +274,17 @@ public sealed partial class CustomerAccountService
             .ToList();
         if (candidates.Count == 0) return [];
 
-        var doomed = new List<Appointment>();
-        foreach (var group in candidates.GroupBy(a => a.ServiceDefinitionId))
+        // ── KESİN BAĞ ÖNCE, TAHMİN SONRA ────────────────────────────────────────────────────
+        // Yeni randevular hangi seanstan geldiklerini taşır (Appointment.SourceCustomerPackageSessionId).
+        // Bu randevularda tahmine gerek yok: bağı bu satışın seansına düşenler kapanır, BAŞKA bir
+        // satışın seansına bağlı olanlar korunur. Yalnızca bağsız (eski) kayıtlar sezgisel yola kalır.
+        var cancelledSessionIds = cancelledSessions.Select(s => s.Id).ToHashSet();
+        var doomed = candidates
+            .Where(a => a.SourceCustomerPackageSessionId is { } sid && cancelledSessionIds.Contains(sid))
+            .ToList();
+
+        var legacy = candidates.Where(a => a.SourceCustomerPackageSessionId is null).ToList();
+        foreach (var group in legacy.GroupBy(a => a.ServiceDefinitionId))
         {
             var keep = remainingElsewhere.TryGetValue(group.Key, out var left) ? left : 0;
             // En yakın tarihliler korunur; kalan seansla karşılanamayanlar kapatılır.
@@ -298,7 +301,13 @@ public sealed partial class CustomerAccountService
     /// İptalde değiştirilecek YAN ETKİ satırlarını ortak protokolle kilitler (bkz. <see cref="RowLock"/>).
     /// <para>
     /// Kilit yalnız caride olduğu için eşzamanlı bir satış/onay ile iptal birbirinin stok, kupon,
-    /// seans ve sadakat güncellemesini eziyordu. Sıra adisyon onayıyla AYNIDIR → deadlock olmaz.
+    /// seans ve sadakat güncellemesini eziyordu.
+    /// </para>
+    /// <para>
+    /// SIRA: <see cref="RowLock.TableOrder"/>. Adisyon onayı eskiden adisyonlar'ı customers'tan
+    /// ÖNCE alıyordu ve bu iki yön birbirini bekleyebiliyordu; onay tarafı düzeltildi. AÇIK KALAN:
+    /// bu yol <c>customer_accounts</c>'u en başta (bkz. <c>LockForCancelAsync</c>), onay yolu ise
+    /// cari güncellemesini en sonda alır — o çift için sıra hâlâ ortak değildir.
     /// </para>
     /// </summary>
     private async Task LockSideEffectRowsAsync(

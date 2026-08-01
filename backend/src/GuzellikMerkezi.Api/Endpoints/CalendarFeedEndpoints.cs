@@ -1,5 +1,7 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
+using GuzellikMerkezi.Domain;
+using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Domain.Entities;
@@ -17,8 +19,14 @@ namespace GuzellikMerkezi.Api.Endpoints;
 /// GÜVENLİK: token artık global <c>Jwt:SigningKey</c>'den TÜRETİLMİYOR. Her besleme için 256 bit
 /// rastgele token üretilir, DB'de yalnız SHA-256 özeti durur; süresi vardır, iptal ve rotasyon
 /// edilebilir, son kullanım damgası tutulur (bkz. <see cref="CalendarFeedToken"/>). Eski türetilmiş
-/// tokenlar mevcut abonelikler kırılmasın diye GEÇİCİ olarak kabul edilir —
-/// <c>Calendar:AllowLegacyTokens=false</c> ile kapatılır (herkes bağlantısını yeniledikten sonra).
+/// tokenlar artık VARSAYILAN OLARAK REDDEDİLİR; geçiş gereken kurulum
+/// <c>Calendar__AllowLegacyTokens=true</c> ile bilinçli olarak açar.
+/// </para>
+///
+/// <para>
+/// Yönetim uçları randevu iznine tabidir ve link ÜRETİMİ yalnız POST /rotate ile yapılır: token
+/// doğuran bir GET, personel onay kapısınca yazma sayılmadığı için izinsiz personele anonim
+/// takvim linki üretme imkânı veriyordu.
 /// </para>
 /// </summary>
 public static class CalendarFeedEndpoints
@@ -60,9 +68,19 @@ public static class CalendarFeedEndpoints
         return $"{http.Request.Scheme}://{http.Request.Host}";
     }
 
-    /// <summary>Eski (türetilmiş) tokenlar hâlâ kabul edilsin mi? Geçiş bitince false yapılmalı.</summary>
+    /// <summary>
+    /// Eski (sunucu sırrından TÜRETİLMİŞ) tokenlar hâlâ kabul edilsin mi?
+    ///
+    /// <para>
+    /// VARSAYILAN KAPALI. Eskiden ayar yoksa açık kabul ediliyordu; production'da bu anahtar
+    /// tanımlı olmadığı için iptal/rotasyon fiilen işe yaramıyordu: yeni DB token'ı revoke edilse
+    /// bile sızmış eski deterministik URL çalışmaya devam ediyordu. Süre ve iptal yalnızca eski
+    /// yol kapalıyken anlam taşır. Geçiş gereken kurulum <c>Calendar__AllowLegacyTokens=true</c>
+    /// ile bilinçli olarak açmalıdır.
+    /// </para>
+    /// </summary>
     private static bool LegacyTokensAllowed(IConfiguration config) =>
-        !bool.TryParse(config["Calendar:AllowLegacyTokens"], out var allowed) || allowed;
+        bool.TryParse(config["Calendar:AllowLegacyTokens"], out var allowed) && allowed;
 
     /// <summary>
     /// Gelen token'ı doğrular. Önce yeni model (özet eşleşmesi + süre + iptal), sonra —izin
@@ -193,22 +211,18 @@ public static class CalendarFeedEndpoints
                 .AnyAsync(s => s.TenantId == resolvedTenantId && s.Id == staffId, ct);
             if (!exists) return Results.NotFound();
 
-            var baseUrl = PublicBaseUrl(config, http);
+            // SALT OKUMA: bu uç eskiden aktif token yoksa YENİSİNİ ÜRETİYORDU. GET, personel onay
+            // kapısınca yazma sayılmadığı için izinsiz bir personel tenant genelinde anonim takvim
+            // linki doğurabiliyordu (müşteri adı + hizmet + saat). Üretim artık yalnız POST /rotate.
             var active = await ActiveTokenAsync(db, resolvedTenantId, CalendarFeedKind.Staff, staffId, ct);
-            if (active is not null)
-            {
-                // Ham token saklanmadığı için mevcut URL yeniden üretilemez — yalnız "yenile" sunulur.
-                return Results.Ok(new { url = (string?)null, hasActiveLink = true, active.ExpiresAtUtc, active.LastUsedAtUtc });
-            }
-
-            var raw = await RotateAsync(db, resolvedTenantId, CalendarFeedKind.Staff, staffId, currentUser.UserId, ct);
             return Results.Ok(new
             {
-                url = $"{baseUrl}/api/calendar/staff/{staffId}/{raw}.ics",
-                hasActiveLink = true,
-                ExpiresAtUtc = DateTime.UtcNow.Add(CalendarFeedToken.DefaultLifetime),
+                url = (string?)null,
+                hasActiveLink = active is not null,
+                active?.ExpiresAtUtc,
+                active?.LastUsedAtUtc,
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         // Bağlantıyı YENİLE: eski URL anında ölür, yeni URL bir kez döner.
         app.MapPost("/api/admin/schedule/calendar-link/{staffId:guid}/rotate", async (
@@ -228,7 +242,7 @@ public static class CalendarFeedEndpoints
                 hasActiveLink = true,
                 ExpiresAtUtc = DateTime.UtcNow.Add(CalendarFeedToken.DefaultLifetime),
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         // Bağlantıyı KAPAT: paylaşılan URL sızdıysa erişim anında kesilir.
         app.MapDelete("/api/admin/schedule/calendar-link/{staffId:guid}", async (
@@ -243,7 +257,7 @@ public static class CalendarFeedEndpoints
             foreach (var row in rows) row.Revoke(DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { revoked = rows.Count });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         // ---- Kurum geneli randevu takvim beslemesi (randevular sayfası "aynı şekilde") ----
 
@@ -318,19 +332,16 @@ public static class CalendarFeedEndpoints
             var exists = await db.Tenants.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => t.Id == resolvedTenantId && !t.IsDeleted, ct);
             if (!exists) return Results.NotFound();
 
-            var baseUrl = PublicBaseUrl(config, http);
+            // SALT OKUMA — bkz. personel linki: token üretimi yalnız POST /rotate ile yapılır.
             var active = await ActiveTokenAsync(db, resolvedTenantId, CalendarFeedKind.Appointments, null, ct);
-            if (active is not null)
-                return Results.Ok(new { url = (string?)null, hasActiveLink = true, active.ExpiresAtUtc, active.LastUsedAtUtc });
-
-            var raw = await RotateAsync(db, resolvedTenantId, CalendarFeedKind.Appointments, null, currentUser.UserId, ct);
             return Results.Ok(new
             {
-                url = $"{baseUrl}/api/calendar/appointments/{resolvedTenantId}/{raw}.ics",
-                hasActiveLink = true,
-                ExpiresAtUtc = DateTime.UtcNow.Add(CalendarFeedToken.DefaultLifetime),
+                url = (string?)null,
+                hasActiveLink = active is not null,
+                active?.ExpiresAtUtc,
+                active?.LastUsedAtUtc,
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         app.MapPost("/api/admin/schedule/appointments-calendar-link/rotate", async (
             Guid? tenantId, ICurrentUser currentUser, IConfiguration config, GuzellikDbContext db, HttpContext http, CancellationToken ct) =>
@@ -345,7 +356,7 @@ public static class CalendarFeedEndpoints
                 hasActiveLink = true,
                 ExpiresAtUtc = DateTime.UtcNow.Add(CalendarFeedToken.DefaultLifetime),
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         app.MapDelete("/api/admin/schedule/appointments-calendar-link", async (
             Guid? tenantId, ICurrentUser currentUser, GuzellikDbContext db, HttpContext http, CancellationToken ct) =>
@@ -359,7 +370,7 @@ public static class CalendarFeedEndpoints
             foreach (var row in rows) row.Revoke(DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { revoked = rows.Count });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(Permissions.Appointments);
 
         return app;
     }

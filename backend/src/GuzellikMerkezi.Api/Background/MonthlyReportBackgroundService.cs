@@ -82,8 +82,9 @@ public sealed class MonthlyReportBackgroundService : BackgroundService
                                 && p.OccurredAtUtc >= fromUtc && p.OccurredAtUtc < toUtc)
                     .SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
 
+                // Yalnız onaylı gider — aylık özet de kasa/raporlarla aynı tanımı kullanmalı.
                 var expense = await db.BusinessExpenses.IgnoreQueryFilters()
-                    .Where(e => !e.IsDeleted && e.TenantId == tenantId && e.OccurredAtUtc >= fromUtc && e.OccurredAtUtc < toUtc)
+                    .Where(e => !e.IsDeleted && e.TenantId == tenantId && e.IsApproved && e.OccurredAtUtc >= fromUtc && e.OccurredAtUtc < toUtc)
                     .SumAsync(e => (decimal?)e.Amount, ct) ?? 0m;
                 // Müşteriye iadeler de gider (kasa/kâr-zarar aynı şekilde sayıyor).
                 expense += await db.RefundTransactions.IgnoreQueryFilters()

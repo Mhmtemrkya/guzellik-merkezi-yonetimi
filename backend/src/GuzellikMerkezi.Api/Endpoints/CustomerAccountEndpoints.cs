@@ -82,7 +82,15 @@ public static class CustomerAccountEndpoints
         group.MapPost("/{id:guid}/payments", async (Guid id, RegisterAccountPaymentRequest request, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RegisterPaymentAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+
+            // KAYNAK BAĞI İSTEMCİDEN ALINMAZ. SourceAdisyonId, bir adisyon silinirken HANGİ
+            // tahsilatların geri alınacağını belirler. İstemci bu alanı doldurabildiğinde, elle
+            // girilmiş bağımsız bir tahsilata başka bir fişin kimliği yazılıp o fiş silindiğinde
+            // gerçek para kasadan sessizce düşürülebilirdi. Alan yalnız İÇ çağrıda (adisyon onayı)
+            // sunucu tarafından doldurulur.
+            var sanitized = request with { SourceAdisyonId = null };
+            return (await service.RegisterPaymentAsync(resolvedTenantId, id, sanitized, ct)).ToHttpResult(http);
         });
 
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>

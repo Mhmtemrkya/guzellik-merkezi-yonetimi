@@ -217,18 +217,34 @@ public sealed class AdisyonService : IAdisyonService
     /// </para>
     /// </summary>
     public async Task<Result<AdisyonDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
-        => await InApproveTransactionAsync(() => ApproveCoreAsync(tenantId, id, cancellationToken), cancellationToken);
+        => await InAdisyonTransactionAsync(() => ApproveCoreAsync(tenantId, id, cancellationToken), cancellationToken);
 
     /// <summary>
-    /// Onayı tek transaction'da çalıştırır; başarısız <see cref="Result{TValue}"/> de geri alınır
-    /// (yarım onaylı fiş kalmasın). InMemory sağlayıcı transaction desteklemez → doğrudan çalışır.
+    /// Fişin durumunu değiştiren işi tek transaction'da çalıştırır; başarısız
+    /// <see cref="Result{TValue}"/> de geri alınır (yarım onaylı fiş kalmasın).
+    /// InMemory sağlayıcı transaction desteklemez → doğrudan çalışır.
+    ///
+    /// <para>
+    /// Onay ve iptal AYNI sarmalayıcıyı kullanır: <c>SELECT … FOR UPDATE</c> ile alınan satır kilidi
+    /// yalnızca transaction boyunca yaşar. Autocommit'te kilit, sorgu biter bitmez bırakılır ve
+    /// "önce kilitle, sonra oku" protokolü hiçbir şey korumaz.
+    /// </para>
+    ///
+    /// <para>
+    /// İZOLASYON: READ COMMITTED. MySQL/MariaDB varsayılanı REPEATABLE READ'tir ve orada transaction
+    /// içindeki İLK tutarlı okuma bir anlık görüntü sabitler; sonraki okumalar kilit alınmış olsa
+    /// bile O görüntüden okur. Yani "önce kilitle, sonra oku" protokolü sessizce BAYAT veri
+    /// döndürebilir: kilidi bekleyen ikinci onay, ilk onay commit ettikten sonra bile fişi hâlâ
+    /// "Open" görüp bütün finansal etkiyi ikinci kez üretebiliyordu. READ COMMITTED'te her okuma
+    /// son commit'lenmiş hâli görür ve kilit sonrası yeniden okuma gerçekten tazedir.
+    /// </para>
     /// </summary>
-    private async Task<Result<AdisyonDto>> InApproveTransactionAsync(
-        Func<Task<Result<AdisyonDto>>> work, CancellationToken ct)
+    private async Task<T> InAdisyonTransactionAsync<T>(
+        Func<Task<T>> work, CancellationToken ct) where T : Result
     {
         if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null) return await work();
 
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
         try
         {
             var result = await work();
@@ -251,6 +267,21 @@ public sealed class AdisyonService : IAdisyonService
 
     private async Task<Result<AdisyonDto>> ApproveCoreAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
+        // KİLİT SIRASI (bkz. RowLock.TableOrder): customers → adisyonlar → products → gift_cards →
+        // sessions. Eskiden burada ÖNCE adisyonlar kilitleniyordu; satış iptali ise customers'ı
+        // adisyonlar'dan ÖNCE alıyor. İki yön birbirini bekleyip deadlock üretebiliyordu
+        // (MariaDB birini iptal eder → kullanıcıya 500). "Aynı sıra" diyen eski yorum yanlıştı.
+        //
+        // Sırayı kurmak için müşteri kimliği KİLİTSİZ ön okumayla öğrenilir; kilitsiz okuma kilit
+        // almadığı için bir döngüye giremez. Adisyon.CustomerId oluşturulduktan sonra DEĞİŞMEZ,
+        // dolayısıyla kilit her zaman doğru satıra iner.
+        var customerId = await _db.Adisyonlar.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Id == id)
+            .Select(a => (Guid?)a.CustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (customerId is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
+        await RowLock.LockRowAsync(_db, "customers", customerId.Value, cancellationToken);
+
         // ÖNCE KİLİT, SONRA OKUMA: aynı fişi iki istek birlikte "Open" görmesin.
         if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
             return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
@@ -260,9 +291,8 @@ public sealed class AdisyonService : IAdisyonService
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
         if (adisyon.Status != AdisyonStatus.Open) return Result<AdisyonDto>.Failure(Error.Validation("Yalnızca açık adisyon onaylanabilir."));
 
-        // Yan etki satırları da AYNI sırayla kilitlenir (bkz. RowLock) — iptal/geri alma ile yarışta
-        // stok, kupon, seans ve sadakat bakiyesi kayıp güncellemeye uğramasın.
-        await RowLock.LockRowAsync(_db, "customers", adisyon.CustomerId, cancellationToken);
+        // Kalan yan etki satırları sırayla kilitlenir — iptal/geri alma ile yarışta stok, kupon,
+        // seans ve sadakat bakiyesi kayıp güncellemeye uğramasın. (customers yukarıda alındı.)
         await RowLock.LockRowsAsync(_db, "products",
             adisyon.Items.Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue).Select(i => i.RefId!.Value),
             cancellationToken);
@@ -371,10 +401,15 @@ public sealed class AdisyonService : IAdisyonService
             var product = productMap[item.RefId!.Value];
             var qty = Math.Max(1, Math.Round(item.Quantity, 3, MidpointRounding.AwayFromZero));
             product.AdjustStock(StockMovementType.Sale, qty);
+            // sourceAdisyonId ZORUNLU: şifreli Reference metni SQL'de aranamaz, ters kayıt kaynağı
+            // yalnız bu deterministik kolondan bulunur. Parametre eklendiği hâlde burada
+            // geçilmiyordu; bağ kurulmayan her yeni satış, iptalde satış anındaki maliyeti
+            // bulamayıp güncel maliyetle ters kayıt üretirdi (yanlış COGS).
             _db.StockMovements.Add(new StockMovement(
                 tenantId, product.Id, StockMovementType.Sale, qty, nowUtc,
                 unitCost: product.Cost, reference: $"ADS-{adisyon.Id:N}".Substring(0, 16),
-                notes: "Adisyon satışı", staffMemberId: item.StaffMemberId));
+                notes: "Adisyon satışı", staffMemberId: item.StaffMemberId,
+                sourceAdisyonId: adisyon.Id));
         }
 
         // 2) Cari hesabı çöz (charge, tahsilat veya paket satışı varsa gerekli —
@@ -519,13 +554,27 @@ public sealed class AdisyonService : IAdisyonService
         await _db.SaveChangesAsync(cancellationToken);
 
         // 4) Mevcut cariye charge ekle (yeni cari zaten charge ile açıldı).
+        //
+        // TAKSİT PLANI DA SENKRONLANIR. Eskiden yalnız TotalAmount artırılıyor, plan eski toplama
+        // göre kalıyordu: plan toplamı cari toplamının ALTINDA kalır ve taksit/açık alacak raporu
+        // aradaki farkı hiç göstermezdi (canlıda 8.750 cari ↔ 8.500 plan = 250 TL kayıp alacak).
+        // Silme yolu da aynı şekilde yeniden kurar (bkz. DeleteCoreAsync) → iki yön simetrik kalır.
+        // Yeniden bölmek parayı bozmaz: "ödenen" taksitte değil tahsilatlarda tutulur.
         if (accountId is not null && charge > 0 && !newlyCreated)
         {
-            await _db.CustomerAccounts
-                .Where(a => a.Id == accountId.Value)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(a => a.TotalAmount, a => a.TotalAmount + charge)
-                    .SetProperty(a => a.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
+            var account = await _db.CustomerAccounts
+                .Include(a => a.Installments)
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == accountId.Value, cancellationToken);
+            if (account is not null)
+            {
+                account.ChangeTotal(account.TotalAmount + charge, account.DepositAmount);
+                var activePlan = account.Installments
+                    .Where(i => i.Status != InstallmentStatus.Cancelled)
+                    .ToList();
+                if (activePlan.Count > 0)
+                    account.RebuildInstallments(activePlan.Count, activePlan.Min(i => i.DueDate));
+                await _db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         // 5) Tahsilatı cariye + kasaya işle — ÖDEME YÖNTEMİNE göre ayrı kayıt (nakit/kart/havale).
@@ -569,8 +618,27 @@ public sealed class AdisyonService : IAdisyonService
         return await GetAsync(tenantId, id, cancellationToken);
     }
 
+    /// <summary>
+    /// Adisyonu iptal eder (yalnız onaylanmamış fiş iptal edilebilir).
+    ///
+    /// <para>
+    /// ONAYLA AYNI KİLİT PROTOKOLÜ: eskiden iptal fişi kilitsiz okuyordu. Araya giren bir onay
+    /// commit ettiğinde iptal, bayat "Open" anlık görüntüsüne dayanarak yazıyor ve fişi İptal'e
+    /// çeviriyordu — oysa tahsilat kasaya girmiş, seans düşmüş, stok azalmış oluyordu. Sonuç:
+    /// muhasebe defteriyle kalıcı olarak ayrışan, iptal görünen ama parası alınmış bir fiş.
+    /// Kilit ÖNCE alınır, izleyici temizlenir, sonra okunur — böylece karar taze duruma bakar.
+    /// </para>
+    /// </summary>
     public async Task<Result<AdisyonDto>> CancelAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+        => await InAdisyonTransactionAsync(() => CancelCoreAsync(tenantId, id, cancellationToken), cancellationToken);
+
+    private async Task<Result<AdisyonDto>> CancelCoreAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
+        // ÖNCE KİLİT, SONRA OKUMA (bkz. ApproveCoreAsync — aynı tablo, aynı sıra).
+        if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
+            return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
+        _db.ChangeTracker.Clear();
+
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
         try
@@ -586,8 +654,36 @@ public sealed class AdisyonService : IAdisyonService
         return await GetAsync(tenantId, id, cancellationToken);
     }
 
+    /// <summary>
+    /// Adisyonu siler; onaylıysa onayda oluşan TÜM finansal etkileri geri alarak.
+    ///
+    /// <para>
+    /// TRANSACTION + KİLİT: bu yol eskiden ne transaction'a sarılıydı ne de fişi kilitliyordu.
+    /// Adisyon kilitten önce okunuyor, yan etki satırlarının <c>FOR UPDATE</c> sorguları ise
+    /// autocommit altında çalıştığı için kilitler her komut sonunda BIRAKILIYORDU. İki eşzamanlı
+    /// silme (ya da onay–silme yarışı) stoğu iki kez geri ekleyebilir, paket seansını iki kez
+    /// kredileyebilir, hediye çekini iki kez açabilir ve tahsilat silerken cariyi yanlış
+    /// azaltabilirdi. "Tek SaveChanges = atomik" yalnız SON yazma grubunu kapsıyordu; öncesindeki
+    /// okumaları ve kilitleri değil.
+    /// </para>
+    /// </summary>
     public async Task<Result> DeleteAsync(Guid tenantId, Guid id, bool force = false, CancellationToken cancellationToken = default)
+        => await InAdisyonTransactionAsync(() => DeleteCoreAsync(tenantId, id, force, cancellationToken), cancellationToken);
+
+    private async Task<Result> DeleteCoreAsync(Guid tenantId, Guid id, bool force, CancellationToken cancellationToken)
     {
+        // KİLİT SIRASI onayla AYNI: customers → adisyonlar → products → gift_cards → sessions.
+        // Müşteri kimliği kilitsiz ön okumayla alınır (bkz. ApproveCoreAsync; alan değişmez).
+        var customerId = await _db.Adisyonlar.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Id == id)
+            .Select(a => (Guid?)a.CustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (customerId is null) return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
+        await RowLock.LockRowAsync(_db, "customers", customerId.Value, cancellationToken);
+        if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
+            return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
+        _db.ChangeTracker.Clear();
+
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
 
@@ -656,9 +752,8 @@ public sealed class AdisyonService : IAdisyonService
         // primleri de siliyor ve sadakat bakiyesini eksiye düşürebiliyordu. Artık iptalle AYNI
         // servis çalışır → iki yol arasında davranış farkı kalmaz.
         //
-        // Kilitler de iptal/onayla aynı sırayla alınır (bkz. RowLock) — eşzamanlı işlemlerde
-        // stok/kupon/seans kayıp güncellemeye uğramasın.
-        await RowLock.LockRowAsync(_db, "customers", adisyon.CustomerId, cancellationToken);
+        // Kalan yan etki satırları sırayla kilitlenir (bkz. RowLock) — eşzamanlı işlemlerde
+        // stok/kupon/seans kayıp güncellemeye uğramasın. (customers + adisyonlar yukarıda alındı.)
         await RowLock.LockRowsAsync(_db, "products",
             adisyon.Items.Where(i => i.Type == AdisyonItemType.Product && i.RefId.HasValue).Select(i => i.RefId!.Value),
             cancellationToken);

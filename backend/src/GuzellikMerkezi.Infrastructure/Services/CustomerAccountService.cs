@@ -1195,6 +1195,17 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 : Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
         }
 
+        // KAYNAK ADİSYON DOĞRULAMASI (derinlemesine savunma). HTTP ucu istemciden gelen değeri zaten
+        // siler; burada da kurum sahipliği aranır ki iç çağrı da yanlış/başka kurumun fişini
+        // bağlayamasın. Yanlış bağ, o fiş silindiğinde ALAKASIZ bir tahsilatı kasadan siler.
+        if (request.SourceAdisyonId is Guid sourceAdisyonId)
+        {
+            var belongs = await _db.Adisyonlar.AsNoTracking()
+                .AnyAsync(a => a.Id == sourceAdisyonId && a.TenantId == tenantId, cancellationToken);
+            if (!belongs)
+                return Result<CustomerAccountDto>.Failure(Error.Validation("Tahsilatın kaynak adisyonu bu kuruma ait değil."));
+        }
+
         var occurredAt = request.OccurredAtUtc ?? DateTime.UtcNow;
         if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
 

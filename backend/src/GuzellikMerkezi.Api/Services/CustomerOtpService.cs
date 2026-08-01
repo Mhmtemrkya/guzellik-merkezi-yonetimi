@@ -64,7 +64,21 @@ public sealed class CustomerOtpService
     private sealed class OtpEntry
     {
         public string Code = string.Empty;
+
+        /// <summary>
+        /// Kodun ÜRETİLDİĞİ kimlik (ad + doğum tarihi). Önbellek anahtarı yalnız telefondan
+        /// türediği için, aynı telefonun birden çok müşteri kaydında kullanıldığı durumda A kimliği
+        /// için istenen kod B kimliğiyle doğrulanabiliyordu. Kod artık kimliğine bağlıdır.
+        /// </summary>
+        public string Identity = string.Empty;
+
         public int Attempts;
+
+        /// <summary>
+        /// Kod tüketildi mi. Eşzamanlı iki DOĞRU doğrulama, silme gerçekleşmeden ikisi de kaydı
+        /// okuyup iki ayrı oturum açabiliyordu; bayrak kilit altında işaretlenir.
+        /// </summary>
+        public bool Consumed;
     }
 
     private sealed class RequestCounter
@@ -74,6 +88,10 @@ public sealed class CustomerOtpService
 
     private static string CacheKey(string loginKey, CustomerOtpPurpose purpose) => $"customer-otp:{purpose}:{loginKey}";
     private static string ThrottleKey(string loginKey) => $"customer-otp-throttle:{loginKey}";
+
+    /// <summary>Kodun bağlandığı kimlik — ad (normalize) + doğum tarihi.</summary>
+    private static string IdentityOf(string? fullName, DateOnly birthDate) =>
+        $"{NormalizeName(fullName)}|{birthDate:yyyy-MM-dd}";
 
     private static string NormalizeName(string? name) =>
         string.IsNullOrWhiteSpace(name)
@@ -122,7 +140,10 @@ public sealed class CustomerOtpService
         if (shouldSend)
         {
             var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-            _cache.Set(CacheKey(key, purpose), new OtpEntry { Code = code }, CodeLifetime);
+            _cache.Set(
+                CacheKey(key, purpose),
+                new OtpEntry { Code = code, Identity = IdentityOf(request.FullName, request.BirthDate) },
+                CodeLifetime);
             try
             {
                 await _messaging.SendWhatsAppAsync(request.Phone, $"BeautyAsist giriş kodunuz: {code}. Kod 5 dakika geçerlidir. Kimseyle paylaşmayın.", ct);
@@ -155,16 +176,40 @@ public sealed class CustomerOtpService
         if (!_cache.TryGetValue<OtpEntry>(cacheKey, out var entry) || entry is null)
             return Result<LoginResponse>.Failure(Error.Unauthorized("Kodun süresi doldu ya da kod istenmedi. Yeni kod isteyin."));
 
-        if (entry.Attempts >= MaxAttempts)
+        // TEK KULLANIM ATOMİK OLMALI. Oku → karşılaştır → sil üç ayrı adımdı: aynı kodu taşıyan iki
+        // eşzamanlı istek, silme gerçekleşmeden ikisi de kaydı okuyup İKİ ayrı oturum açabiliyordu.
+        // Deneme sayacı da yarışta kaybolabiliyor, 5 deneme freni delinebiliyordu. Karar kilit
+        // altında verilir; ağ/DB çağrıları kilidin DIŞINDA kalır.
+        var identity = IdentityOf(request.FullName, request.BirthDate);
+        string? failure = null;
+        lock (entry)
         {
-            _cache.Remove(cacheKey);
-            return Result<LoginResponse>.Failure(Error.Unauthorized("Çok fazla yanlış deneme. Yeni kod isteyin."));
+            if (entry.Consumed)
+                failure = "Bu kod zaten kullanıldı. Yeni kod isteyin.";
+            else if (entry.Attempts >= MaxAttempts)
+                failure = "Çok fazla yanlış deneme. Yeni kod isteyin.";
+            else if (!string.Equals(entry.Identity, identity, StringComparison.Ordinal))
+            {
+                // Kod BU kimlik için üretilmedi (anahtar yalnız telefondan türüyor). Mesaj yanlış
+                // koddan ayırt edilmez — hangi kimliğin kayıtlı olduğu sızmasın.
+                entry.Attempts++;
+                failure = "Kod hatalı. Tekrar deneyin.";
+            }
+            else if (!string.Equals(entry.Code, code?.Trim(), StringComparison.Ordinal))
+            {
+                entry.Attempts++;
+                failure = "Kod hatalı. Tekrar deneyin.";
+            }
+            else
+            {
+                entry.Consumed = true;
+            }
         }
 
-        if (!string.Equals(entry.Code, code?.Trim(), StringComparison.Ordinal))
+        if (failure is not null)
         {
-            entry.Attempts++;
-            return Result<LoginResponse>.Failure(Error.Unauthorized("Kod hatalı. Tekrar deneyin."));
+            if (entry.Attempts >= MaxAttempts) _cache.Remove(cacheKey);
+            return Result<LoginResponse>.Failure(Error.Unauthorized(failure));
         }
 
         // Kod tüketildi: aynı kod ikinci kez kullanılamaz.

@@ -47,10 +47,16 @@ public sealed partial class ReportsService
             .ToDictionary(g => g.Key, g => g.Count());
         // NET harcama: müşteriye geri ödenen para "harcama" değildir. Brüt tahsilat kullanılırsa
         // tamamı iade edilmiş bir satış müşteriyi hâlâ "en çok harcayan" gösterebiliyordu.
-        var refundsByCustomer = (await _db.RefundTransactions.AsNoTracking()
-                .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
-                .Select(r => new { r.CustomerId, r.Amount })
-                .ToListAsync(cancellationToken))
+        //
+        // NET TANIMI TÜM ÇIKTILARDA AYNI OLMALI. İade düzeltmesi önce yalnız SIRALAMAYA uygulanmıştı;
+        // toplam kartı, grafik serisi, ortalama ve önceki dönem karşılaştırması brüt kalıyordu. Aynı
+        // API yanıtı müşterileri 73.750 nete göre sıralarken kartta 75.000 gösterebiliyordu.
+        // Tarih de tutulur (grafik kovalarından düşmek için).
+        var refundRows = await _db.RefundTransactions.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= from && r.RefundedAtUtc < to)
+            .Select(r => new { r.CustomerId, r.Amount, r.RefundedAtUtc })
+            .ToListAsync(cancellationToken);
+        var refundsByCustomer = refundRows
             .GroupBy(r => r.CustomerId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
@@ -90,7 +96,11 @@ public sealed partial class ReportsService
             var prevAppts = await LoadAppointmentsAsync(tenantId, compareFrom.Value, compareTo.Value, cancellationToken);
             prevActive = prevAppts.Select(a => a.CustomerId).Distinct().Count();
             var prevPayments = await LoadPaymentsAsync(tenantId, accountsById, compareFrom.Value, compareTo.Value, cancellationToken);
-            prevSpent = prevPayments.Sum(p => p.Amount);
+            // Karşılaştırma da NET olmalı; yoksa brüt geçmiş ↔ net bugün kıyaslanıp sahte düşüş/artış çıkar.
+            var prevRefunds = await _db.RefundTransactions.AsNoTracking()
+                .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= compareFrom.Value && r.RefundedAtUtc < compareTo.Value)
+                .SumAsync(r => (decimal?)r.Amount, cancellationToken) ?? 0m;
+            prevSpent = Math.Max(0m, prevPayments.Sum(p => p.Amount) - prevRefunds);
         }
 
         // Yaş segmentleri
@@ -129,6 +139,9 @@ public sealed partial class ReportsService
             if (order.TryGetValue(Bucket(a.StartUtc, granularity).Key, out var i)) seriesAcc[i].Counts[0]++;
         foreach (var p in payments)
             if (order.TryGetValue(Bucket(p.OccurredAtUtc, granularity).Key, out var i)) seriesAcc[i].Values[0] += p.Amount;
+        // İadeler kendi kovalarından düşülür — grafik de kart/sıralamayla aynı NET tanımını kullanır.
+        foreach (var r in refundRows)
+            if (order.TryGetValue(Bucket(r.RefundedAtUtc, granularity).Key, out var i)) seriesAcc[i].Values[0] -= r.Amount;
 
         var series = seriesAcc.Select(x => new ReportPointDto(
             x.Key, x.Label, Round(x.Values[0]), 0m, Round(x.Values[0]), 0m, x.Counts[0], x.Counts[1], x.Counts[2])).ToList();
@@ -156,7 +169,8 @@ public sealed partial class ReportsService
                 branchNames.TryGetValue(x.Customer.BranchId, out var bn) ? bn : null))
             .ToList();
 
-        var totalSpent = payments.Sum(p => p.Amount);
+        // Toplam kart = müşteri bazında NET harcamaların toplamı → sıralamayla birebir tutarlı.
+        var totalSpent = spentByCustomer.Values.Sum();
 
         return Result<CustomerReportDto>.Success(new CustomerReportDto(
             customers.Count,

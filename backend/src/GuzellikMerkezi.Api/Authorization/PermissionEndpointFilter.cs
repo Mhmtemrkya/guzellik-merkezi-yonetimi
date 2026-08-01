@@ -54,4 +54,8 @@ public static class PermissionFilterExtensions
     /// <summary>Gruptaki tüm endpoint'lere personel izin kontrolü ekler. writeOnly=true → yalnız POST/PUT/PATCH/DELETE kısıtlanır.</summary>
     public static RouteGroupBuilder RequirePermission(this RouteGroupBuilder group, string permission, bool writeOnly = false)
         => group.AddEndpointFilter(new PermissionEndpointFilter(permission, writeOnly));
+
+    /// <summary>Tek bir endpoint'e personel izin kontrolü ekler (grup dışında tanımlanan uçlar için).</summary>
+    public static RouteHandlerBuilder RequirePermission(this RouteHandlerBuilder builder, string permission, bool writeOnly = false)
+        => builder.AddEndpointFilter(new PermissionEndpointFilter(permission, writeOnly));
 }

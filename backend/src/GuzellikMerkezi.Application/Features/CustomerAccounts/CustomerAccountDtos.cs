@@ -204,6 +204,11 @@ public sealed record RescheduleAccountRequest(int InstallmentCount, DateOnly Fir
 /// <param name="SourceAdisyonId">
 /// Tahsilatı doğuran adisyon (varsa). Reference ŞİFRELİ olduğu için kaynak eşleştirmesi bu
 /// deterministik alanla yapılır — adisyon silinirken tahsilat bu sayede bulunur.
+/// <para>
+/// YALNIZ SUNUCU DOLDURUR: HTTP ucu istemciden geleni siler (bkz. CustomerAccountEndpoints),
+/// servis de kurum sahipliğini doğrular. Bu alan "hangi tahsilat silinecek" kararını verdiği
+/// için istemciye bırakılamaz.
+/// </para>
 /// </param>
 public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null);
 

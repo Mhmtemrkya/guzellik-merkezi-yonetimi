@@ -39,11 +39,36 @@ public sealed class AuditLogService : IAuditLogService
         return Result<PagedResult<AuditLogDto>>.Success(new PagedResult<AuditLogDto>(items, items.Length, 1, items.Length));
     }
 
+    /// <summary>
+    /// Kurumun denetim kayıtlarının partili silinmesi (bkz. <see cref="DeleteAllAsync"/>).
+    /// <c>{0}</c> = kurum kimliği (parametre olarak gider). Sabit metin — SQL enjeksiyonu yok.
+    /// </summary>
+    private const string DeleteAllSql =
+        "DELETE FROM `audit_logs` WHERE `TenantId` = {0} AND `IsDeleted` = 0 LIMIT 5000";
+
+    /// <summary>
+    /// Kurumun tüm denetim kayıtlarını siler.
+    ///
+    /// <para>
+    /// HAM SQL — <c>ExecuteDeleteAsync</c> DEĞİL: EF sağlayıcısı tek tablolu silmeyi
+    /// <c>DELETE FROM audit_logs AS a WHERE …</c> olarak üretiyor ve MariaDB takma adlı bu biçimi
+    /// reddediyor (aynı hata kalıcı iş kuyruğu temizliğinde de vardı, bkz. DurableJobHostedService).
+    /// Takma adsız biçim MySQL'de de geçerlidir; silinen satır kümesi aynıdır.
+    /// </para>
+    ///
+    /// <para>Partili silme, milyonluk denetim tablosunda tek dev DELETE'in satırları uzun süre
+    /// kilitlemesini önler. İlişkisel sağlayıcı gerektirir (ExecuteDelete de gerektiriyordu).</para>
+    /// </summary>
     public async Task<Result<AuditLogDeleteResultDto>> DeleteAllAsync(Guid tenantId, CancellationToken ct = default)
     {
-        var deleted = await _db.AuditLogs
-            .Where(x => x.TenantId == tenantId)
-            .ExecuteDeleteAsync(ct);
+        var deleted = 0;
+        while (true)
+        {
+            var removed = await _db.Database.ExecuteSqlRawAsync(
+                DeleteAllSql, new object[] { tenantId.ToString() }, ct);
+            deleted += removed;
+            if (removed == 0) break;
+        }
 
         return Result<AuditLogDeleteResultDto>.Success(new AuditLogDeleteResultDto(deleted));
     }

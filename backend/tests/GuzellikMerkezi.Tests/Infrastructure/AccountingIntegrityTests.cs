@@ -135,6 +135,111 @@ public sealed class AccountingIntegrityTests
     // Şifreli Reference yerine deterministik adisyon bağı
     // =====================================================================================
 
+    /// <summary>
+    /// GERÇEK ONAY YOLU stok hareketine kaynak adisyonu YAZMALI.
+    ///
+    /// <para>
+    /// Aşağıdaki test entity'yi elle kurduğu için yalnız constructor'ın alanı taşıdığını
+    /// doğruluyordu; <c>ApproveCoreAsync</c> parametreyi hiç geçmiyor olsa bile yeşil kalıyordu —
+    /// nitekim öyleydi ve deploy sonrası her yeni ürün satışı kaynaksız kalacaktı. Bu test
+    /// servisin kendisini çalıştırır: bağ kopunca kırmızıya döner.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ApproveAsync_WritesSourceAdisyonIdOnStockSale()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var product = new Product(seed.TenantId, seed.BranchId, "Serum", ProductCategory.SkinCare, "adet",
+                cost: 100m, salePrice: 250m, currentStock: 10m, minStockLevel: 1m);
+            db.Products.Add(product);
+            await db.SaveChangesAsync();
+
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Product, product.Id, "Serum", 1, 250m, null, false));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var user = new TestCurrentUser(UserRole.InstitutionOwner);
+            var service = new AdisyonService(db, new NoopAuditLogger(), user,
+                new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
+            var approved = await service.ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var movement = await db.StockMovements.SingleAsync();
+            Assert.Equal(StockMovementType.Sale, movement.Type);
+            Assert.Equal(adisyonId, movement.SourceAdisyonId);
+        }
+    }
+
+    /// <summary>
+    /// SATIŞ İPTALİ YALNIZ KENDİ RANDEVUSUNU KAPATIR.
+    ///
+    /// <para>
+    /// Müşterinin AYNI hizmeti içeren iki paketi varsa, iptal eskiden tahminle karar veriyordu
+    /// (kalan seans kadarını koru, gerisini kapat) ve yanlış paketin randevusunu kapatabiliyordu.
+    /// Randevu artık dayandığı seansı taşıdığı için karar kesindir: A satışı iptal edilince yalnız
+    /// A'nın seansına bağlı randevu kapanır, B'ninki dokunulmadan kalır.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task CancelSale_ClosesOnlyAppointmentsBoundToThatSale()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var serviceId = Guid.CreateVersion7();
+        Guid accountAId, apptAId, apptBId;
+
+        await using (var db = NewDb(options))
+        {
+            var accountA = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "A paketi", 1000m, 0m);
+            var accountB = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "B paketi", 1000m, 0m);
+            db.CustomerAccounts.AddRange(accountA, accountB);
+            await db.SaveChangesAsync();
+            accountAId = accountA.Id;
+
+            var sessionA = new CustomerPackageSession(seed.TenantId, seed.CustomerId, accountA.Id, Guid.Empty, serviceId, 1, null);
+            var sessionB = new CustomerPackageSession(seed.TenantId, seed.CustomerId, accountB.Id, Guid.Empty, serviceId, 1, null);
+            db.CustomerPackageSessions.AddRange(sessionA, sessionB);
+            await db.SaveChangesAsync();
+
+            var start = DateTime.UtcNow.AddDays(3);
+            var apptA = new Appointment(seed.TenantId, seed.BranchId, seed.CustomerId, Guid.CreateVersion7(), serviceId, start, start.AddHours(1), 0m, null);
+            var apptB = new Appointment(seed.TenantId, seed.BranchId, seed.CustomerId, Guid.CreateVersion7(), serviceId, start.AddDays(1), start.AddDays(1).AddHours(1), 0m, null);
+            apptA.LinkToPackageSession(sessionA.Id);
+            apptB.LinkToPackageSession(sessionB.Id);
+            db.Appointments.AddRange(apptA, apptB);
+            await db.SaveChangesAsync();
+            apptAId = apptA.Id;
+            apptBId = apptB.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var cancelled = await NewService(db).CancelSaleAsync(seed.TenantId, accountAId, new CancelSaleRequest("A iptal"));
+            Assert.True(cancelled.IsSuccess, cancelled.IsFailure ? cancelled.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var live = await check.Appointments.Select(a => a.Id).ToListAsync();
+            Assert.DoesNotContain(apptAId, live);  // A'nın seansına bağlıydı → kapandı
+            Assert.Contains(apptBId, live);        // B'nin seansına bağlı → korunmalı
+        }
+    }
+
     [Fact]
     public void PaymentAndStockMovement_CarryDeterministicAdisyonLink()
     {

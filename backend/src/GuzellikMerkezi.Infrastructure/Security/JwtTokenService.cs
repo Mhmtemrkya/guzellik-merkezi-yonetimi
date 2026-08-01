@@ -32,7 +32,15 @@ public sealed class JwtTokenService : ITokenService
             new(ClaimTypes.NameIdentifier, profile.UserId.ToString()),
             new(ClaimTypes.Email, profile.Email),
             new(ClaimTypes.Role, profile.Role.ToString()),
-            new("role", profile.Role.ToString())
+            new("role", profile.Role.ToString()),
+            // ÜRETİM ANI: parola değişimi/oturum kapatma sonrası ESKİ access token'ları elemek için
+            // gerekir. Token, kullanıcının SecurityStampUtc damgasından ÖNCE üretilmişse reddedilir
+            // (bkz. ApiServiceCollectionExtensions → OnTokenValidated). Damga değerini token'a
+            // koymak yerine üretim anını koyuyoruz: damga sonradan ileri alındığında o ana kadar
+            // dağıtılmış TÜM token'lar tek hamlede geçersizleşir.
+            new(JwtRegisteredClaimNames.Iat,
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+                ClaimValueTypes.Integer64)
         };
 
         if (!string.IsNullOrWhiteSpace(profile.FullName)) claims.Add(new Claim(ClaimTypes.Name, profile.FullName));
