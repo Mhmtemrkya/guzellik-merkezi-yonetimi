@@ -106,7 +106,7 @@ public sealed class SaleCancellationLedgerTests
 
         await using (var db = NewDb(options))
             Assert.True((await NewService(db).RegisterPaymentAsync(seed.TenantId, seed.AccountId,
-                new RegisterAccountPaymentRequest(1200m, "cash", null, null))).IsSuccess);
+                new RegisterAccountPaymentRequest(1200m, "cash", null, null, AllowOverpayment: true))).IsSuccess);
 
         await using (var db = NewDb(options))
             Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId,

@@ -8,6 +8,7 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using System.Linq.Expressions;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
@@ -28,13 +29,20 @@ public sealed class CustomerPortalService : ICustomerPortalService
     private readonly IFeatureService _features;
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
 
-    public CustomerPortalService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications)
+    /// <summary>
+    /// Durum geçişleri KANONİK servisten geçer (kilit + taze okuma protokolü). Çalışma anında
+    /// çözülür — ctor bağımlılığı servis grafiğinde döngü riski taşır.
+    /// </summary>
+    private readonly IServiceProvider _services;
+
+    public CustomerPortalService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications, IServiceProvider services)
     {
         _db = db;
         _usage = usage;
         _audit = audit;
         _features = features;
         _notifications = notifications;
+        _services = services;
     }
 
     // --- Kimlik / kapsam yardımcıları ---
@@ -435,8 +443,16 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (appointment.StartUtc <= DateTime.UtcNow.AddHours(SelfServiceMinLeadHours))
             return Result.Failure(Error.Validation($"Randevu saatine {SelfServiceMinLeadHours} saatten az kaldığı için online iptal edilemez. Lütfen salonu arayın."));
 
-        appointment.Cancel("Müşteri online iptal etti.");
-        await _db.SaveChangesAsync(cancellationToken);
+        // İPTAL KANONİK SERVİSTEN. Doğrudan Cancel()+SaveChanges yapılırken kilit/taze-okuma
+        // protokolü atlanıyordu: portal eski (Scheduled) nesneyi yüklerken yönetici randevuyu
+        // tamamlayıp seansı tüketirse, portal o bayat nesneyi "İptal" olarak yazıyor — seans
+        // tüketilmiş ama randevu iptal görünüyordu.
+        var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
+        var cancelled = await appointments.ChangeStatusAsync(appointment.TenantId, appointment.Id,
+            new Application.Features.Appointments.ChangeAppointmentStatusRequest(
+                AppointmentStatus.Cancelled, "Müşteri online iptal etti."),
+            cancellationToken);
+        if (cancelled.IsFailure) return Result.Failure(cancelled.Error);
         await _audit.LogAsync(appointment.TenantId, appointment.BranchId, "Cancel", "Appointment", appointment.Id,
             $"Müşteri randevusunu online iptal etti ({appointment.StartUtc:dd.MM.yyyy HH:mm})", null, cancellationToken);
         await _notifications.NotifyRolesAsync(

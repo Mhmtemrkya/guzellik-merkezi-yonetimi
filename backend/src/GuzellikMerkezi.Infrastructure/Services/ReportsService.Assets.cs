@@ -108,7 +108,9 @@ public sealed partial class ReportsService
             var prevRefunds = await _db.RefundTransactions.AsNoTracking()
                 .Where(r => r.TenantId == tenantId && r.RefundedAtUtc >= compareFrom.Value && r.RefundedAtUtc < compareTo.Value)
                 .SumAsync(r => (decimal?)r.Amount, cancellationToken) ?? 0m;
-            prevSpent = Math.Max(0m, prevPayments.Sum(p => p.Amount) - prevRefunds);
+            // KIRPMA YOK: güncel dönem iadelerle eksiye düşebiliyor ama karşılaştırma dönemi
+            // sıfıra kırpılıyordu → iki taraf farklı tanımla kıyaslanıp sahte artış/düşüş çıkıyordu.
+            prevSpent = prevPayments.Sum(p => p.Amount) - prevRefunds;
         }
 
         // Yaş segmentleri

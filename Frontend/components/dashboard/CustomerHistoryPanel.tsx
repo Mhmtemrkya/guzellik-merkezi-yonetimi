@@ -116,11 +116,15 @@ export default function CustomerHistoryPanel({
     [data],
   )
 
-  /** Kullanılan seanslar: tamamlanmış randevu = müşteri geldi; "Paketten" kalemi = randevusuz kullanım. */
+  /** Kullanılan seanslar: PAKETTEN karşılanan tamamlanmış randevular + "Paketten" adisyon kalemleri. */
   const sessionRows = useMemo<Row[]>(() => {
     const rows: Row[] = []
     for (const ap of appointments) {
       if (ap.status !== 'tamamlandi') continue
+      // ÜCRETLİ randevu seans TÜKETMEZ (backend de artık tüketmiyor); bu sekme "paket
+      // kullanımı" listesidir — ücretlileri de koyunca kalan seans hesabı yanlış okunuyordu.
+      // Ücretli ziyaretler "İşlemler" sekmesinde görünmeye devam eder.
+      if (Number(ap.price || 0) > 0) continue
       const ts = Date.parse(`${ap.date}T${ap.time || '00:00'}:00`) || Date.parse(ap.date || '') || 0
       rows.push({
         key: `ap-${ap.id}`,

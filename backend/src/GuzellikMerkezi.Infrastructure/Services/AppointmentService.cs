@@ -188,8 +188,13 @@ public sealed class AppointmentService : IAppointmentService
         await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
-        if (tx is not null)
+        if (_db.Database.IsRelational())
         {
+            // Kilit sırası (RowLock.TableOrder): customers → … → staff_members.
+            // MÜŞTERİ kilidi seans REZERVASYONUNU serileştirir: yalnız personel kilitlenirse,
+            // aynı müşterinin tek kalan seansı için FARKLI personellere açılan iki eşzamanlı
+            // istek ayrı kilitler alıp ikisi de rezervasyonu boş görebiliyordu.
+            await RowLock.LockRowAsync(_db, "customers", request.CustomerId, cancellationToken);
             await RowLock.LockRowAsync(_db, "staff_members", request.StaffMemberId, cancellationToken);
         }
 
@@ -246,10 +251,12 @@ public sealed class AppointmentService : IAppointmentService
             }
             catch (DbUpdateException) when (attempt < 3)
             {
-                var next = await _db.Appointments.AsNoTracking()
+                // AssignNumber "yalnız bir kez" kuralı gereği dolu numarayı DEĞİŞTİRMEZ; yeniden
+                // deneme aynı numarayla tekrarlanıp dört kez patlıyordu. Retry'a özel setter.
+                var next = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
                     .Where(a => a.TenantId == tenantId && a.Number != null)
                     .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
-                appointment.AssignNumber(next + 1);
+                appointment.ReassignNumberForRetry(next + 1);
             }
         }
         if (tx is not null) await tx.CommitAsync(cancellationToken);
@@ -401,6 +408,20 @@ public sealed class AppointmentService : IAppointmentService
             return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
         }
 
+        // KAPASİTE KİLİDİ (oluşturmayla aynı protokol): "kontrol et → kaydet" iki ayrı işlemdi,
+        // iki randevu aynı personele aynı slota eşzamanlı taşınabiliyordu.
+        // Kilit sırası customers → appointments → staff_members; UpdateAsync bu metodu status
+        // değişiminden ÖNCE çağırdığı için sıra orada da korunur (ters sıra deadlock üretiyordu).
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational())
+        {
+            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
+            await RowLock.LockRowAsync(_db, "staff_members", targetStaff, cancellationToken);
+        }
+
         var overlap = await HasOverlapAsync(tenantId, targetStaff, request.StartUtc, request.EndUtc, appointment.Id, cancellationToken);
         if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında en fazla 2 randevusu olabilir."));
 
@@ -409,6 +430,7 @@ public sealed class AppointmentService : IAppointmentService
         if (staffChanged) appointment.ReassignStaff(targetStaff);
         appointment.Reschedule(request.StartUtc, request.EndUtc);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,
             staffChanged
                 ? $"Randevu taşındı: {prevStart:dd.MM HH:mm} → {appointment.StartUtc:dd.MM HH:mm} (personel değişti)"
@@ -433,6 +455,20 @@ public sealed class AppointmentService : IAppointmentService
         await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
+
+        // KİLİTLER EN BAŞTA VE PROTOKOL SIRASINDA ALINIR (customers → appointments).
+        // Alt çağrılar kendi kilitlerini aldığında sıra çağrı sırasına bağlı kalıyordu:
+        // reschedule appointments üstünde X-lock bırakıp sonra status customers istiyor,
+        // eşzamanlı bir status geçişi ise ters yönde ilerliyordu → deterministik deadlock.
+        if (_db.Database.IsRelational())
+        {
+            var owner = await _db.Appointments.AsNoTracking()
+                .Where(a => a.TenantId == tenantId && a.Id == id)
+                .Select(a => (Guid?)a.CustomerId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (owner is { } customerId) await RowLock.LockRowAsync(_db, "customers", customerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", id, cancellationToken);
+        }
 
         Result<AppointmentDto>? last = null;
 
@@ -561,8 +597,14 @@ public sealed class AppointmentService : IAppointmentService
             // Randevu bir seansa bağlıysa ÖNCE ondan düş — müşterinin aynı hizmete ait başka paketi
             // varsa doğru paketin bakiyesi erisin. Bağlı seans tükendiyse sıradakine düşülür ve bağ
             // GERÇEKTEN tüketilen seansla düzeltilir (satış iptali bu bağa güvenir).
+            //
+            // ÜCRETLİ RANDEVU PAKETTEN DÜŞMEZ: bağsız (SourceCustomerPackageSessionId = null) ve
+            // ücretli bir randevuda "aynı hizmetten herhangi bir seans" fallback'i çalışıyordu.
+            // Müşteri ücretli randevu açıp arada paket satın alırsa hem ücret tahakkuk ediyor hem
+            // paketten bir seans düşüyordu — aynı iş iki kez ödetiliyordu. Ücretsiz randevuda
+            // (paketten karşılanan) fallback korunur: hak oluşturmada zaten doğrulanıyor.
             var session = usable.FirstOrDefault(s => s.Id == appointment.SourceCustomerPackageSessionId)
-                          ?? usable.FirstOrDefault();
+                          ?? (appointment.Price <= 0m ? usable.FirstOrDefault() : null);
             if (session is not null && session.TryConsume())
             {
                 appointment.LinkToPackageSession(session.Id);
@@ -681,6 +723,22 @@ public sealed class AppointmentService : IAppointmentService
 
         var appointment = await _db.Appointments.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+
+        // KAPASİTE KİLİDİ (oluşturma/taşımayla aynı protokol): iki taslak eşzamanlı onaylanınca
+        // ikisi de slotu boş görüp kapasiteyi aşabiliyordu. Durum da kilit altında taze okunur.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational())
+        {
+            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
+            await RowLock.LockRowAsync(_db, "staff_members", appointment.StaffMemberId, cancellationToken);
+            await _db.Entry(appointment).ReloadAsync(cancellationToken);
+            if (_db.Entry(appointment).State == EntityState.Detached)
+                return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        }
+
         if (appointment.Status != AppointmentStatus.Draft) return Result<AppointmentDto>.Failure(Error.Validation("Yalnızca taslak randevu onaylanabilir."));
 
         // Onay anında aktif randevularla çakışma kontrolü (taslak beklerken slot dolmuş olabilir).
@@ -689,6 +747,7 @@ public sealed class AppointmentService : IAppointmentService
 
         appointment.ApproveDraft();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Approve", "Appointment", appointment.Id,
             $"Taslak randevu onaylandı → aktif ({appointment.StartUtc:dd.MM.yyyy HH:mm})",
             new { appointment.StartUtc, appointment.CustomerId, appointment.StaffMemberId }, cancellationToken);
@@ -767,6 +826,17 @@ public sealed class AppointmentService : IAppointmentService
     {
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result.Failure(Error.NotFound("Randevu bulunamadı."));
+
+        // TAMAMLANMIŞ RANDEVU SİLİNEMEZ: seans tüketildi, prim/rapor ona dayanıyor. Silmek
+        // tüketimi geride bırakıp geçmişi yok ediyordu (ters kayıt da uygulanmıyor).
+        // "Yanlış tamamlandı" durumunun doğru yolu durumu geri almaktır.
+        if (appointment.Status == AppointmentStatus.Completed)
+        {
+            return Result.Failure(Error.Conflict(
+                "Tamamlanmış randevu silinemez: seans düşüldü ve geçmiş kaydı buna dayanıyor. " +
+                "Yanlışlıkla tamamlandıysa önce randevunun durumunu geri alın."));
+        }
+
         var snapshot = new { appointment.StartUtc, appointment.CustomerId, appointment.StaffMemberId };
         appointment.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);

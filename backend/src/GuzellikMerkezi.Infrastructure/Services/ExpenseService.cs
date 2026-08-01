@@ -211,6 +211,10 @@ public sealed class ExpenseService : IExpenseService
             var to = filter.ToUtc.Value.Kind == DateTimeKind.Utc ? filter.ToUtc.Value : DateTime.SpecifyKind(filter.ToUtc.Value, DateTimeKind.Utc);
             query = query.Where(x => x.OccurredAtUtc < to);
         }
+        // KATEGORİ/PERSONEL SÜZGEÇLERİ DE UYGULANIR: liste bunları uyguluyordu, özet aynı filtre
+        // nesnesini alıp yok sayıyordu — süzülmüş listenin üstündeki toplam listeyle uyuşmuyordu.
+        if (filter.Category.HasValue) query = query.Where(x => x.Category == filter.Category.Value);
+        if (filter.StaffMemberId.HasValue) query = query.Where(x => x.StaffMemberId == filter.StaffMemberId.Value);
 
         // Önce sadece düz kolonları çek, sonra in-memory grupla (join'siz, projection'sız)
         var expenses = await query
@@ -242,7 +246,14 @@ public sealed class ExpenseService : IExpenseService
             var to = filter.ToUtc.Value.Kind == DateTimeKind.Utc ? filter.ToUtc.Value : DateTime.SpecifyKind(filter.ToUtc.Value, DateTimeKind.Utc);
             refundQuery = refundQuery.Where(r => r.RefundedAtUtc < to);
         }
-        var refunds = await refundQuery.Select(r => r.Amount).ToListAsync(cancellationToken);
+        // İadeler "Other" kategorisinde ve personelsizdir: kullanıcı başka bir kategori ya da
+        // personel süzgeci uyguladıysa özetin içine girmemeli (aksi hâlde süzülmüş toplam
+        // süzgeçle ilgisiz bir kalem taşırdı).
+        var refundsApply = filter.StaffMemberId is null
+            && (filter.Category is null || filter.Category == ExpenseCategory.Other);
+        var refunds = refundsApply
+            ? await refundQuery.Select(r => r.Amount).ToListAsync(cancellationToken)
+            : new List<decimal>();
         if (refunds.Count > 0)
         {
             expenses = expenses

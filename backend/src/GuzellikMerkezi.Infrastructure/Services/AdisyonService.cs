@@ -748,6 +748,16 @@ public sealed class AdisyonService : IAdisyonService
         {
             if (!force)
                 return Result.Failure(Error.SessionUsed("Bu adisyondan satılan paket/hizmet seanslarından biri kullanılmış; silmeden önce ilgili randevu/işlemi geri alın ya da yönetici olarak zorla silin (kullanılmış seanslar korunur, kalan tüm bedel iade edilir)."));
+
+            // KULLANILMIŞ SEANS SATIRI KORUNUR AMA KALAN HAK SIFIRLANIR.
+            // Satır olduğu gibi bırakılınca 10 seanslık pakette 1 seans kullanılmışsa müşteride
+            // 9 seans AKTİF kalıyor, buna karşılık satışın TÜM bedeli cariden düşülüyordu:
+            // bedava 9 seans. Yapılan iş korunur (UsedSessions dokunulmaz), ileriye dönük hak
+            // kapatılır → toplam = kullanılan.
+            foreach (var used in soldSessions.Where(s => s.UsedSessions > 0))
+            {
+                used.CloseRemaining();
+            }
             soldSessions.RemoveAll(s => s.UsedSessions > 0);
         }
 
@@ -792,7 +802,11 @@ public sealed class AdisyonService : IAdisyonService
             var soldServiceIds = soldSessions.Select(s => s.ServiceDefinitionId).ToHashSet();
             var openAppointments = await _db.Appointments
                 .Where(ap => ap.TenantId == tenantId && ap.CustomerId == adisyon.CustomerId
-                    && (ap.Status == AppointmentStatus.Scheduled || ap.Status == AppointmentStatus.Confirmed || ap.Status == AppointmentStatus.Draft))
+                    // InProgress DA KAPSANIR: işlem sırasında satışın adisyonu silinirse seans
+                    // satırı kaldırılıyor ama randevu yaşamaya devam ediyordu — sonraki
+                    // tamamlamada başka pakete kayıyor ya da seanssız tamamlanıyordu.
+                    && (ap.Status == AppointmentStatus.Scheduled || ap.Status == AppointmentStatus.Confirmed
+                        || ap.Status == AppointmentStatus.Draft || ap.Status == AppointmentStatus.InProgress))
                 .ToListAsync(cancellationToken);
 
             var relatedAppointments = openAppointments

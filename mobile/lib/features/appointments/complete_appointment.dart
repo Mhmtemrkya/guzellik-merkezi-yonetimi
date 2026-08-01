@@ -171,8 +171,14 @@ void _snack(BuildContext context, String msg) {
 
 Future<Map<String, dynamic>?> _askPayment(
     BuildContext context, double defaultAmount) {
+  // KURUŞ KORUNUR: toStringAsFixed(0) 999,50 ₺ kalanı 1.000 ₺ yapıp fazla tahsilat üretiyordu.
+  // Tam sayıysa ondalık gösterilmez (1000 → "1000"), kuruşluysa korunur (999,5 → "999.50").
   final amountCtrl = TextEditingController(
-      text: defaultAmount > 0 ? defaultAmount.toStringAsFixed(0) : '');
+      text: defaultAmount <= 0
+          ? ''
+          : (defaultAmount == defaultAmount.roundToDouble()
+              ? defaultAmount.toStringAsFixed(0)
+              : defaultAmount.toStringAsFixed(2)));
   String method = 'cash';
   return showDialog<Map<String, dynamic>>(
     context: context,

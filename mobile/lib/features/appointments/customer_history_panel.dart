@@ -120,6 +120,9 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
     final rows = <_Row>[];
     for (final a in _appts) {
       if ('${a['status']}' != 'Completed') continue;
+      // ÜCRETLİ randevu seans TÜKETMEZ (web paritesi): bu sekme "paket kullanımı" listesidir,
+      // ücretli ziyaretler "İşlemler" sekmesinde görünür.
+      if (((a['price'] as num?)?.toDouble() ?? 0) > 0) continue;
       rows.add(_Row(
         at: parseUtcToLocal(a['startUtc']),
         tag: 'Randevu',

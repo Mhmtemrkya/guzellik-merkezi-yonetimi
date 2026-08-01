@@ -1230,6 +1230,35 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var occurredAt = request.OccurredAtUtc ?? DateTime.UtcNow;
         if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
 
+        // TAHSİLAT SINIRI SUNUCUDA. Eskiden yalnız "Amount > 0" bakılıyordu: iki kasa aynı 1.000 ₺
+        // borç için aynı anda 1.000 ₺ girerse ikisi de kabul edilip 2.000 ₺ yazılıyordu (arayüzün
+        // doğru davranması backend için koruma değildir). Cari satırı kilitlenir, kalan borç kilit
+        // ALTINDA taze okunur ve üst sınır uygulanır.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational())
+        {
+            await RowLock.LockRowAsync(_db, "customers", accountInfo.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "customer_accounts", id, cancellationToken);
+        }
+
+        // Sınır KİLİTTEN BAĞIMSIZ uygulanır (InMemory sağlayıcıda kilit yok ama kural aynı).
+        var fresh = await LoadAsync(tenantId, id, cancellationToken);
+        if (fresh is null) return Result<CustomerAccountDto>.Failure(Error.NotFound("Cari hesap bulunamadı."));
+        if (fresh.CancelledAtUtc is not null)
+            return Result<CustomerAccountDto>.Failure(Error.Conflict("Bu satış iptal edilmiş; tahsilat alınamaz. Gerekiyorsa önce iptali geri alın."));
+
+        // Kuruş yuvarlaması için küçük tolerans. Fazla ödeme kredi bakiyeye SESSİZCE yazılmaz;
+        // bilinçli kredi için çağıran AllowOverpayment'ı açıkça set etmelidir.
+        var remaining = fresh.RemainingAmount;
+        if (!request.AllowOverpayment && request.Amount > remaining + 0.005m)
+        {
+            return Result<CustomerAccountDto>.Failure(Error.Validation(
+                $"Tahsilat tutarı kalan borcu aşamaz (kalan: {remaining:N2}). " +
+                "Fazla ödemeyi kredi bakiyesi olarak kaydetmek istiyorsanız bunu açıkça onaylayın."));
+        }
+
         // Tahsilatı kaydet (sadece INSERT). Taksit planına dokunulmaz — "ödenen/kalan",
         // okuma anında AllocatePayments ile tahsilatların vade sırasına dağıtılmasıyla hesaplanır.
         // Böylece eksik ödeme ilgili taksiti kısmen, fazla ödeme birden çok taksiti kapatır.
@@ -1253,6 +1282,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             var parent = await _db.CustomerAccounts.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
             if (parent is not null) { parent.Touch(); await _db.SaveChangesAsync(cancellationToken); }
         }
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         // Return hydrated
         var hydrated = await LoadAsync(tenantId, id, cancellationToken);

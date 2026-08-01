@@ -12,6 +12,7 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -58,7 +59,13 @@ public sealed class WhatsAppService : IWhatsAppService
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
     private readonly Application.Features.PublicSalons.IKvkkDocumentService _kvkkDocuments;
 
-    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications, Application.Features.PublicSalons.IKvkkDocumentService kvkkDocuments)
+    /// <summary>
+    /// Randevu durum geçişleri KANONİK servisten geçer (kilit + taze okuma). Çalışma anında
+    /// çözülür: AppointmentService → IWaitlistService → … zinciri ctor bağımlılığında döngü riski taşır.
+    /// </summary>
+    private readonly IServiceProvider _services;
+
+    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications, Application.Features.PublicSalons.IKvkkDocumentService kvkkDocuments, IServiceProvider services)
     {
         _db = db;
         _encryption = encryption;
@@ -71,6 +78,7 @@ public sealed class WhatsAppService : IWhatsAppService
         _waitlist = waitlist;
         _notifications = notifications;
         _kvkkDocuments = kvkkDocuments;
+        _services = services;
     }
 
     // Personel müşteri telefonunu yalnızca son 4 hane görür; ham numara API'den hiç çıkmaz.
@@ -722,10 +730,17 @@ public sealed class WhatsAppService : IWhatsAppService
             if (intent == WhatsAppReplyIntent.Cancel &&
                 appt.Status is not (AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow))
             {
-                appt.Cancel("Müşteri WhatsApp ile iptal etti");
+                // Müşteri onay bilgisi (Declined) önce kalıcı olsun; iptal kanonik servisten.
                 await _db.SaveChangesAsync(ct);
-                var offer = await _waitlist.SelectAndMarkOfferAsync(tenantId, appt.Id, ct);
-                if (offer.IsSuccess && offer.Value is { } offeredId) await SendWaitlistOfferAsync(tenantId, offeredId, ct);
+                // İPTAL KANONİK SERVİSTEN: doğrudan Cancel()+SaveChanges kilit/taze-okuma
+                // protokolünü atlıyordu — webhook eski nesneyi okurken yönetici randevuyu
+                // tamamlayıp seansı tüketirse, webhook bayat nesneyi "İptal" yazıyordu.
+                // Bekleme listesi teklifi de artık orada (tek yerde) tetikleniyor.
+                var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
+                await appointments.ChangeStatusAsync(tenantId, appt.Id,
+                    new Application.Features.Appointments.ChangeAppointmentStatusRequest(
+                        AppointmentStatus.Cancelled, "Müşteri WhatsApp ile iptal etti"),
+                    ct);
             }
             else
             {

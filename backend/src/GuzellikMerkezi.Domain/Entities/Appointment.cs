@@ -72,6 +72,14 @@ public sealed class Appointment : Entity
         Number = number;
     }
 
+    /// <summary>
+    /// KAYDEDİLMEMİŞ randevunun numarasını yeniden atar. Yalnız oluşturma sırasında, benzersiz
+    /// indeks çakışmasından sonra kullanılır: <see cref="AssignNumber"/> "bir kez" kuralı
+    /// gereği dolu numarayı değiştirmediği için yeniden deneme sessizce aynı numarayla
+    /// tekrarlanıyor ve başarılı olması gereken randevu oluşturma hata alıyordu.
+    /// </summary>
+    public void ReassignNumberForRetry(int number) => Number = number;
+
     /// <summary>Randevuyu başka bir personele aktarır (sürükle-bırak farklı sütun). Tamamlanan aktarılamaz.</summary>
     public void ReassignStaff(Guid staffMemberId)
     {

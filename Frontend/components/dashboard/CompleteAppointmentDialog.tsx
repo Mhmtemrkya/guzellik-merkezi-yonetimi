@@ -53,6 +53,14 @@ const METHOD_OPTIONS: { value: string; label: string }[] = [
   { value: 'transfer', label: 'Havale / EFT' },
 ]
 
+/**
+ * Otomatik doldurulan tutarı KURUŞUNA kadar korur (yalnız kayan nokta artığını temizler).
+ * Tam TL'ye yuvarlamak 999,50 ₺ kalanı 1.000 ₺ yapıp fazla tahsilat üretiyordu.
+ */
+function roundKurus(value: number): number {
+  return Math.max(0, Math.round((Number(value) || 0) * 100) / 100)
+}
+
 export default function CompleteAppointmentDialog({
   open,
   onOpenChange,
@@ -81,7 +89,8 @@ export default function CompleteAppointmentDialog({
     setMethod('cash')
     setError('')
     setSaving(false)
-    setAmount(fallbackAmount > 0 ? Math.round(fallbackAmount) : '')
+    // KURUŞ KORUNUR: yuvarlama 999,50 ₺'yi 1.000 ₺ yapıp fazla tahsilat üretiyordu.
+    setAmount(fallbackAmount > 0 ? roundKurus(fallbackAmount) : '')
     setOpenAdisyon(null)
     setConsent(null)
     setConsentOpen(false)
@@ -101,8 +110,8 @@ export default function CompleteAppointmentDialog({
       .then((a) => {
         if (cancelled || !a?.id) return
         setOpenAdisyon(a)
-        const remaining = Math.max(0, Number(a.chargeTotal || 0) - Number(a.paymentTotal || 0))
-        if (remaining > 0) setAmount(Math.round(remaining))
+        const remaining = roundKurus(Number(a.chargeTotal || 0) - Number(a.paymentTotal || 0))
+        if (remaining > 0) setAmount(remaining)
       })
       .catch(() => {})
     return () => {

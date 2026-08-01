@@ -63,4 +63,16 @@ public sealed class CustomerPackageSession : Entity
             Touch();
         }
     }
+
+    /// <summary>
+    /// KALAN HAKKI KAPATIR: toplam, kullanılan kadar olur (yapılan iş korunur, ileriye dönük
+    /// hak biter). Satışın bedeli iade edilirken kullanılmış seans satırı korunuyor ama kalan
+    /// bakiye aktif kaldığı için müşteride bedelsiz seans kalıyordu.
+    /// </summary>
+    public void CloseRemaining()
+    {
+        if (TotalSessions == UsedSessions) return;
+        TotalSessions = UsedSessions;
+        Touch();
+    }
 }

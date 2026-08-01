@@ -161,7 +161,13 @@ public sealed partial class CustomerAccountService
                 "kaybettirir. Çağrıyı kendi transaction'ının dışına alın.");
         }
 
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        // İZOLASYON READ COMMITTED (varsayılan REPEATABLE READ DEĞİL). MariaDB/MySQL'de
+        // REPEATABLE READ, transaction'ın İLK okumasında bir snapshot dondurur: cari satırı
+        // FOR UPDATE ile kilitlense bile, kilitten SONRAKİ normal okumalar hâlâ o eski
+        // snapshot'ı görür. Araya giren bir tahsilat böylece "yok" görünüp arşive girmiyor,
+        // ardından cari cascade silinince o para KALICI olarak kayboluyordu.
+        // READ COMMITTED'da her ifade en güncel commit'i okur → kilit sonrası okuma gerçekten taze.
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
         try
         {
             var result = await work();

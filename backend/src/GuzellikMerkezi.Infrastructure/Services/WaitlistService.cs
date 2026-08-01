@@ -8,6 +8,7 @@ using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -19,13 +20,21 @@ public sealed class WaitlistService : IWaitlistService
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
     private readonly ICurrentUser _currentUser;
 
-    public WaitlistService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications, ICurrentUser currentUser)
+    /// <summary>
+    /// Randevu oluşturma KANONİK servisten geçer. Doğrudan enjekte EDİLEMEZ: AppointmentService
+    /// zaten IWaitlistService'e bağımlı (iptalde teklif akışı) — ctor bağımlılığı dairesel olurdu.
+    /// Aynı scope'tan çalışma anında çözülür; scoped cache sayesinde ikinci bir örnek oluşmaz.
+    /// </summary>
+    private readonly IServiceProvider _services;
+
+    public WaitlistService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features, Application.Features.AppNotifications.IAppNotificationService notifications, ICurrentUser currentUser, IServiceProvider services)
     {
         _db = db;
         _audit = audit;
         _features = features;
         _notifications = notifications;
         _currentUser = currentUser;
+        _services = services;
     }
 
     // Personel müşteri telefonunu yalnızca maskeli görür (PhoneMask kuralı).
@@ -166,9 +175,19 @@ public sealed class WaitlistService : IWaitlistService
 
     public async Task<Result<Guid?>> AcceptOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default)
     {
+        // ÇİFT KABUL KORUMASI: aynı teklif iki kez kabul edilirse (çift tıklama, WhatsApp'tan iki
+        // "Evet") ikisi de "Booked öncesi" durumu okuyup İKİ randevu açabiliyordu. Kayıt satırı
+        // kilitlenir, durum kilit altında TAZE okunur → ikinci istek idempotent no-op'a düşer.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational())
+            await RowLock.LockRowAsync(_db, "waitlist_entries", waitlistEntryId, cancellationToken);
+
         var entry = await _db.WaitlistEntries.IgnoreQueryFilters()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Id == waitlistEntryId && !w.IsDeleted, cancellationToken);
         if (entry is null) return Result<Guid?>.Failure(Error.NotFound("Bekleme kaydı bulunamadı."));
+        if (_db.Database.IsRelational()) await _db.Entry(entry).ReloadAsync(cancellationToken);
         if (entry.Status == WaitlistStatus.Booked) return Result<Guid?>.Success(null); // idempotent
         if (entry.PreferredStartUtc is not { } rawStart || entry.StaffMemberId is not { } staffId || entry.ServiceDefinitionId is not { } serviceId)
             return Result<Guid?>.Failure(Error.Validation("Bu kayıtta randevu açmak için slot bilgisi (saat/personel/hizmet) eksik."));
@@ -190,21 +209,25 @@ public sealed class WaitlistService : IWaitlistService
         var branchId = entry.BranchId ?? await ResolveBranchAsync(tenantId, cancellationToken);
         if (branchId is null) return Result<Guid?>.Failure(Error.Validation("Randevu için şube bulunamadı."));
 
-        // Kategori yetkisi: bekleme kaydından açılan randevu da personel yetki kuralına uyar.
-        var skillBlock = await StaffSkill.BlockReasonAsync(_db, tenantId, staffId, serviceId, cancellationToken);
-        if (skillBlock is not null) return Result<Guid?>.Failure(Error.Validation(skillBlock));
+        // RANDEVU KANONİK SERVİSTEN AÇILIR. Eskiden burada doğrudan `new Appointment(... 0m ...)`
+        // yazılıyordu: hizmet hakkı doğrulanmıyor, kaynak seans bağı ve #RNDV numarası
+        // atanmıyor, personel kilidi/kapasite protokolü uygulanmıyordu — hakkı olmayan müşteri
+        // bekleme listesi üzerinden ÜCRETSİZ randevu alabiliyordu. Kategori yetkisi ve çalışma
+        // saati kontrolleri de CreateAsync içinde var, burada tekrarlanmaz.
+        var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
+        var created = await appointments.CreateAsync(tenantId,
+            new Application.Features.Appointments.CreateAppointmentRequest(
+                branchId.Value, entry.CustomerId, staffId, serviceId, startUtc, endUtc, 0m,
+                "Bekleme listesinden aktifleşti"),
+            cancellationToken);
+        if (created.IsFailure) return Result<Guid?>.Failure(created.Error);
+        var appointmentId = created.Value!.Id;
 
-        // Çalışma saatleri: mesai dışına düşen slot için randevu açılmaz.
-        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, staffId, startUtc, endUtc, cancellationToken);
-        if (hoursBlock is not null) return Result<Guid?>.Failure(Error.Validation(hoursBlock));
-
-        var appointment = new Appointment(tenantId, branchId.Value, entry.CustomerId, staffId, serviceId,
-            startUtc, endUtc, 0m, "Bekleme listesinden aktifleşti");
-        _db.Appointments.Add(appointment);
         entry.SetStatus(WaitlistStatus.Booked);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, branchId, "Book", "WaitlistEntry", entry.Id,
-            $"Bekleme kaydı randevuya döndü ({startUtc:dd.MM.yyyy HH:mm})", new { appointmentId = appointment.Id }, cancellationToken);
+            $"Bekleme kaydı randevuya döndü ({startUtc:dd.MM.yyyy HH:mm})", new { appointmentId }, cancellationToken);
 
         // Bekleme teklifi kabul edildi → yeni randevu oluştu; kurum/şube yöneticisine bildir.
         var custName = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
@@ -215,11 +238,11 @@ public sealed class WaitlistService : IWaitlistService
             AppNotificationType.WaitlistOffer, AppNotificationSeverity.Success,
             "Bekleme listesinden randevu oluştu",
             $"{(string.IsNullOrWhiteSpace(custName) ? "Müşteri" : custName)} · {startUtc.AddHours(3):dd.MM.yyyy HH:mm}",
-            data: new { route = "/appointments", id = appointment.Id.ToString() },
-            dedupeKey: $"waitlist-book:{appointment.Id}",
+            data: new { route = "/appointments", id = appointmentId.ToString() },
+            dedupeKey: $"waitlist-book:{appointmentId}",
             ct: cancellationToken);
 
-        return Result<Guid?>.Success(appointment.Id);
+        return Result<Guid?>.Success(appointmentId);
     }
 
     public async Task<Result<Guid?>> ScheduleAsync(Guid tenantId, Guid waitlistEntryId, ScheduleWaitlistRequest request, CancellationToken cancellationToken = default)

@@ -210,7 +210,17 @@ public sealed record RescheduleAccountRequest(int InstallmentCount, DateOnly Fir
 /// için istemciye bırakılamaz.
 /// </para>
 /// </param>
-public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null);
+/// <summary>
+/// Cariye tahsilat. <paramref name="AllowOverpayment"/> false (varsayılan) iken tutar kalan borcu
+/// AŞAMAZ.
+/// <para>
+/// Neden varsayılan kapalı: sunucuda üst sınır yokken iki kasa aynı 1.000 ₺ borcu aynı anda
+/// tahsil edebiliyor ve fark sessizce kredi bakiyeye yazılıyordu — kaza eseri çift tahsilat
+/// "müşteri lehine kredi" gibi görünüyordu. Bilinçli fazla ödeme (gerçek kredi bakiye) hâlâ
+/// mümkün: çağıran bu bayrağı açıkça set eder.
+/// </para>
+/// </summary>
+public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null, bool AllowOverpayment = false);
 
 public sealed record CustomerPackageSessionDto(
     Guid Id,

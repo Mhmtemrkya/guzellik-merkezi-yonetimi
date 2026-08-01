@@ -26,6 +26,9 @@ public static class RowLock
     public static readonly string[] TableOrder =
     [
         "customers",
+        // Bekleme kaydı kabulü: aynı teklif iki kez kabul edilirse ikisi de "Booked öncesi"
+        // durumu görüp İKİ randevu açabiliyordu.
+        "waitlist_entries",
         // Randevu OLUŞTURMA slot kapasitesini personel satırında serileştirir: "önce say, sonra
         // kaydet" iki ayrı işlemdi ve eşzamanlı iki istek kapasiteyi ikisi de boş görebiliyordu.
         "staff_members",
