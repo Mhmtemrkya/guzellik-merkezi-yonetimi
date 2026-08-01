@@ -283,6 +283,13 @@ export interface DayScheduleModalProps {
   open: boolean
   date: string | null
   appointments: Appointment[]
+  /**
+   * `appointments` dizisinin KAPSADIĞI gün aralığı (YYYY-AA-GG, uçlar dahil). Sayfa yalnız
+   * seçili ay ±7 günü yüklüyor; modal ise "geçen ay/hafta" karşılaştırması yapıyor. Aralık
+   * dışında kalan dönem için sayaçlar 0 gelip sahte "%100 düşüş" gösteriyordu — bu bilgi
+   * verildiğinde karşılaştırma, verisi eksikse gösterilmez.
+   */
+  loadedRange?: { from: string; to: string }
   staff: Staff[]
   customers?: Record<string, Customer>
   /** serviceDefinitionId → katalog fiyatı; gelir tahmini için (paket seansında appt.price=0 olur). */
@@ -337,6 +344,7 @@ export default function DayScheduleModal({
   open,
   date,
   appointments,
+  loadedRange,
   staff,
   customers,
   servicePrices,
@@ -436,6 +444,16 @@ export default function DayScheduleModal({
             : monthDaysOf(monthShiftIso(date, -1)),
     [date, view],
   )
+  /**
+   * Karşılaştırma dönemi YÜKLÜ VERİ ARALIĞININ içinde mi? Değilse o dönemin randevuları
+   * elimizde yok demektir; sayaçlar 0 çıkıp "geçen aya göre %100 düşüş" gibi sahte bir
+   * sonuç üretir. Aralık bilgisi verilmediyse (eski çağıranlar) davranış değişmez.
+   */
+  const prevComparable = useMemo(() => {
+    if (!loadedRange || prevDays.length === 0) return true
+    return prevDays.every((d) => d >= loadedRange.from && d <= loadedRange.to)
+  }, [loadedRange, prevDays])
+
   const curDaySet = useMemo(() => new Set(curDays), [curDays])
   // Görünen aralıktaki tüm randevular (hafta/ay). Gün görünümü dayAppts kullanır.
   const rangeAppts = useMemo(() => appointments.filter((a) => curDaySet.has(a.date)), [appointments, curDaySet])
@@ -836,7 +854,9 @@ export default function DayScheduleModal({
                   />
                 </span>
                 <span className="font-display text-[14px] font-extrabold tabular-nums leading-none text-[#241923]">%{ringPct}</span>
-                {ringPct - ringPrevPct !== 0 && (
+                {/* Karşılaştırma yalnız o dönemin verisi YÜKLÜYSE gösterilir; aksi hâlde
+                    sayaç 0 gelip sahte "%100 düşüş" çıkıyordu (bkz. prevComparable). */}
+                {prevComparable && ringPct - ringPrevPct !== 0 && (
                   <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${ringPct - ringPrevPct > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                     {ringPct - ringPrevPct > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                     {Math.abs(ringPct - ringPrevPct)}

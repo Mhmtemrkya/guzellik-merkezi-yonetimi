@@ -1152,8 +1152,17 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // ediliyordu. İkinci adım patlarsa eski taksitler silinmiş, yenileri hiç oluşmamış
         // kalıyordu: finanse edilen tutarın plan görünürlüğü tamamen kayboluyordu.
         await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
-            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
+
+        // PARENT KİLİDİ: iki eşzamanlı planlama isteği eski planı ikisi de silip İKİ SET taksit
+        // oluşturabiliyordu (taksit no'su için benzersiz kısıt da yok). Cari satırı kilitlenince
+        // aynı carinin planlamaları serileşir.
+        if (_db.Database.IsRelational())
+        {
+            await RowLock.LockRowAsync(_db, "customers", accountInfo.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "customer_accounts", id, cancellationToken);
+        }
 
         // Step 1: Tüm mevcut taksitleri soft-delete et — plan baştan kurulur.
         // (Ödenen tutar taksitte değil tahsilatlarda tutulduğundan, plan yeniden bölünse de

@@ -383,6 +383,9 @@ public sealed class AppointmentService : IAppointmentService
             .AnyAsync(s => s.TenantId == tenantId && s.CustomerId == customerId, cancellationToken);
         if (hasPackage) return true;
 
+        // ÖNKOŞUL "PAKET/HİZMET SATIŞI"DIR: Product ve Extra kalemleri de sayılıyordu, yani
+        // yalnız şampuan alan ya da fişine "ek kalem" yazılan müşteri hizmet almış sayılıyordu.
+        // Kuralın adı ile davranışı ayrışıyordu.
         return await (
             from a in _db.Adisyonlar.AsNoTracking()
             join i in _db.AdisyonItems.AsNoTracking() on a.Id equals i.AdisyonId
@@ -390,8 +393,7 @@ public sealed class AppointmentService : IAppointmentService
                 && a.CustomerId == customerId
                 && (a.Status == AdisyonStatus.Approved
                     || (a.Status == AdisyonStatus.Open && a.AutoApproveOnFirstAppointment))
-                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.PackageSale
-                    || i.Type == AdisyonItemType.Product || i.Type == AdisyonItemType.Extra)
+                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.PackageSale)
             select a.Id).AnyAsync(cancellationToken);
     }
 
@@ -479,17 +481,21 @@ public sealed class AppointmentService : IAppointmentService
             if (last.IsFailure) return last;
         }
 
-        if (request.Status is { } status)
-        {
-            last = await ChangeStatusAsync(tenantId, id,
-                new ChangeAppointmentStatusRequest(status, request.StatusReason), cancellationToken, staffTenantUserId);
-            if (last.IsFailure) return last;
-        }
-
+        // SIRA BİLİNÇLİ: not ÖNCE, durum EN SON. Durum geçişi yan etkilerin en ağırıdır (seans
+        // tüketimi, kuyruk işi, bildirim) ve bildirimler AYRI bir DbContext'ten yazıldığı için
+        // ana transaction geri alınsa bile silinmez. Durum en sonda olunca, sonrasında geri
+        // alınabilecek bir adım kalmaz → "işlem iptal oldu ama bildirim gitti" durumu oluşmaz.
         if (request.NotesProvided)
         {
             last = await ChangeNotesAsync(tenantId, id,
                 new ChangeAppointmentNotesRequest(request.Notes), cancellationToken, staffTenantUserId);
+            if (last.IsFailure) return last;
+        }
+
+        if (request.Status is { } status)
+        {
+            last = await ChangeStatusAsync(tenantId, id,
+                new ChangeAppointmentStatusRequest(status, request.StatusReason), cancellationToken, staffTenantUserId);
             if (last.IsFailure) return last;
         }
 

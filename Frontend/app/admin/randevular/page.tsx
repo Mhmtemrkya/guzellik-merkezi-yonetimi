@@ -402,13 +402,12 @@ function RandevularPageInner() {
 
   const { data, loading, error, reload } = useApiQuery<DashboardData>(
     async () => {
-      const appointmentsPromise = adminApi.appointments<ApiAppointment>({
-        tenantId,
-        fromUtc: rangeStartIso,
-        toUtc: rangeEndIso,
-        page: 1,
-        pageSize: 300,
-      })
+      // TAKVİM SAYFALARI SONUNA KADAR OKUNUR: tek sayfa 300 kayıtla sınırlıydı, yoğun bir ayda
+      // (300+ randevu) ızgarada ve gün modalinde randevular sessizce eksik görünüyordu.
+      const appointmentsPromise = fetchAllPaged<ApiAppointment>((page, pageSize) =>
+        adminApi.appointments<ApiAppointment>({ tenantId, fromUtc: rangeStartIso, toUtc: rangeEndIso, page, pageSize }),
+        500,
+      ).then((items) => ({ items }))
 
       // Sınırsız müşteri ölçeği: tüm müşteri listesi ÇEKİLMEZ. Satır adları/telefonları
       // randevu DTO'sundan gelir; seçiciler sunucu aramasıyla çalışır.
@@ -1860,6 +1859,9 @@ function RandevularPageInner() {
         open={Boolean(scheduleDate)}
         date={scheduleDate}
         appointments={appointments}
+        // Yüklü veri penceresi: modal "geçen ay/hafta" karşılaştırmasını yalnız bu aralık
+        // içindeyse gösterir (dışarısı için kayıt elimizde yok → sahte düşüş çıkıyordu).
+        loadedRange={{ from: isoDateOnly(fetchStart), to: isoDateOnly(fetchEnd) }}
         staff={isStaffUser && selfStaff ? [selfStaff] : staffList}
         customers={normalizedLookups.customers}
         servicePrices={servicePrices}

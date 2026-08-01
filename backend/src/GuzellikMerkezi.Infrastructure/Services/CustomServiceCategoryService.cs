@@ -29,6 +29,15 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         var name = (request.Name ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name)) return Result<CustomServiceCategoryDto>.Failure(Error.Validation("Kategori adı boş olamaz."));
 
+        // Mükerrer kontrolü bellekte yapılıyor (ad şifreli → SQL benzersiz indeksi çalışmaz);
+        // iki eşzamanlı istek ikisi de "yok" görüp aynı adı ekleyebiliyordu. Kurum satırı
+        // kilitlenince aynı kurumun katalog yazımları serileşir. Sıra numarası (SortOrder)
+        // hesabı da aynı kilitle korunur — eskiden iki kategori aynı sırayı alabiliyordu.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational()) await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
+
         var existing = await _db.CustomServiceCategories
             .Where(x => x.TenantId == tenantId)
             .Select(x => new { x.Id, x.Name, x.ParentId, x.SortOrder })
@@ -44,11 +53,18 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         category.SetSortOrder(nextOrder);
         _db.CustomServiceCategories.Add(category);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result<CustomServiceCategoryDto>.Success(category.ToDto());
     }
 
     public async Task<Result<CustomServiceCategoryDto>> UpdateAsync(Guid tenantId, Guid id, UpsertCustomServiceCategoryRequest request, CancellationToken cancellationToken = default)
     {
+        // Bkz. CreateAsync: mükerrer kontrolü bellekte yapıldığı için kurum satırı kilitlenir.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (_db.Database.IsRelational()) await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
+
         var category = await _db.CustomServiceCategories.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (category is null) return Result<CustomServiceCategoryDto>.Failure(Error.NotFound("Kategori bulunamadı."));
 
@@ -69,6 +85,7 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
         category.SetParent(request.ParentId);
         if (request.IsActive) category.Activate(); else category.Deactivate();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result<CustomServiceCategoryDto>.Success(category.ToDto());
     }
 

@@ -25,6 +25,11 @@ public static class RowLock
     /// <summary>Kilit sırası SABİTTİR — çağıranlar bu sırayı bozmamalıdır.</summary>
     public static readonly string[] TableOrder =
     [
+        // Kurum satırı: kuruma özel KATALOG yazımlarını (kategori adı gibi) serileştirir.
+        // Ad AES-GCM ile rastgele nonce'la şifrelendiği için DB'de benzersiz indeks aynı düz
+        // metni yakalayamaz; uygulama kontrolü de iki eşzamanlı istekte ikisini birden geçirir.
+        // En başta durur — bu yolu kullanan servisler başka kilit almaz, sıra çakışmaz.
+        "tenants",
         "customers",
         // Bekleme kaydı kabulü: aynı teklif iki kez kabul edilirse ikisi de "Booked öncesi"
         // durumu görüp İKİ randevu açabiliyordu.

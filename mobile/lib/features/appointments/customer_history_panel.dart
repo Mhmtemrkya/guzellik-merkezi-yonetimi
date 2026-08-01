@@ -87,15 +87,15 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
     }
     if (mounted) setState(() => _loading = true);
     try {
+      // SAYFALAR SONUNA KADAR (web paritesi): tek sayfa 200 kayıtla sınırlıydı, uzun süreli
+      // müşteride geçmişin eski kısmı sessizce eksik görünüyordu.
       final res = await Future.wait([
         widget.api
-            .get('/api/admin/appointments/',
-                query: {'page': 1, 'pageSize': 200, 'customerId': cid})
-            .catchError((_) => const <dynamic>[]),
+            .getAllPaged('/api/admin/appointments/', query: {'customerId': cid}, pageSize: 200)
+            .catchError((_) => const <String, dynamic>{}),
         widget.api
-            .get('/api/admin/adisyonlar/',
-                query: {'page': 1, 'pageSize': 200, 'customerId': cid})
-            .catchError((_) => const <dynamic>[]),
+            .getAllPaged('/api/admin/adisyonlar/', query: {'customerId': cid}, pageSize: 200)
+            .catchError((_) => const <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {

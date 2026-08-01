@@ -381,30 +381,56 @@ public static class DatabaseBootstrap
             if (db.Database.IsInMemory()) return;
 
             // Referans, adisyon Id'sinin ilk 12 hex hanesini taşır (16 karaktere kırpılmış "ADS-…").
-            var adisyonByPrefix = (await db.Adisyonlar.IgnoreQueryFilters()
-                    .Select(a => a.Id).ToListAsync())
-                .GroupBy(id => "ADS-" + id.ToString("N")[..12])
+            // KİMLİK EŞLEŞMESİ ŞART: referans KULLANICI TARAFINDAN yazılabilen serbest bir alandır.
+            // Elle girilmiş bağımsız bir tahsilata "ADS-…" biçimli bir metin yazılırsa, bu backfill
+            // onu o fişin ödemesi sanıp bağlıyor; fiş sonradan silindiğinde ALAKASIZ tahsilat da
+            // kasadan siliniyordu. Bu yüzden adisyonun müşteri/cari kimliği de doğrulanır.
+            var adisyonInfo = (await db.Adisyonlar.IgnoreQueryFilters()
+                    .Select(a => new { a.Id, a.CustomerId, a.CustomerAccountId, a.BranchId })
+                    .ToListAsync())
+                .GroupBy(a => "ADS-" + a.Id.ToString("N")[..12])
                 .Where(g => g.Count() == 1) // aynı önekte iki fiş varsa (astronomik) dokunma
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-            if (adisyonByPrefix.Count == 0) return;
+            if (adisyonInfo.Count == 0) return;
+
+            // Tahsilat hangi cariye ait? Bağ ancak adisyonun carisi ile aynıysa kurulur.
+            var accountOwner = (await db.CustomerAccounts.IgnoreQueryFilters()
+                    .Select(a => new { a.Id, a.CustomerId })
+                    .ToListAsync())
+                .ToDictionary(a => a.Id, a => a.CustomerId);
 
             var linkedPayments = 0;
             foreach (var payment in await db.AccountPayments.IgnoreQueryFilters()
                          .Where(x => x.SourceAdisyonId == null && x.Reference != null)
                          .ToListAsync())
             {
-                if (payment.Reference is not { } r || !adisyonByPrefix.TryGetValue(r.Trim(), out var adisyonId)) continue;
-                payment.LinkToAdisyon(adisyonId);
+                if (payment.Reference is not { } r || !adisyonInfo.TryGetValue(r.Trim(), out var adisyon)) continue;
+                // Adisyon bu cariye mi bağlı? Değilse en azından aynı müşterinin carisi mi?
+                var sameAccount = adisyon.CustomerAccountId == payment.CustomerAccountId;
+                var sameCustomer = accountOwner.TryGetValue(payment.CustomerAccountId, out var owner)
+                                   && owner == adisyon.CustomerId;
+                if (!sameAccount && !sameCustomer) continue;
+                payment.LinkToAdisyon(adisyon.Id);
                 linkedPayments++;
             }
+
+            // Stok hareketinde cari/müşteri kimliği yok; en azından fişin O ÜRÜNÜ gerçekten
+            // içerdiği doğrulanır (referans metnine tek başına güvenilmez).
+            var adisyonProducts = (await db.AdisyonItems.IgnoreQueryFilters()
+                    .Where(i => i.Type == Domain.Enums.AdisyonItemType.Product && i.RefId != null)
+                    .Select(i => new { i.AdisyonId, ProductId = i.RefId!.Value })
+                    .ToListAsync())
+                .GroupBy(x => x.AdisyonId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ProductId).ToHashSet());
 
             var linkedMovements = 0;
             foreach (var movement in await db.StockMovements.IgnoreQueryFilters()
                          .Where(x => x.SourceAdisyonId == null && x.Reference != null)
                          .ToListAsync())
             {
-                if (movement.Reference is not { } r || !adisyonByPrefix.TryGetValue(r.Trim(), out var adisyonId)) continue;
-                movement.LinkToAdisyon(adisyonId);
+                if (movement.Reference is not { } r || !adisyonInfo.TryGetValue(r.Trim(), out var adisyon)) continue;
+                if (!adisyonProducts.TryGetValue(adisyon.Id, out var products) || !products.Contains(movement.ProductId)) continue;
+                movement.LinkToAdisyon(adisyon.Id);
                 linkedMovements++;
             }
 

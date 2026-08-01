@@ -59,10 +59,13 @@ public sealed class AuthService : IAuthService
             .Where(x => x.Email == email && x.IsActive && (request.Role == null || x.Role == request.Role))
             .ToArrayAsync(cancellationToken);
 
-        // Parola bu e-postaya ait HERHANGİ bir kullanıcıyla eşleşmeli (aynı e-posta birden çok
-        // kurumda/rolde olabilir; hepsinde aynı parola kullanılır).
-        var verified = users.Any(u => _passwordHasher.Verify(request.Password!, u.PasswordHash));
-        if (!verified)
+        // YALNIZ PAROLASI EŞLEŞEN kayıtlar kapsama girer. Eskiden "herhangi biri eşleşiyorsa
+        // hepsini döndür" deniyordu: aynı e-posta iki kurumda FARKLI parolalarla kayıtlıysa,
+        // birinin parolasını bilen kişi diğer kurumun adını/şubelerini de görüyordu (giriş yine
+        // o hesabın parolasını istediği için hesap ele geçirme değil, bilgi sızıntısıydı) ve
+        // seçim modalinde giremeyeceği bir kurum listeleniyordu.
+        var matched = users.Where(u => _passwordHasher.Verify(request.Password!, u.PasswordHash)).ToArray();
+        if (matched.Length == 0)
         {
             // Kapsam ucu parola doğruladığı için lockout sayacı BURADA da işler; aksi hâlde
             // /login'deki kilit bu uçtan denemeyle atlatılabilirdi.
@@ -76,11 +79,11 @@ public sealed class AuthService : IAuthService
             return empty;
         }
 
-        if (users.Any(u => u.IsLockedOut(_clock.UtcNow))) return empty;
+        if (matched.Any(u => u.IsLockedOut(_clock.UtcNow))) return empty;
 
         // Rol gönderilmediyse en yetkili rol seçilir (enum değeri küçük olan üstündür).
-        var resolvedRole = request.Role ?? (users.Length > 0 ? users.Min(x => x.Role) : (UserRole?)null);
-        users = users.Where(x => x.Role == resolvedRole).ToArray();
+        var resolvedRole = request.Role ?? (matched.Length > 0 ? matched.Min(x => x.Role) : (UserRole?)null);
+        users = matched.Where(x => x.Role == resolvedRole).ToArray();
 
         var tenants = users
             .Where(x => x.Tenant is not null)

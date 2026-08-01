@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
-import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAdisyon, normalizeAppointment } from '@/lib/apiMappers'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { formatTL, normalizeAdisyon, normalizeAppointment } from '@/lib/apiMappers'
 import type { AdisyonItemTypeKey, ApiAdisyon, ApiAppointment, CustomerAccount } from '@/lib/types'
 import { CalendarCheck2, Loader2, ReceiptText, Wallet } from 'lucide-react'
 
@@ -94,13 +94,20 @@ export default function CustomerHistoryPanel({
   const { data, loading } = useApiQuery<{ appts: ApiAppointment[]; adisyonlar: ApiAdisyon[] }>(
     async () => {
       if (!customerId) return { appts: [], adisyonlar: [] }
-      const [apptRes, adisyonRes] = await Promise.all([
-        adminApi.appointments<ApiAppointment>({ tenantId, customerId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+      // SAYFALAR SONUNA KADAR: tek sayfa 200 kayıtla sınırlıydı — uzun süreli müşteride
+      // geçmişin eski kısmı sessizce eksik görünüyordu (sunucu süzgeci sayesinde yalnız bu
+      // müşterinin kayıtları okunur, maliyet düşük).
+      const [appts, adisyonlar] = await Promise.all([
+        fetchAllPaged<ApiAppointment>((page, pageSize) =>
+          adminApi.appointments<ApiAppointment>({ tenantId, customerId, page, pageSize }), 200,
+        ).catch(() => [] as ApiAppointment[]),
         canAdisyon
-          ? adminApi.adisyonlar<ApiAdisyon>({ tenantId, customerId, page: 1, pageSize: 200 }).catch(() => ({ items: [] }))
-          : Promise.resolve({ items: [] }),
+          ? fetchAllPaged<ApiAdisyon>((page, pageSize) =>
+              adminApi.adisyonlar<ApiAdisyon>({ tenantId, customerId, page, pageSize }), 200,
+            ).catch(() => [] as ApiAdisyon[])
+          : Promise.resolve([] as ApiAdisyon[]),
       ])
-      return { appts: apiItems(apptRes), adisyonlar: apiItems(adisyonRes) }
+      return { appts, adisyonlar }
     },
     [customerId, tenantId, canAdisyon, refreshKey],
     { initialData: { appts: [], adisyonlar: [] } },
