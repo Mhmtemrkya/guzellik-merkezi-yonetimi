@@ -170,10 +170,12 @@ export default function LoginPage() {
   // Uç eskiden yalnız e-postayla kurum adı/durumu, şube adı/şehri ve rolü döndürüyordu; geçerli
   // hesaplar, kurumlar ve şubeler anonim olarak keşfedilebiliyordu. Artık parola doğrulanmadan
   // boş yanıt gelir. Yazarken tetiklemiyoruz: her yanlış deneme hesap kilidi sayacını artırırdı.
+  // Parola da bağımlılıktır: kapsam yüklendikten sonra parola değişirse eski kurum/şube
+  // bilgisiyle giriş denenmemeli — kapsam yeni parolayla baştan çözülür.
   useEffect(() => {
     setScope(null)
     setError('')
-  }, [normalizedEmail])
+  }, [normalizedEmail, password])
 
   /** Parolayla kapsamı çeker; boşsa (e-posta/parola hatalı) null döner. */
   const resolveScope = async (): Promise<ScopeState | null> => {
@@ -181,7 +183,12 @@ export default function LoginPage() {
     try {
       const response = await loginScope({ email: normalizedEmail, password })
       const next = { role: response.role, tenants: response.tenants }
-      if (!next.role || next.tenants.length === 0) return null
+      // PlatformAdmin'in tenant listesi BOŞTUR (kuruma bağlı değildir); tenant şartı onu da
+      // reddedip platform yöneticisi girişini tamamen kapatıyordu.
+      const nextMeta = roleMetaFor(next.role)
+      if (!next.role || !nextMeta || (nextMeta.role !== 'PlatformAdmin' && next.tenants.length === 0)) {
+        return null
+      }
       setScope(next)
       const firstTenant = next.tenants[0]
       const firstBranch = firstTenant?.branches?.find((b) => b.isDefault) || firstTenant?.branches?.[0]
@@ -202,57 +209,89 @@ export default function LoginPage() {
   const handleLogin = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setError('')
+
     if (!emailLooksReady) {
       setError('Geçerli bir e-posta girin.')
       return
     }
+
     if (!password) {
       setError('Parola zorunlu.')
       return
     }
-    // İlk denemede kapsamı parolayla çek. Boş dönerse e-posta ya da parola hatalıdır
-    // (hesabın var olup olmadığı ayırt edilmez).
-    if (!scope) {
+
+    // React state güncellemesi aynı fonksiyon çağrısı içinde hemen okunamaz: setScope(next)
+    // çağrılsa bile bu çağrıdaki `scope`/`detectedMeta` hâlâ eski (null) değerdir. Bu yüzden
+    // ilk giriş denemesinde dönen kapsam YEREL değişkende tutulur; aksi hâlde /login-scope
+    // başarılı olsa bile "E-posta veya parola hatalı" gösteriliyordu.
+    let effectiveScope = scope
+
+    if (!effectiveScope) {
       try {
         const resolved = await resolveScope()
+
         if (!resolved) {
           setError('E-posta veya parola hatalı.')
           return
         }
-        // Birden çok kurum/şube varsa kullanıcı seçsin; giriş ikinci adımda tamamlanır.
-        if (resolved.tenants.length > 1 || (resolved.tenants[0]?.branches?.length ?? 0) > 1) return
+
+        effectiveScope = resolved
+
+        // Birden fazla kurum veya şube varsa kullanıcı seçim yapsın.
+        if (resolved.tenants.length > 1 || (resolved.tenants[0]?.branches?.length ?? 0) > 1) {
+          return
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Giriş yapılamadı.')
         return
       }
     }
-    if (!detectedMeta) {
+
+    const effectiveMeta = roleMetaFor(effectiveScope.role)
+
+    if (!effectiveMeta) {
       setError('E-posta veya parola hatalı.')
       return
     }
-    if (!isPlatform && (!selectedInstitution?.id || !selectedBranch?.id)) {
+
+    const effectiveIsPlatform = effectiveMeta.role === 'PlatformAdmin'
+    const effectiveInstitutions: Institution[] = effectiveIsPlatform ? [] : effectiveScope.tenants
+
+    const effectiveInstitution: Institution | undefined =
+      effectiveInstitutions.find((k) => k.id === institutionId || k.tenantId === institutionId) ||
+      effectiveInstitutions[0]
+
+    const effectiveBranches: Branch[] = effectiveInstitution?.branches || []
+
+    const effectiveBranch: Branch | undefined =
+      effectiveBranches.find((b) => b.id === branchId || b.branchId === branchId) ||
+      effectiveBranches.find((b) => b.isDefault) ||
+      effectiveBranches[0]
+
+    if (!effectiveIsPlatform && (!effectiveInstitution?.id || !effectiveBranch?.id)) {
       setError('Bu e-posta için geçerli kurum/şube seçimi bulunamadı.')
       return
     }
+
     try {
       setLoading(true)
       const session = await login({
         email: normalizedEmail,
         password,
-        roleKey: detectedMeta.role,
-        tenantId: isPlatform ? null : selectedInstitution?.id ?? null,
-        branchId: isPlatform ? null : selectedBranch?.id ?? null,
-        scope: scope ? { role: detectedMeta.role, tenants: scope.tenants } : null,
+        roleKey: effectiveMeta.role,
+        tenantId: effectiveIsPlatform ? null : effectiveInstitution?.id ?? null,
+        branchId: effectiveIsPlatform ? null : effectiveBranch?.id ?? null,
+        scope: { role: effectiveMeta.role, tenants: effectiveScope.tenants },
         remember,
       })
-      if (!isPlatform && selectedInstitution && selectedBranch) {
-        setBranchScope(selectedInstitution.id, selectedBranch.id)
+      if (!effectiveIsPlatform && effectiveInstitution && effectiveBranch) {
+        setBranchScope(effectiveInstitution.id, effectiveBranch.id)
       }
       if (session?.user?.mustChangePassword) {
         router.push('/change-password')
         return
       }
-      router.push(detectedMeta.href)
+      router.push(effectiveMeta.href)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Giriş yapılamadı. Bilgileri kontrol edin.'
       setError(message || 'Giriş yapılamadı. Bilgileri kontrol edin.')
@@ -496,7 +535,9 @@ export default function LoginPage() {
                           />
                           Hesabınız tanınıyor, erişim kapsamı hazırlanıyor...
                         </div>
-                      ) : !detectedMeta ? (
+                      ) : !scope ? null : !detectedMeta ? (
+                        // Yalnız kapsam ÇÖZÜLDÜKTEN sonra anlamlı: kapsam yokken bu uyarı, kullanıcı
+                        // daha giriş denemeden "hesabınız yok" diyordu (kapsam artık yazarken çekilmiyor).
                         <div className="rounded-2xl border border-amber-300/50 bg-amber-50 px-4 py-3.5 text-[12px] leading-relaxed text-amber-800">
                           Bu e-posta için sistemde tanımlı bir hesap bulunamadı. Kurum yöneticinizden veya Platform
                           Admin&apos;den erişim talep edin.
@@ -672,7 +713,13 @@ export default function LoginPage() {
                 whileHover={{ scale: 1.005 }}
                 whileTap={{ scale: 0.99 }}
                 type="submit"
-                disabled={loading || scopeLoading || (emailLooksReady && !scopeLoading && !detectedMeta)}
+                disabled={
+                  // Kapsam ARTIK yazarken değil, giriş denemesinde çekiliyor: ilk denemeden önce
+                  // detectedMeta zorunlu olarak null olur. Eski koşul (emailLooksReady && !detectedMeta)
+                  // bu yüzden geçerli e-posta yazılır yazılmaz butonu kilitliyor, ilk submit hiç
+                  // oluşmuyordu. Artık yalnız ÇÖZÜLMÜŞ kapsamın rolü tanınmıyorsa kilitlenir.
+                  loading || scopeLoading || (!!scope && !detectedMeta)
+                }
                 className="group relative mt-1 w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#e798b4] via-[#d4789a] to-[#b75a7e] py-4 text-[13px] font-semibold tracking-wide text-white shadow-[0_20px_44px_-18px_rgba(183,90,126,0.75)] transition-shadow hover:shadow-[0_24px_54px_-16px_rgba(183,90,126,0.85)] disabled:opacity-60"
               >
                 <span
