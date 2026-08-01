@@ -71,7 +71,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       <div className="relative flex min-h-screen overflow-hidden bg-[#fff7fa] text-[#3b2330]">
         <PanelBackdrop variant="platform" />
         <Sidebar items={items} role="Platform Admin" user={sidebarUser} />
-        <main className="relative z-10 min-w-0 flex-1 pb-24 pt-[65px] lg:pb-0 lg:pt-0">{children}</main>
+        <main id="main" tabIndex={-1} className="relative z-10 min-w-0 flex-1 pb-24 pt-[65px] lg:pb-0 lg:pt-0">{children}</main>
       </div>
     </RouteGuard>
   )

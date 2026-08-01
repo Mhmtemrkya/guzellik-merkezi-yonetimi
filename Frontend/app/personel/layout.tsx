@@ -290,7 +290,7 @@ export default function PersonelLayout({ children }: { children: ReactNode }) {
       <div className="relative flex min-h-screen overflow-hidden bg-[#160b12] text-[#fff4f8]">
         <PanelBackdrop variant="personel" />
         <Sidebar items={visibleItems} role="Personel" user={sidebarUser} />
-        <main className="relative z-10 min-w-0 flex-1 pb-24 pt-[65px] lg:pb-0 lg:pt-0">
+        <main id="main" tabIndex={-1} className="relative z-10 min-w-0 flex-1 pb-24 pt-[65px] lg:pb-0 lg:pt-0">
           {missingPermission && activePermissionGuard ? (
             <StaffPermissionNotice label={activePermissionGuard.label} />
           ) : blockedByPlan && activeFeatureGuard ? (

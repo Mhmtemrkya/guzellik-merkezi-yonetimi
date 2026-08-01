@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation'
 import {
   ChevronDown,
   ChevronsLeft,
-  CornerDownLeft,
   LogOut,
   Menu,
   Search,
@@ -13,17 +12,33 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion, type Variants } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion'
 import { useBranch } from './BranchContext'
 import { useAuth } from './AuthContext'
 
 // ---------------------------------------------------------------------------
-// SIDEBAR
-// Panelin omurgası. Pano diliyle aynı: cam yüzey + aurora, gradyan ikon çipi,
-// rozetli satırlar. İşlevsel olarak üç şey ekler:
-//   • Ray modu (daraltılmış 78px) — tercih localStorage'da kalır, ipuçları uçar.
-//   • Sayfa arama — "/" ya da Ctrl/⌘+K ile odaklanır, alt sayfalarda da arar.
-//   • Aktif rota göstergesi — gruplar arası yumuşak geçen ışıklı şerit.
+// SIDEBAR — "Sekme"
+//
+// Panelin kart diliyle AYNI sözlüğü konuşur: aynı hairline (#ead8df), aynı
+// aksiyon rengi (#c85776), aynı yumuşak zemin (#fff1f6). Sidebar panelden
+// yalnız bir tık daha sıcak bir kremle ayrılır — çelişmez, ayrışır.
+//
+// İMZA ÖĞESİ — SEKME: aktif sayfa satırı panelin BEYAZINA boyanır, sağ köşeleri
+// düz kalır ve sidebar'ın kenar hairline'ına dayanarak onu kendi hizasında keser.
+// Satır böylece panele bağlanmış görünür; "şu an buradasın" bilgisi renk
+// rozetiyle değil mimariyle söylenir. Sol kenardaki ince altın tek metal vurgu.
+// Sayfa değişince sekme layoutId ile yay gibi kayar.
+//
+// Sadeleştirilenler (görsel gürültüydü): ambient aurora, gradyan ikon çipi,
+// hover ışık süzülmesi, kalın renkli aktif bar.
+//
+// HAREKET katmanlı ama disiplinli: sekme kayması (ana jest) · satırların sırayla
+// süzülmesi · ikonun hover'da bir tık ilerlemesi · rozetin değişince yaylanması ·
+// akordeon açılışlarında alt sayfaların kademeli gelişi. Tamamı
+// prefers-reduced-motion'da susar.
+//
+// İşlevler korunur: ray modu (78px, tercih localStorage'da), "/" · Ctrl+K ile
+// sayfa arama, grup/alt sayfa akordeonları, mobil çekmece + alt bar.
 // ---------------------------------------------------------------------------
 
 export interface SidebarChildItem {
@@ -60,6 +75,36 @@ interface SidebarProps {
 
 const COLLAPSE_STORAGE_KEY = 'ba:sidebar:collapsed'
 
+/* ---------------------------------------------------------------------------
+ * PALET — altı isimli ton. Hepsi panelin kendi sözlüğünden; sidebar panele
+ * yabancı bir renk getirmez. Metin tonları globals.css'teki okunabilirlik
+ * eşiğiyle uyumlu (≥4.5:1).
+ *
+ * porcelain  zemin      — beyazın pembeye kırılmış hâli; panelden ayrışır, çelişmez
+ * chalk      aktif sekme — panel kartlarının beyazı (sekme buraya "bağlanır")
+ * quartz     hairline   — panelin kenarlığıyla aynı
+ * rose       aksiyon    — panelin birincil aksiyon rengi (logonun #CC6084'ü ile
+ *                         neredeyse birebir; panel bu rengi zaten logodan almış)
+ * oxblood    vurgu      — LOGODAN ALINDI (#6C243C, logonun en derin bordosu).
+ *                         Aktif metin; beyaz üzerinde ~10:1 okunur.
+ * gilt       altın      — YALNIZ aktif sekmenin sol kenarında (dekorasyon değil,
+ *                         "buradasın" işareti)
+ * ------------------------------------------------------------------------- */
+const C = {
+  porcelain: '#FDF7F9',
+  chalk: '#FFFFFF',
+  quartz: '#EAD8DF',
+  quartzDeep: '#EFBFD0',
+  rose: '#C85776',
+  oxblood: '#6C243C',
+  gilt: '#D9A441',
+  // Metin merdiveni — panelle birebir aynı üç kademe.
+  ink: '#352432', // birincil (~13:1)
+  mute: '#705A66', // ikincil (~5.9:1)
+  soft: '#8A6172', // üçüncül — grup başlığı (~4.9:1; 10px metin WCAG AA)
+  wash: '#FFF1F6', // yumuşak vurgu zemini
+} as const
+
 function isActivePath(pathname: string | null, href: string): boolean {
   const rootRoutes = ['/admin', '/personel', '/platform']
   if (!pathname) return false
@@ -72,23 +117,27 @@ function tr(value: string): string {
   return value.toLocaleLowerCase('tr')
 }
 
+const EASE = [0.22, 1, 0.36, 1] as const
+/** Aktif sekmenin kayma hissi — tek imza hareketi, bu yüzden yaylı. */
+const TAB_SPRING = { type: 'spring', stiffness: 420, damping: 36 } as const
+
 const groupAccordion: Variants = {
-  open: { height: 'auto', opacity: 1, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
-  closed: { height: 0, opacity: 0, transition: { duration: 0.24, ease: [0.7, 0, 0.84, 0] } },
+  open: { height: 'auto', opacity: 1, transition: { duration: 0.3, ease: EASE } },
+  closed: { height: 0, opacity: 0, transition: { duration: 0.22, ease: [0.7, 0, 0.84, 0] } },
 }
 
 const childListAccordion: Variants = {
   open: {
     height: 'auto',
     opacity: 1,
-    transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1], staggerChildren: 0.04, delayChildren: 0.05 },
+    transition: { duration: 0.3, ease: EASE, staggerChildren: 0.03, delayChildren: 0.03 },
   },
-  closed: { height: 0, opacity: 0, transition: { duration: 0.22, ease: [0.7, 0, 0.84, 0] } },
+  closed: { height: 0, opacity: 0, transition: { duration: 0.2, ease: [0.7, 0, 0.84, 0] } },
 }
 
 const childItemVariants: Variants = {
-  open: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } },
-  closed: { opacity: 0, x: -8 },
+  open: { opacity: 1, x: 0, transition: { duration: 0.26, ease: EASE } },
+  closed: { opacity: 0, x: -6 },
 }
 
 /** Ray modunda satırın yanında beliren ipucu (nav kırpmasın diye fixed konumlanır). */
@@ -113,6 +162,8 @@ interface NavGroupsProps {
   idPrefix: string
   /** Aramada eşleşen parça vurgulanır. */
   query?: string
+  /** Sekme metaforu yalnız masaüstü rayında anlamlı (çekmecede panel kenarı yok). */
+  tabbed?: boolean
 }
 
 /** Eşleşen harfleri vurgular — arama yaparken gözün nereye bakacağını söyler. */
@@ -124,7 +175,7 @@ function Highlight({ text, query }: { text: string; query?: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="rounded-[4px] bg-[#ffe0eb] px-0.5 text-[#9b4c65]">{text.slice(idx, idx + q.length)}</mark>
+      <mark className="rounded-[3px] bg-[#FFE0EB] px-0.5 text-[#6C243C]">{text.slice(idx, idx + q.length)}</mark>
       {text.slice(idx + q.length)}
     </>
   )
@@ -143,42 +194,51 @@ function NavGroups({
   onHint,
   idPrefix,
   query,
+  tabbed = false,
 }: NavGroupsProps) {
+  // Hareket bu sidebar'ın dili; ama sistem "azalt" diyorsa tamamı susar.
+  const reduce = useReducedMotion()
+  const focusRing =
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776] focus-visible:ring-offset-1 focus-visible:ring-offset-[#FDF7F9]'
+
   return (
     <nav
+      aria-label="Sayfa menüsü"
       className={`${
-        mobile ? 'space-y-4 px-3 py-4' : 'no-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-4'
+        mobile ? 'space-y-5 px-3 py-4' : 'no-scrollbar flex-1 space-y-5 overflow-y-auto py-4 pl-3 pr-0'
       } ${collapsed ? 'px-2' : ''}`}
     >
-      {Object.entries(groups).map(([groupName, list], gi) => {
+      {Object.entries(groups).map(([groupName, list]) => {
         const isOpen = openGroups[groupName] ?? true
         return (
           <div key={groupName}>
             {collapsed ? (
-              // Ray modunda başlık yerine ince bir ayraç kalır — ritim korunur, yer harcanmaz.
-              gi > 0 && <div aria-hidden className="mx-auto mb-2.5 h-px w-7 bg-gradient-to-r from-transparent via-[#efbfd0] to-transparent" />
+              <div aria-hidden className="mx-auto mb-2 h-px w-6" style={{ background: C.quartz }} />
             ) : (
               <button
                 type="button"
                 onClick={() => toggleGroup(groupName)}
-                className="group flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-wide text-[#8a6a79] transition-colors hover:text-[#c85776]"
+                aria-expanded={isOpen}
+                className={`group flex w-full cursor-pointer items-center justify-between rounded-[8px] px-2 py-1 ${focusRing}`}
               >
-                <span className="flex items-center gap-2">
-                  <motion.span
-                    className="inline-block h-px w-3 bg-[#efbfd0] transition-all group-hover:w-5 group-hover:bg-[#ef6f94]"
-                    layout
-                  />
-                  {groupName}
-                  <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#b1798e] ring-1 ring-[#f6dde6]">
+                <span className="flex items-baseline gap-1.5">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-[0.14em] transition-colors group-hover:text-[#C85776]"
+                    style={{ color: C.soft }}
+                  >
+                    {groupName}
+                  </span>
+                  <span className="text-[10px] font-semibold tabular-nums" style={{ color: C.quartzDeep }}>
                     {list.length}
                   </span>
                 </span>
                 <motion.span
                   animate={{ rotate: isOpen ? 0 : -90 }}
-                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                  className="text-[#b1798e] group-hover:text-[#c85776]"
+                  transition={{ duration: 0.26, ease: EASE }}
+                  className="transition-colors group-hover:text-[#C85776]"
+                  style={{ color: C.soft }}
                 >
-                  <ChevronDown className="h-3 w-3" strokeWidth={1.6} />
+                  <ChevronDown className="h-3 w-3" strokeWidth={2} />
                 </motion.span>
               </button>
             )}
@@ -193,7 +253,7 @@ function NavGroups({
                   variants={groupAccordion}
                   className="overflow-hidden"
                 >
-                  <div className={`space-y-0.5 ${collapsed ? 'mt-0' : 'mt-1.5'}`}>
+                  <div className={collapsed ? 'space-y-1' : 'mt-1 space-y-0.5'}>
                     {list.map((it, i) => {
                       const active = isActivePath(pathname, it.href)
                       const hasChildren = !!it.children?.length
@@ -201,86 +261,102 @@ function NavGroups({
                       const Icon = it.icon
 
                       return (
-                        <div key={it.href}>
-                          <motion.div
-                            initial={{ opacity: 0, x: -6 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{
-                              duration: 0.35,
-                              delay: 0.03 * i + 0.02 * gi,
-                              ease: [0.22, 1, 0.36, 1],
-                            }}
-                            className="relative"
-                          >
+                        <motion.div
+                          key={it.href}
+                          // Satırlar sırayla süzülerek gelir — liste bir anda "yapışmaz".
+                          initial={reduce ? false : { opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={
+                            reduce ? { duration: 0 } : { duration: 0.34, delay: Math.min(i * 0.028, 0.28), ease: EASE }
+                          }
+                        >
+                          <div className="relative">
+                            {/* SEKME — aktif satır panelin beyazına boyanır; sağ köşeleri düz
+                                kalır ve kenardaki kavisle panele bağlanır. */}
                             {active && (
                               <motion.span
-                                layoutId={`${idPrefix}-sidebar-active-indicator`}
-                                className="pointer-events-none absolute bottom-1.5 left-0 top-1.5 w-1 rounded-r-full bg-gradient-to-b from-[#f7b6cb] via-[#ef6f94] to-[#d65f83] shadow-[0_0_16px_rgba(239,111,148,0.32)]"
-                                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                                layoutId={`${idPrefix}-active-tab`}
+                                aria-hidden
+                                className={`pointer-events-none absolute inset-0 ${
+                                  tabbed ? 'rounded-l-[14px]' : 'rounded-[14px]'
+                                }`}
+                                style={{
+                                  background: C.chalk,
+                                  // Sol kenarda ince altın: markanın tek metal vurgusu ve
+                                  // "buradasın" işareti. Sağ kenar açık bırakılır — sekme
+                                  // sidebar'ın hairline'ına dayanıp panele bağlanmış görünür.
+                                  boxShadow: tabbed
+                                    ? `inset 2px 0 0 ${C.gilt}, inset 0 1px 0 ${C.quartz}, inset 0 -1px 0 ${C.quartz}, -10px 0 24px -20px rgba(150,78,104,0.6)`
+                                    : `inset 2px 0 0 ${C.gilt}, inset 0 0 0 1px ${C.quartz}`,
+                                }}
+                                transition={TAB_SPRING}
                               />
                             )}
 
                             <div
-                              className={`group/item relative flex min-h-11 items-center overflow-hidden rounded-[16px] transition-colors ${
+                              className={`group/item relative flex min-h-11 items-center rounded-[14px] transition-colors duration-200 ${
                                 collapsed ? 'justify-center px-1.5 py-2' : 'gap-2.5 px-2.5 py-2'
-                              } text-[13px] ${
-                                active
-                                  ? 'bg-gradient-to-r from-[#fff1f6] to-white text-[#9b4c65] shadow-[0_12px_26px_-16px_rgba(214,95,131,0.55)] ring-1 ring-[#efbfd0]/70'
-                                  : 'text-[#5f4855] hover:bg-[#fff4f8] hover:text-[#9b4c65]'
-                              }`}
+                              } text-[13px] ${!active ? 'hover:bg-[#FFF1F6]' : ''}`}
                             >
-                              {/* Hover'da soldan süzülen ışık — aktif satırda gerekmez. */}
-                              {!active && (
-                                <span
-                                  aria-hidden
-                                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#ffdce8]/72 via-white/70 to-transparent transition-transform duration-500 group-hover/item:translate-x-0"
-                                />
-                              )}
-
                               <Link
                                 href={it.href}
                                 onClick={onNavigate}
                                 title={collapsed ? it.label : undefined}
+                                aria-current={active ? 'page' : undefined}
                                 onMouseEnter={(e) => {
                                   if (!collapsed || !onHint) return
                                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
                                   onHint({ label: it.label, top: r.top + r.height / 2 })
                                 }}
                                 onMouseLeave={() => onHint?.(null)}
-                                className={`relative z-10 flex flex-1 items-center ${collapsed ? 'justify-center' : 'gap-2.5'}`}
+                                className={`relative z-10 flex flex-1 cursor-pointer items-center rounded-[10px] ${focusRing} ${
+                                  collapsed ? 'justify-center' : 'gap-2.5'
+                                }`}
                               >
-                                {/* İkon çipi: aktifken markanın gradyanıyla dolu, boştayken yumuşak gül zemin. */}
+                                {/* İkon çipsiz durur — hiyerarşiyi renk, kalınlık ve hareket taşır.
+                                    Üzerine gelince bir tık ileri kayar: satır "davet ediyor". */}
                                 <motion.span
-                                  whileHover={{ scale: 1.08, rotate: active ? 0 : -5 }}
-                                  transition={{ type: 'spring', stiffness: 420, damping: 18 }}
-                                  className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] transition-colors ${
-                                    active
-                                      ? 'bg-gradient-to-br from-[#ef6f94] to-[#c85776] text-white shadow-[0_10px_20px_-12px_rgba(200,87,118,0.9)]'
-                                      : 'bg-[#fff5f8] text-[#a3707f] ring-1 ring-[#f6e3ea] group-hover/item:bg-white group-hover/item:text-[#c85776] group-hover/item:ring-[#efbfd0]'
-                                  }`}
+                                  className="relative grid h-7 w-7 shrink-0 place-items-center"
+                                  animate={{ scale: active ? 1.06 : 1 }}
+                                  whileHover={reduce ? undefined : { x: 2 }}
+                                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 24 }}
                                 >
-                                  <Icon className="h-[17px] w-[17px]" strokeWidth={1.7} />
-                                  {/* Ray modunda rozet, sayı yerine ışıklı bir noktaya iner. */}
+                                  <Icon
+                                    className="h-[17px] w-[17px] transition-colors duration-200"
+                                    strokeWidth={active ? 2.1 : 1.7}
+                                    style={{ color: active ? C.rose : C.mute }}
+                                  />
                                   {collapsed && it.badge !== undefined && (
-                                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#ef6f94] ring-2 ring-white" />
+                                    <span
+                                      className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full"
+                                      style={{ background: C.rose, boxShadow: `0 0 0 2px ${C.porcelain}` }}
+                                    />
                                   )}
                                 </motion.span>
 
                                 {!collapsed && (
                                   <>
-                                    <span className="flex-1 truncate">
+                                    <span
+                                      className={`flex-1 truncate transition-all duration-200 group-hover/item:translate-x-[2px] ${
+                                        active ? 'font-semibold' : ''
+                                      }`}
+                                      style={{ color: active ? C.oxblood : C.ink }}
+                                    >
                                       <Highlight text={it.label} query={query} />
                                     </span>
                                     {it.badge !== undefined && (
                                       <motion.span
-                                        initial={{ scale: 0.6, opacity: 0 }}
+                                        // Rozet değeri değişince kısa bir yay — gözden kaçmasın.
+                                        key={String(it.badge)}
+                                        initial={reduce ? false : { scale: 0.7, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}
-                                        transition={{ delay: 0.18 + i * 0.03, type: 'spring', stiffness: 380, damping: 22 }}
-                                        className={`px-1.5 py-0.5 text-[10px] font-semibold ${
+                                        transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 22 }}
+                                        className="rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+                                        style={
                                           active
-                                            ? 'rounded-full bg-[#c85776] text-white'
-                                            : 'rounded-full bg-[#fff1f6] text-[#c85776] ring-1 ring-[#efbfd0]'
-                                        }`}
+                                            ? { background: C.rose, color: '#fff' }
+                                            : { background: C.wash, color: C.rose }
+                                        }
                                       >
                                         {it.badge}
                                       </motion.span>
@@ -297,22 +373,20 @@ function NavGroups({
                                     toggleItem(it.href)
                                   }}
                                   aria-label={childOpen ? 'Alt sayfaları kapat' : 'Alt sayfaları aç'}
-                                  className={`relative z-10 -mr-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] transition-colors ${
-                                    active
-                                      ? 'text-[#9b4c65] hover:bg-white'
-                                      : 'text-[#b1798e] hover:bg-white hover:text-[#c85776]'
-                                  }`}
+                                  aria-expanded={childOpen}
+                                  className={`relative z-10 -mr-0.5 grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-[8px] transition-colors hover:bg-[#FFF1F6] ${focusRing}`}
+                                  style={{ color: active ? C.rose : C.soft }}
                                 >
                                   <motion.span
                                     animate={{ rotate: childOpen ? 180 : 0 }}
-                                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                                    transition={{ duration: 0.26, ease: EASE }}
                                   >
-                                    <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
+                                    <ChevronDown className="h-3 w-3" strokeWidth={2} />
                                   </motion.span>
                                 </button>
                               )}
                             </div>
-                          </motion.div>
+                          </div>
 
                           {hasChildren && !collapsed && (
                             <AnimatePresence initial={false}>
@@ -323,12 +397,12 @@ function NavGroups({
                                   animate="open"
                                   exit="closed"
                                   variants={childListAccordion}
-                                  className="relative ml-[26px] overflow-hidden pl-3"
+                                  className="relative ml-[22px] overflow-hidden pl-3"
                                 >
-                                  {/* Bağlantı çizgisi: üstte belirgin, altta söner. */}
                                   <span
                                     aria-hidden
-                                    className="pointer-events-none absolute bottom-2 left-0 top-0 w-px bg-gradient-to-b from-[#efbfd0] via-[#f6dde6] to-transparent"
+                                    className="pointer-events-none absolute bottom-2 left-0 top-0 w-px"
+                                    style={{ background: `linear-gradient(180deg, ${C.quartzDeep}, transparent)` }}
                                   />
                                   <div className="space-y-0.5 py-1">
                                     {it.children!.map((child) => {
@@ -338,24 +412,31 @@ function NavGroups({
                                           <Link
                                             href={child.href}
                                             onClick={onNavigate}
-                                            className={`group/child relative flex min-h-9 items-center gap-2.5 rounded-[11px] px-2.5 py-1.5 text-[12px] transition-colors ${
+                                            aria-current={childActive ? 'page' : undefined}
+                                            className={`group/child relative flex min-h-9 cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-[12px] transition-colors duration-200 ${
+                                              childActive ? 'font-semibold' : 'hover:bg-[#FDF7F9]'
+                                            } ${focusRing}`}
+                                            style={
                                               childActive
-                                                ? 'bg-[#fff4f8] font-semibold text-[#c85776]'
-                                                : 'text-[#6f5764] hover:bg-[#fff8fb] hover:text-[#c85776]'
-                                            }`}
+                                                ? { background: C.wash, color: C.oxblood }
+                                                : { color: C.mute }
+                                            }
                                           >
                                             <span
-                                              className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all ${
-                                                childActive
-                                                  ? 'bg-[#ef6f94] shadow-[0_0_8px_rgba(239,111,148,0.45)] ring-2 ring-white'
-                                                  : 'bg-[#e9c2d0] group-hover/child:bg-[#ef6f94]'
-                                              }`}
+                                              aria-hidden
+                                              className="h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-200"
+                                              style={{ background: childActive ? C.rose : C.quartzDeep }}
                                             />
                                             <span className="flex-1 truncate">
                                               <Highlight text={child.label} query={query} />
                                             </span>
                                             {child.badge !== undefined && (
-                                              <span className="text-[10px] font-semibold text-[#8a6a79]">{child.badge}</span>
+                                              <span
+                                                className="text-[10px] font-semibold tabular-nums"
+                                                style={{ color: C.soft }}
+                                              >
+                                                {child.badge}
+                                              </span>
                                             )}
                                           </Link>
                                         </motion.div>
@@ -366,7 +447,7 @@ function NavGroups({
                               )}
                             </AnimatePresence>
                           )}
-                        </div>
+                        </motion.div>
                       )
                     })}
                   </div>
@@ -397,13 +478,17 @@ function UserBlock({ user, pathname, compact = false, collapsed = false }: UserB
     if (typeof window !== 'undefined') window.location.href = '/login'
   }
 
+  const iconBtn =
+    'grid h-8 w-8 cursor-pointer place-items-center rounded-[10px] transition-colors hover:bg-[#FFF1F6] hover:text-[#C85776] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]'
+
   // Ray modu: yalnız avatar + çıkış, dikey dizilir.
   if (collapsed) {
     return (
-      <div className="flex flex-col items-center gap-2 border-t border-[#ead8df]/75 px-2 py-3">
+      <div className="flex flex-col items-center gap-2 px-2 py-3" style={{ borderTop: `1px solid ${C.quartz}` }}>
         <span
           title={`${user.name} · ${user.role}`}
-          className="grid h-9 w-9 place-items-center rounded-[12px] bg-gradient-to-br from-[#fff1f6] to-white font-display text-[13px] text-[#7b3d55] ring-1 ring-[#efbfd0]"
+          className="grid h-9 w-9 place-items-center rounded-[12px] font-display text-[13px]"
+          style={{ background: C.wash, color: C.oxblood, boxShadow: `inset 0 0 0 1px ${C.quartzDeep}` }}
         >
           {user.avatar}
         </span>
@@ -412,80 +497,73 @@ function UserBlock({ user, pathname, compact = false, collapsed = false }: UserB
           onClick={signOut}
           title="Oturumu kapat"
           aria-label="Oturumu kapat"
-          className="grid h-8 w-8 place-items-center rounded-[10px] text-[#a3707f] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+          className={iconBtn}
+          style={{ color: C.soft }}
         >
-          <LogOut className="h-3.5 w-3.5" strokeWidth={1.7} />
+          <LogOut className="h-3.5 w-3.5" strokeWidth={1.8} />
         </button>
       </div>
     )
   }
 
   return (
-    <div className={`${compact ? '' : 'border-t border-[#ead8df]/75 p-3.5'}`}>
+    <div className={compact ? '' : 'p-3'} style={compact ? undefined : { borderTop: `1px solid ${C.quartz}` }}>
       {selectedBranch && !isPlatform && !compact && (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          className="relative mb-3 overflow-hidden rounded-[18px] border border-[#efbfd0]/80 bg-gradient-to-br from-[#fff1f6] via-white to-transparent px-3 py-2.5 shadow-[0_12px_32px_-28px_rgba(150,78,104,0.45)]"
+        <div
+          className="mb-2.5 rounded-[14px] px-3 py-2.5"
+          style={{ background: C.wash, boxShadow: `inset 0 0 0 1px ${C.quartzDeep}` }}
         >
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </span>
-            <span className="text-[10px] font-semibold tracking-tight text-[#c85776]">Seçili kapsam</span>
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: C.rose }}>
+              Seçili kapsam
+            </span>
           </div>
-          <div className="mt-1 truncate text-[11.5px] font-semibold text-[#352432]">{selectedInstitution?.name}</div>
-          <div className="mt-0.5 truncate text-[10.5px] text-[#705a66]">
+          <div className="mt-1 truncate text-[11.5px] font-semibold" style={{ color: C.ink }}>
+            {selectedInstitution?.name}
+          </div>
+          <div className="mt-0.5 truncate text-[10.5px]" style={{ color: C.mute }}>
             {selectedBranch.name} · {selectedBranch.city}
           </div>
-          <motion.span
-            aria-hidden
-            className="pointer-events-none absolute -right-8 -top-8 h-16 w-16 rounded-full bg-[#ffdce8]/80 blur-2xl"
-            animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.15, 1] }}
-            transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </motion.div>
+        </div>
       )}
 
-      <div className="group/user flex items-center gap-2.5 rounded-[16px] border border-[#f2e0e7] bg-white/70 p-2 transition-colors hover:border-[#efbfd0] hover:bg-white">
-        <motion.div
-          whileHover={{ scale: 1.04 }}
-          className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-gradient-to-br from-[#ffe3ec] to-[#ffd0e0] font-display text-[13px] text-[#7b3d55]"
+      <div
+        className="flex items-center gap-2.5 rounded-[14px] p-2 transition-colors"
+        style={{ background: C.chalk, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
+      >
+        <span
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] font-display text-[13px]"
+          style={{ background: C.wash, color: C.oxblood, boxShadow: `inset 0 0 0 1px ${C.quartzDeep}` }}
         >
-          <span className="relative z-10">{user.avatar}</span>
-          <motion.span
-            aria-hidden
-            animate={{ opacity: [0.25, 0.6, 0.25] }}
-            transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-            className="pointer-events-none absolute inset-0 rounded-[12px] ring-1 ring-[#ef6f94]/45"
-          />
-        </motion.div>
+          {user.avatar}
+        </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-semibold text-[#352432]">{user.name}</div>
-          <div className="truncate text-[10.5px] text-[#8a6a79]">{user.role}</div>
+          <div className="truncate text-[12px] font-semibold" style={{ color: C.ink }}>
+            {user.name}
+          </div>
+          <div className="truncate text-[10.5px]" style={{ color: C.mute }}>
+            {user.role}
+          </div>
         </div>
         {!isPlatform && (
-          <Link
-            href="/admin/ayarlar"
-            aria-label="Ayarlar"
-            title="Ayarlar"
-            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#a3707f] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
-          >
-            <Settings className="h-3.5 w-3.5" strokeWidth={1.7} />
+          <Link href="/admin/ayarlar" aria-label="Ayarlar" title="Ayarlar" className={iconBtn} style={{ color: C.soft }}>
+            <Settings className="h-3.5 w-3.5" strokeWidth={1.8} />
           </Link>
         )}
-        <motion.button
+        <button
           type="button"
-          whileTap={{ scale: 0.94 }}
           onClick={signOut}
-          className="grid h-8 w-8 place-items-center rounded-[10px] text-[#a3707f] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+          className={iconBtn}
+          style={{ color: C.soft }}
           aria-label="Oturumu kapat"
           title="Oturumu kapat"
         >
-          <LogOut className="h-3.5 w-3.5" strokeWidth={1.7} />
-        </motion.button>
+          <LogOut className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
       </div>
     </div>
   )
@@ -505,8 +583,11 @@ function NavSearch({
 }) {
   return (
     <div className="px-3 pt-3">
-      <div className="group flex items-center gap-2 rounded-[14px] border border-[#f2e0e7] bg-white/75 px-2.5 py-2 transition-colors focus-within:border-[#efbfd0] focus-within:bg-white focus-within:shadow-[0_12px_30px_-24px_rgba(150,78,104,0.6)]">
-        <Search className="h-3.5 w-3.5 shrink-0 text-[#c85776]" strokeWidth={1.9} />
+      <div
+        className="flex items-center gap-2 rounded-[12px] px-2.5 py-2 transition-shadow focus-within:shadow-[0_0_0_2px_#EFBFD0]"
+        style={{ background: C.chalk, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
+      >
+        <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={2} style={{ color: C.rose }} />
         <input
           ref={inputRef}
           value={value}
@@ -516,24 +597,33 @@ function NavSearch({
           }}
           placeholder="Sayfa ara"
           aria-label="Menüde sayfa ara"
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-[#352432] outline-none placeholder:text-[#a3707f]"
+          className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-[#8A6172]"
+          style={{ color: C.ink }}
         />
         {value ? (
           <button
             type="button"
             onClick={() => onChange('')}
             aria-label="Aramayı temizle"
-            className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[#a3707f] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+            className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full transition-colors hover:bg-[#FFF1F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]"
+            style={{ color: C.soft }}
           >
-            <X className="h-3 w-3" strokeWidth={2} />
+            <X className="h-3 w-3" strokeWidth={2.2} />
           </button>
         ) : (
-          <kbd className="shrink-0 rounded-[6px] border border-[#f2e0e7] bg-[#fff8fb] px-1.5 py-0.5 text-[10px] font-semibold text-[#a3707f]">/</kbd>
+          <kbd
+            className="shrink-0 rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold"
+            style={{ background: C.wash, color: C.soft }}
+          >
+            /
+          </kbd>
         )}
       </div>
       {value && (
-        <div className="mt-1.5 flex items-center gap-1 px-1 text-[10px] font-semibold text-[#8a6a79]">
-          <CornerDownLeft className="h-3 w-3 text-[#c85776]" strokeWidth={2} />
+        <div
+          className="mt-1.5 px-1 text-[10px] font-semibold"
+          style={{ color: resultCount > 0 ? C.rose : C.mute }}
+        >
           {resultCount > 0 ? `${resultCount} sayfa eşleşti` : 'Eşleşen sayfa yok'}
         </div>
       )}
@@ -543,6 +633,7 @@ function NavSearch({
 
 export default function Sidebar({ items, role, user, version = '1.0' }: SidebarProps) {
   const pathname = usePathname()
+  const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState<boolean>(false)
   const [collapsed, setCollapsed] = useState<boolean>(false)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
@@ -551,29 +642,6 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
   const [mobileQuery, setMobileQuery] = useState('')
   const [hint, setHint] = useState<RailHint | null>(null)
   const searchRef = useRef<HTMLInputElement | null>(null)
-
-  // Ray tercihi kullanıcıya ait — sunucuda okunamaz, ilk render sonrası yüklenir.
-  useEffect(() => {
-    try {
-      setCollapsed(window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1')
-    } catch {
-      /* depolama kapalıysa varsayılan geniş kalır */
-    }
-  }, [])
-
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev
-      try {
-        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? '1' : '0')
-      } catch {
-        /* yoksay */
-      }
-      if (next) setQuery('')
-      return next
-    })
-    setHint(null)
-  }, [])
 
   // "/" ya da Ctrl/⌘+K aramaya odaklanır; yazı alanındayken devreye girmez.
   useEffect(() => {
@@ -597,6 +665,30 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Ray tercihi kullanıcıya ait — sunucuda okunamaz, ilk boyamadan sonra yüklenir.
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1')
+    } catch {
+      /* depolama kapalıysa varsayılan geniş kalır */
+    }
+  }, [])
+
+  /** Ray modunu açar/kapatır ve tercihi kalıcı yazar. */
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? '1' : '0')
+      } catch {
+        /* depolama kapalıysa tercih kalıcı olmaz — davranış değişmez */
+      }
+      if (next) setQuery('')
+      return next
+    })
+    setHint(null)
   }, [])
 
   /** Aramaya göre süzülmüş liste: başlık eşleşirse item bütün, yalnız alt sayfa eşleşirse o alt küme. */
@@ -687,33 +779,24 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
 
   return (
     <>
+      {/* Klavye kullanıcısı menüyü atlayabilsin (nav-ağır sayfa kuralı). */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-[10px] focus:bg-white focus:px-3 focus:py-2 focus:text-[12px] focus:font-semibold focus:text-[#6C243C] focus:shadow-[0_10px_28px_-16px_rgba(150,78,104,0.8)] focus:outline-none focus:ring-2 focus:ring-[#C85776]"
+      >
+        İçeriğe geç
+      </a>
+
       {/* DESKTOP SIDEBAR */}
       <aside
-        className={`relative hidden h-screen shrink-0 flex-col border-r border-[#ead8df]/75 bg-white/85 text-[#352432] shadow-[18px_0_54px_-48px_rgba(150,78,104,0.52)] backdrop-blur-2xl transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:sticky lg:top-0 lg:z-30 lg:flex ${
+        style={{ background: C.porcelain }}
+        className={`relative hidden h-screen shrink-0 flex-col transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:sticky lg:top-0 lg:z-30 lg:flex ${
           collapsed ? 'w-[78px]' : 'w-[272px]'
         }`}
       >
-        {/* Sağ kenarda altın hairline — panelle sidebar'ı ayıran ince ışık. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-px"
-          style={{ background: 'linear-gradient(180deg, transparent, #f0d5c0 22%, #d9a441 52%, #f0d5c0 78%, transparent)' }}
-        />
+        {/* Sağ kenar hairline — aktif sekme buraya dayanıp çizgiyi kendi hizasında keser. */}
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-px" style={{ background: C.quartz }} />
 
-        {/* Aurora yıkaması */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-          <motion.div
-            className="absolute -left-12 top-8 h-40 w-40 rounded-full bg-[#ffdce8]/66 blur-[60px]"
-            animate={{ y: [0, 16, 0], opacity: [0.7, 1, 0.7] }}
-            transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <div className="absolute -right-8 top-1/3 h-32 w-32 rounded-full bg-white/85 blur-[50px]" />
-          <motion.div
-            className="absolute -left-10 bottom-24 h-44 w-44 rounded-full bg-[#f6b8cb]/36 blur-[70px]"
-            animate={{ y: [0, -18, 0], opacity: [0.55, 0.85, 0.55] }}
-            transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </div>
 
         {/* Ray anahtarı — kenara oturan yuvarlak düğme. */}
         <button
@@ -721,39 +804,54 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
           onClick={toggleCollapsed}
           aria-label={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
           title={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
-          className="absolute -right-3 top-[86px] z-30 grid h-6 w-6 place-items-center rounded-full border border-[#f2dbe4] bg-white text-[#a3707f] shadow-[0_10px_22px_-14px_rgba(150,78,104,0.85)] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+          className="absolute -right-3 top-[86px] z-40 grid h-6 w-6 cursor-pointer place-items-center rounded-full transition-colors hover:text-[#C85776] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]"
+          style={{
+            background: C.chalk,
+            color: C.soft,
+            boxShadow: `0 0 0 1px ${C.quartz}, 0 8px 20px -14px rgba(150,78,104,0.85)`,
+          }}
         >
-          <motion.span animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
-            <ChevronsLeft className="h-3.5 w-3.5" strokeWidth={2} />
+          <motion.span animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.28, ease: EASE }}>
+            <ChevronsLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
           </motion.span>
         </button>
 
         {/* LOGO */}
-        <div className={`relative border-b border-[#ead8df]/75 ${collapsed ? 'px-2 pb-4 pt-4' : 'px-5 pb-5 pt-5'}`}>
-          <Link href="/" className={`group flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-            <div className={`relative overflow-hidden ${collapsed ? 'h-10 w-10' : 'h-14 w-14'}`}>
+        <div
+          className={`relative ${collapsed ? 'px-2 pb-4 pt-4' : 'px-4 pb-4 pt-5'}`}
+          style={{ borderBottom: `1px solid ${C.quartz}` }}
+        >
+          <Link
+            href="/"
+            className={`group flex cursor-pointer items-center gap-3 rounded-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776] ${
+              collapsed ? 'justify-center' : ''
+            }`}
+          >
+            <div className={`relative shrink-0 overflow-hidden ${collapsed ? 'h-10 w-10' : 'h-12 w-12'}`}>
               <img
                 src="/logo.png"
                 alt="BeautyAsist logosu"
                 className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               />
-              <motion.span
-                aria-hidden
-                animate={{ opacity: [0, 0.7, 0] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-                className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-[#fff4f8]/35 to-transparent"
-              />
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <div className="beautyasist-text-gradient font-display text-[17px] leading-none tracking-[0.08em]">
+                <div className="beautyasist-text-gradient font-display text-[17px] leading-none tracking-[0.06em]">
                   BeautyAsist
                 </div>
-                <div className="mt-1.5 flex items-center gap-1">
-                  <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#b1798e] ring-1 ring-[#f6dde6]">
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span
+                    className="rounded-[5px] px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums"
+                    style={{ background: C.wash, color: C.rose }}
+                  >
                     v{version}
                   </span>
-                  <span className="truncate text-[10.5px] font-medium text-[#8a6a79]">{role}</span>
+                  <span
+                    className="truncate text-[10px] font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: C.soft }}
+                  >
+                    {role}
+                  </span>
                 </div>
               </div>
             )}
@@ -764,9 +862,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
           <NavSearch value={query} onChange={setQuery} inputRef={searchRef} resultCount={desktopItems.length} />
         )}
 
-        {/* Kaydırma alanı: üst/alt kenarda yumuşak solma maskesi. */}
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-white/90 to-transparent" />
           <NavGroups
             groups={groups}
             pathname={pathname}
@@ -779,11 +875,14 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             onHint={setHint}
             idPrefix="desktop"
             query={query}
+            tabbed={!collapsed}
           />
-          <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-white/90 to-transparent" />
 
           {!collapsed && query.trim() && desktopItems.length === 0 && (
-            <div className="mx-3 rounded-[14px] border border-dashed border-[#f2dbe4] bg-[#fff8fb] px-3 py-4 text-center text-[11.5px] text-[#705a66]">
+            <div
+              className="mx-3 rounded-[12px] px-3 py-4 text-center text-[11.5px]"
+              style={{ background: C.chalk, color: C.mute, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
+            >
               &ldquo;{query}&rdquo; için sayfa bulunamadı.
             </div>
           )}
@@ -800,9 +899,14 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -6 }}
-            transition={{ duration: 0.16 }}
-            style={{ top: hint.top }}
-            className="pointer-events-none fixed left-[86px] z-[80] hidden -translate-y-1/2 rounded-[10px] border border-[#f2dbe4] bg-white px-2.5 py-1.5 text-[11.5px] font-semibold text-[#7b3d55] shadow-[0_16px_36px_-24px_rgba(150,78,104,0.9)] lg:block"
+            transition={{ duration: reduceMotion ? 0 : 0.15 }}
+            style={{
+              top: hint.top,
+              background: C.chalk,
+              color: C.ink,
+              boxShadow: `0 0 0 1px ${C.quartz}, 0 14px 30px -20px rgba(150,78,104,0.9)`,
+            }}
+            className="pointer-events-none fixed left-[86px] z-[80] hidden -translate-y-1/2 rounded-[10px] px-2.5 py-1.5 text-[11.5px] font-semibold lg:block"
           >
             {hint.label}
           </motion.div>
@@ -810,29 +914,31 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
       </AnimatePresence>
 
       {/* MOBILE TOP BAR */}
-      <div className="fixed inset-x-0 top-0 z-50 border-b border-[#ead8df]/75 bg-white/90 backdrop-blur-xl lg:hidden">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 18%, #d9a441 50%, #ffd3df 82%, transparent)' }}
-        />
+      <div
+        className="fixed inset-x-0 top-0 z-50 backdrop-blur-xl lg:hidden"
+        style={{ background: 'rgba(253,247,249,0.92)', borderBottom: `1px solid ${C.quartz}` }}
+      >
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <motion.button
-            whileTap={{ scale: 0.94 }}
+          <button
+            type="button"
             onClick={() => setOpen(true)}
-            className="flex min-h-10 items-center gap-2 rounded-2xl border border-[#ead8df] bg-white/72 px-3 text-[11.5px] font-semibold text-[#6a4f5c] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[12px] px-3 text-[11.5px] font-semibold transition-colors hover:text-[#C85776] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]"
+            style={{ background: C.chalk, color: C.mute, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
           >
-            <Menu className="h-4 w-4" /> Menü
-          </motion.button>
-          <Link href={activeItem?.href || '/admin'} className="min-w-0 text-center">
-            <div className="beautyasist-text-gradient font-display text-[17px] leading-none">BeautyAsist</div>
-            <div className="mt-1 truncate text-[10.5px] text-[#8a6a79]">
+            <Menu className="h-4 w-4" strokeWidth={2} /> Menü
+          </button>
+          <Link href={activeItem?.href || '/admin'} className="min-w-0 cursor-pointer text-center">
+            <div className="beautyasist-text-gradient font-display text-[16px] leading-none">BeautyAsist</div>
+            <div className="mt-1 truncate text-[10px]" style={{ color: C.mute }}>
               {role} · {activeItem?.label}
             </div>
           </Link>
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#ffe3ec] to-[#ffd0e0] font-display text-xs text-[#7b3d55]">
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] font-display text-xs"
+            style={{ background: C.wash, color: C.oxblood, boxShadow: `inset 0 0 0 1px ${C.quartzDeep}` }}
+          >
             {user.avatar}
-          </div>
+          </span>
         </div>
       </div>
 
@@ -844,8 +950,9 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            className="fixed inset-0 z-[70] bg-[#4a2335]/18 backdrop-blur-sm lg:hidden"
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[70] backdrop-blur-sm lg:hidden"
+            style={{ background: 'rgba(74,35,53,0.18)' }}
             onClick={() => setOpen(false)}
           >
             <motion.div
@@ -853,30 +960,43 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', stiffness: 360, damping: 32 }}
-              className="relative h-full w-[min(88vw,360px)] overflow-y-auto border-r border-[#ead8df]/75 bg-white/96 text-[#352432] shadow-2xl shadow-[#b86a87]/18"
+              transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+              className="relative h-full w-[min(88vw,340px)] overflow-y-auto"
+              style={{ background: C.porcelain, boxShadow: '24px 0 60px -40px rgba(150,78,104,0.6)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#ead8df]/75 bg-white/95 px-4 py-4 backdrop-blur-xl">
+              <div
+                className="sticky top-0 z-10 flex items-center justify-between px-4 py-4"
+                style={{ background: C.porcelain, borderBottom: `1px solid ${C.quartz}` }}
+              >
                 <div className="min-w-0">
-                  <div className="beautyasist-text-gradient font-display text-xl">BeautyAsist</div>
-                  <div className="mt-1 flex items-center gap-1">
-                    <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#b1798e] ring-1 ring-[#f6dde6]">
+                  <div className="beautyasist-text-gradient font-display text-[18px] leading-none">BeautyAsist</div>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span
+                      className="rounded-[5px] px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums"
+                      style={{ background: C.wash, color: C.rose }}
+                    >
                       v{version}
                     </span>
-                    <span className="truncate text-[10.5px] font-medium text-[#8a6a79]">{role}</span>
+                    <span
+                      className="truncate text-[10px] font-semibold uppercase tracking-[0.1em]"
+                      style={{ color: C.soft }}
+                    >
+                      {role}
+                    </span>
                   </div>
                 </div>
-                <motion.button
-                  whileTap={{ scale: 0.92 }}
+                <button
+                  type="button"
                   onClick={() => setOpen(false)}
-                  className="grid h-10 w-10 place-items-center rounded-2xl border border-[#ead8df] text-[#8a6a79] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                  className="grid h-11 w-11 cursor-pointer place-items-center rounded-[12px] transition-colors hover:text-[#C85776] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]"
+                  style={{ background: C.chalk, color: C.mute, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
                   aria-label="Menüyü kapat"
                 >
-                  <X className="h-4 w-4" />
-                </motion.button>
+                  <X className="h-4 w-4" strokeWidth={2} />
+                </button>
               </div>
-              <div className="border-b border-[#ead8df]/75 p-4">
+              <div className="p-4" style={{ borderBottom: `1px solid ${C.quartz}` }}>
                 <UserBlock user={user} pathname={pathname} compact />
               </div>
               <NavSearch value={mobileQuery} onChange={setMobileQuery} resultCount={mobileDrawerItems.length} />
@@ -896,7 +1016,10 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
                 mobile
               />
               {mobileQuery.trim() && mobileDrawerItems.length === 0 && (
-                <div className="mx-3 mb-4 rounded-[14px] border border-dashed border-[#f2dbe4] bg-[#fff8fb] px-3 py-4 text-center text-[11.5px] text-[#705a66]">
+                <div
+                  className="mx-3 mb-4 rounded-[12px] px-3 py-4 text-center text-[11.5px]"
+                  style={{ background: C.chalk, color: C.mute, boxShadow: `inset 0 0 0 1px ${C.quartz}` }}
+                >
                   &ldquo;{mobileQuery}&rdquo; için sayfa bulunamadı.
                 </div>
               )}
@@ -906,7 +1029,11 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
       </AnimatePresence>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[#ead8df]/75 bg-white/92 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-18px_44px_-34px_rgba(150,78,104,0.48)] backdrop-blur-xl lg:hidden">
+      <nav
+        aria-label="Hızlı gezinme"
+        className="fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
+        style={{ background: 'rgba(253,247,249,0.94)', borderTop: `1px solid ${C.quartz}` }}
+      >
         <div className="grid grid-cols-5 gap-1">
           {mobileItems.map((it) => {
             const active = isActivePath(pathname, it.href)
@@ -915,19 +1042,25 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
               <Link
                 key={it.href}
                 href={it.href}
-                className={`relative flex min-h-[56px] flex-col items-center justify-center gap-1 px-1 text-center text-[10px] leading-tight transition-colors ${
-                  active ? 'text-[#c85776]' : 'text-[#6f5764] hover:text-[#c85776]'
-                }`}
+                aria-current={active ? 'page' : undefined}
+                className="relative flex min-h-[56px] cursor-pointer flex-col items-center justify-center gap-1 rounded-[12px] px-1 text-center text-[10px] leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85776]"
+                style={{ color: active ? C.oxblood : C.mute }}
               >
                 {active && (
                   <motion.span
                     layoutId="mobile-nav-active"
-                    className="absolute inset-0 rounded-2xl bg-gradient-to-b from-[#fff1f6] to-white ring-1 ring-[#f6dde6]"
-                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    aria-hidden
+                    className="absolute inset-0 rounded-[12px]"
+                    style={{ background: C.chalk, boxShadow: `inset 0 0 0 1px ${C.quartzDeep}` }}
+                    transition={TAB_SPRING}
                   />
                 )}
                 <span className="relative z-10 flex flex-col items-center gap-1">
-                  <Icon className="h-4 w-4" strokeWidth={1.7} />
+                  <Icon
+                    className="h-4 w-4"
+                    strokeWidth={active ? 2.1 : 1.7}
+                    style={{ color: active ? C.rose : C.mute }}
+                  />
                   <span className="line-clamp-2">{it.label}</span>
                 </span>
               </Link>
