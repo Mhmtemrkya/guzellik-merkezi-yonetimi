@@ -140,6 +140,21 @@ class _LoginScreenState extends State<LoginScreen> {
           .map((e) => e.cast<String, dynamic>())
           .toList();
 
+  String? _tenantIdOf(Map<String, dynamic>? tenant) {
+    final raw = '${tenant?['tenantId'] ?? tenant?['id'] ?? ''}';
+    return raw.isEmpty ? null : raw;
+  }
+
+  String? _branchIdOf(Map<String, dynamic>? branch) {
+    final raw = '${branch?['branchId'] ?? branch?['id'] ?? ''}';
+    return raw.isEmpty ? null : raw;
+  }
+
+  /// Varsayılan (merkez) şube, yoksa ilk şube.
+  Map<String, dynamic>? _defaultBranchOf(List<Map<String, dynamic>> branches) => branches.isEmpty
+      ? null
+      : branches.firstWhere((e) => e['isDefault'] == true, orElse: () => branches.first);
+
   // ----------------------------------- Gönder -----------------------------------
 
   Future<void> submit() async {
@@ -193,16 +208,41 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
 
-    // Çok şubeli kurum (ör. kurum yöneticisi): önce hangi şubeyle gireceğini seçtir.
-    // Tek şube ya da PlatformAdmin'de doğrudan giriş.
-    final branches = tenants.isEmpty ? const <Map<String, dynamic>>[] : _branchesOf(tenants.first);
-    if (role != 'PlatformAdmin' && branches.length > 1) {
-      final chosen = await _pickBranch(branches);
-      if (!mounted || chosen == null) return; // iptal
-      await _doLogin(chosen);
-    } else {
-      await _doLogin(branchId);
+    // PlatformAdmin kuruma bağlı değildir → seçim sorulmaz.
+    if (role == 'PlatformAdmin') {
+      await _doLogin(null, null);
+      return;
     }
+
+    // KAPSAM SEÇİMİ: önce kurum (çok kurumluysa), sonra şube (çok şubeliyse).
+    //
+    // Kurum seçimi eskiden HİÇ sorulmuyordu: `tenants.first` alınıyordu ve iki kuruma bağlı bir
+    // yönetici mobilden hep aynı kuruma düşüyor, diğerine hiç giremiyordu. (Web'de kapsam modalı
+    // ikisini de soruyor.)
+    //
+    // Seçimler YEREL değişkende taşınır; setState aynı çağrıda okunamayacağı için tenantId/branchId
+    // state'lerine güvenilmez — web'deki giriş hatasının kök nedeni tam olarak buydu.
+    var chosenTenant = tenants.isEmpty ? null : tenants.first;
+    if (tenants.length > 1) {
+      chosenTenant = await _pickTenant(tenants);
+      if (!mounted || chosenTenant == null) return; // iptal
+    }
+
+    final branches = _branchesOf(chosenTenant);
+    var chosenBranchId = _branchIdOf(_defaultBranchOf(branches));
+    if (branches.length > 1) {
+      final picked = await _pickBranch(branches);
+      if (!mounted || picked == null) return; // iptal
+      chosenBranchId = picked;
+    }
+
+    // Satır içi özet de seçimi yansıtsın.
+    setState(() {
+      tenantId = _tenantIdOf(chosenTenant);
+      branchId = chosenBranchId;
+    });
+
+    await _doLogin(_tenantIdOf(chosenTenant), chosenBranchId);
   }
 
   /// WhatsApp OTP adım 1: kimlik geçerliyse kodu iste, kod adımına geç.
@@ -238,7 +278,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _doLogin(String? chosenBranchId) async {
+  /// Seçilen kapsamla giriş yapar. Kurum ve şube PARAMETRE olarak gelir: state'e bakmak,
+  /// seçim aynı çağrıda yapıldığında bayat değer okumak demektir.
+  Future<void> _doLogin(String? chosenTenantId, String? chosenBranchId) async {
     setState(() {
       loading = true;
       error = null;
@@ -248,7 +290,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: emailController.text,
         password: passwordController.text,
         role: role!,
-        tenantId: role == 'PlatformAdmin' ? null : tenantId,
+        tenantId: role == 'PlatformAdmin' ? null : chosenTenantId,
         branchId: role == 'PlatformAdmin' ? null : chosenBranchId,
         remember: remember,
       );
@@ -257,6 +299,74 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  /// Çok kurumlu hesapta giriş yapılacak kurumu seçtiren alt sayfa. İptal edilirse null döner.
+  Future<Map<String, dynamic>?> _pickTenant(List<Map<String, dynamic>> options) {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Kurum seçin',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                const SizedBox(height: 4),
+                const Text('Hesabınız birden fazla kuruma bağlı. Devam etmek istediğiniz kurumu seçin.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final t = options[i];
+                      final branchCount = _branchesOf(t).length;
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: AppColors.rose,
+                            child: Icon(Icons.apartment_rounded, color: AppColors.primaryDark),
+                          ),
+                          title: Text(t['tenantName']?.toString() ?? t['name']?.toString() ?? 'Kurum',
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text('$branchCount şube'),
+                          trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 15, color: AppColors.primary),
+                          onTap: () => Navigator.of(sheetContext).pop(t),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// Çok şubeli kurumda giriş yapılacak şubeyi seçtiren alt sayfa. İptal edilirse null döner.
