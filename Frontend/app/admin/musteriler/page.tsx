@@ -529,7 +529,7 @@ function MusterilerPageInner() {
       />
 
       <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
-        <ApiStateNotice loading={loading} error={error} empty={!loading && !error && total === 0} emptyMessage="Customer API döndü ama müşteri kaydı yok." />
+        <ApiStateNotice loading={loading} error={error} empty={!loading && !error && total === 0} emptyMessage="Henüz müşteri kaydı yok. “Yeni Müşteri” ile ilkini ekleyebilirsin." />
         {(actionError || actionMsg) && (
           <div className={`rounded-[12px] border px-4 py-2.5 text-[12px] ${actionError ? 'border-rose-300/30 bg-rose-50 text-rose-700' : 'border-emerald-300/30 bg-emerald-50 text-emerald-700'}`}>{actionError || actionMsg}</div>
         )}

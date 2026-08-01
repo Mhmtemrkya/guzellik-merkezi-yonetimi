@@ -289,7 +289,11 @@ function MetricStat({
             {value}
           </div>
         </div>
-        <SparkArea values={spark} id={id} />
+        {/* SİNYAL YOKSA GRAFİK YOK. Seri gerçek veriden geliyor ama ayın tamamı tek güne
+            yığıldığında dört kart da aynı şekli çiziyordu (düz çizgi + sonda ani sıçrama) —
+            "Tahmini ciro" ile "Bekleyen" aynı eğri. Uydurma grafik izlenimi veriyordu.
+            En az iki farklı dolu kova yoksa çizmiyoruz. */}
+        {spark.filter((v) => v > 0).length >= 2 && <SparkArea values={spark} id={id} />}
       </div>
     </motion.div>
   )
@@ -356,7 +360,7 @@ function RandevularPageInner() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
   // Randevu-içi adisyon kartı + günlük adisyon kartı modalları (Ön Muhasebe'ye gitmeden)
-  const [adisyonModal, setAdisyonModal] = useState<{ open: boolean; customerId?: string; customerName?: string }>({ open: false })
+  const [adisyonModal, setAdisyonModal] = useState<{ open: boolean; customerId?: string; customerName?: string; staffMemberId?: string }>({ open: false })
   const [dailyOpen, setDailyOpen] = useState(false)
   // Randevu tamamlama + ödeme kutusu hedefi (günlük kart, liste, onay kutusu ortak kullanır).
   const [completeTarget, setCompleteTarget] = useState<{ appointmentId: string; customerId: string | null; customerName: string; fallbackAmount: number } | null>(null)
@@ -1015,7 +1019,9 @@ function RandevularPageInner() {
           loading={loading}
           error={error}
           empty={!loading && !error && appointments.length === 0}
-          emptyMessage="Appointment API döndü ama bu ay için randevu kaydı yok."
+          /* Kullanıcı "Appointment API" diye bir şey bilmiyor — arayüzde sistemin iç dili olmaz.
+             Boş ekran bir hata değil, bir davet: ne olduğunu söyle ve ne yapılacağını göster. */
+          emptyMessage="Bu ay için henüz randevu yok. Sağ üstteki “Yeni Randevu” ile ilk kaydı oluşturabilirsin."
         />
 
         {/* Kurum yöneticisi aksiyon kutusu: saati gelen randevular + onay bekleyen taslaklar */}
@@ -1085,26 +1091,13 @@ function RandevularPageInner() {
           />
           <div className="relative flex flex-col gap-3 border-b border-[#ead8df]/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="flex items-center gap-4">
-              {/* Bugün date pill — sol başta stacked "Haz / 04" */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                className="hidden md:flex shrink-0 flex-col items-center justify-center border border-[#efbfd0]/75 bg-gradient-to-br from-[#3a1a2a] via-[#fff7fa] to-[#1d0d17] p-1.5 shadow-[0_8px_24px_-8px_rgba(240,170,194,0.45)]"
-              >
-                <div className="px-1 text-[9px] font-mono uppercase tracking-[0.22em] text-[#c85776]/70">
-                  {todayDate.toLocaleString('tr-TR', { month: 'short' })}
-                </div>
-                <div className="relative mt-0.5 flex h-10 w-12 items-center justify-center bg-gradient-to-br from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] font-display text-xl font-semibold tabular-nums text-[#2f1724]">
-                  {todayDate.getDate()}
-                  <motion.span
-                    aria-hidden
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/0 via-white/40 to-white/0"
-                  />
-                </div>
-              </motion.div>
+              {/* BUGÜN KUTUSU KALDIRILDI. İki sorunu vardı:
+                  1) Bugünün tarihini gösteriyordu ama başlığın yanında duruyordu — Mayıs'a
+                     gidince "AĞU 1 · Mayıs 2026" gibi okunuyor, hangi ayda olduğun karışıyordu.
+                  2) Açık pembe kartın içinde neredeyse siyah bir gradient (#3a1a2a → #1d0d17)
+                     kullanıyordu; çevresindeki dille uyumsuzdu.
+                  Bugüne dönmek için zaten sağda "Bugün" düğmesi var, bugünün günü de
+                  ızgarada daire ile işaretli. */}
               <div>
                 <div className="armo-pill !text-[9px]">
                   <span className="armo-pill-dot" />
@@ -1119,8 +1112,14 @@ function RandevularPageInner() {
                 >
                   <span className="armo-shimmer">{monthLabel(`${monthKey}-01`)}</span>
                 </motion.div>
-                <div className="mt-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#c85776]/55">
-                  {appointments.length} randevu · {appointments.filter((r) => r.status === 'tamamlandi').length} tamamlandı
+                {/* Ay özeti — mono/uppercase yerine düz okunur metin; sayılar vurgulu. */}
+                <div className="mt-1.5 text-[12px] text-[#705a66]">
+                  <span className="font-semibold text-[#241923]">{appointments.length}</span> randevu
+                  <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
+                  <span className="font-semibold text-[#241923]">
+                    {appointments.filter((r) => r.status === 'tamamlandi').length}
+                  </span>{' '}
+                  tamamlandı
                 </div>
               </div>
             </div>
@@ -1133,7 +1132,7 @@ function RandevularPageInner() {
                   whileHover={{ y: -1 }}
                   type="button"
                   onClick={jumpToToday}
-                  className="inline-flex items-center gap-1.5 border border-[#efbfd0]/75 bg-gradient-to-r from-[#f0aac2]/12 to-[#ffd3df]/16 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776] shadow-[0_6px_16px_-6px_rgba(240,170,194,0.5)] transition-colors hover:from-[#f0aac2]/22 hover:to-[#ffd3df]/26"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3.5 py-2 text-[11.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
                   title="Bugüne dön"
                 >
                   <Calendar className="h-3.5 w-3.5" strokeWidth={1.6} />
@@ -1145,7 +1144,7 @@ function RandevularPageInner() {
                 whileHover={{ scale: 1.05, x: -1 }}
                 type="button"
                 onClick={() => moveMonth(-1)}
-                className="grid h-9 w-9 place-items-center border border-[#ead8df]/70 bg-[#fff4f8]/[0.03] transition-colors hover:border-[#efbfd0]/75 hover:bg-[#f0aac2]/8"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
                 title="Önceki ay"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -1155,19 +1154,19 @@ function RandevularPageInner() {
                 whileHover={{ scale: 1.05, x: 1 }}
                 type="button"
                 onClick={() => moveMonth(1)}
-                className="grid h-9 w-9 place-items-center border border-[#ead8df]/70 bg-[#fff4f8]/[0.03] transition-colors hover:border-[#efbfd0]/75 hover:bg-[#f0aac2]/8"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
                 title="Sonraki ay"
               >
                 <ChevronRight className="h-4 w-4" />
               </motion.button>
             </div>
           </div>
-          <div className="relative grid grid-cols-7 gap-px bg-gradient-to-br from-[#f0aac2]/14 via-[#fff4f8]/8 to-[#d48aa7]/14">
+          <div className="relative grid grid-cols-7 gap-px bg-[#f3e4ea]">
             {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d, idx) => (
               <div
                 key={d}
-                className={`bg-gradient-to-b from-white to-[#2a1320] px-3 py-3 text-center text-[10px] font-mono uppercase tracking-[0.24em] ${
-                  idx >= 5 ? 'text-[#c85776]/55' : 'text-[#352432]/55'
+                className={`bg-[#fffafc] px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.16em] ${
+                  idx >= 5 ? 'text-[#a3576f]' : 'text-[#705a66]'
                 }`}
               >
                 {d}
@@ -1895,9 +1894,11 @@ function RandevularPageInner() {
         loadOpenAdisyon={loadOpenAdisyon}
         onOpenAdisyon={
           canAdisyon
-            ? (customerId, customerName) => {
+            ? (customerId, customerName, staffMemberId) => {
                 setScheduleDate(null) // gün modalı z-[200]; adisyon modalı üstte görünsün diye kapat
-                setAdisyonModal({ open: true, customerId, customerName })
+                // Randevunun personeli adisyona taşınır: aynı kişi ikinci kez sorulmasın ve boş
+                // bırakılıp prim/satış atfı kaybolmasın.
+                setAdisyonModal({ open: true, customerId, customerName, staffMemberId })
               }
             : undefined
         }
@@ -1948,6 +1949,7 @@ function RandevularPageInner() {
         tenantId={tenantId}
         onChanged={reload}
         allowPick
+        defaultStaffMemberId={adisyonModal.staffMemberId}
       />
 
       {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}

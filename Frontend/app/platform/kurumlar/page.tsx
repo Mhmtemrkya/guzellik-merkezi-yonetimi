@@ -336,7 +336,7 @@ export default function PlatformKurumlarPage() {
           loading={loading}
           error={error}
           empty={!loading && !error && tenants.length === 0}
-          emptyMessage="Platform Tenant API döndü ama kurum kaydı yok."
+          emptyMessage="Henüz kurum kaydı yok."
         />
 
         {/* 4 KPI */}

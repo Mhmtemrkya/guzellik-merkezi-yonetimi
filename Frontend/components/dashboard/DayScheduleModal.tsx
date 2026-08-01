@@ -246,48 +246,32 @@ interface ColumnDef {
 // KPI kartı
 // ---------------------------------------------------------------------------
 
-function KpiCard({
+/** Özet şeridinde tek bir sayı — ikon + değer + etiket, tek satır. */
+function Stat({
   icon: Icon,
-  label,
-  value,
-  prev,
-  prevLabel = 'Dün',
-  delta,
-  invertDelta,
   tone,
+  value,
+  label,
+  strong,
 }: {
   icon: typeof CalendarDays
-  label: string
-  value: string
-  prev?: string
-  /** Önceki dönem etiketi (Dün / Geçen hafta / Geçen ay). */
-  prevLabel?: string
-  /** Önceki döneme göre değişim: ok yönü işarete göre; null ise gizlenir. */
-  delta?: number | null
-  /** true ise azalma "iyi" (ör. İptal) — renk tersine döner. */
-  invertDelta?: boolean
   tone: string
+  value: string
+  label: string
+  strong?: boolean
 }) {
-  const good = delta != null && (invertDelta ? delta < 0 : delta > 0)
   return (
-    <div className="flex min-w-[150px] flex-1 items-start gap-2.5 rounded-[16px] border border-[#efe1e7] bg-white px-3.5 py-3 shadow-[0_10px_26px_-22px_rgba(200,87,118,0.5)]">
-      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[11px] ${tone}`}>
-        <Icon className="h-4 w-4" strokeWidth={1.8} />
+    <span className="inline-flex items-baseline gap-1.5">
+      <Icon className={`h-3.5 w-3.5 shrink-0 self-center ${tone}`} strokeWidth={1.9} />
+      <span
+        className={`font-display tabular-nums leading-none text-[#241923] ${
+          strong ? 'text-[16px] font-extrabold' : 'text-[14px] font-bold'
+        }`}
+      >
+        {value}
       </span>
-      <div className="min-w-0">
-        <div className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#8a7480]">{label}</div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <span className="font-display text-[19px] font-bold leading-none text-[#241923]">{value}</span>
-          {delta != null && delta !== 0 && (
-            <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${good ? 'text-emerald-600' : 'text-rose-500'}`}>
-              {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-              {Math.abs(delta)}
-            </span>
-          )}
-        </div>
-        {prev && <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">{prevLabel}: {prev}</div>}
-      </div>
-    </div>
+      <span className="text-[11.5px] text-[#705a66]">{label}</span>
+    </span>
   )
 }
 
@@ -330,7 +314,7 @@ export interface DayScheduleModalProps {
   /** Seçilen randevunun müşterisinin açık adisyonunu + cari borcunu getir (panelde ödeme/cari için). */
   loadOpenAdisyon?: (customerId: string, customerName?: string) => Promise<PaymentInfo | null>
   /** Müşterinin adisyon kartını modal olarak aç (kalem/satış, ödeme/peşinat, onay, silme). */
-  onOpenAdisyon?: (customerId: string, customerName?: string) => void
+  onOpenAdisyon?: (customerId: string, customerName?: string, staffMemberId?: string) => void
   /** Müşteriden doğrudan tahsilat al (cari hesap ödeme modalı). accountId biliniyorsa iletilir. */
   onCollect?: (customerId: string, customerName?: string, accountId?: string) => void
   /** Aktif bekleme listesi (sağ ray "Bekleme Listesi" kartı). */
@@ -390,6 +374,8 @@ export default function DayScheduleModal({
   // Sürükle-bırak: taşınan randevu + üzerinde gezilen sütun/konum göstergesi.
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropInfo, setDropInfo] = useState<{ colKey: string; startMin: number } | null>(null)
+  /** Boş slot ipucu: imlecin hangi sütunda, hangi saate denk geldiği. */
+  const [hoverSlot, setHoverSlot] = useState<{ colKey: string; startMin: number } | null>(null)
   // Portal ile body'ye taşımak için (sidebar dahil her şeyin önünde) — SSR guard.
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
@@ -711,7 +697,8 @@ export default function DayScheduleModal({
   const dragAllowed = (a: Appointment): boolean => canDrag && a.status !== 'iptal' && a.status !== 'tamamlandi'
 
   // Bir sütun üzerindeki fare Y'sinden 15dk'ya yuvarlanmış başlangıç dakikasını hesapla.
-  const snappedMinFrom = (e: React.DragEvent<HTMLDivElement>): number => {
+  /** İmleç konumunu 15 dakikaya yuvarlar. Hem sürükleme hem de boş-slot ipucu kullanır. */
+  const snappedMinFrom = (e: { currentTarget: HTMLDivElement; clientY: number }): number => {
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     const raw = startHour * 60 + (y / PX_PER_HOUR) * 60
@@ -819,39 +806,42 @@ export default function DayScheduleModal({
               </div>
             </div>
 
-            {/* ===================== KPI ŞERİDİ ===================== */}
-            <div className="flex shrink-0 items-stretch gap-2.5 overflow-x-auto border-b border-[#ead8df]/70 bg-[#fffafc] px-4 py-3 sm:px-5">
-              <KpiCard icon={CalendarDays} label={`${rangeLabel} Randevu`} value={String(cur.randevu)} prev={String(prev.randevu)} prevLabel={prevLabel} delta={cur.randevu - prev.randevu} tone="bg-[#fbeaf1] text-[#c85776]" />
-              {view === 'day' ? (
-                <KpiCard icon={CalendarClock} label="Boş Slot" value={String(bosSlot)} tone="bg-sky-50 text-sky-600" />
-              ) : (
-                <KpiCard icon={CheckCircle2} label="Tamamlandı" value={String(cur.completed)} prev={String(prev.completed)} prevLabel={prevLabel} delta={cur.completed - prev.completed} tone="bg-emerald-50 text-emerald-600" />
+            {/* ===================== ÖZET ŞERİDİ =====================
+                Eskiden 6 ayrı KPI kartıydı ve dikeyde ~85px yiyordu; üstelik çoğu
+                sıfır gösteriyordu ("Bekleyen onay 0", "İptal 0") ve "Boş slot 56"
+                bir içgörü değil gürültüydü. Bu modalın işi ÇİZELGEYİ göstermek —
+                alan çizelgeye verildi. Sayılar tek satırda, SIFIR OLANLAR GİZLİ:
+                ekranda kalan her sayı gerçekten bir şey söylüyor. */}
+            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[#ead8df]/70 bg-[#fffafc] px-4 py-2 sm:px-5">
+              <Stat icon={CalendarDays} tone="text-[#c85776]" value={String(cur.randevu)} label="randevu" strong />
+              {cur.completed > 0 && (
+                <Stat icon={CheckCircle2} tone="text-emerald-600" value={String(cur.completed)} label="tamamlandı" />
               )}
-              <KpiCard icon={Hourglass} label="Bekleyen Onay" value={String(cur.onay)} prev={String(prev.onay)} prevLabel={prevLabel} delta={cur.onay - prev.onay} tone="bg-amber-50 text-amber-600" />
-              <KpiCard icon={Ban} label="İptal" value={String(cur.iptal)} prev={String(prev.iptal)} prevLabel={prevLabel} delta={cur.iptal - prev.iptal} invertDelta tone="bg-rose-50 text-rose-500" />
-              <KpiCard icon={Wallet} label="Gelir Tahmini" value={formatTL(cur.gelir)} prev={formatTL(prev.gelir)} prevLabel={prevLabel} tone="bg-emerald-50 text-emerald-600" />
-              {/* Doluluk (gün) / Tamamlanma (hafta·ay) — halkalı */}
-              <div className="flex min-w-[150px] flex-1 items-center gap-3 rounded-[16px] border border-[#efe1e7] bg-white px-3.5 py-3 shadow-[0_10px_26px_-22px_rgba(200,87,118,0.5)]">
-                <div className="relative grid h-11 w-11 shrink-0 place-items-center">
-                  <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90">
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f3e4ea" strokeWidth="4" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#2f9e72" strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(ringPct / 100) * 97.4} 97.4`} />
-                  </svg>
-                  <Percent className="absolute h-3.5 w-3.5 text-emerald-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#8a7480]">{ringLabel}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5">
-                    <span className="font-display text-[19px] font-bold leading-none text-[#241923]">%{ringPct}</span>
-                    {ringPct - ringPrevPct !== 0 && (
-                      <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${ringPct - ringPrevPct > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {ringPct - ringPrevPct > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {Math.abs(ringPct - ringPrevPct)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 truncate text-[10px] text-[#a58d99]">{prevLabel}: %{ringPrevPct}</div>
-                </div>
+              {cur.onay > 0 && (
+                <Stat icon={Hourglass} tone="text-amber-600" value={String(cur.onay)} label="onay bekliyor" />
+              )}
+              {cur.iptal > 0 && <Stat icon={Ban} tone="text-rose-500" value={String(cur.iptal)} label="iptal" />}
+              {cur.gelir > 0 && (
+                <Stat icon={Wallet} tone="text-emerald-600" value={formatTL(cur.gelir)} label="tahmini gelir" />
+              )}
+              {view === 'day' && <Stat icon={CalendarClock} tone="text-sky-600" value={String(bosSlot)} label="boş slot" />}
+
+              {/* Doluluk — tek anlamlı oran; ince çubukla, halka yerine. */}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-[11.5px] font-medium text-[#705a66]">{ringLabel}</span>
+                <span className="h-1.5 w-20 overflow-hidden rounded-full bg-[#f3e4ea]">
+                  <span
+                    className="block h-full rounded-full bg-gradient-to-r from-[#c7768f] to-[#8e3f5b] transition-[width] duration-500"
+                    style={{ width: `${Math.min(100, ringPct)}%` }}
+                  />
+                </span>
+                <span className="font-display text-[14px] font-extrabold tabular-nums leading-none text-[#241923]">%{ringPct}</span>
+                {ringPct - ringPrevPct !== 0 && (
+                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${ringPct - ringPrevPct > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {ringPct - ringPrevPct > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {Math.abs(ringPct - ringPrevPct)}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -930,7 +920,7 @@ export default function DayScheduleModal({
                           const onLeave = col.id ? leaveIds.has(col.id) : false
                           const occ = colOcc(col)
                           return (
-                            <div key={col.id ?? 'none'} className={`group/hd relative flex flex-col items-center gap-1.5 border-l border-[#f3e4ea] px-2.5 py-3 text-center transition-colors first:border-l-0 ${onLeave ? 'bg-rose-50/50' : 'hover:bg-[#fff7fa]'}`}>
+                            <div key={col.id ?? 'none'} className={`group/hd relative flex flex-col items-center gap-1 border-l border-[#f3e4ea] px-2.5 py-2 text-center transition-colors first:border-l-0 ${onLeave ? 'bg-rose-50/50' : 'hover:bg-[#fff7fa]'}`}>
                               {col.id && canManageLeave ? (
                                 <button
                                   type="button"
@@ -951,25 +941,59 @@ export default function DayScheduleModal({
                               )}
                               {col.photoUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={col.photoUrl} alt={col.name} className={`h-11 w-11 shrink-0 rounded-full border-2 border-white object-cover shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`} />
+                                <img src={col.photoUrl} alt={col.name} className={`h-9 w-9 shrink-0 rounded-full border-2 border-white object-cover shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`} />
                               ) : col.id === null ? (
-                                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#fff4f8] text-[#b08aa0]">
-                                  <UserRound className="h-5 w-5" />
+                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#fff4f8] text-[#b08aa0]">
+                                  <UserRound className="h-4 w-4" />
                                 </span>
                               ) : (
-                                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[13px] font-bold text-[#7f4057] shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`}>
+                                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[12px] font-bold text-[#7f4057] shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`}>
                                   {initialsOf(col.name)}
                                 </span>
                               )}
-                              <div className="flex min-h-[34px] w-full items-center justify-center">
-                                <span className="line-clamp-2 text-[12.5px] font-semibold leading-tight text-[#241923]" title={col.name}>{col.name}</span>
-                              </div>
+                              <span className="w-full truncate text-[12.5px] font-semibold leading-tight text-[#241923]" title={col.name}>{col.name}</span>
+
+                              {/* GÜNLÜK KARNE — bu personelin bugünü tek satırda: kaç iş,
+                                  kaç saat dolu, ne kadar ciro. Sütuna bakan kişi "kim yoğun,
+                                  kim boş" sorusunu başlıktan cevaplıyor. */}
+                              {(() => {
+                                const live = col.appts.filter((a) => a.status !== 'iptal')
+                                const mins = live.reduce((sum, a) => sum + apptDur(a), 0)
+                                const gelir = live.reduce(
+                                  (sum, a) => sum + (a.price > 0 ? a.price : servicePrices?.[a.serviceDefinitionId ?? ''] ?? 0),
+                                  0,
+                                )
+                                return (
+                                  <div className="flex w-full items-center justify-center gap-1.5 text-[10px] tabular-nums text-[#705a66]">
+                                    <span className="font-semibold text-[#241923]">{live.length}</span>
+                                    <span>iş</span>
+                                    {mins > 0 && (
+                                      <>
+                                        <span aria-hidden className="text-[#d9c3cd]">·</span>
+                                        <span>{Math.round((mins / 60) * 10) / 10} sa</span>
+                                      </>
+                                    )}
+                                    {gelir > 0 && (
+                                      <>
+                                        <span aria-hidden className="text-[#d9c3cd]">·</span>
+                                        <span className="font-semibold text-[#8e3f5b]">{formatTL(gelir)}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                )
+                              })()}
+
                               <div className="flex items-center gap-1.5">
                                 {col.role && col.id !== null && (
                                   <span className="max-w-[86px] truncate rounded-full bg-[#f4edf0] px-1.5 py-0.5 text-[9px] font-medium text-[#9d8592]" title={col.role}>{col.role}</span>
                                 )}
                                 {occ != null && (
-                                  <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${occ >= 80 ? 'bg-emerald-50 text-emerald-600' : occ >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#a58d99]'}`}>%{occ}</span>
+                                  <span
+                                    title="Günlük doluluk"
+                                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${occ >= 80 ? 'bg-emerald-50 text-emerald-600' : occ >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#a58d99]'}`}
+                                  >
+                                    %{occ} dolu
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -1016,6 +1040,11 @@ export default function DayScheduleModal({
                                 onDragOver={draggingId && !onLeave ? (e) => { e.preventDefault(); setDropInfo({ colKey, startMin: snappedMinFrom(e) }) } : undefined}
                                 onDragLeave={draggingId ? () => setDropInfo((d) => (d?.colKey === colKey ? null : d)) : undefined}
                                 onDrop={draggingId ? (e) => handleDrop(col, e) : undefined}
+                                /* Boş saatte gezinirken hangi saate randevu açılacağını GÖSTER.
+                                   Eskiden yalnız imleç "copy" oluyordu; kullanıcı tıklamadan
+                                   hangi saate düşeceğini bilmiyordu. */
+                                onMouseMove={!draggingId && !onLeave && onCreateAt ? (e) => setHoverSlot({ colKey, startMin: snappedMinFrom(e) }) : undefined}
+                                onMouseLeave={() => setHoverSlot((h) => (h?.colKey === colKey ? null : h))}
                                 className={`relative border-l border-[#f3e4ea] first:border-l-0 ${onLeave ? 'cursor-not-allowed' : onCreateAt ? 'cursor-copy' : ''} ${draggingId && dropInfo?.colKey === colKey ? 'bg-[#fff1f6]/50' : ''}`}
                                 style={onLeave ? { backgroundImage: 'repeating-linear-gradient(45deg, rgba(244,63,94,0.07) 0, rgba(244,63,94,0.07) 6px, transparent 6px, transparent 12px)' } : undefined}
                                 title={onLeave ? 'Bu personel bugün izinli — randevu verilemez' : onCreateAt ? 'Boş saate tıklayıp randevu ekle' : undefined}
@@ -1026,6 +1055,21 @@ export default function DayScheduleModal({
                                     <div className="relative h-0.5 rounded bg-[#c85776]">
                                       <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[#c85776]" />
                                       <span className="absolute -top-4 left-1 rounded bg-[#c85776] px-1.5 py-0.5 text-[9px] font-bold text-white">{minutesToLabel(dropInfo.startMin)}</span>
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Boş slot ipucu — imlecin denk geldiği saat */}
+                                {!draggingId && !onLeave && onCreateAt && hoverSlot?.colKey === colKey && (
+                                  <div
+                                    className="pointer-events-none absolute inset-x-1 z-[1]"
+                                    style={{ top: ((hoverSlot.startMin - startHour * 60) / 60) * PX_PER_HOUR }}
+                                    aria-hidden
+                                  >
+                                    <div className="flex items-center gap-1.5 rounded-md border border-dashed border-[#e0b6c7] bg-white/90 px-1.5 py-0.5">
+                                      <Plus className="h-3 w-3 text-[#c85776]" strokeWidth={2.4} />
+                                      <span className="text-[10px] font-bold tabular-nums text-[#c85776]">
+                                        {minutesToLabel(hoverSlot.startMin)}
+                                      </span>
                                     </div>
                                   </div>
                                 )}
@@ -1041,52 +1085,94 @@ export default function DayScheduleModal({
                                   const top = ((startMin - startHour * 60) / 60) * PX_PER_HOUR
                                   const height = Math.max(26, (dur / 60) * PX_PER_HOUR)
                                   const widthPct = 100 / lanes
-                                  const compact = height < 46
+                                  // Kademeli yoğunluk: çok kısa blokta yalnız isim, ortada +hizmet, uzunda +fiyat.
+                                  const tiny = height < 34
+                                  const compact = height < 52
                                   const vip = isVipAppt(appt)
                                   const debt = hasDebt(appt)
                                   const dim = anyFilter && !matches(appt)
                                   const isSel = selectedId === appt.id
                                   const canDragThis = dragAllowed(appt)
                                   const isDragging = draggingId === appt.id
+                                  const wide = lanes === 1
+                                  const done = appt.status === 'tamamlandi'
+                                  const closed = done || appt.status === 'iptal'
                                   return (
-                                    <button
+                                    <div
                                       key={appt.id}
-                                      type="button"
-                                      draggable={canDragThis}
-                                      onDragStart={canDragThis ? (e) => { e.stopPropagation(); setDraggingId(appt.id); setSelectedId(appt.id); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', appt.id) } catch { /* noop */ } } : undefined}
-                                      onDragEnd={canDragThis ? () => { setDraggingId(null); setDropInfo(null) } : undefined}
-                                      onClick={(e) => { e.stopPropagation(); setSelectedId(appt.id) }}
-                                      title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}${canDragThis ? ' · sürükle: saat/personel değiştir' : ''}`}
                                       style={{ top, height, left: `calc(${lane * widthPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`, opacity: isDragging ? 0.35 : dim ? 0.24 : 1 }}
-                                      className={`group absolute z-[2] flex flex-col overflow-hidden rounded-[10px] border px-2 py-1 text-left shadow-[0_8px_20px_-14px_rgba(120,71,88,0.55)] transition-all ${st.block} ${isSel ? 'z-[3] ring-2 ring-[#c85776] ring-offset-1' : ''} ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                                      className={`group absolute z-[2] ${isSel ? 'z-[3]' : ''}`}
                                     >
-                                      <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${st.bar}`} />
-                                      <div className={`flex items-center gap-1 pl-1 ${compact ? '' : 'mb-0.5'}`}>
-                                        <Clock className="h-2.5 w-2.5 shrink-0 text-[#5d4a56]/70" />
-                                        <span className="font-mono text-[10px] font-semibold tabular-nums text-[#3d2f3a]">
-                                          {minutesToLabel(startMin)}
-                                          {!compact && `–${minutesToLabel(startMin + dur)}`}
-                                        </span>
-                                        {(vip || debt) && (
-                                          <span className="ml-auto flex shrink-0 items-center gap-0.5">
-                                            {debt && <span title="Ödeme bekliyor" className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-                                            {vip && <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />}
+                                      <button
+                                        type="button"
+                                        draggable={canDragThis}
+                                        onDragStart={canDragThis ? (e) => { e.stopPropagation(); setDraggingId(appt.id); setSelectedId(appt.id); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', appt.id) } catch { /* noop */ } } : undefined}
+                                        onDragEnd={canDragThis ? () => { setDraggingId(null); setDropInfo(null) } : undefined}
+                                        onClick={(e) => { e.stopPropagation(); setSelectedId(appt.id) }}
+                                        title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}${canDragThis ? ' · sürükle: saat/personel değiştir' : ''}`}
+                                        /* Komple renk dolgusu yerine BEYAZ KART + renkli sol şerit: durum yine
+                                           tek bakışta okunuyor ama VIP/borç rozetleri ve metin boğulmuyor. */
+                                        className={`flex h-full w-full flex-col overflow-hidden rounded-[10px] border border-[#eadfe4] bg-white pl-2.5 pr-2 text-left shadow-[0_6px_16px_-12px_rgba(120,71,88,0.5)] transition-all hover:border-[#e0c2ce] hover:shadow-[0_10px_22px_-12px_rgba(120,71,88,0.55)] ${tiny ? 'py-0.5' : 'py-1'} ${isSel ? 'border-[#c85776] ring-2 ring-[#c85776]/35' : ''} ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''} ${appt.status === 'iptal' ? 'opacity-70' : ''}`}
+                                      >
+                                        <span aria-hidden className={`absolute left-0 top-0 h-full w-1.5 rounded-l-[10px] ${st.bar}`} />
+
+                                        {/* MÜŞTERİ ÖNCE: ızgaradaki konum saati zaten söylüyor,
+                                            asıl bilinmesi gereken kim olduğu. */}
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`min-w-0 flex-1 truncate font-semibold leading-tight text-[#241923] ${tiny ? 'text-[11px]' : 'text-[12.5px]'} ${appt.status === 'iptal' ? 'line-through' : ''}`}>
+                                            {appt.musteri}
                                           </span>
+                                          {debt && <span title="Ödeme bekliyor" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
+                                          {vip && <Star className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" />}
+                                        </div>
+
+                                        {!tiny && (
+                                          <div className="mt-0.5 truncate text-[10.5px] leading-tight text-[#705a66]">
+                                            {appt.islem}
+                                          </div>
                                         )}
-                                      </div>
-                                      <div className={`truncate pl-1 text-[12px] font-semibold leading-tight text-[#241923] ${appt.status === 'iptal' ? 'line-through' : ''}`}>
-                                        {appt.musteri}
-                                      </div>
-                                      {!compact && (
-                                        <div className="mt-0.5 flex items-center gap-1 pl-1 text-[10px] text-[#5d4a56]/85">
-                                          <Scissors className="h-2.5 w-2.5 shrink-0 text-[#c85776]/70" />
-                                          <span className="truncate">{appt.islem}</span>
+
+                                        {!compact && (
+                                          <div className="mt-auto flex items-center gap-1.5 text-[10px] tabular-nums text-[#8a7480]">
+                                            <span className="font-semibold text-[#5d4a56]">
+                                              {minutesToLabel(startMin)}–{minutesToLabel(startMin + dur)}
+                                            </span>
+                                            {appt.price > 0 && <span>· {formatTL(appt.price)}</span>}
+                                          </div>
+                                        )}
+                                      </button>
+
+                                      {/* HIZLI AKSİYON — üzerine gelince. Detay panelini açmadan
+                                          "tamamlandı" işaretle ya da müşteriye yaz. Gün içinde en sık
+                                          yapılan iki iş bunlar; her seferinde paneli açmak yavaştı. */}
+                                      {!closed && wide && !tiny && !isDragging && (
+                                        <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                                          {onComplete && (
+                                            <button
+                                              type="button"
+                                              disabled={busy}
+                                              onClick={(e) => { e.stopPropagation(); void onComplete(appt.id) }}
+                                              title="Tamamlandı olarak işaretle"
+                                              className="grid h-6 w-6 place-items-center rounded-full border border-emerald-200 bg-white text-emerald-600 shadow-sm transition-colors hover:bg-emerald-50 disabled:opacity-50"
+                                            >
+                                              <CheckCircle2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                          {waLink(customers?.[appt.customerId ?? '']?.phone) && (
+                                            <a
+                                              href={waLink(customers?.[appt.customerId ?? '']?.phone) as string}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              title="WhatsApp'tan yaz"
+                                              className="grid h-6 w-6 place-items-center rounded-full border border-[#ead8df] bg-white text-[#c85776] shadow-sm transition-colors hover:bg-[#fff1f6]"
+                                            >
+                                              <MessageCircle className="h-3.5 w-3.5" />
+                                            </a>
+                                          )}
                                         </div>
                                       )}
-                                      {!compact && appt.price > 0 && (
-                                        <div className="truncate pl-1 text-[9.5px] font-medium text-[#8a7480]">{formatTL(appt.price)} · {dur} dk</div>
-                                      )}
-                                    </button>
+                                    </div>
                                   )
                                 })}
                               </div>
@@ -1218,7 +1304,7 @@ function DetailPanel({
   onComplete?: (id: string) => void | Promise<void>
   onCancel?: (id: string) => void | Promise<void>
   onDelete?: (id: string) => void | Promise<void>
-  onOpenAdisyon?: (customerId: string, customerName?: string) => void
+  onOpenAdisyon?: (customerId: string, customerName?: string, staffMemberId?: string) => void
   onCollect?: (customerId: string, customerName?: string, accountId?: string) => void
   onClose: () => void
 }) {
@@ -1393,7 +1479,7 @@ function DetailPanel({
             {onOpenAdisyon && appt.customerId && (
               <button
                 type="button"
-                onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri)}
+                onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri, appt.staffMemberId)}
                 className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
               >
                 <ReceiptText className="h-3.5 w-3.5" /> Adisyon
@@ -1541,30 +1627,10 @@ function DaySummary({
   ]
   return (
     <div className="flex flex-col gap-3 px-4 py-4">
-      {/* Günün Özeti */}
-      <div>
-        <div className="mb-2 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[#c85776]" />
-          <span className="text-[13px] font-bold text-[#241923]">{title}</span>
-        </div>
-        <div className="rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3">
-          <div className="flex items-baseline justify-between border-b border-[#f3e4ea] pb-2.5">
-            <span className="text-[12px] text-[#8a7480]">Toplam randevu</span>
-            <span className="font-display text-[24px] font-bold text-[#241923]">{total}</span>
-          </div>
-          <div className="mt-2.5 space-y-2">
-            {rows.map((r) => (
-              <div key={r.key} className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-[12px] text-[#5d4a56]">
-                  <span className={`h-2 w-2 rounded-full ${statusStyle[r.key].dot}`} /> {r.label}
-                </span>
-                <span className="font-semibold tabular-nums text-[#241923]">{counts[r.key] || 0}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
+      {/* NOT: "Günün Özeti" sayaç listesi buradan KALDIRILDI — üstteki özet şeridi
+          (2 randevu · 1 tamamlandı · ₺3.050 …) aynı sayıları zaten veriyordu. Aynı bilgiyi
+          iki yerde göstermek rayda yer yiyor; ray artık yalnız ÜSTTE OLMAYAN, harekete
+          geçirici şeyleri taşır: hatırlatmalar, no-show riski, bekleme listesi. */}
       {/* Bekleme Listesi */}
       {waitlist && waitlist.length > 0 && (
         <div>
@@ -1649,12 +1715,8 @@ function DaySummary({
         </div>
       </div>
 
-      {/* Alt CTA */}
-      {onCreate && (
-        <button type="button" onClick={onCreate} className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
-          <Plus className="h-3.5 w-3.5" /> Yeni randevu
-        </button>
-      )}
+      {/* Alt bardaki "Yeni randevu" düğmesi her görünümde ve her zaman görünür olduğu için
+          buradaki İKİNCİ kopya kaldırıldı — aynı eylem iki düğme demek değil. */}
     </div>
   )
 }

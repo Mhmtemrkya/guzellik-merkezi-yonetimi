@@ -241,7 +241,7 @@ export default function AyarlarPage() {
       />
 
       <div className="space-y-5 p-4 sm:p-6 lg:p-8">
-        <ApiStateNotice loading={loading} error={error} empty={!loading && !error && !tenant && !branches.length} emptyMessage="Bu tenant için ayar kaynağı yok." />
+        <ApiStateNotice loading={loading} error={error} empty={!loading && !error && !tenant && !branches.length} emptyMessage="Bu kurum için ayar kaydı bulunamadı." />
 
         {/* SATIR 1: KURUM PROFİLİ + ÖDEME & TAKSİT */}
         <section data-guide="ayarlar-kurum" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">

@@ -159,7 +159,7 @@ export default function PlatformDashboard() {
           loading={loading}
           error={error}
           empty={!loading && !error && totalTenants === 0}
-          emptyMessage="Henüz hiç kurum yok. Platform Tenant API ile başla."
+          emptyMessage="Henüz hiç kurum yok. İlk kurumu oluşturarak başla."
         />
 
         {/* TEK SATIR — 5 KPI */}

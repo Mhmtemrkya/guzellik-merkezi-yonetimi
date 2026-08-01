@@ -177,7 +177,7 @@ export default function PlatformFaturaPage() {
           loading={loading}
           error={error}
           empty={!loading && !error && tenants.length === 0}
-          emptyMessage="Tenant API döndü ama faturalandırılacak kurum yok."
+          emptyMessage="Bu dönemde faturalandırılacak kurum yok."
         />
         {actionError && (
           <div className="border border-rose-300/30 bg-rose-500/10 p-3 text-[11px] leading-5 text-rose-100">{actionError}</div>
