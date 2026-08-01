@@ -18,6 +18,7 @@ import 'customer_sales_panel.dart';
 import '../accounting/on_muhasebe_screen.dart' show AccountDetailSheet;
 import '../appointments/appointment_form.dart';
 import '../appointments/calendar_theme.dart';
+import '../appointments/customer_history_panel.dart';
 
 /// Müşteri detay ekranının açıldığı sekme.
 enum CustomerTab { overview, appointments, adisyon, health, notes }
@@ -188,9 +189,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             .get('/api/admin/accounts/',
                 query: {'page': 1, 'pageSize': 200, 'customerId': _id})
             .catchError((_) => const <dynamic>[]),
+        // Ölçek: randevular da SUNUCUDA müşteriye göre süzülür (cari listesindeki gibi).
+        // Eskiden tüm kurumun ilk 500 randevusu çekilip bellekte süzülüyordu; backend
+        // eskiden yeniye sıraladığı için kurum 500 randevuyu aşınca bu müşterinin
+        // güncel randevuları listeye hiç girmiyordu.
         _api
             .get('/api/admin/appointments/',
-                query: {'page': 1, 'pageSize': 500})
+                query: {'page': 1, 'pageSize': 500, 'customerId': _id})
             .catchError((_) => const <dynamic>[]),
       ]);
 
@@ -1147,6 +1152,16 @@ class _AppointmentsTabState extends State<_AppointmentsTab> {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
       children: [
         _SessionsCard(api: widget.state._api, customerId: widget.state._id),
+        const SizedBox(height: 12),
+        // Seans bakiyesi "kaç kaldı"yı söyler; bu panel HANGİ GÜN kullanıldığını, işlem
+        // geçmişini ve ödeme listesini tablo olarak verir (randevu formuyla aynı bileşen).
+        CustomerHistoryPanel(
+          api: widget.state._api,
+          customerId: widget.state._id,
+          accounts: widget.state._accounts,
+          refreshKey: widget.state._refreshKey,
+        ),
+        const SizedBox(height: 12),
         _Section(
           title: 'Randevu Geçmişi',
           icon: Icons.history_rounded,

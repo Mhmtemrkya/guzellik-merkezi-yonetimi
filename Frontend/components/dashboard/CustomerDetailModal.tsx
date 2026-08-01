@@ -18,6 +18,7 @@ import CustomerSalesModal, { summarizeCustomerSales } from '@/components/dashboa
 import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
 import { formatTL } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
+import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
 import type { Appointment, CustomerAccount } from '@/lib/types'
 
 export interface CustomerModalData {
@@ -934,6 +935,15 @@ export default function CustomerDetailModal({
               {tab === 'appointments' && (
                 <div className="space-y-4">
                   <CustomerSessionsCard customerId={customer.id} tenantId={tenantId} refreshKey={sessRefresh} />
+                  {/* Seans bakiyesi "kaç kaldı"yı söyler; bu panel HANGİ GÜN kullanıldığını,
+                      işlem geçmişini ve ödeme listesini tablo olarak verir (randevu modalıyla
+                      aynı bileşen). */}
+                  <CustomerHistoryPanel
+                    customerId={customer.id}
+                    tenantId={tenantId}
+                    accounts={customerAccounts}
+                    refreshKey={sessRefresh}
+                  />
                   <SectionCard
                     title="Randevu Geçmişi"
                     icon={CalendarPlus}
