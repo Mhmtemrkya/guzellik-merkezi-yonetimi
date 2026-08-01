@@ -1239,15 +1239,6 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, revenue, completedCount, cancellationToken));
     }
 
-    public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
-    {
-        var account = await _db.CustomerAccounts.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
-        if (account is null) return Result.Failure(Error.NotFound("Cari hesap bulunamadı."));
-        account.SoftDelete();
-        await _db.SaveChangesAsync(cancellationToken);
-        return Result.Success();
-    }
-
     public async Task<Result<IReadOnlyCollection<CustomerPackageSessionDto>>> GetCustomerSessionsAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default)
     {
         var rows = await _db.CustomerPackageSessions.AsNoTracking()

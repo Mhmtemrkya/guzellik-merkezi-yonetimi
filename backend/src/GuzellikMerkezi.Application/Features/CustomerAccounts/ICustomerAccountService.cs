@@ -37,7 +37,10 @@ public interface ICustomerAccountService
     Task<Result<CustomerAccountDto>> UpdateAsync(Guid tenantId, Guid id, UpdateCustomerAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RegisterPaymentAsync(Guid tenantId, Guid id, RegisterAccountPaymentRequest request, CancellationToken cancellationToken = default);
-    Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+
+    // NOT: DeleteAsync BİLEREK YOK. Cariyi soft-delete etmek satışı sonlandırmaz; tahsilat arşivi,
+    // iade, adisyon geri alma, paket seansı ve iptal snapshot'ı atlanır ve satış aggregate'i
+    // parçalanır. Satışı sonlandırmanın tek yolu CancelSaleAsync'tir.
 
     /// <summary>Müşterinin paketlerindeki hizmet-bazlı kalan seans bakiyeleri.</summary>
     Task<Result<IReadOnlyCollection<CustomerPackageSessionDto>>> GetCustomerSessionsAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default);

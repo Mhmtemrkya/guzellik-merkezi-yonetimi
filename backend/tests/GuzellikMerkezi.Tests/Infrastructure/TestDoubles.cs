@@ -131,6 +131,27 @@ internal sealed class TestTenantContext : ITenantContext
     }
 }
 
+/// <summary>Parolayı düz metin karşılaştırır — testte KDF maliyeti ödenmesin.</summary>
+internal sealed class PlainPasswordHasher : IPasswordHasher
+{
+    public string Hash(string password) => password;
+    public bool Verify(string password, string passwordHash) => password == passwordHash;
+}
+
+/// <summary>Sabit jeton üretir; testler jetonun içeriğiyle değil, hangi kaydın seçildiğiyle ilgilenir.</summary>
+internal sealed class StubTokenService : ITokenService
+{
+    public string CreateAccessToken(GuzellikMerkezi.Application.Features.Auth.UserProfileDto profile, DateTime expiresAtUtc) => "access-token";
+    public string CreateRefreshToken() => Guid.NewGuid().ToString("N");
+    public string HashRefreshToken(string refreshToken) => refreshToken;
+}
+
+internal sealed class FixedClock : IDateTimeProvider
+{
+    public FixedClock(DateTime? utcNow = null) => UtcNow = utcNow ?? DateTime.UtcNow;
+    public DateTime UtcNow { get; }
+}
+
 internal static class TestSearchIndex
 {
     /// <summary>Testler gerçek HMAC üreticisini kullanır — sahte değil; indeks/arama uyumu böyle doğrulanır.</summary>

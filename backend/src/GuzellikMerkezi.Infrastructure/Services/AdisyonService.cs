@@ -785,13 +785,40 @@ public sealed class AdisyonService : IAdisyonService
         //     (Guid-liste .Contains() tuzağı için müşteri+durum sunucuda süzülür, hizmet bellekte.)
         if (soldSessions.Count > 0)
         {
-            var soldServiceIds = soldSessions.Select(s => s.ServiceDefinitionId).Distinct().ToList();
-            var relatedAppointments = (await _db.Appointments
-                    .Where(ap => ap.TenantId == tenantId && ap.CustomerId == adisyon.CustomerId
-                        && (ap.Status == AppointmentStatus.Scheduled || ap.Status == AppointmentStatus.Confirmed || ap.Status == AppointmentStatus.Draft))
-                    .ToListAsync(cancellationToken))
-                .Where(ap => soldServiceIds.Contains(ap.ServiceDefinitionId))
+            // BU SATIŞIN seanslarına bağlı randevular silinir. Eskiden eşleşme yalnız
+            // (müşteri + hizmet + aktif durum) idi: müşterinin aynı hizmeti içeren A ve B satışı
+            // varsa A'nın adisyonunu silmek B paketinin seansına bağlı randevuyu da siliyordu.
+            var soldSessionIds = soldSessions.Select(s => s.Id).ToHashSet();
+            var soldServiceIds = soldSessions.Select(s => s.ServiceDefinitionId).ToHashSet();
+            var openAppointments = await _db.Appointments
+                .Where(ap => ap.TenantId == tenantId && ap.CustomerId == adisyon.CustomerId
+                    && (ap.Status == AppointmentStatus.Scheduled || ap.Status == AppointmentStatus.Confirmed || ap.Status == AppointmentStatus.Draft))
+                .ToListAsync(cancellationToken);
+
+            var relatedAppointments = openAppointments
+                .Where(ap => ap.SourceCustomerPackageSessionId is Guid sid && soldSessionIds.Contains(sid))
                 .ToList();
+
+            // ESKİ KAYIT (kaynak seans bağı 2026'da eklendi): bağsız randevular için İHTİYATLI
+            // geri düşüş — yalnız, bu satışın seansları silindikten SONRA müşteride o hizmete ait
+            // başka seans KALMIYORSA randevu bu satışa aittir. Aksi halde dokunulmaz (yanlış
+            // paketin randevusunu silmektense fazladan randevu bırakmak yeğdir).
+            var unlinked = openAppointments
+                .Where(ap => ap.SourceCustomerPackageSessionId is null && soldServiceIds.Contains(ap.ServiceDefinitionId))
+                .ToList();
+            if (unlinked.Count > 0)
+            {
+                var survivingServiceIds = (await _db.CustomerPackageSessions.AsNoTracking()
+                        .Where(s => s.TenantId == tenantId && s.CustomerId == adisyon.CustomerId)
+                        .Select(s => new { s.Id, s.ServiceDefinitionId })
+                        .ToListAsync(cancellationToken))
+                    .Where(s => !soldSessionIds.Contains(s.Id))
+                    .Select(s => s.ServiceDefinitionId)
+                    .ToHashSet();
+                relatedAppointments.AddRange(
+                    unlinked.Where(ap => !survivingServiceIds.Contains(ap.ServiceDefinitionId)));
+            }
+
             _db.Appointments.RemoveRange(relatedAppointments);
         }
 

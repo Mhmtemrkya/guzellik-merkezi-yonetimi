@@ -198,15 +198,21 @@ public sealed class AppointmentService : IAppointmentService
         // tamamlamada gerçekten tüketilen seansla düzeltilir.
         if (request.Price <= 0m)
         {
-            var sourceSessionId = await _db.CustomerPackageSessions.AsNoTracking()
-                .Where(s => s.TenantId == tenantId
-                         && s.CustomerId == request.CustomerId
-                         && s.ServiceDefinitionId == request.ServiceDefinitionId
-                         && (s.TotalSessions - s.UsedSessions) > 0)
-                .OrderBy(s => s.CreatedAtUtc)
-                .Select(s => (Guid?)s.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-            appointment.LinkToPackageSession(sourceSessionId);
+            var sourceSessionId = await FindBookableSessionAsync(
+                tenantId, request.CustomerId, request.ServiceDefinitionId, null, cancellationToken);
+            if (sourceSessionId is not null)
+            {
+                appointment.LinkToPackageSession(sourceSessionId);
+            }
+            // Seans yoksa tek meşru durum, satışı ilk randevuda işlenecek AÇIK adisyondur
+            // (seans o an oluşur). O da yoksa müşterinin bu hizmet için hakkı YOKTUR: eskiden
+            // randevu yine açılıyor, tamamlanınca hiçbir seans düşmüyor ve hizmet bedava veriliyordu.
+            else if (!await HasPendingSaleForServiceAsync(tenantId, request.CustomerId, request.ServiceDefinitionId, cancellationToken))
+            {
+                return Result<AppointmentDto>.Failure(Error.Validation(
+                    "Müşterinin bu hizmet için kullanılabilir seansı yok. Kalan seanslar açık randevulara " +
+                    "ayrılmış olabilir; önce hizmeti/paketi satın veya randevuyu ücretli olarak oluşturun."));
+            }
         }
 
         // Personel oluşturduysa randevu doğrudan aktif olmaz; taslak olarak kurum yöneticisi onayına düşer.
@@ -237,6 +243,101 @@ public sealed class AppointmentService : IAppointmentService
     /// Deferred satışta henüz seans/cari oluşmaz; yine de randevu verilebilmeli ki ilk randevu tamamlanınca
     /// otomatik onay tetiklensin (aksi halde satış hiç işlenemeyeceği bir kilitlenme oluşur).
     /// </summary>
+    /// <summary>Rezerve sayılan randevu durumları — henüz yaşanmamış ama seans hakkını tutan kayıtlar.</summary>
+    private static readonly AppointmentStatus[] OpenAppointmentStatuses =
+    [
+        AppointmentStatus.Draft,
+        AppointmentStatus.Scheduled,
+        AppointmentStatus.Confirmed,
+        AppointmentStatus.InProgress,
+    ];
+
+    /// <summary>
+    /// ÜCRETSİZ (paketten karşılanan) randevu için GERÇEKTEN kullanılabilir seans bakiyesini bulur.
+    ///
+    /// <para>
+    /// Eski kontrol yalnız "müşterinin herhangi bir satışı var mı" diye bakıyordu: kalan seansı 0
+    /// olan paket, BAŞKA hizmete ait paket, hatta yalnız ürün satışı bile ücretsiz randevu hakkı
+    /// veriyordu. Sadece şampuan alan müşteri bakım hizmetine randevu alabiliyor, randevu
+    /// tamamlanınca hiçbir seans düşmüyordu.
+    /// </para>
+    ///
+    /// <para>
+    /// REZERVASYON (cardinality): seans bağı rezervasyon değildi, bu yüzden kalan 1 seansa üç
+    /// gelecek randevu bağlanabiliyordu. Burada açık randevular (bkz. <see cref="OpenAppointmentStatuses"/>)
+    /// hakkı TUTAR: kalan seans, o seansa bağlı açık randevu sayısından büyük olmalı.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> FindBookableSessionAsync(
+        Guid tenantId, Guid customerId, Guid serviceDefinitionId, Guid? excludeAppointmentId, CancellationToken cancellationToken)
+    {
+        var sessions = await _db.CustomerPackageSessions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                     && s.CustomerId == customerId
+                     && s.ServiceDefinitionId == serviceDefinitionId
+                     && (s.TotalSessions - s.UsedSessions) > 0)
+            .OrderBy(s => s.CreatedAtUtc)
+            .Select(s => new { s.Id, Remaining = s.TotalSessions - s.UsedSessions })
+            .ToListAsync(cancellationToken);
+        if (sessions.Count == 0) return null;
+
+        // Bu müşterinin seansa bağlı açık randevuları. (Guid listesiyle .Contains() MySQL
+        // sağlayıcısında sunucuda çevrilemiyor → müşteri bazında çekilip bellekte eşleştirilir.)
+        var reserved = (await _db.Appointments.AsNoTracking()
+                .Where(a => a.TenantId == tenantId
+                         && a.CustomerId == customerId
+                         && a.SourceCustomerPackageSessionId != null
+                         && (excludeAppointmentId == null || a.Id != excludeAppointmentId)
+                         && OpenAppointmentStatuses.Contains(a.Status))
+                .Select(a => a.SourceCustomerPackageSessionId!.Value)
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var s in sessions)
+        {
+            reserved.TryGetValue(s.Id, out var held);
+            if (s.Remaining > held) return s.Id;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Faz 2 istisnası: satış adisyonu "ilk randevu tamamlanınca cariye işlensin" diye AÇIK
+    /// bekliyorsa seanslar HENÜZ OLUŞMAMIŞTIR. Bu durumda hak, bekleyen adisyonun İSTENEN HİZMETE
+    /// ait kalemiyle doğrulanır — "herhangi bir bekleyen satış" yetmez.
+    /// </summary>
+    private async Task<bool> HasPendingSaleForServiceAsync(
+        Guid tenantId, Guid customerId, Guid serviceDefinitionId, CancellationToken cancellationToken)
+    {
+        var pending = await (
+            from a in _db.Adisyonlar.AsNoTracking()
+            join i in _db.AdisyonItems.AsNoTracking() on a.Id equals i.AdisyonId
+            where a.TenantId == tenantId
+                && a.CustomerId == customerId
+                && a.Status == AdisyonStatus.Open
+                && a.AutoApproveOnFirstAppointment
+                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.PackageSale)
+            select new { i.Type, i.RefId }).ToListAsync(cancellationToken);
+        if (pending.Count == 0) return false;
+
+        // Tekil hizmet satışı doğrudan hizmete işaret eder.
+        if (pending.Any(x => x.Type == AdisyonItemType.Service && x.RefId == serviceDefinitionId)) return true;
+
+        // Paket satışı: paketin içeriğinde bu hizmet var mı?
+        var packageIds = pending
+            .Where(x => x.Type == AdisyonItemType.PackageSale && x.RefId.HasValue)
+            .Select(x => x.RefId!.Value)
+            .ToHashSet();
+        if (packageIds.Count == 0) return false;
+
+        var packageServices = await _db.ServicePackageItems.AsNoTracking()
+            .Where(pi => pi.ServiceDefinitionId == serviceDefinitionId)
+            .Select(pi => pi.ServicePackageId)
+            .ToListAsync(cancellationToken);
+        return packageServices.Any(packageIds.Contains);
+    }
+
     private async Task<bool> HasApprovedSaleAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken)
     {
         var hasPackage = await _db.CustomerPackageSessions.AsNoTracking()
@@ -294,7 +395,35 @@ public sealed class AppointmentService : IAppointmentService
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
 
-        // Zaten istenen durumdaysa no-op — bayat/tekrar onay isteği "tamamlanamaz" hatası vermesin (idempotent).
+        // DURUM GEÇİŞİ ORTAK KİLİT PROTOKOLÜNE KATILIR (bkz. RowLock) — yalnız tamamlama değil,
+        // İPTAL de. Eskiden randevu kilitten ve transaction'dan ÖNCE okunup Complete() ediliyordu:
+        // iki eşzamanlı "Tamamlandı" isteği randevuyu aynı bayat durumda okuyup ikisi de
+        // isCompleting=true hesaplıyor, ilki bir seansı tüketiyor, ikincisi kilidi sonra alıp
+        // BAŞKA bir kullanılabilir seansı tüketiyordu — tek randevu iki seans düşürüyordu.
+        // Randevu satırında concurrency token da yok, o yüzden kilit tek koruma.
+        // İzolasyon READ COMMITTED: kilit sonrası okuma gerçekten taze olsun (bkz. AdisyonService).
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (tx is not null)
+        {
+            // Kilit sırası (RowLock.TableOrder): customers → appointments → … → sessions.
+            // Müşteri ÖNCE kilitlenir: otomatik satış onayı ve adisyon silme de bu sırayla
+            // ilerliyor, ters sıra kilitlenme (deadlock) üretirdi.
+            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
+            // Kilitten önceki okuma bayat olabilir; kilit altında yeniden oku ve kararı
+            // TAZE durum üzerinden ver.
+            await _db.Entry(appointment).ReloadAsync(cancellationToken);
+            // Reload satırı bulamazsa entity detach olur (randevu bu arada silinmiş).
+            if (_db.Entry(appointment).State == EntityState.Detached)
+                return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        }
+
+        // Zaten istenen durumdaysa no-op — bayat/tekrar onay isteği "tamamlanamaz" hatası vermesin
+        // (idempotent). Kilitten sonra bakıldığı için eşzamanlı ikinci istek BURADA durur.
         if (appointment.Status == request.Status) return Result<AppointmentDto>.Success(appointment.ToDto());
 
         var prevStatus = appointment.Status;
@@ -309,22 +438,13 @@ public sealed class AppointmentService : IAppointmentService
 
         var isCompleting = request.Status == AppointmentStatus.Completed && prevStatus != AppointmentStatus.Completed;
 
-        // TAMAMLAMA ORTAK KİLİT PROTOKOLÜNE KATILIR (bkz. RowLock). Bu blok paket seansını TÜKETİR
-        // ve bekleyen satışları otomatik onaylar; ikisi de satış iptali/adisyon onayıyla AYNI
-        // satırlara dokunur. Kilitsiz ve transaction'sız çalışırken eşzamanlı bir iptal, burada
-        // tüketilen seansı bayat okuyup "kullanılmamış" sayabiliyor ve kayıp güncelleme oluşuyordu.
-        // İzolasyon READ COMMITTED: kilit sonrası okuma gerçekten taze olsun (bkz. AdisyonService).
-        await using var tx = isCompleting && _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
-            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
-            : null;
-
         // Randevu Tamamlandı'ya geçtiyse, müşterinin bu hizmete ait paket seansından otomatik düş.
         // Complete() yalnızca Scheduled/Confirmed'dan çağrılabildiği için bu blok randevu başına tek kez çalışır.
         if (isCompleting)
         {
-            // Sıra: customers → (otomatik onay: adisyonlar → products → gift_cards → sessions) → sessions.
-            // Müşteri kilidi ÖNCE alınır ki onay yolu ile aynı sırada ilerleyelim ve deadlock olmasın.
-            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            // Sıra: customers → appointments → (otomatik onay: adisyonlar → products → gift_cards
+            // → sessions) → sessions. Müşteri ve randevu kilitleri yukarıda, durum geçişinden
+            // ÖNCE alındı; burada tekrar alınmaz.
             // Faz 2: Müşterinin "ilk randevu tamamlanınca işle" bekleyen (açık) satış adisyonları varsa
             // şimdi otomatik onayla → satış cariye borç, peşinat kasaya gelir, satılan seanslar o an oluşur.
             // Onay seansları yaratır → hemen aşağıdaki seans düşümü (satılan hizmet bu randevuysa) onları bulur.
@@ -369,7 +489,20 @@ public sealed class AppointmentService : IAppointmentService
             var session = usable.FirstOrDefault(s => s.Id == appointment.SourceCustomerPackageSessionId)
                           ?? usable.FirstOrDefault();
             if (session is not null && session.TryConsume())
+            {
                 appointment.LinkToPackageSession(session.Id);
+            }
+            else if (appointment.Price <= 0m)
+            {
+                // Ücretsiz randevu tamamlandı ama düşecek seans bulunamadı: hizmet fiilen bedava
+                // verildi. Oluşturmada artık engelleniyor; buraya düşen kayıt ya oluşturma
+                // kuralından ÖNCEKİ bir randevudur ya da arada seans başka yolla tükenmiştir.
+                // Tamamlamayı bloklamak sahadaki randevuyu askıda bırakacağı için iz bırakılır.
+                await _audit.LogAsync(tenantId, appointment.BranchId, "AppointmentCompletedWithoutSession",
+                    "Appointment", appointment.Id,
+                    "Ücretsiz randevu tamamlandı ancak düşülecek paket seansı bulunamadı.",
+                    new { appointment.CustomerId, appointment.ServiceDefinitionId, appointment.Price }, cancellationToken);
+            }
         }
 
         // Durum değişikliğini (+ tamamlanınca seans düşümü) önce kaydet: bekleme listesi offer akışı

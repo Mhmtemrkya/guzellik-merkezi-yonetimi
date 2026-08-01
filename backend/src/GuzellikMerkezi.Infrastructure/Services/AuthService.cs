@@ -100,8 +100,26 @@ public sealed class AuthService : IAuthService
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         var email = TenantUser.NormalizeEmail(request.Email);
-        var user = await _db.TenantUsers.Include(x => x.Tenant)
-            .FirstOrDefaultAsync(x => x.Email == email && x.Role == request.Role && x.IsActive, cancellationToken);
+        var candidates = _db.TenantUsers.Include(x => x.Tenant)
+            .Where(x => x.Email == email && x.Role == request.Role && x.IsActive);
+
+        // ÇOK KURUMLU HESAP: aynı e-posta + rol birden çok kurumda olabilir (/login-scope hepsini
+        // döndürüyor). Kurum seçimi sorgunun PARÇASI değilse DB'nin döndürdüğü İLK satır seçiliyor,
+        // ardından 'TenantId eşleşmiyor' diye reddediliyordu: kullanıcı modalda seçtiği ikinci
+        // kuruma hiçbir zaman giremiyordu. PlatformAdmin kuruma bağlı değildir, o hariç.
+        if (request.Role != UserRole.PlatformAdmin)
+        {
+            if (request.TenantId is not { } requestedTenantId)
+                return Result<LoginResponse>.Failure(Error.Unauthorized("Kurum seçimi geçersiz."));
+            candidates = candidates.Where(x => x.TenantId == requestedTenantId);
+
+            // Aynı kurumda şubeye bağlı birden çok kayıt olabilir; seçilen şubeye ait olan
+            // (ya da şubesiz = kurum geneli) kayıt tercih edilir.
+            if (request.BranchId is { } requestedBranchId)
+                candidates = candidates.Where(x => x.BranchId == null || x.BranchId == requestedBranchId);
+        }
+
+        var user = await candidates.FirstOrDefaultAsync(cancellationToken);
 
         // HESAP KİLİDİ: IP hız sınırı proxy zincirinde sahte forwarded header'la aşılabildiği için
         // parola püskürtmeye karşı HESAP bazlı bir fren gerekiyor. Kilitliyken doğru parola da geçmez.

@@ -93,11 +93,11 @@ public static class CustomerAccountEndpoints
             return (await service.RegisterPaymentAsync(resolvedTenantId, id, sanitized, ct)).ToHttpResult(http);
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
-        {
-            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeleteAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
-        });
+        // DÜZ SİLME UCU KALDIRILDI (bilerek). Yalnız parent cariyi soft-delete ediyordu:
+        // tahsilatlar arşivlenmiyor, iade işlenmiyor, adisyon etkileri geri alınmıyor, paket
+        // seansları kullanılabilir kalıyor ve iptal arşivi hiç oluşmuyordu. Kasa/rapor servisleri
+        // cari metadata'sını bulamadığı için tahsilat gelirden de düşüyordu. Satışı sonlandırmanın
+        // TEK güvenli yolu POST /{id}/cancel-sale (CancelSaleAsync) akışıdır.
 
         // Pano "Paket Raporu": paket satışı, yapılacak seans, ay ay taksit takvimi.
         // fromUtc/toUtc verilirse rapor o dönemde satılan paketlere göre süzülür (günlük/aylık/yıllık).

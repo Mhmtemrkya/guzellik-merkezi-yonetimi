@@ -1576,35 +1576,6 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
     }
   }
 
-  Future<void> _delete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Onay'),
-        content: const Text('Cari hesabı silmek istediğinize emin misiniz?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Vazgeç')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sil')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await widget.api.delete('/api/admin/accounts/${a['id']}');
-      if (mounted) Navigator.pop(context);
-      widget.onChanged();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     // Web AccountDetailModal ile aynı sekmeler: Özet · Taksit Planı · Ekstre · Seans & Sadakat.
@@ -1754,19 +1725,18 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
                     label: const Text('Planı güncelle'),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: _delete,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                    label: const Text('Cariyi sil'),
-                  ),
-                ),
               ],
+            ),
+            // "Cariyi sil" KALDIRILDI: yalnız cariyi soft-delete ediyordu — tahsilat
+            // arşivlenmiyor, iade işlenmiyor, paket seansları kullanılabilir kalıyor ve satış
+            // raporlardan düşerken ödeme geçmişi ortada kalıyordu. Backend'de DELETE ucu da yok.
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'Satışı sonlandırmak için müşteri kartındaki Satışlar bölümünden '
+                '"Satışı iptal et"i kullanın — iade ve seans iadesi orada doğru işlenir.',
+                style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+              ),
             ),
           ],
         ),

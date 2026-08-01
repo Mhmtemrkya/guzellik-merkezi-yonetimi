@@ -1065,8 +1065,9 @@ export const adminApi = {
     }),
   registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/accounts/${id}/payments`, { method: 'POST', query: { tenantId }, body }),
-  deleteAccount: (id: string, tenantId?: string): Promise<unknown> =>
-    apiRequest<unknown>(`/api/admin/accounts/${id}`, { method: 'DELETE', query: { tenantId } }),
+  // deleteAccount BİLEREK YOK: düz silme yalnız cariyi soft-delete ediyor, satış iptalinin
+  // hiçbir adımını (arşiv, iade, seans, adisyon geri alma) yapmıyordu. Satışı sonlandırmak için
+  // cancelSale kullanılır; backend'de de DELETE ucu kaldırıldı.
 
   // ---------- Adisyon (onaylı cari aktarım katmanı) ----------
   adisyonlar: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>

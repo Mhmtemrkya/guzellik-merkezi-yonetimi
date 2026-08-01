@@ -26,6 +26,11 @@ public static class RowLock
     public static readonly string[] TableOrder =
     [
         "customers",
+        // Randevu durum geçişi de bu protokole katılır: durum okuması ile seans tüketimi arasında
+        // başka bir istek araya girip aynı randevu için ikinci bir seans düşürebiliyordu (randevu
+        // satırında concurrency token da yok). "customers"tan SONRA gelir — adisyon silme yolu
+        // önce müşteriyi kilitleyip sonra randevu siliyor; ters sıra kilitlenmeye yol açardı.
+        "appointments",
         "customer_accounts",
         "adisyonlar",
         "products",

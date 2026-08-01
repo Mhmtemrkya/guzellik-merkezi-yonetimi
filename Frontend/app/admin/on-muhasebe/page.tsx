@@ -1105,12 +1105,6 @@ function OnMuhasebePageInner() {
                 await adminApi.rescheduleAccount(selAccount.id, { installmentCount, firstDueDate }, tenantId)
                 await reload()
               }}
-              onDelete={async () => {
-                if (!selAccount) return
-                await adminApi.deleteAccount(selAccount.id, tenantId)
-                setSelectedAccountId(null)
-                await reload()
-              }}
             />
 
             <CancelledSalesModal

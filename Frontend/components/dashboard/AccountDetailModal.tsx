@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertTriangle, Banknote, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, CreditCard,
-  Layers, Loader2, PencilLine, Phone, Receipt, Sparkles, Trash2, User, Wallet,
+  Layers, Loader2, PencilLine, Phone, Receipt, Sparkles, User, Wallet,
 } from 'lucide-react'
 import CustomerSessionsCard from './CustomerSessionsCard'
 import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
@@ -43,7 +43,6 @@ interface Props {
   /** Aylık taksit tahsilatı modalını aç. */
   onCollectMonthly: () => void
   onReschedule: (installmentCount: number, firstDueDate: string) => Promise<void>
-  onDelete: () => Promise<void>
 }
 
 const MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
@@ -62,11 +61,10 @@ function todayIso(): string {
 
 export default function AccountDetailModal({
   account, open, onOpenChange, tenantId, ledger, sessionsTick,
-  onCollectGeneral, onCollectMonthly, onReschedule, onDelete,
+  onCollectGeneral, onCollectMonthly, onReschedule,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('summary')
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [count, setCount] = useState(1)
@@ -76,7 +74,6 @@ export default function AccountDetailModal({
     if (!open) return
     setTab('summary')
     setRescheduleOpen(false)
-    setConfirmDelete(false)
     setError('')
     setBusy(false)
     setFirstDue(todayIso())
@@ -118,16 +115,6 @@ export default function AccountDetailModal({
       setRescheduleOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Taksit planı güncellenemedi.')
-    } finally { setBusy(false) }
-  }
-
-  const runDelete = async (): Promise<void> => {
-    setBusy(true); setError('')
-    try {
-      await onDelete()
-      onOpenChange(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Cari silinemedi.')
     } finally { setBusy(false) }
   }
 
@@ -524,30 +511,14 @@ export default function AccountDetailModal({
         {/* ================= ALT BAR ================= */}
         <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {confirmDelete ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11.5px] font-medium text-rose-700">Cari pasifleştirilsin mi? Ödeme geçmişi raporlarda kalır.</span>
-                <button
-                  type="button" onClick={() => void runDelete()} disabled={busy}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] bg-rose-600 px-3 text-[11.5px] font-semibold text-white disabled:opacity-60"
-                >
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Evet, sil
-                </button>
-                <button
-                  type="button" onClick={() => setConfirmDelete(false)}
-                  className="inline-flex min-h-9 items-center rounded-[10px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#7e5f6e]"
-                >
-                  Vazgeç
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button" onClick={() => setConfirmDelete(true)}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] border border-rose-200 bg-rose-50 px-3 text-[11.5px] font-semibold text-rose-700 transition-colors hover:bg-rose-100"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Cariyi sil
-              </button>
-            )}
+            {/* "Cariyi sil" KALDIRILDI: yalnız cariyi soft-delete ediyordu — tahsilat arşivlenmiyor,
+                iade işlenmiyor, paket seansları kullanılabilir kalıyor ve satış raporlardan
+                düşerken ödeme geçmişi ortada kalıyordu. Satışı sonlandırmanın tek güvenli yolu
+                müşteri kartındaki "Satışı iptal et" akışıdır (gerekçe + iade tutarı sorar). */}
+            <span className="max-w-[46ch] text-[11.5px] leading-snug text-[#7e5f6e]">
+              Satışı sonlandırmak için müşteri kartındaki <span className="font-semibold">Satışlar</span> bölümünden
+              &nbsp;“Satışı iptal et”i kullanın — iade ve seans iadesi orada doğru işlenir.
+            </span>
 
             {!cancelled && account.remainingAmount > 0.005 && (
               <div className="flex flex-wrap items-center gap-2">
