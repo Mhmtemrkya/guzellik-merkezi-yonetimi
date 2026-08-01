@@ -65,6 +65,15 @@ public static class AppointmentEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ChangeNotesAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
         });
 
+        // Düzenleme ekranının TEK kaydetme ucu: zaman + durum + not aynı transaction'da.
+        // Üç ayrı çağrı yapıldığında ortadaki başarılı olup sonraki patlarsa randevu tamamlanmış
+        // (ve seans düşmüş) hâlde kalırken arayüz "kaydedilemedi" gösteriyordu.
+        group.MapPatch("/{id:guid}", async (Guid id, UpdateAppointmentRequest request, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
+        });
+
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

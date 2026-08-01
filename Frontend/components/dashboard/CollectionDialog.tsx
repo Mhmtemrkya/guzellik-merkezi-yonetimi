@@ -29,6 +29,15 @@ import { formatTL } from '@/lib/apiMappers'
 // KALAN BORCUNA (remainingAmount) düşer. Yöntem: nakit / kart / havale-EFT.
 // ---------------------------------------------------------------------------
 
+/**
+ * Otomatik doldurulan tutarı KURUŞUNA kadar korur (yalnız kayan nokta artığını temizler).
+ * Eskiden tam TL'ye yuvarlanıyordu: 999,50 ₺ borç modalda 1.000 ₺ görünüyor, kullanıcı
+ * değiştirmeden onaylayınca 50 kuruş fazla tahsilat kredi bakiyesi olarak yazılıyordu.
+ */
+function roundKurus(value: number): number {
+  return Math.max(0, Math.round((Number(value) || 0) * 100) / 100)
+}
+
 export interface CollectionSubmitPayload {
   accountId: string
   amount: number
@@ -108,7 +117,9 @@ export default function CollectionDialog({
     if (!open) return
     const initial = accounts.find((a) => a.id === initialAccountId) || accounts[0] || null
     setAccountId(initial?.id || '')
-    setRows([{ amount: initial ? Math.max(0, Math.round(initial.remainingAmount)) : '', method: 'cash' }])
+    // KURUŞ KORUNUR: Math.round 999,50 ₺ borcu 1.000 ₺ yapıyordu; kullanıcı dokunmadan
+    // onaylayınca 50 kuruş FAZLA tahsilat (kredi bakiye) kaydediliyordu.
+    setRows([{ amount: initial ? roundKurus(initial.remainingAmount) : '', method: 'cash' }])
     setDate(todayIso())
     setReference('')
     setQuery('')
@@ -138,14 +149,15 @@ export default function CollectionDialog({
   const pickAccount = (a: CustomerAccount): void => {
     setAccountId(a.id)
     // Seçilen carinin kalan borcunu tek satıra otomatik yaz (kırılım varsa sıfırlanır).
-    setRows([{ amount: Math.max(0, Math.round(a.remainingAmount)), method: 'cash' }])
+    setRows([{ amount: roundKurus(a.remainingAmount), method: 'cash' }])
     setPickerOpen(false)
     setQuery('')
   }
 
   const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0)
   /** Kalan borcun henüz satırlara dağıtılmamış kısmı — yeni satırın varsayılanı olur. */
-  const unallocated = selected ? Math.max(0, Math.round(selected.remainingAmount) - totalAmount) : 0
+  // Kuruş korunur: yuvarlarsak 999,50 ₺ borçta 0,50 ₺'lik hayali "dağıtılmamış" kalır.
+  const unallocated = selected ? Math.max(0, roundKurus(selected.remainingAmount - totalAmount)) : 0
 
   const setRow = (index: number, patch: Partial<{ amount: number | ''; method: string }>): void =>
     setRows((list) => list.map((r, i) => (i === index ? { ...r, ...patch } : r)))

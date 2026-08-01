@@ -1069,6 +1069,8 @@ export function normalizeExpenseSummary(summary: ApiExpenseSummary | null | unde
       totalAmount: Number(s.totalAmount || 0),
       count: Number(s.count || 0),
     })),
+    refundAmount: Number(summary?.refundAmount || 0),
+    refundCount: Number(summary?.refundCount || 0),
   }
 }
 

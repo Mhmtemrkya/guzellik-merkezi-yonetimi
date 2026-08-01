@@ -974,20 +974,18 @@ class _EditSheetState extends State<_EditSheet> {
     final id = widget.appointment['id'];
     try {
       final end = start.add(Duration(minutes: durationMinutes));
-      await widget.api.patch('/api/admin/appointments/$id/schedule', {
+      final prevStatus = '${widget.appointment['status']}';
+      // TEK UÇ (web paritesi): zaman + durum + not aynı transaction'da. Üç ayrı çağrıda
+      // durum başarılı olup not çağrısı patlarsa randevu tamamlanmış (ve seans düşmüş)
+      // hâlde kalırken ekran "kaydedilemedi" gösteriyordu.
+      await widget.api.patch('/api/admin/appointments/$id', {
         'startUtc': start.toUtc().toIso8601String(),
         'endUtc': end.toUtc().toIso8601String(),
-      });
-      await widget.api.patch('/api/admin/appointments/$id/notes', {
+        'status': status != prevStatus ? status : null,
+        'statusReason': null,
+        'notesProvided': true,
         'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
       });
-      final prevStatus = '${widget.appointment['status']}';
-      if (status != prevStatus) {
-        await widget.api.patch('/api/admin/appointments/$id/status', {
-          'status': status,
-          'reason': null,
-        });
-      }
       // Web ile aynı: randevu "Tamamlandı"ya geçince müşteri puanlama linki üret.
       if (status == 'Completed' && prevStatus != 'Completed') {
         try {

@@ -194,9 +194,12 @@ public sealed class ExpenseService : IExpenseService
 
     public async Task<Result<ExpenseSummaryDto>> SummaryAsync(Guid tenantId, ExpenseFilter filter, CancellationToken cancellationToken = default)
     {
+        // ONAYSIZ GİDER GERÇEKLEŞMİŞ SAYILMAZ: kasa akışı (CashFlowService), kâr-zarar ve rapor
+        // servisleri IsApproved süzüyordu, yalnız bu özet süzmüyordu — aynı dönem için iki farklı
+        // gider rakamı çıkıyor, özet onay bekleyen kalemler kadar fazla gösteriyordu.
         var query = _db.BusinessExpenses
             .AsNoTracking()
-            .Where(x => x.TenantId == tenantId);
+            .Where(x => x.TenantId == tenantId && x.IsApproved);
 
         if (filter.FromUtc.HasValue)
         {
@@ -268,6 +271,10 @@ public sealed class ExpenseService : IExpenseService
             expenses.Sum(x => x.Amount),
             expenses.Count,
             byCategory,
-            byStaff));
+            byStaff,
+            // İadeler toplamın İÇİNDEDİR; ayrıca verilir ki gider listesiyle özet arasındaki
+            // fark ekranda açıklanabilsin (iadeler business_expenses tablosunda yok).
+            refunds.Sum(),
+            refunds.Count));
     }
 }

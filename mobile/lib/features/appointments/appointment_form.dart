@@ -390,6 +390,15 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
     final duration = (service['durationMinutes'] as num?)?.toInt() ?? 60;
     final end = start.add(Duration(minutes: duration));
+    // WEB PARİTESİ: paketten karşılanan randevu ÜCRETSİZ gönderilir (price 0). Mobil katalog
+    // fiyatını gönderdiği için randevu "ücretli" sayılıyordu: backend yalnız price <= 0 iken
+    // kaynak seans bağını kurar ve hizmet hakkını doğrular → mobilde deterministik bağ hiç
+    // oluşmuyor, satış iptalinde tahminî eşleştirmeye düşülüyor ve paket randevusu ücretli
+    // görünüyordu. Kalan seansı olmayan hizmet katalog fiyatıyla (ücretli) açılmaya devam eder.
+    final coveredByPackage = _sessions.any((s) =>
+        '${s['serviceDefinitionId']}' == serviceId &&
+        (((s['remainingSessions'] as num?)?.toInt() ?? 0) > 0));
+    final price = coveredByPackage ? 0 : (service['price'] ?? 0);
     // Client-side ön kontrol: personelin bu slotta zaten 2 aktif randevusu varsa doğrudan
     // "bekleme listesine ekle?" teklifi göster (sunucuya gitmeden).
     if (_overlapCount(start, end) >= 2) {
@@ -418,7 +427,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
           'serviceDefinitionId': serviceId,
           'startUtc': start.toUtc().toIso8601String(),
           'endUtc': end.toUtc().toIso8601String(),
-          'price': service['price'] ?? 0,
+          'price': price,
           'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
         });
       }

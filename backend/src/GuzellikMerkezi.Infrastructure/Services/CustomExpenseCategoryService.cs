@@ -47,7 +47,20 @@ public sealed class CustomExpenseCategoryService : ICustomExpenseCategoryService
     {
         var category = await _db.CustomExpenseCategories.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (category is null) return Result<CustomExpenseCategoryDto>.Failure(Error.NotFound("Kategori bulunamadı."));
-        category.Rename(request.Name);
+
+        // MÜKERRER AD KONTROLÜ GÜNCELLEMEDE DE ŞART: ad AES-GCM ile rastgele nonce'la şifrelendiği
+        // için {TenantId, Name} unique indeksi aynı düz metni yakalayamaz — yalnız oluşturmada
+        // bakılıyordu, mevcut bir kategori başka kategorinin adına çevrilebiliyordu.
+        var newName = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newName)) return Result<CustomExpenseCategoryDto>.Failure(Error.Validation("Kategori adı boş olamaz."));
+        var siblings = await _db.CustomExpenseCategories
+            .Where(x => x.TenantId == tenantId && x.Id != id)
+            .Select(x => x.Name)
+            .ToListAsync(cancellationToken);
+        if (siblings.Any(n => string.Equals(n, newName, StringComparison.OrdinalIgnoreCase)))
+            return Result<CustomExpenseCategoryDto>.Failure(Error.Conflict("Bu adda bir kategori zaten var."));
+
+        category.Rename(newName);
         if (request.IsActive) category.Activate(); else category.Deactivate();
         await _db.SaveChangesAsync(cancellationToken);
         return Result<CustomExpenseCategoryDto>.Success(category.ToDto());

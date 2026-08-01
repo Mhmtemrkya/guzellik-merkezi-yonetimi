@@ -60,11 +60,19 @@ public sealed partial class ReportsService
             .GroupBy(r => r.CustomerId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
+        // NET = dönemdeki tahsilat − dönemdeki iade. Kırpma (Max 0) YOK ve iadesi olup o dönemde
+        // tahsilatı OLMAYAN müşteri de nete girer.
+        // Eskiden grup yalnız tahsilatlardan kuruluyordu: geçen ay ödeyip bu ay 500 ₺ iade alan
+        // müşteri sözlükte hiç oluşmuyor, üstelik Max(0) kırpıyordu → "Toplam harcama" kartı 0 ₺
+        // derken AYNI yanıttaki zaman serisi −500 ₺ gösteriyordu.
         var spentByCustomer = payments
             .GroupBy(p => p.CustomerId)
-            .ToDictionary(
-                g => g.Key,
-                g => Math.Max(0m, g.Sum(x => x.Amount) - (refundsByCustomer.TryGetValue(g.Key, out var r) ? r : 0m)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        foreach (var (customerId, refunded) in refundsByCustomer)
+        {
+            spentByCustomer[customerId] =
+                (spentByCustomer.TryGetValue(customerId, out var paid) ? paid : 0m) - refunded;
+        }
 
         var newCustomers = customers.Count(c => c.CreatedAtUtc >= from && c.CreatedAtUtc < to);
         var activeCustomers = visitsByCustomer.Count;

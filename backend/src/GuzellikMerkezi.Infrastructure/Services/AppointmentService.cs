@@ -179,6 +179,20 @@ public sealed class AppointmentService : IAppointmentService
         var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, cancellationToken);
         if (hoursBlock is not null) return Result<AppointmentDto>.Failure(Error.Validation(hoursBlock));
 
+        // SLOT KAPASİTESİ + NUMARA YARIŞI: "önce say, sonra kaydet" iki ayrı işlemdi. İki eşzamanlı
+        // istek kapasiteyi ikisi de boş görüp personelin aynı aralığına izin verilenden fazla randevu
+        // koyabiliyor, MAX(Number)+1 de aynı #RNDV numarasını iki kez üretebiliyordu.
+        // Çözüm: tek transaction + personel satırının kilidi (aynı personelin istekleri serileşir)
+        // → sayım ile yazma arasına kimse giremez. Numara için ayrıca {TenantId, Number} benzersiz
+        // indeksi var; çakışma olursa aşağıdaki döngü numarayı yeniden hesaplar.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (tx is not null)
+        {
+            await RowLock.LockRowAsync(_db, "staff_members", request.StaffMemberId, cancellationToken);
+        }
+
         var overlap = await HasOverlapAsync(tenantId, request.StaffMemberId, request.StartUtc, request.EndUtc, null, cancellationToken);
         // SlotFull kodu: frontend bunu "bekleme listesine ekle?" uyarısı için ayırt eder (kara liste 409'undan farklı).
         if (overlap) return Result<AppointmentDto>.Failure(Error.SlotFull("Bu saatte personelin uygun yeri yok. Bekleme listesine ekleyebilirsiniz."));
@@ -220,7 +234,25 @@ public sealed class AppointmentService : IAppointmentService
         if (isStaffRequest) appointment.SubmitForApproval();
 
         _db.Appointments.Add(appointment);
-        await _db.SaveChangesAsync(cancellationToken);
+        // Numara çakışırsa (benzersiz indeks reddeder) yeniden hesapla ve dene: personel kilidi
+        // aynı personeli serileştirir ama farklı personellere giden iki istek aynı numarayı
+        // hesaplayabilir.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                var next = await _db.Appointments.AsNoTracking()
+                    .Where(a => a.TenantId == tenantId && a.Number != null)
+                    .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
+                appointment.AssignNumber(next + 1);
+            }
+        }
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Create", "Appointment", appointment.Id,
             isStaffRequest
                 ? $"Taslak randevu onaya gönderildi ({appointment.StartUtc:dd.MM.yyyy HH:mm})"
@@ -390,6 +422,47 @@ public sealed class AppointmentService : IAppointmentService
         return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
+    /// <summary>
+    /// Zaman + durum + notu TEK transaction'da uygular. Ekran eskiden üç ayrı uç çağırıyordu;
+    /// ortadaki başarılı olup sonraki patladığında randevu tamamlanmış (ve seans düşmüş) hâlde
+    /// kalırken arayüz "kaydedilemedi" gösteriyordu. Alt çağrılar açık transaction'ı görünce
+    /// kendi transaction'larını açmaz ama kilit/taze-okuma korumasını uygulamayı sürdürür.
+    /// </summary>
+    public async Task<Result<AppointmentDto>> UpdateAsync(Guid tenantId, Guid id, UpdateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    {
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        Result<AppointmentDto>? last = null;
+
+        if (request.StartUtc is { } startUtc && request.EndUtc is { } endUtc)
+        {
+            last = await RescheduleAsync(tenantId, id,
+                new RescheduleAppointmentRequest(startUtc, endUtc, request.StaffMemberId), cancellationToken, staffTenantUserId);
+            if (last.IsFailure) return last;
+        }
+
+        if (request.Status is { } status)
+        {
+            last = await ChangeStatusAsync(tenantId, id,
+                new ChangeAppointmentStatusRequest(status, request.StatusReason), cancellationToken, staffTenantUserId);
+            if (last.IsFailure) return last;
+        }
+
+        if (request.NotesProvided)
+        {
+            last = await ChangeNotesAsync(tenantId, id,
+                new ChangeAppointmentNotesRequest(request.Notes), cancellationToken, staffTenantUserId);
+            if (last.IsFailure) return last;
+        }
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
+        // Hiçbir alan gönderilmediyse mevcut hâli döndür (istemci "değişiklik yok" ile gelebilir).
+        return last ?? await GetAsync(tenantId, id, cancellationToken, staffTenantUserId);
+    }
+
     public async Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
@@ -402,12 +475,14 @@ public sealed class AppointmentService : IAppointmentService
         // BAŞKA bir kullanılabilir seansı tüketiyordu — tek randevu iki seans düşürüyordu.
         // Randevu satırında concurrency token da yok, o yüzden kilit tek koruma.
         // İzolasyon READ COMMITTED: kilit sonrası okuma gerçekten taze olsun (bkz. AdisyonService).
+        // Dış bir transaction varsa (tek işlemli güncelleme ucu) ona KATILIRIZ; kilit + taze okuma
+        // yine yapılır — koruma transaction'ın sahibi olmaya bağlı değildir.
         var relational = _db.Database.IsRelational();
         await using var tx = relational && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
 
-        if (tx is not null)
+        if (relational)
         {
             // Kilit sırası (RowLock.TableOrder): customers → appointments → … → sessions.
             // Müşteri ÖNCE kilitlenir: otomatik satış onayı ve adisyon silme de bu sırayla
@@ -505,20 +580,53 @@ public sealed class AppointmentService : IAppointmentService
             }
         }
 
+        // Tamamlanınca müşteriye WhatsApp'tan değerlendirme linki (personel + salon yıldızı) gönder.
+        // OUTBOX SATIRI ANA İŞLEMİN İÇİNE yazılır (kuyruk aynı DbContext'i kullanır): commit'ten
+        // SONRA yazılırsa, kuyruğa yazarken hata alındığında durum değişikliği kalıcı olduğu hâlde
+        // kullanıcı 500 görüyor; tekrar denemede durum aynı olduğu için baştaki no-op'a düşülüyor
+        // ve değerlendirme işi bir daha HİÇ oluşmuyordu.
+        if (isCompleting)
+        {
+            await _jobs.EnqueueAsync(Background.DurableJobTypes.RatingLink,
+                new Background.RatingLinkJob(tenantId, appointment.Id), cancellationToken);
+        }
+
         // Durum değişikliğini (+ tamamlanınca seans düşümü) önce kaydet: bekleme listesi offer akışı
         // overlap'i DB'den okuyacağı için slot boşalması kalıcı olmalı.
         await _db.SaveChangesAsync(cancellationToken);
         // Kilitler burada bırakılır; sonraki bildirim/kuyruk işleri (best-effort) kilit tutmamalı.
         if (tx is not null) await tx.CommitAsync(cancellationToken);
 
-        // Tamamlanınca müşteriye WhatsApp'tan değerlendirme linki (personel + salon yıldızı) gönder.
-        // Kalıcı kuyruğa yazılır (best-effort): link üretimi + Meta HTTP çağrısı istek yolunu bekletmez.
-        if (request.Status == AppointmentStatus.Completed && prevStatus != AppointmentStatus.Completed)
+        // COMMIT SONRASI YARDIMCI İŞLER (bekleme listesi teklifi, denetim kaydı, bildirimler).
+        // Hepsi best-effort: durum değişikliği ARTIK KALICI olduğu için buradaki bir hata
+        // kullanıcıya "işlem başarısız" (500) olarak dönmemeli.
+        try
         {
-            await _jobs.EnqueueAsync(Background.DurableJobTypes.RatingLink,
-                new Background.RatingLinkJob(tenantId, appointment.Id), cancellationToken);
+            await RunPostStatusChangeSideEffectsAsync(tenantId, appointment, request, prevStatus, staffTenantUserId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                await _audit.LogAsync(tenantId, appointment.BranchId, "AppointmentStatusSideEffectFailed",
+                    "Appointment", appointment.Id,
+                    $"Randevu durumu değişti ({prevStatus} → {appointment.Status}) ancak yan işler tamamlanamadı: {ex.Message}",
+                    new { prevStatus, NewStatus = appointment.Status }, cancellationToken);
+            }
+            catch { /* denetim kaydı da yazılamadıysa yutulur — asıl işlem geçerli */ }
         }
 
+        return Result<AppointmentDto>.Success(appointment.ToDto());
+    }
+
+    /// <summary>
+    /// Durum değişikliği KALICI olduktan sonra çalışan yan işler. Ayrı metotta: çağıran tarafta
+    /// tek bir try/catch ile sarılıp hatası isteğe yansıtılmaz (bkz. <see cref="ChangeStatusAsync"/>).
+    /// </summary>
+    private async Task RunPostStatusChangeSideEffectsAsync(
+        Guid tenantId, Appointment appointment, ChangeAppointmentStatusRequest request,
+        AppointmentStatus prevStatus, Guid? staffTenantUserId, CancellationToken cancellationToken)
+    {
         // İptalde yer açıldı → bekleme listesindeki ilk uygun müşteriye WhatsApp'tan "yer açıldı, ister misiniz?"
         // teklifi götür (offer-first). Best-effort: teklif/gönderim başarısız olsa da iptal geçerli kalır.
         Guid? offeredWaitlistId = null;
@@ -564,8 +672,6 @@ public sealed class AppointmentService : IAppointmentService
                 isCancel ? "Randevun iptal edildi" : "Müşterin gelmedi",
                 $"appt-staff-{appointment.Status}", cancellationToken);
         }
-
-        return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
     public async Task<Result<AppointmentDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)

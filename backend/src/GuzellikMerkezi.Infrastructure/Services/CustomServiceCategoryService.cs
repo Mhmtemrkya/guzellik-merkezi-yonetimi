@@ -51,7 +51,21 @@ public sealed class CustomServiceCategoryService : ICustomServiceCategoryService
     {
         var category = await _db.CustomServiceCategories.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (category is null) return Result<CustomServiceCategoryDto>.Failure(Error.NotFound("Kategori bulunamadı."));
-        category.Rename(request.Name);
+
+        // MÜKERRER AD KONTROLÜ GÜNCELLEMEDE DE ŞART (bkz. CustomExpenseCategoryService): ad şifreli
+        // saklandığı için DB unique indeksi düz metni yakalayamaz. Aynı üst kategori altında
+        // (ya da üst seviyede) aynı ada izin verilmez.
+        var newName = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newName)) return Result<CustomServiceCategoryDto>.Failure(Error.Validation("Kategori adı boş olamaz."));
+        var siblings = await _db.CustomServiceCategories
+            .Where(x => x.TenantId == tenantId && x.Id != id)
+            .Select(x => new { x.Name, x.ParentId })
+            .ToListAsync(cancellationToken);
+        if (siblings.Any(x => x.ParentId == request.ParentId && string.Equals(x.Name, newName, StringComparison.OrdinalIgnoreCase)))
+            return Result<CustomServiceCategoryDto>.Failure(Error.Conflict(
+                request.ParentId is null ? "Bu adda bir kategori zaten var." : "Bu üst kategoride bu adda alt kategori zaten var."));
+
+        category.Rename(newName);
         category.SetParent(request.ParentId);
         if (request.IsActive) category.Activate(); else category.Deactivate();
         await _db.SaveChangesAsync(cancellationToken);

@@ -31,6 +31,23 @@ public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, st
 public sealed record ChangeAppointmentNotesRequest(string? Notes);
 
 /// <summary>
+/// Randevu düzenleme ekranının TEK isteği: zaman + durum + not birlikte, TEK transaction'da.
+/// <para>
+/// Ekran "Kaydet"te üç ayrı uç çağırıyordu (reschedule → status → notes). Ortadaki başarılı olup
+/// sonraki patlarsa randevu tamamlanmış ve seans düşmüş oluyor ama arayüz "kaydedilemedi" diyor;
+/// kullanıcı tekrar deneyerek karışıklık üretiyordu. Null bırakılan alan DEĞİŞTİRİLMEZ.
+/// </para>
+/// </summary>
+public sealed record UpdateAppointmentRequest(
+    DateTime? StartUtc = null,
+    DateTime? EndUtc = null,
+    Guid? StaffMemberId = null,
+    AppointmentStatus? Status = null,
+    string? StatusReason = null,
+    bool NotesProvided = false,
+    string? Notes = null);
+
+/// <summary>
 /// Kurum yöneticisi aksiyon kutusu: saati gelmiş (sonucu bekleyen) randevular + personelin onaya gönderdiği taslaklar.
 /// </summary>
 public sealed record AppointmentInboxDto(

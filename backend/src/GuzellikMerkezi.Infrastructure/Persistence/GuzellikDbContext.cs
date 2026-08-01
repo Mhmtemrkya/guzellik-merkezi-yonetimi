@@ -588,6 +588,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasIndex(x => new { x.TenantId, x.StaffMemberId, x.StartUtc, x.EndUtc });
         // Müşteri listesi satır zenginleştirme (son ziyaret / randevu sayısı) ve müşteri kartı.
         builder.HasIndex(x => new { x.TenantId, x.CustomerId, x.StartUtc });
+        // #RNDV numarası kurum içinde BENZERSİZ. Numara MAX(Number)+1 ile üretiliyor; eşzamanlı
+        // iki oluşturma aynı numarayı hesaplayabiliyordu ve engel yoktu. MySQL çoklu NULL'a izin
+        // verir → numarası olmayan eski kayıtlar etkilenmez.
+        builder.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Restrict);

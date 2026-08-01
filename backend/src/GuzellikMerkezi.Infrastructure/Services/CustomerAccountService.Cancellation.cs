@@ -174,12 +174,37 @@ public sealed partial class CustomerAccountService
             await tx.CommitAsync(ct);
             return result;
         }
+        catch (Exception ex) when (IsLockContention(ex))
+        {
+            // KİLİT ÇAKIŞMASI 500 DEĞİLDİR: veritabanı deadlock kurbanı seçtiğinde ya da kilit
+            // bekleme süresi dolduğunda hiçbir şey yazılmamıştır — kullanıcıya "tekrar deneyin"
+            // demek doğru cevap. Yığın izli 500 hem yanıltıcı hem de gereksiz alarm üretiyordu.
+            await tx.RollbackAsync(ct);
+            _db.ChangeTracker.Clear();
+            return Result<TValue>.Failure(Error.Conflict(
+                "Bu kayıt üzerinde eşzamanlı başka bir işlem var. Lütfen birkaç saniye sonra tekrar deneyin."));
+        }
         catch
         {
             await tx.RollbackAsync(ct);
             _db.ChangeTracker.Clear();
             throw;
         }
+    }
+
+    /// <summary>
+    /// MySQL/MariaDB kilit çakışması mı? 1213 = deadlock (kurban seçildi), 1205 = kilit bekleme
+    /// süresi doldu. İkisinde de transaction geri alınmıştır; işlem güvenle tekrarlanabilir.
+    /// </summary>
+    private static bool IsLockContention(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException!)
+        {
+            var number = e.GetType().GetProperty("Number")?.GetValue(e) as int?;
+            if (number is 1213 or 1205) return true;
+            if (e.InnerException is null) break;
+        }
+        return false;
     }
 
     private enum CancelLockState { Locked, NotFound, AlreadyArchived }
@@ -305,9 +330,11 @@ public sealed partial class CustomerAccountService
     /// </para>
     /// <para>
     /// SIRA: <see cref="RowLock.TableOrder"/>. Adisyon onayı eskiden adisyonlar'ı customers'tan
-    /// ÖNCE alıyordu ve bu iki yön birbirini bekleyebiliyordu; onay tarafı düzeltildi. AÇIK KALAN:
-    /// bu yol <c>customer_accounts</c>'u en başta (bkz. <c>LockForCancelAsync</c>), onay yolu ise
-    /// cari güncellemesini en sonda alır — o çift için sıra hâlâ ortak değildir.
+    /// ÖNCE alıyordu ve bu iki yön birbirini bekleyebiliyordu; onay tarafı düzeltildi.
+    /// İptal yolu da artık <c>customers</c>'ı EN BAŞTA (cari kilidinden önce) alıyor: aynı
+    /// müşterinin iki işlemi kapıda serileşiyor, böylece "iptal cariyi önce / onay adisyonu önce"
+    /// çaprazı oluşamıyor. Kilit çakışması yine de olursa istek 500 değil Conflict döner
+    /// (bkz. <c>InTransactionAsync</c>).
     /// </para>
     /// </summary>
     private async Task LockSideEffectRowsAsync(

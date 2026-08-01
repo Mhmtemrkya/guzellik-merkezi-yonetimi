@@ -305,14 +305,25 @@ interface MonthRange {
   days: number
 }
 
+/**
+ * Ayın YEREL (TR) sınırları. `Date.UTC(...)` kullanıldığında ay UTC'de 00:00'da başlıyordu;
+ * Türkiye UTC+3 olduğu için ayın ilk günü 00:00–02:59 arasındaki randevular aralığın DIŞINDA
+ * kalıyor, sonraki ayın aynı saatleri ise İÇERİ giriyordu. `new Date(y, m, 1)` yerel gece
+ * yarısıdır ve `toISOString()` doğru UTC anını verir (TR'de önceki gün 21:00).
+ */
 function monthRange(monthDate: Date): MonthRange {
-  const start = new Date(Date.UTC(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0))
-  const end = new Date(Date.UTC(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0))
+  const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0)
+  const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0, 0)
   return { start, end, days: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate() }
 }
 
+/**
+ * YEREL tarihin YYYY-AA-GG karşılığı. `toISOString()` değeri UTC'ye kaydırdığı için Türkiye'de
+ * 00:00–02:59 arasında BİR ÖNCEKİ günü veriyordu — "bugün" süzgeci geceyarısından sonra yanlış
+ * güne bakıyordu. Randevu satırlarının `date` alanı da yerel gündür; karşılaştırma aynı eksende olmalı.
+ */
 function isoDateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 interface DashboardData {
@@ -378,8 +389,16 @@ function RandevularPageInner() {
   const { performWrite } = useStaffApproval()
   const [staffActionMsg, setStaffActionMsg] = useState<string>('')
   const range = monthRange(monthDate)
-  const rangeStartIso = range.start.toISOString()
-  const rangeEndIso = range.end.toISOString()
+  // VERİ PENCERESİ AYDAN GENİŞ: gün modalı seçilen tarihin HAFTASINI gösteriyor, ay sınırındaki
+  // bir güne tıklanınca komşu ayın günleri (ör. 1 Ağustos'un haftasındaki 27–31 Temmuz) veri
+  // kaynağında olmadığı için "randevu yok" görünüyordu. Aya ±7 gün pay eklenir; ay ızgarası
+  // zaten güne göre süzdüğü (r.date === key) için fazladan kayıtlar görünmez.
+  const fetchStart = new Date(range.start); fetchStart.setDate(fetchStart.getDate() - 7)
+  const fetchEnd = new Date(range.end); fetchEnd.setDate(fetchEnd.getDate() + 7)
+  const rangeStartIso = fetchStart.toISOString()
+  // Backend toUtc'yi KAPSAYICI (<=) uyguluyor; tam sınırdaki kayıt iki dönemde birden
+  // sayılmasın diye 1 ms geri alınır.
+  const rangeEndIso = new Date(fetchEnd.getTime() - 1).toISOString()
 
   const { data, loading, error, reload } = useApiQuery<DashboardData>(
     async () => {
@@ -709,9 +728,16 @@ function RandevularPageInner() {
     const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
     const utcRange = toUtcRange(values.date, values.time, values.durationMinutes || service?.duration || 30)
     // Düzenlemede yalnızca zamanlama + durum + not güncellenir (müşteri/hizmet/personel sabittir).
-    await adminApi.rescheduleAppointment(appointmentId, utcRange, tenantId)
-    await adminApi.changeAppointmentStatus(appointmentId, { status: values.status, reason: null }, tenantId)
-    await adminApi.changeAppointmentNotes(appointmentId, { notes: values.notes || null }, tenantId)
+    // TEK UÇ: eskiden üç ayrı çağrı yapılıyordu; durum başarılı olup not çağrısı patlarsa randevu
+    // tamamlanmış (ve seans düşmüş) hâlde kalırken ekran "kaydedilemedi" diyordu.
+    await adminApi.updateAppointment(appointmentId, {
+      startUtc: utcRange.startUtc,
+      endUtc: utcRange.endUtc,
+      status: values.status,
+      statusReason: null,
+      notesProvided: true,
+      notes: values.notes || null,
+    }, tenantId)
     await reload()
   }
 

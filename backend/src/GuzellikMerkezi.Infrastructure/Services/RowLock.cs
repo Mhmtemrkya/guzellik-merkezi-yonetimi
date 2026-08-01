@@ -26,6 +26,9 @@ public static class RowLock
     public static readonly string[] TableOrder =
     [
         "customers",
+        // Randevu OLUŞTURMA slot kapasitesini personel satırında serileştirir: "önce say, sonra
+        // kaydet" iki ayrı işlemdi ve eşzamanlı iki istek kapasiteyi ikisi de boş görebiliyordu.
+        "staff_members",
         // Randevu durum geçişi de bu protokole katılır: durum okuması ile seans tüketimi arasında
         // başka bir istek araya girip aynı randevu için ikinci bir seans düşürebiliyordu (randevu
         // satırında concurrency token da yok). "customers"tan SONRA gelir — adisyon silme yolu

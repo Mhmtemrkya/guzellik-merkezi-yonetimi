@@ -992,6 +992,13 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/appointments/${id}/status`, { method: 'PATCH', query: { tenantId }, body }),
   changeAppointmentNotes: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/appointments/${id}/notes`, { method: 'PATCH', query: { tenantId }, body }),
+  /**
+   * Zaman + durum + notu TEK transaction'da günceller. Üç ayrı çağrı yapıldığında ortadaki
+   * başarılı olup sonraki patlarsa randevu tamamlanmış (seans düşmüş) hâlde kalırken arayüz
+   * "kaydedilemedi" gösteriyordu.
+   */
+  updateAppointment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/appointments/${id}`, { method: 'PATCH', query: { tenantId }, body }),
   deleteAppointment: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/appointments/${id}`, { method: 'DELETE', query: { tenantId } }),
 

@@ -265,7 +265,14 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
                 }
                 if (given > 0) credits[session.Id] = credits.GetValueOrDefault(session.Id) + given;
             }
-            return credits.Select(kv => new PackageUseCredit(kv.Key, kv.Value)).ToList();
+
+            // KISMİ BAĞ: adisyonda TEK bir bağ görünce eskiden burada dönülüyordu ve aynı fişteki
+            // bağsız (eski/backfill atlamış) kalemler HİÇ geri verilmiyordu — bir seans iade
+            // edilirken kardeş kalemin üç seansı kayboluyordu. Bağı olmayan kalemler için
+            // aşağıdaki tahminî yol yalnız O KALEMLER için sürdürülür.
+            var linkedItemIds = links.Select(l => l.AdisyonItemId).ToHashSet();
+            items = items.Where(i => !linkedItemIds.Contains(i.Id)).ToList();
+            if (items.Count == 0) return credits.Select(kv => new PackageUseCredit(kv.Key, kv.Value)).ToList();
         }
 
         // --- Bağ kaydı olmayan eski adisyonlar: en son kullanılandan geri al (tahminî) ---

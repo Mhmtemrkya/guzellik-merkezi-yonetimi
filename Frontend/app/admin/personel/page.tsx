@@ -17,7 +17,7 @@ import StaffCalendarLinkButton from '@/components/dashboard/StaffCalendarLinkBut
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, initialsFromName, normalizeAppointment, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -276,9 +276,16 @@ function PersonelPageInner() {
       // personel bazında zaten orada hesaplanıyor (randevu listesinden türetilemez).
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      // METRİK PENCERESİ: eskiden "tüm geçmişten ilk 500 randevu" çekiliyordu; backend
+      // randevuları ESKİDEN YENİYE sıraladığı için kurum 500 randevuyu aşınca bu ayın
+      // kayıtları sonuç setine hiç girmiyor, "bu ay yapılan iş" ve son 30 gün grafiği
+      // sıfır görünüyordu. Artık sınır tarih: son 1 yıl, sayfalar sonuna kadar okunur.
+      const statsSince = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
       const [staff, appts, perms, money] = await Promise.all([
         adminApi.staff<ApiStaff>({ tenantId, search: filter || undefined, page: 1, pageSize: 100 }),
-        adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+        fetchAllPaged<ApiAppointment>((page, pageSize) =>
+          adminApi.appointments<ApiAppointment>({ tenantId, page, pageSize, fromUtc: statsSince.toISOString() }),
+        ).catch(() => [] as ApiAppointment[]),
         adminApi.staffPermissions<PermissionMeta>().catch(() => [] as PermissionMeta[]),
         adminApi
           .reportStaff<{ rows?: ApiStaffMoneyRow[] }>({
@@ -289,7 +296,7 @@ function PersonelPageInner() {
           .then((r) => r?.rows ?? [])
           .catch(() => [] as ApiStaffMoneyRow[]),
       ])
-      return { staff, appts: apiItems(appts), perms, money }
+      return { staff, appts, perms, money }
     },
     [tenantId, filter],
     { initialData: { staff: { items: [] }, appts: [], perms: [], money: [] } },
@@ -1017,7 +1024,8 @@ function PersonelPageInner() {
 
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         <div className="rounded-[10px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1.5">
-                          <div className="text-[10px] text-[#705a66]">Randevu</div>
+                          {/* Sayaç son 1 yıllık pencereden gelir (metrik penceresi) — "tüm zamanlar" değil. */}
+                          <div className="text-[10px] text-[#705a66]">Randevu (1 yıl)</div>
                           <div className="font-display text-[15px] tabular-nums text-[#352432]">{st?.total ?? 0}</div>
                         </div>
                         <div className="rounded-[10px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1.5">
@@ -1111,7 +1119,7 @@ function PersonelPageInner() {
                           {/* 4'lü metrik şeridi */}
                           <div className="relative mt-4 grid grid-cols-4 gap-2">
                             {[
-                              { k: 'Randevu', v: String(st?.total ?? 0) },
+                              { k: 'Randevu (1 yıl)', v: String(st?.total ?? 0) },
                               { k: 'Bu ay işlem', v: String(sc.monthCompleted) },
                               { k: 'Bu ay tutar', v: formatTL(sc.revenue) },
                               { k: 'Yetki', v: String(selected.permissions.filter((x) => !x.includes('.')).length) },

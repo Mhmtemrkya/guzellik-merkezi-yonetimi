@@ -439,8 +439,10 @@ public static class DatabaseBootstrap
             var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
             if (db.Database.IsInMemory()) return;
 
-            var linkedAdisyonIds = (await db.PackageSessionUsages.IgnoreQueryFilters()
-                .Select(u => u.AdisyonId).Distinct().ToListAsync()).ToHashSet();
+            // KALEM bazında bakılır, ADİSYON bazında değil: bir fişte tek kalem bağlıysa diğer
+            // kalemler de "kapsandı" sayılıp atlanıyor, iptalde o seanslar geri verilmiyordu.
+            var linkedItemIds = (await db.PackageSessionUsages.IgnoreQueryFilters()
+                .Select(u => u.AdisyonItemId).Distinct().ToListAsync()).ToHashSet();
 
             var items = await db.AdisyonItems.IgnoreQueryFilters()
                 .Where(i => !i.IsDeleted && i.Type == Domain.Enums.AdisyonItemType.PackageUse && i.RefId != null)
@@ -451,7 +453,7 @@ public static class DatabaseBootstrap
             if (items.Count == 0) return;
 
             var added = 0;
-            foreach (var row in items.Where(x => !linkedAdisyonIds.Contains(x.Item.AdisyonId)))
+            foreach (var row in items.Where(x => !linkedItemIds.Contains(x.Item.Id)))
             {
                 var serviceId = row.Item.RefId!.Value;
                 var candidates = await db.CustomerPackageSessions.IgnoreQueryFilters()

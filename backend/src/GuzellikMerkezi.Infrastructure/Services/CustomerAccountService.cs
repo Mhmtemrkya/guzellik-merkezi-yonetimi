@@ -638,6 +638,18 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         return await InTransactionAsync(async () =>
         {
+            // 0) KİLİT SIRASI ORTAK OLMALI (RowLock.TableOrder: customers → … → customer_accounts).
+            //    Bu yol cariyi EN BAŞTA kilitliyordu; adisyon onayı/silme ise müşteriyi önce alıyor.
+            //    İki yön çapraz bekleyip MariaDB deadlock üretebiliyordu. Müşteri satırı burada da
+            //    ilk kilitlenirse aynı müşterinin iki işlemi daha kapıda serileşir. Kimlik okuması
+            //    kilitsizdir; asıl veriler kilit sonrası yeniden okunur (aşağıda).
+            var customerIdForLock = await _db.CustomerAccounts.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Id == id)
+                .Select(x => (Guid?)x.CustomerId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (customerIdForLock is { } lockCustomerId)
+                await RowLock.LockRowAsync(_db, "customers", lockCustomerId, cancellationToken);
+
             // 1) ÖNCE KİLİT, SONRA OKUMA. Eskiden cari kilitten önce yüklendiği için araya giren
             //    bir tahsilat yedeğe girmiyor, sonraki hard-delete onu KALICI olarak siliyordu.
             var lockState = await LockForCancelAsync(tenantId, id, cancellationToken);
@@ -1136,6 +1148,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         var nowUtc = DateTime.UtcNow;
 
+        // TEK İŞLEM: eski plan silme (Step 1) ile yeni planı yazma (Step 2) ayrı ayrı commit
+        // ediliyordu. İkinci adım patlarsa eski taksitler silinmiş, yenileri hiç oluşmamış
+        // kalıyordu: finanse edilen tutarın plan görünürlüğü tamamen kayboluyordu.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
         // Step 1: Tüm mevcut taksitleri soft-delete et — plan baştan kurulur.
         // (Ödenen tutar taksitte değil tahsilatlarda tutulduğundan, plan yeniden bölünse de
         // "ödenen" korunur; tahsilatlar yeni taksitlere vade sırasıyla yeniden dağıtılır.)
@@ -1166,6 +1185,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         await _db.CustomerAccounts
             .Where(x => x.Id == id)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         // Return hydrated
         var hydrated = await LoadAsync(tenantId, id, cancellationToken);

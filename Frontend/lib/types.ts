@@ -1855,6 +1855,9 @@ export interface ApiExpenseSummary {
   count?: number
   byCategory?: ApiExpenseCategoryTotal[]
   byStaff?: ApiExpenseStaffTotal[]
+  /** Toplamın İÇİNDEKİ müşteri iadesi — gider listesinde görünmez, fark buradan açıklanır. */
+  refundAmount?: number
+  refundCount?: number
 }
 
 export interface ExpenseSummary {
@@ -1862,6 +1865,9 @@ export interface ExpenseSummary {
   count: number
   byCategory: Array<{ category: ExpenseCategoryKey; totalAmount: number; count: number }>
   byStaff: Array<{ staffMemberId: string; staffName: string; totalAmount: number; count: number }>
+  /** Toplamın İÇİNDEKİ müşteri iadesi (business_expenses tablosunda yoktur). */
+  refundAmount: number
+  refundCount: number
 }
 
 export type CashFlowEntryTypeKey = 'income' | 'expense'

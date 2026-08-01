@@ -46,11 +46,22 @@ public sealed record ExpenseFilter(
     ExpenseCategory? Category,
     Guid? StaffMemberId);
 
+/// <summary>
+/// Gider özeti. <see cref="TotalAmount"/> ONAYLI giderler + müşteri iadelerini kapsar; kasa akışı
+/// ve kâr-zarar da ikisini gider sayar.
+/// <para>
+/// <see cref="RefundAmount"/>/<see cref="RefundCount"/> ayrı verilir: iadeler gider LİSTESİNDE
+/// (business_expenses) görünmez, bu yüzden liste toplamı ile özet toplamı arasında açıklanmayan
+/// bir fark oluşuyordu. Ekran bu satırı ayrıca gösterirse fark okunur hâle gelir.
+/// </para>
+/// </summary>
 public sealed record ExpenseSummaryDto(
     decimal TotalAmount,
     int Count,
     IReadOnlyCollection<ExpenseCategoryTotalDto> ByCategory,
-    IReadOnlyCollection<ExpenseStaffTotalDto> ByStaff);
+    IReadOnlyCollection<ExpenseStaffTotalDto> ByStaff,
+    decimal RefundAmount = 0m,
+    int RefundCount = 0);
 
 public sealed record ExpenseCategoryTotalDto(ExpenseCategory Category, decimal TotalAmount, int Count);
 

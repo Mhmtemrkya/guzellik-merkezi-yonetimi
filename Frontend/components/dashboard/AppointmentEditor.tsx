@@ -508,7 +508,10 @@ export default function AppointmentEditor({
   onQuickCreateCustomer,
   onAddToWaitlist,
 }: AppointmentEditorProps) {
-  const todayIso = new Date().toISOString().slice(0, 10)
+  // YEREL gün: toISOString() UTC'ye kaydırdığı için Türkiye'de 00:00–02:59 arasında yeni randevu
+  // varsayılanı BİR ÖNCEKİ güne düşüyordu.
+  const now = new Date()
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   // Create modunda hizmet, müşterinin satın aldığı seanslardan seçilir (katalogdan değil) — boş başlar.
   const baseDefaults: AppointmentEditorValues = {
     // 12 bin+ müşteri listesinde ilk kaydı otomatik seçmek yanıltıcı — create'te boş başlar, aramayla seçilir.
