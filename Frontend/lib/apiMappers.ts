@@ -447,7 +447,7 @@ export function normalizeCustomer(customer: ApiCustomer | null | undefined, inde
     phone: customer?.phone || 'Telefon yok',
     email: customer?.email || '',
     city: cityMatch?.[1] || 'Şube müşterisi',
-    tier: customer?.kvkkConsent ? 'KVKK Onaylı' : 'KVKK Bekliyor',
+    tier: customer?.kvkkConsent ? 'KVKK Onaylı' : 'KVKK Onaysız',
     joined: customer?.birthDate || 'API',
     createdAt: customer?.createdAtUtc || '',
     activePackages: 0,

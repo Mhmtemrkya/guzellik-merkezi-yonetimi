@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import CustomerFormDialog from '@/components/dashboard/CustomerFormDialog'
@@ -33,7 +33,7 @@ import {
   Mail, MessageCircle, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
   UserPlus, UserRound, Users, Wallet,
 } from 'lucide-react'
-import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiCustomerStats, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
+import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiCustomerSpendingStats, ApiCustomerStats, ApiService, ApiServicePackage, ApiStaff, Customer, CustomerGender, PagedResult } from '@/lib/types'
 
 interface CustomerFormValues {
   fullName?: string; phone?: string; email?: string; birthDate?: string
@@ -42,7 +42,7 @@ interface CustomerFormValues {
 
 type TabKey = 'all' | 'vip' | 'kvkk' | 'kvkk-pending' | 'debt' | 'recent' | 'blacklist' | 'passive'
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'all', label: 'Tümü' }, { key: 'vip', label: 'VIP' }, { key: 'kvkk', label: 'KVKK Onaylı' }, { key: 'kvkk-pending', label: 'KVKK Bekleyen' },
+  { key: 'all', label: 'Tümü' }, { key: 'vip', label: 'VIP' }, { key: 'kvkk', label: 'KVKK Onaylı' }, { key: 'kvkk-pending', label: 'KVKK Onaysız' },
   { key: 'debt', label: 'Borçlu' }, { key: 'recent', label: 'Yeni Eklenen' },
   { key: 'blacklist', label: 'Kara Liste' }, { key: 'passive', label: 'Pasif' },
 ]
@@ -53,6 +53,17 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: 'recent', label: 'Son eklenen' }, { key: 'oldest', label: 'İlk eklenen' },
   { key: 'last-visit', label: 'Son ziyaret' },
   { key: 'debt', label: 'Borç (yüksek)' }, { key: 'spent', label: 'Harcama (yüksek)' },
+]
+
+// "Ortalama Harcama" kartının dönem seçimi. Ölçüt TAHSİLAT tarihidir: dönemde kasaya fiilen
+// giren para sayılır — geçmiş bir satışın bu ay ödenen taksiti de bu aya düşer.
+// null = tüm zamanlar (kartın eski davranışı; varsayılan da budur).
+type SpendPeriod = { key: string; label: string; days: number | null }
+const SPEND_PERIODS: SpendPeriod[] = [
+  { key: 'all', label: 'Tüm zamanlar', days: null },
+  { key: '30', label: 'Son 30 gün', days: 30 },
+  { key: '90', label: 'Son 90 gün', days: 90 },
+  { key: '365', label: 'Son 1 yıl', days: 365 },
 ]
 
 const AVATAR_COLORS = ['from-[#f3a3bf] to-[#ffd9e6]', 'from-[#9c70bb] to-[#e3cdf2]', 'from-[#5aa9e6] to-[#cfe7fb]', 'from-[#54c1a0] to-[#cdeee2]', 'from-[#e6a14f] to-[#fbe6cb]', 'from-[#e0617f] to-[#fbd2dc]']
@@ -183,6 +194,16 @@ function MusterilerPageInner() {
   )
   const stats = statsData || {}
 
+  // ---- Ortalama harcama kartının dönemi. Ağır /stats sorgusunu tekrar koşturmamak için
+  // ayrı ve hafif bir uçtan gelir (yalnız tahsilat tablosu taranır).
+  const [spendPeriod, setSpendPeriod] = useState<string>('all')
+  const spendDays = useMemo(() => SPEND_PERIODS.find((p) => p.key === spendPeriod)?.days ?? null, [spendPeriod])
+  const { data: spendData, reload: reloadSpend } = useApiQuery<ApiCustomerSpendingStats>(
+    async () => (tenantId ? adminApi.customersSpendingStats<ApiCustomerSpendingStats>(spendDays, tenantId).catch(() => ({})) : {}),
+    [tenantId, spendDays],
+    { initialData: {} },
+  )
+
   // ---- Randevu/satış modalları için küçük sabit listeler (tek sayfa, ~200 kayıt).
   const { data: lookups } = useApiQuery<{ staff: ApiStaff[]; services: ApiService[]; packages: ApiServicePackage[] }>(
     async () => {
@@ -201,7 +222,7 @@ function MusterilerPageInner() {
   // Paket/hizmet/ürün satışı veya randevu sonrası: listeyi + sayaçları + detay kartlarını tazele.
   const reloadWithSessions = async () => {
     setSessRefresh((v) => v + 1)
-    await Promise.all([reload(), reloadStats()])
+    await Promise.all([reload(), reloadStats(), reloadSpend()])
   }
 
   // Toplu işlem: seçili müşterilere WhatsApp'tan KVKK açık rıza mesajı gönder.
@@ -313,7 +334,7 @@ function MusterilerPageInner() {
 
   const statCards = [
     { label: 'Toplam müşteri', value: total.toLocaleString('tr-TR'), icon: UserRound, series: newSeries, stroke: '#d7839d' },
-    { label: 'KVKK onayı olmayan', value: kvkkMissing.toLocaleString('tr-TR'), icon: ShieldAlert, series: newSeries, stroke: '#e0a33c' },
+    { label: 'KVKK onaysız', value: kvkkMissing.toLocaleString('tr-TR'), icon: ShieldAlert, series: newSeries, stroke: '#e0a33c' },
     { label: 'Açık borç', value: formatTL(Math.round(debtTotal)), icon: Wallet, series: newSeries, stroke: '#e0617f' },
     { label: 'Son 90 günde eklenen müşteri', value: newIn90.toLocaleString('tr-TR'), icon: UserPlus, series: newSeries, stroke: '#9c70bb' },
   ]
@@ -329,9 +350,10 @@ function MusterilerPageInner() {
       // Yaş segmenti YALNIZCA doğum tarihi girilmiş müşterilerden hesaplanır — kaç kişilik
       // veriye dayandığı kartta yazılır, aksi halde "%83" tüm müşterileri temsil ediyor sanılıyor.
       ageKnown: Number(stats.ageKnownCount ?? 0),
-      avgSpent: Number(stats.avgSpent ?? 0),
-      // Ortalama harcama, harcaması OLAN müşteriler üzerinden alınır (0 harcayanlar ortalamayı bozmasın).
-      spenders: Number(stats.spenderCount ?? 0),
+      // Ortalama harcama SEÇİLİ DÖNEMDEN gelir (/stats/spending); harcaması OLAN müşteriler
+      // üzerinden alınır — o dönemde ödeme yapmayanlar ortalamayı aşağı çekmesin.
+      avgSpent: Number(spendData?.avgSpent ?? 0),
+      spenders: Number(spendData?.spenderCount ?? 0),
       newThis,
       newPrev,
       growth: newPrev > 0 ? Math.round(((newThis - newPrev) / newPrev) * 100) : null,
@@ -344,7 +366,7 @@ function MusterilerPageInner() {
           ? String(Math.round(rawPct * 10) / 10).replace('.', ',')
           : String(Math.max(0.01, Math.round(rawPct * 100) / 100)).replace('.', ','),
     }
-  }, [stats, total])
+  }, [stats, total, spendData])
 
   // --- Müşteri kartı satış paneli aksiyonları (geçmiş kayıt / iptal / tahsilat) ---
   const [salesBusy, setSalesBusy] = useState(false)
@@ -353,7 +375,7 @@ function MusterilerPageInner() {
     try {
       await fn()
       setSessRefresh((v) => v + 1)
-      await Promise.all([reload(), reloadStats()])
+      await Promise.all([reload(), reloadStats(), reloadSpend()])
     } finally {
       setSalesBusy(false)
     }
@@ -630,7 +652,7 @@ function MusterilerPageInner() {
                   </div>
                   {/* Durum */}
                   <div>
-                    <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${c.tier === 'KVKK Onaylı' ? 'border-emerald-300/40 bg-emerald-50 text-emerald-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}>{c.tier === 'KVKK Onaylı' ? 'KVKK ONAYLI' : 'BEKLİYOR'}</span>
+                    <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${c.tier === 'KVKK Onaylı' ? 'border-emerald-300/40 bg-emerald-50 text-emerald-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}>{c.tier === 'KVKK Onaylı' ? 'KVKK ONAYLI' : 'KVKK ONAYSIZ'}</span>
                   </div>
                   {/* Son İşlem */}
                   <div className="text-[11px] text-[#352432]/60">
@@ -774,6 +796,9 @@ function MusterilerPageInner() {
                 ? `%${summary.segPct} · doğum tarihi girili ${summary.ageKnown.toLocaleString('tr-TR')} müşteri`
                 : 'Doğum tarihi girilmiş müşteri yok'}
             />
+            {/* Ortalama harcamanın DÖNEMİ kartın üzerinden seçilir; ölçüt tahsilat tarihidir
+                (geçmiş bir satışın bu ay ödenen taksiti de bu aya düşer). Ortalama, o dönemde
+                harcaması OLAN müşteriler üzerinden alınır — ödeme yapmayanlar bastırmasın. */}
             <SummaryTile
               icon={CreditCard}
               tone="text-sky-600 bg-sky-50"
@@ -781,7 +806,16 @@ function MusterilerPageInner() {
               value={summary.spenders > 0 ? formatTL(Math.round(summary.avgSpent)) : '—'}
               sub={summary.spenders > 0
                 ? `Harcaması olan ${summary.spenders.toLocaleString('tr-TR')} müşteri`
-                : 'Henüz tahsilat yok'}
+                : spendDays === null ? 'Henüz tahsilat yok' : 'Bu dönemde tahsilat yok'}
+              control={(
+                <select
+                  value={spendPeriod}
+                  onChange={(e) => setSpendPeriod(e.target.value)}
+                  aria-label="Ortalama harcama dönemi"
+                  className="shrink-0 rounded-[8px] border border-[#ead8df] bg-white px-1.5 py-1 text-[10px] text-[#352432] outline-none focus:border-[#c85776]">
+                  {SPEND_PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              )}
             />
             {/* "Yeni" değil "eklenen": toplu Excel aktarımı da kayıt tarihine göre buraya düşer. */}
             <SummaryTile
@@ -843,13 +877,19 @@ function MusterilerPageInner() {
   )
 }
 
-function SummaryTile({ icon: Icon, tone, label, value, sub, subTone }: { icon: typeof Users; tone: string; label: string; value: string; sub: string; subTone?: string }) {
+// `control`: değerin yanında duran küçük kumanda (ör. ortalama harcamanın dönem seçimi).
+// Başlık satırı yerine değer satırına konur — başlık mono/tracking-widest olduğu için
+// 4 kolonlu ızgarada seçiciyle yan yana sığmıyor, kırpılıyordu.
+function SummaryTile({ icon: Icon, tone, label, value, sub, subTone, control }: { icon: typeof Users; tone: string; label: string; value: string; sub: string; subTone?: string; control?: ReactNode }) {
   return (
     <div className="flex items-center gap-3 rounded-[14px] border border-[#ead8df]/60 bg-white px-4 py-3.5">
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
-      <div className="min-w-0">
-        <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
-        <div className="truncate font-display text-lg tracking-tight text-[#352432]">{value}</div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 truncate font-display text-lg tracking-tight text-[#352432]">{value}</div>
+          {control}
+        </div>
         <div className={`truncate text-[10px] ${subTone || 'text-[#352432]/45'}`}>{sub}</div>
       </div>
     </div>

@@ -35,7 +35,7 @@ class GuideContent {
           icon: Icons.groups_2_rounded,
           title: 'Takip edilecek danışanlar',
           desc:
-              'Uzun süredir gelmeyen, doğum günü olan, KVKK onayı bekleyen ve kara listedeki müşterileri özetler. "Gelmeyen" satırına dokunarak isim listesini görebilir ve pasiflik gün eşiğini değiştirebilirsiniz.',
+              'Uzun süredir gelmeyen, doğum günü olan, KVKK onaysız ve kara listedeki müşterileri özetler. "Gelmeyen" satırına dokunarak isim listesini görebilir ve pasiflik gün eşiğini değiştirebilirsiniz.',
         ),
       ],
     ),
@@ -80,6 +80,12 @@ class GuideContent {
           title: 'Arama sunucuda çalışır',
           desc:
               'Binlerce kayıtta liste tümüyle indirilmez; yazdığınız terim sunucuya gönderilir. Bu yüzden arama hem hızlıdır hem de tüm kayıtları kapsar.',
+        ),
+        GuideStep(
+          icon: Icons.insights_rounded,
+          title: 'Müşteri özeti',
+          desc:
+              'Listenin üstündeki özet kurum geneli sayaçları verir: en yaygın yaş aralığı, ortalama harcama, bu ay eklenen müşteri ve borçlu oranı. Ortalama harcamanın dönemini kart üzerinden seçebilirsiniz (tüm zamanlar, son 30/90 gün, son 1 yıl); ölçüt tahsilat tarihidir. Başlığa dokunarak özeti katlayabilirsiniz.',
         ),
         GuideStep(
           icon: Icons.badge_rounded,

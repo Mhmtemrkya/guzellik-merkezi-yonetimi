@@ -9,6 +9,7 @@ import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/kvkk/kvkk_view_sheet.dart';
 import '../../shared/widgets/async_list_page.dart';
+import 'customer_summary_panel.dart';
 
 const _genders = [
   CrudOption('Female', 'Kadın'),
@@ -165,9 +166,19 @@ class CustomersScreen extends StatelessWidget {
       ),
       titleKeys: const ['fullName', 'name'],
       subtitleKeys: const ['phone', 'email'],
-      statusKeys: const ['isBlacklisted', 'kvkkConsent'],
+      // Web sayfasındaki "Müşteri Özeti" bloğu (yaş segmenti, dönem seçimli ortalama
+      // harcama, bu ay eklenen, borçlu oranı). Listeyi bastırmasın diye katlanabilir.
+      headerExtra: CustomerSummaryPanel(api: api),
+      // Kartta ham "true/false" değil web listesindeki Durum rozetinin karşılığı yazsın.
+      statusLabel: (item) => item['isBlacklisted'] == true
+          ? 'Kara liste'
+          : item['kvkkConsent'] == true
+              ? 'KVKK onaylı'
+              : 'KVKK onaysız',
       filters: [
         ListFilterOption('VIP', (item) => item['isVip'] == true),
+        ListFilterOption('KVKK onaylı', (item) => item['kvkkConsent'] == true),
+        ListFilterOption('KVKK onaysız', (item) => item['kvkkConsent'] != true),
         ListFilterOption('Kara liste', (item) => item['isBlacklisted'] == true),
       ],
       // Satıra dokununca web'deki gibi zengin müşteri detayını aç.

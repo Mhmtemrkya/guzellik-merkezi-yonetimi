@@ -3139,7 +3139,7 @@ class _FollowUpsCard extends StatelessWidget {
         Icons.timelapse_rounded,
       ),
       ('Bu ay doğum günü', birthday, Icons.cake_rounded),
-      ('KVKK onayı bekleyen', kvkk, Icons.privacy_tip_outlined),
+      ('KVKK onaysız', kvkk, Icons.privacy_tip_outlined),
       ('Kara listedeki', blacklist, Icons.block_rounded),
     ];
     return _DashCard(

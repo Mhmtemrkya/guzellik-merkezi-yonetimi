@@ -45,6 +45,14 @@ public static class CustomerEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetStatsAsync(resolvedTenantId, ct)).ToHttpResult(http);
         });
 
+        // Ortalama harcama kartının dönem seçimi (days yok/0 = tüm zamanlar). Ayrı uç:
+        // dönem değiştikçe /stats'ın ağır sayaçları (yaş segmenti, trend) yeniden koşmasın.
+        group.MapGet("/stats/spending", async (Guid? tenantId, int? days, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetSpendingStatsAsync(resolvedTenantId, days, ct)).ToHttpResult(http);
+        });
+
         // VIP müşteriler — şube-kapsamlı.
         group.MapGet("/vip", async (Guid? tenantId, int page, int pageSize, ICurrentUser currentUser, ICustomerService service, HttpContext http, CancellationToken ct) =>
         {

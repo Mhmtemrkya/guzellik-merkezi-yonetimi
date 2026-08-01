@@ -82,3 +82,14 @@ public sealed record CustomerStatsDto(
     int SpenderCount = 0,
     /// <summary>Yaş segmentinin hesaplandığı müşteri sayısı (doğum tarihi girilmiş olanlar) — kartın dayanağı.</summary>
     int AgeKnownCount = 0);
+
+/// <summary>
+/// "Ortalama Harcama" kartının DÖNEM SEÇİMLİ karşılığı.
+/// <para>
+/// <see cref="Days"/> null ise tüm zamanlar; aksi halde son N günde yapılan tahsilatlar sayılır
+/// (ölçüt tahsilat tarihidir — <c>AccountPayment.OccurredAtUtc</c>, satış tarihi değil).
+/// Ortalama, o dönemde harcaması OLAN müşteriler üzerinden alınır: hiç ödeme yapmayanlar
+/// ortalamayı aşağı çekmez, <see cref="SpenderCount"/> de kartın dayanağını gösterir.
+/// </para>
+/// </summary>
+public sealed record CustomerSpendingStatsDto(int? Days, decimal AvgSpent, int SpenderCount, decimal TotalSpent);

@@ -593,6 +593,17 @@ export interface ApiCustomerStats {
   ageKnownCount?: number
 }
 
+/**
+ * /customers/stats/spending — "Ortalama Harcama" kartının dönem seçimli karşılığı.
+ * `days` null ise tüm zamanlar; aksi halde son N günde YAPILAN TAHSİLATLAR sayılır.
+ */
+export interface ApiCustomerSpendingStats {
+  days?: number | null
+  avgSpent?: number
+  spenderCount?: number
+  totalSpent?: number
+}
+
 export interface ApiPassiveCustomer {
   id?: string
   branchId?: string

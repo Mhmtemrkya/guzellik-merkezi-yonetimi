@@ -836,7 +836,7 @@ class _OverviewTab extends StatelessWidget {
               _infoRowWidget(
                 'KVKK',
                 Text(
-                  c['kvkkConsent'] == true ? 'Onaylı' : 'Bekliyor',
+                  c['kvkkConsent'] == true ? 'Onaylı' : 'Onaysız',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,

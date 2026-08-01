@@ -38,4 +38,11 @@ public interface ICustomerService
 
     /// <summary>Dashboard sayaç/trendleri — tüm listeyi çekmeden sunucuda hesaplanır (sınırsız ölçek).</summary>
     Task<Result<CustomerStatsDto>> GetStatsAsync(Guid tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dönem seçimli ortalama harcama (<paramref name="days"/> null/0 = tüm zamanlar).
+    /// <see cref="GetStatsAsync"/>'ten AYRI bir uçtur: kullanıcı dönemi değiştirdiğinde yaş
+    /// segmenti / yeni müşteri trendi gibi ağır sayaçlar yeniden hesaplanmasın.
+    /// </summary>
+    Task<Result<CustomerSpendingStatsDto>> GetSpendingStatsAsync(Guid tenantId, int? days, CancellationToken cancellationToken = default);
 }

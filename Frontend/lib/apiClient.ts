@@ -817,6 +817,12 @@ export const adminApi = {
   /** Dashboard müşteri istatistikleri — tüm listeyi çekmeden sayaç + gün-bazlı yeni müşteri trendi. */
   customersStats: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/customers/stats', { query: { tenantId } }),
+  /**
+   * Dönem seçimli ortalama harcama (days yok/null = tüm zamanlar). Ayrı uç: kart dönemi
+   * değiştiğinde /customers/stats'ın ağır sayaçları yeniden çalışmasın.
+   */
+  customersSpendingStats: <T = unknown>(days: number | null, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/customers/stats/spending', { query: { tenantId, days: days ?? undefined } }),
   customer: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/customers/${id}`, { query: { tenantId } }),
   createCustomer: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>

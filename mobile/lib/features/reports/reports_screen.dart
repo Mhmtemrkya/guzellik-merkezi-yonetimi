@@ -2379,7 +2379,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 cell: (r) => Icon(
                   r['kvkkConsent'] == true
                       ? Icons.check_circle_rounded
-                      : Icons.schedule_rounded,
+                      : Icons.highlight_off_rounded,
                   size: 15,
                   color: r['kvkkConsent'] == true
                       ? AppColors.success

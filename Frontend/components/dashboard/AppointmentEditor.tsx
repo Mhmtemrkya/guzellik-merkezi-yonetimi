@@ -28,6 +28,7 @@ import CollectionDialog from '@/components/dashboard/CollectionDialog'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
+import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import type {
@@ -1190,6 +1191,18 @@ export default function AppointmentEditor({
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {/* MÜŞTERİ GEÇMİŞİ — paketten kullanılan seansların TARİHLERİ, işlem defteri
+                      ve tahsilat listesi. Üstteki dosya kartı "kaç seans kaldı"yı söylüyordu ama
+                      "hangi gün geldi, ne zaman ödedi" hiçbir ekranda yan yana yoktu. */}
+                  {selectedCustomer && (
+                    <CustomerHistoryPanel
+                      customerId={selectedCustomer.id}
+                      tenantId={tenantId}
+                      accounts={custAccounts}
+                      refreshKey={sessRefreshKey}
+                    />
                   )}
 
                   {/* Seçili seansın bakiyesi — randevu tamamlanınca 1 düşecek */}

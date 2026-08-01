@@ -167,7 +167,7 @@ export default function CustomersTab({
               key: 'kvkk',
               header: 'KVKK',
               align: 'center',
-              render: (r) => <Pill tone={r.kvkkConsent ? 'good' : 'warn'}>{r.kvkkConsent ? 'Onaylı' : 'Bekliyor'}</Pill>,
+              render: (r) => <Pill tone={r.kvkkConsent ? 'good' : 'warn'}>{r.kvkkConsent ? 'Onaylı' : 'Onaysız'}</Pill>,
             },
           ]}
         />

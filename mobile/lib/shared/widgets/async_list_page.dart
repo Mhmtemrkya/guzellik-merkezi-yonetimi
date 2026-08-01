@@ -47,6 +47,7 @@ class AsyncListPage extends StatefulWidget {
     required this.subtitleKeys,
     this.trailingKeys = const [],
     this.statusKeys = const [],
+    this.statusLabel,
     this.filters = const [],
     this.emptyText = 'Henüz kayıt bulunmuyor.',
     this.floatingAction,
@@ -72,6 +73,11 @@ class AsyncListPage extends StatefulWidget {
   final List<String> subtitleKeys;
   final List<String> trailingKeys;
   final List<String> statusKeys;
+
+  /// Durum rozetinin metnini kayıttan üretir. Verilmezse [statusKeys] değeri
+  /// ham haliyle basılır — bool alanlarda "true/false" görünür. Dışa aktarmadaki
+  /// "Durum" kolonu da bu metni kullanır.
+  final String Function(Map<String, dynamic> item)? statusLabel;
   final List<ListFilterOption> filters;
   final String emptyText;
   final Widget? floatingAction;
@@ -132,25 +138,32 @@ class _AsyncListPageState extends State<AsyncListPage> {
   /// Listeyi Excel/PDF olarak dışa aktarır. Kolonlar liste kartındaki alan
   /// anahtarlarından türetilir; her ekran için ayrı tablo tanımına gerek kalmaz.
   Future<void> _exportList() async {
-    final keyGroups = <(String, List<String>)>[
-      ('Kayıt', widget.titleKeys),
-      ('Detay', widget.subtitleKeys),
-      if (widget.trailingKeys.isNotEmpty) ('Tutar', widget.trailingKeys),
-      if (widget.statusKeys.isNotEmpty) ('Durum', widget.statusKeys),
+    final columns = <(String, String Function(Map<String, dynamic>))>[
+      ('Kayıt', (item) => valueOf(item, widget.titleKeys, fallback: '')),
+      ('Detay', (item) => valueOf(item, widget.subtitleKeys, fallback: '')),
+      if (widget.trailingKeys.isNotEmpty)
+        ('Tutar', (item) => valueOf(item, widget.trailingKeys, fallback: '')),
+      if (_hasStatus) ('Durum', _statusText),
     ];
 
     await ExportHelper.showMenu(
       context,
       title: widget.title,
       subtitle: widget.subtitle,
-      headers: keyGroups.map((g) => g.$1).toList(),
+      headers: columns.map((c) => c.$1).toList(),
       rows: _exportable
-          .map((item) => keyGroups
-              .map((g) => valueOf(item, g.$2, fallback: ''))
-              .toList())
+          .map((item) => columns.map((c) => c.$2(item)).toList())
           .toList(),
     );
   }
+
+  bool get _hasStatus =>
+      widget.statusLabel != null || widget.statusKeys.isNotEmpty;
+
+  /// Durum rozeti metni: özel etiket varsa o, yoksa ham alan değeri.
+  String _statusText(Map<String, dynamic> item) =>
+      widget.statusLabel?.call(item) ??
+      valueOf(item, widget.statusKeys, fallback: '');
 
   @override
   void dispose() {
@@ -578,9 +591,9 @@ class _AsyncListPageState extends State<AsyncListPage> {
                         fontSize: 12,
                       ),
                     ),
-                    if (widget.statusKeys.isNotEmpty) ...[
+                    if (_hasStatus) ...[
                       const SizedBox(height: 8),
-                      StatusBadge(valueOf(item, widget.statusKeys)),
+                      StatusBadge(_statusText(item)),
                     ],
                   ],
                 ),

@@ -41,7 +41,7 @@ const items: SidebarNavItem[] = [
     children: [
       { label: 'Tüm müşteriler', href: '/admin/musteriler?scope=all' },
       { label: 'KVKK onaylı', href: '/admin/musteriler?scope=kvkk' },
-      { label: 'KVKK bekleyen', href: '/admin/musteriler?scope=kvkk-pending' },
+      { label: 'KVKK onaysız', href: '/admin/musteriler?scope=kvkk-pending' },
       { label: 'Yeni eklenen', href: '/admin/musteriler?scope=recent' },
     ],
   },

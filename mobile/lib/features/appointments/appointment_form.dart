@@ -9,6 +9,7 @@ import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/customer_picker.dart';
 import 'calendar_theme.dart';
+import 'customer_history_panel.dart';
 
 const _genderOptions = [
   CrudOption('Female', 'Kadın'),
@@ -73,6 +74,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
   List<Map<String, dynamic>> _sessions = [];
   bool _dossierLoading = false;
 
+  /// Geçmiş panelini (seans/işlem/ödeme tabloları) tazeleyen sayaç — satış veya
+  /// tahsilat sonrası artar. Müşteri değişiminde panel zaten kendi yeniler.
+  int _historyKey = 0;
+
   double get _openDebt =>
       _accounts.fold<double>(0, (s, a) => s + _positive(a['remainingAmount']));
   double get _paidTotal =>
@@ -81,6 +86,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
   static double _positive(dynamic v) {
     final n = (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
     return n > 0 ? n : 0;
+  }
+
+  /// Satış / tahsilat sonrası: müşteri dosyası + geçmiş tabloları birlikte tazelenir.
+  Future<void> _refreshCustomerData() async {
+    if (mounted) setState(() => _historyKey++);
+    await _loadDossier();
   }
 
   /// Müşteri değişince dosyayı tazeler. Satış/tahsilat sonrası da çağrılır.
@@ -295,8 +306,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
         serviceSale: serviceSale,
       ),
     );
-    // Satış onaylandıysa seans/borç değişmiştir — dosyayı tazele.
-    await _loadDossier();
+    // Satış onaylandıysa seans/borç değişmiştir — dosyayı ve geçmişi tazele.
+    await _refreshCustomerData();
   }
 
   /// Personel bu hizmeti yapabilir mi? Uzmanlık listesi boşsa kısıt yok; doluysa
@@ -530,7 +541,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
       backgroundColor: Colors.transparent,
       builder: (_) => InstallmentPaymentSheet(api: widget.api, account: account),
     );
-    if (done == true) await _loadDossier();
+    if (done == true) await _refreshCustomerData();
   }
 
   static String _money(double v) =>
@@ -782,6 +793,15 @@ class _AppointmentFormState extends State<AppointmentForm> {
                 if (customerId != null) ...[
                   const SizedBox(height: 12),
                   _customerDossier(),
+                  const SizedBox(height: 12),
+                  // MÜŞTERİ GEÇMİŞİ — kullanılan seansların TARİHLERİ, işlem defteri
+                  // ve tahsilat listesi (web AppointmentEditor paritesi).
+                  CustomerHistoryPanel(
+                    api: widget.api,
+                    customerId: customerId!,
+                    accounts: _accounts,
+                    refreshKey: _historyKey,
+                  ),
                 ],
                 const SizedBox(height: 10),
                 // Müşteriye yapılan işlemler — randevudan çıkmadan.

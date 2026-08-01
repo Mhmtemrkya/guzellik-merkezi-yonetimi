@@ -387,7 +387,7 @@ export default function BeklemeListesiPage() {
         phone: scheduleFor.customerPhone || '',
         email: '',
         city: '',
-        tier: 'KVKK Bekliyor',
+        tier: 'KVKK Onaysız',
         joined: '',
         createdAt: '',
         activePackages: 0,

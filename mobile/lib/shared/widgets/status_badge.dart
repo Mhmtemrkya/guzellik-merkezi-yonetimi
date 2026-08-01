@@ -9,17 +9,21 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final key = label.toLowerCase();
+    // 'onaysız' ile 'onaylı' ayrık dizeler — sıralama ikisini de doğru boyar.
     final Color color =
         key.contains('tamam') ||
             key.contains('aktif') ||
+            key.contains('onaylı') ||
             key.contains('approved')
         ? AppColors.success
         : key.contains('iptal') ||
               key.contains('red') ||
+              key.contains('kara liste') ||
               key.contains('critical') ||
               key.contains('outofstock')
         ? AppColors.danger
-        : key.contains('bek') ||
+        : key.contains('onaysız') ||
+              key.contains('bek') ||
               key.contains('pending') ||
               key.contains('trial')
         ? AppColors.warning

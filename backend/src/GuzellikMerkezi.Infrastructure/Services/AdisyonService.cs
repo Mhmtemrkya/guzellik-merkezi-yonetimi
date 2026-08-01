@@ -35,7 +35,7 @@ public sealed class AdisyonService : IAdisyonService
         _reversal = reversal ?? new AdisyonEffectsReversal(db, new Time.SystemDateTimeProvider());
     }
 
-    public async Task<Result<PagedResult<AdisyonDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<AdisyonDto>>> ListAsync(Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.Adisyonlar
             .AsNoTracking()
@@ -44,6 +44,11 @@ public sealed class AdisyonService : IAdisyonService
             .Include(x => x.Items)
             .OrderByDescending(x => x.OpenedAtUtc)
             .AsQueryable();
+
+        if (customerId is { } cid && cid != Guid.Empty)
+        {
+            query = query.Where(x => x.CustomerId == cid);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

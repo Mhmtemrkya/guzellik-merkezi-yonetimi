@@ -1669,7 +1669,7 @@ export default function AdminDashboard() {
       href: '/admin/musteriler',
     },
     {
-      title: 'KVKK onayı bekleyen müşteriler',
+      title: 'KVKK onaysız müşteriler',
       count: kvkkPending,
       icon: ShieldCheck,
       tone: 'gold' as const,

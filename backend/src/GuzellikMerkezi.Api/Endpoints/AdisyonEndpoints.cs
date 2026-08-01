@@ -16,10 +16,11 @@ public static class AdisyonEndpoints
         var group = app.MapGroup("/api/admin/adisyonlar").WithTags("Adisyonlar").RequireAuthorization()
             .RequirePermission(Permissions.AccountingAdisyon, writeOnly: true);
 
-        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
+        // customerId verilirse liste tek müşteriye daralır (müşteri geçmişi panelleri).
+        group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, Guid? customerId, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListAsync(resolvedTenantId, new PageRequest(page, pageSize, search), customerId, ct)).ToHttpResult(http);
         });
 
         group.MapGet("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAdisyonService service, HttpContext http, CancellationToken ct) =>

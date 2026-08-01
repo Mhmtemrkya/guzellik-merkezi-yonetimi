@@ -193,13 +193,13 @@ const guides: Record<string, PageGuide> = {
         icon: Filter,
         title: 'Segment sekmeleri',
         desc:
-          'Üstteki sekmeler listeyi anında süzer: Tümü, VIP, KVKK Onaylı / Bekleyen, Borçlu, Yeni Eklenen, Kara Liste ve Pasif (belirlediğiniz gün sayısınca gelmeyenler). Sıralamayı isim, son işlem, borç veya harcamaya göre değiştirebilirsiniz.',
+          'Üstteki sekmeler listeyi anında süzer: Tümü, VIP, KVKK Onaylı / Onaysız, Borçlu, Yeni Eklenen, Kara Liste ve Pasif (belirlediğiniz gün sayısınca gelmeyenler). Sıralamayı isim, son işlem, borç veya harcamaya göre değiştirebilirsiniz.',
       },
       {
         icon: TrendingUp,
         title: 'Analitik kartlar',
         desc:
-          'Liste üstündeki kartlar canlı metrikler sunar: toplam müşteri, KVKK onay oranı, açık borç toplamı, son 90 günde aktif müşteri, en aktif segment, ortalama harcama, bu ay yeni müşteri ve borçlu müşteri oranı.',
+          'Liste üstündeki kartlar canlı metrikler sunar: toplam müşteri, KVKK onay oranı, açık borç toplamı, son 90 günde aktif müşteri, en aktif segment, ortalama harcama, bu ay yeni müşteri ve borçlu müşteri oranı. Ortalama harcamanın dönemini kartın üzerindeki listeden seçebilirsiniz (tüm zamanlar, son 30/90 gün, son 1 yıl); ölçüt tahsilat tarihidir.',
       },
       {
         icon: Users,

@@ -4,7 +4,12 @@ namespace GuzellikMerkezi.Application.Features.Adisyonlar;
 
 public interface IAdisyonService
 {
-    Task<Result<PagedResult<AdisyonDto>>> ListAsync(Guid tenantId, PageRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Adisyon listesi. <paramref name="customerId"/> verilirse yalnız o müşterinin adisyonları
+    /// döner — müşteri geçmişi panelleri tüm kurumun adisyonlarını çekip istemcide süzmesin
+    /// (kalabalık kurumda ilk sayfaya girmeyen adisyonlar sessizce kayboluyordu).
+    /// </summary>
+    Task<Result<PagedResult<AdisyonDto>>> ListAsync(Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default);
     Task<Result<AdisyonDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Müşterinin açık (Open) adisyonunu döndürür; yoksa null.</summary>

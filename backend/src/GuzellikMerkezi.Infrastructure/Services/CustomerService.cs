@@ -552,6 +552,85 @@ FROM (
             segmentTotal));
     }
 
+    /// <summary>Dönem seçiminin üst sınırı (gün). Değer ham SQL'e enterpole edildiği için sınırlıdır.</summary>
+    private const int MaxSpendingWindowDays = 3650;
+
+    public async Task<Result<CustomerSpendingStatsDto>> GetSpendingStatsAsync(Guid tenantId, int? days, CancellationToken cancellationToken = default)
+    {
+        // 0 / negatif / null = "tüm zamanlar". Pencere varsa ölçüt TAHSİLAT tarihidir: dönemde
+        // fiilen kasaya giren para sayılır (satış tarihi değil — geçmiş satışın bu ay yapılan
+        // taksit ödemesi de bu aya düşer).
+        var window = days is > 0 ? Math.Min(days.Value, MaxSpendingWindowDays) : (int?)null;
+        var since = window.HasValue ? DateTime.UtcNow.AddDays(-window.Value) : (DateTime?)null;
+
+        decimal avgSpent = 0m, totalSpent = 0m;
+        var spenderCount = 0;
+
+        if (!IsRelational)
+        {
+            // InMemory (testler): aynı hesap LINQ ile — ölçek kaygısı yok.
+            var accounts = await _db.CustomerAccounts.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => new { x.Id, x.CustomerId, x.RefundedAmount })
+                .ToListAsync(cancellationToken);
+            var payments = await _db.AccountPayments.AsNoTracking()
+                .Select(x => new { x.CustomerAccountId, x.Amount, x.OccurredAtUtc })
+                .ToListAsync(cancellationToken);
+            var spentPerCustomer = accounts
+                .GroupBy(a => a.CustomerId)
+                .Select(g => g.Sum(a =>
+                    payments
+                        .Where(p => p.CustomerAccountId == a.Id && (since is null || p.OccurredAtUtc >= since))
+                        .Sum(p => p.Amount)
+                    // Korunmuş iadenin tarihi yoktur; yalnız tüm-zamanlar hesabından düşülür.
+                    - (since is null ? a.RefundedAmount : 0m)))
+                .Where(x => x > 0)
+                .ToList();
+            spenderCount = spentPerCustomer.Count;
+            totalSpent = spentPerCustomer.Sum();
+            avgSpent = spenderCount > 0 ? Math.Round(totalSpent / spenderCount, 2) : 0m;
+            return Result<CustomerSpendingStatsDto>.Success(
+                new CustomerSpendingStatsDto(window, avgSpent, spenderCount, totalSpent));
+        }
+
+        // Tüm zamanlar hesabı /stats ile BİREBİR aynı ifadeyi kullanır (kart dönem değiştirip
+        // "Tüm zamanlar"a döndüğünde değer oynamasın).
+        var refundTerm = since is null ? " - a.RefundedAmount" : string.Empty;
+        var paymentFilter = since is null ? string.Empty : $" AND OccurredAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
+
+        await using var command = _db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $@"
+SELECT COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
+       COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders,
+       COALESCE(SUM(GREATEST(t.Spent, 0)), 0) AS TotalSpent
+FROM (
+  SELECT a.CustomerId,
+         SUM(COALESCE(p.Paid, 0){refundTerm}) AS Spent
+  FROM customer_accounts a
+  LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid
+             FROM account_payments
+             WHERE IsDeleted = 0{paymentFilter}
+             GROUP BY CustomerAccountId) p
+         ON p.CustomerAccountId = a.Id
+  WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
+  GROUP BY a.CustomerId
+) t;";
+        if (command.Connection!.State != System.Data.ConnectionState.Open)
+            await command.Connection.OpenAsync(cancellationToken);
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                avgSpent = Math.Round(Convert.ToDecimal(reader.GetValue(0)), 2);
+                spenderCount = Convert.ToInt32(reader.GetValue(1));
+                totalSpent = Math.Round(Convert.ToDecimal(reader.GetValue(2)), 2);
+            }
+        }
+
+        return Result<CustomerSpendingStatsDto>.Success(
+            new CustomerSpendingStatsDto(window, avgSpent, spenderCount, totalSpent));
+    }
+
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "customers", cancellationToken);

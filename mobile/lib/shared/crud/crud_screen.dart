@@ -139,6 +139,7 @@ class CrudListScreen extends StatefulWidget {
     required this.subtitleKeys,
     this.trailingKeys = const [],
     this.statusKeys = const [],
+    this.statusLabel,
     this.filters = const [],
     this.fields = const [],
     this.onCreate,
@@ -175,6 +176,9 @@ class CrudListScreen extends StatefulWidget {
   final List<String> subtitleKeys;
   final List<String> trailingKeys;
   final List<String> statusKeys;
+
+  /// Durum rozetinin metnini kayıttan üretir (bkz. [AsyncListPage.statusLabel]).
+  final String Function(Map<String, dynamic> item)? statusLabel;
   final List<ListFilterOption> filters;
   final List<CrudField> fields;
   final CrudMutation? onCreate;
@@ -346,6 +350,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
       subtitleKeys: widget.subtitleKeys,
       trailingKeys: widget.trailingKeys,
       statusKeys: widget.statusKeys,
+      statusLabel: widget.statusLabel,
       filters: widget.filters,
       emptyText: widget.emptyText,
       headerExtra: widget.headerExtra,

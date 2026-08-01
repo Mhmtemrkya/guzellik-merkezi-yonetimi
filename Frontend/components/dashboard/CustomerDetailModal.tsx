@@ -817,7 +817,7 @@ export default function CustomerDetailModal({
                           ) : '—'}
                         />
                         <InfoRow label="Cinsiyet" value={genderLabel(customer.gender)} />
-                        <InfoRow label="KVKK" value={<span className={kvkkOk ? 'text-emerald-700' : 'text-amber-700'}>{kvkkOk ? 'Onaylı' : 'Bekliyor'}</span>} />
+                        <InfoRow label="KVKK" value={<span className={kvkkOk ? 'text-emerald-700' : 'text-amber-700'}>{kvkkOk ? 'Onaylı' : 'Onaysız'}</span>} />
                         <InfoRow label="Müşteri No" value={<span className="text-[11.5px] tracking-wide">{customer.id.slice(0, 8)}</span>} />
                       </div>
                     </SectionCard>

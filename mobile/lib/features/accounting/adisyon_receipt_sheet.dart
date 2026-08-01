@@ -12,11 +12,9 @@ import '../appointments/calendar_theme.dart';
 // kapanmış adisyon ise değiştirilemez — burada okunur bir "fiş" olarak durur.
 // ---------------------------------------------------------------------------
 
-/// Kalem türünün görünümü: etiket + ikon + zemin/mürekkep.
+/// Kalem türünün ad karşılığı ('Service', 'PackageUse', …).
 /// Sunucu enum'u JSON'a hem ad hem sıra numarası olarak düşebildiği için ikisi de okunur.
-({String label, IconData icon, Color bg, Color ink}) adisyonItemVisual(
-  dynamic rawType,
-) {
+String adisyonItemTypeKey(dynamic rawType) {
   const order = [
     'Service',
     'Product',
@@ -26,11 +24,19 @@ import '../appointments/calendar_theme.dart';
     'Discount',
     'PackageSale',
   ];
-  var key = '$rawType';
+  final key = '$rawType';
   final asIndex = int.tryParse(key);
   if (asIndex != null && asIndex >= 0 && asIndex < order.length) {
-    key = order[asIndex];
+    return order[asIndex];
   }
+  return key;
+}
+
+/// Kalem türünün görünümü: etiket + ikon + zemin/mürekkep.
+({String label, IconData icon, Color bg, Color ink}) adisyonItemVisual(
+  dynamic rawType,
+) {
+  final key = adisyonItemTypeKey(rawType);
   switch (key) {
     case 'Product':
       return (
