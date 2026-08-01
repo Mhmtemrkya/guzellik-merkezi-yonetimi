@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
+import '../accounting/account_installments.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/customer_picker.dart';
@@ -65,6 +66,54 @@ class _AppointmentFormState extends State<AppointmentForm> {
   bool saving = false;
   final notes = TextEditingController();
 
+  /// MÜŞTERİ DOSYASI (web AppointmentEditor sağ rayıyla parite): açık cariler ve
+  /// seans bakiyeleri. "Bu müşteri ne ödedi, kaç seansı kaldı, paketi kim sattı"
+  /// sorusu için başka ekrana gitmek gerekmesin.
+  List<Map<String, dynamic>> _accounts = [];
+  List<Map<String, dynamic>> _sessions = [];
+  bool _dossierLoading = false;
+
+  double get _openDebt =>
+      _accounts.fold<double>(0, (s, a) => s + _positive(a['remainingAmount']));
+  double get _paidTotal =>
+      _accounts.fold<double>(0, (s, a) => s + _positive(a['paidAmount']));
+
+  static double _positive(dynamic v) {
+    final n = (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
+    return n > 0 ? n : 0;
+  }
+
+  /// Müşteri değişince dosyayı tazeler. Satış/tahsilat sonrası da çağrılır.
+  Future<void> _loadDossier() async {
+    final cid = customerId;
+    if (cid == null || cid.isEmpty) {
+      if (mounted) setState(() { _accounts = []; _sessions = []; });
+      return;
+    }
+    if (mounted) setState(() => _dossierLoading = true);
+    try {
+      final res = await Future.wait([
+        widget.api.get('/api/admin/accounts/',
+            query: {'customerId': cid, 'page': 1, 'pageSize': 50}),
+        widget.api
+            .get('/api/admin/accounts/sessions/$cid')
+            .catchError((_) => const <dynamic>[]),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        // İptal edilmiş satışın borcu tahsil edilmez; listeye girmesin.
+        _accounts = apiItems(res[0])
+            .where((a) => a['cancelledAtUtc'] == null)
+            .toList();
+        _sessions = apiItems(res[1]);
+      });
+    } catch (_) {
+      if (mounted) setState(() { _accounts = []; _sessions = []; });
+    } finally {
+      if (mounted) setState(() => _dossierLoading = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +158,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
             services.any((x) => '${x['id']}' == presetService)
         ? presetService
         : (services.length == 1 ? '${services.first['id']}' : null);
+    // Müşteri ön-seçili geldiyse (müşteri kartından açılış) dosyayı hemen getir.
+    if (customerId != null) await _loadDossier();
   }
 
   @override
@@ -202,6 +253,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
         customers = [...customers, map];
         customerId = newId;
       });
+      await _loadDossier();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Müşteri oluşturuldu ve seçildi.')));
@@ -243,6 +295,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
         serviceSale: serviceSale,
       ),
     );
+    // Satış onaylandıysa seans/borç değişmiştir — dosyayı tazele.
+    await _loadDossier();
   }
 
   /// Personel bu hizmeti yapabilir mi? Uzmanlık listesi boşsa kısıt yok; doluysa
@@ -418,6 +472,266 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
   }
 
+  /// Açık cariden tahsilat — kırılım (nakit+kart) destekli ortak sayfa.
+  /// Birden çok cari varsa önce hangisi olduğu sorulur.
+  Future<void> _openCollect() async {
+    if (_accounts.isEmpty) return;
+    var account = _accounts.first;
+    if (_accounts.length > 1) {
+      final picked = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Hangi cari?',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _accounts.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final a = _accounts[i];
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          title: Text('${a['name'] ?? 'Satış'}',
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(
+                              'Kalan ${_money(_positive(a['remainingAmount']))}'),
+                          onTap: () => Navigator.of(ctx).pop(a),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (picked == null || !mounted) return;
+      account = picked;
+    }
+    final done = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => InstallmentPaymentSheet(api: widget.api, account: account),
+    );
+    if (done == true) await _loadDossier();
+  }
+
+  static String _money(double v) =>
+      NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(v);
+
+  /// Para durumu + satışlar (kim sattı) + seans dökümü + son tahsilatlar.
+  Widget _customerDossier() {
+    // Hizmet bazında seans dökümü: yapılan / toplam.
+    final ledger = <String, List<int>>{};
+    for (final s in _sessions) {
+      final name = '${s['serviceName'] ?? 'Hizmet'}';
+      final used = (s['usedSessions'] as num?)?.toInt() ?? 0;
+      final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
+      final e = ledger[name] ?? [0, 0];
+      ledger[name] = [e[0] + used, e[1] + total];
+    }
+
+    // Son tahsilatlar — tüm carilerin ödemeleri, yeniden eskiye.
+    final payments = <Map<String, dynamic>>[];
+    for (final a in _accounts) {
+      for (final p in (a['payments'] as List? ?? const [])) {
+        if (p is Map) payments.add(p.cast<String, dynamic>());
+      }
+    }
+    payments.sort((x, y) => '${y['occurredAtUtc']}'.compareTo('${x['occurredAtUtc']}'));
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEFE1E7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_dossierLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(child: _metric('Açık borç', _money(_openDebt), debt: _openDebt > 0)),
+              const SizedBox(width: 8),
+              Expanded(child: _metric('Tahsil edilen', _money(_paidTotal))),
+            ],
+          ),
+
+          // SATIŞLAR — kim sattı
+          if (_accounts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _dossierTitle('Satışlar'),
+            for (final a in _accounts.take(4))
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${a['name'] ?? 'Satış'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
+                        Text(_money(_positive(a['totalAmount'])),
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    Text(
+                      '${a['soldByStaffName'] != null && '${a['soldByStaffName']}'.isNotEmpty ? 'Satan: ${a['soldByStaffName']}' : 'Satan belirtilmemiş'}'
+                      '${_positive(a['remainingAmount']) > 0 ? ' · ${_money(_positive(a['remainingAmount']))} kalan' : ''}',
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF705A66)),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+
+          // SEANSLAR — yapılan / toplam
+          if (ledger.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _dossierTitle('Seanslar'),
+            for (final e in ledger.entries)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(e.key,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
+                        Text('${e.value[0]} / ${e.value[1]} yapıldı',
+                            style: const TextStyle(
+                                fontSize: 11.5, color: Color(0xFF705A66))),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: e.value[1] > 0 ? e.value[0] / e.value[1] : 0,
+                        minHeight: 4,
+                        backgroundColor: const Color(0xFFF4E4EA),
+                        valueColor:
+                            const AlwaysStoppedAnimation(Color(0xFF8E3F5B)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+
+          // SON TAHSİLATLAR
+          if (payments.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _dossierTitle('Son tahsilatlar'),
+            for (final p in payments.take(4))
+              Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_shortDate(p['occurredAtUtc'])}  ${_methodLabel('${p['method'] ?? ''}')}',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF705A66)),
+                      ),
+                    ),
+                    Text(_money(_positive(p['amount'])),
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _dossierTitle(String text) => Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+          color: Color(0xFFA3576F),
+        ),
+      );
+
+  Widget _metric(String label, String value, {bool debt = false}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: debt ? const Color(0xFFFFF4F8) : const Color(0xFFFDF9FB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: debt ? const Color(0xFFE8C2D1) : const Color(0xFFEFE1E7)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF705A66))),
+            const SizedBox(height: 2),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: debt ? const Color(0xFF8E3F5B) : const Color(0xFF2B1E29))),
+          ],
+        ),
+      );
+
+  static String _shortDate(dynamic iso) {
+    final d = DateTime.tryParse('$iso')?.toLocal();
+    return d == null ? '—' : DateFormat('dd MMM', 'tr_TR').format(d);
+  }
+
+  static String _methodLabel(String m) {
+    final k = m.toLowerCase();
+    if (k.contains('cash') || k.contains('nakit')) return 'Nakit';
+    if (k.contains('card') || k.contains('kart')) return 'Kart';
+    if (k.contains('transfer') || k.contains('havale') || k.contains('eft')) return 'Havale';
+    return m;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -465,28 +779,37 @@ class _AppointmentFormState extends State<AppointmentForm> {
                     ),
                   ],
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    spacing: 4,
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => _openSale(),
-                        icon: const Icon(Icons.card_giftcard_rounded, size: 18),
-                        label: const Text('Paket satışı yap'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _openSale(serviceSale: true),
-                        icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                        label: const Text('Hizmet satışı yap'),
-                      ),
-                      TextButton.icon(
-                        onPressed: _openAdisyon,
-                        icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                        label: const Text('Adisyon'),
-                      ),
-                    ],
-                  ),
+                if (customerId != null) ...[
+                  const SizedBox(height: 12),
+                  _customerDossier(),
+                ],
+                const SizedBox(height: 10),
+                // Müşteriye yapılan işlemler — randevudan çıkmadan.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _accounts.isEmpty ? null : _openCollect,
+                      icon: const Icon(Icons.payments_rounded, size: 18),
+                      label: const Text('Tahsilat al'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _openSale(),
+                      icon: const Icon(Icons.card_giftcard_rounded, size: 18),
+                      label: const Text('Paket sat'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _openSale(serviceSale: true),
+                      icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                      label: const Text('Hizmet sat'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _openAdisyon,
+                      icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                      label: const Text('Adisyon aç'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _select(
@@ -614,6 +937,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
             customerId = picked.id;
             customerName = picked.name;
           });
+          await _loadDossier();
         }
       },
       child: InputDecorator(
