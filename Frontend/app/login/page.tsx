@@ -1,7 +1,7 @@
 'use client'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowRight,
   BarChart3,
@@ -108,6 +108,177 @@ const inputCls =
   'min-h-12 w-full bg-transparent text-[14px] text-[#352432] outline-none placeholder:text-[#352432]/[0.30]'
 const labelCls = 'mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.55]'
 
+interface ScopeChoice {
+  institution: Institution
+  branch: Branch
+}
+
+/**
+ * Kapsam seçim modalı — çok kurumlu/çok şubeli hesapta giriş TEK hamlede tamamlansın diye.
+ *
+ * Mobil bu akışı zaten böyle çözüyor (login_screen.dart): kapsam çözülünce seçim sorulur ve
+ * giriş aynı işlemin devamında biter. Web'de seçim satır içinde sessizce beliriyordu, kullanıcı
+ * ikinci kez butona basması gerektiğini anlamıyordu.
+ *
+ * Vazgeçilirse hata gösterilmez: satır içi seçim + "Seçimi Onayla" butonu yedek yol olarak durur.
+ */
+function ScopePickerDialog({
+  scope,
+  onCancel,
+  onConfirm,
+}: {
+  scope: ScopeState | null
+  onCancel: () => void
+  onConfirm: (choice: ScopeChoice) => void
+}) {
+  const [institutionId, setInstitutionId] = useState<string | null>(null)
+  const [branchId, setBranchId] = useState<string | null>(null)
+
+  // Modal her açıldığında varsayılana döner (ilk kurum + varsayılan şube).
+  useEffect(() => {
+    const first = scope?.tenants?.[0]
+    const firstBranch = first?.branches?.find((b) => b.isDefault) || first?.branches?.[0]
+    setInstitutionId(first?.id ?? null)
+    setBranchId(firstBranch?.id ?? null)
+  }, [scope])
+
+  const tenants: Institution[] = scope?.tenants || []
+  const institution = tenants.find((t) => t.id === institutionId) || tenants[0]
+  const branches: Branch[] = institution?.branches || []
+  const branch =
+    branches.find((b) => b.id === branchId) || branches.find((b) => b.isDefault) || branches[0]
+
+  const pickInstitution = (next: Institution): void => {
+    const nextBranch = next.branches?.find((b) => b.isDefault) || next.branches?.[0]
+    setInstitutionId(next.id)
+    setBranchId(nextBranch?.id ?? null)
+  }
+
+  return (
+    <Dialog open={scope !== null} onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent
+        className="overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl"
+        style={{ width: 'min(94vw, 520px)', maxWidth: 'min(94vw, 520px)' }}
+      >
+        <div className="relative p-6 sm:p-7">
+          <div className="flex items-start gap-3.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
+              <MapPin className="h-4 w-4" strokeWidth={1.6} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="font-display text-2xl tracking-tight">
+                {tenants.length > 1 ? 'Kurum ve şube seçin' : 'Şube seçin'}
+              </DialogTitle>
+              <DialogDescription className="mt-1.5 text-[12px] leading-relaxed text-[#352432]/[0.60]">
+                Hesabınız birden fazla {tenants.length > 1 ? 'kuruma' : 'şubeye'} bağlı. Seçiminizi
+                yapın, girişiniz hemen tamamlansın.
+              </DialogDescription>
+            </div>
+          </div>
+
+          <div className="mt-5 max-h-[46vh] space-y-4 overflow-y-auto pr-1">
+            {tenants.length > 1 && (
+              <div>
+                <div className={labelCls}>Kurum</div>
+                <div className="grid gap-2">
+                  {tenants.map((t) => {
+                    const active = t.id === institution?.id
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => pickInstitution(t)}
+                        className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
+                          active
+                            ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                            : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                        }`}
+                      >
+                        <span>
+                          <span className="block text-[13.5px] font-semibold text-[#2f1724]">{t.name}</span>
+                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                            {t.plan} · {t.branches.length} şube · {tenantStatusLabel(t.status)}
+                          </span>
+                        </span>
+                        <span
+                          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
+                            active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                          }`}
+                        >
+                          {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className={labelCls}>Şube</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {branches.map((b) => {
+                  const active = b.id === branch?.id
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setBranchId(b.id)}
+                      className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
+                        active
+                          ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                          : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <MapPin
+                          className={`h-4 w-4 ${active ? 'text-[#c85776]' : 'text-[#352432]/[0.35]'}`}
+                          strokeWidth={1.6}
+                        />
+                        <span>
+                          <span className="block text-[13px] font-medium text-[#2f1724]">{b.name}</span>
+                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
+                            {b.city}
+                          </span>
+                        </span>
+                      </span>
+                      <span
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
+                          active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                        }`}
+                      >
+                        {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-2xl border border-[#ead8df] bg-white px-4 py-3 text-[12px] font-medium text-[#352432]/[0.70] transition-colors hover:border-[#efbfd0]"
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              disabled={!institution || !branch}
+              onClick={() => { if (institution && branch) onConfirm({ institution, branch }) }}
+              className="flex-1 rounded-2xl bg-gradient-to-r from-[#e798b4] via-[#d4789a] to-[#b75a7e] py-3 text-[12px] font-semibold text-white shadow-[0_16px_36px_-16px_rgba(183,90,126,0.75)] transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              Devam Et ve Giriş Yap
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
   return (
     <motion.div variants={itemVariants} className="flex items-start gap-4">
@@ -132,6 +303,8 @@ export default function LoginPage() {
   const [scopeLoading, setScopeLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [scope, setScope] = useState<ScopeState | null>(null)
+  /** Dolu olduğunda kapsam seçim modalı açıktır ve giriş cevabı bekler. */
+  const [selectionRequest, setSelectionRequest] = useState<ScopeState | null>(null)
   const { selectedInstitutionId, selectedBranchId, setScope: setBranchScope } = useBranch()
   const { loginScope, login, hydrated, session, isAuthenticated } = useAuth()
   const [institutionId, setInstitutionId] = useState<string | null>(selectedInstitutionId)
@@ -211,6 +384,25 @@ export default function LoginPage() {
     }
   }
 
+  /**
+   * Modal cevabını bekleyen promise'in resolve'u. React'te kullanıcı etkileşimini "await"
+   * etmenin yolu budur: modal açılır, seçim/vazgeçme bu referans üzerinden geri döner.
+   */
+  const selectionResolver = useRef<((choice: ScopeChoice | null) => void) | null>(null)
+
+  const askForScopeSelection = (resolved: ScopeState): Promise<ScopeChoice | null> =>
+    new Promise((resolve) => {
+      selectionResolver.current = resolve
+      setSelectionRequest(resolved)
+    })
+
+  const finishSelection = (choice: ScopeChoice | null): void => {
+    setSelectionRequest(null)
+    const resolve = selectionResolver.current
+    selectionResolver.current = null
+    resolve?.(choice)
+  }
+
   const chooseInstitution = (institution: Institution): void => {
     const defaultBranch = institution.branches?.find((b) => b.isDefault) || institution.branches?.[0]
     setInstitutionId(institution.id)
@@ -236,6 +428,9 @@ export default function LoginPage() {
     // ilk giriş denemesinde dönen kapsam YEREL değişkende tutulur; aksi hâlde /login-scope
     // başarılı olsa bile "E-posta veya parola hatalı" gösteriliyordu.
     let effectiveScope = scope
+    // Modaldan gelen seçim: state güncellemesi bu çağrıda okunamayacağı için YEREL tutulur.
+    let pickedInstitution: Institution | undefined
+    let pickedBranch: Branch | undefined
 
     if (!effectiveScope) {
       try {
@@ -248,9 +443,20 @@ export default function LoginPage() {
 
         effectiveScope = resolved
 
-        // Birden fazla kurum veya şube varsa kullanıcı seçim yapsın.
-        if (resolved.tenants.length > 1 || (resolved.tenants[0]?.branches?.length ?? 0) > 1) {
-          return
+        // Birden fazla kurum veya şube varsa seçimi SOR ve girişe aynı hamlede devam et
+        // (mobil paritesi). Vazgeçilirse satır içi seçim + "Seçimi Onayla" yedek yol kalır.
+        const resolvedIsPlatform = roleMetaFor(resolved.role)?.role === 'PlatformAdmin'
+        const needsPick =
+          !resolvedIsPlatform &&
+          (resolved.tenants.length > 1 || (resolved.tenants[0]?.branches?.length ?? 0) > 1)
+        if (needsPick) {
+          const choice = await askForScopeSelection(resolved)
+          if (!choice) return
+          pickedInstitution = choice.institution
+          pickedBranch = choice.branch
+          // Satır içi özet de seçimi yansıtsın (yedek yola düşülürse tutarlı kalsın).
+          setInstitutionId(choice.institution.id)
+          setBranchId(choice.branch.id)
         }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Giriş yapılamadı.')
@@ -268,16 +474,19 @@ export default function LoginPage() {
     const effectiveIsPlatform = effectiveMeta.role === 'PlatformAdmin'
     const effectiveInstitutions: Institution[] = effectiveIsPlatform ? [] : effectiveScope.tenants
 
+    // Modalda seçim yapıldıysa O kazanır: institutionId/branchId state'leri bu çağrıda henüz eski.
     const effectiveInstitution: Institution | undefined =
-      effectiveInstitutions.find((k) => k.id === institutionId || k.tenantId === institutionId) ||
-      effectiveInstitutions[0]
+      pickedInstitution ??
+      (effectiveInstitutions.find((k) => k.id === institutionId || k.tenantId === institutionId) ||
+        effectiveInstitutions[0])
 
     const effectiveBranches: Branch[] = effectiveInstitution?.branches || []
 
     const effectiveBranch: Branch | undefined =
-      effectiveBranches.find((b) => b.id === branchId || b.branchId === branchId) ||
-      effectiveBranches.find((b) => b.isDefault) ||
-      effectiveBranches[0]
+      pickedBranch ??
+      (effectiveBranches.find((b) => b.id === branchId || b.branchId === branchId) ||
+        effectiveBranches.find((b) => b.isDefault) ||
+        effectiveBranches[0])
 
     if (!effectiveIsPlatform && (!effectiveInstitution?.id || !effectiveBranch?.id)) {
       setError('Bu e-posta için geçerli kurum/şube seçimi bulunamadı.')
@@ -787,6 +996,13 @@ export default function LoginPage() {
           </form>
         </motion.div>
       </div>
+
+      {/* Kapsam seçimi — çok kurumlu/şubeli hesapta giriş tek hamlede tamamlanır */}
+      <ScopePickerDialog
+        scope={selectionRequest}
+        onCancel={() => finishSelection(null)}
+        onConfirm={(choice) => finishSelection(choice)}
+      />
 
       {/* Şifremi unuttum — sıfırlama yönetici üzerinden yapılır */}
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
