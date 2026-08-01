@@ -148,10 +148,21 @@ export default function LoginPage() {
     availableInstitutions.find((k) => k.id === institutionId || k.tenantId === institutionId) ||
     availableInstitutions[0]
   const availableBranches: Branch[] = selectedInstitution?.branches || []
+  /**
+   * Kapsam çözüldü ama giriş İKİNCİ bir adım bekliyor mu?
+   *
+   * Kurum yöneticisinin BranchId'si yoktur → backend kurumun TÜM şubelerini döndürür
+   * (bkz. AuthService.GetLoginScopeAsync), bu yüzden çok şubeli kurumda seçim gerekir.
+   * Şube yöneticisi/personel tek şubeye bağlı olduğundan giriş tek adımda biter.
+   *
+   * Bu bayrak olmadan ekranda seçim beliriyor ama buton hâlâ "Giriş Yap" diyordu:
+   * kullanıcı Enter'a basıp bir şeylerin belirdiğini görüyor, ne yapacağını bilmiyordu.
+   */
   const selectedBranch: Branch | undefined =
     availableBranches.find((b) => b.id === branchId || b.branchId === branchId) ||
     availableBranches.find((b) => b.isDefault) ||
     availableBranches[0]
+  const needsSelection = !!scope && !isPlatform && (availableInstitutions.length > 1 || availableBranches.length > 1)
 
   // Masaüstü (Tauri) kabuğu her açılışta /login yükler; "beni hatırla" ile saklanan geçerli
   // oturum varsa formu göstermeden doğrudan role uygun panele geç. Web'de davranış değişmez.
@@ -694,6 +705,24 @@ export default function LoginPage() {
                 )}
               </AnimatePresence>
 
+              {/* Seçim bekleniyor: kullanıcıya ne yapması gerektiği AÇIKÇA söylenir. */}
+              <AnimatePresence>
+                {needsSelection && !error && (
+                  <motion.div
+                    key="needs-selection"
+                    initial={{ opacity: 0, y: -6, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: -6, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="overflow-hidden rounded-2xl border border-[#efbfd0] bg-[#fff5f8] px-4 py-3 text-[12px] leading-relaxed text-[#7a4a5e]"
+                  >
+                    Hesabınız birden fazla {availableInstitutions.length > 1 ? 'kuruma' : 'şubeye'} bağlı.
+                    Yukarıdan {availableInstitutions.length > 1 ? 'kurum ve şube' : 'şube'} seçip
+                    <strong className="font-semibold"> Seçimi Onayla ve Giriş Yap</strong>&apos;a basın.
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <AnimatePresence>
                 {error && (
                   <motion.div
@@ -743,7 +772,7 @@ export default function LoginPage() {
                     </>
                   ) : (
                     <>
-                      Giriş Yap ve Devam Et
+                      {needsSelection ? 'Seçimi Onayla ve Giriş Yap' : 'Giriş Yap ve Devam Et'}
                       <ArrowRight className="absolute right-5 h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </>
                   )}
