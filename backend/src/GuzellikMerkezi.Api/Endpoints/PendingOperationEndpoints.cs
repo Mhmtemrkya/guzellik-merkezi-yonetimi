@@ -29,7 +29,7 @@ public static class PendingOperationEndpoints
             // Personel yalnızca KENDİ gönderdiği bekleyen işlemleri görebilir (başkasınınkini göremez).
             var effectiveRequestedBy = currentUser.Role == UserRole.Staff ? currentUser.UserId : requestedByUserId;
             var filter = new PendingOperationFilter(status, effectiveRequestedBy, operationType);
-            return (await service.ListAsync(resolvedTenantId, filter, new PageRequest(page, pageSize), ct)).ToHttpResult(http);
+            return (await service.ListAsync(resolvedTenantId, filter, new PageRequest(page, pageSize), currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
         // GÜVENLİK: sahiplik kontrolü servistedir — personel BAŞKASININ bekleyen işlemini (çözülmüş
@@ -39,7 +39,7 @@ public static class PendingOperationEndpoints
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
-            return (await service.GetAsync(resolvedTenantId, id, currentUser.UserId.Value, currentUser.Role, ct)).ToHttpResult(http);
+            return (await service.GetAsync(resolvedTenantId, id, currentUser.UserId.Value, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
         group.MapPost("/", async (CreatePendingOperationRequest request, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
@@ -58,7 +58,7 @@ public static class PendingOperationEndpoints
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
-            return (await service.ApproveAsync(resolvedTenantId, id, currentUser.UserId.Value, ct)).ToHttpResult(http);
+            return (await service.ApproveAsync(resolvedTenantId, id, currentUser.UserId.Value, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
         group.MapPatch("/{id:guid}/reject", async (Guid id, RejectPendingOperationRequest request, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
@@ -68,7 +68,7 @@ public static class PendingOperationEndpoints
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
-            return (await service.RejectAsync(resolvedTenantId, id, currentUser.UserId.Value, request, ct)).ToHttpResult(http);
+            return (await service.RejectAsync(resolvedTenantId, id, currentUser.UserId.Value, request, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
         group.MapPatch("/{id:guid}/cancel", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
@@ -76,7 +76,7 @@ public static class PendingOperationEndpoints
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
-            return (await service.CancelAsync(resolvedTenantId, id, currentUser.UserId.Value, currentUser.Role, ct)).ToHttpResult(http);
+            return (await service.CancelAsync(resolvedTenantId, id, currentUser.UserId.Value, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
         return app;

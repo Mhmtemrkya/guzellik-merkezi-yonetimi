@@ -52,6 +52,15 @@ public static class AppointmentEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ChangeStatusAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
         });
 
+        // Randevu + katalog satışı TEK işlem. Ekran eskiden adisyon aç → kalem ekle → randevu
+        // diye üç ayrı çağrı yapıyordu; randevu adımı düşünce müşteriye yazılmış açık satış
+        // ortada kalıyordu. Satış verilmezse davranış normal oluşturmayla aynıdır.
+        group.MapPost("/with-sale", async (CreateAppointmentWithSaleRequest request, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateWithSaleAsync(resolvedTenantId, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
+        });
+
         // Tamamlama + tahsilat TEK işlem. Ekran eskiden iki ayrı çağrı yapıyordu; ikincisi
         // düşünce "randevu tamamlandı, para alınmadı" durumu kalıcı oluyordu.
         // Onay kapısı açısından /status ile aynı sınıftadır (randevu durum değişikliği).

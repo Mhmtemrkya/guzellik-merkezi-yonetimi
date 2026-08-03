@@ -382,33 +382,6 @@ class _AppointmentFormState extends State<AppointmentForm> {
       '${s['serviceDefinitionId']}' == serviceId &&
       (((s['remainingSessions'] as num?)?.toInt() ?? 0) > 0));
 
-  /// Hizmeti satış olarak açar — web'deki "Katalogdan sat" ile aynı kurallar:
-  /// kendi adisyonu (forceNew) + cariye şimdi işlenmez (autoApproveOnFirstAppointment).
-  Future<void> _sellSelectedServiceAsync(Map<String, dynamic> service) async {
-    final adisyon = await widget.api.post('/api/admin/adisyonlar/', {
-      'customerId': customerId,
-      'customerAccountId': null,
-      'notes': null,
-      'installmentCount': 0,
-      'firstDueDate': null,
-      'forceNew': true,
-      'autoApproveOnFirstAppointment': true,
-    });
-    final adisyonId = adisyon is Map ? '${adisyon['id']}' : null;
-    if (adisyonId == null || adisyonId.isEmpty || adisyonId == 'null') {
-      throw Exception('Satis icin adisyon acilamadi.');
-    }
-    await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
-      'type': 'Service',
-      'refId': service['id'],
-      'description': '${service['name']}',
-      'quantity': 1,
-      'unitPrice': service['price'] ?? 0,
-      'staffMemberId': staffId,
-      'coveredByPackage': false,
-    });
-  }
-
   Future<void> save() async {
     if (customerId == null || staffId == null) return;
     if (serviceId == null) {
@@ -448,8 +421,6 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
     setState(() => saving = true);
     try {
-      // Sıra bilinçli: satış başarısızsa randevu HİÇ oluşturulmaz.
-      if (sellNow) await _sellSelectedServiceAsync(service);
       if (widget.waitlistEntryId != null) {
         // Bekleme listesinden aktarım: tek uçta randevu açılır, kayıt "Randevu yapıldı"
         // olur ve müşteriye "randevunuz oluşturuldu" WhatsApp mesajı kuyruğa alınır.
@@ -463,7 +434,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
           },
         );
       } else {
-        await widget.api.post('/api/admin/appointments/', {
+        final appointment = {
           'branchId': widget.api.auth?.user?.branchId,
           'customerId': customerId,
           'staffMemberId': staffId,
@@ -472,7 +443,21 @@ class _AppointmentFormState extends State<AppointmentForm> {
           'endUtc': end.toUtc().toIso8601String(),
           'price': price,
           'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
-        });
+        };
+        if (sellNow) {
+          // SATIS + RANDEVU TEK TRANSACTION. Ayri cagrilarla yapilsaydi randevu adimi
+          // (slot dolu, yetki, ag) dustugunde musteriye yazilmis acik satis ortada kalirdi.
+          await widget.api.post('/api/admin/appointments/with-sale', {
+            'appointment': appointment,
+            'sale': {
+              'serviceDefinitionId': serviceId,
+              'servicePackageId': null,
+              'staffMemberId': staffId,
+            },
+          });
+        } else {
+          await widget.api.post('/api/admin/appointments/', appointment);
+        }
       }
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {

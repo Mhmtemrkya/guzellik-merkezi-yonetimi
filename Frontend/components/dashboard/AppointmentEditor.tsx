@@ -60,6 +60,11 @@ export interface AppointmentEditorValues {
   price: number
   notes: string
   status: string
+  /**
+   * Katalogdan satılarak açılan randevu: satış SUNUCUDA randevuyla aynı transaction'da açılır
+   * (bkz. adminApi.createAppointmentWithSale). Boşsa normal randevu oluşturma.
+   */
+  catalogSale?: { serviceDefinitionId: string | null; servicePackageId: string | null; staffMemberId: string | null } | null
 }
 
 const statusOptions: Array<{ value: string; label: string }> = [
@@ -868,61 +873,6 @@ export default function AppointmentEditor({
     ? new Date(values.date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })
     : ''
 
-  /**
-   * Katalogdan seçilen hizmet/paketi SATIŞ olarak açar (adisyon + kalem).
-   *
-   * Hizmet satış modalındaki akışın aynısı: `forceNew` ile kendi adisyonunu açar,
-   * `autoApproveOnFirstAppointment` ile cariye şimdi işlenmez — müşteri ilk randevusunu
-   * tamamlayınca backend otomatik onaylar (borç + peşinat + seanslar o an oluşur).
-   */
-  const sellFromCatalogAsync = async (): Promise<void> => {
-    const isPackage = Boolean(catalogPackageId)
-    const pkg = packages.find((p) => p.id === catalogPackageId)
-    const svc = services.find((x) => x.id === catalogServiceId)
-    if (!isPackage && !svc) throw new Error('Seçilen hizmet bulunamadı.')
-    if (isPackage && !pkg) throw new Error('Seçilen paket bulunamadı.')
-
-    const adisyon = await adminApi.createAdisyon<{ id?: string }>(
-      {
-        customerId: values.customerId,
-        customerAccountId: null,
-        notes: null,
-        installmentCount: 0,
-        firstDueDate: null,
-        forceNew: true,
-        autoApproveOnFirstAppointment: true,
-      },
-      tenantId,
-    )
-    if (!adisyon?.id) throw new Error('Satış için adisyon açılamadı.')
-
-    await adminApi.addAdisyonItem(
-      adisyon.id,
-      isPackage
-        ? {
-            type: 'PackageSale',
-            refId: pkg!.id,
-            description: `Paket satışı: ${pkg!.name}`,
-            quantity: 1,
-            unitPrice: pkg!.totalPrice,
-            staffMemberId: values.staffMemberId || null,
-            coveredByPackage: false,
-          }
-        : {
-            type: 'Service',
-            refId: svc!.id,
-            description: svc!.name,
-            quantity: 1,
-            unitPrice: svc!.price,
-            staffMemberId: values.staffMemberId || null,
-            coveredByPackage: false,
-          },
-      tenantId,
-    )
-    // Satış seansları oluşturduğunda sağ raydaki dosya/geçmiş bayat kalmasın.
-    setSessRefreshKey((k) => k + 1)
-  }
-
   const handleSubmit = async (): Promise<void> => {
     setSaving(true)
     setError('')
@@ -953,14 +903,18 @@ export default function AppointmentEditor({
           return
         }
       }
-      // KATALOGDAN SATIŞ: randevudan ÖNCE satışı aç. Sıra bilinçli — satış başarısızsa randevu
-      // hiç oluşturulmaz (aksi hâlde ödemesi olmayan bir randevu ortada kalırdı). Kurallar hizmet
-      // satış modalıyla AYNI: her satış kendi adisyonunu açar (forceNew) ve cariye ŞİMDİ işlenmez;
-      // müşterinin ilk randevusu tamamlanınca backend otomatik onaylar (seanslar o an oluşur).
-      if (mode === 'create' && sourceMode === 'catalog') {
-        await sellFromCatalogAsync()
-      }
-      await onSubmit(values)
+      // KATALOGDAN SATIŞ: satış + randevu SUNUCUDA tek transaction'da açılır. İstemcide
+      // "önce sat, sonra randevu" zinciri kurulsaydı randevu adımı düştüğünde müşteriye
+      // yazılmış açık satış ortada kalırdı.
+      const catalogSale =
+        mode === 'create' && sourceMode === 'catalog'
+          ? {
+              serviceDefinitionId: catalogServiceId || null,
+              servicePackageId: catalogPackageId || null,
+              staffMemberId: values.staffMemberId || null,
+            }
+          : null
+      await onSubmit({ ...values, catalogSale })
       setSaved(true)
       setTimeout(() => onOpenChange(false), 1000)
     } catch (e: unknown) {

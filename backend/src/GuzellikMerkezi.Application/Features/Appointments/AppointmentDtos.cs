@@ -73,3 +73,26 @@ public sealed record UpdateAppointmentRequest(
 public sealed record AppointmentInboxDto(
     IReadOnlyCollection<AppointmentDto> AwaitingOutcome,
     IReadOnlyCollection<AppointmentDto> AwaitingApproval);
+
+/// <summary>
+/// Randevuyu ve (verilirse) onu karşılayacak SATIŞI tek işlemde açar.
+///
+/// <para>
+/// Ekran eskiden üç ayrı çağrı yapıyordu: adisyon aç → satış kalemi ekle → randevu oluştur.
+/// Randevu adımı (slot dolu, yetki, ağ) düşerse müşteriye yazılmış AÇIK SATIŞ ortada kalıyor ama
+/// randevu oluşmuyordu. Sunucu artık ikisini aynı transaction'da uygular: randevu açılamazsa
+/// satış da geri alınır.
+/// </para>
+/// </summary>
+public sealed record CreateAppointmentWithSaleRequest(
+    CreateAppointmentRequest Appointment,
+    AppointmentCatalogSaleDto? Sale);
+
+/// <summary>
+/// Randevuyla birlikte açılacak satış. Hizmet ya da paket verilir (ikisi birden değil).
+/// Satış cariye ŞİMDİ işlenmez; randevu tamamlanınca backend otomatik onaylar.
+/// </summary>
+public sealed record AppointmentCatalogSaleDto(
+    Guid? ServiceDefinitionId,
+    Guid? ServicePackageId,
+    Guid? StaffMemberId);

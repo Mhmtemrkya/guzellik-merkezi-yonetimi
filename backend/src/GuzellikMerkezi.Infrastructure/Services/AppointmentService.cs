@@ -151,6 +151,89 @@ public sealed class AppointmentService : IAppointmentService
         return reason is null ? null : Error.Validation(reason);
     }
 
+    /// <summary>
+    /// Randevu + (varsa) katalog satışı TEK transaction.
+    ///
+    /// <para>
+    /// Ekran eskiden üç ayrı çağrı yapıyordu (adisyon aç → kalem ekle → randevu). Randevu adımı
+    /// slot çakışması/yetki/ağ nedeniyle düşerse müşteriye yazılmış AÇIK SATIŞ ortada kalıyor ama
+    /// randevu oluşmuyordu. Para bütünlüğü istemcinin çağrı zincirine bırakılamaz.
+    /// </para>
+    /// <para>
+    /// SIRA: önce satış, sonra randevu — ikisi de aynı transaction'da. AdisyonService açık
+    /// transaction'ı görünce kendi transaction'ını açmaz, savepoint kullanır; randevu adımı
+    /// başarısız olursa commit edilmez ve satış da geri alınır.
+    /// </para>
+    /// </summary>
+    public async Task<Result<AppointmentDto>> CreateWithSaleAsync(Guid tenantId, CreateAppointmentWithSaleRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    {
+        var sale = request.Sale;
+        if (sale is null)
+            return await CreateAsync(tenantId, request.Appointment, cancellationToken, staffTenantUserId);
+
+        if (sale.ServiceDefinitionId is null && sale.ServicePackageId is null)
+            return Result<AppointmentDto>.Failure(Error.Validation("Satış için hizmet ya da paket seçilmeli."));
+        if (sale.ServiceDefinitionId is not null && sale.ServicePackageId is not null)
+            return Result<AppointmentDto>.Failure(Error.Validation("Aynı anda hem hizmet hem paket satılamaz."));
+
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        var sold = await SellForAppointmentAsync(tenantId, request.Appointment.CustomerId, sale, cancellationToken);
+        if (sold.IsFailure) return Result<AppointmentDto>.Failure(sold.Error);
+
+        var created = await CreateAsync(tenantId, request.Appointment, cancellationToken, staffTenantUserId);
+        // Randevu açılamadıysa COMMIT YOK → satış da geri alınır.
+        if (created.IsFailure) return created;
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+        return created;
+    }
+
+    /// <summary>
+    /// Katalog satışını açar: kendi adisyonu (forceNew) + cariye ŞİMDİ işlenmez
+    /// (autoApproveOnFirstAppointment) — randevu tamamlanınca backend otomatik onaylar.
+    /// </summary>
+    private async Task<Result> SellForAppointmentAsync(Guid tenantId, Guid customerId, AppointmentCatalogSaleDto sale, CancellationToken ct)
+    {
+        // Katalog kaydı ve fiyatı SUNUCUDAN okunur: istemcinin gönderdiği fiyata güvenilmez.
+        string description;
+        decimal unitPrice;
+        AdisyonItemType itemType;
+        Guid refId;
+
+        if (sale.ServicePackageId is { } packageId)
+        {
+            var pkg = await _db.ServicePackages.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == packageId, ct);
+            if (pkg is null) return Result.Failure(Error.NotFound("Paket bulunamadı."));
+            itemType = AdisyonItemType.PackageSale;
+            refId = pkg.Id;
+            description = $"Paket satışı: {pkg.Name}";
+            unitPrice = pkg.TotalPrice;
+        }
+        else
+        {
+            var svc = await _db.ServiceDefinitions.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sale.ServiceDefinitionId!.Value, ct);
+            if (svc is null) return Result.Failure(Error.NotFound("Hizmet bulunamadı."));
+            itemType = AdisyonItemType.Service;
+            refId = svc.Id;
+            description = svc.Name;
+            unitPrice = svc.Price;
+        }
+
+        var adisyon = await _adisyon.CreateAsync(tenantId,
+            new CreateAdisyonRequest(null, customerId, null, null, ForceNew: true, AutoApproveOnFirstAppointment: true), ct);
+        if (adisyon.IsFailure) return Result.Failure(adisyon.Error);
+
+        var item = await _adisyon.AddItemAsync(tenantId, adisyon.Value!.Id,
+            new AddAdisyonItemRequest(itemType, refId, description, 1, unitPrice, sale.StaffMemberId, false), ct);
+        return item.IsFailure ? Result.Failure(item.Error) : Result.Success();
+    }
+
     public async Task<Result<AppointmentDto>> CreateAsync(Guid tenantId, CreateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);

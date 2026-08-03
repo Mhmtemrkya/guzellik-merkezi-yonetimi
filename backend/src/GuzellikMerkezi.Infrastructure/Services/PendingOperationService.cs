@@ -28,6 +28,18 @@ public sealed class PendingOperationService : IPendingOperationService
         _realtime = realtime;
     }
 
+
+    /// <summary>
+    /// ŞUBE YETKİ SINIRI. Kurum yöneticisi kurumun tamamını yönetir; ŞUBE YÖNETİCİSİ yalnız kendi
+    /// şubesinin (ve şubesiz = kurum geneli) işlemlerini görebilir/karara bağlayabilir.
+    /// Bildirimi/arayüzü şubeye göre süzmek yetkilendirme DEĞİLDİR: doğrudan API çağıran bir şube
+    /// yöneticisi başka şubenin onayını okuyabiliyor ve onaylayabiliyordu. Kapı burada.
+    /// </summary>
+    private static bool OutOfBranchScope(PendingOperation op, UserRole? actorRole, Guid? actorBranchId) =>
+        actorRole == UserRole.BranchManager
+        && op.BranchId is not null
+        && op.BranchId != actorBranchId;
+
     /// <summary>
     /// Karara bağlanan işlemin hangi ekranları tazelemesi gerektiği. Onay kapısı isteğin YOLUNU
     /// saklıyor; başlıktan/özetten yola çıkıp doğru konuları seçiyoruz ki istemci gereksiz yere
@@ -51,11 +63,15 @@ public sealed class PendingOperationService : IPendingOperationService
         return topics.Distinct().ToArray();
     }
 
-    public async Task<Result<PagedResult<PendingOperationDto>>> ListAsync(Guid tenantId, PendingOperationFilter filter, PageRequest pageRequest, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<PendingOperationDto>>> ListAsync(Guid tenantId, PendingOperationFilter filter, PageRequest pageRequest, UserRole? actorRole = null, Guid? actorBranchId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.PendingOperations
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId);
+
+        // Şube yöneticisi yalnız kendi şubesi + kurum geneli (şubesiz) kayıtları görür.
+        if (actorRole == UserRole.BranchManager)
+            query = query.Where(x => x.BranchId == null || x.BranchId == actorBranchId);
 
         if (filter.Status.HasValue) query = query.Where(x => x.Status == filter.Status.Value);
         if (filter.RequestedByUserId.HasValue) query = query.Where(x => x.RequestedByUserId == filter.RequestedByUserId.Value);
@@ -79,10 +95,12 @@ public sealed class PendingOperationService : IPendingOperationService
     /// </summary>
     /// <param name="actorUserId">İsteği yapan kullanıcı.</param>
     /// <param name="actorRole">Personel yalnız kendi kaydını görür; yönetici roller kurum içindeki tümünü.</param>
-    public async Task<Result<PendingOperationDto>> GetAsync(Guid tenantId, Guid id, Guid actorUserId, UserRole? actorRole, CancellationToken cancellationToken = default)
+    public async Task<Result<PendingOperationDto>> GetAsync(Guid tenantId, Guid id, Guid actorUserId, UserRole? actorRole, Guid? actorBranchId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.PendingOperations.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == id);
         if (actorRole == UserRole.Staff) query = query.Where(x => x.RequestedByUserId == actorUserId);
+        if (actorRole == UserRole.BranchManager)
+            query = query.Where(x => x.BranchId == null || x.BranchId == actorBranchId);
 
         var op = await query.FirstOrDefaultAsync(cancellationToken);
         // Yetkisiz erişimde "yok" denir: var/yok bilgisi de sızmasın.
@@ -137,6 +155,19 @@ public sealed class PendingOperationService : IPendingOperationService
     }
 
     /// <summary>
+    /// Sahiplenmenin bayat sayılacağı süre. Bu süreden eski bir Processing kaydı yeniden
+    /// denenebilir; replay idempotent olduğu için tekrar iş üretmez.
+    /// </summary>
+    private static readonly TimeSpan ProcessingTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Replay'in KARARLI idempotency anahtarı: işlem Id'sinden türetilir, tekrarlar arasında
+    /// değişmez. "sys:" ön eki anahtarın kullanıcıya değil KURUMA bağlı kapsanmasını sağlar
+    /// (bkz. IdempotencyMiddleware) — onayı başlatan ve tekrar deneyen yönetici farklı olabilir.
+    /// </summary>
+    private static string ReplayIdempotencyKey(Guid operationId) => $"sys:pendingop:{operationId:N}";
+
+    /// <summary>
     /// İşlemi kilit altında SAHİPLENİR (Pending → Processing) ve HEMEN commit eder. Commit şart:
     /// asıl operasyon ayrı bir bağlantıda çalıştığından, sahiplenme onun görebileceği şekilde
     /// kalıcı olmalıdır. Dönen değer operasyonu yürütmek için gereken asgari veridir.
@@ -157,18 +188,38 @@ public sealed class PendingOperationService : IPendingOperationService
         // Kilitten önce okunmuş olabilir → kilit altında TAZE oku.
         if (relational) await _db.Entry(op).ReloadAsync(ct);
 
-        if (op.Status != PendingOperationStatus.Pending)
+        // BAYAT SAHİPLENME YENİDEN DENENEBİLİR. Replay'in sonucu bilinmediğinde (bağlantı koptu,
+        // 5xx, süreç çöktü) işlem Processing'de kalır. Süresiz kilitlenmesin diye zaman aşımından
+        // sonra yeniden sahiplenilebilir; tekrar KARARLI idempotency anahtarıyla gittiği için
+        // hedef işi ikinci kez uygulamaz (bkz. ApproveAsync → ReplayIdempotencyKey).
+        var staleBefore = DateTime.UtcNow - ProcessingTimeout;
+        var claimAgeUtc = op.UpdatedAtUtc ?? op.RequestedAtUtc;
+        var reclaimable = op.Status == PendingOperationStatus.Processing && claimAgeUtc <= staleBefore;
+
+        if (op.Status != PendingOperationStatus.Pending && !reclaimable)
         {
             return Result<(PendingOperationType, string)>.Failure(Error.Conflict(
                 op.Status == PendingOperationStatus.Processing
-                    ? "Bu işlem şu anda başka bir yönetici tarafından işleniyor."
+                    ? "Bu işlem şu anda işleniyor. Sonucu belirsizse birkaç dakika sonra yeniden deneyebilirsiniz."
                     : "Bu işlem zaten karara bağlanmış."));
         }
 
-        op.BeginProcessing(decidedByUserId);
+        op.BeginProcessing(decidedByUserId, reclaimable);
         await _db.SaveChangesAsync(ct);
         if (tx is not null) await tx.CommitAsync(ct);
         return Result<(PendingOperationType, string)>.Success((op.OperationType, op.PayloadJson));
+    }
+
+    /// <summary>
+    /// Kapsam dışıysa hata döndürür (yoksa null). Yetkisizde "yok" denir: var/yok bilgisi sızmasın.
+    /// </summary>
+    private async Task<Error?> EnsureInScopeAsync(Guid tenantId, Guid id, UserRole? actorRole, Guid? actorBranchId, CancellationToken ct)
+    {
+        if (actorRole != UserRole.BranchManager) return null;
+        var op = await _db.PendingOperations.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (op is null) return Error.NotFound("İşlem bulunamadı.");
+        return OutOfBranchScope(op, actorRole, actorBranchId) ? Error.NotFound("İşlem bulunamadı.") : null;
     }
 
     /// <summary>Operasyon başarısızsa sahiplenmeyi bırakır — işlem yeniden denenebilir kalsın.</summary>
@@ -204,8 +255,11 @@ public sealed class PendingOperationService : IPendingOperationService
             .ToListAsync(ct);
     }
 
-    public async Task<Result<PendingOperationDto>> ApproveAsync(Guid tenantId, Guid id, Guid decidedByUserId, CancellationToken cancellationToken = default)
+    public async Task<Result<PendingOperationDto>> ApproveAsync(Guid tenantId, Guid id, Guid decidedByUserId, UserRole? actorRole = null, Guid? actorBranchId = null, CancellationToken cancellationToken = default)
     {
+        var scope = await EnsureInScopeAsync(tenantId, id, actorRole, actorBranchId, cancellationToken);
+        if (scope is not null) return Result<PendingOperationDto>.Failure(scope);
+
         // ---- 1) ATOMİK SAHİPLENME ----
         // Operasyon (HTTP replay) AYRI bir bağlantıda çalıştığı için bu metodun transaction'ı onu
         // KAPSAMAZ. Eskiden satır yalnızca yürütmeden SONRA Approved yapılıyordu: iki yönetici aynı
@@ -221,20 +275,25 @@ public sealed class PendingOperationService : IPendingOperationService
         try
         {
             dispatchResult = operationType == PendingOperationType.HttpReplay
-                ? await _replayer.ReplayAsync(payloadJson, cancellationToken)
+                ? await _replayer.ReplayAsync(payloadJson, ReplayIdempotencyKey(id), cancellationToken)
                 : await _dispatcher.DispatchAsync(tenantId, operationType, payloadJson, cancellationToken);
         }
         catch (Exception ex)
         {
-            // Beklenmeyen hata da sahiplenmeyi bırakmalı; aksi hâlde işlem Processing'de takılır.
-            await ReleaseClaimAsync(tenantId, id, cancellationToken);
-            return Result<PendingOperationDto>.Failure(Error.Conflict($"Onaylanan işlem yürütülemedi: {ex.Message}"));
+            // SONUÇ BİLİNMİYOR → sahiplenmeyi BIRAKMA. İşlem uygulanmış olabilir; Pending'e
+            // döndürüp yeniden onaylatmak onu ikinci kez uygulama riski taşır. Zaman aşımından
+            // sonra yeniden denenebilir ve o deneme idempotent anahtarla gider.
+            return Result<PendingOperationDto>.Failure(Error.Conflict(
+                $"İşlemin sonucu doğrulanamadı: {ex.Message} Birkaç dakika sonra yeniden deneyin."));
         }
 
         if (dispatchResult.IsFailure)
         {
-            // ---- 3a) BAŞARISIZ → yeniden denenebilsin diye Pending'e geri bırak ----
-            await ReleaseClaimAsync(tenantId, id, cancellationToken);
+            // ---- 3a) BAŞARISIZ ----
+            // KESİN başarısızsa (4xx: iş kuralı reddi, hedef hiçbir şey uygulamadı) Pending'e bırak.
+            // SONUÇ BİLİNMİYORSA (taşıma hatası / 5xx) BIRAKMA: uygulanmış olabilir.
+            if (dispatchResult.Error.Code != IApprovalReplayer.UnknownOutcomeCode)
+                await ReleaseClaimAsync(tenantId, id, cancellationToken);
             return Result<PendingOperationDto>.Failure(dispatchResult.Error);
         }
 
@@ -271,14 +330,35 @@ public sealed class PendingOperationService : IPendingOperationService
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 
-    public async Task<Result<PendingOperationDto>> RejectAsync(Guid tenantId, Guid id, Guid decidedByUserId, RejectPendingOperationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<PendingOperationDto>> RejectAsync(Guid tenantId, Guid id, Guid decidedByUserId, RejectPendingOperationRequest request, UserRole? actorRole = null, Guid? actorBranchId = null, CancellationToken cancellationToken = default)
     {
+        var scope = await EnsureInScopeAsync(tenantId, id, actorRole, actorBranchId, cancellationToken);
+        if (scope is not null) return Result<PendingOperationDto>.Failure(scope);
+
+        // ONAYLA AYNI KİLİT PROTOKOLÜ. Ret/iptal eskiden kilide katılmıyordu: bir yönetici
+        // onaylarken (kayıt Processing, replay sürüyor) diğeri bayat okuduğu Pending nesne
+        // üzerinden Rejected yazıp sahiplenmeyi EZEBİLİYORDU — iş uygulanmış ama kayıt
+        // "reddedildi" görünürdü. Kilit + taze okuma bunu tek karara indirger.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "pending_operations", id, cancellationToken);
+
         var op = await _db.PendingOperations.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (op is null) return Result<PendingOperationDto>.Failure(Error.NotFound("İşlem bulunamadı."));
-        if (op.Status != PendingOperationStatus.Pending) return Result<PendingOperationDto>.Failure(Error.Conflict("Bu işlem zaten karara bağlanmış."));
+        if (relational) await _db.Entry(op).ReloadAsync(cancellationToken);
+        if (op.Status != PendingOperationStatus.Pending)
+        {
+            return Result<PendingOperationDto>.Failure(Error.Conflict(
+                op.Status == PendingOperationStatus.Processing
+                    ? "Bu işlem şu anda onaylanıyor; reddedilemez."
+                    : "Bu işlem zaten karara bağlanmış."));
+        }
 
         op.Reject(decidedByUserId, request.Reason);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, op.BranchId, "Reject", "PendingOperation", op.Id,
             $"Reddedildi: {op.Title} · {op.RejectionReason}",
             new { op.OperationType, op.RejectionReason, op.RequestedByName }, cancellationToken);
@@ -306,17 +386,35 @@ public sealed class PendingOperationService : IPendingOperationService
     }
 
     /// <summary>Bekleyen isteği geri çeker. Personel YALNIZ kendi isteğini iptal edebilir (bkz. <see cref="GetAsync"/>).</summary>
-    public async Task<Result> CancelAsync(Guid tenantId, Guid id, Guid decidedByUserId, UserRole? actorRole, CancellationToken cancellationToken = default)
+    public async Task<Result> CancelAsync(Guid tenantId, Guid id, Guid decidedByUserId, UserRole? actorRole, Guid? actorBranchId = null, CancellationToken cancellationToken = default)
     {
+        // Onay/ret ile AYNI kilit protokolü (bkz. RejectAsync): geri çekme, sürmekte olan bir
+        // onayın sahiplenmesini ezmemeli.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "pending_operations", id, cancellationToken);
+
         var query = _db.PendingOperations.Where(x => x.TenantId == tenantId && x.Id == id);
         if (actorRole == UserRole.Staff) query = query.Where(x => x.RequestedByUserId == decidedByUserId);
+        if (actorRole == UserRole.BranchManager)
+            query = query.Where(x => x.BranchId == null || x.BranchId == actorBranchId);
 
         var op = await query.FirstOrDefaultAsync(cancellationToken);
         if (op is null) return Result.Failure(Error.NotFound("İşlem bulunamadı."));
-        if (op.Status != PendingOperationStatus.Pending) return Result.Failure(Error.Conflict("Bu işlem zaten karara bağlanmış."));
+        if (relational) await _db.Entry(op).ReloadAsync(cancellationToken);
+        if (op.Status != PendingOperationStatus.Pending)
+        {
+            return Result.Failure(Error.Conflict(
+                op.Status == PendingOperationStatus.Processing
+                    ? "Bu işlem şu anda onaylanıyor; geri çekilemez."
+                    : "Bu işlem zaten karara bağlanmış."));
+        }
 
         op.Cancel(decidedByUserId);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result.Success();
     }
 }

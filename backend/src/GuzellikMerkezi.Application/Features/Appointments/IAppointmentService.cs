@@ -16,6 +16,12 @@ public interface IAppointmentService
     Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
 
     /// <summary>
+    /// Randevuyu ve (verilirse) onu karşılayacak katalog satışını TEK transaction'da açar.
+    /// Randevu açılamazsa satış da geri alınır (para bütünlüğü istemci çağrı zincirine bırakılmaz).
+    /// </summary>
+    Task<Result<AppointmentDto>> CreateWithSaleAsync(Guid tenantId, CreateAppointmentWithSaleRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
+
+    /// <summary>
     /// Randevuyu "Tamamlandı" yapar ve tahsilatı TEK transaction'da alır (biri düşerse ikisi de
     /// uygulanmaz). Tahsilat verilmezse yalnız durum değişir.
     /// </summary>

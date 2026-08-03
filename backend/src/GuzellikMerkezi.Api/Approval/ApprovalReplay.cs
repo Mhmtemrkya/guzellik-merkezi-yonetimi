@@ -34,7 +34,7 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
         _configuration = configuration;
     }
 
-    public async Task<Result<Guid?>> ReplayAsync(string payloadJson, CancellationToken cancellationToken = default)
+    public async Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, CancellationToken cancellationToken = default)
     {
         ReplayPayload? p;
         try { p = JsonSerializer.Deserialize<ReplayPayload>(payloadJson, JsonOpts); }
@@ -64,16 +64,35 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
         var auth = _httpContextAccessor.HttpContext?.Request.Headers.Authorization.ToString();
         if (!string.IsNullOrWhiteSpace(auth)) request.Headers.TryAddWithoutValidation("Authorization", auth);
         if (!string.IsNullOrWhiteSpace(p.BranchId)) request.Headers.TryAddWithoutValidation("X-Branch-Id", p.BranchId);
+        // TAM BİR KEZ UYGULAMA: hedef uç commit ettikten SONRA yanıt kaybolursa (bağlantı koptu,
+        // zaman aşımı) tekrar denendiğinde iş ikinci kez yapılmamalı. IdempotencyMiddleware ilk
+        // yanıtı bu anahtarla saklar ve tekrarında aynen döndürür.
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
 
         var client = _httpClientFactory.CreateClient("ApprovalReplay");
         HttpResponseMessage response;
         try { response = await client.SendAsync(request, cancellationToken); }
-        catch (Exception ex) { return Result<Guid?>.Failure(Error.Validation($"İşlem uygulanamadı (replay hatası): {ex.Message}")); }
+        catch (Exception ex)
+        {
+            // SONUÇ BİLİNMİYOR: istek hedefe ulaşmış ve commit etmiş OLABİLİR, yanıt yolda kaybolmuş
+            // olabilir. "Başarısız" sayıp yeniden denemek işi iki kez uygulardı.
+            return Result<Guid?>.Failure(new Error(IApprovalReplayer.UnknownOutcomeCode,
+                $"İşlemin sonucu doğrulanamadı (bağlantı hatası): {ex.Message}"));
+        }
 
         if (response.IsSuccessStatusCode) return Result<Guid?>.Success(null);
 
         var msg = await response.Content.ReadAsStringAsync(cancellationToken);
         if (msg.Length > 300) msg = msg[..300];
+
+        // 5xx = sunucu hatası; kısmen uygulanmış olabilir ve idempotency kaydı 5xx'i saklamaz →
+        // sonuç BİLİNMİYOR. 4xx = iş kuralı reddi; hedef hiçbir şey uygulamadı → kesin başarısız.
+        if ((int)response.StatusCode >= 500)
+        {
+            return Result<Guid?>.Failure(new Error(IApprovalReplayer.UnknownOutcomeCode,
+                $"İşlemin sonucu doğrulanamadı (sunucu hatası {(int)response.StatusCode}). {msg}"));
+        }
         return Result<Guid?>.Failure(Error.Validation($"Onaylanan işlem uygulanamadı ({(int)response.StatusCode}). {msg}"));
     }
 

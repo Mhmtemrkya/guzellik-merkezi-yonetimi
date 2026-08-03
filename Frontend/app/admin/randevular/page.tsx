@@ -746,7 +746,13 @@ function RandevularPageInner() {
     const payload = appointmentPayload(values)
     // Randevu doğrudan oluşturulur; personel oluşturursa backend onu "taslak" yapıp kurum
     // yöneticisi onayına düşürür — randevularda taslak görünür, onaylanınca aktif randevuya döner.
-    await adminApi.createAppointment(payload, tenantId)
+    //
+    // KATALOGDAN SATIŞ tek transaction: randevu açılamazsa satış da geri alınır.
+    if (values.catalogSale) {
+      await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
+    } else {
+      await adminApi.createAppointment(payload, tenantId)
+    }
     if (isStaffUser) {
       setStaffActionMsg('Randevu taslak olarak oluşturuldu ve kurum yöneticisi onayına gönderildi. Onaylanınca aktif randevuya dönecek.')
       await reload()

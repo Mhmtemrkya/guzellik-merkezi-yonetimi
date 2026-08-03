@@ -1003,6 +1003,13 @@ export const adminApi = {
     apiRequest<T>('/api/admin/appointments/inbox', { query: { tenantId } }),
   createAppointment: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/appointments/', { method: 'POST', query: { tenantId }, body }),
+  /**
+   * Randevuyu ve (verilirse) onu karşılayacak katalog satışını TEK transaction'da açar.
+   * Ayrı çağrılarla yapıldığında randevu adımı düşerse müşteriye yazılmış açık satış ortada
+   * kalıyordu — para bütünlüğü istemci çağrı zincirine bırakılmaz.
+   */
+  createAppointmentWithSale: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/appointments/with-sale', { method: 'POST', query: { tenantId }, body }),
   /** Taslak randevuyu aktif randevuya çevirir (kurum yöneticisi onayı). */
   approveAppointment: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/appointments/${id}/approve`, { method: 'POST', query: { tenantId } }),

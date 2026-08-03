@@ -474,7 +474,13 @@ function MusterilerPageInner() {
     }
     // Randevu artık PendingOperation'a değil doğrudan oluşturulur; personel oluşturursa
     // backend onu "taslak" yapıp kurum yöneticisi onayına düşürür (randevularda taslak → aktif akışı).
-    await adminApi.createAppointment(payload, tenantId)
+    //
+    // KATALOGDAN SATIŞ tek transaction: randevu açılamazsa satış da geri alınır.
+    if (values.catalogSale) {
+      await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
+    } else {
+      await adminApi.createAppointment(payload, tenantId)
+    }
     if (isStaff) {
       setActionMsg('Randevu taslak olarak oluşturuldu ve kurum yöneticisi onayına gönderildi.')
     }

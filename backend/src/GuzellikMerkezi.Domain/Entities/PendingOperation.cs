@@ -61,9 +61,15 @@ public sealed class PendingOperation : Entity
     /// İşlemi SAHİPLENİR (Pending → Processing). Kilit altında çağrılıp hemen commit edilmelidir:
     /// asıl operasyon ayrı bir bağlantıda (HTTP replay) çalıştığı için tek koruma budur.
     /// </summary>
-    public void BeginProcessing(Guid decidedByUserId)
+    /// <param name="allowReclaim">
+    /// true → bayat kalmış bir Processing kaydı yeniden sahiplenilebilir (sonucu bilinmeyen
+    /// replay'in tekrarı). Replay idempotent olduğundan iş ikinci kez uygulanmaz.
+    /// </param>
+    public void BeginProcessing(Guid decidedByUserId, bool allowReclaim = false)
     {
-        if (Status != PendingOperationStatus.Pending) throw new BusinessRuleException("Sadece bekleyen işlemler onaylanabilir.");
+        var allowed = Status == PendingOperationStatus.Pending
+                      || (allowReclaim && Status == PendingOperationStatus.Processing);
+        if (!allowed) throw new BusinessRuleException("Sadece bekleyen işlemler onaylanabilir.");
         Status = PendingOperationStatus.Processing;
         DecidedByUserId = decidedByUserId;
         Touch();

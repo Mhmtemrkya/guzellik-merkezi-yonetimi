@@ -37,9 +37,16 @@ public sealed class IdempotencyMiddleware
 
         var tenantId = currentUser.TenantId ?? Guid.Empty;
 
+        // SİSTEM ANAHTARLARI KULLANICIYA DEĞİL İŞLEME BAĞLIDIR.
+        // Onay replay'i "sys:" ön ekli, bekleyen işlem Id'sinden türetilmiş kararlı bir anahtar
+        // gönderir. Normal anahtarlar (TenantId, UserId, Key) ile kapsanır; ama onayı A yönetici
+        // başlatıp yanıt kaybolduktan sonra B yönetici tekrar denerse kullanıcı farklı olduğu için
+        // koruma ıskalanır ve iş İKİNCİ KEZ uygulanırdı. Bu anahtarlarda kapsam kurum düzeyidir.
+        var scopeUserId = key.StartsWith("sys:", StringComparison.Ordinal) ? Guid.Empty : userId;
+
         var existing = await db.ProcessedClientRequests.AsNoTracking()
             .FirstOrDefaultAsync(
-                x => x.TenantId == tenantId && x.UserId == userId && x.IdempotencyKey == key,
+                x => x.TenantId == tenantId && x.UserId == scopeUserId && x.IdempotencyKey == key,
                 http.RequestAborted);
         if (existing is not null)
         {
@@ -53,7 +60,7 @@ public sealed class IdempotencyMiddleware
         // — iki ayrı tahsilat/mutasyon. Unique indeks (TenantId, UserId, IdempotencyKey) ikinci
         // insert'i eler; böylece işi yalnızca bir istek yapar.
         var reservation = new ProcessedClientRequest(
-            tenantId, userId, key, http.Request.Method, path, 0, null, null);
+            tenantId, scopeUserId, key, http.Request.Method, path, 0, null, null);
         db.ProcessedClientRequests.Add(reservation);
         try
         {
@@ -67,7 +74,7 @@ public sealed class IdempotencyMiddleware
             // istemciye "tekrar dene" de — işi ikinci kez YAPMA.
             var winner = await db.ProcessedClientRequests.AsNoTracking()
                 .FirstOrDefaultAsync(
-                    x => x.TenantId == tenantId && x.UserId == userId && x.IdempotencyKey == key,
+                    x => x.TenantId == tenantId && x.UserId == scopeUserId && x.IdempotencyKey == key,
                     http.RequestAborted);
             if (winner is not null && !winner.IsPending)
             {
