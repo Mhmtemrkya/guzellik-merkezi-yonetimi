@@ -19,6 +19,12 @@ class AppointmentReminderScheduler {
 
   Future<void> sync() async {
     try {
+      // TAM ALARM İZNİ BURADA İSTENİR — açılışta değil.
+      // Sistem ayar sayfası açtığı için açılışta çağrıldığında bildirim izni diyaloğunu
+      // örtüyordu (bkz. NotificationService.requestExactAlarms). Asıl ihtiyaç duyulan yer
+      // burası: hatırlatmaların TAM saatinde tetiklenmesi buna bağlı.
+      await NotificationService.instance.requestExactAlarms();
+
       final now = DateTime.now().toUtc();
       final to = now.add(const Duration(days: 7));
       final data = await api.get('/api/admin/appointments/', query: {

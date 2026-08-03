@@ -52,13 +52,19 @@ class _BeautyAsistAppState extends State<BeautyAsistApp> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     BackgroundPoller.configure();
 
-    // BİLDİRİM İZNİ AÇILIŞTA İSTENİR.
+    // BİLDİRİM İZNİ AÇILIŞTA İSTENİR — ama İLK KAREDEN SONRA.
     //
     // Android 13+ (ve iOS) bildirim iznini KURULUMDA değil çalışma anında sorar ve sistem bu
     // diyaloğu yalnızca bir kez gösterir. İstek eskiden sadece GİRİŞTEN SONRA yapılıyordu
     // (NotificationCenter.start): kullanıcı login ekranında kaldığı sürece hiç sorulmuyor,
     // izin verilmemiş sayılıyor ve gelen push'lar sessizce düşüyordu.
-    unawaited(_requestNotificationPermission());
+    //
+    // `initState` içinden DOĞRUDAN istemek güvenilir değil: ilk kare çizilmeden Android
+    // tarafında pencere hazır olmayabiliyor ve izin diyaloğu hiç görünmeden düşüyor.
+    // Bu yüzden ilk kare sonrasına ertelenir.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_requestNotificationPermission());
+    });
 
     auth.addListener(_onAuthChanged);
     auth.restore();
@@ -67,9 +73,11 @@ class _BeautyAsistAppState extends State<BeautyAsistApp> with WidgetsBindingObse
   Future<void> _requestNotificationPermission() async {
     try {
       await NotificationService.instance.init();
+      // Zaten açıksa sistem hiçbir şey göstermez; boş yere istemeyelim.
+      if (await NotificationService.instance.areEnabled() == true) return;
       await NotificationService.instance.requestPermissions();
     } catch (_) {
-      // İzin alınamazsa uygulama normal çalışır; kullanıcı ayarlardan sonradan verebilir.
+      // İzin alınamazsa uygulama normal çalışır; kullanıcı Menü → Bildirim ayarları'ndan verebilir.
     }
   }
 

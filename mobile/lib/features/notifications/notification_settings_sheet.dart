@@ -94,6 +94,20 @@ class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet>
     }
   }
 
+  /// Android sürümüne göre "izin neden sorulmadı" açıklaması.
+  /// Ek bağımlılık gerekmesin diye sürüm `Platform.operatingSystemVersion` metninden okunur
+  /// (ör. "Android 13 (API 33)"); okunamazsa genel bir metin gösterilir.
+  String get _androidVersionNote {
+    final raw = Platform.operatingSystemVersion;
+    final api = int.tryParse(RegExp(r'API (\d+)').firstMatch(raw)?.group(1) ?? '');
+    if (api == null) return 'Cihaz: $raw';
+    return api >= 33
+        ? 'Android $api: bildirim izni uygulama açılışında sorulur. Sorulmadıysa izin '
+            'zaten verilmiş demektir (sistem aynı izni ikinci kez sormaz).'
+        : 'Android $api: bu sürümde ayrı bir bildirim izni YOKTUR — bildirimler kurulumla '
+            'birlikte açıktır. İzin sorulmaması normaldir.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final on = _enabled == true;
@@ -218,6 +232,20 @@ class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet>
                 label: const Text('Sistem bildirim ayarları'),
               ),
             ),
+
+          // TEŞHİS: "izin diyaloğu hiç çıkmadı" şikâyetinin iki farklı sebebi olabilir ve
+          // ikisi de dışarıdan ayırt edilemiyordu:
+          //   • Android 12 ve altı → böyle bir izin YOKTUR, bildirimler baştan açıktır
+          //     (hiçbir uygulama sormaz — beklenen davranış).
+          //   • Android 13+ → izin gerçekten sorulmalıydı.
+          // Sürümü burada göstererek hangi durumda olunduğu tek bakışta anlaşılır.
+          if (Platform.isAndroid) ...[
+            const SizedBox(height: 10),
+            Text(
+              _androidVersionNote,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.muted, height: 1.35),
+            ),
+          ],
 
           const SizedBox(height: 16),
           const Text('Neler bildiriliyor?',

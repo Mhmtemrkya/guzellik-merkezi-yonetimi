@@ -100,21 +100,41 @@ class NotificationService {
     return null;
   }
 
-  /// Android 13+ bildirim izni + tam alarm izni ister. Reddedilse bile uygulama çalışmaya devam eder.
+  /// Android 13+ / iOS bildirim izni ister. Reddedilse bile uygulama çalışmaya devam eder.
+  ///
+  /// TAM ALARM İZNİ BURADA İSTENMEZ — bilinçli. `requestExactAlarmsPermission` bir
+  /// diyalog değil, TAM EKRAN SİSTEM AYAR SAYFASI açar. Bildirim izni diyaloğunun hemen
+  /// ardından çağrıldığında diyaloğu örtüyor/eziyordu; kullanıcı hiçbir şey sorulmamış gibi
+  /// görüyordu. Artık ayrı: [requestExactAlarms] yalnızca gerçekten zamanlanmış hatırlatma
+  /// kurulacağı anda (ya da bildirim ayarları ekranından) çağrılır.
   Future<bool> requestPermissions() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     var granted = true;
     if (android != null) {
+      // Zaten açıksa sistem diyalog GÖSTERMEZ ve true döner — bu normaldir.
       granted = await android.requestNotificationsPermission() ?? true;
-      try {
-        await android.requestExactAlarmsPermission();
-      } catch (_) {}
     }
     final ios = _plugin
         .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
-    await ios?.requestPermissions(alert: true, badge: true, sound: true);
-    return granted;
+    final iosGranted =
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    return granted && (iosGranted ?? true);
+  }
+
+  /// TAM ALARM (SCHEDULE_EXACT_ALARM) izni — sistem ayar sayfası açar.
+  ///
+  /// Yalnızca zamanlanmış randevu hatırlatması kurulurken anlamlıdır ve manifest'teki
+  /// `USE_EXACT_ALARM` sayesinde çoğu cihazda zaten verilmiş olur. Açılışta
+  /// çağrılmaz: kullanıcıyı ilk saniyede ayar ekranına atmak kabul edilemez.
+  Future<void> requestExactAlarms() async {
+    try {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestExactAlarmsPermission();
+    } catch (_) {
+      // İzin alınamazsa zamanlanmış hatırlatma yaklaşık saatte tetiklenir; akış bozulmaz.
+    }
   }
 
   Future<void> show({
