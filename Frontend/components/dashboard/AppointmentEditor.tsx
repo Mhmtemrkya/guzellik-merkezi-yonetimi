@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  HelpCircle,
   Hourglass,
   Lock,
   ListPlus,
@@ -17,6 +18,7 @@ import {
   Plane,
   ReceiptText,
   Scissors,
+  ShoppingBag,
   User,
   UserCog,
   UserPlus,
@@ -29,6 +31,8 @@ import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarnin
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
+import AppointmentHelpDialog from '@/components/dashboard/AppointmentHelpDialog'
+import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import type {
@@ -541,6 +545,7 @@ export default function AppointmentEditor({
   // Modal içinden hızlı kaydedilen müşteriler — dışarıdan gelen (seans filtreli) listede
   // olmasalar da seçilebilsinler diye yerel olarak eklenir.
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false) // "Bu modal nasıl çalışır?" kılavuzu
   const [extraCustomers, setExtraCustomers] = useState<Customer[]>([])
   const allCustomers = useMemo(() => {
     const known = new Set(customers.map((c) => c.id))
@@ -588,6 +593,9 @@ export default function AppointmentEditor({
   const [sessLoading, setSessLoading] = useState(false)
   // Modal içinden satış yapılınca seans bakiyelerini yeniden çekmek için sayaç.
   const [sessRefreshKey, setSessRefreshKey] = useState(0)
+  // ANLIK: yönetici personelin satışını onayladığında seanslar bu ekranda kendiliğinden
+  // belirsin — personel modalı kapatıp açmak zorunda kalmasın.
+  useRealtime(['sessions', 'adisyon', 'accounts'], () => setSessRefreshKey((k) => k + 1))
   // Her iki modda da çekilir: create'te randevu bu seanslara açılır, edit'te sağ raydaki
   // müşteri dosyası "yapılan / kalan seans" dökümünü buradan gösterir.
   useEffect(() => {
@@ -836,7 +844,9 @@ export default function AppointmentEditor({
         {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
         <DialogContent
           className="flex flex-col overflow-hidden rounded-3xl border border-[#efe1e7] bg-white !p-0 text-[#2b1e29] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
-          style={{ width: 'min(97vw, 1440px)', height: 'min(95dvh, 1020px)', maxHeight: '95dvh' }}
+          /* Genişletildi: adımlar iki sütuna yayıldığında form kısmı tek ekrana sığsın
+             (eskiden 1440px'de tek sütun uzayıp dikey kaydırma gerektiriyordu). */
+          style={{ width: 'min(98vw, 1800px)', height: 'min(95dvh, 1060px)', maxHeight: '95dvh' }}
         >
           {/* ── BAŞLIK ───────────────────────────────────────────────────── */}
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#efe1e7] px-6 py-4 sm:px-7">
@@ -864,14 +874,26 @@ export default function AppointmentEditor({
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => !saving && onOpenChange(false)}
-              aria-label="Kapat"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#705a66] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {!noteOnly && (
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                >
+                  <HelpCircle className="h-4 w-4" strokeWidth={1.9} />
+                  Nasıl çalışır?
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => !saving && onOpenChange(false)}
+                aria-label="Kapat"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#705a66] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </header>
 
           {/* ── GÖVDE ────────────────────────────────────────────────────── */}
@@ -893,205 +915,233 @@ export default function AppointmentEditor({
               </div>
             ) : (
               <div className="flex h-full flex-col lg:flex-row">
-                {/* ── SOL: sıralı adımlar ── */}
-                <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6 sm:px-7">
-                  {/* 1 — MÜŞTERİ */}
-                  <Step
-                    n={1}
-                    title="Müşteri"
-                    hint={mode === 'edit' ? 'Oluşturulduktan sonra değiştirilemez' : undefined}
-                    done={step1Done}
-                  >
-                    {mode === 'edit' ? (
-                      <LockedFact icon={User} label="Müşteri" value={selectedCustomer?.name || customerLabel || ''} />
-                    ) : (
-                      <>
-                        <div className="flex items-stretch gap-2">
-                          <div className="min-w-0 flex-1">
-                            <CustomerPicker
-                              items={allCustomers}
-                              value={values.customerId}
-                              onSearch={searchCustomersFn}
-                              onSelectItem={setPickedCustomer}
-                              onChange={(customerId) =>
-                                setValues((v) => ({ ...v, customerId, serviceDefinitionId: '', durationMinutes: 30 }))
-                              }
-                            />
-                          </div>
-                          {onQuickCreateCustomer && (
-                            <button
-                              type="button"
-                              onClick={() => setQuickCustomerOpen(true)}
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
-                            >
-                              <UserPlus className="h-4 w-4" strokeWidth={1.9} />
-                              Yeni
-                            </button>
-                          )}
-                        </div>
-                        {selectedCustomer?.phone && (
-                          <p className="mt-1.5 text-[11.5px] tabular-nums text-[#705a66]">{selectedCustomer.phone}</p>
-                        )}
-                      </>
-                    )}
-                    <ConsultationWarningBanner customerId={values.customerId} tenantId={tenantId} />
-                  </Step>
-
-                  {/* 2 — İŞLEM */}
-                  <Step
-                    n={2}
-                    title="İşlem"
-                    hint={mode === 'create' ? 'Müşterinin satın aldığı seanslardan' : undefined}
-                    done={step2Done}
-                    locked={!values.customerId}
-                  >
-                    {mode === 'edit' ? (
-                      <LockedFact icon={Scissors} label="Hizmet" value={selectedService?.name || serviceLabel || ''} />
-                    ) : !values.customerId ? (
-                      <EmptyNote icon={User}>Önce müşteriyi seç — satın aldığı işlemler burada listelenir.</EmptyNote>
-                    ) : sessLoading ? (
-                      <EmptyNote icon={Loader2} spin>
-                        Seans bakiyesi yükleniyor…
-                      </EmptyNote>
-                    ) : bookableByService.length === 0 ? (
-                      <div className="rounded-2xl border border-[#f0dcc4] bg-[#fdf6ec] px-4 py-3.5">
-                        <div className="flex items-start gap-2.5">
-                          <Package className="mt-0.5 h-4 w-4 shrink-0 text-[#b8863b]" strokeWidth={1.8} />
-                          <div>
-                            <div className="text-[13px] font-semibold text-[#8a6524]">Randevuya uygun seans yok.</div>
-                            <div className="mt-0.5 text-[11.5px] leading-snug text-[#8a6524]/90">
-                              Sağdaki panelden paket ya da hizmet sat; onaylandığında seanslar burada anında görünür.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                        {bookableByService.map((s) => (
-                          <SessionCard
-                            key={s.serviceDefinitionId}
-                            active={values.serviceDefinitionId === s.serviceDefinitionId}
-                            onClick={() => handleSessionSelect(s.serviceDefinitionId)}
-                            name={s.serviceName}
-                            remaining={s.remaining}
-                            total={s.total}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </Step>
-
-                  {/* 3 — ZAMAN & PERSONEL */}
-                  <Step
-                    n={3}
-                    title="Zaman ve personel"
-                    done={step3Done}
-                    locked={!values.serviceDefinitionId && mode === 'create'}
-                  >
-                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                      <Field label="Tarih" required>
-                        <input
-                          type="date"
-                          className={control}
-                          value={values.date}
-                          onChange={(e) => setValues((v) => ({ ...v, date: e.target.value }))}
-                        />
-                      </Field>
-                      <Field label="Saat" required>
-                        <input
-                          type="time"
-                          className={`${control} tabular-nums`}
-                          value={values.time}
-                          onChange={(e) => setValues((v) => ({ ...v, time: e.target.value }))}
-                        />
-                      </Field>
-
-                      <Field
-                        label="Personel"
-                        required
-                        wide={mode !== 'edit'}
-                        helper={
-                          mode === 'edit'
-                            ? 'Oluşturulduktan sonra değiştirilemez.'
-                            : staffLocked
-                              ? 'Personel rolünde yalnız kendi takvimine randevu açılır.'
-                              : undefined
-                        }
+                {/* ── SOL: sıralı adımlar ──
+                    Geniş ekranda İKİ SÜTUN: 1-2 solda, 3-4 sağda. Tek sütunda dört adım
+                    alt alta uzuyor ve form kaydırma gerektiriyordu; yan yana dizilince
+                    tamamı tek ekrana sığıyor. */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
+                  <div className="grid gap-x-8 gap-y-7 xl:grid-cols-2">
+                    <div className="space-y-7">
+                      {/* 1 — MÜŞTERİ */}
+                      <Step
+                        n={1}
+                        title="Müşteri"
+                        hint={mode === 'edit' ? 'Oluşturulduktan sonra değiştirilemez' : undefined}
+                        done={step1Done}
                       >
                         {mode === 'edit' ? (
-                          <LockedFact icon={UserCog} label="Personel" value={selectedStaff?.name || staffLabel || ''} />
+                          <LockedFact icon={User} label="Müşteri" value={selectedCustomer?.name || customerLabel || ''} />
                         ) : (
-                          <StaffPicker
-                            staff={staff}
-                            value={values.staffMemberId}
-                            disabled={staffLocked}
-                            onChange={(id) => setValues((v) => ({ ...v, staffMemberId: id }))}
-                            isOnLeave={(s) => leaveStaffIds.has(s.id)}
-                            isSkillBlocked={(s) => mode === 'create' && !staffAllowedForService(s)}
-                          />
+                          <>
+                            <div className="flex items-stretch gap-2">
+                              <div className="min-w-0 flex-1">
+                                <CustomerPicker
+                                  items={allCustomers}
+                                  value={values.customerId}
+                                  onSearch={searchCustomersFn}
+                                  onSelectItem={setPickedCustomer}
+                                  onChange={(customerId) =>
+                                    setValues((v) => ({ ...v, customerId, serviceDefinitionId: '', durationMinutes: 30 }))
+                                  }
+                                />
+                              </div>
+                              {onQuickCreateCustomer && (
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickCustomerOpen(true)}
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                                >
+                                  <UserPlus className="h-4 w-4" strokeWidth={1.9} />
+                                  Yeni
+                                </button>
+                              )}
+                            </div>
+                            {selectedCustomer?.phone && (
+                              <p className="mt-1.5 text-[11.5px] tabular-nums text-[#705a66]">{selectedCustomer.phone}</p>
+                            )}
+                          </>
                         )}
-                      </Field>
+                        <ConsultationWarningBanner customerId={values.customerId} tenantId={tenantId} />
+                      </Step>
 
-                      <Field label="Süre (dk)">
-                        <input
-                          type="number"
-                          min={5}
-                          className={`${control} tabular-nums`}
-                          value={values.durationMinutes}
-                          onChange={(e) => setValues((v) => ({ ...v, durationMinutes: Number(e.target.value) }))}
-                        />
-                      </Field>
-
-                      {mode === 'edit' && (
-                        <Field label="Durum" helper="“Tamamlandı” seçilince paket bakiyesi düşer.">
-                          <select
-                            className={control}
-                            value={values.status}
-                            onChange={(e) => setValues((v) => ({ ...v, status: e.target.value }))}
-                          >
-                            {statusOptions.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
+                      {/* 2 — İŞLEM */}
+                      <Step
+                        n={2}
+                        title="İşlem"
+                        hint={mode === 'create' ? 'Müşterinin satın aldığı seanslardan' : undefined}
+                        done={step2Done}
+                        locked={!values.customerId}
+                      >
+                        {/* KURAL HER ZAMAN GÖRÜNÜR: liste doluyken bile "bunlar nereden geliyor"
+                            sorusunun cevabı burada. Eskiden yalnız liste boşken söyleniyordu. */}
+                        {mode === 'create' && (
+                          <div className="mb-3 flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
+                            <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
+                            <p className="text-[12px] leading-snug text-[#4a3a44]">
+                              Randevu açabilmek için işlemin <strong>önce satın alınmış olması gerekir</strong> — burada
+                              yalnızca müşterinin <strong>hizmet ya da paket satışından</strong> gelen, seansı kalan
+                              işlemler listelenir. Seansı yoksa sağdaki panelden{' '}
+                              <strong>Hizmet sat</strong> veya <strong>Paket sat</strong> de; satış biter bitmez burada
+                              görünür.
+                            </p>
+                          </div>
+                        )}
+                        {mode === 'edit' ? (
+                          <LockedFact icon={Scissors} label="Hizmet" value={selectedService?.name || serviceLabel || ''} />
+                        ) : !values.customerId ? (
+                          <EmptyNote icon={User}>Önce müşteriyi seç — satın aldığı işlemler burada listelenir.</EmptyNote>
+                        ) : sessLoading ? (
+                          <EmptyNote icon={Loader2} spin>
+                            Seans bakiyesi yükleniyor…
+                          </EmptyNote>
+                        ) : bookableByService.length === 0 ? (
+                          <div className="rounded-2xl border border-[#f0dcc4] bg-[#fdf6ec] px-4 py-3.5">
+                            <div className="flex items-start gap-2.5">
+                              <Package className="mt-0.5 h-4 w-4 shrink-0 text-[#b8863b]" strokeWidth={1.8} />
+                              <div>
+                                <div className="text-[13px] font-semibold text-[#8a6524]">
+                                  Bu müşterinin randevuya uygun seansı yok.
+                                </div>
+                                <div className="mt-0.5 text-[11.5px] leading-snug text-[#8a6524]/90">
+                                  Henüz satın alınmış bir hizmet/paket yok ya da seansları bitmiş. Sağdaki panelden
+                                  satış yap; onaylandığında seanslar burada anında görünür.
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Çok hizmetli müşteride liste uzayıp formu taşırmasın — kart alanı
+                             sınırlı, gerekirse yalnız BU alan kaydırılır. */
+                          <div className="grid max-h-[300px] gap-2.5 overflow-y-auto pr-0.5 sm:grid-cols-2">
+                            {bookableByService.map((s) => (
+                              <SessionCard
+                                key={s.serviceDefinitionId}
+                                active={values.serviceDefinitionId === s.serviceDefinitionId}
+                                onClick={() => handleSessionSelect(s.serviceDefinitionId)}
+                                name={s.serviceName}
+                                remaining={s.remaining}
+                                total={s.total}
+                              />
                             ))}
-                          </select>
-                        </Field>
-                      )}
+                          </div>
+                        )}
+                      </Step>
                     </div>
 
-                    {/* Uyarılar — seçim yapıldıktan sonra, tam da ilgili adımda */}
-                    <AnimatePresence>
-                      {selectedStaffSkillBlocked && (
-                        <Warn key="skill" tone="amber" icon={UserCog}>
-                          <strong>{selectedStaff?.name}</strong>, <strong>{selectedService?.name}</strong> kategorisinde
-                          yetkili değil. Farklı personel seç ya da personel kartından yetki ver.
-                        </Warn>
-                      )}
-                      {selectedStaffOnLeave && (
-                        <Warn key="leave" tone="rose" icon={Plane}>
-                          <strong>{selectedStaff?.name || 'Seçili personel'}</strong> {leaveDateLabel} tarihinde izinli.
-                          {mode === 'edit'
-                            ? ' Bu güne taşınamaz; iptal edebilir ya da başka güne alabilirsin.'
-                            : ' Farklı personel veya tarih seç.'}
-                        </Warn>
-                      )}
-                    </AnimatePresence>
-                  </Step>
+                    <div className="space-y-7">
+                      {/* 3 — ZAMAN & PERSONEL */}
+                      <Step
+                        n={3}
+                        title="Zaman ve personel"
+                        done={step3Done}
+                        locked={!values.serviceDefinitionId && mode === 'create'}
+                      >
+                        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                          <Field label="Tarih" required>
+                            <input
+                              type="date"
+                              className={control}
+                              value={values.date}
+                              onChange={(e) => setValues((v) => ({ ...v, date: e.target.value }))}
+                            />
+                          </Field>
+                          <Field label="Saat" required>
+                            <input
+                              type="time"
+                              className={`${control} tabular-nums`}
+                              value={values.time}
+                              onChange={(e) => setValues((v) => ({ ...v, time: e.target.value }))}
+                            />
+                          </Field>
 
-                  {/* 4 — NOT */}
-                  <Step n={4} title="Not" hint="İsteğe bağlı" done={Boolean(values.notes.trim())}>
-                    <textarea
-                      rows={2}
-                      placeholder="Hassasiyetler, özel istekler, ödeme uyarısı…"
-                      className={`${control} resize-none`}
-                      value={values.notes}
-                      onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))}
-                    />
-                  </Step>
+                          <Field
+                            label="Personel"
+                            required
+                            wide={mode !== 'edit'}
+                            helper={
+                              mode === 'edit'
+                                ? 'Oluşturulduktan sonra değiştirilemez.'
+                                : staffLocked
+                                  ? 'Personel rolünde yalnız kendi takvimine randevu açılır.'
+                                  : undefined
+                            }
+                          >
+                            {mode === 'edit' ? (
+                              <LockedFact icon={UserCog} label="Personel" value={selectedStaff?.name || staffLabel || ''} />
+                            ) : (
+                              <StaffPicker
+                                staff={staff}
+                                value={values.staffMemberId}
+                                disabled={staffLocked}
+                                onChange={(id) => setValues((v) => ({ ...v, staffMemberId: id }))}
+                                isOnLeave={(s) => leaveStaffIds.has(s.id)}
+                                isSkillBlocked={(s) => mode === 'create' && !staffAllowedForService(s)}
+                              />
+                            )}
+                          </Field>
+
+                          <Field label="Süre (dk)">
+                            <input
+                              type="number"
+                              min={5}
+                              className={`${control} tabular-nums`}
+                              value={values.durationMinutes}
+                              onChange={(e) => setValues((v) => ({ ...v, durationMinutes: Number(e.target.value) }))}
+                            />
+                          </Field>
+
+                          {mode === 'edit' && (
+                            <Field label="Durum" helper="“Tamamlandı” seçilince paket bakiyesi düşer.">
+                              <select
+                                className={control}
+                                value={values.status}
+                                onChange={(e) => setValues((v) => ({ ...v, status: e.target.value }))}
+                              >
+                                {statusOptions.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          )}
+                        </div>
+
+                        {/* Uyarılar — seçim yapıldıktan sonra, tam da ilgili adımda */}
+                        <AnimatePresence>
+                          {selectedStaffSkillBlocked && (
+                            <Warn key="skill" tone="amber" icon={UserCog}>
+                              <strong>{selectedStaff?.name}</strong>, <strong>{selectedService?.name}</strong> kategorisinde
+                              yetkili değil. Farklı personel seç ya da personel kartından yetki ver.
+                            </Warn>
+                          )}
+                          {selectedStaffOnLeave && (
+                            <Warn key="leave" tone="rose" icon={Plane}>
+                              <strong>{selectedStaff?.name || 'Seçili personel'}</strong> {leaveDateLabel} tarihinde izinli.
+                              {mode === 'edit'
+                                ? ' Bu güne taşınamaz; iptal edebilir ya da başka güne alabilirsin.'
+                                : ' Farklı personel veya tarih seç.'}
+                            </Warn>
+                          )}
+                        </AnimatePresence>
+                      </Step>
+
+                      {/* 4 — NOT */}
+                      <Step n={4} title="Not" hint="İsteğe bağlı" done={Boolean(values.notes.trim())}>
+                        <textarea
+                          rows={2}
+                          placeholder="Hassasiyetler, özel istekler, ödeme uyarısı…"
+                          className={`${control} resize-none`}
+                          value={values.notes}
+                          onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))}
+                        />
+                      </Step>
+                    </div>
+                  </div>
                 </div>
 
                 {/* ── SAĞ RAY: randevu kartı + müşteri ── */}
-                <aside className="shrink-0 space-y-4 overflow-y-auto border-t border-[#efe1e7] bg-[#fdf9fb] px-6 py-6 lg:w-[380px] lg:border-l lg:border-t-0">
+                <aside className="shrink-0 space-y-4 overflow-y-auto border-t border-[#efe1e7] bg-[#fdf9fb] px-6 py-6 lg:w-[400px] lg:border-l lg:border-t-0">
                   <Ticket
                     customerName={selectedCustomer?.name}
                     serviceName={selectedService?.name}
@@ -1407,6 +1457,9 @@ export default function AppointmentEditor({
           />
         )}
       </Dialog>
+
+      {/* "Bu modal nasıl çalışır?" — akış, altın kural ve sık takılınan noktalar */}
+      <AppointmentHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
 
       {/* Randevu modalı içinden müşteri adisyon kartı — Ön Muhasebe'ye gitmeden */}
       {selectedCustomer && (

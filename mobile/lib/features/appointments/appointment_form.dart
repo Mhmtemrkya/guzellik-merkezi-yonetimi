@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../accounting/account_installments.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/customer_picker.dart';
+import 'appointment_help_sheet.dart';
 import 'calendar_theme.dart';
 import 'customer_history_panel.dart';
 
@@ -780,11 +782,30 @@ class _AppointmentFormState extends State<AppointmentForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Yeni randevu',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Yeni randevu',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                       ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => AppointmentHelpSheet.show(context),
+                      icon: const Icon(Icons.help_outline_rounded, size: 18),
+                      label: const Text('Nasil calisir?'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        visualDensity: VisualDensity.compact,
+                        textStyle: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 18),
                 Row(
@@ -839,6 +860,33 @@ class _AppointmentFormState extends State<AppointmentForm> {
                       label: const Text('Adisyon aç'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                // SEANS KURALI: seansi olan hizmet paketten dusulur, olmayan UCRETLI acilir.
+                // Kullanici "neden bu randevu ucretli cikti" sorusunu burada gorsun.
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF6F9),
+                    border: Border.all(color: const Color(0xFFE8C2D1)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.shopping_bag_rounded,
+                          size: 16, color: Color(0xFF8E3F5B)),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Randevunun paketten dusmesi icin hizmetin ONCE satin alinmis olmasi gerekir. '
+                          'Kalan seansi olan hizmet ucretsiz acilir; seansi yoksa randevu katalog '
+                          'fiyatiyla UCRETLI acilir. Gerekiyorsa once yukaridan "Hizmet sat" / "Paket sat" yap.',
+                          style: TextStyle(fontSize: 12, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _select(
