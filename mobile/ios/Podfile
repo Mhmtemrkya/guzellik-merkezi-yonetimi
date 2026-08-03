@@ -1,5 +1,9 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# FIREBASE İÇİN ZORUNLU — yorumda BIRAKILAMAZ.
+# firebase_core 3.x / firebase_messaging 15.x, Firebase iOS SDK 11'i çeker ve o SDK
+# iOS 13.0+ ister. Bu satır yorumdayken CocoaPods varsayılan (daha düşük) hedefi kullanır
+# ve `pod install` "Specs satisfying the dependency ... could not be found" / deployment
+# target hatasıyla düşer. Değer Runner.xcodeproj'daki IPHONEOS_DEPLOYMENT_TARGET ile aynı.
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
