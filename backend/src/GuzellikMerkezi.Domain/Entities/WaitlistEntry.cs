@@ -62,6 +62,27 @@ public sealed class WaitlistEntry : Entity
     /// açmak için gereken tüm alanları (slot başlangıcı/süresi, personel, hizmet, şube) doldur.
     /// Eski tarih-bazlı (saatsiz) kayıtlar da böylece somut bir slota bağlanır.
     /// </summary>
+    /// <summary>
+    /// Yöneticinin ELLE planladığı slotu kayda işler.
+    /// <para>
+    /// <see cref="MarkOffered"/>'dan farkı: hizmet ve şubeyi KOŞULSUZ yazar. Otomatik teklifte
+    /// kaydın kendi tercihi korunmalıdır (boşalan slot kaydın hizmetini değiştirmemeli), ama elle
+    /// planlamada seçim kullanıcınındır — yönetici hizmeti/şubeyi değiştirdiğinde sessizce eski
+    /// değerle randevu açılıyordu.
+    /// </para>
+    /// </summary>
+    public void ApplyScheduledSlot(DateTime startUtc, int durationMinutes, Guid staffMemberId, Guid serviceDefinitionId, Guid? branchId)
+    {
+        if (durationMinutes <= 0) durationMinutes = 30;
+        PreferredStartUtc = DateTime.SpecifyKind(startUtc, DateTimeKind.Utc);
+        DurationMinutes = durationMinutes;
+        StaffMemberId = staffMemberId;
+        ServiceDefinitionId = serviceDefinitionId;
+        if (branchId is not null && branchId != Guid.Empty) BranchId = branchId;
+        Status = WaitlistStatus.Notified;
+        Touch();
+    }
+
     public void MarkOffered(DateTime startUtc, int durationMinutes, Guid staffMemberId, Guid serviceDefinitionId, Guid? branchId)
     {
         if (durationMinutes <= 0) durationMinutes = 30;

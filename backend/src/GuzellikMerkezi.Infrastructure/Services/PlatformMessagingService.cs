@@ -42,6 +42,8 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         if (smsUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smsUrlError));
         var smtpError = OutboundEndpointGuard.ValidateSmtp(r.SmtpHost, r.SmtpPort);
         if (smtpError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smtpError));
+        var paymentUrlError = OutboundEndpointGuard.ValidatePaymentApiUrl(r.IyzicoBaseUrl);
+        if (paymentUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(paymentUrlError));
 
         var s = await _db.PlatformIntegrationSettings.FirstOrDefaultAsync(ct);
         if (s is null) { s = new PlatformIntegrationSettings(); _db.PlatformIntegrationSettings.Add(s); }
@@ -53,6 +55,9 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         s.UpdateSms(r.SmsEnabled, r.SmsProvider, smsKeyEnc, smsSecretEnc, r.SmsSender, r.SmsApiUrl);
         s.UpdateEmail(r.EmailEnabled, r.EmailFromAddress, r.EmailFromName, r.SmtpHost, r.SmtpPort, r.SmtpUsername, smtpPwEnc, r.SmtpUseSsl);
         s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId, waSecretEnc, r.WhatsAppVerifyToken);
+        var iyzKeyEnc = string.IsNullOrWhiteSpace(r.IyzicoApiKey) ? null : _encryption.Encrypt(r.IyzicoApiKey!.Trim());
+        var iyzSecretEnc = string.IsNullOrWhiteSpace(r.IyzicoSecretKey) ? null : _encryption.Encrypt(r.IyzicoSecretKey!.Trim());
+        s.UpdatePayments(r.PaymentsEnabled, r.PaymentProvider, iyzKeyEnc, iyzSecretEnc, r.IyzicoBaseUrl, r.PaymentsReturnUrl);
         await _db.SaveChangesAsync(ct);
         return Result<PlatformIntegrationSettingsDto>.Success(ToDto(s));
     }
@@ -218,7 +223,10 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             s.SmsEnabled, s.SmsProvider, !string.IsNullOrWhiteSpace(s.SmsApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.SmsApiSecretEncrypted), s.SmsSender, s.SmsApiUrl, s.SmsConfigured,
             s.EmailEnabled, s.EmailFromAddress, s.EmailFromName, s.SmtpHost, s.SmtpPort, s.SmtpUsername, !string.IsNullOrWhiteSpace(s.SmtpPasswordEncrypted), s.SmtpUseSsl, s.EmailConfigured,
             s.WhatsAppEnabled, s.WhatsAppProvider, s.WhatsAppPhoneNumberId, !string.IsNullOrWhiteSpace(s.WhatsAppAccessTokenEncrypted), s.WhatsAppBusinessAccountId, s.WhatsAppConfigured,
-            !string.IsNullOrWhiteSpace(s.WhatsAppAppSecretEncrypted), s.WhatsAppVerifyToken);
+            !string.IsNullOrWhiteSpace(s.WhatsAppAppSecretEncrypted), s.WhatsAppVerifyToken,
+            s.PaymentsEnabled, s.PaymentProvider,
+            !string.IsNullOrWhiteSpace(s.IyzicoApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.IyzicoSecretKeyEncrypted),
+            s.IyzicoBaseUrl, s.PaymentsReturnUrl, s.PaymentsConfigured);
     }
 
     private static string NormalizePhone(string? p) => new string((p ?? string.Empty).Where(char.IsDigit).ToArray());

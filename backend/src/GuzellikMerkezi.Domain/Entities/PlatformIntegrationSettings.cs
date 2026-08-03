@@ -40,7 +40,32 @@ public sealed class PlatformIntegrationSettings : Entity
     /// <summary>Webhook doğrulama token'ı (Meta panelinde girilen hub.verify_token).</summary>
     public string? WhatsAppVerifyToken { get; private set; }
 
+    // --- Ödeme (iyzico) — abonelik tahsilatı; yalnızca PlatformAdmin girer ---
+    // Anahtarlar at-rest şifreli tutulur (ENC:v1:) ve HİÇBİR okuma ucunda düz metin dönmez;
+    // arayüz yalnızca "tanımlı mı" bilgisini görür (bkz. PaymentsConfigured).
+    public bool PaymentsEnabled { get; private set; }
+
+    /// <summary>Iyzico | Simulation. Simülasyon: gerçek çekim yapmadan akışı uçtan uca denemek için.</summary>
+    public string PaymentProvider { get; private set; } = "Simulation";
+
+    public string? IyzicoApiKeyEncrypted { get; private set; }
+    public string? IyzicoSecretKeyEncrypted { get; private set; }
+
+    /// <summary>Sandbox: https://sandbox-api.iyzipay.com · Canlı: https://api.iyzipay.com</summary>
+    public string? IyzicoBaseUrl { get; private set; }
+
+    /// <summary>
+    /// 3D Secure dönüşünde kullanıcının yönlendirileceği panel adresi (ör. https://panel.../admin/paket).
+    /// Callback ucu sonucu işleyip kullanıcıyı buraya geri gönderir.
+    /// </summary>
+    public string? PaymentsReturnUrl { get; private set; }
+
     public bool SmsConfigured => !string.IsNullOrWhiteSpace(SmsApiKeyEncrypted) && !string.IsNullOrWhiteSpace(SmsSender);
+
+    /// <summary>Gerçek çekim yapılabilir mi? Simülasyon sağlayıcısında anahtar aranmaz.</summary>
+    public bool PaymentsConfigured =>
+        string.Equals(PaymentProvider, "Simulation", StringComparison.OrdinalIgnoreCase)
+        || (!string.IsNullOrWhiteSpace(IyzicoApiKeyEncrypted) && !string.IsNullOrWhiteSpace(IyzicoSecretKeyEncrypted));
     public bool EmailConfigured => !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(EmailFromAddress);
     /// <summary>Platform sistem token'ı tanımlı mı? Kurumların numaralarına gönderim bunu kullanır.</summary>
     public bool WhatsAppConfigured => !string.IsNullOrWhiteSpace(WhatsAppAccessTokenEncrypted);
@@ -83,6 +108,19 @@ public sealed class PlatformIntegrationSettings : Entity
         WhatsAppBusinessAccountId = Clean(businessAccountId);
         if (appSecretEnc is not null) WhatsAppAppSecretEncrypted = appSecretEnc;
         WhatsAppVerifyToken = Clean(verifyToken);
+        Touch();
+    }
+
+    /// <param name="apiKeyEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
+    /// <param name="secretKeyEnc">null = mevcut korunur.</param>
+    public void UpdatePayments(bool enabled, string? provider, string? apiKeyEnc, string? secretKeyEnc, string? baseUrl, string? returnUrl)
+    {
+        PaymentsEnabled = enabled;
+        PaymentProvider = string.IsNullOrWhiteSpace(provider) ? "Simulation" : provider.Trim();
+        if (apiKeyEnc is not null) IyzicoApiKeyEncrypted = apiKeyEnc;
+        if (secretKeyEnc is not null) IyzicoSecretKeyEncrypted = secretKeyEnc;
+        IyzicoBaseUrl = Clean(baseUrl);
+        PaymentsReturnUrl = Clean(returnUrl);
         Touch();
     }
 

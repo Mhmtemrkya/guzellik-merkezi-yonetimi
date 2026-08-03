@@ -60,7 +60,19 @@ public sealed class BusinessExpense : Entity
     public bool IsApproved { get; private set; }
     public DateTime? ApprovedAtUtc { get; private set; }
 
-    public void Update(
+    /// <summary>
+    /// Gideri günceller. FİNANSAL OLARAK ANLAMLI bir alan değiştiyse (tutar, tarih, kategori,
+    /// ödeme yöntemi, ilgili personel) onay DÜŞER ve kayıt yeniden onay bekler.
+    /// <para>
+    /// Neden: onaylı gider kasa akışına, kâr-zarara ve gider özetine dahil edilir; onay sonrası
+    /// tutar serbestçe değiştirilebildiği için onaylanmış 100 TL'lik bir kalem, yeniden onaya
+    /// düşmeden 10.000 TL yapılabiliyordu. Onay "bu rakamı gördüm ve kabul ettim" demektir;
+    /// rakam değişince onayın da tazelenmesi gerekir. Açıklama/dönem/fiş no gibi metin alanları
+    /// tutarı etkilemediği için onayı düşürmez.
+    /// </para>
+    /// </summary>
+    /// <returns>Bu güncelleme mevcut bir onayı düşürdüyse <c>true</c>.</returns>
+    public bool Update(
         ExpenseCategory category,
         decimal amount,
         DateTime occurredAtUtc,
@@ -70,6 +82,13 @@ public sealed class BusinessExpense : Entity
         string? periodLabel,
         string? reference)
     {
+        var materialChange =
+            Category != category
+            || Amount != amount
+            || OccurredAtUtc != NormalizeUtc(occurredAtUtc)
+            || PaymentMethod != paymentMethod
+            || StaffMemberId != staffMemberId;
+
         Category = category;
         SetAmount(amount);
         SetOccurredAt(occurredAtUtc);
@@ -78,7 +97,16 @@ public sealed class BusinessExpense : Entity
         StaffMemberId = staffMemberId;
         PeriodLabel = string.IsNullOrWhiteSpace(periodLabel) ? null : periodLabel.Trim();
         Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim();
+
+        var approvalDropped = IsApproved && materialChange;
+        if (approvalDropped)
+        {
+            IsApproved = false;
+            ApprovedAtUtc = null;
+        }
+
         Touch();
+        return approvalDropped;
     }
 
     public void Approve()
@@ -103,9 +131,8 @@ public sealed class BusinessExpense : Entity
         Amount = amount;
     }
 
-    private void SetOccurredAt(DateTime occurredAtUtc)
-    {
-        if (occurredAtUtc.Kind != DateTimeKind.Utc) occurredAtUtc = DateTime.SpecifyKind(occurredAtUtc, DateTimeKind.Utc);
-        OccurredAtUtc = occurredAtUtc;
-    }
+    private void SetOccurredAt(DateTime occurredAtUtc) => OccurredAtUtc = NormalizeUtc(occurredAtUtc);
+
+    private static DateTime NormalizeUtc(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

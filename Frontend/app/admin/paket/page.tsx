@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -60,7 +60,42 @@ function planHighlights(plan: SubscriptionPlan): string[] {
   return out
 }
 
-interface PaketData { plans: ApiSubscriptionPlan[]; usage: ApiTenantUsage; tenant: ApiTenant }
+/** Kayıtlı kartın GÖSTERİLEBİLİR bilgileri — token/cüzdan anahtarı sunucudan hiç dönmez. */
+interface StoredCard {
+  id: string
+  maskedNumber?: string | null
+  association?: string | null
+  family?: string | null
+  bankName?: string | null
+  lastChargedAtUtc?: string | null
+  consecutiveFailureCount: number
+}
+
+interface BillingInvoice {
+  id: string
+  number: string
+  periodStartUtc: string
+  periodEndUtc: string
+  amountTRY: number
+  netAmountTRY: number
+  vatAmountTRY: number
+  vatRate: number
+  status: string
+  issuedAtUtc: string
+  paidAtUtc?: string | null
+}
+
+interface BillingSummary {
+  paymentsEnabled: boolean
+  autoRenewActive: boolean
+  subscriptionEndsAtUtc?: string | null
+  card?: StoredCard | null
+  recentInvoices: BillingInvoice[]
+}
+
+interface CheckoutStarted { checkoutToken: string; formContent?: string | null; redirectUrl?: string | null; amountTRY: number }
+
+interface PaketData { plans: ApiSubscriptionPlan[]; usage: ApiTenantUsage; tenant: ApiTenant; billing: BillingSummary | null }
 
 export default function PaketPage() {
   const { selectedInstitutionId, selectedInstitution } = useBranch()
@@ -70,26 +105,65 @@ export default function PaketPage() {
   const [actionErr, setActionErr] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [upgradePeriod, setUpgradePeriod] = useState<'Monthly' | 'Yearly'>('Yearly')
+  const [cardBusy, setCardBusy] = useState(false)
+
+  // Ödeme dönüşü: sağlayıcı callback'i kullanıcıyı buraya ?payment=success|failed ile gönderir.
+  // Sorgu parametresi okunduktan sonra adres çubuğundan TEMİZLENİR ki sayfa yenilendiğinde
+  // eski sonuç tekrar gösterilmesin.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const payment = params.get('payment')
+    if (!payment) return
+    const message = params.get('message') || ''
+    if (payment === 'success') setActionMsg(message || 'Ödeme alındı, aboneliğiniz aktif.')
+    else setActionErr(message || 'Ödeme tamamlanamadı.')
+    params.delete('payment'); params.delete('message')
+    const rest = params.toString()
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''))
+  }, [])
 
   const { data, loading, error, reload } = useApiQuery<PaketData>(
     async () => {
-      const [plans, usage, tenant] = await Promise.all([
+      const [plans, usage, tenant, billing] = await Promise.all([
         adminApi.subscriptionPlans<ApiSubscriptionPlan>(),
         adminApi.currentTenantUsage<ApiTenantUsage>(tenantId),
         adminApi.currentTenant<ApiTenant>(tenantId),
+        // Ödeme altyapısı kapalıysa ya da kullanıcı yetkili değilse bu uç hata döner;
+        // paket sayfasının kalanı bundan etkilenmemeli.
+        adminApi.billingSummary<BillingSummary>(tenantId).catch(() => null),
       ])
-      return { plans, usage, tenant }
+      return { plans, usage, tenant, billing }
     },
     [tenantId, refreshKey],
     { initialData: null },
   )
 
+  const billing = data?.billing ?? null
+
   const handleChangePlan = useCallback(async (plan: SubscriptionPlan) => {
     const price = upgradePeriod === 'Yearly' ? plan.yearlyPriceTRY : plan.monthlyPriceTRY
     const periodText = upgradePeriod === 'Yearly' ? 'yıllık' : 'aylık'
-    if (!confirm(`"${plan.name}" paketine ${periodText} dönemle geçeceksin. Tutar: ${price === 0 ? 'Özel teklif' : formatTL(price)}. Abonelik bugünden ${upgradePeriod === 'Yearly' ? '1 yıl' : '1 ay'} geçerli olur. Devam edilsin mi?`)) return
+    const isPaid = price > 0
+
+    const question = isPaid
+      ? `"${plan.name}" paketine ${periodText} dönemle geçiyorsun. Tutar: ${formatTL(price)}. Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
+      : `"${plan.name}" paketine ${periodText} dönemle geçeceksin. Bu paket için ödeme alınmıyor. Devam edilsin mi?`
+    if (!confirm(question)) return
+
     setBusyPlanId(plan.id); setActionMsg(null); setActionErr(null)
     try {
+      if (isPaid) {
+        // ÜCRETLİ PAKET ÖDEMEDEN AÇILMAZ: abonelik, sağlayıcı ödemeyi onayladıktan sonra
+        // callback ucunda başlatılır. Burada yalnızca ödeme sayfasına gidilir.
+        const checkout = await adminApi.startBillingCheckout<CheckoutStarted>(plan.id, tenantId, upgradePeriod)
+        if (checkout?.redirectUrl) {
+          window.location.href = checkout.redirectUrl
+          return
+        }
+        setActionErr('Ödeme sayfası açılamadı. Lütfen tekrar deneyin.')
+        return
+      }
+
       await adminApi.upgradeTenantPlan(plan.id, tenantId, upgradePeriod)
       setActionMsg(`Paket başarıyla "${plan.name}" (${periodText}) olarak değiştirildi.`)
       setRefreshKey((k) => k + 1)
@@ -100,6 +174,21 @@ export default function PaketPage() {
       setBusyPlanId(null)
     }
   }, [tenantId, reload, upgradePeriod])
+
+  const handleRemoveCard = useCallback(async () => {
+    if (!confirm('Kayıtlı kart kaldırılsın mı? Otomatik yenileme durur; aboneliğin dönem sonuna kadar devam eder.')) return
+    setCardBusy(true); setActionMsg(null); setActionErr(null)
+    try {
+      await adminApi.removeBillingCard(tenantId)
+      setActionMsg('Kayıtlı kart kaldırıldı; otomatik yenileme durdu.')
+      setRefreshKey((k) => k + 1)
+      await reload()
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : 'Kart kaldırılamadı.')
+    } finally {
+      setCardBusy(false)
+    }
+  }, [tenantId, reload])
 
   const usage = normalizeTenantUsage(data?.usage)
   const tenantModel = data?.tenant ? normalizeTenant(data.tenant) : null
@@ -207,6 +296,103 @@ export default function PaketPage() {
             badge={recommendedPlan ? { text: `${recommendedPlan.name} (Önerilen)`, tone: 'rose' } : undefined}
             sub={recommendedPlan ? undefined : 'en üst paktesin'} decoration="sparkle" />
         </motion.section>
+
+        {/* ÖDEME: kayıtlı kart + faturalar. Ödeme altyapısı kapalıysa hiç gösterilmez. */}
+        {billing?.paymentsEnabled && (
+          <motion.section variants={cardVariant} initial="hidden" animate="visible"
+            className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+              <CreditCard className="h-3.5 w-3.5" /> Ödeme ve Faturalar
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
+              {/* Kayıtlı kart */}
+              <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fff7fa] p-4">
+                {billing.card ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display text-[15px] tracking-tight text-[#352432]">
+                        {billing.card.maskedNumber || 'Kayıtlı kart'}
+                      </span>
+                      <span className="rounded-full border border-emerald-300/40 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
+                        Otomatik yenileme açık
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[11.5px] text-[#705a66]">
+                      {[billing.card.association, billing.card.family, billing.card.bankName].filter(Boolean).join(' · ') || 'Kart bilgisi'}
+                    </div>
+                    {billing.card.consecutiveFailureCount > 0 && (
+                      <div className="mt-2 rounded-[10px] border border-amber-300/40 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700">
+                        <AlertCircle className="mr-1 inline h-3 w-3" />
+                        Son {billing.card.consecutiveFailureCount} tahsilat denemesi başarısız. Kartınızı güncelleyin.
+                      </div>
+                    )}
+                    {billing.subscriptionEndsAtUtc && (
+                      <div className="mt-2 text-[11.5px] text-[#4a3a44]">
+                        <Calendar className="mr-1 inline h-3 w-3" />
+                        Sonraki tahsilat: {new Date(billing.subscriptionEndsAtUtc).toLocaleDateString('tr-TR')}
+                      </div>
+                    )}
+                    <button type="button" onClick={handleRemoveCard} disabled={cardBusy}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#eec9d7] px-3 py-1.5 text-[11.5px] text-[#4a3a44] transition hover:bg-white disabled:opacity-60">
+                      {cardBusy && <Loader2 className="h-3 w-3 animate-spin" />} Kartı kaldır
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-display text-[15px] tracking-tight text-[#352432]">Kayıtlı kart yok</div>
+                    <div className="mt-1 text-[11.5px] leading-relaxed text-[#705a66]">
+                      Aşağıdan bir paket seçtiğinizde güvenli ödeme sayfasına yönlendirilirsiniz. Kartınızı
+                      kaydederseniz abonelik dönem sonunda otomatik yenilenir. Kart bilgileri bizde saklanmaz.
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Faturalar */}
+              <div className="min-w-0">
+                {billing.recentInvoices.length === 0 ? (
+                  <div className="rounded-[14px] border border-dashed border-[#eec9d7] px-4 py-6 text-center text-[12px] text-[#705a66]">
+                    Henüz fatura yok.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[460px] text-left text-[12px]">
+                      <thead>
+                        <tr className="text-[10px] uppercase tracking-widest text-[#705a66]">
+                          <th className="pb-2 font-medium">Fatura</th>
+                          <th className="pb-2 font-medium">Dönem</th>
+                          <th className="pb-2 text-right font-medium">Net</th>
+                          <th className="pb-2 text-right font-medium">KDV</th>
+                          <th className="pb-2 text-right font-medium">Toplam</th>
+                          <th className="pb-2 text-right font-medium">Durum</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-[#4a3a44]">
+                        {billing.recentInvoices.map((inv) => (
+                          <tr key={inv.id} className="border-t border-[#f2dfe7]">
+                            <td className="py-2 font-mono text-[11.5px]">{inv.number}</td>
+                            <td className="py-2">{new Date(inv.periodStartUtc).toLocaleDateString('tr-TR')}</td>
+                            <td className="py-2 text-right">{formatTL(inv.netAmountTRY)}</td>
+                            <td className="py-2 text-right">{formatTL(inv.vatAmountTRY)}</td>
+                            <td className="py-2 text-right font-semibold text-[#352432]">{formatTL(inv.amountTRY)}</td>
+                            <td className="py-2 text-right">
+                              {inv.status === 'Paid' ? (
+                                <span className="rounded-full border border-emerald-300/40 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">Ödendi</span>
+                              ) : (
+                                <span className="rounded-full border border-amber-300/40 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">{inv.status}</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.section>
+        )}
 
         {/* BU AYKİ KULLANIM */}
         <motion.section variants={cardVariant} initial="hidden" animate="visible"

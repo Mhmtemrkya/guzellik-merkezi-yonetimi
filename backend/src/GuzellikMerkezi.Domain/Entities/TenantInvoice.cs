@@ -40,6 +40,22 @@ public sealed class TenantInvoice : Entity
     public DateTime? PaidAtUtc { get; private set; }
     public string? Notes { get; private set; }
 
+    /// <summary>
+    /// KDV oranı (0.20 = %20). <see cref="AmountTRY"/> KDV DAHİL brüt tutardır — paket fiyatları
+    /// liste fiyatı olarak KDV dahil girildiği için fatura da brütten kurulur; net ve KDV tutarı
+    /// buradan türetilir. Oran faturaya yazılır ki geçmiş faturalar oran değişse de bozulmasın.
+    /// </summary>
+    public decimal VatRate { get; private set; } = 0.20m;
+
+    /// <summary>Sağlayıcı işlem kimliği (iyzico paymentId) — mutabakat ve iade için.</summary>
+    public string? PaymentReference { get; private set; }
+
+    /// <summary>KDV hariç tutar (brütten türetilir).</summary>
+    public decimal NetAmountTRY => VatRate <= 0 ? AmountTRY : Math.Round(AmountTRY / (1 + VatRate), 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>KDV tutarı (brüt − net).</summary>
+    public decimal VatAmountTRY => Math.Round(AmountTRY - NetAmountTRY, 2, MidpointRounding.AwayFromZero);
+
     public static readonly string[] ValidStatuses = ["Draft", "Sent", "Paid", "Overdue", "Cancelled"];
 
     public void ChangeStatus(string status)
@@ -48,6 +64,26 @@ public sealed class TenantInvoice : Entity
         Status = status;
         PaidAtUtc = status == "Paid" ? DateTime.UtcNow : null;
         Touch();
+    }
+
+    public void SetVatRate(decimal rate)
+    {
+        if (rate is < 0 or > 1) throw new DomainException("KDV oranı 0 ile 1 arasında olmalı.");
+        VatRate = rate;
+        Touch();
+    }
+
+    /// <summary>
+    /// Faturayı ÖDENDİ olarak kapatır ve sağlayıcı işlem kimliğini bağlar.
+    /// <see cref="ChangeStatus"/>'tan farkı: ödeme anını çağıran belirler (webhook geç gelebilir)
+    /// ve referans korunur — "bu fatura hangi çekimle kapandı" sorusu cevapsız kalmasın.
+    /// </summary>
+    public void MarkPaid(DateTime paidAtUtc, string? paymentReference)
+    {
+        Status = "Paid";
+        PaidAtUtc = paidAtUtc;
+        if (!string.IsNullOrWhiteSpace(paymentReference)) PaymentReference = paymentReference.Trim();
+        Touch(paidAtUtc);
     }
 
     public void UpdateDetails(decimal amountTry, DateTime dueDateUtc, string? notes)

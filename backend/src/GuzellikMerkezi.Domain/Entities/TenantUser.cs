@@ -176,6 +176,14 @@ public sealed class TenantUser : Entity
         Touch();
     }
 
+    /// <summary>Devre dışı bırakılmış giriş hesabını yeniden açar (personel tekrar aktifleştirildiğinde).</summary>
+    public void Enable()
+    {
+        if (IsActive) return;
+        IsActive = true;
+        Touch();
+    }
+
     public static string NormalizeEmail(string email)
     {
         if (string.IsNullOrWhiteSpace(email)) throw new DomainException("E-posta boş olamaz.");

@@ -247,7 +247,16 @@ public sealed class AdisyonService : IAdisyonService
     private async Task<T> InAdisyonTransactionAsync<T>(
         Func<Task<T>> work, CancellationToken ct) where T : Result
     {
-        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null) return await work();
+        if (!_db.Database.IsRelational()) return await work();
+
+        // DIŞ TRANSACTION İÇİNDEYSEK kendi transaction'ımızı açamayız (randevu tamamlanınca
+        // çalışan otomatik satış onayı böyle gelir). Eskiden bu durumda iş ÇIPLAK çalışıyordu:
+        // başarısız bir onayın o ana kadar ürettiği etkiler (stok düşümü, seans tüketimi, prim,
+        // hatta kaydedilmiş "Onaylandı" durumu) ne veritabanından ne izleyiciden geri alınıyordu
+        // ve çağıranın SaveChanges/commit'i onları KALICI yazıyordu — adisyon açık kalırken stok
+        // ve seans eksiliyordu. Savepoint ile aynı "hep ya da hiç" garantisi kurulur.
+        var ambient = _db.Database.CurrentTransaction;
+        if (ambient is not null) return await InSavepointAsync(ambient, work, ct);
 
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
         try
@@ -267,6 +276,90 @@ public sealed class AdisyonService : IAdisyonService
             await tx.RollbackAsync(ct);
             _db.ChangeTracker.Clear();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Dış transaction içinde çalışırken işi SAVEPOINT'e sarar: başarısızlıkta yalnız BU işin
+    /// yazdıkları geri alınır, çağıranın transaction'ı ayakta kalır.
+    /// <para>
+    /// İzleyici tarafında da simetrik davranılır: iş sırasında izlemeye GİREN varlıklar bırakılır,
+    /// çağıranın ÖNCEDEN izlediği varlıklara dokunulmaz. Burada <c>ChangeTracker.Clear()</c>
+    /// kullanılamaz — çağıranın henüz kaydedilmemiş değişikliklerini (ör. tamamlanmakta olan
+    /// randevunun durumu) sessizce siler. Bu fişin kendi mutasyonları zaten kendi yüklediği
+    /// (yani "yeni") varlıklar üzerindedir, dolayısıyla detach etmek onları tamamen geri alır.
+    /// </para>
+    /// </summary>
+    private async Task<T> InSavepointAsync<T>(
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction ambient,
+        Func<Task<T>> work,
+        CancellationToken ct) where T : Result
+    {
+        var tracked = _db.ChangeTracker.Entries()
+            .Select(e => e.Entity)
+            .ToHashSet(ReferenceEqualityComparer.Instance);
+
+        var savepoint = $"adisyon_{Guid.NewGuid():N}"[..20];
+        var hasSavepoint = false;
+        try
+        {
+            await ambient.CreateSavepointAsync(savepoint, ct);
+            hasSavepoint = true;
+        }
+        catch (Exception)
+        {
+            // Sağlayıcı savepoint desteklemiyorsa en azından izleyici temizliği yapılır.
+        }
+
+        try
+        {
+            var result = await work();
+            if (result.IsFailure) await UndoNestedAsync(ambient, savepoint, hasSavepoint, tracked, ct);
+            return result;
+        }
+        catch
+        {
+            await UndoNestedAsync(ambient, savepoint, hasSavepoint, tracked, ct);
+            throw;
+        }
+    }
+
+    private async Task UndoNestedAsync(
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction ambient,
+        string savepoint,
+        bool hasSavepoint,
+        HashSet<object> trackedBefore,
+        CancellationToken ct)
+    {
+        if (hasSavepoint) await ambient.RollbackToSavepointAsync(savepoint, ct);
+        foreach (var entry in _db.ChangeTracker.Entries().ToList())
+        {
+            if (!trackedBefore.Contains(entry.Entity)) entry.State = EntityState.Detached;
+        }
+    }
+
+    /// <summary>
+    /// Bu fişin izlenen kopyalarını bırakır — kilit sonrası okuma gerçekten TAZE olsun diye.
+    /// <para>
+    /// <c>ChangeTracker.Clear()</c> yerine hedefli detach: bu servis dış bir akışın transaction'ı
+    /// içinde de çalışıyor (ilk randevu tamamlanınca otomatik satış onayı) ve tüm izleyiciyi
+    /// temizlemek çağıranın HENÜZ KAYDEDİLMEMİŞ değişikliklerini düşürüyordu. Somut sonuç: randevu
+    /// bellekte "Tamamlandı" işaretlenip izleyiciden düştüğü için durum veritabanına HİÇ yazılmıyor,
+    /// buna karşılık satış onayı ve seans tüketimi kalıcı oluyordu — randevu "Planlandı" görünürken
+    /// seansı harcanmış oluyordu.
+    /// </para>
+    /// </summary>
+    private void DetachAdisyonAggregate(Guid adisyonId)
+    {
+        foreach (var entry in _db.ChangeTracker.Entries<AdisyonItem>()
+                     .Where(e => e.Entity.AdisyonId == adisyonId).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+        foreach (var entry in _db.ChangeTracker.Entries<Adisyon>()
+                     .Where(e => e.Entity.Id == adisyonId).ToList())
+        {
+            entry.State = EntityState.Detached;
         }
     }
 
@@ -290,7 +383,7 @@ public sealed class AdisyonService : IAdisyonService
         // ÖNCE KİLİT, SONRA OKUMA: aynı fişi iki istek birlikte "Open" görmesin.
         if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
             return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
-        _db.ChangeTracker.Clear();
+        DetachAdisyonAggregate(id);
 
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
@@ -642,7 +735,7 @@ public sealed class AdisyonService : IAdisyonService
         // ÖNCE KİLİT, SONRA OKUMA (bkz. ApproveCoreAsync — aynı tablo, aynı sıra).
         if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
             return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
-        _db.ChangeTracker.Clear();
+        DetachAdisyonAggregate(id);
 
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
@@ -687,7 +780,7 @@ public sealed class AdisyonService : IAdisyonService
         await RowLock.LockRowAsync(_db, "customers", customerId.Value, cancellationToken);
         if (!await RowLock.LockRowAsync(_db, "adisyonlar", id, cancellationToken))
             return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
-        _db.ChangeTracker.Clear();
+        DetachAdisyonAggregate(id);
 
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result.Failure(Error.NotFound("Adisyon bulunamadı."));
@@ -707,6 +800,22 @@ public sealed class AdisyonService : IAdisyonService
         var payment = adisyon.PaymentTotal;
         var reference = $"ADS-{adisyon.Id:N}".Substring(0, 16); // ApproveAsync ile aynı referans (tahsilat + stok hareketi eşleşmesi)
         var nowUtc = DateTime.UtcNow;
+
+        // TAHSİLAT DEFTERİ GUARD'I. Bu yol, onaylı fişin tahsilatlarını (6. adım) canlı tablodan
+        // SİLİYOR; satış iptalinin aksine ne kalıcı deftere (archived_sale_payments) kopyalıyor
+        // ne de iade hareketi üretiyor. Sonuç: gerçekten tahsil edilmiş para, kasa ve gelir
+        // raporlarından hiçbir iz bırakmadan yok oluyordu — denetlenemez bir düzeltme.
+        // Varsayılan: engelle ve kullanıcıyı defteri koruyan iptal akışına yönlendir.
+        // force=true, yöneticinin "kayıt yanlış girildi, o para hiç alınmadı" beyanıdır; o durumda
+        // silme gerçekleşir ve tutar denetim kaydına yazılır (aşağıdaki LogAsync).
+        if (payment > 0 && !force)
+        {
+            return Result.Failure(Error.Conflict(
+                $"Bu adisyonda tahsil edilmiş {payment:N2} tutar var. Silmek bu parayı kasa geçmişinden " +
+                "izsiz kaldırır. Para gerçekten alındıysa satışı 'İptal Et' akışından iptal edin — " +
+                "tahsilat defteri korunur ve iade kaydı üretilir. Kayıt yanlış girildiyse ve para hiç " +
+                "alınmadıysa yönetici olarak zorla silin."));
+        }
 
         // Bu adisyonun satışından açılan seans bakiyeleri (izlenebilir olanlar — SourceAdisyonId eşleşen).
         var soldSessions = await _db.CustomerPackageSessions

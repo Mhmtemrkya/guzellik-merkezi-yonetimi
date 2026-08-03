@@ -865,3 +865,210 @@ html.theme-light .theme-surface { text-rendering: optimizeLegibility; }
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 }
+
+/* ============================================================
+   TANITIM SAYFASI — kaydırmayla ortaya çıkma (reveal)
+   ------------------------------------------------------------
+   İLERİCİ ZENGİNLEŞTİRME: gizleme kuralı yalnız <html> üzerinde
+   `landing-js` sınıfı VARSA uygulanır; bu sınıfı JavaScript ekler.
+   Böylece script yüklenmez/başarısız olursa içerik TAM GÖRÜNÜR
+   kalır. (Önceki tanıtım sayfasında animasyon kütüphanesi
+   devreye girmeyince bölümler opacity:0'da takılıp sayfa boş
+   görünüyordu — aynı hataya bir daha düşülmesin.)
+   ============================================================ */
+.landing-js .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.landing-js .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-js .reveal,
+  .landing-js .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Logo şeridi — kesintisiz kayan bant (iki kopya yan yana, %50'de başa döner) */
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.landing-marquee-track {
+  animation: landing-marquee 34s linear infinite;
+}
+
+.landing-marquee:hover .landing-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-marquee-track { animation: none; }
+}
+
+/* ============================================================
+   TANITIM SAYFASI — KAYDIRMAYA BAĞLI SİNEMATİK HAREKET
+   ------------------------------------------------------------
+   Apple'ın ürün sayfalarındaki dil: görsel kaydırma ilerledikçe
+   ölçeklenir, metin katmanları farklı hızda kayar (parallax),
+   bölümler sahne gibi açılır.
+
+   TEKNİK: CSS scroll-driven animations (`animation-timeline: view()`).
+   JavaScript GEREKTİRMEZ — destekleyen tarayıcıda hareket çalışır,
+   desteklemeyende içerik statik ve TAM GÖRÜNÜR kalır. Bu yüzden
+   `@supports` bloğunun dışında hiçbir gizleme kuralı yoktur.
+   ============================================================ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* Görsel: kadraja girerken hafifçe büyür ve netleşir. */
+    .cine-zoom {
+      animation: cine-zoom linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 60%;
+    }
+
+    /* Katman: sayfadan daha yavaş kayar → derinlik hissi. */
+    .cine-parallax {
+      animation: cine-parallax linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+
+    /* Büyük başlık: alttan yükselerek yerine oturur. */
+    .cine-rise {
+      animation: cine-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 40%;
+    }
+
+    /* Sabitlenen sahnede içerik: çıkarken yumuşakça solar. */
+    .cine-fade-out {
+      animation: cine-fade-out linear both;
+      animation-timeline: view();
+      animation-range: exit 0% exit 100%;
+    }
+  }
+}
+
+@keyframes cine-zoom {
+  from { transform: scale(1.12); opacity: 0.55; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+@keyframes cine-parallax {
+  from { transform: translateY(-7%); }
+  to   { transform: translateY(7%); }
+}
+
+@keyframes cine-rise {
+  from { transform: translateY(38px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes cine-fade-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0.25; transform: scale(0.965); }
+}
+
+/* Apple ölçeğinde başlık: ekran genişliğiyle akışkan büyüyen punto. */
+.display-xl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  font-size: clamp(40px, 7.2vw, 92px);
+}
+
+.display-lg {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.06;
+  font-size: clamp(30px, 4.6vw, 56px);
+}
+
+/* ============================================================
+   TANITIM SAYFASI — ETKİLEŞİM VE CANLILIK KATMANI
+   ============================================================ */
+
+/* Kelime kelime başlık açılışı (bkz. WordReveal). */
+@keyframes word-rise {
+  from { transform: translateY(105%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.word-rise {
+  animation: word-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Canlı olay kartının girişi (bkz. LiveEvents). */
+@keyframes live-in {
+  from { transform: translateX(14px) scale(0.97); opacity: 0; }
+  to   { transform: translateX(0)    scale(1);    opacity: 1; }
+}
+
+/* İmleç ışığı: kart üzerinde gezinirken yüzeyde yumuşak parlama. */
+.spotlight {
+  position: relative;
+}
+
+.spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(239, 111, 148, 0.16),
+    transparent 62%
+  );
+}
+
+.spotlight:hover::before { opacity: 1; }
+
+/* Hero zemininde yavaşça sürüklenen renk bulutları — sakin, dikkat çalmayan bir canlılık. */
+@keyframes bloom-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(3%, -4%, 0) scale(1.08); }
+  100% { transform: translate3d(-3%, 3%, 0) scale(1.03); }
+}
+
+.bloom {
+  animation: bloom-drift 26s ease-in-out infinite alternate;
+}
+
+.bloom-slow {
+  animation: bloom-drift 34s ease-in-out infinite alternate-reverse;
+}
+
+/* Nazikçe yükselip inen öğe (hero'daki yüzen katman). */
+@keyframes soft-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.soft-float { animation: soft-float 7s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .word-rise,
+  .bloom,
+  .bloom-slow,
+  .soft-float {
+    animation: none !important;
+  }
+  .word-rise { transform: none; opacity: 1; }
+}

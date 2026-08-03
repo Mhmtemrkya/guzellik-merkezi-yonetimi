@@ -136,7 +136,7 @@ public sealed class ExpenseService : IExpenseService
         var expense = await _db.BusinessExpenses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (expense is null) return Result<BusinessExpenseDto>.Failure(Error.NotFound("Gider bulunamadı."));
 
-        expense.Update(
+        var approvalDropped = expense.Update(
             request.Category,
             request.Amount,
             request.OccurredAtUtc,
@@ -146,10 +146,22 @@ public sealed class ExpenseService : IExpenseService
             request.PeriodLabel,
             request.Reference);
 
+        // Onayı DÜŞÜREN değişikliği yapan kişi zaten onay makamıysa (kurum ya da şube yöneticisi)
+        // onay tazelenir — CreateAsync'teki "kendi kendini onaylaması anlamsız" kuralının aynısı.
+        // Personelin düzenlemesi beklemede kalır; onu yönetici yeniden onaylar.
+        var reApproved = false;
+        if (approvalDropped && _currentUser.Role is UserRole.InstitutionOwner or UserRole.BranchManager or UserRole.PlatformAdmin)
+        {
+            expense.Approve();
+            reApproved = true;
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, expense.BranchId, "Update", "Expense", expense.Id,
-            $"Gider güncellendi: {expense.Category} · {expense.Amount:N2}",
-            new { expense.Category, expense.Amount }, cancellationToken);
+            approvalDropped && !reApproved
+                ? $"Gider güncellendi ve ONAYI DÜŞTÜ (yeniden onay bekliyor): {expense.Category} · {expense.Amount:N2}"
+                : $"Gider güncellendi: {expense.Category} · {expense.Amount:N2}",
+            new { expense.Category, expense.Amount, approvalDropped, reApproved }, cancellationToken);
         var staffName = expense.StaffMemberId.HasValue
             ? await _db.StaffMembers.AsNoTracking().Where(s => s.Id == expense.StaffMemberId.Value).Select(s => s.FullName).FirstOrDefaultAsync(cancellationToken)
             : null;

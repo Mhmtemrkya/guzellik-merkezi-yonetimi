@@ -49,6 +49,37 @@ public sealed class PermissionEndpointFilter : IEndpointFilter
     }
 }
 
+/// <summary>
+/// ROL tabanlı yetki kapısı — <see cref="GuzellikMerkezi.Domain.Authorization.RolePermissions"/>
+/// tablosunu endpoint'te uygular.
+/// <para>
+/// <see cref="PermissionEndpointFilter"/> yalnız personeli kısıtlar ve diğer TÜM rolleri "tam
+/// erişimli" sayar. Yönetici rollerin birbirinden ayrıldığı uçlarda bu yetmiyordu: rol tablosunda
+/// <c>BranchWrite</c> yetkisi OLMAYAN şube yöneticisi, yalnız kimlik doğrulaması istenen şube
+/// uçlarından kendi kurumundaki diğer şubeleri oluşturup değiştirebiliyordu.
+/// </para>
+/// </summary>
+public sealed class RolePermissionEndpointFilter : IEndpointFilter
+{
+    private readonly Permission _required;
+
+    public RolePermissionEndpointFilter(Permission required) => _required = required;
+
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var user = context.HttpContext.RequestServices.GetRequiredService<ICurrentUser>();
+
+        // Platform admin kurum ADINA işlem yapar (tenantId açıkça geçilir) → kurum rol tablosuna tabi değil.
+        if (user.IsPlatformAdmin) return await next(context);
+        if (user.Role is { } role && GuzellikMerkezi.Domain.Authorization.RolePermissions.For(role).HasFlag(_required))
+            return await next(context);
+
+        return Results.Json(
+            ApiResponse<object>.Fail("Forbidden", "Bu işlem için yetkiniz yok.", context.HttpContext.TraceIdentifier),
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+}
+
 public static class PermissionFilterExtensions
 {
     /// <summary>Gruptaki tüm endpoint'lere personel izin kontrolü ekler. writeOnly=true → yalnız POST/PUT/PATCH/DELETE kısıtlanır.</summary>
@@ -58,4 +89,8 @@ public static class PermissionFilterExtensions
     /// <summary>Tek bir endpoint'e personel izin kontrolü ekler (grup dışında tanımlanan uçlar için).</summary>
     public static RouteHandlerBuilder RequirePermission(this RouteHandlerBuilder builder, string permission, bool writeOnly = false)
         => builder.AddEndpointFilter(new PermissionEndpointFilter(permission, writeOnly));
+
+    /// <summary>Rol tablosundaki yetkiyi şart koşar (personel dışındaki rolleri de kapsar).</summary>
+    public static RouteHandlerBuilder RequireRolePermission(this RouteHandlerBuilder builder, Permission required)
+        => builder.AddEndpointFilter(new RolePermissionEndpointFilter(required));
 }

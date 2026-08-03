@@ -719,8 +719,20 @@ export const adminApi = {
     apiRequest<T[]>('/api/admin/subscription-plans'),
   currentTenantUsage: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/usage', { query: { tenantId } }),
+  // ÜCRETSİZ paketler için doğrudan atama. ÜCRETLİ pakete geçiş bu uçtan YAPILAMAZ (409 döner) —
+  // ödeme alınmadan abonelik başlatılmasın diye; onun yolu startBillingCheckout'tur.
   upgradeTenantPlan: <T = unknown>(subscriptionPlanId: string, tenantId?: string, billingPeriod?: string): Promise<T> =>
     apiRequest<T>('/api/admin/tenant/upgrade', { method: 'POST', query: { tenantId }, body: { subscriptionPlanId, billingPeriod } }),
+
+  // --- Abonelik ödemesi (iyzico) ---
+  billingSummary: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/', { query: { tenantId } }),
+  billingInvoices: <T = unknown>(tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>('/api/admin/billing/invoices', { query: { tenantId } }),
+  startBillingCheckout: <T = unknown>(subscriptionPlanId: string, tenantId?: string, billingPeriod?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/checkout', { method: 'POST', query: { tenantId }, body: { subscriptionPlanId, billingPeriod } }),
+  removeBillingCard: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/card', { method: 'DELETE', query: { tenantId } }),
 
   // Aktif paket özellik listesi — useFeature hook tarafından çekilir
   tenantFeatures: <T = unknown>(tenantId?: string): Promise<T> =>
@@ -1070,8 +1082,16 @@ export const adminApi = {
         allowLegacySnapshot: options?.allowLegacySnapshot ?? false,
       },
     }),
-  registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/accounts/${id}/payments`, { method: 'POST', query: { tenantId }, body }),
+  // idempotencyKey: ağ hatası sonrası tekrar denemede AYNI tahsilatın ikinci kez yazılmasını
+  // engeller (sunucu ilk yanıtı aynen döndürür). Aynı akıştaki farklı çağrılara FARKLI anahtar
+  // verilmeli — anahtar yola değil kullanıcı+anahtar çiftine bağlıdır.
+  registerAccountPayment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/accounts/${id}/payments`, {
+      method: 'POST',
+      query: { tenantId },
+      body,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   // deleteAccount BİLEREK YOK: düz silme yalnız cariyi soft-delete ediyor, satış iptalinin
   // hiçbir adımını (arşiv, iade, seans, adisyon geri alma) yapmıyordu. Satışı sonlandırmak için
   // cancelSale kullanılır; backend'de de DELETE ucu kaldırıldı.
@@ -1081,18 +1101,32 @@ export const adminApi = {
     apiRequest<PagedResult<T>>('/api/admin/adisyonlar/', { query: { page: 1, pageSize: 100, ...query } }),
   openAdisyon: <T = unknown>(customerId: string, tenantId?: string): Promise<T | null> =>
     apiRequest<T | null>(`/api/admin/adisyonlar/open/${customerId}`, { query: { tenantId } }),
-  createAdisyon: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
-    apiRequest<T>('/api/admin/adisyonlar/', { method: 'POST', query: { tenantId }, body }),
+  createAdisyon: <T = unknown>(body: AdminPayload, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/adisyonlar/', {
+      method: 'POST',
+      query: { tenantId },
+      body,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   updateAdisyon: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}`, { method: 'PUT', query: { tenantId }, body }),
-  addAdisyonItem: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/adisyonlar/${id}/items`, { method: 'POST', query: { tenantId }, body }),
+  addAdisyonItem: <T = unknown>(id: string, body: AdminPayload, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/adisyonlar/${id}/items`, {
+      method: 'POST',
+      query: { tenantId },
+      body,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   removeAdisyonItem: <T = unknown>(id: string, itemId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}/items/${itemId}`, { method: 'DELETE', query: { tenantId } }),
   applyAdisyonGiftCard: <T = unknown>(id: string, code: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}/gift-card`, { method: 'POST', query: { tenantId }, body: { code } }),
-  approveAdisyon: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/adisyonlar/${id}/approve`, { method: 'POST', query: { tenantId } }),
+  approveAdisyon: <T = unknown>(id: string, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/adisyonlar/${id}/approve`, {
+      method: 'POST',
+      query: { tenantId },
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   cancelAdisyon: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/adisyonlar/${id}/cancel`, { method: 'POST', query: { tenantId } }),
   deleteAdisyon: (id: string, tenantId?: string, force?: boolean): Promise<unknown> =>

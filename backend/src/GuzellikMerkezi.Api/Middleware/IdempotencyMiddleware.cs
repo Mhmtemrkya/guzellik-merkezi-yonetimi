@@ -43,18 +43,51 @@ public sealed class IdempotencyMiddleware
                 http.RequestAborted);
         if (existing is not null)
         {
-            http.Response.StatusCode = existing.StatusCode;
-            http.Response.Headers["Idempotency-Replayed"] = "true";
-            if (!string.IsNullOrEmpty(existing.ContentType)) http.Response.ContentType = existing.ContentType;
-            if (!string.IsNullOrEmpty(existing.ResponseBody))
-                await http.Response.WriteAsync(existing.ResponseBody, http.RequestAborted);
+            await ReplayAsync(http, existing);
             return;
         }
 
-        // Yanıtı belleğe yakala: hem istemciye akıt hem (5xx değilse) idempotency kaydına yaz.
+        // ANAHTARI ÖNCE REZERVE ET. Kayıt eskiden yalnız iş BİTTİKTEN sonra ekleniyordu: aynı
+        // anahtarla eşzamanlı gelen iki istek (çift tıklama, outbox'ın paralel oynatması, retry
+        // ile orijinalin yarışması) yukarıdaki ön kontrolden BİRLİKTE geçip işi iki kez yapıyordu
+        // — iki ayrı tahsilat/mutasyon. Unique indeks (TenantId, UserId, IdempotencyKey) ikinci
+        // insert'i eler; böylece işi yalnızca bir istek yapar.
+        var reservation = new ProcessedClientRequest(
+            tenantId, userId, key, http.Request.Method, path, 0, null, null);
+        db.ProcessedClientRequests.Add(reservation);
+        try
+        {
+            await db.SaveChangesAsync(http.RequestAborted);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(reservation).State = EntityState.Detached;
+
+            // Yarışı kaybettik. İlk istek bittiyse onun yanıtını aynen döndür; hâlâ işliyorsa
+            // istemciye "tekrar dene" de — işi ikinci kez YAPMA.
+            var winner = await db.ProcessedClientRequests.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.TenantId == tenantId && x.UserId == userId && x.IdempotencyKey == key,
+                    http.RequestAborted);
+            if (winner is not null && !winner.IsPending)
+            {
+                await ReplayAsync(http, winner);
+                return;
+            }
+
+            http.Response.StatusCode = StatusCodes.Status409Conflict;
+            http.Response.ContentType = "application/json; charset=utf-8";
+            await http.Response.WriteAsync(
+                "{\"success\":false,\"error\":{\"code\":\"IdempotencyInFlight\",\"message\":\"Aynı istek şu anda işleniyor. Lütfen birkaç saniye sonra tekrar deneyin.\"}}",
+                http.RequestAborted);
+            return;
+        }
+
+        // Yanıtı belleğe yakala: hem istemciye akıt hem (5xx değilse) rezervasyona yaz.
         var originalBody = http.Response.Body;
         await using var buffer = new MemoryStream();
         http.Response.Body = buffer;
+        var completed = false;
         try
         {
             await _next(http);
@@ -72,22 +105,84 @@ public sealed class IdempotencyMiddleware
             // 2xx/4xx saklanır: iş kuralı reddi (409 vb.) da deterministik kalmalı.
             if (http.Response.StatusCode < 500)
             {
-                try
-                {
-                    db.ProcessedClientRequests.Add(new ProcessedClientRequest(
-                        tenantId, userId, key, http.Request.Method, path,
-                        http.Response.StatusCode, http.Response.ContentType, bodyText));
-                    await db.SaveChangesAsync(CancellationToken.None);
-                }
-                catch
-                {
-                    // Unique yarışı (aynı anahtar eşzamanlı) vb. — yanıt zaten istemciye gitti.
-                }
+                await FinalizeAsync(db, reservation.Id,
+                    http.Response.StatusCode, http.Response.ContentType, bodyText);
+                completed = true;
             }
         }
         finally
         {
             http.Response.Body = originalBody;
+            // Rezervasyon tamamlanmadıysa (5xx ya da istisna) SERBEST BIRAK: aksi halde anahtar
+            // kalıcı olarak "işleniyor" durumunda kilitli kalır ve gerçek bir tekrar denemesi
+            // sonsuza dek 409 alırdı.
+            if (!completed) await ReleaseAsync(db, reservation.Id);
+        }
+    }
+
+    private static async Task ReplayAsync(HttpContext http, ProcessedClientRequest record)
+    {
+        http.Response.StatusCode = record.StatusCode;
+        http.Response.Headers["Idempotency-Replayed"] = "true";
+        if (!string.IsNullOrEmpty(record.ContentType)) http.Response.ContentType = record.ContentType;
+        if (!string.IsNullOrEmpty(record.ResponseBody))
+            await http.Response.WriteAsync(record.ResponseBody, http.RequestAborted);
+    }
+
+    /// <summary>
+    /// Rezervasyonu gerçek yanıtla tamamlar. Satır yeniden okunur: endpoint akışı bu istek
+    /// sırasında <c>ChangeTracker</c>'ı temizlemiş olabilir ve izlenmeyen varlık üzerinden
+    /// yapılan güncelleme sessizce kaydedilmezdi.
+    /// </summary>
+    private static async Task FinalizeAsync(GuzellikDbContext db, Guid reservationId, int statusCode, string? contentType, string? body)
+    {
+        try
+        {
+            var row = await db.ProcessedClientRequests.FirstOrDefaultAsync(x => x.Id == reservationId, CancellationToken.None);
+            if (row is null) return;
+            row.Complete(statusCode, contentType, body);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Yanıt zaten istemciye gitti; kayıt tutulamadıysa akışı bozma.
+        }
+    }
+
+    /// <summary>
+    /// Tamamlanmamış rezervasyonu GERÇEKTEN siler.
+    /// <para>
+    /// Soft-delete yetmez: satır tabloda kalır ve unique indeks (TenantId, UserId, IdempotencyKey)
+    /// aynı anahtarla yapılacak DÜRÜST bir tekrar denemesini kalıcı olarak 409'a düşürürdü.
+    /// <c>ExecuteDelete</c> değişiklik izleyicisine hiç dokunmaz — bu noktada izleyicide endpoint'in
+    /// varlıkları duruyor olabilir ve global <c>HardDeleteEnabled</c> bayrağını açmak onları da
+    /// gerçek silmeye çevirme riski taşırdı.
+    /// </para>
+    /// </summary>
+    private static async Task ReleaseAsync(GuzellikDbContext db, Guid reservationId)
+    {
+        try
+        {
+            if (db.Database.IsRelational())
+            {
+                await db.ProcessedClientRequests
+                    .Where(x => x.Id == reservationId && x.StatusCode == 0)
+                    .ExecuteDeleteAsync(CancellationToken.None);
+                return;
+            }
+
+            // InMemory (birim testleri): ExecuteDelete yok → izleyici üzerinden gerçek silme.
+            var row = await db.ProcessedClientRequests.FirstOrDefaultAsync(x => x.Id == reservationId, CancellationToken.None);
+            if (row is null || !row.IsPending) return;
+            db.ProcessedClientRequests.Remove(row);
+            db.HardDeleteEnabled = true;
+            try { await db.SaveChangesAsync(CancellationToken.None); }
+            finally { db.HardDeleteEnabled = false; }
+        }
+        catch
+        {
+            // En kötü durumda satır "işleniyor" kalır; bu yalnız o anahtarın tekrarını bloklar,
+            // veri bütünlüğünü bozmaz.
         }
     }
 }

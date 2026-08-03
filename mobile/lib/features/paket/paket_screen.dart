@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
@@ -114,6 +115,11 @@ class _PaketScreenState extends State<PaketScreen> {
       widget.api
           .get('/api/admin/tenant/')
           .catchError((_) => <String, dynamic>{}),
+      // Ödeme altyapısı kapalıysa ya da kullanıcı yetkili değilse bu uç hata döner;
+      // sayfanın kalanı bundan etkilenmemeli.
+      widget.api
+          .get('/api/admin/billing/')
+          .catchError((_) => <String, dynamic>{}),
     ]);
     final plans = apiItems(r[0])
         .where((p) => p['isActive'] != false)
@@ -129,6 +135,7 @@ class _PaketScreenState extends State<PaketScreen> {
       plans: plans,
       usage: r[1] is Map ? (r[1] as Map).cast<String, dynamic>() : const {},
       tenant: r[2] is Map ? (r[2] as Map).cast<String, dynamic>() : const {},
+      billing: r[3] is Map ? (r[3] as Map).cast<String, dynamic>() : const {},
     );
   }
 
@@ -150,19 +157,21 @@ class _PaketScreenState extends State<PaketScreen> {
     final price = numberOf(
         plan, [yearly ? 'yearlyPriceTRY' : 'monthlyPriceTRY']);
     final periodText = yearly ? 'yıllık' : 'aylık';
+    final isPaid = price > 0;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${plan['name']} paketine geç'),
-        content: Text(
-            '"${plan['name']}" paketine $periodText dönemle geçeceksin.\n\nTutar: ${price == 0 ? 'Özel teklif' : _tl(price)}\nAbonelik bugünden ${yearly ? '1 yıl' : '1 ay'} geçerli olur.\n\nDevam edilsin mi?'),
+        content: Text(isPaid
+            ? '"${plan['name']}" paketine $periodText dönemle geçiyorsun.\n\nTutar: ${_tl(price)}\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
+            : '"${plan['name']}" paketine $periodText dönemle geçeceksin.\n\nBu paket için ödeme alınmıyor.\n\nDevam edilsin mi?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Vazgeç')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Pakete geç')),
+              child: Text(isPaid ? 'Ödemeye git' : 'Pakete geç')),
         ],
       ),
     );
@@ -172,6 +181,33 @@ class _PaketScreenState extends State<PaketScreen> {
       _actionMsg = null;
     });
     try {
+      if (isPaid) {
+        // ÜCRETLİ PAKET ÖDEMEDEN AÇILMAZ: abonelik, sağlayıcı ödemeyi onayladıktan sonra
+        // sunucudaki callback ucunda başlatılır. Burada yalnızca ödeme sayfası açılır.
+        final started = await widget.api.post('/api/admin/billing/checkout', {
+          'subscriptionPlanId': plan['id'],
+          'billingPeriod': _period,
+        });
+        final url = started is Map ? '${started['redirectUrl'] ?? ''}' : '';
+        if (url.isEmpty || !await launchUrlString(url, mode: LaunchMode.externalApplication)) {
+          if (mounted) {
+            setState(() {
+              _actionMsg = 'Ödeme sayfası açılamadı. Lütfen tekrar dene.';
+              _actionErr = true;
+            });
+          }
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _actionMsg =
+                'Ödeme sayfası açıldı. Ödemeyi tamamladıktan sonra sayfayı aşağı çekip yenile.';
+            _actionErr = false;
+          });
+        }
+        return;
+      }
+
       await widget.api.post('/api/admin/tenant/upgrade', {
         'subscriptionPlanId': plan['id'],
         'billingPeriod': _period,
@@ -384,6 +420,11 @@ class _PaketScreenState extends State<PaketScreen> {
         ],
       ),
       const SizedBox(height: 16),
+      // ÖDEME: kayıtlı kart + son faturalar (ödeme altyapısı kapalıysa gösterilmez)
+      if (d.billing['paymentsEnabled'] == true) ...[
+        const SizedBox(height: 12),
+        _billingCard(d.billing),
+      ],
       // BU AYKİ KULLANIM
       _sectionTitle(Icons.insights_rounded, 'Bu Ayki Kullanım'),
       const SizedBox(height: 10),
@@ -416,6 +457,111 @@ class _PaketScreenState extends State<PaketScreen> {
   }
 
   // ----------------------------- parçalar -----------------------------
+
+  /// Ödeme kartı: kayıtlı kart durumu + son faturalar (web `/admin/paket` paritesi).
+  Widget _billingCard(Map<String, dynamic> billing) {
+    final card = billing['card'] is Map
+        ? (billing['card'] as Map).cast<String, dynamic>()
+        : null;
+    final invoices = (billing['recentInvoices'] as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .take(4)
+        .toList();
+    final failures = card == null
+        ? 0
+        : numberOf(card, const ['consecutiveFailureCount']).round();
+    final nextCharge = parseUtcToLocal(billing['subscriptionEndsAtUtc']);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.credit_card_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              const Text('Ödeme ve Faturalar',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (card != null) ...[
+            Text('${card['maskedNumber'] ?? 'Kayıtlı kart'}',
+                style: const TextStyle(
+                    fontSize: 14.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(
+              [card['association'], card['family'], card['bankName']]
+                  .where((e) => e != null && '$e'.isNotEmpty)
+                  .join(' · '),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF705A66)),
+            ),
+            if (nextCharge != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Sonraki tahsilat: ${nextCharge.day.toString().padLeft(2, '0')}.${nextCharge.month.toString().padLeft(2, '0')}.${nextCharge.year}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF4A3A44)),
+              ),
+            ],
+            if (failures > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Son $failures tahsilat denemesi başarısız. Kartını güncelle.',
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFFB7791F)),
+              ),
+            ],
+          ] else
+            const Text(
+              'Kayıtlı kart yok. Ücretli bir paket seçtiğinde güvenli ödeme sayfasına '
+              'yönlendirilirsin; kartını kaydedersen abonelik otomatik yenilenir. '
+              'Kart bilgilerin bizde saklanmaz.',
+              style: TextStyle(
+                  fontSize: 12, height: 1.45, color: Color(0xFF705A66)),
+            ),
+          if (invoices.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            ...invoices.map((inv) {
+              final paid = '${inv['status'] ?? ''}' == 'Paid';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('${inv['number'] ?? ''}',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF4A3A44))),
+                    ),
+                    Text(_tl(numberOf(inv, const ['amountTRY'])),
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 8),
+                    Icon(
+                      paid
+                          ? Icons.check_circle_rounded
+                          : Icons.schedule_rounded,
+                      size: 14,
+                      color: paid ? AppColors.success : const Color(0xFFB7791F),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _banner({
     required bool warning,
@@ -958,8 +1104,12 @@ class _PaketData {
     this.plans = const [],
     this.usage = const {},
     this.tenant = const {},
+    this.billing = const {},
   });
   final List<Map<String, dynamic>> plans;
   final Map<String, dynamic> usage;
   final Map<String, dynamic> tenant;
+
+  /// Ödeme özeti: kayıtlı kart + son faturalar. Ödeme altyapısı kapalıysa boş gelir.
+  final Map<String, dynamic> billing;
 }

@@ -204,6 +204,12 @@ public sealed class AuthService : IAuthService
 
         if (token.TenantUser is null) return Result<LoginResponse>.Failure(Error.Unauthorized("Refresh token geçersiz."));
 
+        // PASİFLEŞTİRİLEN KULLANICI OTURUMUNU UZATAMAZ. Giriş sorgusu <c>IsActive</c> süzüyordu ama
+        // yenileme yolu süzmüyordu: erişimi kesilen personel, elindeki refresh token'ı süresiz
+        // zincirleyerek yeni access token üretmeye devam edebiliyordu.
+        if (!token.TenantUser.IsActive)
+            return Result<LoginResponse>.Failure(Error.Unauthorized("Hesabınız devre dışı bırakıldı."));
+
         if (token.TenantUser.Role != UserRole.PlatformAdmin)
         {
             var tenantAccessResult = await EnsureTenantCanLoginAsync(token.TenantUser, token.TenantUser.Role, cancellationToken);
@@ -682,31 +688,12 @@ public sealed class AuthService : IAuthService
     /// Kullanıcının TÜM aktif refresh token'larını iptal eder (parola değişimi, sıfırlama, devre dışı).
     /// InMemory sağlayıcı <c>ExecuteUpdate</c> desteklemediği için orada tek tek işaretlenir.
     /// </summary>
-    private async Task RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var now = _clock.UtcNow;
-
-        // OTURUM DAMGASINI DA İLERİ AL: refresh iptali tek başına ELDEKİ access token'ı 60 dakikaya
-        // kadar canlı bırakıyordu. Damgayı bu tek primitife bağlamak, ileride eklenecek her
-        // "oturumları kapat" yolunun (admin sıfırlama, devre dışı bırakma) access token'ları da
-        // gerçekten öldürmesini garantiler. Doğrulama: OnTokenValidated (bkz. ApiServiceCollectionExtensions).
-        var user = await _db.TenantUsers.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        user?.InvalidateSessions(now);
-
-        if (IsInMemoryProvider())
-        {
-            var tokens = await _db.RefreshTokens
-                .Where(t => t.TenantUserId == userId && t.RevokedAtUtc == null)
-                .ToListAsync(cancellationToken);
-            foreach (var token in tokens) token.Revoke(now);
-            return;
-        }
-
-        await _db.RefreshTokens
-            .Where(t => t.TenantUserId == userId && t.RevokedAtUtc == null)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(t => t.RevokedAtUtc, now)
-                .SetProperty(t => t.UpdatedAtUtc, now), cancellationToken);
-    }
+    /// <remarks>
+    /// Gerçek uygulama <see cref="Security.SessionRevocation"/>'da — aynı primitif personeli
+    /// pasifleştirme yolundan da çağrılıyor (bkz. StaffService), iki kopya sürüklenmesin.
+    /// Oturum damgası da ileri alınır: refresh iptali tek başına ELDEKİ access token'ı 60 dakikaya
+    /// kadar canlı bırakıyordu. Doğrulama: OnTokenValidated (bkz. ApiServiceCollectionExtensions).
+    /// </remarks>
+    private Task RevokeAllRefreshTokensAsync(Guid userId, CancellationToken cancellationToken)
+        => Security.SessionRevocation.RevokeAllAsync(_db, userId, _clock.UtcNow, cancellationToken);
 }

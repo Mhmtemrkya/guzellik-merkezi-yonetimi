@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.SubscriptionPlans;
@@ -12,11 +13,13 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 {
     private readonly GuzellikDbContext _db;
     private readonly IFeatureService _features;
+    private readonly IAuditLogger _audit;
 
-    public SubscriptionPlanService(GuzellikDbContext db, IFeatureService features)
+    public SubscriptionPlanService(GuzellikDbContext db, IFeatureService features, IAuditLogger audit)
     {
         _db = db;
         _features = features;
+        _audit = audit;
     }
 
     public async Task<Result<IReadOnlyList<SubscriptionPlanDto>>> ListAsync(CancellationToken ct = default)
@@ -117,13 +120,31 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
         return Result.Success();
     }
 
-    public async Task<Result> AssignToTenantAsync(Guid tenantId, Guid subscriptionPlanId, BillingPeriod period, CancellationToken ct = default)
+    public async Task<Result> AssignToTenantAsync(Guid tenantId, Guid subscriptionPlanId, BillingPeriod period, CancellationToken ct = default, bool selfService = false)
     {
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return Result.Failure(Error.NotFound("Kurum bulunamadı."));
         var plan = await _db.SubscriptionPlans.FirstOrDefaultAsync(p => p.Id == subscriptionPlanId, ct);
         if (plan is null) return Result.Failure(Error.NotFound("Paket bulunamadı."));
         if (!plan.IsActive) return Result.Failure(Error.Conflict("Pasif pakete atama yapılamaz."));
+
+        // ÖDEMESİZ ÜCRETLİ PAKET AÇILAMAZ. Bu uç kurum kullanıcısının kendi paketini seçmesi
+        // içindi ve tahsilat/ödeme entegrasyonu YOK: aktif bir Premium paketi seçen her kurum
+        // yöneticisi aboneliği bedavaya başlatabiliyordu (StartSubscription kurumu Aktif yapar,
+        // bitiş tarihini ileri atar). Ücretli geçiş platform tarafında yapılır; buradan yalnız
+        // ücretsiz paketler ve mevcut paketin yenilenmesi geçer.
+        if (selfService)
+        {
+            var isPaidPlan = plan.MonthlyPriceTRY > 0 || plan.YearlyPriceTRY > 0;
+            if (isPaidPlan && tenant.SubscriptionPlanId != plan.Id)
+            {
+                await _audit.LogAsync(tenantId, null, "PlanUpgradeRequested", "Tenant", tenantId,
+                    $"Kurum ücretli pakete geçiş talep etti: {plan.Name} ({period})",
+                    new { plan.Id, plan.Name, plan.PlanKey, Period = period.ToString() }, ct);
+                return Result.Failure(Error.Conflict(
+                    "Ücretli pakete geçiş platform onayı gerektirir. Talebiniz iletildi; ekibimiz sizinle iletişime geçecek."));
+            }
+        }
         // Paket atama = ücretli aboneliği başlat/yenile: dönem (Aylık/Yıllık) ile bitiş tarihi hesaplanır,
         // kurum Aktif olur. Süre dolduğunda trial gibi otomatik Suspended olur.
         tenant.StartSubscription(plan, period, DateTime.UtcNow);

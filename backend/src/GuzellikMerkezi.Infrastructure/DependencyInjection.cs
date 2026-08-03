@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<IDurableJobHandler, Background.PushSendJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.RatingLinkJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.KvkkConsentJobHandler>();
+        services.AddScoped<IDurableJobHandler, Background.SubscriptionRenewalJobHandler>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IRatingService, RatingService>();
         services.AddScoped<Application.Features.PublicSalons.IPublicSalonService, PublicSalonService>();
@@ -155,6 +156,12 @@ public static class DependencyInjection
         services.AddScoped<IAppNotificationService, AppNotificationService>();
         services.AddSingleton<IPushSender, FcmPushSender>();
         services.AddHttpClient("Fcm").AddStandardResilienceHandler();
+
+        // Abonelik ödemesi (iyzico / simülasyon). Sağlayıcı ve anahtarlar platform ayarlarından
+        // çalışma anında çözülür → anahtar değişince yeniden başlatma gerekmez.
+        services.AddHttpClient("Iyzico").AddStandardResilienceHandler();
+        services.AddScoped<Application.Features.Billing.IPaymentGatewayResolver, Payments.PaymentGatewayResolver>();
+        services.AddScoped<Application.Features.Billing.IBillingService, Services.BillingService>();
 
         // Süreç-içi arka plan iş kuyruğu (yavaş dış gönderimleri request-path dışına taşır).
         services.AddSingleton<IBackgroundTaskQueue>(_ => new BackgroundTaskQueue(capacity: 1000));

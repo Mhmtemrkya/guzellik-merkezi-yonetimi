@@ -12,6 +12,7 @@ public static class DurableJobTypes
     public const string PushSend = "push.send";
     public const string RatingLink = "whatsapp.rating-link";
     public const string KvkkConsent = "whatsapp.kvkk-consent";
+    public const string SubscriptionRenewal = "billing.subscription-renewal";
 }
 
 public sealed record WaitlistOfferJob(Guid TenantId, Guid WaitlistId);
@@ -19,6 +20,39 @@ public sealed record WaitlistActivatedJob(Guid TenantId, Guid AppointmentId);
 public sealed record PushSendJob(List<PushMessage> Messages);
 public sealed record RatingLinkJob(Guid TenantId, Guid AppointmentId);
 public sealed record KvkkConsentJob(Guid TenantId, Guid CustomerId);
+public sealed record SubscriptionRenewalJob(Guid TenantId);
+
+/// <summary>
+/// Abonelik yenileme tahsilatı — saklı karttan çeker, başarılıysa dönemi uzatıp fatura üretir.
+///
+/// <para>
+/// KUYRUKTAN ÇALIŞMASININ SEBEBİ: dış bir ödeme sağlayıcısına gidilir; yavaşlık ya da kesinti
+/// tarayıcı turunu kilitlememeli, hata durumunda iş kaybolmamalı. Kuyruk yeniden dener.
+/// </para>
+/// <para>
+/// TEKRAR OYNATMA GÜVENLİ: <c>ChargeRenewalAsync</c> dönem başına tek başarılı tahsilat kuralını
+/// kendi içinde uygular (işlem anahtarı benzersiz indekslidir), bu yüzden aynı iş iki kez
+/// çalışsa bile ikinci çekim oluşmaz.
+/// </para>
+/// </summary>
+public sealed class SubscriptionRenewalJobHandler : IDurableJobHandler
+{
+    private readonly Application.Features.Billing.IBillingService _billing;
+    public SubscriptionRenewalJobHandler(Application.Features.Billing.IBillingService billing) => _billing = billing;
+    public string JobType => DurableJobTypes.SubscriptionRenewal;
+
+    public async Task ExecuteAsync(string payloadJson, CancellationToken ct)
+    {
+        var job = JsonSerializer.Deserialize<SubscriptionRenewalJob>(payloadJson)
+                  ?? throw new InvalidOperationException("SubscriptionRenewal payload çözülemedi.");
+        var result = await _billing.ChargeRenewalAsync(job.TenantId, ct);
+
+        // Başarısız TAHSİLAT bir iş hatası değildir (kart limiti, kapalı kart …): kuyruk bunu
+        // yeniden denememeli — tekrar deneme takvimi tarayıcıdadır (24 saat aralıklı, 3 deneme).
+        // Yalnız altyapı hatası (Result.Failure) istisnaya çevrilir ki kuyruk yeniden denesin.
+        if (result.IsFailure) throw new InvalidOperationException(result.Error.Message);
+    }
+}
 
 /// <summary>
 /// KVKK açık rıza isteğini WhatsApp'tan gönderir. İstek yolundan ayrıldığı için müşteri

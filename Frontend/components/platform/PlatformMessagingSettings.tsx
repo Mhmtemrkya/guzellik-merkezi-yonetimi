@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageSquare, MessageCircle, Mail, Loader2, Check, Send, ShieldCheck, Info } from 'lucide-react'
+import { MessageSquare, MessageCircle, Mail, Loader2, Check, Send, ShieldCheck, Info, CreditCard } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { platformApi } from '@/lib/apiClient'
 import type { ApiPlatformMessagingSettings, ApiMessagingTestResult } from '@/lib/types'
@@ -44,6 +44,7 @@ export default function PlatformMessagingSettings() {
   const [sms, setSms] = useState({ enabled: false, provider: 'Netgsm', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
   const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '' })
+  const [payments, setPayments] = useState({ enabled: false, provider: 'Simulation', apiKey: '', secretKey: '', baseUrl: '', returnUrl: '' })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [smsTarget, setSmsTarget] = useState('')
@@ -61,6 +62,7 @@ export default function PlatformMessagingSettings() {
     setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Netgsm', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
     setEmail((e) => ({ ...e, enabled: !!data.emailEnabled, fromAddress: data.emailFromAddress || '', fromName: data.emailFromName || '', host: data.smtpHost || '', port: data.smtpPort || 587, username: data.smtpUsername || '', useSsl: data.smtpUseSsl ?? true }))
     setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '', verifyToken: data.whatsAppVerifyToken || '' }))
+    setPayments((p) => ({ ...p, enabled: !!data.paymentsEnabled, provider: data.paymentProvider || 'Simulation', baseUrl: data.iyzicoBaseUrl || '', returnUrl: data.paymentsReturnUrl || '' }))
   }, [data])
 
   const save = async () => {
@@ -71,8 +73,12 @@ export default function PlatformMessagingSettings() {
         emailEnabled: email.enabled, emailFromAddress: email.fromAddress || null, emailFromName: email.fromName || null, smtpHost: email.host || null, smtpPort: Number(email.port) || 587, smtpUsername: email.username || null, smtpPassword: email.password || null, smtpUseSsl: email.useSsl,
         whatsAppEnabled: whatsApp.enabled, whatsAppProvider: 'Meta', whatsAppPhoneNumberId: whatsApp.phoneNumberId || null, whatsAppAccessToken: whatsApp.accessToken || null, whatsAppBusinessAccountId: whatsApp.businessAccountId || null,
         whatsAppAppSecret: whatsApp.appSecret || null, whatsAppVerifyToken: whatsApp.verifyToken || null,
+        paymentsEnabled: payments.enabled, paymentProvider: payments.provider,
+        iyzicoApiKey: payments.apiKey || null, iyzicoSecretKey: payments.secretKey || null,
+        iyzicoBaseUrl: payments.baseUrl || null, paymentsReturnUrl: payments.returnUrl || null,
       })
       setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '', appSecret: '' }))
+      setPayments((p) => ({ ...p, apiKey: '', secretKey: '' }))
       setSaved(true); await reload(); setTimeout(() => setSaved(false), 2500)
     } finally { setBusy(false) }
   }
@@ -246,6 +252,62 @@ export default function PlatformMessagingSettings() {
               </div>
               {whatsAppTest && <div className="mt-1.5 text-[11px] text-[#fff4f8]/60">{whatsAppTest}</div>}
             </div>
+          </>
+        )}
+      </div>
+
+      {/* Ödeme (iyzico) — abonelik tahsilatı */}
+      <div className={`lg:col-span-2 flex flex-col gap-4 p-5 ${card}`}>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center border border-sky-400/25 bg-sky-400/[0.06]"><CreditCard className="h-5 w-5 text-sky-300/80" strokeWidth={1.4} /></div>
+            <div>
+              <div className="font-display text-xl tracking-tight text-[#fff4f8]">Ödeme Altyapısı</div>
+              <div className="text-[11px] text-[#fff4f8]/45">iyzico · kurum abonelikleri saklı karttan otomatik tahsil edilir</div>
+            </div>
+          </div>
+          <StatusPill configured={data?.paymentsConfigured} enabled={data?.paymentsEnabled} />
+        </div>
+
+        {loading ? <div className="py-4 text-center text-[12px] text-[#fff4f8]/40">Yükleniyor…</div> : (
+          <>
+            <Toggle on={payments.enabled} onClick={() => setPayments((p) => ({ ...p, enabled: !p.enabled }))} label="Abonelik tahsilatını etkinleştir" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>Sağlayıcı</label>
+                <select value={payments.provider} onChange={(e) => setPayments((p) => ({ ...p, provider: e.target.value }))} className={inputCls}>
+                  <option value="Simulation">Simülasyon (gerçek çekim yok)</option>
+                  <option value="Iyzico">iyzico</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>API adresi</label>
+                <select value={payments.baseUrl} onChange={(e) => setPayments((p) => ({ ...p, baseUrl: e.target.value }))} className={inputCls}>
+                  <option value="">Sandbox (varsayılan)</option>
+                  <option value="https://sandbox-api.iyzipay.com">sandbox-api.iyzipay.com</option>
+                  <option value="https://api.iyzipay.com">api.iyzipay.com (CANLI)</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>API Key {data?.hasIyzicoApiKey && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+                <input type="password" value={payments.apiKey} onChange={(e) => setPayments((p) => ({ ...p, apiKey: e.target.value }))} placeholder={data?.hasIyzicoApiKey ? 'değiştirmek için yaz' : 'sandbox-…'} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Secret Key {data?.hasIyzicoSecretKey && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+                <input type="password" value={payments.secretKey} onChange={(e) => setPayments((p) => ({ ...p, secretKey: e.target.value }))} placeholder={data?.hasIyzicoSecretKey ? 'değiştirmek için yaz' : 'sandbox-…'} className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Ödeme sonrası dönüş adresi (panel)</label>
+              <input value={payments.returnUrl} onChange={(e) => setPayments((p) => ({ ...p, returnUrl: e.target.value }))} placeholder="https://panel.beautyasist.com/admin/paket" className={inputCls} />
+            </div>
+            <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
+              Kart bilgileri BİZE HİÇ GELMEZ: kullanıcı kartını iyzico&apos;nun 3D Secure formuna girer, biz yalnızca
+              tekrar tahsilat için kullanılan kart referanslarını şifreli saklarız. Sağlayıcı <b>iyzico</b> seçiliyken
+              anahtarlar boşsa ödeme akışı çalışmaz (sessizce simülasyona düşülmez).
+            </p>
           </>
         )}
       </div>

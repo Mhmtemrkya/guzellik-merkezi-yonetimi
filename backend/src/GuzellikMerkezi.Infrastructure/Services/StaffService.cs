@@ -7,6 +7,7 @@ using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
@@ -177,11 +178,27 @@ public sealed class StaffService : IStaffService
         if (request.PhotoUrl is not null) staff.SetPhoto(request.PhotoUrl);
         if (request.IsActive) staff.Activate(); else staff.Deactivate();
 
-        // İzinleri güncelle (TenantUser tarafında)
+        // İzinleri güncelle (TenantUser tarafında) + erişim durumunu personelinkiyle EŞİTLE.
+        //
+        // PASİFLEŞTİRME ERİŞİMİ DE KESMELİ: eskiden yalnız StaffMember.IsActive değişiyordu;
+        // giriş hesabı açık kaldığı için "pasif" personel giriş yapmaya, eldeki access/refresh
+        // token'ıyla çalışmaya devam edebiliyordu. Yeniden aktifleştirmede hesap geri açılır.
         if (staff.TenantUserId.HasValue)
         {
             var tu = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == staff.TenantUserId.Value, cancellationToken);
-            if (tu is not null) tu.SetPermissions(request.Permissions);
+            if (tu is not null)
+            {
+                tu.SetPermissions(request.Permissions);
+                if (request.IsActive)
+                {
+                    tu.Enable();
+                }
+                else
+                {
+                    tu.Disable();
+                    await SessionRevocation.RevokeAllAsync(_db, tu.Id, DateTime.UtcNow, cancellationToken);
+                }
+            }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -197,11 +214,16 @@ public sealed class StaffService : IStaffService
         var staff = await _db.StaffMembers.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (staff is null) return Result.Failure(Error.NotFound("Personel bulunamadı."));
 
-        // Bağlı TenantUser'ı da pasifleştir
+        // Bağlı TenantUser'ı da pasifleştir + AÇIK OTURUMLARI KAPAT (yalnız Disable yetmez:
+        // eldeki access token 60 dk, refresh token 14 gün daha çalışmaya devam ediyordu).
         if (staff.TenantUserId.HasValue)
         {
             var tu = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == staff.TenantUserId.Value, cancellationToken);
-            tu?.Disable();
+            if (tu is not null)
+            {
+                tu.Disable();
+                await SessionRevocation.RevokeAllAsync(_db, tu.Id, DateTime.UtcNow, cancellationToken);
+            }
         }
 
         var snapshot = new { staff.FullName, staff.Title };

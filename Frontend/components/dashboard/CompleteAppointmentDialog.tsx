@@ -136,8 +136,17 @@ export default function CompleteAppointmentDialog({
   }
 
   // Tahsilat hedefini çöz + kaydet (yöntem korunacak şekilde önce cari hesap).
+  //
+  // TEKRAR DENEMEDE ÇİFT TAHSİLAT KORUMASI: randevu tamamlama ile tahsilat İKİ ayrı istektir.
+  // Tamamlama başarılı olup tahsilat isteği ağda düşerse kullanıcı tekrar dener; tamamlama
+  // sunucuda idempotenttir (aynı duruma geçiş no-op), ama tahsilat değildi — aynı para ikinci
+  // kez yazılabiliyordu. Her yazma çağrısı, kullanıcının AYNI niyetini temsil eden kararlı bir
+  // Idempotency-Key taşır: sunucu ilk yanıtı aynen döndürür, iş ikinci kez yapılmaz.
+  // Çağrılara AYRI son ekler verilir; anahtar yola değil (kullanıcı + anahtar) çiftine bağlıdır,
+  // aynı anahtar farklı iki uçta kullanılırsa ikincisi birincinin yanıtını replay ederdi.
   const collect = async (amt: number, mth: string): Promise<void> => {
     const nowIso = new Date().toISOString()
+    const idem = `ap${appointmentId.replace(/-/g, '')}-${Math.round(amt * 100)}-${mth}`.slice(0, 52)
     // 1) Yüzeyden gelen ya da müşteri adından bulunan cari hesap → yöntem korunur.
     let targetAccountId = accountId || null
     if (!targetAccountId && openAdisyon?.customerAccountId) targetAccountId = openAdisyon.customerAccountId
@@ -155,6 +164,7 @@ export default function CompleteAppointmentDialog({
         targetAccountId,
         { amount: amt, method: mth, reference: 'Randevu tahsilatı', occurredAtUtc: nowIso },
         tenantId,
+        `${idem}-pay`,
       )
       return
     }
@@ -165,6 +175,7 @@ export default function CompleteAppointmentDialog({
       const created = await adminApi.createAdisyon<{ id?: string }>(
         { customerId, customerAccountId: null, notes: 'Randevu tahsilatı' },
         tenantId,
+        `${idem}-ads`,
       )
       adisyonId = created?.id || null
     }
@@ -173,8 +184,9 @@ export default function CompleteAppointmentDialog({
       adisyonId,
       { type: 'Payment', refId: null, description: 'Randevu tahsilatı', quantity: 1, unitPrice: amt, staffMemberId: null, coveredByPackage: false, method: mth },
       tenantId,
+      `${idem}-itm`,
     )
-    await adminApi.approveAdisyon(adisyonId, tenantId)
+    await adminApi.approveAdisyon(adisyonId, tenantId, `${idem}-apr`)
   }
 
   const completeWithoutPayment = async (): Promise<void> => {

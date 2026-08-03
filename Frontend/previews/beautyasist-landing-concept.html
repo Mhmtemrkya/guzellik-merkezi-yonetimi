@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BeautyAsist Landing Page Görsel Konsepti</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --paper: #f4f3f6;
+      --paper-soft: #ebe9ef;
+      --ink: #20151d;
+      --muted: #726873;
+      --rose: #dd4775;
+      --rose-soft: #f1bfd0;
+      --rose-pale: #f8dfe8;
+      --line: rgba(52, 35, 47, .14);
+      --white: #fcfbfd;
+      --plum: #2b1824;
+      --radius: 30px;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 8%, rgba(255,255,255,.95), transparent 27%),
+        linear-gradient(180deg, #f6f5f8 0%, #edebf0 100%);
+      font-family: Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-feature-settings: "ss01", "cv11";
+      overflow-x: hidden;
+    }
+
+    .page {
+      position: relative;
+      isolation: isolate;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      opacity: .055;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+    }
+
+    .nav {
+      position: relative;
+      z-index: 10;
+      height: 78px;
+      width: min(1312px, calc(100% - 64px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 16px rgba(105, 49, 72, .15));
+    }
+    .brand-copy { line-height: 1; }
+    .brand-copy strong { display: block; font-size: 15px; letter-spacing: -.035em; }
+    .brand-copy span { display: block; margin-top: 6px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+
+    .nav-links { display: flex; align-items: center; gap: 30px; }
+    .nav-links a { color: #5d535d; font-size: 11px; font-weight: 700; text-decoration: none; }
+
+    .nav-actions { justify-self: end; display: flex; align-items: center; gap: 12px; }
+    .nav-login { color: var(--ink); font-size: 11px; font-weight: 800; text-decoration: none; }
+    .nav-cta {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 19px;
+      border-radius: 999px;
+      color: white;
+      background: var(--ink);
+      box-shadow: 0 14px 25px -16px rgba(32, 21, 29, .8);
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .nav-cta i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--rose); font-style: normal; }
+
+    .hero {
+      position: relative;
+      z-index: 2;
+      width: min(1312px, calc(100% - 64px));
+      min-height: 790px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: .92fr 1.08fr;
+      gap: 56px;
+      align-items: center;
+    }
+
+    .hero-copy { position: relative; z-index: 5; padding: 20px 0 52px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 25px;
+      color: #6f5a66;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 32px; height: 2px; border-radius: 99px; background: var(--rose); }
+
+    h1 {
+      max-width: 710px;
+      margin: 0;
+      color: var(--ink);
+      font-size: clamp(62px, 6.25vw, 92px);
+      font-weight: 700;
+      line-height: .96;
+      letter-spacing: -.068em;
+    }
+    h1 em { color: var(--rose); font-style: normal; }
+    .hero-copy > p {
+      max-width: 510px;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+      letter-spacing: -.015em;
+    }
+
+    .hero-actions { display: flex; align-items: center; gap: 14px; margin-top: 32px; }
+    .button-primary, .button-secondary {
+      min-height: 54px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      border-radius: 999px;
+      padding: 0 25px;
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .button-primary {
+      color: #fff;
+      background: var(--rose);
+      box-shadow: 0 22px 36px -19px rgba(221, 71, 117, .85);
+    }
+    .button-primary span { font-size: 17px; }
+    .button-secondary { color: var(--ink); border: 1px solid rgba(32, 21, 29, .18); background: rgba(255,255,255,.32); }
+
+    .mini-proof { display: flex; gap: 22px; margin-top: 29px; color: #665a64; font-size: 10px; font-weight: 700; }
+    .mini-proof span { display: flex; align-items: center; gap: 7px; }
+    .mini-proof i { width: 16px; height: 16px; display: grid; place-items: center; color: #fff; border-radius: 50%; background: #8ea99a; font-size: 9px; font-style: normal; }
+
+    .hero-visual {
+      position: relative;
+      align-self: stretch;
+      min-height: 740px;
+      margin-top: 28px;
+      perspective: 1200px;
+    }
+
+    .photo-shell {
+      position: absolute;
+      inset: 12px 0 38px 34px;
+      overflow: hidden;
+      border-radius: 280px 28px 180px 28px;
+      box-shadow: 0 48px 95px -58px rgba(50, 22, 38, .42);
+      background: #f1c6d3;
+    }
+    .photo-shell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(130deg, rgba(255,255,255,.12), transparent 48%),
+        linear-gradient(180deg, transparent 45%, rgba(49, 22, 37, .18));
+      pointer-events: none;
+    }
+    .photo-shell img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 65% center; filter: saturate(.72) contrast(.94); transform: scale(1.04); }
+
+    .orbit {
+      position: absolute;
+      z-index: 5;
+      right: -68px;
+      top: 4px;
+      width: 565px;
+      height: 565px;
+      border-radius: 50%;
+      border: 1px solid rgba(221, 71, 117, .22);
+      animation: orbit 18s linear infinite;
+    }
+    .orbit::before, .orbit::after { content: ""; position: absolute; border-radius: 50%; }
+    .orbit::before { inset: 38px; border: 1px solid rgba(255,255,255,.56); }
+    .orbit::after { width: 13px; height: 13px; left: 48px; top: 67px; background: var(--rose); box-shadow: 0 0 0 8px rgba(221,71,117,.12); }
+
+    .dashboard-card {
+      position: absolute;
+      z-index: 7;
+      left: -14px;
+      bottom: 62px;
+      width: 455px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 28px;
+      padding: 22px;
+      color: #f9f5f8;
+      background: rgba(39, 21, 32, .92);
+      box-shadow: 0 35px 70px -32px rgba(43,24,36,.72), inset 0 1px 0 rgba(255,255,255,.1);
+      backdrop-filter: blur(24px);
+      animation: card-float 6s ease-in-out infinite;
+    }
+    .dashboard-top { display: flex; align-items: center; justify-content: space-between; }
+    .dashboard-title small { display: block; color: #bdaeb8; font-size: 8px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .dashboard-title strong { display: block; margin-top: 5px; font-size: 16px; letter-spacing: -.035em; }
+    .live { display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 999px; color: #efc6d2; background: rgba(221,71,117,.13); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+    .live i { width: 6px; height: 6px; border-radius: 50%; background: #ef6f96; box-shadow: 0 0 0 4px rgba(239,111,150,.13); animation: pulse 2s ease-in-out infinite; }
+
+    .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 17px; }
+    .metric { min-height: 86px; padding: 13px; border-radius: 17px; background: rgba(255,255,255,.075); }
+    .metric small { display: block; color: #aa9ca5; font-size: 7.5px; font-weight: 700; }
+    .metric strong { display: block; margin-top: 8px; font-size: 18px; letter-spacing: -.045em; }
+    .metric em { display: block; margin-top: 6px; color: #e88cab; font-size: 7px; font-style: normal; }
+
+    .appointments { margin-top: 10px; border-radius: 17px; overflow: hidden; background: rgba(255,255,255,.055); }
+    .appointment { display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 10px; min-height: 43px; padding: 0 12px; border-top: 1px solid rgba(255,255,255,.07); }
+    .appointment:first-child { border-top: 0; }
+    .appointment time { color: #d9ced5; font-size: 8px; font-weight: 800; }
+    .appointment span { color: #f7f1f5; font-size: 8px; font-weight: 700; }
+    .appointment b { padding: 5px 8px; border-radius: 999px; color: #f4c5d4; background: rgba(221,71,117,.13); font-size: 6.5px; letter-spacing: .04em; }
+
+    .growth-card {
+      position: absolute;
+      z-index: 9;
+      right: -18px;
+      bottom: 112px;
+      width: 177px;
+      min-height: 120px;
+      padding: 17px;
+      border: 1px solid rgba(255,255,255,.66);
+      border-radius: 23px;
+      background: rgba(251,249,252,.83);
+      box-shadow: 0 24px 50px -30px rgba(60, 31, 47, .52), inset 0 1px 0 white;
+      backdrop-filter: blur(18px);
+      animation: card-float 6.5s ease-in-out infinite reverse;
+    }
+    .growth-card small { display: block; color: #7b6e77; font-size: 8px; font-weight: 800; }
+    .growth-card strong { display: block; margin-top: 5px; color: var(--ink); font-size: 25px; letter-spacing: -.06em; }
+    .growth-card svg { width: 100%; height: 40px; margin-top: 9px; overflow: visible; }
+
+    .vertical-word {
+      position: absolute;
+      z-index: 2;
+      right: -55px;
+      top: 274px;
+      transform: rotate(90deg);
+      transform-origin: center;
+      color: rgba(32,21,29,.18);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .36em;
+      text-transform: uppercase;
+    }
+
+    .halo-copy {
+      position: absolute;
+      z-index: -1;
+      left: -80px;
+      bottom: 44px;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(221,71,117,.11);
+      font-size: 170px;
+      font-weight: 800;
+      letter-spacing: -.08em;
+      line-height: .7;
+      user-select: none;
+    }
+
+    .module-strip {
+      position: relative;
+      z-index: 5;
+      overflow: hidden;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.25);
+    }
+    .strip-track {
+      width: max-content;
+      height: 68px;
+      display: flex;
+      align-items: center;
+      gap: 58px;
+      animation: ticker 24s linear infinite;
+    }
+    .strip-track span { display: flex; align-items: center; gap: 18px; color: #594d56; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .strip-track i { width: 7px; height: 7px; border-radius: 50%; background: var(--rose); }
+
+    .modules {
+      position: relative;
+      width: min(1312px, calc(100% - 64px));
+      margin: 0 auto;
+      padding: 105px 0 122px;
+    }
+    .modules-head { max-width: 780px; }
+    .modules-head small { color: var(--rose); font-size: 9px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .modules-head h2 { margin: 18px 0 0; font-size: 55px; line-height: 1.02; letter-spacing: -.06em; }
+    .modules-head p { max-width: 600px; margin: 20px 0 0; color: var(--muted); font-size: 14px; line-height: 1.75; }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: 1.22fr .78fr .78fr;
+      grid-template-rows: 225px 225px;
+      gap: 14px;
+      margin-top: 54px;
+    }
+    .module-card { position: relative; overflow: hidden; border-radius: var(--radius); border: 1px solid rgba(54, 35, 47, .12); background: rgba(255,255,255,.5); }
+    .module-card h3 { margin: 0; font-size: 22px; letter-spacing: -.05em; }
+    .module-card p { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .module-card .index { position: absolute; top: 20px; right: 22px; color: rgba(34,21,30,.28); font-size: 9px; font-weight: 800; }
+
+    .module-main { grid-row: 1 / span 2; padding: 34px; background: var(--plum); color: white; }
+    .module-main p { color: #bcaeb8; max-width: 330px; }
+    .module-main .index { color: rgba(255,255,255,.34); }
+    .module-main img { position: absolute; right: -58px; bottom: -62px; width: 365px; filter: saturate(.78) drop-shadow(0 30px 34px rgba(0,0,0,.28)); transform: rotate(-7deg); animation: icon-float 7s ease-in-out infinite; }
+    .module-main .big-number { position: absolute; left: 32px; bottom: 28px; color: #fff; font-size: 52px; font-weight: 700; letter-spacing: -.065em; }
+    .module-main .big-number span { display: block; margin-top: 3px; color: #e4bcc9; font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+
+    .module-team { padding: 28px; background: #e7e4ea; }
+    .module-team img { position: absolute; right: -21px; bottom: -28px; width: 180px; opacity: .92; filter: saturate(.64); }
+    .module-team p { max-width: 190px; }
+
+    .module-finance { grid-row: 1 / span 2; padding: 29px; background: var(--rose-pale); }
+    .module-finance img { position: absolute; left: 50%; bottom: -50px; width: 275px; transform: translateX(-50%); filter: saturate(.72) drop-shadow(0 24px 32px rgba(103,45,67,.17)); }
+    .module-finance .mini-stat { position: absolute; left: 26px; bottom: 24px; color: var(--ink); }
+    .module-finance .mini-stat strong { display: block; font-size: 28px; letter-spacing: -.06em; }
+    .module-finance .mini-stat span { color: #745c68; font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+
+    .module-pack { padding: 28px; background: #f8f7f9; }
+    .module-pack img { position: absolute; right: -18px; bottom: -48px; width: 210px; filter: saturate(.7); }
+    .module-pack p { max-width: 175px; }
+
+    .concept-note {
+      position: absolute;
+      right: 2px;
+      top: 120px;
+      width: 265px;
+      padding: 19px 20px;
+      border-left: 2px solid var(--rose);
+      color: #6a5e67;
+      font-size: 10px;
+      line-height: 1.7;
+    }
+    .concept-note strong { display: block; margin-bottom: 5px; color: var(--ink); font-size: 11px; }
+
+    @keyframes orbit { to { transform: rotate(360deg); } }
+    @keyframes card-float { 0%,100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(0,-10px,0); } }
+    @keyframes icon-float { 0%,100% { transform: translateY(0) rotate(-7deg); } 50% { transform: translateY(-9px) rotate(-5deg); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+    @keyframes ticker { to { transform: translateX(-50%); } }
+
+    @media (max-width: 900px) {
+      .nav { width: calc(100% - 32px); grid-template-columns: 1fr auto; }
+      .nav-links, .nav-login { display: none; }
+      .hero { width: calc(100% - 32px); grid-template-columns: 1fr; min-height: auto; padding: 64px 0 40px; }
+      h1 { font-size: 54px; }
+      .hero-visual { min-height: 620px; }
+      .photo-shell { inset: 20px 0 30px; }
+      .dashboard-card { left: 8px; width: min(430px, calc(100% - 20px)); }
+      .growth-card { right: 4px; }
+      .modules { width: calc(100% - 32px); }
+      .module-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 320px); }
+      .module-main, .module-finance { grid-row: auto; }
+      .concept-note { position: static; margin-top: 22px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="grain" aria-hidden="true"></div>
+
+    <nav class="nav">
+      <div class="brand">
+        <img src="/public/logo.png" alt="BeautyAsist logosu" />
+        <div class="brand-copy"><strong>BeautyAsist</strong><span>Salon işletim sistemi</span></div>
+      </div>
+      <div class="nav-links">
+        <a href="#">Ürün</a><a href="#">Modüller</a><a href="#">Nasıl çalışır?</a><a href="#">Paketler</a>
+      </div>
+      <div class="nav-actions"><a class="nav-login" href="#">Giriş</a><a class="nav-cta" href="#">Demo alın <i>→</i></a></div>
+    </nav>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">Güzellik merkezleri için akıllı yönetim</div>
+        <h1>Salonunuzun görünmeyen yükünü <em>hafifletin.</em></h1>
+        <p>Randevu, danışan, paket, tahsilat ve ekip yönetimi tek sakin sistemde buluşsun.</p>
+        <div class="hero-actions"><a class="button-primary" href="#">Demo alın <span>→</span></a><a class="button-secondary" href="#">Ürünü keşfedin</a></div>
+        <div class="mini-proof"><span><i>✓</i>Kurulum desteği</span><span><i>✓</i>Rol bazlı erişim</span><span><i>✓</i>Bulut panel</span></div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="orbit" aria-hidden="true"></div>
+        <div class="photo-shell"><img src="/public/salonlar-hero.png" alt="BeautyAsist güzellik merkezi görseli" /></div>
+        <div class="dashboard-card">
+          <div class="dashboard-top">
+            <div class="dashboard-title"><small>Bugünkü operasyon</small><strong>Bellora Nişantaşı</strong></div>
+            <span class="live"><i></i> CANLI</span>
+          </div>
+          <div class="metrics">
+            <div class="metric"><small>Randevu</small><strong>28</strong><em>6 tamamlandı</em></div>
+            <div class="metric"><small>Tahsilat</small><strong>₺42.500</strong><em>Düne göre +%18</em></div>
+            <div class="metric"><small>Doluluk</small><strong>%76</strong><em>Bugünkü oran</em></div>
+          </div>
+          <div class="appointments">
+            <div class="appointment"><time>10:00</time><span>Ayşe Korkmaz - Lazer</span><b>Bekliyor</b></div>
+            <div class="appointment"><time>11:30</time><span>Zeynep Arslan - Cilt Bakımı</span><b>Onaylandı</b></div>
+            <div class="appointment"><time>13:00</time><span>Derya Topal - İncelme</span><b>Tamamlandı</b></div>
+          </div>
+        </div>
+        <div class="growth-card">
+          <small>BU AY TAHSİLAT</small><strong>+%24</strong>
+          <svg viewBox="0 0 140 40" aria-hidden="true"><path d="M2 34 C22 31 31 22 48 26 C65 30 70 13 86 17 C104 21 112 5 138 4" fill="none" stroke="#dd4775" stroke-width="2.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="vertical-word">Randevudan rapora tek akış</div>
+      </div>
+      <div class="halo-copy" aria-hidden="true">Ba</div>
+    </section>
+
+    <div class="module-strip">
+      <div class="strip-track">
+        <span><i></i>Randevu Takvimi</span><span><i></i>Danışan CRM</span><span><i></i>Paket ve Seans</span><span><i></i>Ön Muhasebe</span><span><i></i>Personel Performansı</span><span><i></i>Stok Yönetimi</span><span><i></i>Randevu Takvimi</span><span><i></i>Danışan CRM</span><span><i></i>Paket ve Seans</span><span><i></i>Ön Muhasebe</span><span><i></i>Personel Performansı</span><span><i></i>Stok Yönetimi</span>
+      </div>
+    </div>
+
+    <section class="modules">
+      <div class="modules-head">
+        <small>İşletmenin tüm ritmi</small>
+        <h2>Bir işlem biter, diğerleri kendiliğinden ilerler.</h2>
+        <p>Randevu tamamlandığında seans düşer, ödeme işlenir ve yönetici raporu güncellenir.</p>
+      </div>
+      <div class="concept-note"><strong>Hareket dili</strong>Hero görseli yavaşça nefes alır. Operasyon kartları farklı hızlarda süzülür. Modül şeridi kesintisiz akar.</div>
+
+      <div class="module-grid">
+        <article class="module-card module-main">
+          <span class="index">01</span><h3>Danışan CRM</h3><p>Paket, borç, seans, randevu ve not geçmişi tek profilde.</p>
+          <img src="/public/settings/kayit-ozeti.png" alt="Danışan kayıtları görseli" />
+          <div class="big-number">360°<span>danışan görünümü</span></div>
+        </article>
+        <article class="module-card module-team">
+          <span class="index">02</span><h3>Ekip ve performans</h3><p>Uzman bazlı ciro, prim ve doluluk.</p>
+          <img src="/public/settings/aktif-kadro.png" alt="Personel yönetimi görseli" />
+        </article>
+        <article class="module-card module-finance">
+          <span class="index">03</span><h3>Kasa ve finans</h3><p>Nakit, kart, havale ve geciken alacaklar aynı ekranda.</p>
+          <img src="/public/settings/gelir-bilgileri.png" alt="Gelir yönetimi görseli" />
+          <div class="mini-stat"><strong>₺42.500</strong><span>bugünkü tahsilat</span></div>
+        </article>
+        <article class="module-card module-pack">
+          <span class="index">04</span><h3>Paket ve seans</h3><p>Her hizmetin kullanılan ve kalan hakkı otomatik izlenir.</p>
+          <img src="/public/settings/odeme-taksit.png" alt="Paket ve ödeme yönetimi görseli" />
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

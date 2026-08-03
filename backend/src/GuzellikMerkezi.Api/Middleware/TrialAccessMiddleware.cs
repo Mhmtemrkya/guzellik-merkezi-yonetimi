@@ -89,6 +89,9 @@ public sealed class TrialAccessMiddleware
         if (path.StartsWith("/api/admin/subscription-plans", StringComparison.OrdinalIgnoreCase)) return true;
         if (path.StartsWith("/api/admin/tenant/upgrade", StringComparison.OrdinalIgnoreCase)) return true;
         if (path.StartsWith("/api/admin/usage", StringComparison.OrdinalIgnoreCase)) return true;
+        // ÖDEME UÇLARI ASKIDAYKEN DE AÇIK OLMALI: aksi halde süresi dolmuş kurum, aboneliğini
+        // yenilemek için ödeme yapamaz — kendini kilitleyen bir kapı olurdu.
+        if (path.StartsWith("/api/admin/billing", StringComparison.OrdinalIgnoreCase)) return true;
         if (HttpMethods.IsGet(request.Method) && path.Equals("/api/admin/tenant", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }

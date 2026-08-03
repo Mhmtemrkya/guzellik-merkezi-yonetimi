@@ -25,7 +25,15 @@ public sealed record PlatformIntegrationSettingsDto(
     string? WhatsAppBusinessAccountId,
     bool WhatsAppConfigured,
     bool HasWhatsAppAppSecret,
-    string? WhatsAppVerifyToken);
+    string? WhatsAppVerifyToken,
+    // --- Ödeme (iyzico) --- anahtarların KENDİSİ dönmez, yalnız "tanımlı mı" bilgisi döner.
+    bool PaymentsEnabled = false,
+    string PaymentProvider = "Simulation",
+    bool HasIyzicoApiKey = false,
+    bool HasIyzicoSecretKey = false,
+    string? IyzicoBaseUrl = null,
+    string? PaymentsReturnUrl = null,
+    bool PaymentsConfigured = false);
 
 public sealed record SavePlatformMessagingRequest(
     bool SmsEnabled,
@@ -49,7 +57,14 @@ public sealed record SavePlatformMessagingRequest(
     string? WhatsAppAccessToken = null,
     string? WhatsAppBusinessAccountId = null,
     string? WhatsAppAppSecret = null,
-    string? WhatsAppVerifyToken = null);
+    string? WhatsAppVerifyToken = null,
+    // --- Ödeme (iyzico) --- boş bırakılan anahtar mevcut değeri KORUR (SMS/WhatsApp ile aynı kural).
+    bool PaymentsEnabled = false,
+    string? PaymentProvider = null,
+    string? IyzicoApiKey = null,
+    string? IyzicoSecretKey = null,
+    string? IyzicoBaseUrl = null,
+    string? PaymentsReturnUrl = null);
 
 public sealed record MessagingTestRequest(string Target);
 

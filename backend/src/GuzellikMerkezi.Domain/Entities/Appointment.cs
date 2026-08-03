@@ -120,6 +120,25 @@ public sealed class Appointment : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Randevuyu yönetici onay kuyruğuna (Taslak) geri düşürür — müşteri online erteleyince kullanılır.
+    /// <para>
+    /// <see cref="SubmitForApproval"/> yalnız <c>Scheduled</c> kabul eder (personel önerisi akışı).
+    /// Portal ise Taslak/Planlandı/Onaylandı randevuların üçünü de erteleyebiliyor; Taslak ve
+    /// Onaylandı durumlarında o çağrı iş kuralı istisnası fırlatıp isteği kontrolsüz bir hataya
+    /// düşürüyordu. Onaylanmış bir randevunun saati müşteri tarafından değiştiğinde onayın da
+    /// yenilenmesi gerekir; zaten Taslak olan kayıt ise kuyrukta kalır.
+    /// </para>
+    /// </summary>
+    public void ReturnToApproval()
+    {
+        if (Status is not (AppointmentStatus.Draft or AppointmentStatus.Scheduled or AppointmentStatus.Confirmed))
+            throw new BusinessRuleException("Bu randevu onay kuyruğuna alınamaz.");
+        if (Status == AppointmentStatus.Draft) return;
+        Status = AppointmentStatus.Draft;
+        Touch();
+    }
+
     /// <summary>Kurum yöneticisi taslak randevuyu onaylar → aktif (Scheduled) randevuya döner.</summary>
     public void ApproveDraft()
     {

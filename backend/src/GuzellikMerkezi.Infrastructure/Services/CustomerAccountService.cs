@@ -884,7 +884,20 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             var adisyon = await _db.Adisyonlar
                 .Include(a => a.Items)
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == info.Id, cancellationToken);
-            if (adisyon is null) continue;
+            if (adisyon is null)
+            {
+                // ADİSYON SİLİNMİŞ. Eskiden sessizce atlanıyordu: cari, tahsilatlar ve paket
+                // hakları geri geliyor, ama fiş yok olduğu için stok/prim/sadakat etkileri
+                // yeniden UYGULANAMIYORDU — yine de "başarılı" dönülüyordu. Yarım geri alma,
+                // hiç geri almamaktan kötüdür: sessizce devam etmek yerine reddet (bu akış
+                // transaction içinde, dolayısıyla hiçbir şey yazılmaz).
+                var missingStatus = Enum.TryParse<AdisyonStatus>(info.Status, out var ms) ? ms : AdisyonStatus.Approved;
+                if (missingStatus != AdisyonStatus.Approved) continue; // onaylanmamış fişin yan etkisi yoktu
+                return Result<CustomerAccountDto>.Failure(Error.Conflict(
+                    "Bu satışın adisyonu silinmiş; iptal geri alınamıyor. Cari ve paket hakları geri gelse " +
+                    "bile stok, prim ve sadakat etkileri fiş kalemleri olmadan yeniden uygulanamaz. " +
+                    "Satışı yeniden oluşturmanız gerekir."));
+            }
 
             var status = Enum.TryParse<AdisyonStatus>(info.Status, out var parsed) ? parsed : AdisyonStatus.Approved;
             adisyon.RestoreAfterSaleCancellation(accountId, status, Utc(info.ApprovedAtUtc), _currentUser.UserId);

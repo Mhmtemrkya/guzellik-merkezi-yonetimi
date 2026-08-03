@@ -30,6 +30,33 @@ public static class OutboundEndpointGuard
     /// <summary>SMTP için izinli port'lar (submission + implicit TLS).</summary>
     private static readonly HashSet<int> SmtpPorts = [25, 465, 587, 2525];
 
+    /// <summary>Ödeme sağlayıcısının izinli API host'ları (sandbox + canlı).</summary>
+    private static readonly HashSet<string> PaymentHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "api.iyzipay.com",
+        "sandbox-api.iyzipay.com",
+    };
+
+    /// <summary>
+    /// Ödeme API adresini doğrular. SMS ile aynı gerekçe, daha yüksek risk: bu adrese kart
+    /// referansları ve tahsilat istekleri gider; sahte bir host'a yönlendirmek hem para hem
+    /// kimlik bilgisi sızdırır.
+    /// </summary>
+    public static string? ValidatePaymentApiUrl(string? apiUrl)
+    {
+        if (string.IsNullOrWhiteSpace(apiUrl)) return null; // boş = sağlayıcının varsayılan (sandbox) adresi
+
+        if (!Uri.TryCreate(apiUrl, UriKind.Absolute, out var uri))
+            return "Ödeme API adresi geçerli bir URL değil.";
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return "Ödeme API adresi yalnız HTTPS olabilir.";
+        if (!PaymentHosts.Contains(uri.Host))
+            return $"İzin verilmeyen ödeme sunucusu: {uri.Host}. İzinli: {string.Join(", ", PaymentHosts)}.";
+        if (IsPrivateHost(uri.Host))
+            return "Ödeme API adresi özel/loopback bir adrese çözülüyor.";
+        return null;
+    }
+
     /// <summary>SMS API adresini doğrular; sorun varsa mesaj döner (null = geçerli).</summary>
     public static string? ValidateSmsApiUrl(string? apiUrl)
     {

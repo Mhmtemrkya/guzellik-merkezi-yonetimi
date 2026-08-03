@@ -72,7 +72,7 @@ Future<bool> runCompleteAppointment(
   try {
     await api.patch('/api/admin/appointments/$id/status',
         {'status': 'Completed', 'reason': null});
-    await _collect(api, cid, customerName, payment['amount'] as double,
+    await _collect(api, id, cid, customerName, payment['amount'] as double,
         payment['method'] as String);
     if (context.mounted) _snack(context, 'Randevu tamamlandı, tahsilat işlendi.');
     return true;
@@ -227,9 +227,19 @@ Future<Map<String, dynamic>?> _askPayment(
 }
 
 /// Tahsilatı işle: önce cari hesap (yöntem korunur), yoksa adisyon üzerinden ciroya.
-Future<void> _collect(ApiClient api, String customerId, String customerName,
-    double amount, String method) async {
+///
+/// TEKRAR DENEMEDE ÇİFT TAHSİLAT KORUMASI: randevu tamamlama ile tahsilat İKİ ayrı istektir.
+/// Tamamlama başarılı olup tahsilat isteği ağda düşerse kullanıcı tekrar dener; tamamlama
+/// sunucuda idempotenttir (aynı duruma geçiş no-op), tahsilat ise değildi — aynı para ikinci
+/// kez yazılabiliyordu. Her yazma çağrısı, kullanıcının AYNI niyetini temsil eden kararlı bir
+/// Idempotency-Key taşır; çağrılara farklı son ekler verilir (anahtar yola değil kullanıcı +
+/// anahtar çiftine bağlıdır, aynısı kullanılırsa ikinci çağrı birincinin yanıtını replay eder).
+Future<void> _collect(ApiClient api, String appointmentId, String customerId,
+    String customerName, double amount, String method) async {
   final nowIso = DateTime.now().toUtc().toIso8601String();
+  final base = 'ap${appointmentId.replaceAll('-', '')}'
+      '-${(amount * 100).round()}-$method';
+  final idem = base.length > 52 ? base.substring(0, 52) : base;
   String? accountId;
   try {
     final open = await api.get('/api/admin/adisyonlar/open/$customerId');
@@ -256,7 +266,7 @@ Future<void> _collect(ApiClient api, String customerId, String customerName,
       'method': method,
       'reference': 'Randevu tahsilatı',
       'occurredAtUtc': nowIso,
-    });
+    }, '$idem-pay');
     return;
   }
   if (customerId.isEmpty) return;
@@ -270,7 +280,7 @@ Future<void> _collect(ApiClient api, String customerId, String customerName,
       'customerId': customerId,
       'customerAccountId': null,
       'notes': 'Randevu tahsilatı',
-    });
+    }, '$idem-ads');
     adisyonId = created is Map ? '${created['id']}' : null;
   }
   if (adisyonId == null || adisyonId.isEmpty || adisyonId == 'null') return;
@@ -283,6 +293,6 @@ Future<void> _collect(ApiClient api, String customerId, String customerName,
     'staffMemberId': null,
     'coveredByPackage': false,
     'method': method,
-  });
-  await api.post('/api/admin/adisyonlar/$adisyonId/approve', {});
+  }, '$idem-itm');
+  await api.post('/api/admin/adisyonlar/$adisyonId/approve', {}, '$idem-apr');
 }

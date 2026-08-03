@@ -117,8 +117,16 @@ class ApiClient {
     return {'items': items, 'totalCount': total > 0 ? total : items.length};
   }
 
-  Future<dynamic> post(String path, [Map<String, dynamic>? body]) =>
-      _request('POST', path, body: body);
+  /// [idempotencyKey] verilirse istek `Idempotency-Key` başlığıyla gider: ağ hatası sonrası
+  /// tekrar denemede sunucu işi İKİNCİ KEZ yapmaz, ilk yanıtı aynen döndürür. Aynı akıştaki
+  /// farklı çağrılara FARKLI anahtar verilmeli — anahtar yola değil (kullanıcı + anahtar)
+  /// çiftine bağlıdır, aynısı kullanılırsa ikinci çağrı birincinin yanıtını replay eder.
+  Future<dynamic> post(
+    String path, [
+    Map<String, dynamic>? body,
+    String? idempotencyKey,
+  ]) =>
+      _request('POST', path, body: body, idempotencyKey: idempotencyKey);
 
   Future<dynamic> postPublic(String path, Map<String, dynamic> body) =>
       _request('POST', path, body: body, isPublic: true);
@@ -137,13 +145,20 @@ class ApiClient {
     Map<String, dynamic>? body,
     Map<String, dynamic>? query,
     bool isPublic = false,
+    String? idempotencyKey,
   }) async {
     try {
       final response = await dio.request<dynamic>(
         path,
         data: body,
         queryParameters: query,
-        options: Options(method: method, extra: {'public': isPublic}),
+        options: Options(
+          method: method,
+          extra: {'public': isPublic},
+          headers: idempotencyKey == null
+              ? null
+              : {'Idempotency-Key': idempotencyKey},
+        ),
       );
       final payload = response.data;
       if (payload is Map && payload.containsKey('success')) {

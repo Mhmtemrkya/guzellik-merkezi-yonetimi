@@ -173,7 +173,15 @@ public sealed class WaitlistService : IWaitlistService
         return Result<Guid?>.Success(entry.Id);
     }
 
-    public async Task<Result<Guid?>> AcceptOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default)
+    public Task<Result<Guid?>> AcceptOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default)
+        => AcceptOfferCoreAsync(tenantId, waitlistEntryId, null, cancellationToken);
+
+    /// <param name="scheduledSlot">
+    /// Yönetici elle planladıysa SEÇİLEN slot. Kilit altındaki taze okumadan (ReloadAsync) SONRA
+    /// uygulanır; aksi halde taze okuma, çağıranın bellekte işaretlediği slotu DB'deki eski
+    /// değerlerle eziyordu (eski saat/personelle randevu ya da "slot bilgisi eksik" hatası).
+    /// </param>
+    private async Task<Result<Guid?>> AcceptOfferCoreAsync(Guid tenantId, Guid waitlistEntryId, OfferSlot? scheduledSlot, CancellationToken cancellationToken)
     {
         // ÇİFT KABUL KORUMASI: aynı teklif iki kez kabul edilirse (çift tıklama, WhatsApp'tan iki
         // "Evet") ikisi de "Booked öncesi" durumu okuyup İKİ randevu açabiliyordu. Kayıt satırı
@@ -189,6 +197,14 @@ public sealed class WaitlistService : IWaitlistService
         if (entry is null) return Result<Guid?>.Failure(Error.NotFound("Bekleme kaydı bulunamadı."));
         if (_db.Database.IsRelational()) await _db.Entry(entry).ReloadAsync(cancellationToken);
         if (entry.Status == WaitlistStatus.Booked) return Result<Guid?>.Success(null); // idempotent
+
+        // Elle planlama: seçilen slot TAZE okumadan sonra yazılır ki kaybolmasın.
+        if (scheduledSlot is { } chosen)
+        {
+            entry.ApplyScheduledSlot(chosen.StartUtc, chosen.DurationMinutes,
+                chosen.StaffMemberId, chosen.ServiceDefinitionId, chosen.BranchId);
+        }
+
         if (entry.PreferredStartUtc is not { } rawStart || entry.StaffMemberId is not { } staffId || entry.ServiceDefinitionId is not { } serviceId)
             return Result<Guid?>.Failure(Error.Validation("Bu kayıtta randevu açmak için slot bilgisi (saat/personel/hizmet) eksik."));
 
@@ -247,7 +263,10 @@ public sealed class WaitlistService : IWaitlistService
 
     public async Task<Result<Guid?>> ScheduleAsync(Guid tenantId, Guid waitlistEntryId, ScheduleWaitlistRequest request, CancellationToken cancellationToken = default)
     {
-        var entry = await _db.WaitlistEntries
+        // SALT OKUNUR ön okuma: nihai karar (kilit + taze durum) AcceptOfferCoreAsync'te verilir.
+        // İzlenen bir nesne üzerinde çalışmak, başarısız denemede yarım değişikliğin isteğin
+        // sonundaki SaveChanges ile yazılma riskini doğuruyordu.
+        var entry = await _db.WaitlistEntries.AsNoTracking()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Id == waitlistEntryId, cancellationToken);
         if (entry is null) return Result<Guid?>.Failure(Error.NotFound("Bekleme kaydı bulunamadı."));
         if (entry.Status == WaitlistStatus.Booked) return Result<Guid?>.Failure(Error.Conflict("Bu kayıt zaten randevuya dönmüş."));
@@ -268,18 +287,14 @@ public sealed class WaitlistService : IWaitlistService
                       .Select(s => (int?)s.DurationMinutes).FirstOrDefaultAsync(cancellationToken) ?? 30;
 
         var startUtc = DateTime.SpecifyKind(request.StartUtc, DateTimeKind.Utc);
-        // Slot/personel/hizmet yalnızca BELLEKTE işaretlenir — kaydetmeden AcceptOfferAsync'e
-        // devredilir (kontroller orada tek yerde). Randevu açılamazsa hiçbir şey kaydedilmez,
-        // kayıt bekleme listesinde olduğu gibi kalır.
-        entry.MarkOffered(startUtc, duration, staff, service, entry.BranchId);
 
-        var result = await AcceptOfferAsync(tenantId, waitlistEntryId, cancellationToken);
-        if (result.IsFailure)
-        {
-            // Değişiklikleri geri al: takip edilen varlık istek sonunda yazılmasın.
-            await _db.Entry(entry).ReloadAsync(cancellationToken);
-        }
-        return result;
+        // Seçilen slot AÇIK PARAMETRE olarak devredilir. Eskiden burada `entry.MarkOffered(...)`
+        // ile bellekte işaretlenip AcceptOfferAsync'e bırakılıyordu; oradaki kilit sonrası taze
+        // okuma (ReloadAsync) bu değerleri DB'deki eski değerlerle EZİYORDU → ya "slot bilgisi
+        // eksik" hatası ya da yöneticinin seçtiği yerine ESKİ saat/personelle randevu açılıyordu.
+        return await AcceptOfferCoreAsync(tenantId, waitlistEntryId,
+            new OfferSlot(startUtc, startUtc.AddMinutes(duration), staff, service, entry.BranchId),
+            cancellationToken);
     }
 
     public async Task<Result<Guid?>> DeclineOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default)
