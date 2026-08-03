@@ -5,6 +5,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
+import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiProduct, ApiService, ApiServicePackage, ApiStaff, AdisyonItemTypeKey } from '@/lib/types'
@@ -94,6 +95,8 @@ export default function AdisyonPanel({
   // Butonu personele göstermek her tıklamada 403 üretiyordu — onun yerine bilgi kartı gösterilir.
   const { user } = useAuth()
   const isStaffUser = user?.role === 'Staff'
+  // Personel onaya gönderdi mi — buton tekrar basılmasın, kart durumu yazsın.
+  const [sentToApproval, setSentToApproval] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState<AddForm>(() => ({ ...emptyForm, staffMemberId: defaultStaffMemberId ?? '' }))
@@ -160,6 +163,14 @@ export default function AdisyonPanel({
     await reload()
     if (onChanged) await onChanged()
   }
+
+  // ANLIK TAZELEME: yönetici onayladığında (ya da başka bir sekmede adisyon değiştiğinde)
+  // personelin AÇIK olan kartı kendiliğinden güncellensin — sayfayı yenilemeye gerek kalmasın.
+  useRealtime(['adisyon', 'sessions', 'accounts'], () => {
+    setRefreshKey((k) => k + 1)
+    void reload()
+    void onChanged?.()
+  })
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true)
@@ -779,16 +790,35 @@ export default function AdisyonPanel({
 
             {/* ---------- ONAY / İPTAL / SİL ---------- */}
             <div className="mt-3 grid grid-cols-2 gap-2">
+              {/* Personelde onay YÖNETİCİYE gider: istek onay kapısında yakalanıp Onaylar
+                  sayfasına düşer, yönetici onaylayınca gerçekten işlenir. */}
               {isStaffUser ? (
-                <div className="col-span-2 flex items-start gap-2 rounded-[12px] border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 text-[11.5px] text-indigo-800">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
-                    Satış kaydedildi, <b>onay yöneticide</b>. Adisyon açık kalır; kurum yöneticisi onayladığında
-                    cariye ve kasaya işlenir.
-                    {adisyon.items.length > 0 && (
-                      <b className="ml-1 tabular-nums">{formatTL(adisyon.chargeTotal)}</b>
+                <div className="col-span-2 space-y-2">
+                  <button
+                    type="button"
+                    disabled={busy || adisyon.items.length === 0 || sentToApproval}
+                    onClick={() =>
+                      run(async () => {
+                        await adminApi.approveAdisyon(adisyon.id, tenantId)
+                        setSentToApproval(true)
+                      })
+                    }
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-indigo-600 to-indigo-700 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(67,56,202,0.9)] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {sentToApproval ? 'Onaya gönderildi' : 'Onaya gönder'}
+                    {adisyon.items.length > 0 && !sentToApproval && (
+                      <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] tabular-nums">{formatTL(adisyon.chargeTotal)}</span>
                     )}
-                  </span>
+                  </button>
+                  <div className="flex items-start gap-2 rounded-[12px] border border-indigo-200 bg-indigo-50/60 px-3 py-2 text-[11.5px] text-indigo-800">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {sentToApproval
+                        ? 'Kurum yöneticisinin Onaylar sayfasına düştü. Onaylandığında satış cariye ve kasaya işlenecek.'
+                        : 'Onay yetkisi kurum yöneticisindedir. Gönderdiğinde yöneticinin Onaylar sayfasına düşer; onaylanınca cariye ve kasaya işlenir.'}
+                    </span>
+                  </div>
                 </div>
               ) : (
                 <button

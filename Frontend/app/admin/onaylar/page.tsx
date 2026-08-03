@@ -6,6 +6,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ManagerAppointmentInbox from '@/components/dashboard/ManagerAppointmentInbox'
 import { useBranch } from '@/components/dashboard/BranchContext'
+import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, guidOrUndefined, normalizePendingOperation, normalizeStaff } from '@/lib/apiMappers'
@@ -199,6 +200,9 @@ function OnaylarPageInner() {
   }, [all, todayKey, yKey])
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
+  // Personel yeni bir istek gönderdiğinde ya da başka bir yönetici karara bağladığında
+  // liste kendiliğinden tazelensin — sayfada beklerken bayat kalmasın.
+  useRealtime(['approvals'], refresh)
   const handleApprove = useCallback(async (op: PendingOperation) => {
     setBusyId(op.id); setActionError(null)
     try { await adminApi.approvePendingOperation(op.id, tenantId); refresh() }

@@ -223,6 +223,14 @@ export function clearSession(): void {
   storeSession(null)
 }
 
+/**
+ * Geçerli access token — SignalR gibi apiRequest dışındaki tüketiciler için.
+ * (Hub bağlantısı tarayıcıda header ekleyemediğinden token'ı kendisi ister.)
+ */
+export function getAccessToken(): string | null {
+  return activeToken()
+}
+
 function activeToken(): string | null {
   if (inMemoryAccessToken) return inMemoryAccessToken
   const session = getStoredSession()
@@ -1004,6 +1012,18 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/appointments/${id}/status`, { method: 'PATCH', query: { tenantId }, body }),
   changeAppointmentNotes: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/appointments/${id}/notes`, { method: 'PATCH', query: { tenantId }, body }),
+  /**
+   * Randevuyu tamamlar ve (verilirse) tahsilatı AYNI transaction'da alır.
+   * Ayrı ayrı çağırmak "randevu tamamlandı, para alınmadı" durumunu mümkün kılıyordu:
+   * idempotency anahtarı tekrarı güvenli kılar ama atomikliği sağlamaz.
+   */
+  completeAppointment: <T = unknown>(id: string, body: AdminPayload, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/appointments/${id}/complete`, {
+      method: 'POST',
+      query: { tenantId },
+      body,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   /**
    * Zaman + durum + notu TEK transaction'da günceller. Üç ayrı çağrı yapıldığında ortadaki
    * başarılı olup sonraki patlarsa randevu tamamlanmış (seans düşmüş) hâlde kalırken arayüz

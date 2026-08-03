@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import { adminApi } from '@/lib/apiClient'
 import { normalizeAppointment } from '@/lib/apiMappers'
 import type { Appointment, AppointmentInbox } from '@/lib/types'
@@ -63,6 +64,12 @@ export function useManagerInbox(opts: { enabled: boolean; tenantId?: string; pol
       clearInterval(id)
     }
   }, [enabled, refresh, pollMs])
+
+  // ANLIK: personel randevu/işlem gönderdiğinde ya da bir karar verildiğinde zil sayacı
+  // yoklamayı beklemeden tazelensin. (Yoklama, bağlantı kurulamazsa emniyet ağı olarak kalır.)
+  useRealtime(['approvals', 'appointments'], () => {
+    if (enabled) void refresh()
+  })
 
   const complete = useCallback(
     async (id: string) => {

@@ -164,3 +164,13 @@ internal static class TestSearchIndex
             })
             .Build());
 }
+
+/// <summary>Anlık bildirim yayını testlerde bir yan etki değildir — sessizce yutulur.</summary>
+internal sealed class NoopRealtimeNotifier : IRealtimeNotifier
+{
+    public Task PublishToTenantAsync(Guid tenantId, RealtimeEvent payload, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task PublishToUserAsync(Guid tenantId, Guid userId, RealtimeEvent payload, CancellationToken ct = default) =>
+        Task.CompletedTask;
+}

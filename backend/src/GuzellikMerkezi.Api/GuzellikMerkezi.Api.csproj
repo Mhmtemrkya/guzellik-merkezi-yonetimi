@@ -9,6 +9,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <!-- SignalR backplane — YALNIZCA Redis:ConnectionString verilirse devreye girer (çok instance). -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.8" />
+    <!-- Redis paketi MessagePack 2.5.187'yi getiriyor; o sürümde yüksek önemli güvenlik açıkları var
+         (GHSA-hv8m-jj95-wg3x, GHSA-vh6j-jc39-fggf). Yamalı sürüme sabitlenir. -->
+    <PackageReference Include="MessagePack" Version="2.5.302" />
     <!-- GÜVENLİK: AspNetCore.OpenApi'nin transitive olarak getirdiği Microsoft.OpenApi 2.0.0'da bilinen
          yüksek önem dereceli açık var (NU1903 / GHSA-v5pm-xwqc-g5wc). Aynı major içinde yamalı sürüme
          sabitleyip transitive referansı geçersiz kılıyoruz. -->

@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.IdentityModel.Tokens.Jwt;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Api.Approval;
+using GuzellikMerkezi.Api.Realtime;
 using GuzellikMerkezi.Api.Security;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -38,6 +39,21 @@ public static class ApiServiceCollectionExtensions
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
         });
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
+
+        // ---- Anlık güncelleme (SignalR) ----
+        // Kalıcılık DEĞİL, yalnız "hemen tazele" kanalı: durum her zaman DB'dedir, mesaj kaybolursa
+        // istemci yeniden bağlanınca doğru veriyi okur. Redis YALNIZCA yapılandırıldıysa devreye girer:
+        // tek instance'ta gereksizdir, çok instance'ta bir sunucudaki olayın diğerine bağlı istemcilere
+        // de ulaşmasını sağlar (backplane). Yapılandırılmazsa in-memory ile çalışmaya devam eder.
+        var signalR = services.AddSignalR(o => o.EnableDetailedErrors = false);
+        var redisConnection = configuration["Redis:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(redisConnection))
+        {
+            signalR.AddStackExchangeRedis(redisConnection, o =>
+                o.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal(
+                    configuration["Redis:ChannelPrefix"] ?? "beautyasist"));
+        }
+        services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
         // Evrensel personel onay kapısı: onaylanan isteği localhost'a replay eden servis.
         services.AddHttpClient("ApprovalReplay");
@@ -79,6 +95,22 @@ public static class ApiServiceCollectionExtensions
                 // yalnızca KONTROLDÜ. Token'ın üretim anı damgadan eskiyse istek reddedilir.
                 options.Events = new JwtBearerEvents
                 {
+                    // SignalR: tarayıcı WebSocket/SSE isteklerine header ekleyemez, token
+                    // ?access_token= ile gelir. YALNIZ /hubs yolunda kabul edilir ki normal
+                    // API uçlarında token'ın URL'e (ve sunucu loglarına) düşmesine izin verilmesin.
+                    OnMessageReceived = ctx =>
+                    {
+                        if (string.IsNullOrEmpty(ctx.Token))
+                        {
+                            var accessToken = ctx.Request.Query["access_token"].ToString();
+                            if (!string.IsNullOrEmpty(accessToken)
+                                && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                            {
+                                ctx.Token = accessToken;
+                            }
+                        }
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = async ctx =>
                     {
                         var principal = ctx.Principal;

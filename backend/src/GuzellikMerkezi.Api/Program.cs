@@ -230,6 +230,10 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// Anlık güncelleme kanalı — onay/adisyon/seans değişikliklerini açık ekranlara duyurur.
+app.MapHub<GuzellikMerkezi.Api.Realtime.RealtimeHub>(GuzellikMerkezi.Api.Realtime.RealtimeHub.Path)
+   .RequireCors(ApiServiceCollectionExtensions.FrontendCorsPolicyName);
+
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
 app.MapTenantEndpoints();

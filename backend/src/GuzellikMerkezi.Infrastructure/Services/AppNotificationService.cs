@@ -25,6 +25,7 @@ public sealed class AppNotificationService : IAppNotificationService
     private readonly IPushSender _push;
     private readonly IDurableJobQueue _jobs;
     private readonly IDateTimeProvider _clock;
+    private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<AppNotificationService> _logger;
 
     public AppNotificationService(
@@ -33,6 +34,7 @@ public sealed class AppNotificationService : IAppNotificationService
         IPushSender push,
         IDurableJobQueue jobs,
         IDateTimeProvider clock,
+        IRealtimeNotifier realtime,
         ILogger<AppNotificationService> logger)
     {
         _db = db;
@@ -40,6 +42,7 @@ public sealed class AppNotificationService : IAppNotificationService
         _push = push;
         _jobs = jobs;
         _clock = clock;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -126,6 +129,18 @@ public sealed class AppNotificationService : IAppNotificationService
             .ToList();
         db.AppNotifications.AddRange(rows);
         await db.SaveChangesAsync(ct);
+
+        // Satır yazıldıktan SONRA anlık haber ver: alıcı o an ekrandaysa zil sayacı ve akış
+        // yoklamayı beklemeden güncellenir. Ulaşmazsa kayıp yok — satır veritabanında duruyor.
+        foreach (var recipient in targets)
+        {
+            await _realtime.PublishToUserAsync(tenantId, recipient, new RealtimeEvent(
+                "notification",
+                title,
+                body,
+                new[] { RealtimeTopics.Notifications },
+                new Dictionary<string, string> { ["type"] = type.ToString() }), ct);
+        }
 
         await TrySendPushAsync(db, tenantId, targets, type, severity, title, body, data, ct);
     }

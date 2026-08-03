@@ -16,14 +16,39 @@ public sealed class PendingOperationService : IPendingOperationService
     private readonly IApprovalReplayer _replayer;
     private readonly IAuditLogger _audit;
     private readonly IAppNotificationService _notifications;
+    private readonly IRealtimeNotifier _realtime;
 
-    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit, IAppNotificationService notifications)
+    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit, IAppNotificationService notifications, IRealtimeNotifier realtime)
     {
         _db = db;
         _dispatcher = dispatcher;
         _replayer = replayer;
         _audit = audit;
         _notifications = notifications;
+        _realtime = realtime;
+    }
+
+    /// <summary>
+    /// Karara bağlanan işlemin hangi ekranları tazelemesi gerektiği. Onay kapısı isteğin YOLUNU
+    /// saklıyor; başlıktan/özetten yola çıkıp doğru konuları seçiyoruz ki istemci gereksiz yere
+    /// her şeyi yeniden çekmesin.
+    /// </summary>
+    private static string[] TopicsFor(PendingOperation op)
+    {
+        var summary = op.Summary ?? string.Empty;
+        bool Path(string part) => summary.Contains(part, StringComparison.OrdinalIgnoreCase);
+
+        var topics = new List<string> { RealtimeTopics.Approvals, RealtimeTopics.Notifications };
+        if (Path("/adisyonlar"))
+        {
+            // Adisyon onayı parayı cariye+kasaya işler ve paket satışıysa SEANS açar.
+            topics.Add(RealtimeTopics.Adisyon);
+            topics.Add(RealtimeTopics.Sessions);
+            topics.Add(RealtimeTopics.Accounts);
+        }
+        if (Path("/appointments") || Path("/waitlist")) topics.Add(RealtimeTopics.Appointments);
+        if (Path("/accounts")) topics.Add(RealtimeTopics.Accounts);
+        return topics.Distinct().ToArray();
     }
 
     public async Task<Result<PagedResult<PendingOperationDto>>> ListAsync(Guid tenantId, PendingOperationFilter filter, PageRequest pageRequest, CancellationToken cancellationToken = default)
@@ -92,6 +117,14 @@ public sealed class PendingOperationService : IPendingOperationService
             dedupeKey: $"pending:{op.Id}",
             ct: cancellationToken);
 
+        // Yöneticinin AÇIK olan Onaylar sayfası/zil sayacı anında görsün.
+        await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
+            "approval.pending",
+            "Onay bekleyen işlem",
+            $"{requestedByName}: {op.Title}",
+            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
+            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 
@@ -113,6 +146,28 @@ public sealed class PendingOperationService : IPendingOperationService
         await _audit.LogAsync(tenantId, op.BranchId, "Approve", "PendingOperation", op.Id,
             $"Onaylandı: {op.Title} ({op.OperationType}) · gönderen {op.RequestedByName}",
             new { op.OperationType, op.Title, op.RequestedByName, op.ResultEntityId }, cancellationToken);
+
+        // KALICI bildirim: personel o an çevrimdışı olsa bile sonucu bildirim akışında (web + mobil
+        // feed + FCM push) görür. Anlık push yalnızca AÇIK ekranı hemen tazelemek içindir.
+        await _notifications.NotifyUserAsync(
+            tenantId, op.BranchId, op.RequestedByUserId,
+            AppNotificationType.ApprovalApproved, AppNotificationSeverity.Success,
+            "İşleminiz onaylandı",
+            op.Title,
+            data: new { route = "/approvals", id = op.Id.ToString() },
+            dedupeKey: $"pending-approved:{op.Id}",
+            ct: cancellationToken);
+
+        var topics = TopicsFor(op);
+        await _realtime.PublishToUserAsync(tenantId, op.RequestedByUserId, new RealtimeEvent(
+            "approval.approved", "İşleminiz onaylandı", op.Title, topics,
+            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+        // Kurum genelinde de duyur: onaylanan işlem cariyi/seansı/randevuyu değiştirdi, açık
+        // olan diğer ekranlar (yönetici listesi, ikinci sekme) bayat kalmasın.
+        await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
+            "approval.resolved", null, null, topics,
+            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 
@@ -127,6 +182,26 @@ public sealed class PendingOperationService : IPendingOperationService
         await _audit.LogAsync(tenantId, op.BranchId, "Reject", "PendingOperation", op.Id,
             $"Reddedildi: {op.Title} · {op.RejectionReason}",
             new { op.OperationType, op.RejectionReason, op.RequestedByName }, cancellationToken);
+
+        await _notifications.NotifyUserAsync(
+            tenantId, op.BranchId, op.RequestedByUserId,
+            AppNotificationType.ApprovalRejected, AppNotificationSeverity.Warning,
+            "İşleminiz reddedildi",
+            string.IsNullOrWhiteSpace(op.RejectionReason) ? op.Title : $"{op.Title} · {op.RejectionReason}",
+            data: new { route = "/approvals", id = op.Id.ToString() },
+            dedupeKey: $"pending-rejected:{op.Id}",
+            ct: cancellationToken);
+
+        await _realtime.PublishToUserAsync(tenantId, op.RequestedByUserId, new RealtimeEvent(
+            "approval.rejected", "İşleminiz reddedildi",
+            string.IsNullOrWhiteSpace(op.RejectionReason) ? op.Title : $"{op.Title} · {op.RejectionReason}",
+            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
+            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+        await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
+            "approval.resolved", null, null,
+            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
+            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 

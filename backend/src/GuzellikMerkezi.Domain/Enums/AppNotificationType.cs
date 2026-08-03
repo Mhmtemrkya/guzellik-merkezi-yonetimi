@@ -16,6 +16,10 @@ public enum AppNotificationType
 
     // Onay akışı
     ApprovalPending = 10,
+    /// <summary>İsteği gönderen personele: yönetici onayladı.</summary>
+    ApprovalApproved = 11,
+    /// <summary>İsteği gönderen personele: yönetici reddetti.</summary>
+    ApprovalRejected = 12,
 
     // Bekleme listesi / online talep / WhatsApp
     WaitlistOffer = 20,

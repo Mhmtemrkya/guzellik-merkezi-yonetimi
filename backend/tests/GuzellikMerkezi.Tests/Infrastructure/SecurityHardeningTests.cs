@@ -51,7 +51,7 @@ public sealed class SecurityHardeningTests
         await using (var db = NewDb(options))
         {
             // Get/Cancel bu bağımlılıklara dokunmaz (yalnız sorgu + durum değişimi).
-            var service = new PendingOperationService(db, null!, null!, new NoopAuditLogger(), null!);
+            var service = new PendingOperationService(db, null!, null!, new NoopAuditLogger(), null!, new NoopRealtimeNotifier());
 
             // Personel A, B'nin işlemini ne okuyabilir ne iptal edebilir.
             var read = await service.GetAsync(tenantId, operationOfB, staffA, UserRole.Staff);

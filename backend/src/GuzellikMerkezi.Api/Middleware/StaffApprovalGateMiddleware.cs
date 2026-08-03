@@ -20,6 +20,7 @@ public sealed class StaffApprovalGateMiddleware
     private readonly RequestDelegate _next;
 
     // Kendi onay/akışı olan ya da özyinelemeye yol açacak yollar — kapı bunları yakalamaz.
+    // NOT: adisyon muafiyeti ONAY ucunu KAPSAMAZ (bkz. IsAdisyonApprovePath).
     private static readonly string[] ExemptPrefixes =
     {
         "/api/admin/pending-operations",
@@ -115,9 +116,20 @@ public sealed class StaffApprovalGateMiddleware
         return HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
     }
 
+    /// <summary>
+    /// Randevu durum değişikliği yolları. <c>/complete</c> de buraya dâhildir: tamamlama +
+    /// tahsilatın atomik hâlidir, ayrı ayrı çağrıldığında (<c>/status</c> + tahsilat ucu) zaten
+    /// muaf olan iki işlemin birleşimidir — atomikliği seçmek personeli onaya düşürmemeli.
+    /// </summary>
     private static bool IsAppointmentStatusPath(string path) =>
         path.StartsWith("/api/admin/appointments/", StringComparison.OrdinalIgnoreCase)
-        && path.EndsWith("/status", StringComparison.OrdinalIgnoreCase);
+        && (path.EndsWith("/status", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith("/complete", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Adisyon onay ucu — muaf listedeki tek istisna, yönetici onayına gider.</summary>
+    private static bool IsAdisyonApprovePath(string path) =>
+        path.StartsWith("/api/admin/adisyonlar/", StringComparison.OrdinalIgnoreCase)
+        && path.EndsWith("/approve", StringComparison.OrdinalIgnoreCase);
 
     private static async Task WriteForbiddenAsync(HttpContext http, string message)
     {
@@ -167,6 +179,14 @@ public sealed class StaffApprovalGateMiddleware
 
         var path = http.Request.Path.Value ?? string.Empty;
         if (!path.StartsWith("/api/admin/", StringComparison.OrdinalIgnoreCase)) return false;
+
+        // ADİSYON ONAYI KAPIDAN GEÇER. Adisyonun geri kalanı (açma, kalem, tahsilat) muaftır:
+        // personel fişi serbestçe hazırlar. Ama ONAY parayı cariye ve kasaya işler — bu, yöneticinin
+        // kararıdır. Uç zaten Staff'a 403 dönüyordu; kapı devreye girmeyince satış "onaya gitti"
+        // sanılıp Onaylar sayfasında hiç görünmüyordu. Artık HttpReplay olarak kuyruğa alınır ve
+        // yönetici onaylayınca onun token'ıyla replay edilip gerçekten onaylanır.
+        if (IsAdisyonApprovePath(path)) return true;
+
         foreach (var prefix in ExemptPrefixes)
             if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
 
@@ -187,6 +207,8 @@ public sealed class StaffApprovalGateMiddleware
             var photoAction = method.ToUpperInvariant() == "DELETE" ? "silme" : "ekleme";
             return ($"İşlem fotoğrafı {photoAction}", $"{method} {path}");
         }
+        if (IsAdisyonApprovePath(path))
+            return ("Adisyon onayı — satışı cariye ve kasaya işler", $"{method} {path}");
         if (path.Contains("/consultation", StringComparison.OrdinalIgnoreCase))
             return ("Müşteri bilgi ve onay formu güncelleme", $"{method} {path}");
         if (path.Contains("/whatsapp/reminder", StringComparison.OrdinalIgnoreCase))
