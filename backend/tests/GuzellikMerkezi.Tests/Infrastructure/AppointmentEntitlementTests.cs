@@ -41,7 +41,7 @@ public sealed class AppointmentEntitlementTests
         // Bekleme listesi / bildirim yalnız iptal ve personel-atama yollarında kullanılır; bu
         // testler o yollara girmez (personele bağlı TenantUser yok → bildirim erken döner).
         return new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger(),
-            null!, new CapturingJobQueue(), null!, user, adisyon);
+            null!, new CapturingJobQueue(), null!, user, adisyon, null!);
     }
 
     private sealed record Seed(Guid TenantId, Guid BranchId, Guid CustomerId, Guid StaffId, Guid ServiceA, Guid ServiceB);

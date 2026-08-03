@@ -3,6 +3,7 @@ using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Adisyonlar;
 using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Appointments;
+using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Application.Features.WhatsApp;
@@ -24,9 +25,11 @@ public sealed class AppointmentService : IAppointmentService
     private readonly IAppNotificationService _notifications;
     private readonly ICurrentUser _currentUser;
     private readonly IAdisyonService _adisyon;
+    private readonly ICustomerAccountService _accounts;
 
-    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications, ICurrentUser currentUser, IAdisyonService adisyon)
+    public AppointmentService(GuzellikDbContext db, IUsageService usage, IAuditLogger audit, IWaitlistService waitlist, IDurableJobQueue jobs, IAppNotificationService notifications, ICurrentUser currentUser, IAdisyonService adisyon, ICustomerAccountService accounts)
     {
+        _accounts = accounts;
         _db = db;
         _usage = usage;
         _audit = audit;
@@ -402,14 +405,6 @@ public sealed class AppointmentService : IAppointmentService
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
 
-        // Sürükle-bırak farklı sütuna: hedef personel değişebilir. Çakışma hedef personele göre kontrol edilir.
-        var targetStaff = request.StaffMemberId ?? appointment.StaffMemberId;
-        var staffChanged = request.StaffMemberId.HasValue && request.StaffMemberId.Value != appointment.StaffMemberId;
-        if (staffChanged && !await IsStaffInScopeAsync(tenantId, targetStaff, staffTenantUserId, cancellationToken))
-        {
-            return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
-        }
-
         // KAPASİTE KİLİDİ (oluşturmayla aynı protokol): "kontrol et → kaydet" iki ayrı işlemdi,
         // iki randevu aynı personele aynı slota eşzamanlı taşınabiliyordu.
         // Kilit sırası customers → appointments → staff_members; UpdateAsync bu metodu status
@@ -421,7 +416,6 @@ public sealed class AppointmentService : IAppointmentService
         {
             await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
             await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
-            await RowLock.LockRowAsync(_db, "staff_members", targetStaff, cancellationToken);
             // KİLİT ALTINDA TAZE OKUMA (bkz. ChangeStatusAsync). Kilitten önceki okuma bayat
             // olabilir: araya giren bir tamamlama commit ettiyse, bu akış eski durumu yazıp
             // "Tamamlandı"yı eziyordu — üstelik Reschedule/ReturnToApproval korumaları da bayat
@@ -434,6 +428,20 @@ public sealed class AppointmentService : IAppointmentService
         // Taze durum üzerinden karar: tamamlanmış/iptal edilmiş randevu taşınamaz.
         if (appointment.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
             return Result<AppointmentDto>.Failure(Error.Validation("Bu randevu artık taşınamaz."));
+
+        // HEDEF PERSONEL KİLİTTEN SONRA HESAPLANIR. Eskiden bayat okumadan türetiliyordu: istek
+        // yalnız saat taşıyorsa (StaffMemberId yok) hedef, randevunun O ANKİ personeliydi; araya
+        // giren bir personel aktarımı commit ettiyse mesai + kapasite kontrolleri ESKİ personele
+        // uygulanıyor, üstelik staff_members kilidi de yanlış satıra alınıyordu.
+        var targetStaff = request.StaffMemberId ?? appointment.StaffMemberId;
+        var staffChanged = request.StaffMemberId.HasValue && request.StaffMemberId.Value != appointment.StaffMemberId;
+        if (staffChanged && !await IsStaffInScopeAsync(tenantId, targetStaff, staffTenantUserId, cancellationToken))
+        {
+            return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
+        }
+        // Kilit protokolünün son halkası: hedef personel artık kesin olarak biliniyor.
+        if (_db.Database.IsRelational())
+            await RowLock.LockRowAsync(_db, "staff_members", targetStaff, cancellationToken);
 
         // Kapalı gün/saat + mesai penceresi: randevu OLUŞTURMADA olduğu gibi TAŞIMADA da geçerli;
         // aksi hâlde sürükle-bırak "Gün Kapat" ile kapatılmış bir saate randevu sokabiliyordu.
@@ -520,6 +528,101 @@ public sealed class AppointmentService : IAppointmentService
 
         // Hiçbir alan gönderilmediyse mevcut hâli döndür (istemci "değişiklik yok" ile gelebilir).
         return last ?? await GetAsync(tenantId, id, cancellationToken, staffTenantUserId);
+    }
+
+    /// <summary>
+    /// Tamamlama + tahsilat TEK transaction. İki ayrı HTTP çağrısı yapıldığında ikincisi düşerse
+    /// "randevu tamamlandı, para alınmadı" durumu kalıcı oluyordu; idempotency anahtarı tekrarı
+    /// güvenli kılar ama atomikliği sağlamaz. Alt servisler açık transaction'ı görünce kendi
+    /// transaction'larını açmaz (AdisyonService savepoint kullanır), böylece hata tümünü geri alır.
+    /// </summary>
+    public async Task<Result<AppointmentDto>> CompleteWithPaymentAsync(Guid tenantId, Guid id, CompleteAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    {
+        var payment = request.Payment;
+        if (payment is not null && payment.Amount <= 0)
+            return Result<AppointmentDto>.Failure(Error.Validation("Tahsilat tutarı 0'dan büyük olmalı."));
+
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        // Kilit protokolü (customers → appointments) EN BAŞTA: alt çağrılar kendi kilitlerini
+        // aldığında sıra çağrı sırasına bağlı kalıp deadlock üretiyordu (bkz. UpdateAsync).
+        var customerId = await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Id == id)
+            .Select(a => (Guid?)a.CustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (customerId is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        if (relational)
+        {
+            await RowLock.LockRowAsync(_db, "customers", customerId.Value, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", id, cancellationToken);
+        }
+
+        var completed = await ChangeStatusAsync(tenantId, id,
+            new ChangeAppointmentStatusRequest(AppointmentStatus.Completed, request.Reason), cancellationToken, staffTenantUserId);
+        if (completed.IsFailure) return completed;
+
+        if (payment is not null)
+        {
+            var collected = await CollectOnCompleteAsync(tenantId, customerId.Value, payment, cancellationToken);
+            // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez.
+            if (collected.IsFailure) return Result<AppointmentDto>.Failure(collected.Error);
+        }
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+        return completed;
+    }
+
+    /// <summary>
+    /// Tahsilatı doğru deftere yazar: açık cari varsa oraya (vade sırasına dağıtılır), yoksa
+    /// müşterinin adisyonu üzerinden. Arayüzdeki hedef-seçme mantığı sunucuya taşındı ki
+    /// çok adımlı akış tek transaction'da kalabilsin.
+    /// </summary>
+    private async Task<Result> CollectOnCompleteAsync(Guid tenantId, Guid customerId, CompleteAppointmentPaymentDto payment, CancellationToken ct)
+    {
+        var occurredAt = payment.OccurredAtUtc ?? DateTime.UtcNow;
+        var reference = string.IsNullOrWhiteSpace(payment.Reference) ? "Randevu tahsilatı" : payment.Reference;
+
+        var accountId = payment.AccountId;
+        if (accountId is null)
+        {
+            // Borcu olan en eski cari (RemainingAmount hesaplanan alan → ödemelerle birlikte yüklenir).
+            var accounts = await _db.CustomerAccounts
+                .Include(a => a.Payments)
+                .Where(a => a.TenantId == tenantId && a.CustomerId == customerId && a.CancelledAtUtc == null)
+                .OrderBy(a => a.CreatedAtUtc)
+                .ToListAsync(ct);
+            accountId = accounts.FirstOrDefault(a => a.RemainingAmount > 0)?.Id;
+        }
+
+        if (accountId is { } target)
+        {
+            var paid = await _accounts.RegisterPaymentAsync(tenantId, target,
+                new RegisterAccountPaymentRequest(payment.Amount, payment.Method, reference, occurredAt), ct);
+            return paid.IsFailure ? Result.Failure(paid.Error) : Result.Success();
+        }
+
+        // Cari yok → adisyon defteri. Açık fiş varsa ona eklenir, yoksa yeni açılır.
+        var open = await _adisyon.GetOpenForCustomerAsync(tenantId, customerId, ct);
+        if (open.IsFailure) return Result.Failure(open.Error);
+
+        var adisyonId = open.Value?.Id;
+        if (adisyonId is null)
+        {
+            var created = await _adisyon.CreateAsync(tenantId,
+                new CreateAdisyonRequest(null, customerId, null, "Randevu tahsilatı"), ct);
+            if (created.IsFailure) return Result.Failure(created.Error);
+            adisyonId = created.Value!.Id;
+        }
+
+        var item = await _adisyon.AddItemAsync(tenantId, adisyonId.Value,
+            new AddAdisyonItemRequest(AdisyonItemType.Payment, null, reference, 1, payment.Amount, null, false, payment.Method), ct);
+        if (item.IsFailure) return Result.Failure(item.Error);
+
+        var approved = await _adisyon.ApproveAsync(tenantId, adisyonId.Value, ct);
+        return approved.IsFailure ? Result.Failure(approved.Error) : Result.Success();
     }
 
     public async Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)

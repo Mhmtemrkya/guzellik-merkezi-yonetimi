@@ -52,6 +52,15 @@ public static class AppointmentEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ChangeStatusAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
         });
 
+        // Tamamlama + tahsilat TEK işlem. Ekran eskiden iki ayrı çağrı yapıyordu; ikincisi
+        // düşünce "randevu tamamlandı, para alınmadı" durumu kalıcı oluyordu.
+        // Onay kapısı açısından /status ile aynı sınıftadır (randevu durum değişikliği).
+        group.MapPost("/{id:guid}/complete", async (Guid id, CompleteAppointmentRequest request, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CompleteWithPaymentAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
+        });
+
         // Taslak randevu onayı (Draft → aktif) — kurum yöneticisi.
         group.MapPost("/{id:guid}/approve", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {

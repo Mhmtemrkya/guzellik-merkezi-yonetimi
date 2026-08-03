@@ -12,7 +12,7 @@ import ConsentCenterModal from '@/components/dashboard/ConsentCenterModal'
 import { adminApi, consentApi } from '@/lib/apiClient'
 import { formatTL } from '@/lib/apiMappers'
 import { missingRequirements } from '@/lib/consent'
-import type { ApiConsentStatus, CustomerAccount } from '@/lib/types'
+import type { ApiConsentStatus } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Randevu "Tamamlandı" akışı — her yüzeyde (günlük kart, liste, onay kutusu) ortak.
@@ -135,65 +135,45 @@ export default function CompleteAppointmentDialog({
     onOpenChange(false)
   }
 
-  // Tahsilat hedefini çöz + kaydet (yöntem korunacak şekilde önce cari hesap).
-  //
-  // TEKRAR DENEMEDE ÇİFT TAHSİLAT KORUMASI: randevu tamamlama ile tahsilat İKİ ayrı istektir.
-  // Tamamlama başarılı olup tahsilat isteği ağda düşerse kullanıcı tekrar dener; tamamlama
-  // sunucuda idempotenttir (aynı duruma geçiş no-op), ama tahsilat değildi — aynı para ikinci
-  // kez yazılabiliyordu. Her yazma çağrısı, kullanıcının AYNI niyetini temsil eden kararlı bir
-  // Idempotency-Key taşır: sunucu ilk yanıtı aynen döndürür, iş ikinci kez yapılmaz.
-  // Çağrılara AYRI son ekler verilir; anahtar yola değil (kullanıcı + anahtar) çiftine bağlıdır,
-  // aynı anahtar farklı iki uçta kullanılırsa ikincisi birincinin yanıtını replay ederdi.
-  const collect = async (amt: number, mth: string): Promise<void> => {
-    const nowIso = new Date().toISOString()
-    const idem = `ap${appointmentId.replace(/-/g, '')}-${Math.round(amt * 100)}-${mth}`.slice(0, 52)
-    // 1) Yüzeyden gelen ya da müşteri adından bulunan cari hesap → yöntem korunur.
-    let targetAccountId = accountId || null
-    if (!targetAccountId && openAdisyon?.customerAccountId) targetAccountId = openAdisyon.customerAccountId
-    if (!targetAccountId && customerId) {
-      try {
-        const res = await adminApi.accounts<CustomerAccount>({ tenantId, search: customerName || '', page: 1, pageSize: 50 })
-        const items = (res as { items?: CustomerAccount[] })?.items || []
-        targetAccountId = items.find((a) => a.customerId === customerId)?.id || null
-      } catch {
-        // yoksay — adisyon yoluna düşülür
-      }
-    }
-    if (targetAccountId) {
-      await adminApi.registerAccountPayment(
-        targetAccountId,
-        { amount: amt, method: mth, reference: 'Randevu tahsilatı', occurredAtUtc: nowIso },
-        tenantId,
-        `${idem}-pay`,
-      )
-      return
-    }
-    // 2) Cari yok → açık adisyon (varsa) veya yeni adisyon üzerinden tahsilat + onay (ciroya işler).
-    if (!customerId) return
-    let adisyonId = openAdisyon?.id || null
-    if (!adisyonId) {
-      const created = await adminApi.createAdisyon<{ id?: string }>(
-        { customerId, customerAccountId: null, notes: 'Randevu tahsilatı' },
-        tenantId,
-        `${idem}-ads`,
-      )
-      adisyonId = created?.id || null
-    }
-    if (!adisyonId) throw new Error('Tahsilat için adisyon açılamadı.')
-    await adminApi.addAdisyonItem(
-      adisyonId,
-      { type: 'Payment', refId: null, description: 'Randevu tahsilatı', quantity: 1, unitPrice: amt, staffMemberId: null, coveredByPackage: false, method: mth },
+  /**
+   * TAMAMLAMA + TAHSİLAT TEK İSTEK.
+   *
+   * Eskiden iki ayrı çağrı yapılıyordu: önce "Tamamlandı", sonra tahsilat. İkincisi ağda düşerse
+   * randevu tamamlanmış (seans tüketilmiş) ama parası alınmamış hâlde kalıyordu — idempotency
+   * anahtarı tekrarı güvenli kılıyor, ATOMİKLİĞİ sağlamıyordu. Artık sunucu ikisini tek
+   * transaction'da uygular; tahsilat düşerse tamamlama da geri alınır.
+   *
+   * Hedef cari seçimi de sunucuya taşındı (accountId verilmezse borcu olan en eski cari, o da
+   * yoksa adisyon defteri). Buradan yalnız yüzeyden gelen accountId iletilir.
+   */
+  const completeAtomically = async (payment: { amount: number; method: string } | null): Promise<void> => {
+    const idem = payment
+      ? `apc${appointmentId.replace(/-/g, '')}-${Math.round(payment.amount * 100)}-${payment.method}`.slice(0, 52)
+      : `apc${appointmentId.replace(/-/g, '')}`.slice(0, 52)
+    await adminApi.completeAppointment(
+      appointmentId,
+      {
+        reason: null,
+        payment: payment
+          ? {
+              amount: payment.amount,
+              method: payment.method,
+              reference: 'Randevu tahsilatı',
+              accountId: accountId || openAdisyon?.customerAccountId || null,
+              occurredAtUtc: new Date().toISOString(),
+            }
+          : null,
+      },
       tenantId,
-      `${idem}-itm`,
+      idem,
     )
-    await adminApi.approveAdisyon(adisyonId, tenantId, `${idem}-apr`)
   }
 
   const completeWithoutPayment = async (): Promise<void> => {
     setSaving(true)
     setError('')
     try {
-      await adminApi.changeAppointmentStatus(appointmentId, { status: 'Completed', reason: null }, tenantId)
+      await completeAtomically(null)
       await finish()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Randevu tamamlanamadı.')
@@ -211,11 +191,11 @@ export default function CompleteAppointmentDialog({
     setSaving(true)
     setError('')
     try {
-      await adminApi.changeAppointmentStatus(appointmentId, { status: 'Completed', reason: null }, tenantId)
-      await collect(amt, method)
+      await completeAtomically({ amount: amt, method })
       await finish()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Randevu tamamlandı fakat tahsilat işlenemedi.')
+      // Tek transaction: hata varsa randevu da tamamlanmamıştır.
+      setError(e instanceof Error ? e.message : 'Randevu tamamlanamadı; tahsilat da işlenmedi.')
     } finally {
       setSaving(false)
     }

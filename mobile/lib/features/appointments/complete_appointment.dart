@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../../shared/json_helpers.dart';
 import '../consent/consent_center_sheet.dart';
 import '../consent/consent_models.dart';
 
@@ -41,8 +40,7 @@ Future<bool> runCompleteAppointment(
 
   if (choice == 'unpaid') {
     try {
-      await api.patch('/api/admin/appointments/$id/status',
-          {'status': 'Completed', 'reason': null});
+      await _completeAtomically(api, id, null, null);
       if (context.mounted) _snack(context, 'Randevu tamamlandı.');
       return true;
     } catch (e) {
@@ -68,20 +66,60 @@ Future<bool> runCompleteAppointment(
   final payment = await _askPayment(context, defaultAmount);
   if (payment == null) return false;
 
-  final customerName = '${appt['customerName'] ?? ''}';
+  // Cari hedefi biliniyorsa iletilir; bilinmiyorsa sunucu (borcu olan en eski cari →
+  // yoksa adisyon defteri) kendisi çözer.
+  String? accountId;
+  if (cid.isNotEmpty && cid.toLowerCase() != 'null') {
+    try {
+      final open = await api.get('/api/admin/adisyonlar/open/$cid');
+      if (open is Map &&
+          open['customerAccountId'] != null &&
+          '${open['customerAccountId']}' != 'null') {
+        accountId = '${open['customerAccountId']}';
+      }
+    } catch (_) {}
+  }
   try {
-    await api.patch('/api/admin/appointments/$id/status',
-        {'status': 'Completed', 'reason': null});
-    await _collect(api, id, cid, customerName, payment['amount'] as double,
-        payment['method'] as String);
+    await _completeAtomically(api, id, accountId, {
+      'amount': payment['amount'] as double,
+      'method': payment['method'] as String,
+    });
     if (context.mounted) _snack(context, 'Randevu tamamlandı, tahsilat işlendi.');
     return true;
   } catch (e) {
+    // TEK TRANSACTION: hata varsa randevu da tamamlanmamıştır (eskiden "tamamlandı ama
+    // tahsilat işlenmedi" durumu kalıcı oluyordu ve true dönülüyordu).
     if (context.mounted) {
-      _snack(context, 'Randevu tamamlandı fakat tahsilat işlenemedi: $e');
+      _snack(context, 'Randevu tamamlanamadı; tahsilat da işlenmedi: $e');
     }
-    return true; // randevu tamamlandı; çağıran yine de yenilesin
+    return false;
   }
+}
+
+/// TAMAMLAMA + TAHSİLAT TEK İSTEK (sunucuda tek transaction).
+///
+/// Eskiden önce `/status`, sonra tahsilat çağrılıyordu; ikincisi ağda düşerse randevu
+/// tamamlanmış (seans tüketilmiş) ama parası alınmamış hâlde kalıyordu. Idempotency anahtarı
+/// tekrarı güvenli kılar, ATOMİKLİĞİ sağlamaz — sunucu artık ikisini birlikte uygular.
+Future<void> _completeAtomically(ApiClient api, String appointmentId,
+    String? accountId, Map<String, dynamic>? payment) async {
+  final base = payment == null
+      ? 'apc${appointmentId.replaceAll('-', '')}'
+      : 'apc${appointmentId.replaceAll('-', '')}'
+          '-${((payment['amount'] as double) * 100).round()}-${payment['method']}';
+  final idem = base.length > 52 ? base.substring(0, 52) : base;
+  await api.post('/api/admin/appointments/$appointmentId/complete', {
+    'reason': null,
+    'payment': payment == null
+        ? null
+        : {
+            'amount': payment['amount'],
+            'method': payment['method'],
+            'reference': 'Randevu tahsilatı',
+            'accountId': accountId,
+            'occurredAtUtc': DateTime.now().toUtc().toIso8601String(),
+          },
+  }, idem);
 }
 
 /// Eksik onam formu varsa uyarı gösterir. Devam edilecekse true döner.
@@ -226,73 +264,4 @@ Future<Map<String, dynamic>?> _askPayment(
   );
 }
 
-/// Tahsilatı işle: önce cari hesap (yöntem korunur), yoksa adisyon üzerinden ciroya.
-///
-/// TEKRAR DENEMEDE ÇİFT TAHSİLAT KORUMASI: randevu tamamlama ile tahsilat İKİ ayrı istektir.
-/// Tamamlama başarılı olup tahsilat isteği ağda düşerse kullanıcı tekrar dener; tamamlama
-/// sunucuda idempotenttir (aynı duruma geçiş no-op), tahsilat ise değildi — aynı para ikinci
-/// kez yazılabiliyordu. Her yazma çağrısı, kullanıcının AYNI niyetini temsil eden kararlı bir
-/// Idempotency-Key taşır; çağrılara farklı son ekler verilir (anahtar yola değil kullanıcı +
-/// anahtar çiftine bağlıdır, aynısı kullanılırsa ikinci çağrı birincinin yanıtını replay eder).
-Future<void> _collect(ApiClient api, String appointmentId, String customerId,
-    String customerName, double amount, String method) async {
-  final nowIso = DateTime.now().toUtc().toIso8601String();
-  final base = 'ap${appointmentId.replaceAll('-', '')}'
-      '-${(amount * 100).round()}-$method';
-  final idem = base.length > 52 ? base.substring(0, 52) : base;
-  String? accountId;
-  try {
-    final open = await api.get('/api/admin/adisyonlar/open/$customerId');
-    if (open is Map &&
-        open['customerAccountId'] != null &&
-        '${open['customerAccountId']}' != 'null') {
-      accountId = '${open['customerAccountId']}';
-    }
-  } catch (_) {}
-  if (accountId == null && customerId.isNotEmpty) {
-    try {
-      final res = await api.get('/api/admin/accounts/',
-          query: {'search': customerName, 'page': 1, 'pageSize': 50});
-      final items = apiItems(res);
-      final match = items.firstWhere(
-          (a) => '${a['customerId']}' == customerId,
-          orElse: () => const {});
-      if (match.isNotEmpty) accountId = '${match['id']}';
-    } catch (_) {}
-  }
-  if (accountId != null && accountId.isNotEmpty && accountId != 'null') {
-    await api.post('/api/admin/accounts/$accountId/payments', {
-      'amount': amount,
-      'method': method,
-      'reference': 'Randevu tahsilatı',
-      'occurredAtUtc': nowIso,
-    }, '$idem-pay');
-    return;
-  }
-  if (customerId.isEmpty) return;
-  String? adisyonId;
-  try {
-    final open = await api.get('/api/admin/adisyonlar/open/$customerId');
-    if (open is Map && open['id'] != null) adisyonId = '${open['id']}';
-  } catch (_) {}
-  if (adisyonId == null || adisyonId.isEmpty || adisyonId == 'null') {
-    final created = await api.post('/api/admin/adisyonlar/', {
-      'customerId': customerId,
-      'customerAccountId': null,
-      'notes': 'Randevu tahsilatı',
-    }, '$idem-ads');
-    adisyonId = created is Map ? '${created['id']}' : null;
-  }
-  if (adisyonId == null || adisyonId.isEmpty || adisyonId == 'null') return;
-  await api.post('/api/admin/adisyonlar/$adisyonId/items', {
-    'type': 'Payment',
-    'refId': null,
-    'description': 'Randevu tahsilatı',
-    'quantity': 1,
-    'unitPrice': amount,
-    'staffMemberId': null,
-    'coveredByPackage': false,
-    'method': method,
-  }, '$idem-itm');
-  await api.post('/api/admin/adisyonlar/$adisyonId/approve', {}, '$idem-apr');
-}
+

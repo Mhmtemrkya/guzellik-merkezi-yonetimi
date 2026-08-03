@@ -28,6 +28,26 @@ public sealed record CreateAppointmentRequest(Guid BranchId, Guid CustomerId, Gu
 /// <summary>Sürükle-bırak taşıma: yeni zaman + (opsiyonel) yeni personel (farklı sütuna bırakınca).</summary>
 public sealed record RescheduleAppointmentRequest(DateTime StartUtc, DateTime EndUtc, Guid? StaffMemberId = null);
 public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, string? Reason);
+
+/// <summary>
+/// Randevuyu tamamlar ve (verilirse) tahsilatı AYNI TRANSACTION'DA alır.
+///
+/// Ekran eskiden iki ayrı HTTP çağrısı yapıyordu: önce "Tamamlandı", sonra tahsilat. İkinci çağrı
+/// düşerse randevu tamamlanmış (seans tüketilmiş) ama parası alınmamış hâlde kalıyordu ve
+/// idempotency anahtarı bunu çözmüyordu — tekrar denemeyi güvenli kılıyor, atomikliği sağlamıyordu.
+/// </summary>
+public sealed record CompleteAppointmentRequest(string? Reason, CompleteAppointmentPaymentDto? Payment);
+
+/// <summary>
+/// Randevu tamamlanırken alınacak tahsilat. <paramref name="AccountId"/> verilmezse müşterinin
+/// borcu olan en eski carisi seçilir; cari yoksa açık adisyon üzerinden tahsil edilir.
+/// </summary>
+public sealed record CompleteAppointmentPaymentDto(
+    decimal Amount,
+    string? Method,
+    string? Reference,
+    Guid? AccountId,
+    DateTime? OccurredAtUtc);
 public sealed record ChangeAppointmentNotesRequest(string? Notes);
 
 /// <summary>

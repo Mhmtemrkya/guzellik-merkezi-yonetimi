@@ -3,6 +3,7 @@ using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Adisyonlar;
 using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Appointments;
+using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -96,7 +97,8 @@ public sealed class AppointmentServiceAuthorizationTests
             Substitute.For<IDurableJobQueue>(),
             Substitute.For<IAppNotificationService>(),
             new TestCurrentUser(),
-            Substitute.For<IAdisyonService>());
+            Substitute.For<IAdisyonService>(),
+            Substitute.For<ICustomerAccountService>());
 
     private static async Task<AppointmentAuthorizationFixture> SeedTwoStaffAppointmentsAsync()
     {

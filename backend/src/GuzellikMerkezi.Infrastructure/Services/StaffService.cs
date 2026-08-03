@@ -188,10 +188,17 @@ public sealed class StaffService : IStaffService
             var tu = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == staff.TenantUserId.Value, cancellationToken);
             if (tu is not null)
             {
+                // YETKİ DEĞİŞİMİ OTURUMU DÜŞÜRMELİ: izinler JWT'de "permission" claim'i olarak
+                // taşınıyor. Yetki DARALTILDIĞINDA eldeki access token eski (geniş) izinlerle
+                // token ömrü boyunca çalışmaya devam ediyordu. Değişiklik yoksa personel boş yere
+                // çıkarılmasın diye önce karşılaştırılır.
+                var permissionsChanged = !PermissionSetEquals(tu.Permissions, request.Permissions);
                 tu.SetPermissions(request.Permissions);
                 if (request.IsActive)
                 {
                     tu.Enable();
+                    if (permissionsChanged)
+                        await SessionRevocation.RevokeAllAsync(_db, tu.Id, DateTime.UtcNow, cancellationToken);
                 }
                 else
                 {
@@ -252,12 +259,11 @@ public sealed class StaffService : IStaffService
         var tempPassword = GenerateTempPassword();
         user.SetTemporaryPassword(_passwordHasher.Hash(tempPassword)); // MustChangePassword=true
 
-        // Aktif oturumları düşür: tüm geçerli refresh token'lar iptal edilir.
+        // Aktif oturumları düşür. YALNIZ refresh token iptali YETMİYORDU: eldeki access token
+        // oturum damgası ileri alınmadığı için ömrü (60 dk) boyunca çalışmaya devam ediyordu.
+        // Ortak primitif her ikisini de yapar (damga + refresh token).
         var now = DateTime.UtcNow;
-        var tokens = await _db.RefreshTokens
-            .Where(t => t.TenantUserId == user.Id && t.RevokedAtUtc == null && t.ExpiresAtUtc > now)
-            .ToListAsync(cancellationToken);
-        foreach (var token in tokens) token.Revoke(now);
+        await SessionRevocation.RevokeAllAsync(_db, user.Id, now, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, staff.BranchId, "ResetPassword", "Staff", staff.Id,
@@ -290,7 +296,13 @@ public sealed class StaffService : IStaffService
         if (staff.TenantUserId.HasValue)
         {
             var tu = await _db.TenantUsers.FirstOrDefaultAsync(u => u.Id == staff.TenantUserId.Value, cancellationToken);
-            if (tu is not null) tu.ChangeScope(tu.Role, branchId);
+            if (tu is not null)
+            {
+                tu.ChangeScope(tu.Role, branchId);
+                // ŞUBE DE JWT'de ("branch_id"): oturum düşürülmezse personel eski şubenin
+                // kapsamıyla token ömrü boyunca çalışmayı sürdürür.
+                await SessionRevocation.RevokeAllAsync(_db, tu.Id, DateTime.UtcNow, cancellationToken);
+            }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -339,6 +351,19 @@ public sealed class StaffService : IStaffService
     {
         if (string.IsNullOrWhiteSpace(csv)) return Array.Empty<string>();
         return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    /// <summary>
+    /// İzin kümesi gerçekten değişti mi? Sıra ve harf büyüklüğü fark etmez — profil düzenlemesi
+    /// sırasında aynı izinler yeniden gönderilince personel boş yere oturumdan atılmasın.
+    /// </summary>
+    private static bool PermissionSetEquals(string? currentCsv, IEnumerable<string>? requested)
+    {
+        var current = new HashSet<string>(ParsePermissions(currentCsv), StringComparer.OrdinalIgnoreCase);
+        var next = new HashSet<string>(
+            (requested ?? Array.Empty<string>()).Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+        return current.SetEquals(next);
     }
 
     private static string GenerateEmail(string fullName, string tenantSlug)

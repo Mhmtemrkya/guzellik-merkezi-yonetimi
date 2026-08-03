@@ -31,7 +31,7 @@ public sealed class AppointmentConcurrencyMySqlTests
         var adisyon = new AdisyonService(db, new NoopAuditLogger(), user,
             new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
         return new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger(),
-            null!, new CapturingJobQueue(), null!, user, adisyon);
+            null!, new CapturingJobQueue(), null!, user, adisyon, null!);
     }
 
     private sealed record Seed(Guid TenantId, Guid AppointmentId, Guid SessionId, Guid SecondSessionId);

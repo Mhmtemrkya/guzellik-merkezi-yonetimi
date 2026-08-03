@@ -14,6 +14,12 @@ public interface IAppointmentService
     /// </param>
     Task<Result<AppointmentDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null, bool returnToApproval = false);
     Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
+
+    /// <summary>
+    /// Randevuyu "Tamamlandı" yapar ve tahsilatı TEK transaction'da alır (biri düşerse ikisi de
+    /// uygulanmaz). Tahsilat verilmezse yalnız durum değişir.
+    /// </summary>
+    Task<Result<AppointmentDto>> CompleteWithPaymentAsync(Guid tenantId, Guid id, CompleteAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
     /// <summary>Kurum yöneticisi taslak randevuyu onaylar (Draft → Scheduled). Personel çağıramaz.</summary>
     Task<Result<AppointmentDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
     /// <summary>Kurum yöneticisi aksiyon kutusu: saati gelmiş randevular + onay bekleyen taslaklar.</summary>

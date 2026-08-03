@@ -114,7 +114,7 @@ public sealed class LoginScopeAndEntitlementTests
             var adisyonService = new AdisyonService(db, new NoopAuditLogger(), user,
                 new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
             var service = new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger(),
-                null!, new CapturingJobQueue(), null!, user, adisyonService);
+                null!, new CapturingJobQueue(), null!, user, adisyonService, null!);
 
             var start = DateTime.UtcNow.AddHours(2);
             var result = await service.CreateAsync(tenantId,
