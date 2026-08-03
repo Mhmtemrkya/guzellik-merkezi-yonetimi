@@ -35,6 +35,11 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   DateTime _selectedDate = DateUtils.dateOnly(DateTime.now());
   String? _selectedStaffId; // null => Tümü
   bool _showCancelled = true;
+
+  /// ODAK MODU — gün/personel şeritleri gizlenir, takvim tüm ekranı alır.
+  /// Küçük telefonlarda üst krom (başlık + sekmeler + gün şeridi + personel şeridi +
+  /// araç satırı) ekranın yarısını yiyordu; saatlik ızgaraya bir-iki satır kalıyordu.
+  bool _focusMode = false;
   late Future<_DayData> _future;
   _DayData? _lastData;
 
@@ -269,6 +274,14 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       drawer: _NavDrawer(auth: widget.auth),
+      // TAM GENİŞLİK BUTON YERİNE FAB: eski buton takvimden kalıcı olarak ~66px çalıyordu.
+      // Kayan buton takvimin ÜSTÜNDE durur; alan kaybı yok, erişim aynı.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreate,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Yeni Randevu',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -278,49 +291,35 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               onAdisyon: _openCustomerAdisyon,
               // Kurum geneli randevu takvim aboneliği yalnızca yöneticide (personel hariç).
               onCalendarLink: (widget.auth.user?.isStaff ?? false) ? null : _calendarLink,
+              // Tam ekran takvim: gün/personel şeritlerini gizler (yalnız gün görünümünde).
+              onToggleFocus: _view == _CalView.day
+                  ? () => setState(() => _focusMode = !_focusMode)
+                  : null,
+              focusMode: _focusMode,
             ),
             _ViewTabs(value: _view, onChanged: _setView),
             if (_view == _CalView.day) ...[
-              _WeekStrip(selected: _selectedDate, onSelect: _selectDate),
-              FutureBuilder<_DayData>(
-                future: _future,
-                builder: (context, snapshot) {
-                  final staff = snapshot.data?.staff ?? const [];
-                  return _StaffStrip(
-                    staff: staff,
-                    selectedId: _selectedStaffId,
-                    onSelect: (id) => setState(() => _selectedStaffId = id),
-                  );
-                },
-              ),
-              const _Legend(),
-              // Gün Kapat — personel + saat aralığı seçip günü randevuya kapatır (yalnız yönetici).
-              if (!(widget.auth.user?.isStaff ?? false))
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: OutlinedButton.icon(
-                      onPressed: _openCloseHours,
-                      icon: const Icon(Icons.lock_clock_rounded, size: 16),
-                      label: const Text('Gün Kapat'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        side: const BorderSide(color: Color(0xFFE0B6C7)),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        visualDensity: VisualDensity.compact,
-                        shape: const StadiumBorder(),
-                        textStyle: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
+              // ODAK MODU: şeritler gizlenir, takvim neredeyse tüm ekranı alır.
+              if (!_focusMode) ...[
+                _WeekStrip(selected: _selectedDate, onSelect: _selectDate),
+                FutureBuilder<_DayData>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    final staff = snapshot.data?.staff ?? const [];
+                    return _StaffStrip(
+                      staff: staff,
+                      selectedId: _selectedStaffId,
+                      onSelect: (id) => setState(() => _selectedStaffId = id),
+                    );
+                  },
                 ),
+              ],
+              // Renk anahtarı + "Gün Kapat" TEK SATIRDA. Eskiden iki ayrı satırdı
+              // (~70px); takvimin küçük kalmasının başlıca sebeplerinden biriydi.
+              _ToolRow(
+                onCloseHours:
+                    (widget.auth.user?.isStaff ?? false) ? null : _openCloseHours,
+              ),
             ] else
               _PeriodNav(
                 label: _periodLabel(),
@@ -391,7 +390,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                     : _filteredAppointments(snapshot.data!),
               ),
             ),
-            _CreateButton(onTap: _openCreate),
           ],
         ),
       ),
@@ -590,15 +588,24 @@ class _DayData {
 // Header
 // ---------------------------------------------------------------------------
 class _Header extends StatelessWidget {
-  const _Header({required this.onFilter, this.onCalendarLink, this.onAdisyon});
+  const _Header({
+    required this.onFilter,
+    this.onCalendarLink,
+    this.onAdisyon,
+    this.onToggleFocus,
+    this.focusMode = false,
+  });
   final VoidCallback onFilter;
   final VoidCallback? onCalendarLink;
   final VoidCallback? onAdisyon;
+  final VoidCallback? onToggleFocus;
+  final bool focusMode;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      // Başlık yüksekliği düşürüldü (10/8 → 6/4): kazanılan her piksel takvime gidiyor.
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
       child: Row(
         children: [
           _SquareButton(
@@ -609,17 +616,29 @@ class _Header extends StatelessWidget {
             child: Center(
               child: Text(
                 'Randevular',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
             ),
           ),
+          if (onToggleFocus != null) ...[
+            _SquareButton(
+              icon: focusMode
+                  ? Icons.fullscreen_exit_rounded
+                  : Icons.fullscreen_rounded,
+              tint: true,
+              active: focusMode,
+              tooltip: focusMode ? 'Şeritleri göster' : 'Takvimi büyüt',
+              onTap: onToggleFocus!,
+            ),
+            const SizedBox(width: 6),
+          ],
           if (onAdisyon != null) ...[
             _SquareButton(icon: Icons.receipt_long_rounded, tint: true, onTap: onAdisyon!),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
           if (onCalendarLink != null) ...[
             _SquareButton(icon: Icons.event_available_rounded, tint: true, onTap: onCalendarLink!),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
           _SquareButton(
             icon: Icons.calendar_month_rounded,
@@ -636,7 +655,7 @@ class _Header extends StatelessWidget {
               if (picked != null) state?._selectDate(picked);
             },
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           _SquareButton(icon: Icons.tune_rounded, tint: true, onTap: onFilter),
         ],
       ),
@@ -645,31 +664,97 @@ class _Header extends StatelessWidget {
 }
 
 class _SquareButton extends StatelessWidget {
-  const _SquareButton({required this.icon, required this.onTap, this.tint = false});
+  const _SquareButton({
+    required this.icon,
+    required this.onTap,
+    this.tint = false,
+    this.active = false,
+    this.tooltip,
+  });
   final IconData icon;
   final VoidCallback onTap;
   final bool tint;
+  final bool active;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: tint ? AppColors.surfaceSoft : Colors.white,
+    final button = Material(
+      color: active
+          ? AppColors.primary
+          : (tint ? AppColors.surfaceSoft : Colors.white),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: AppColors.border),
+        borderRadius: BorderRadius.circular(13),
+        side: BorderSide(color: active ? AppColors.primary : AppColors.border),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(13),
         onTap: onTap,
         child: SizedBox(
-          width: 46,
-          height: 46,
+          width: 40,
+          height: 40,
           child: Icon(
             icon,
-            size: 22,
-            color: tint ? AppColors.primary : AppColors.ink,
+            size: 20,
+            color: active
+                ? Colors.white
+                : (tint ? AppColors.primary : AppColors.ink),
           ),
         ),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
+/// Renk anahtarı + "Gün Kapat" TEK SATIRDA.
+///
+/// Eskiden ikisi ayrı satırdaydı (legend ~30px + buton ~40px = ~70px). Küçük telefonlarda
+/// saatlik ızgaraya iki satır kalmasının başlıca sebeplerindendi. Anahtar artık yatay
+/// kaydırmalı; dar ekranda taşma yerine kayar.
+class _ToolRow extends StatelessWidget {
+  const _ToolRow({this.onCloseHours});
+  final VoidCallback? onCloseHours;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 2, 12, 4),
+      child: Row(
+        children: [
+          const Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _LegendDot(color: Color(0xFF3CCB6E), label: 'Dolu'),
+                  SizedBox(width: 12),
+                  _LegendDot(color: Color(0xFF4A86E8), label: 'Boş'),
+                  SizedBox(width: 12),
+                  _LegendDot(color: Color(0xFFF5A623), label: 'İzinli'),
+                  SizedBox(width: 12),
+                  _LegendDot(color: Color(0xFFBFC3C9), label: 'Müsait değil'),
+                ],
+              ),
+            ),
+          ),
+          if (onCloseHours != null)
+            TextButton.icon(
+              onPressed: onCloseHours,
+              icon: const Icon(Icons.lock_clock_rounded, size: 15),
+              label: const Text('Gün Kapat'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1353,10 +1438,11 @@ class _StaffStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 92,
+      // 92 → 72: avatarlar küçüldü (58 → 44), kazanılan 20px takvime gitti.
+      height: 72,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         children: [
           _AllChip(selected: selectedId == null, onTap: () => onSelect(null)),
           for (final s in staff)
@@ -1381,27 +1467,28 @@ class _AllChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Column(
           children: [
             Container(
-              width: 58,
-              height: 58,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: selected ? AppColors.rose : AppColors.surfaceSoft,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: selected ? AppColors.primary : AppColors.border,
                   width: selected ? 1.6 : 1,
                 ),
               ),
-              child: const Icon(Icons.groups_rounded, color: AppColors.primary),
+              child: const Icon(Icons.groups_rounded,
+                  size: 20, color: AppColors.primary),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               'Tümü',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: selected ? AppColors.primaryDark : AppColors.muted,
               ),
@@ -1440,14 +1527,14 @@ class _StaffAvatar extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Column(
           children: [
             Stack(
               children: [
                 Container(
-                  width: 58,
-                  height: 58,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -1468,11 +1555,11 @@ class _StaffAvatar extends StatelessWidget {
                 ),
                 if (active)
                   Positioned(
-                    right: 2,
-                    bottom: 2,
+                    right: 0,
+                    bottom: 0,
                     child: Container(
-                      width: 14,
-                      height: 14,
+                      width: 12,
+                      height: 12,
                       decoration: BoxDecoration(
                         color: const Color(0xFF3CCB6E),
                         shape: BoxShape.circle,
@@ -1482,16 +1569,16 @@ class _StaffAvatar extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             SizedBox(
-              width: 64,
+              width: 56,
               child: Text(
                 short,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: selected ? AppColors.primaryDark : AppColors.muted,
                 ),
@@ -1525,26 +1612,8 @@ class _InitialsCircle extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Legend
 // ---------------------------------------------------------------------------
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: const [
-          _LegendDot(color: Color(0xFF3CCB6E), label: 'Dolu'),
-          _LegendDot(color: Color(0xFF4A86E8), label: 'Boş'),
-          _LegendDot(color: Color(0xFFF5A623), label: 'İzinli'),
-          _LegendDot(color: Color(0xFFBFC3C9), label: 'Müsait değil'),
-        ],
-      ),
-    );
-  }
-}
-
+// NOT: eski tek başına duran `_Legend` satırı kaldırıldı; anahtar artık `_ToolRow`
+// içinde "Gün Kapat" ile aynı satırda (takvime ~30px kazandırdı).
 class _LegendDot extends StatelessWidget {
   const _LegendDot({required this.color, required this.label});
   final Color color;
@@ -1981,81 +2050,44 @@ class _StatsBar extends StatelessWidget {
     final done = countOf(['completed']);
     final waiting = countOf(['scheduled', 'confirmed', 'draft']);
     final cancelled = countOf(['cancelled', 'noshow']);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-      child: Row(
-        children: [
-          _StatCard(
-            icon: Icons.calendar_today_rounded,
-            color: AppColors.primary,
-            value: '$total',
-            label: 'Toplam Randevu',
-          ),
-          _StatCard(
-            icon: Icons.check_circle_rounded,
-            color: const Color(0xFF3CCB6E),
-            value: '$done',
-            label: 'Tamamlanan',
-          ),
-          _StatCard(
-            icon: Icons.schedule_rounded,
-            color: const Color(0xFF4A86E8),
-            value: '$waiting',
-            label: 'Bekleyen',
-          ),
-          _StatCard(
-            icon: Icons.cancel_rounded,
-            color: const Color(0xFFF5A623),
-            value: '$cancelled',
-            label: 'İptal Edilen',
-          ),
-        ],
+    // TEK SATIR ÖZET. Eskiden dört ayrı kart (ikon + rakam + etiket, ~90px) vardı ve
+    // ekranın dibinde takvimden yer çalıyordu. Aynı dört sayı burada tek satırda,
+    // FAB'ın altında kalmayacak biçimde sağda boşluk bırakılarak veriliyor.
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 7, 14, 9),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
       ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.color,
-    required this.value,
-    required this.label,
-  });
-  final IconData icon;
-  final Color color;
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
           children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+            _StatPill(
+              color: AppColors.primary,
+              value: total,
+              label: 'randevu',
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, color: AppColors.muted),
+            const SizedBox(width: 14),
+            _StatPill(
+              color: const Color(0xFF3CCB6E),
+              value: done,
+              label: 'tamamlandı',
             ),
+            const SizedBox(width: 14),
+            _StatPill(
+              color: const Color(0xFF4A86E8),
+              value: waiting,
+              label: 'bekleyen',
+            ),
+            const SizedBox(width: 14),
+            _StatPill(
+              color: const Color(0xFFF5A623),
+              value: cancelled,
+              label: 'iptal',
+            ),
+            // FAB genişliği kadar boşluk: son rakam kayan butonun altında kalmasın.
+            const SizedBox(width: 170),
           ],
         ),
       ),
@@ -2063,30 +2095,42 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _CreateButton extends StatelessWidget {
-  const _CreateButton({required this.onTap});
-  final VoidCallback onTap;
+class _StatPill extends StatelessWidget {
+  const _StatPill({
+    required this.color,
+    required this.value,
+    required this.label,
+  });
+  final Color color;
+  final int value;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
-      child: SizedBox(
-        height: 54,
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: onTap,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text(
-            'Yeni Randevu Oluştur',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-      ),
+        const SizedBox(width: 6),
+        Text(
+          '$value',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+      ],
     );
   }
 }
 
+// NOT: tam genişlik "Yeni Randevu Oluştur" butonu kaldırıldı; yerini Scaffold'un
+// FloatingActionButton'ı aldı (takvimden kalıcı olarak ~66px çalmıyor).
 class _ErrorBox extends StatelessWidget {
   const _ErrorBox({required this.message, required this.onRetry});
   final String message;

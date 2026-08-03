@@ -86,6 +86,20 @@ class NotificationService {
     }
   }
 
+  /// Bildirimler ŞU AN açık mı? (sistem ayarındaki gerçek durum)
+  ///
+  /// Kullanıcı izni sonradan sistem ayarlarından kapatabilir; uygulama içi bir bayrak
+  /// bunu göremez. Ayarlar ekranı bu değerle gerçek durumu gösterir.
+  /// iOS'ta eklenti karşılığını sunmadığından `null` döner = "bilinmiyor".
+  Future<bool?> areEnabled() async {
+    try {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android != null) return await android.areNotificationsEnabled();
+    } catch (_) {}
+    return null;
+  }
+
   /// Android 13+ bildirim izni + tam alarm izni ister. Reddedilse bile uygulama çalışmaya devam eder.
   Future<bool> requestPermissions() async {
     final android = _plugin

@@ -8,6 +8,8 @@ import '../../core/notifications/notification_center.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
+import '../../core/notifications/notification_service.dart';
+import '../notifications/notification_settings_sheet.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({required this.auth, required this.notifications, super.key});
@@ -404,6 +406,13 @@ class _MoreScreenState extends State<MoreScreen> {
                   ),
                 ),
               ],
+              // BİLDİRİM AYARI — modül ızgarasının DIŞINDA, arama süzgecinden bağımsız.
+              // Bildirim izni sistemde yalnız bir kez sorulur; kullanıcı reddettiyse
+              // ya da sonradan kapattıysa uygulama içinden açabileceği tek yer burası.
+              if (_query.trim().isEmpty) ...[
+                const SizedBox(height: 14),
+                _NotificationTile(onTap: () => showNotificationSettings(context)),
+              ],
               const SizedBox(height: 14),
               for (final (title, items) in groups) ...[
                 Row(
@@ -545,6 +554,138 @@ class _ModuleIcon extends StatelessWidget {
         ),
         backgroundColor: const Color(0xFFB3261E),
         child: box,
+      ),
+    );
+  }
+}
+
+/// Menüdeki "Bildirimler" satırı — gerçek izin durumunu gösterir ve ayar sayfasını açar.
+///
+/// Modül ızgarasına konmadı: ızgara rota tabanlı (`_Module`) ve yetkiye göre süzülüyor;
+/// bildirim ayarı ise rota değil ve HER kullanıcıya açık olmalı.
+class _NotificationTile extends StatefulWidget {
+  const _NotificationTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  State<_NotificationTile> createState() => _NotificationTileState();
+}
+
+class _NotificationTileState extends State<_NotificationTile>
+    with WidgetsBindingObserver {
+  bool? _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Sistem ayarlarından dönünce rozet gerçek durumu göstersin.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final value = await NotificationService.instance.areEnabled();
+    if (mounted) setState(() => _enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final off = _enabled == false;
+    return Material(
+      color: off ? const Color(0xFFFFF4F4) : AppColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () async {
+          widget.onTap();
+          // Sayfa kapanınca durum değişmiş olabilir.
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          await _refresh();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: off ? const Color(0xFFF0BDBD) : const Color(0xFFF2E0E7),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: off ? const Color(0xFFFBE2E2) : AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  off
+                      ? Icons.notifications_off_rounded
+                      : Icons.notifications_active_rounded,
+                  size: 21,
+                  color: off ? const Color(0xFFD24B4B) : AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Bildirim ayarları',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      off
+                          ? 'Kapalı — randevu ve onay bildirimleri size ulaşmıyor'
+                          : (_enabled == true
+                              ? 'Açık — randevu, onay ve hatırlatmalar geliyor'
+                              : 'Bildirimleri aç ve neyin bildirileceğini seç'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.3,
+                        color: off ? const Color(0xFFB03A3A) : AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (off)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD24B4B),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Aç',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+              else
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFFB1798E)),
+            ],
+          ),
+        ),
       ),
     );
   }

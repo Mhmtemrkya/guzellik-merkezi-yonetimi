@@ -584,6 +584,76 @@ class _AppointmentFormState extends State<AppointmentForm> {
   static String _money(double v) =>
       NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(v);
 
+  /// MÜŞTERİNİN SATIN ALDIĞI PAKET / HİZMETLER — kalan seansıyla, tek dokunuşla seçilir.
+  ///
+  /// Aynı hizmet birden çok paketten gelebilir (iki ayrı satış), bu yüzden hizmet bazında
+  /// toplanır. Seansı biten hizmet listelenmez: seçilse randevu ÜCRETLİ açılırdı ve
+  /// "paketten düşecek" beklentisini boşa çıkarırdı — o durumda katalog dropdown'ı doğru yer.
+  Widget _purchasedPicker() {
+    final byService = <String, Map<String, dynamic>>{};
+    for (final s in _sessions) {
+      final id = '${s['serviceDefinitionId']}';
+      final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
+      if (id.isEmpty || id == 'null' || remaining <= 0) continue;
+      final e = byService[id];
+      if (e == null) {
+        byService[id] = {
+          'name': '${s['serviceName'] ?? 'Hizmet'}',
+          'remaining': remaining,
+          'total': (s['totalSessions'] as num?)?.toInt() ?? 0,
+        };
+      } else {
+        e['remaining'] = (e['remaining'] as int) + remaining;
+        e['total'] = (e['total'] as int) + ((s['totalSessions'] as num?)?.toInt() ?? 0);
+      }
+    }
+    if (byService.isEmpty) return const SizedBox.shrink();
+
+    final entries = byService.entries.toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.confirmation_number_rounded,
+                size: 15, color: Color(0xFF8E3F5B)),
+            const SizedBox(width: 6),
+            const Text('Satın aldığı paket / hizmetler',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 6),
+            Text('(${entries.length})',
+                style: const TextStyle(fontSize: 11.5, color: Color(0xFF7A6672))),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final e in entries)
+              _PurchasedChip(
+                name: '${e.value['name']}',
+                remaining: e.value['remaining'] as int,
+                total: e.value['total'] as int,
+                selected: serviceId == e.key,
+                onTap: () => setState(() {
+                  serviceId = e.key;
+                  // Katalog satışı bu hizmet için gereksiz: seansı zaten var.
+                  _sellFromCatalog = false;
+                  // Hizmet değişince kategori yetkisi olmayan personel seçili kalmasın.
+                  if (staffId != null &&
+                      !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
+                    staffId = null;
+                  }
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   /// Para durumu + satışlar (kim sattı) + seans dökümü + son tahsilatlar.
   Widget _customerDossier() {
     // Hizmet bazında seans dökümü: yapılan / toplam.
@@ -915,6 +985,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // MÜŞTERİNİN SATIN ALDIKLARI — tek dokunuşla hizmet seçimi.
+                // Katalog dropdown'ı tüm hizmetleri listeliyor; kullanıcı "bu müşteri
+                // hangi paketi almıştı, hangi seansı kalmıştı" diye dosyaya bakıp
+                // dropdown'da aynı adı elle aramak zorundaydı. Burada müşterinin
+                // KALAN SEANSLI hizmetleri doğrudan seçilebilir.
+                if (customerId != null) _purchasedPicker(),
                 _select(
                   label: 'Hizmet',
                   value: serviceId,
@@ -1112,4 +1188,71 @@ class _AppointmentFormState extends State<AppointmentForm> {
             .toList(),
         onChanged: onChanged,
       );
+}
+
+/// "Satın aldığı paket / hizmetler" seçim çipi — ad + kalan/toplam seans.
+///
+/// Kalan seans sayısı çipin üstünde durur: kullanıcı dosyaya inip saymak zorunda
+/// kalmadan "bu hizmetten kaç hakkı var" bilgisini seçim anında görür.
+class _PurchasedChip extends StatelessWidget {
+  const _PurchasedChip({
+    required this.name,
+    required this.remaining,
+    required this.total,
+    required this.selected,
+    required this.onTap,
+  });
+  final String name;
+  final int remaining;
+  final int total;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFFFF6F9),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFE8C2D1),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 190),
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : const Color(0xFF3B2A33),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '$remaining seans kaldı${total > 0 ? ' · $total toplam' : ''}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: selected ? Colors.white70 : const Color(0xFF7A6672),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

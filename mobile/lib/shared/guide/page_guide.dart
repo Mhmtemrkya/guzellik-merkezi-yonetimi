@@ -123,10 +123,31 @@ class _GuideSheet extends StatefulWidget {
 class _GuideSheetState extends State<_GuideSheet> {
   int _index = 0;
 
+  /// Kartlar PARMAKLA KAYDIRILARAK da geçilir. Önceden yalnız "İleri/Geri" butonları
+  /// vardı; kullanıcılar karta dokunup sağa-sola sürüklediğinde hiçbir şey olmuyor,
+  /// kılavuz takılmış gibi görünüyordu. PageView doğal kaydırmayı getirir, butonlar
+  /// da aynı denetleyiciyi sürdüğü için iki yol tek durumda buluşur.
+  late final PageController _pager = PageController();
+
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int i) {
+    final steps = widget.content.steps;
+    if (i < 0 || i >= steps.length) return;
+    _pager.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final steps = widget.content.steps;
-    final step = steps[_index];
     final isLast = _index == steps.length - 1;
 
     return Container(
@@ -173,69 +194,92 @@ class _GuideSheetState extends State<_GuideSheet> {
           ],
           const SizedBox(height: 16),
 
-          // Adım kartı
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: Container(
-              key: ValueKey(_index),
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: .05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          // Adım kartları — PARMAKLA KAYDIRILABİLİR.
+          // Yükseklik sabit: kartlar arası zıplama olmasın, en uzun açıklama da sığsın.
+          SizedBox(
+            height: 168,
+            child: PageView.builder(
+              controller: _pager,
+              itemCount: steps.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (context, i) {
+                final step = steps[i];
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: .05),
+                    borderRadius: BorderRadius.circular(16),
+                    border:
+                        Border.all(color: AppColors.primary.withValues(alpha: .18)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: .13),
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Icon(step.icon, size: 19, color: AppColors.primaryDark),
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: .13),
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(step.icon,
+                                size: 19, color: AppColors.primaryDark),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(step.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 13.5)),
+                          ),
+                          Text('${i + 1}/${steps.length}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.muted)),
+                        ],
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(height: 10),
+                      // Uzun açıklamalarda kart taşmasın diye kendi içinde kaydırılır.
                       Expanded(
-                        child: Text(step.title,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 13.5)),
+                        child: SingleChildScrollView(
+                          child: Text(step.desc,
+                              style:
+                                  const TextStyle(fontSize: 12.5, height: 1.45)),
+                        ),
                       ),
-                      Text('${_index + 1}/${steps.length}',
-                          style: const TextStyle(fontSize: 11, color: AppColors.muted)),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(step.desc,
-                      style: const TextStyle(fontSize: 12.5, height: 1.45)),
-                ],
-              ),
+                );
+              },
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // İlerleme noktaları
+          // İlerleme noktaları — dokunarak da o adıma gidilir.
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               for (var i = 0; i < steps.length; i++)
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                  width: i == _index ? 18 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: i == _index ? AppColors.primary : AppColors.border,
-                    borderRadius: BorderRadius.circular(999),
+                GestureDetector(
+                  onTap: () => _goTo(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 6),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: i == _index ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == _index ? AppColors.primary : AppColors.border,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
 
           Row(
             children: [
@@ -250,7 +294,7 @@ class _GuideSheetState extends State<_GuideSheet> {
               const Spacer(),
               if (_index > 0)
                 TextButton(
-                  onPressed: () => setState(() => _index--),
+                  onPressed: () => _goTo(_index - 1),
                   child: const Text('Geri'),
                 ),
               const SizedBox(width: 6),
@@ -259,7 +303,7 @@ class _GuideSheetState extends State<_GuideSheet> {
                   if (isLast) {
                     Navigator.pop(context);
                   } else {
-                    setState(() => _index++);
+                    _goTo(_index + 1);
                   }
                 },
                 child: Text(isLast ? 'Bitir' : 'İleri'),
