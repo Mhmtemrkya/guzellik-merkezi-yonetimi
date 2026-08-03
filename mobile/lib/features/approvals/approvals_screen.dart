@@ -643,6 +643,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       'approved' => ('Onaylandı', AppColors.success),
       'rejected' => ('Reddedildi', AppColors.danger),
       'cancelled' => ('İptal', AppColors.muted),
+      'processing' => ('İşleniyor', AppColors.primary),
       _ => ('Bekliyor', AppColors.warning),
     };
     return Container(
@@ -1175,15 +1176,17 @@ IconData _opTypeIcon(String key) {
 }
 
 /// Backend enum'u int (0..3) veya string gelebilir → durum anahtarı.
+/// Backend enum'uyla AYNI sıra: 0..4. `processing` = başka bir yönetici onayı başlattı;
+/// `pending` sanılırsa ekranda onay butonu gösterilir ve işlem iki kez uygulanmaya çalışılır.
 String _opStatusKey(dynamic value) {
   if (value is num) {
-    const m = {0: 'pending', 1: 'approved', 2: 'rejected', 3: 'cancelled'};
+    const m = {0: 'pending', 1: 'approved', 2: 'rejected', 3: 'cancelled', 4: 'processing'};
     return m[value.toInt()] ?? 'pending';
   }
   final s = '$value';
   final asInt = int.tryParse(s);
   if (asInt != null) {
-    const m = {0: 'pending', 1: 'approved', 2: 'rejected', 3: 'cancelled'};
+    const m = {0: 'pending', 1: 'approved', 2: 'rejected', 3: 'cancelled', 4: 'processing'};
     return m[asInt] ?? 'pending';
   }
   return s.toLowerCase();

@@ -6,6 +6,14 @@ public enum PendingOperationStatus
     Approved = 1,
     Rejected = 2,
     Cancelled = 3,
+
+    /// <summary>
+    /// SAHİPLENİLDİ — bir yönetici onayı başlattı, asıl operasyon (HTTP replay / dispatcher)
+    /// şu anda yürüyor. Onay iki adımlıdır çünkü replay AYRI bir bağlantıda çalışır: bu satırı
+    /// önce atomik olarak sahiplenmezsek iki eşzamanlı onay aynı işlemi İKİ KEZ uygulayabilirdi
+    /// (satış, tahsilat, silme...). Replay başarılıysa Approved'a, başarısızsa Pending'e döner.
+    /// </summary>
+    Processing = 4,
 }
 
 /// <summary>

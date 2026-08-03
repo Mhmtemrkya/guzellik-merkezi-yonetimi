@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Domain;
@@ -173,4 +174,23 @@ internal sealed class NoopRealtimeNotifier : IRealtimeNotifier
 
     public Task PublishToUserAsync(Guid tenantId, Guid userId, RealtimeEvent payload, CancellationToken ct = default) =>
         Task.CompletedTask;
+}
+
+/// <summary>Bildirim yayını testin konusu değilse sessizce yutulur.</summary>
+internal sealed class NoopAppNotificationService : IAppNotificationService
+{
+    public Task NotifyUserAsync(Guid tenantId, Guid? branchId, Guid recipientUserId,
+        AppNotificationType type, AppNotificationSeverity severity, string title, string body,
+        object? data = null, string? dedupeKey = null, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task NotifyRolesAsync(Guid tenantId, Guid? branchId, IReadOnlyCollection<UserRole> roles,
+        AppNotificationType type, AppNotificationSeverity severity, string title, string body,
+        object? data = null, string? dedupeKey = null, bool branchScoped = true, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<Result<AppNotificationFeedDto>> GetFeedAsync(Guid tenantId, Guid userId, DateTime? sinceUtc, bool unreadOnly, int take, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+    public Task<Result> MarkReadAsync(Guid tenantId, Guid userId, Guid notificationId, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<Result> MarkAllReadAsync(Guid tenantId, Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<Result> RegisterDeviceTokenAsync(Guid tenantId, Guid userId, RegisterDeviceTokenRequest req, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<Result> UnregisterDeviceTokenAsync(Guid tenantId, Guid userId, string deviceId, CancellationToken ct = default) => throw new NotSupportedException();
 }

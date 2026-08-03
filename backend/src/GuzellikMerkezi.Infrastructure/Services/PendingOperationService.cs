@@ -118,29 +118,129 @@ public sealed class PendingOperationService : IPendingOperationService
             ct: cancellationToken);
 
         // Yöneticinin AÇIK olan Onaylar sayfası/zil sayacı anında görsün.
-        await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
-            "approval.pending",
-            "Onay bekleyen işlem",
-            $"{requestedByName}: {op.Title}",
-            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
-            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+        //
+        // YALNIZ YETKİLİ YÖNETİCİLERE: eskiden bu olay kurum geneline (tenant grubuna) yayınlanıyor
+        // ve personel adı + işlem başlığı + işlem id'sini taşıyordu — aynı kurumdaki yetkisiz
+        // personel ya da BAŞKA ŞUBENİN çalışanı görmemesi gereken onay detayını alıyordu.
+        var managerIds = await ApprovalManagerIdsAsync(tenantId, branchId, cancellationToken);
+        foreach (var managerId in managerIds)
+        {
+            await _realtime.PublishToUserAsync(tenantId, managerId, new RealtimeEvent(
+                "approval.pending",
+                "Onay bekleyen işlem",
+                $"{requestedByName}: {op.Title}",
+                new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
+                new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+        }
 
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
 
+    /// <summary>
+    /// İşlemi kilit altında SAHİPLENİR (Pending → Processing) ve HEMEN commit eder. Commit şart:
+    /// asıl operasyon ayrı bir bağlantıda çalıştığından, sahiplenme onun görebileceği şekilde
+    /// kalıcı olmalıdır. Dönen değer operasyonu yürütmek için gereken asgari veridir.
+    /// </summary>
+    private async Task<Result<(PendingOperationType Type, string PayloadJson)>> ClaimForProcessingAsync(
+        Guid tenantId, Guid id, Guid decidedByUserId, CancellationToken ct)
+    {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "pending_operations", id, ct);
+
+        var op = await _db.PendingOperations.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        if (op is null)
+            return Result<(PendingOperationType, string)>.Failure(Error.NotFound("İşlem bulunamadı."));
+        // Kilitten önce okunmuş olabilir → kilit altında TAZE oku.
+        if (relational) await _db.Entry(op).ReloadAsync(ct);
+
+        if (op.Status != PendingOperationStatus.Pending)
+        {
+            return Result<(PendingOperationType, string)>.Failure(Error.Conflict(
+                op.Status == PendingOperationStatus.Processing
+                    ? "Bu işlem şu anda başka bir yönetici tarafından işleniyor."
+                    : "Bu işlem zaten karara bağlanmış."));
+        }
+
+        op.BeginProcessing(decidedByUserId);
+        await _db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
+        return Result<(PendingOperationType, string)>.Success((op.OperationType, op.PayloadJson));
+    }
+
+    /// <summary>Operasyon başarısızsa sahiplenmeyi bırakır — işlem yeniden denenebilir kalsın.</summary>
+    private async Task ReleaseClaimAsync(Guid tenantId, Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var op = await _db.PendingOperations.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+            if (op is null) return;
+            op.ReleaseProcessing();
+            await _db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Bırakma da başarısızsa asıl hatayı gölgeleme; işlem Processing'de kalır ve
+            // yönetici listede "işleniyor" görür (veri bozulmaz, çift uygulama da olmaz).
+        }
+    }
+
+    /// <summary>
+    /// Onay bildirimlerinin gideceği YÖNETİCİ kullanıcıları. Onay detayı (personel adı, işlem
+    /// başlığı) kurum geneline yayınlanmamalı: aynı kurumdaki yetkisiz personel ya da başka
+    /// şubenin çalışanı görmemesi gereken bilgiyi alırdı. <c>NotifyRolesAsync</c> ile aynı kapsam
+    /// kuralı: şube yöneticisi yalnız kendi şubesi (ya da kurum geneli kayıt) için dahil edilir.
+    /// </summary>
+    private async Task<List<Guid>> ApprovalManagerIdsAsync(Guid tenantId, Guid? branchId, CancellationToken ct)
+    {
+        var roles = new[] { UserRole.InstitutionOwner, UserRole.BranchManager };
+        return await _db.TenantUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && u.IsActive && roles.Contains(u.Role)
+                     && (u.BranchId == null || branchId == null || u.BranchId == branchId))
+            .Select(u => u.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<Result<PendingOperationDto>> ApproveAsync(Guid tenantId, Guid id, Guid decidedByUserId, CancellationToken cancellationToken = default)
     {
+        // ---- 1) ATOMİK SAHİPLENME ----
+        // Operasyon (HTTP replay) AYRI bir bağlantıda çalıştığı için bu metodun transaction'ı onu
+        // KAPSAMAZ. Eskiden satır yalnızca yürütmeden SONRA Approved yapılıyordu: iki yönetici aynı
+        // işlemi eşzamanlı onaylarsa ikisi de Pending okuyup ikisi de replay çalıştırabiliyordu —
+        // satış/tahsilat/silme İKİ KEZ uygulanabilirdi. Satır kilit altında Processing'e çekilip
+        // COMMIT edilir; ikinci çağrı kilidi bekler ve "zaten karara bağlanmış" görür.
+        var claim = await ClaimForProcessingAsync(tenantId, id, decidedByUserId, cancellationToken);
+        if (claim.IsFailure) return Result<PendingOperationDto>.Failure(claim.Error);
+        var (operationType, payloadJson) = claim.Value;
+
+        // ---- 2) ASIL OPERASYON ----
+        Result<Guid?> dispatchResult;
+        try
+        {
+            dispatchResult = operationType == PendingOperationType.HttpReplay
+                ? await _replayer.ReplayAsync(payloadJson, cancellationToken)
+                : await _dispatcher.DispatchAsync(tenantId, operationType, payloadJson, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Beklenmeyen hata da sahiplenmeyi bırakmalı; aksi hâlde işlem Processing'de takılır.
+            await ReleaseClaimAsync(tenantId, id, cancellationToken);
+            return Result<PendingOperationDto>.Failure(Error.Conflict($"Onaylanan işlem yürütülemedi: {ex.Message}"));
+        }
+
+        if (dispatchResult.IsFailure)
+        {
+            // ---- 3a) BAŞARISIZ → yeniden denenebilsin diye Pending'e geri bırak ----
+            await ReleaseClaimAsync(tenantId, id, cancellationToken);
+            return Result<PendingOperationDto>.Failure(dispatchResult.Error);
+        }
+
+        // ---- 3b) BAŞARILI → kesinleştir ----
         var op = await _db.PendingOperations.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (op is null) return Result<PendingOperationDto>.Failure(Error.NotFound("İşlem bulunamadı."));
-        if (op.Status != PendingOperationStatus.Pending) return Result<PendingOperationDto>.Failure(Error.Conflict("Bu işlem zaten karara bağlanmış."));
-
-        // Asıl operasyonu yürüt — evrensel kapı (HttpReplay) ise isteği replay et, değilse tipli dispatcher.
-        var dispatchResult = op.OperationType == PendingOperationType.HttpReplay
-            ? await _replayer.ReplayAsync(op.PayloadJson, cancellationToken)
-            : await _dispatcher.DispatchAsync(tenantId, op.OperationType, op.PayloadJson, cancellationToken);
-        if (dispatchResult.IsFailure)
-            return Result<PendingOperationDto>.Failure(dispatchResult.Error);
-
         op.Approve(decidedByUserId, dispatchResult.Value);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, op.BranchId, "Approve", "PendingOperation", op.Id,
@@ -164,9 +264,9 @@ public sealed class PendingOperationService : IPendingOperationService
             new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
         // Kurum genelinde de duyur: onaylanan işlem cariyi/seansı/randevuyu değiştirdi, açık
         // olan diğer ekranlar (yönetici listesi, ikinci sekme) bayat kalmasın.
+        // SAF TAZELEME: başlık/mesaj/işlem id'si TAŞIMAZ — bu olay kurumdaki herkese gider.
         await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
-            "approval.resolved", null, null, topics,
-            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+            "approval.resolved", null, null, topics), cancellationToken);
 
         return Result<PendingOperationDto>.Success(op.ToDto());
     }
@@ -197,10 +297,10 @@ public sealed class PendingOperationService : IPendingOperationService
             string.IsNullOrWhiteSpace(op.RejectionReason) ? op.Title : $"{op.Title} · {op.RejectionReason}",
             new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
             new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+        // SAF TAZELEME (bkz. ApproveAsync): kurum geneline giden olay veri taşımaz.
         await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
             "approval.resolved", null, null,
-            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications },
-            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+            new[] { RealtimeTopics.Approvals, RealtimeTopics.Notifications }), cancellationToken);
 
         return Result<PendingOperationDto>.Success(op.ToDto());
     }

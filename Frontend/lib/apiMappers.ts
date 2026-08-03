@@ -1320,7 +1320,9 @@ export const pendingOperationLabels: Record<PendingOperationTypeKey, string> = {
 }
 
 const validOpTypes: PendingOperationTypeKey[] = Object.keys(pendingOperationLabels) as PendingOperationTypeKey[]
-const validOpStatuses: PendingOperationStatusKey[] = ['Pending', 'Approved', 'Rejected', 'Cancelled']
+// SIRA BACKEND ENUM'UYLA AYNI OLMALI (sayısal değer indeksle çözülüyor):
+// Pending=0, Approved=1, Rejected=2, Cancelled=3, Processing=4.
+const validOpStatuses: PendingOperationStatusKey[] = ['Pending', 'Approved', 'Rejected', 'Cancelled', 'Processing']
 
 function normalizeOpType(value: string | number | null | undefined): PendingOperationTypeKey {
   if (typeof value === 'number') {

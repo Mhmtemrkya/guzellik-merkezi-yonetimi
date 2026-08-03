@@ -25,6 +25,11 @@ public static class RowLock
     /// <summary>Kilit sırası SABİTTİR — çağıranlar bu sırayı bozmamalıdır.</summary>
     public static readonly string[] TableOrder =
     [
+        // EN BAŞTA: onay sahiplenme kilidi. Onaylanan işlem (HTTP replay) AYRI bir bağlantıda
+        // çalışıp aşağıdaki tabloların hepsine dokunabilir; bu satır her zaman ilk kilitlenir ki
+        // sıra bozulmasın. İki yönetici aynı anda onaylarsa biri bekler, sonra "zaten karara
+        // bağlanmış" görür — operasyon iki kez uygulanmaz.
+        "pending_operations",
         // Kurum satırı: kuruma özel KATALOG yazımlarını (kategori adı gibi) serileştirir.
         // Ad AES-GCM ile rastgele nonce'la şifrelendiği için DB'de benzersiz indeks aynı düz
         // metni yakalayamaz; uygulama kontrolü de iki eşzamanlı istekte ikisini birden geçirir.

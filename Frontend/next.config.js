@@ -1,5 +1,18 @@
 const path = require('path');
 
+// ANLIK GÜNCELLEME (SignalR) ÖN KOŞUL UYARISI.
+//
+// NEXT_PUBLIC_* değişkenleri BUILD ZAMANINDA gömülür: production build'i bu değişken olmadan
+// alırsan, sonradan env'e eklemek işe yaramaz — yeniden build gerekir. Sessizce "realtime kapalı"
+// bir sürüm yayınlamak yerine build çıktısında görünür bir uyarı bırakılır.
+// (Hata değil: gerçek zamanlı katman olmadan uygulama normal çalışır.)
+if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_REALTIME_URL) {
+  console.warn('[BeautyAsist] UYARI: NEXT_PUBLIC_REALTIME_URL tanimli degil.');
+  console.warn('  -> Anlik guncelleme (onay sonucu, adisyon, seans) bu build icin KAPALI olacak.');
+  console.warn('  -> Acmak icin: NEXT_PUBLIC_REALTIME_URL=https://<api-domain>/hubs/realtime ve YENIDEN build.');
+  console.warn('  -> Ayrica backend Cors:AllowedOrigins + nginx WebSocket upgrade gerekir (CANLI_DEPLOY_NOTLARI.md).');
+}
+
 const nextConfig = {
   output: 'standalone',
   // Sunucu/sürüm parmak izi verme.

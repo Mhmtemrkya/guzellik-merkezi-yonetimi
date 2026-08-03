@@ -416,7 +416,7 @@ export async function exportToExcel<T>(sheets: ExcelSheetSpec<T>[], options: Exp
 // ONAY TALEPLERİ — özel tasarımlı dışa aktarım (logo + özet kartları + durum rozetleri)
 // ---------------------------------------------------------------------------
 
-export type ApprovalStatusKey = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+export type ApprovalStatusKey = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled' | 'Processing'
 
 export interface ApprovalExportRow {
   type: string
@@ -439,6 +439,7 @@ const APPROVAL_STATUS_STYLE: Record<ApprovalStatusKey, StatusStyle> = {
   Approved: { font: 'FF047857', fill: 'FFD1FAE5' }, // emerald
   Rejected: { font: 'FFB91C1C', fill: 'FFFEE2E2' }, // rose
   Cancelled: { font: 'FF6B7280', fill: 'FFF3F4F6' }, // gri
+  Processing: { font: 'FF0369A1', fill: 'FFE0F2FE' }, // gök mavisi — işlem yürüyor
 }
 
 const APPROVAL_HEADERS = ['Talep Türü', 'Müşteri', 'Telefon', 'Personel', 'Şube', 'Oluşturulma', 'Durum'] as const

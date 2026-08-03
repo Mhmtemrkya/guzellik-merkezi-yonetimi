@@ -30,8 +30,9 @@ const statusBadge: Record<PendingOperationStatusKey, string> = {
   Approved: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Rejected: 'border-rose-300/40 bg-rose-50 text-rose-700',
   Cancelled: 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/55',
+  Processing: 'border-sky-300/40 bg-sky-50 text-sky-700',
 }
-const statusLabel: Record<PendingOperationStatusKey, string> = { Pending: 'Bekliyor', Approved: 'Onaylandı', Rejected: 'Reddedildi', Cancelled: 'İptal' }
+const statusLabel: Record<PendingOperationStatusKey, string> = { Pending: 'Bekliyor', Approved: 'Onaylandı', Rejected: 'Reddedildi', Cancelled: 'İptal', Processing: 'İşleniyor' }
 
 function opIcon(type: string) {
   if (type.includes('Customer')) return User

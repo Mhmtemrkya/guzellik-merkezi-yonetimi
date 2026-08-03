@@ -2070,7 +2070,8 @@ export interface StockSummary {
   }>
 }
 
-export type PendingOperationStatusKey = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+/** Processing = bir yönetici onayı başlattı, asıl işlem yürüyor (atomik sahiplenme). */
+export type PendingOperationStatusKey = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled' | 'Processing'
 export type PendingOperationTypeKey =
   | 'CreateCustomer' | 'UpdateCustomer' | 'DeleteCustomer'
   | 'CreateAppointment' | 'UpdateAppointment' | 'ChangeAppointmentStatus' | 'DeleteAppointment'

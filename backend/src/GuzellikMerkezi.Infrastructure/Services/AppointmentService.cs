@@ -7,6 +7,7 @@ using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Application.Features.Usage;
 using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Application.Features.WhatsApp;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -542,6 +543,17 @@ public sealed class AppointmentService : IAppointmentService
         if (payment is not null && payment.Amount <= 0)
             return Result<AppointmentDto>.Failure(Error.Validation("Tahsilat tutarı 0'dan büyük olmalı."));
 
+        // YETKİ: bu uç durum değişikliği + TAHSİLAT yapar. Onay kapısında /status ile aynı sınıfta
+        // muaf tutulduğu için, ödeme içeren istek Accounting.Collect iznini ayrıca ister — aksi
+        // hâlde tahsilat yetkisi olmayan personel isteğe payment ekleyip cariye/adisyona para
+        // yazabilirdi (kapıyı da atlayarak).
+        if (payment is not null && _currentUser.Role == UserRole.Staff
+            && !Permissions.IsActionAllowed(_currentUser.Permissions, Permissions.AccountingCollect))
+        {
+            return Result<AppointmentDto>.Failure(Error.Forbidden(
+                "Tahsilat kaydı alma yetkiniz yok. Randevuyu ödemesiz tamamlayabilir ya da kurum yöneticinizden yetki isteyebilirsiniz."));
+        }
+
         var relational = _db.Database.IsRelational();
         await using var tx = relational && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
@@ -549,30 +561,69 @@ public sealed class AppointmentService : IAppointmentService
 
         // Kilit protokolü (customers → appointments) EN BAŞTA: alt çağrılar kendi kilitlerini
         // aldığında sıra çağrı sırasına bağlı kalıp deadlock üretiyordu (bkz. UpdateAsync).
-        var customerId = await _db.Appointments.AsNoTracking()
+        var head = await _db.Appointments.AsNoTracking()
             .Where(a => a.TenantId == tenantId && a.Id == id)
-            .Select(a => (Guid?)a.CustomerId)
+            .Select(a => new { a.CustomerId })
             .FirstOrDefaultAsync(cancellationToken);
-        if (customerId is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        if (head is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        var customerId = head.CustomerId;
         if (relational)
         {
-            await RowLock.LockRowAsync(_db, "customers", customerId.Value, cancellationToken);
+            await RowLock.LockRowAsync(_db, "customers", customerId, cancellationToken);
             await RowLock.LockRowAsync(_db, "appointments", id, cancellationToken);
         }
 
-        var completed = await ChangeStatusAsync(tenantId, id,
-            new ChangeAppointmentStatusRequest(AppointmentStatus.Completed, request.Reason), cancellationToken, staffTenantUserId);
-        if (completed.IsFailure) return completed;
+        // ÇİFT TAHSİLAT KORUMASI: ChangeStatusAsync zaten Completed olan randevuda başarılı NO-OP
+        // döner. Bu dönüşü "tamamladım" sanıp tahsilatı yine işlersek, aynı randevu ikinci kez
+        // /complete'e gönderildiğinde (farklı idempotency anahtarı ya da kayıt düşmüşse) İKİNCİ
+        // BİR TAHSİLAT yazılırdı. Kilit altında taze okunan durum zaten Completed ise hiçbir şey
+        // yapmadan başarıyla döneriz — uç idempotent olur.
+        var alreadyCompleted = await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.Id == id)
+            .Select(a => a.Status)
+            .FirstOrDefaultAsync(cancellationToken) == AppointmentStatus.Completed;
+        if (alreadyCompleted)
+        {
+            if (tx is not null) await tx.CommitAsync(cancellationToken);
+            return await GetAsync(tenantId, id, cancellationToken, staffTenantUserId);
+        }
+
+        // İstemcinin verdiği cari, HİÇBİR ŞEY DEĞİŞMEDEN önce doğrulanır (fail-fast): hatayı
+        // tahsilat adımına bırakırsak randevu önce tamamlanır, sonra geri alınır — doğru sonucu
+        // yalnız transaction'a borçlu oluruz. Kontrol burada olunca yanlış cari asla iş başlatmaz.
+        if (payment?.AccountId is { } requestedAccount)
+        {
+            var owns = await _db.CustomerAccounts.AsNoTracking()
+                .AnyAsync(a => a.Id == requestedAccount
+                            && a.TenantId == tenantId
+                            && a.CustomerId == customerId
+                            && a.CancelledAtUtc == null, cancellationToken);
+            if (!owns)
+                return Result<AppointmentDto>.Failure(Error.Validation("Seçilen cari hesap bu randevunun müşterisine ait değil ya da iptal edilmiş."));
+        }
+
+        // Yan etkiler (denetim kaydı, bildirim, kuyruk) ERTELENİR: ChangeStatusAsync onları
+        // normalde kendi commit'inden sonra çalıştırır, ama burada dış transaction henüz açık.
+        // Tahsilat sonradan reddedilirse veri geri alınır — "randevu tamamlandı" denetim izi ve
+        // kullanıcı bildirimi ise geri alınamazdı; gerçekle çelişen iz kalırdı.
+        var outcome = await ChangeStatusInternalAsync(tenantId, id,
+            new ChangeAppointmentStatusRequest(AppointmentStatus.Completed, request.Reason),
+            cancellationToken, staffTenantUserId, deferSideEffects: true);
+        if (outcome.Result.IsFailure) return outcome.Result;
 
         if (payment is not null)
         {
-            var collected = await CollectOnCompleteAsync(tenantId, customerId.Value, payment, cancellationToken);
-            // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez.
+            var collected = await CollectOnCompleteAsync(tenantId, customerId, payment, cancellationToken);
+            // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez ve
+            // ertelenen yan etkiler HİÇ çalışmaz.
             if (collected.IsFailure) return Result<AppointmentDto>.Failure(collected.Error);
         }
 
         if (tx is not null) await tx.CommitAsync(cancellationToken);
-        return completed;
+
+        // COMMIT SONRASI: artık her şey kalıcı; yan etkiler gerçeği anlatır.
+        if (outcome.RunDeferredSideEffects is not null) await outcome.RunDeferredSideEffects();
+        return outcome.Result;
     }
 
     /// <summary>
@@ -586,7 +637,21 @@ public sealed class AppointmentService : IAppointmentService
         var reference = string.IsNullOrWhiteSpace(payment.Reference) ? "Randevu tahsilatı" : payment.Reference;
 
         var accountId = payment.AccountId;
-        if (accountId is null)
+        if (accountId is { } requested)
+        {
+            // İSTEMCİNİN VERDİĞİ CARİ RANDEVUNUN MÜŞTERİSİNE BAĞLANIR. Doğrulanmazsa A müşterisinin
+            // randevu tahsilatı B müşterisinin carisine yazılabilirdi (tenant kontrolü tek başına
+            // yetmez — kurum içindeki her cari hedef olabilirdi). İptal edilmiş cariye de tahsilat
+            // alınamaz. Kontrol kilit altında yapılır: müşteri satırı çağıran tarafından kilitli.
+            var owns = await _db.CustomerAccounts.AsNoTracking()
+                .AnyAsync(a => a.Id == requested
+                            && a.TenantId == tenantId
+                            && a.CustomerId == customerId
+                            && a.CancelledAtUtc == null, ct);
+            if (!owns)
+                return Result.Failure(Error.Validation("Seçilen cari hesap bu randevunun müşterisine ait değil ya da iptal edilmiş."));
+        }
+        else
         {
             // Borcu olan en eski cari (RemainingAmount hesaplanan alan → ödemelerle birlikte yüklenir).
             var accounts = await _db.CustomerAccounts
@@ -627,8 +692,25 @@ public sealed class AppointmentService : IAppointmentService
 
     public async Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
+        var outcome = await ChangeStatusInternalAsync(tenantId, id, request, cancellationToken, staffTenantUserId, deferSideEffects: false);
+        return outcome.Result;
+    }
+
+    /// <summary>Durum değişikliğinin sonucu + (ertelendiyse) commit sonrası çalıştırılacak yan işler.</summary>
+    private readonly record struct StatusChangeOutcome(Result<AppointmentDto> Result, Func<Task>? RunDeferredSideEffects);
+
+    /// <summary>
+    /// <see cref="ChangeStatusAsync"/>'in gövdesi.
+    /// </summary>
+    /// <param name="deferSideEffects">
+    /// true → denetim kaydı/bildirim/kuyruk işleri BURADA çalıştırılmaz, çağırana döndürülür.
+    /// Dış bir transaction'ın parçasıysak (tamamlama + tahsilat) bunlar ancak HEPSİ commit
+    /// edildikten sonra çalışmalıdır: aksi hâlde işlem geri alınsa bile "tamamlandı" izi kalırdı.
+    /// </param>
+    private async Task<StatusChangeOutcome> ChangeStatusInternalAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken, Guid? staffTenantUserId, bool deferSideEffects)
+    {
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
-        if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        if (appointment is null) return new StatusChangeOutcome(Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı.")), null);
 
         // DURUM GEÇİŞİ ORTAK KİLİT PROTOKOLÜNE KATILIR (bkz. RowLock) — yalnız tamamlama değil,
         // İPTAL de. Eskiden randevu kilitten ve transaction'dan ÖNCE okunup Complete() ediliyordu:
@@ -656,12 +738,15 @@ public sealed class AppointmentService : IAppointmentService
             await _db.Entry(appointment).ReloadAsync(cancellationToken);
             // Reload satırı bulamazsa entity detach olur (randevu bu arada silinmiş).
             if (_db.Entry(appointment).State == EntityState.Detached)
-                return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+                return new StatusChangeOutcome(Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı.")), null);
         }
 
         // Zaten istenen durumdaysa no-op — bayat/tekrar onay isteği "tamamlanamaz" hatası vermesin
         // (idempotent). Kilitten sonra bakıldığı için eşzamanlı ikinci istek BURADA durur.
-        if (appointment.Status == request.Status) return Result<AppointmentDto>.Success(appointment.ToDto());
+        // NOT: no-op'ta yan iş YOKTUR; çağıran "geçiş oldu" sanıp tahsilat işlememelidir
+        // (bkz. CompleteWithPaymentAsync'teki alreadyCompleted kontrolü).
+        if (appointment.Status == request.Status)
+            return new StatusChangeOutcome(Result<AppointmentDto>.Success(appointment.ToDto()), null);
 
         var prevStatus = appointment.Status;
         switch (request.Status)
@@ -768,23 +853,33 @@ public sealed class AppointmentService : IAppointmentService
         // COMMIT SONRASI YARDIMCI İŞLER (bekleme listesi teklifi, denetim kaydı, bildirimler).
         // Hepsi best-effort: durum değişikliği ARTIK KALICI olduğu için buradaki bir hata
         // kullanıcıya "işlem başarısız" (500) olarak dönmemeli.
-        try
-        {
-            await RunPostStatusChangeSideEffectsAsync(tenantId, appointment, request, prevStatus, staffTenantUserId, cancellationToken);
-        }
-        catch (Exception ex)
+        var capturedStatus = appointment.Status;
+        async Task RunSideEffectsAsync()
         {
             try
             {
-                await _audit.LogAsync(tenantId, appointment.BranchId, "AppointmentStatusSideEffectFailed",
-                    "Appointment", appointment.Id,
-                    $"Randevu durumu değişti ({prevStatus} → {appointment.Status}) ancak yan işler tamamlanamadı: {ex.Message}",
-                    new { prevStatus, NewStatus = appointment.Status }, cancellationToken);
+                await RunPostStatusChangeSideEffectsAsync(tenantId, appointment, request, prevStatus, staffTenantUserId, cancellationToken);
             }
-            catch { /* denetim kaydı da yazılamadıysa yutulur — asıl işlem geçerli */ }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await _audit.LogAsync(tenantId, appointment.BranchId, "AppointmentStatusSideEffectFailed",
+                        "Appointment", appointment.Id,
+                        $"Randevu durumu değişti ({prevStatus} → {capturedStatus}) ancak yan işler tamamlanamadı: {ex.Message}",
+                        new { prevStatus, NewStatus = capturedStatus }, cancellationToken);
+                }
+                catch { /* denetim kaydı da yazılamadıysa yutulur — asıl işlem geçerli */ }
+            }
         }
 
-        return Result<AppointmentDto>.Success(appointment.ToDto());
+        var success = Result<AppointmentDto>.Success(appointment.ToDto());
+        // Dış transaction'ın parçasıysak yan işler ÇAĞIRANA bırakılır: tahsilat sonradan
+        // reddedilirse hiç çalışmasınlar, yoksa gerçekle çelişen denetim/bildirim izi kalırdı.
+        if (deferSideEffects) return new StatusChangeOutcome(success, RunSideEffectsAsync);
+
+        await RunSideEffectsAsync();
+        return new StatusChangeOutcome(success, null);
     }
 
     /// <summary>

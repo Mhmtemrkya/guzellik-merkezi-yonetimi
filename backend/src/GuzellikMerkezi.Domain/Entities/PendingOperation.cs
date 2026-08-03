@@ -57,9 +57,32 @@ public sealed class PendingOperation : Entity
     /// <summary>Onaylandıktan sonra üretilen kaydın ID'si (audit için)</summary>
     public Guid? ResultEntityId { get; private set; }
 
-    public void Approve(Guid decidedByUserId, Guid? resultEntityId)
+    /// <summary>
+    /// İşlemi SAHİPLENİR (Pending → Processing). Kilit altında çağrılıp hemen commit edilmelidir:
+    /// asıl operasyon ayrı bir bağlantıda (HTTP replay) çalıştığı için tek koruma budur.
+    /// </summary>
+    public void BeginProcessing(Guid decidedByUserId)
     {
         if (Status != PendingOperationStatus.Pending) throw new BusinessRuleException("Sadece bekleyen işlemler onaylanabilir.");
+        Status = PendingOperationStatus.Processing;
+        DecidedByUserId = decidedByUserId;
+        Touch();
+    }
+
+    /// <summary>Operasyon başarısız oldu → yeniden denenebilmesi için Pending'e döner.</summary>
+    public void ReleaseProcessing()
+    {
+        if (Status != PendingOperationStatus.Processing) return;
+        Status = PendingOperationStatus.Pending;
+        DecidedByUserId = null;
+        Touch();
+    }
+
+    public void Approve(Guid decidedByUserId, Guid? resultEntityId)
+    {
+        // Processing: bu çağrı işlemi sahiplenmiş ve operasyonu başarıyla yürütmüştür.
+        if (Status is not (PendingOperationStatus.Pending or PendingOperationStatus.Processing))
+            throw new BusinessRuleException("Sadece bekleyen işlemler onaylanabilir.");
         Status = PendingOperationStatus.Approved;
         DecidedAtUtc = DateTime.UtcNow;
         DecidedByUserId = decidedByUserId;

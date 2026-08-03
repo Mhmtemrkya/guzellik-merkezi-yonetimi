@@ -6,6 +6,8 @@ public sealed record Error(string Code, string Message)
     public static Error Validation(string message) => new("Validation", message);
     public static Error NotFound(string message) => new("NotFound", message);
     public static Error Unauthorized(string message = "Yetkisiz işlem.") => new("Unauthorized", message);
+    /// <summary>Kimlik doğru ama YETKİ yok (403). Onay kapısıyla aynı sözleşme.</summary>
+    public static Error Forbidden(string message) => new("Forbidden", message);
     public static Error Conflict(string message) => new("Conflict", message);
     /// <summary>Personelin o saatte uygun yeri yok (409) — frontend bunu "bekleme listesine ekle?" için ayırt eder.</summary>
     public static Error SlotFull(string message) => new("SlotFull", message);

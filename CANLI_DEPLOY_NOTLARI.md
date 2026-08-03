@@ -81,6 +81,31 @@
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api/proxy` (değişmemeli).
 - [ ] `BACKEND_API_BASE_URL=<backend iç adresi>` — **set edilmezse** proxy `BackendNotConfigured` döner (site backend'e ulaşamaz).
 - [ ] `CORS_ALLOWED_ORIGINS=<gerçek public domain(ler)>` (credential'lı CORS'ta `*` kullanılmaz).
+- [ ] **`NEXT_PUBLIC_REALTIME_URL=https://<api-public-domain>/hubs/realtime`** — anlık güncelleme (SignalR).
+      **BUILD ZAMANINDA gömülür** (`NEXT_PUBLIC_*`): değişkeni verip `next build`'i YENİDEN çalıştırmadan
+      etkili olmaz. Tanımsızsa uygulama normal çalışır ama onay/adisyon/seans ekranları anlık
+      tazelenmez (kullanıcı sayfayı yenilemek zorunda kalır).
+
+### Anlık güncelleme (SignalR) — altyapı ön koşulları
+WebSocket, Next.js route handler'ından (`/api/proxy`) **GEÇEMEZ**; hub bağlantısı doğrudan API'ye gider.
+- [ ] Backend `Cors:AllowedOrigins` listesinde **frontend origin'i** olmalı (credential'lı CORS gerekir).
+- [ ] Nginx vhost'unda backend location'ında **WebSocket upgrade** başlıkları:
+      ```nginx
+      location /hubs/ {
+          proxy_pass http://127.0.0.1:5019;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host $host;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_read_timeout 3600s;   # uzun ömürlü bağlantı; varsayılan 60s bağlantıyı düşürür
+          proxy_send_timeout 3600s;
+      }
+      ```
+      Bu blok yoksa istemci WebSocket'e geçemez; SignalR long-polling'e düşer (çalışır ama gereksiz yük).
+- [ ] Çok instance çalıştırıyorsan `Redis__ConnectionString` ver (backplane). Tek instance'ta **gerekmez** —
+      verilmezse in-memory kullanılır.
 
 ### Altyapı
 - [ ] **HTTPS zorunlu.** Kopyalama butonları (`navigator.clipboard`) ve genel güvenlik secure-context gerektirir; HTTP'de mobil tarayıcıda kopyalama sessizce çalışmaz.
