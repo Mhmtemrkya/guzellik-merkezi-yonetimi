@@ -193,6 +193,15 @@ class _AppointmentFormState extends State<AppointmentForm> {
     return id;
   }
 
+  /// GEÇERLİ BİR ŞUBE ID'Sİ — oturumdan, yoksa kurumun varsayılan şubesinden.
+  ///
+  /// KURUM YÖNETİCİSİNİN ŞUBESİ YOKTUR (`branchId = null`): kurumun tamamını yönetir.
+  /// Backend ise `CreateAppointmentRequest.BranchId` alanını NULL OLAMAYAN `Guid` olarak
+  /// bekliyor. Oturumdaki null doğrudan gönderildiğinde istek model bağlamada düşüyor ve
+  /// gövdesiz bir 400 dönüyordu; mobil bunu çözemediği için kullanıcı yalnızca
+  /// "İstek tamamlanamadı." görüyordu (hatanın nedeni hiçbir yerde görünmüyordu).
+  /// Bu yüzden şube burada çözülür — hızlı müşteri kaydı zaten böyle yapıyordu,
+  /// randevu ve bekleme listesi yolları atlanmıştı.
   Future<String> _resolveBranchId() async {
     final sessionBranch = _cleanId(widget.api.auth?.user?.branchId);
     if (sessionBranch != null) return sessionBranch;
@@ -206,7 +215,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
       final branchId = _cleanId(branch['id'] ?? branch['branchId']);
       if (branchId != null) return branchId;
     }
-    throw const ApiException('Müşteri oluşturmak için şube bilgisi bulunamadı.');
+    throw const ApiException(
+        'Şube bilgisi bulunamadı. Ayarlar → Şubeler bölümünden en az bir şube tanımlayın.');
   }
 
   /// Randevudan ayrılmadan hızlı müşteri kaydı — müşteriler sayfasındaki formun aynısı.
@@ -435,7 +445,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
         );
       } else {
         final appointment = {
-          'branchId': widget.api.auth?.user?.branchId,
+          // Oturumdaki null DEĞİL: kurum yöneticisinin şubesi yoktur, backend ise
+          // null olamayan Guid bekler (bkz. _resolveBranchId).
+          'branchId': await _resolveBranchId(),
           'customerId': customerId,
           'staffMemberId': staffId,
           'serviceDefinitionId': serviceId,
@@ -499,6 +511,15 @@ class _AppointmentFormState extends State<AppointmentForm> {
     );
     if (ok != true) return;
     try {
+      // Bekleme kaydı randevuyla AYNI şubeye düşsün. Bu alan backend'de NULLABLE
+      // olduğundan, şube çözülemezse null gönderilir: kayıt kurum geneli olur ama
+      // istek başarısız OLMAZ (randevudaki gibi zorunlu değil).
+      String? branchId;
+      try {
+        branchId = await _resolveBranchId();
+      } catch (_) {
+        branchId = null;
+      }
       await widget.api.post('/api/admin/waitlist/', {
         'customerId': customerId,
         'serviceDefinitionId': serviceId,
@@ -506,7 +527,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
         'preferredDate': DateFormat('yyyy-MM-dd').format(start),
         'preferredStartUtc': start.toUtc().toIso8601String(),
         'durationMinutes': duration,
-        'branchId': widget.api.auth?.user?.branchId,
+        'branchId': branchId,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

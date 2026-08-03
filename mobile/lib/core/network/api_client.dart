@@ -171,12 +171,28 @@ class ApiClient {
           code: apiError?['code']?.toString(),
         );
       }
-      throw ApiException(
-        error.type == DioExceptionType.connectionError
-            ? 'Backend bağlantısı kurulamadı. API adresini kontrol edin.'
-            : 'İstek tamamlanamadı.',
-        statusCode: error.response?.statusCode,
-      );
+      // GÖVDESİZ / JSON OLMAYAN HATA. Buraya düşen istekte sunucu yapılandırılmış bir
+      // hata zarfı döndürmemiştir: model bağlama hatası (400, gövdesiz), proxy hatası
+      // (502/504, HTML) ya da zaman aşımı. Eskiden hepsi tek bir "İstek tamamlanamadı."
+      // ile gösteriliyordu; kullanıcı da geliştirici de nedeni GÖREMİYORDU. En azından
+      // durum kodunu ve türünü yüzeye çıkar.
+      final status = error.response?.statusCode;
+      final message = switch (error.type) {
+        DioExceptionType.connectionError =>
+          'Backend bağlantısı kurulamadı. İnternet bağlantınızı kontrol edin.',
+        DioExceptionType.connectionTimeout ||
+        DioExceptionType.sendTimeout ||
+        DioExceptionType.receiveTimeout =>
+          'Sunucu zamanında yanıt vermedi. Lütfen tekrar deneyin.',
+        _ when status == 400 =>
+          'İstek sunucu tarafından reddedildi (400). Zorunlu bir alan eksik ya da geçersiz olabilir.',
+        _ when status == 401 || status == 403 =>
+          'Bu işlem için yetkiniz yok ya da oturumunuz sona ermiş.',
+        _ when status != null && status >= 500 =>
+          'Sunucu hatası ($status). Sorun sürerse yöneticinize bildirin.',
+        _ => 'İstek tamamlanamadı${status == null ? '' : ' ($status)'}.',
+      };
+      throw ApiException(message, statusCode: status);
     }
   }
 
