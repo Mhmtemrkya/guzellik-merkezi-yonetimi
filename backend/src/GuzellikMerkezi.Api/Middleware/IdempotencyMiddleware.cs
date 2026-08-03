@@ -1,6 +1,7 @@
 using System.Text;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,12 +14,33 @@ namespace GuzellikMerkezi.Api.Middleware;
 /// kalan tekrar oynatmaların çift kayıt üretmemesi için bunu kullanır. Header'sız istekler etkilenmez.
 /// ActivityAudit + onay kapısından ÖNCE (dışta) durur: tekrar oynatma kısa devre olduğunda
 /// audit/taslak da mükerrer üretilmez; taze istekler normal akıştan geçer ve nihai yanıt saklanır.
+///
+/// <para>
+/// SIRA KRİTİK: kalıcı kayıt yanıt istemciye YAZILMADAN ÖNCE tamamlanır. Eskiden tersiydi —
+/// buffer'lanmış yanıt önce sokete kopyalanıyor, kayıt sonra yazılıyordu. Kopyalama sırasında
+/// bağlantı koparsa istisna oluşuyor, <c>finally</c> tamamlanmamış rezervasyonu SİLİYOR ve aynı
+/// anahtarla gelen tekrar denemesi mutasyonu (satış/tahsilat/silme) İKİNCİ KEZ uyguluyordu.
+/// Artık yanıtın yazılamaması kalıcı kaydı etkilemez: tekrar denemesi saklanan yanıtı görür.
+/// </para>
 /// </summary>
 public sealed class IdempotencyMiddleware
 {
     private readonly RequestDelegate _next;
 
     private static readonly string[] WriteMethods = { "POST", "PUT", "PATCH", "DELETE" };
+
+    /// <summary>
+    /// Sonucu KESİNLEŞMEMİŞ isteklerin yanıt başlığı ("in-flight" / "outcome-unknown").
+    /// Onay replay'i (<c>HttpApprovalReplayer</c>) bu başlığı gören 409'u "kesin başarısız" değil
+    /// "sonuç bilinmiyor" sayar; aksi hâlde işlemi tekrar uygulamayı deneyebilirdi.
+    /// </summary>
+    public const string StatusHeader = "Idempotency-Status";
+
+    private const string InFlightBody =
+        "{\"success\":false,\"error\":{\"code\":\"IdempotencyInFlight\",\"message\":\"Aynı istek şu anda işleniyor. Lütfen birkaç saniye sonra tekrar deneyin.\"}}";
+
+    private const string OutcomeUnknownBody =
+        "{\"success\":false,\"error\":{\"code\":\"IdempotencyOutcomeUnknown\",\"message\":\"Bu isteğin sonucu doğrulanamadı (sunucu hatası ya da bağlantı kesintisi). İşlem uygulanmış olabilir; kaydı kontrol edin, gerekiyorsa yeni bir istek gönderin.\"}}";
 
     public IdempotencyMiddleware(RequestDelegate next) => _next = next;
 
@@ -50,7 +72,11 @@ public sealed class IdempotencyMiddleware
                 http.RequestAborted);
         if (existing is not null)
         {
-            await ReplayAsync(http, existing);
+            // Tamamlanmış kayıt → ilk yanıt aynen döner.
+            // Tamamlanmamış kayıt (StatusCode = 0) İSE ASLA "yanıt" olarak oynatılmaz: eskiden bu
+            // ayrım yoktu ve durum kodu 0 olan bir rezervasyon yanıt sanılıp geçersiz yanıt üretiyordu.
+            if (!existing.IsPending) await ReplayAsync(http, existing);
+            else await WriteUnresolvedAsync(http, existing);
             return;
         }
 
@@ -76,56 +102,82 @@ public sealed class IdempotencyMiddleware
                 .FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.UserId == scopeUserId && x.IdempotencyKey == key,
                     http.RequestAborted);
-            if (winner is not null && !winner.IsPending)
-            {
-                await ReplayAsync(http, winner);
-                return;
-            }
-
-            http.Response.StatusCode = StatusCodes.Status409Conflict;
-            http.Response.ContentType = "application/json; charset=utf-8";
-            await http.Response.WriteAsync(
-                "{\"success\":false,\"error\":{\"code\":\"IdempotencyInFlight\",\"message\":\"Aynı istek şu anda işleniyor. Lütfen birkaç saniye sonra tekrar deneyin.\"}}",
-                http.RequestAborted);
+            if (winner is not null && !winner.IsPending) await ReplayAsync(http, winner);
+            else await WriteUnresolvedAsync(http, winner);
             return;
         }
 
-        // Yanıtı belleğe yakala: hem istemciye akıt hem (5xx değilse) rezervasyona yaz.
+        // Yanıtı BELLEĞE yakala. İstemciye yazma, kalıcı kayıt tamamlanana kadar ERTELENİR.
         var originalBody = http.Response.Body;
         await using var buffer = new MemoryStream();
         http.Response.Body = buffer;
-        var completed = false;
+
+        var finalized = false;
+        var definiteRejection = false;
         try
         {
-            await _next(http);
+            try
+            {
+                await _next(http);
+            }
+            catch (Exception ex) when (IsDefiniteRejection(ex))
+            {
+                // ValidationException / DomainException = iş kuralı reddi. Mutasyon transaction'ı
+                // commit edilmeden çözülür (rollback) → hiçbir şey uygulanmamıştır. Bu tek durumda
+                // rezervasyonu serbest bırakmak güvenlidir; anahtar dürüst bir tekrar denemesine açık kalır.
+                definiteRejection = true;
+                throw;
+            }
+            finally
+            {
+                // Yanıt gövdesini ERKEN geri ver: istisna dışarıdaki ExceptionHandlingMiddleware'e
+                // ulaştığında hata yanıtını gerçek sokete yazabilmeli.
+                http.Response.Body = originalBody;
+            }
 
             buffer.Position = 0;
             string bodyText;
+            // İstek iptal edilmiş olabilir (istemci gitti); bellekten okuma ve kayıt bundan
+            // ETKİLENMEMELİ → CancellationToken.None.
             using (var reader = new StreamReader(buffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
             {
-                bodyText = await reader.ReadToEndAsync(http.RequestAborted);
+                bodyText = await reader.ReadToEndAsync(CancellationToken.None);
             }
-            buffer.Position = 0;
-            await buffer.CopyToAsync(originalBody, http.RequestAborted);
 
-            // 5xx saklanmaz: geçici sunucu hatası sonraki denemede gerçekten yeniden işlenebilmeli.
+            // 5xx saklanmaz: sonucu belirsizdir (commit edip sonra patlamış olabilir).
             // 2xx/4xx saklanır: iş kuralı reddi (409 vb.) da deterministik kalmalı.
             if (http.Response.StatusCode < 500)
             {
-                await FinalizeAsync(db, reservation.Id,
+                finalized = await FinalizeAsync(db, reservation.Id,
                     http.Response.StatusCode, http.Response.ContentType, bodyText);
-                completed = true;
             }
         }
         finally
         {
             http.Response.Body = originalBody;
-            // Rezervasyon tamamlanmadıysa (5xx ya da istisna) SERBEST BIRAK: aksi halde anahtar
-            // kalıcı olarak "işleniyor" durumunda kilitli kalır ve gerçek bir tekrar denemesi
-            // sonsuza dek 409 alırdı.
-            if (!completed) await ReleaseAsync(db, reservation.Id);
+            // SONUÇ BİLİNMİYORSA REZERVASYONU SİLME. 5xx ya da beklenmeyen istisnada endpoint
+            // commit etmiş olabilir; kaydı silmek aynı anahtarla gelen tekrarın mutasyonu İKİNCİ KEZ
+            // uygulamasına izin verirdi. Kayıt "çözülmemiş" kalır ve tekrarlar 409 alır — işlemin
+            // uygulanıp uygulanmadığını insan doğrular. Yalnız KESİN reddedilen istekte serbest bırakılır.
+            if (!finalized)
+            {
+                if (definiteRejection) await ReleaseAsync(db, reservation.Id);
+                else await MarkOutcomeUnknownAsync(db, reservation.Id);
+            }
         }
+
+        // BURADAN SONRASI: kalıcı kayıt COMMIT EDİLDİ. Yanıtın yazılamaması (bağlantı koptu)
+        // artık kaydı etkilemez; tekrar denemesi saklanan yanıtı görür, iş yeniden yapılmaz.
+        buffer.Position = 0;
+        await buffer.CopyToAsync(originalBody, http.RequestAborted);
     }
+
+    /// <summary>
+    /// Hiçbir şey uygulanmadığı KESİN olan hata türleri. ExceptionHandlingMiddleware bunları 400'e
+    /// çevirir; mutasyonlar transaction içinde çalıştığından commit edilmeden geri alınırlar.
+    /// </summary>
+    private static bool IsDefiniteRejection(Exception ex) =>
+        ex is FluentValidation.ValidationException or DomainException;
 
     private static async Task ReplayAsync(HttpContext http, ProcessedClientRequest record)
     {
@@ -137,31 +189,88 @@ public sealed class IdempotencyMiddleware
     }
 
     /// <summary>
-    /// Rezervasyonu gerçek yanıtla tamamlar. Satır yeniden okunur: endpoint akışı bu istek
-    /// sırasında <c>ChangeTracker</c>'ı temizlemiş olabilir ve izlenmeyen varlık üzerinden
-    /// yapılan güncelleme sessizce kaydedilmezdi.
+    /// Sonucu kesinleşmemiş anahtar için 409. İki hâli ayırırız:
+    /// <list type="bullet">
+    /// <item>in-flight — rezervasyon taze, istek muhtemelen HÂLÂ işleniyor (çift tıklama).</item>
+    /// <item>outcome-unknown — istek 5xx/istisna ile bitti, uygulanmış OLABİLİR.</item>
+    /// </list>
+    /// İkisinde de yanıt aynı sınıftadır: <b>işi tekrar yapma</b>.
     /// </summary>
-    private static async Task FinalizeAsync(GuzellikDbContext db, Guid reservationId, int statusCode, string? contentType, string? body)
+    private static async Task WriteUnresolvedAsync(HttpContext http, ProcessedClientRequest? record)
+    {
+        // Rezervasyon oluşturulurken UpdatedAtUtc null'dır; "sonuç bilinmiyor" damgası onu doldurur.
+        var outcomeUnknown = record is { UpdatedAtUtc: not null };
+        http.Response.StatusCode = StatusCodes.Status409Conflict;
+        http.Response.ContentType = "application/json; charset=utf-8";
+        http.Response.Headers[StatusHeader] = outcomeUnknown ? "outcome-unknown" : "in-flight";
+        await http.Response.WriteAsync(outcomeUnknown ? OutcomeUnknownBody : InFlightBody, http.RequestAborted);
+    }
+
+    /// <summary>
+    /// Rezervasyonu gerçek yanıtla tamamlar; kaydın kalıcı olup olmadığını döner. Satır yeniden
+    /// okunur: endpoint akışı bu istek sırasında <c>ChangeTracker</c>'ı temizlemiş olabilir ve
+    /// izlenmeyen varlık üzerinden yapılan güncelleme sessizce kaydedilmezdi.
+    /// </summary>
+    private static async Task<bool> FinalizeAsync(GuzellikDbContext db, Guid reservationId, int statusCode, string? contentType, string? body)
     {
         try
         {
             var row = await db.ProcessedClientRequests.FirstOrDefaultAsync(x => x.Id == reservationId, CancellationToken.None);
-            if (row is null) return;
+            if (row is null) return false;
             row.Complete(statusCode, contentType, body);
             await db.SaveChangesAsync(CancellationToken.None);
+            return true;
         }
         catch
         {
-            // Yanıt zaten istemciye gitti; kayıt tutulamadıysa akışı bozma.
+            // Kayıt tutulamadı → rezervasyon "çözülmemiş" kalır ve tekrarlar 409 alır.
+            // Yanıt yine de istemciye gider: mutasyon gerçekleşti, sonucu göstermemek daha kötü olurdu.
+            return false;
         }
     }
 
     /// <summary>
-    /// Tamamlanmamış rezervasyonu GERÇEKTEN siler.
+    /// Sonucu belirsiz kalan rezervasyonu DAMGALAR (silmez): <c>UpdatedAtUtc</c> dolar, <c>StatusCode</c>
+    /// 0 kalır. Böylece aynı anahtarla gelen tekrar "işleniyor" değil "sonuç doğrulanamadı" yanıtı alır.
+    /// Ham SQL kullanılır: değişiklik izleyicisine dokunmaz (izleyicide endpoint'in varlıkları duruyor
+    /// olabilir ve <c>SaveChanges</c> onları da yazardı) ve takma ad üretmez (bkz. <see cref="ReleaseAsync"/>).
+    /// </summary>
+    private static async Task MarkOutcomeUnknownAsync(GuzellikDbContext db, Guid reservationId)
+    {
+        try
+        {
+            if (db.Database.IsRelational())
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    "UPDATE processed_client_requests SET UpdatedAtUtc = {0} WHERE Id = {1} AND StatusCode = 0",
+                    new object[] { DateTime.UtcNow, reservationId.ToString() }, CancellationToken.None);
+                return;
+            }
+
+            // InMemory (birim testleri): ExecuteUpdate yok → izleyici üzerinden damgala.
+            var row = await db.ProcessedClientRequests.FirstOrDefaultAsync(x => x.Id == reservationId, CancellationToken.None);
+            if (row is null || !row.IsPending) return;
+            row.Touch();
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Damgalanamadıysa kayıt yine de duruyor; tekrar "işleniyor" (409) yanıtı alır — güvenli taraf.
+        }
+    }
+
+    /// <summary>
+    /// KESİN reddedilen isteğin rezervasyonunu GERÇEKTEN siler (hiçbir şey uygulanmadı).
     /// <para>
     /// Soft-delete yetmez: satır tabloda kalır ve unique indeks (TenantId, UserId, IdempotencyKey)
     /// aynı anahtarla yapılacak DÜRÜST bir tekrar denemesini kalıcı olarak 409'a düşürürdü.
-    /// <c>ExecuteDelete</c> değişiklik izleyicisine hiç dokunmaz — bu noktada izleyicide endpoint'in
+    /// </para>
+    /// <para>
+    /// HAM SQL — <c>ExecuteDeleteAsync</c> DEĞİL: EF sağlayıcısı tek tablolu silmeyi
+    /// <c>DELETE FROM tablo AS t WHERE …</c> olarak üretir; takma adı yalnız MySQL 8 kabul eder,
+    /// CANLI MariaDB reddeder (lokalde sessizce çalışır, canlıda anahtar kilitli kalırdı).
+    /// Kodda yerleşik desen: <c>BackgroundJobMaintenance.PurgeSucceededAsync</c>, <c>AuditLogService</c>.
+    /// Ham SQL ayrıca değişiklik izleyicisine hiç dokunmaz — bu noktada izleyicide endpoint'in
     /// varlıkları duruyor olabilir ve global <c>HardDeleteEnabled</c> bayrağını açmak onları da
     /// gerçek silmeye çevirme riski taşırdı.
     /// </para>
@@ -172,9 +281,9 @@ public sealed class IdempotencyMiddleware
         {
             if (db.Database.IsRelational())
             {
-                await db.ProcessedClientRequests
-                    .Where(x => x.Id == reservationId && x.StatusCode == 0)
-                    .ExecuteDeleteAsync(CancellationToken.None);
+                await db.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM processed_client_requests WHERE Id = {0} AND StatusCode = 0",
+                    new object[] { reservationId.ToString() }, CancellationToken.None);
                 return;
             }
 
@@ -188,7 +297,7 @@ public sealed class IdempotencyMiddleware
         }
         catch
         {
-            // En kötü durumda satır "işleniyor" kalır; bu yalnız o anahtarın tekrarını bloklar,
+            // En kötü durumda satır "çözülmemiş" kalır; bu yalnız o anahtarın tekrarını bloklar,
             // veri bütünlüğünü bozmaz.
         }
     }

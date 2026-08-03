@@ -72,7 +72,7 @@ public sealed class AppNotificationService : IAppNotificationService
 
             var recipients = candidates
                 .Where(u => roles.Contains(u.Role))
-                .Where(u => !branchScoped || branchId is null || u.BranchId is null || u.BranchId == branchId)
+                .Where(u => IsInScope(u.Role, u.BranchId, branchId, branchScoped))
                 .Select(u => u.Id)
                 .Distinct()
                 .ToList();
@@ -84,6 +84,24 @@ public sealed class AppNotificationService : IAppNotificationService
         {
             _logger.LogWarning(ex, "Rol bazlı bildirim üretilemedi ({Type}).", type);
         }
+    }
+
+    /// <summary>
+    /// Rol bazlı bildirimin ŞUBE KAPSAMI. Ölçüt OLAYIN şubesidir; kurum geneli (şubesiz) olay
+    /// herkese, şubeli olay yalnız o şubenin kullanıcılarına gider. Kurum yöneticisi her zaman alır.
+    /// <para>
+    /// Eski kural KULLANICININ şubesizliğine bakıyor ve onu "kurum geneli yetki" sayıyordu: şubesi
+    /// atanmamış bir ŞUBE YÖNETİCİSİ tüm şubelerin bildirimlerini (onay detayı, müşteri/personel
+    /// adı, kasa kapanışı, WhatsApp yanıtı) alıyordu. Artık şubesiz kullanıcı hiçbir ŞUBEYE ait
+    /// olayı almaz — yetkilendirmenin fail-closed kuralıyla aynı hizada.
+    /// </para>
+    /// </summary>
+    private static bool IsInScope(UserRole role, Guid? userBranchId, Guid? eventBranchId, bool branchScoped)
+    {
+        if (!branchScoped) return true;
+        if (role == UserRole.InstitutionOwner) return true;
+        if (eventBranchId is null) return true;    // kurum geneli olay → şubeli yöneticiler de görsün
+        return userBranchId == eventBranchId;
     }
 
     private async Task PublishAsync(

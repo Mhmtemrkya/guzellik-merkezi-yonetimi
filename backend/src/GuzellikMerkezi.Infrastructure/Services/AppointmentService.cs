@@ -171,6 +171,18 @@ public sealed class AppointmentService : IAppointmentService
         if (sale is null)
             return await CreateAsync(tenantId, request.Appointment, cancellationToken, staffTenantUserId);
 
+        // YETKİ: bu uç satış verildiğinde ADİSYON AÇAR + KALEM EKLER. Eski üç çağrılı akışta bu iki
+        // adım /api/admin/adisyonlar altındaydı ve Accounting.Adisyon iznine tabiydi; atomik uç ise
+        // yalnız Appointments izin grubunda. Kontrol olmasaydı sadece randevu açma yetkisi olan
+        // personel isteğe "sale" ekleyerek satış başlatabilirdi. Onay kapısında da aynı kural var
+        // (StaffApprovalGateMiddleware) — burası servisin kendi kapısı, kapı atlanırsa da geçerli.
+        if (_currentUser.Role == UserRole.Staff
+            && !Permissions.IsActionAllowed(_currentUser.Permissions, Permissions.AccountingAdisyon))
+        {
+            return Result<AppointmentDto>.Failure(Error.Forbidden(
+                "Randevuyla birlikte satış yapma (adisyon açma) yetkiniz yok. Randevuyu satışsız oluşturabilir ya da kurum yöneticinizden yetki isteyebilirsiniz."));
+        }
+
         if (sale.ServiceDefinitionId is null && sale.ServicePackageId is null)
             return Result<AppointmentDto>.Failure(Error.Validation("Satış için hizmet ya da paket seçilmeli."));
         if (sale.ServiceDefinitionId is not null && sale.ServicePackageId is not null)

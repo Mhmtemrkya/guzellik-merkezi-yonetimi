@@ -71,6 +71,18 @@ public sealed class StaffApprovalGateMiddleware
             http.Request.Body.Position = 0;
         }
 
+        // GÖVDEYE BAĞLI İZİN: yol tek ama iş iki farklı yetki sınıfına giriyor olabilir.
+        // /appointments/with-sale gövdesinde "sale" varsa istek adisyon açıp kalem ekler →
+        // randevu yetkisi yetmez, Accounting.Adisyon da gerekir. Kontrol taslağa ALMADAN ÖNCE
+        // yapılır: yetkisiz personelin isteği onay kuyruğuna bile girmemeli.
+        if (RequiresSalePermission(http.Request.Path.Value ?? string.Empty, body)
+            && !Permissions.IsActionAllowed(currentUser.Permissions, Permissions.AccountingAdisyon))
+        {
+            await WriteForbiddenAsync(http,
+                "Randevuyla birlikte satış yapma (adisyon açma) yetkiniz yok. Randevuyu satışsız oluşturabilir ya da kurum yöneticinizden yetki isteyebilirsiniz.");
+            return;
+        }
+
         var payload = JsonSerializer.Serialize(new ReplayPayload(
             http.Request.Method,
             http.Request.Path.Value ?? string.Empty,
@@ -125,6 +137,37 @@ public sealed class StaffApprovalGateMiddleware
         path.StartsWith("/api/admin/appointments/", StringComparison.OrdinalIgnoreCase)
         && (path.EndsWith("/status", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith("/complete", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// İstek gövdesi KATALOG SATIŞI içeriyor mu? (<c>POST /api/admin/appointments/with-sale</c>)
+    /// <para>
+    /// Atomik uç randevu + satışı tek işlemde yapar; satış kısmı adisyon açıp kalem eklediği için
+    /// eski akıştaki <c>Accounting.Adisyon</c> izni burada da zorunludur. Gövde çözümlenemezse
+    /// GÜVENLİ TARAF seçilir (izin şart koşulur) — bozuk JSON yetki atlamaya dönüşmemeli.
+    /// </para>
+    /// </summary>
+    private static bool RequiresSalePermission(string path, string body)
+    {
+        if (!path.EndsWith("/with-sale", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.IsNullOrWhiteSpace(body)) return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return true;
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                // Gövde camelCase ("sale") gelir; büyük harfli gönderimler de kapsansın.
+                if (!string.Equals(property.Name, "sale", StringComparison.OrdinalIgnoreCase)) continue;
+                return property.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+            }
+            return false;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>Adisyon onay ucu — muaf listedeki tek istisna, yönetici onayına gider.</summary>
     private static bool IsAdisyonApprovePath(string path) =>

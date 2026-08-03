@@ -24,6 +24,11 @@
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Application\GuzellikMerkezi.Application.csproj" />
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Domain\GuzellikMerkezi.Domain.csproj" />
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Infrastructure\GuzellikMerkezi.Infrastructure.csproj" />
+    <!--
+      GERÇEK middleware testleri için: idempotency kapısı (yanıt kaybı ↔ mutasyonun tekrarı) yalnız
+      gerçek IdempotencyMiddleware + gerçek yanıt akışı ile doğrulanabilir; sahte replayer ile değil.
+    -->
+    <ProjectReference Include="..\..\src\GuzellikMerkezi.Api\GuzellikMerkezi.Api.csproj" />
   </ItemGroup>
 
 </Project>

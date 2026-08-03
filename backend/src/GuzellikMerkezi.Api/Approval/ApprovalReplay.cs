@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using GuzellikMerkezi.Api.Middleware;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 
@@ -85,6 +86,15 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
 
         var msg = await response.Content.ReadAsStringAsync(cancellationToken);
         if (msg.Length > 300) msg = msg[..300];
+
+        // IDEMPOTENCY KAPISI 409 DÖNDÜ: aynı anahtarla önceki bir deneme ya HÂLÂ sürüyor ya da
+        // sonucu kesinleşmeden bitmiş. 4xx olmasına rağmen KESİN başarısızlık DEĞİLDİR — o deneme
+        // commit etmiş olabilir. "Başarısız" sayıp sahiplenmeyi bırakırsak işlem yeniden onaya açılır.
+        if (response.Headers.TryGetValues(IdempotencyMiddleware.StatusHeader, out var idempotencyStatus))
+        {
+            return Result<Guid?>.Failure(new Error(IApprovalReplayer.UnknownOutcomeCode,
+                $"İşlemin sonucu doğrulanamadı (önceki deneme: {string.Join(",", idempotencyStatus)}). {msg}"));
+        }
 
         // 5xx = sunucu hatası; kısmen uygulanmış olabilir ve idempotency kaydı 5xx'i saklamaz →
         // sonuç BİLİNMİYOR. 4xx = iş kuralı reddi; hedef hiçbir şey uygulamadı → kesin başarısız.

@@ -247,12 +247,37 @@ public sealed class PendingOperationService : IPendingOperationService
     /// </summary>
     private async Task<List<Guid>> ApprovalManagerIdsAsync(Guid tenantId, Guid? branchId, CancellationToken ct)
     {
-        var roles = new[] { UserRole.InstitutionOwner, UserRole.BranchManager };
-        return await _db.TenantUsers.AsNoTracking()
-            .Where(u => u.TenantId == tenantId && u.IsActive && roles.Contains(u.Role)
-                     && (u.BranchId == null || branchId == null || u.BranchId == branchId))
-            .Select(u => u.Id)
+        // ROL SÜZGECİ BELLEKTE. MySql.EntityFrameworkCore, yerel bir dizi üzerinden yapılan
+        // .Contains() çağrısını sunucuda çeviremiyor ("Expression '@roles' ... does not have a type
+        // mapping assigned") → sorgu 500 atardı ve personelin HER yazma isteği hata alırdı.
+        // Kurum kullanıcı sayısı küçük; süzme bellekte yapılır (AppNotificationService ile aynı desen).
+        var candidates = await _db.TenantUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && u.IsActive)
+            .Select(u => new { u.Id, u.Role, u.BranchId })
             .ToListAsync(ct);
+
+        return candidates
+            .Where(u => u.Role is UserRole.InstitutionOwner or UserRole.BranchManager)
+            .Where(u => IsApprovalAudience(u.Role, u.BranchId, branchId))
+            .Select(u => u.Id)
+            .ToList();
+    }
+
+    /// <summary>
+    /// BİLDİRİM KAPSAMI = YETKİ KAPSAMI. Kural <see cref="OutOfBranchScope"/> / ListAsync / GetAsync
+    /// ile birebir aynıdır: yönetici yalnızca GÖREBİLDİĞİ işlem için haberdar edilir.
+    /// <para>
+    /// Eski kural KULLANICININ şubesizliğine bakıyordu ("BranchId = null → kurum geneli yetki"):
+    /// şubesi atanmamış bir ŞUBE YÖNETİCİSİ böylece TÜM şubelerin onay bildirimlerini alıyordu —
+    /// personel adı, işlem başlığı, bekleyen işlem Id'si ve onay ekranı bağlantısı dâhil. Doğru
+    /// ölçüt İŞLEMİN şubesidir: şubesiz işlem (kurum geneli) herkese, şubeli işlem yalnız o şubenin
+    /// yöneticisine gider. Şubesiz yönetici böylece hiçbir şubenin işlemini görmez (fail-closed).
+    /// </para>
+    /// </summary>
+    private static bool IsApprovalAudience(UserRole role, Guid? userBranchId, Guid? operationBranchId)
+    {
+        if (role == UserRole.InstitutionOwner) return true;   // kurumun tamamını yönetir
+        return operationBranchId is null || userBranchId == operationBranchId;
     }
 
     public async Task<Result<PendingOperationDto>> ApproveAsync(Guid tenantId, Guid id, Guid decidedByUserId, UserRole? actorRole = null, Guid? actorBranchId = null, CancellationToken cancellationToken = default)

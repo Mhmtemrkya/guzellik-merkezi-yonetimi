@@ -194,6 +194,15 @@ public sealed class Tenant : Entity
 
     public TenantUser GrantAccess(string email, UserRole role, Guid? branchId = null, string? fullName = null)
     {
+        // ŞUBE YÖNETİCİSİ ŞUBESİZ OLAMAZ. Şubesiz kayıt sistemde "kurum geneli" anlamına gelir;
+        // bu rolde kurum geneli yetki kurum yöneticisinin ayrıcalığıdır. Şubesiz bir şube yöneticisi
+        // hem fail-closed davrandığı için hiçbir şeyi göremez hem de yanlış yorumlandığında TÜM
+        // şubelerin verisine açılırdı (bkz. PendingOperationService.IsApprovalAudience).
+        if (role == UserRole.BranchManager && branchId is null)
+        {
+            throw new BusinessRuleException("Şube yöneticisi bir şubeye bağlı olmalıdır; şube seçin.");
+        }
+
         var normalizedEmail = TenantUser.NormalizeEmail(email);
         if (Users.Any(user => user.Email == normalizedEmail && user.Role == role && user.BranchId == branchId && user.IsActive))
         {
