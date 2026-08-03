@@ -7,6 +7,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../shared/json_helpers.dart';
 import '../network/api_config.dart';
 import 'notification_service.dart';
 
@@ -157,7 +158,7 @@ Future<DateTime?> _pollOnce({DateTime? sinceUtc}) async {
       if (raw is! Map) continue;
       final j = raw.cast<String, dynamic>();
       if (j['isRead'] == true) continue;
-      final created = DateTime.tryParse('${j['createdAtUtc']}')?.toUtc();
+      final created = parseUtc(j['createdAtUtc']);
       if (created == null) continue;
       if (sinceUtc != null && !created.isAfter(sinceUtc)) continue;
       if (newest == null || created.isAfter(newest)) newest = created;

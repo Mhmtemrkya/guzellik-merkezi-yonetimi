@@ -1,3 +1,4 @@
+import '../../shared/json_helpers.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -61,7 +62,7 @@ class AppNotificationItem {
       body: '${j['body'] ?? ''}',
       data: data,
       isRead: j['isRead'] == true,
-      createdAtUtc: DateTime.tryParse('${j['createdAtUtc']}')?.toUtc() ??
+      createdAtUtc: parseUtc(j['createdAtUtc']) ??
           DateTime.now().toUtc(),
     );
   }

@@ -46,6 +46,23 @@ DateTime? parseUtcToLocal(dynamic value) {
   return d.toLocal();
 }
 
+/// API UTC tarih/saat değerini UTC olarak okur ('Z' eksik olsa bile).
+///
+/// [parseUtcToLocal]'in UTC döndüren eşi. Ham `DateTime.tryParse(...).toUtc()` yazmak
+/// AYNI hatayı ters yönde yapar: 'Z' yoksa değer YEREL sanılır ve `toUtc()` saati
+/// gereksiz yere kaydırır (Türkiye'de +3 saat). Zamanlanmış hatırlatmalar ve
+/// "şundan sonra oluşanlar" karşılaştırmaları bu yüzden yanlış ana denk geliyordu.
+DateTime? parseUtc(dynamic value) {
+  final s = value?.toString();
+  if (s == null || s.trim().isEmpty) return null;
+  final d = DateTime.tryParse(s);
+  if (d == null) return null;
+  return d.isUtc
+      ? d
+      : DateTime.utc(d.year, d.month, d.day, d.hour, d.minute, d.second,
+          d.millisecond, d.microsecond);
+}
+
 /// JSON'dan tam sayı okur; alan yoksa/parse edilemezse null döner.
 int? asInt(dynamic value) {
   if (value is int) return value;

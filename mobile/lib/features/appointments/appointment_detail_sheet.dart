@@ -47,8 +47,8 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     } catch (_) {}
   }
 
-  DateTime? get _start => DateTime.tryParse('${appt['startUtc']}')?.toLocal();
-  DateTime? get _end => DateTime.tryParse('${appt['endUtc']}')?.toLocal();
+  DateTime? get _start => parseUtcToLocal(appt['startUtc']);
+  DateTime? get _end => parseUtcToLocal(appt['endUtc']);
 
   String get _durationText {
     final s = _start, e = _end;
@@ -932,9 +932,9 @@ class _EditSheetState extends State<_EditSheet> {
   @override
   void initState() {
     super.initState();
-    final s = DateTime.tryParse('${widget.appointment['startUtc']}')?.toLocal() ??
+    final s = parseUtcToLocal(widget.appointment['startUtc']) ??
         DateTime.now();
-    final e = DateTime.tryParse('${widget.appointment['endUtc']}')?.toLocal() ??
+    final e = parseUtcToLocal(widget.appointment['endUtc']) ??
         s.add(const Duration(hours: 1));
     start = s;
     durationMinutes = e.difference(s).inMinutes;

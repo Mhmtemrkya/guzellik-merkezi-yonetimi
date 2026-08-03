@@ -1003,14 +1003,14 @@ class _WeekAgenda extends StatelessWidget {
     final days = List.generate(7, (i) => weekStart.add(Duration(days: i)));
     final byDay = <String, List<Map<String, dynamic>>>{};
     for (final a in appointments) {
-      final s = DateTime.tryParse('${a['startUtc']}')?.toLocal();
+      final s = parseUtcToLocal(a['startUtc']);
       if (s == null) continue;
       byDay.putIfAbsent(_key(DateUtils.dateOnly(s)), () => []).add(a);
     }
     for (final list in byDay.values) {
       list.sort((a, b) {
-        final sa = DateTime.tryParse('${a['startUtc']}') ?? DateTime(0);
-        final sb = DateTime.tryParse('${b['startUtc']}') ?? DateTime(0);
+        final sa = parseUtc(a['startUtc']) ?? DateTime.utc(0);
+        final sb = parseUtc(b['startUtc']) ?? DateTime.utc(0);
         return sa.compareTo(sb);
       });
     }
@@ -1177,8 +1177,8 @@ class _AgendaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = appointment;
-    final start = DateTime.tryParse('${a['startUtc']}')?.toLocal();
-    final end = DateTime.tryParse('${a['endUtc']}')?.toLocal();
+    final start = parseUtcToLocal(a['startUtc']);
+    final end = parseUtcToLocal(a['endUtc']);
     final style = CalendarTheme.styleFor('${a['status']}');
     final name = valueOf(a, const ['customerName', 'fullName']);
     final service = valueOf(a, const ['serviceName'], fallback: '');
@@ -1287,7 +1287,7 @@ class _MonthGrid extends StatelessWidget {
     final cells = List.generate(42, (i) => gridStart.add(Duration(days: i)));
     final byDay = <String, List<Map<String, dynamic>>>{};
     for (final a in appointments) {
-      final s = DateTime.tryParse('${a['startUtc']}')?.toLocal();
+      final s = parseUtcToLocal(a['startUtc']);
       if (s == null) continue;
       byDay.putIfAbsent(_key(DateUtils.dateOnly(s)), () => []).add(a);
     }
@@ -1915,8 +1915,8 @@ class _Timeline extends StatelessWidget {
     void add(_Ev e) => perColumn.putIfAbsent(e.colIndex, () => []).add(e);
 
     for (final a in appointments) {
-      final start = DateTime.tryParse('${a['startUtc']}')?.toLocal();
-      final end = DateTime.tryParse('${a['endUtc']}')?.toLocal();
+      final start = parseUtcToLocal(a['startUtc']);
+      final end = parseUtcToLocal(a['endUtc']);
       if (start == null || end == null) continue;
       final startMin = (start.hour - startHour) * 60 + start.minute;
       final endMin = (end.hour - startHour) * 60 + end.minute;

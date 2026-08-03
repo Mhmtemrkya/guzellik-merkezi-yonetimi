@@ -1,4 +1,5 @@
 import '../network/api_client.dart';
+import '../../shared/json_helpers.dart';
 import 'notification_service.dart';
 
 /// Yaklaşan randevular için cihazda YEREL zamanlanmış hatırlatma kurar.
@@ -45,7 +46,7 @@ class AppointmentReminderScheduler {
         final status = _asInt(a['status']);
         // Yalnızca aktif (Scheduled=1 / Confirmed=2) randevular hatırlatılır.
         if (status != 1 && status != 2) continue;
-        final start = DateTime.tryParse('${a['startUtc']}')?.toUtc();
+        final start = parseUtc(a['startUtc']);
         if (start == null || !start.isAfter(now)) continue;
 
         final id = '${a['id']}';
