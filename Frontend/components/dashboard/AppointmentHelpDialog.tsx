@@ -69,8 +69,8 @@ export default function AppointmentHelpDialog({
               Altın kural: önce satış, sonra randevu
             </h3>
             <p className="mt-2 text-[12.5px] leading-relaxed text-[#4a3a44]">
-              Bu ekran <strong>sıfırdan hizmet satmaz</strong>. Randevu, müşterinin daha önce{' '}
-              <strong>satın aldığı seanslardan</strong> açılır. Yani sıra şudur:
+              Randevu her zaman bir <strong>seanstan</strong> açılır, seans da <strong>satıştan</strong>{' '}
+              doğar. Sıra şudur:
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {[
@@ -89,9 +89,10 @@ export default function AppointmentHelpDialog({
               ))}
             </div>
             <p className="mt-3 text-[12.5px] leading-relaxed text-[#4a3a44]">
-              Müşterinin seansı yoksa modalı kapatmana gerek yok: sağdaki panelden{' '}
-              <strong>Hizmet sat</strong> ya da <strong>Paket sat</strong> de, satış biter bitmez seanslar
-              2. adımda görünür.
+              Müşterinin seansı yoksa modalı kapatmana gerek yok. 2. adımda{' '}
+              <strong>Katalogdan sat</strong>&apos;a geç, hizmeti ya da paketi seç — &ldquo;Randevuyu
+              oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu hemen ardından
+              oluşturulur. (Sağdaki panelden ayrı ayrı satış yapmayı da sürdürebilirsin.)
             </p>
           </section>
 
@@ -107,8 +108,9 @@ export default function AppointmentHelpDialog({
                 geçmişi tek bakışta görünür.
               </HelpStep>
               <HelpStep n={2} icon={Scissors} title="İşlem">
-                Yalnız <strong>satın alınmış ve seansı kalan</strong> işlemler listelenir. Kart üzerindeki
-                sayı kalan seansı gösterir. Liste boşsa satış yapılmamış ya da seanslar bitmiştir.
+                İki kaynak var. <strong>Satın alınmış seans</strong>: müşterinin hakkı olan işlemler
+                listelenir, karttaki sayı kalan seansı gösterir. <strong>Katalogdan sat</strong>: tüm
+                hizmet/paket listesinden seçersin, satış randevuyla birlikte otomatik açılır.
               </HelpStep>
               <HelpStep n={3} icon={CalendarClock} title="Zaman ve personel">
                 Tarih, saat, personel ve süreyi seç. Süre hizmetin varsayılanından gelir, gerekirse
@@ -127,8 +129,8 @@ export default function AppointmentHelpDialog({
             </h3>
             <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
               <HelpTip icon={Package} title="İşlem listesi boş">
-                Müşteri o hizmeti satın almamış ya da seansları bitmiş. Sağ panelden sat, liste anında
-                tazelenir.
+                Müşteri o hizmeti satın almamış ya da seansları bitmiş. <strong>Katalogdan sat</strong>&apos;a
+                geçip aynı adımda satıp randevuyu açabilirsin.
               </HelpTip>
               <HelpTip icon={UserCog} title="Personel seçilemiyor">
                 Personel o hizmet kategorisinde yetkili değildir. Başka personel seç ya da personel

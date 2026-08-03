@@ -85,8 +85,8 @@ class AppointmentHelpSheet extends StatelessWidget {
                 const SizedBox(height: 8),
                 const Text(
                   'Seansı olmayan bir hizmet seçersen randevu iptal olmaz — katalog fiyatıyla ÜCRETLİ '
-                  'açılır. Paketten düşmesini istiyorsan önce aşağıdaki "Hizmet sat" / "Paket sat" ile '
-                  'satışı yap, sonra randevuyu aç.',
+                  'açılır. "Bu hizmeti sat" anahtarını açarsan bunun yerine randevuyla birlikte HİZMET '
+                  'SATIŞI açılır: cariye şimdi işlenmez, randevu tamamlanınca borç ve seans oluşur.',
                   style: TextStyle(fontSize: 12.5, height: 1.45),
                 ),
               ],
@@ -113,7 +113,8 @@ class AppointmentHelpSheet extends StatelessWidget {
             title: 'Hizmet',
             body:
                 'Katalogdaki hizmeti seç. Süre hizmetin varsayılanından gelir. Müşterinin o hizmette '
-                'kalan seansı varsa randevu paketten karşılanır, yoksa ücretli açılır.',
+                'kalan seansı varsa randevu paketten karşılanır; yoksa ücretli açılır ya da '
+                '"Bu hizmeti sat" ile randevuyla birlikte satış açılır.',
           ),
           const _HelpStep(
             n: 3,

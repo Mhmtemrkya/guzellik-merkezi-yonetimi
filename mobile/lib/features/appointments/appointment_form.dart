@@ -74,6 +74,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
   /// sorusu için başka ekrana gitmek gerekmesin.
   List<Map<String, dynamic>> _accounts = [];
   List<Map<String, dynamic>> _sessions = [];
+
+  /// KATALOGDAN SAT (web paritesi): seçilen hizmetin kalan seansı yoksa randevu normalde
+  /// katalog fiyatıyla ÜCRETLİ açılır. Bu anahtar açıkken bunun yerine hizmet SATIŞI açılır
+  /// (kendi adisyonu, cariye şimdi işlenmez) ve randevu ücretsiz gider; randevu tamamlanınca
+  /// backend satışı otomatik onaylar ve seans o an oluşur.
+  bool _sellFromCatalog = false;
   bool _dossierLoading = false;
 
   /// Geçmiş panelini (seans/işlem/ödeme tabloları) tazeleyen sayaç — satış veya
@@ -371,6 +377,38 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }).length;
   }
 
+  /// Seçili hizmetin kullanılabilir seansı var mı? (varsa satış gerekmez)
+  bool get _hasSessionForSelected => _sessions.any((s) =>
+      '${s['serviceDefinitionId']}' == serviceId &&
+      (((s['remainingSessions'] as num?)?.toInt() ?? 0) > 0));
+
+  /// Hizmeti satış olarak açar — web'deki "Katalogdan sat" ile aynı kurallar:
+  /// kendi adisyonu (forceNew) + cariye şimdi işlenmez (autoApproveOnFirstAppointment).
+  Future<void> _sellSelectedServiceAsync(Map<String, dynamic> service) async {
+    final adisyon = await widget.api.post('/api/admin/adisyonlar/', {
+      'customerId': customerId,
+      'customerAccountId': null,
+      'notes': null,
+      'installmentCount': 0,
+      'firstDueDate': null,
+      'forceNew': true,
+      'autoApproveOnFirstAppointment': true,
+    });
+    final adisyonId = adisyon is Map ? '${adisyon['id']}' : null;
+    if (adisyonId == null || adisyonId.isEmpty || adisyonId == 'null') {
+      throw Exception('Satis icin adisyon acilamadi.');
+    }
+    await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
+      'type': 'Service',
+      'refId': service['id'],
+      'description': '${service['name']}',
+      'quantity': 1,
+      'unitPrice': service['price'] ?? 0,
+      'staffMemberId': staffId,
+      'coveredByPackage': false,
+    });
+  }
+
   Future<void> save() async {
     if (customerId == null || staffId == null) return;
     if (serviceId == null) {
@@ -397,10 +435,11 @@ class _AppointmentFormState extends State<AppointmentForm> {
     // kaynak seans bağını kurar ve hizmet hakkını doğrular → mobilde deterministik bağ hiç
     // oluşmuyor, satış iptalinde tahminî eşleştirmeye düşülüyor ve paket randevusu ücretli
     // görünüyordu. Kalan seansı olmayan hizmet katalog fiyatıyla (ücretli) açılmaya devam eder.
-    final coveredByPackage = _sessions.any((s) =>
-        '${s['serviceDefinitionId']}' == serviceId &&
-        (((s['remainingSessions'] as num?)?.toInt() ?? 0) > 0));
-    final price = coveredByPackage ? 0 : (service['price'] ?? 0);
+    final coveredByPackage = _hasSessionForSelected;
+    // Katalogdan satışta da randevu ÜCRETSİZ gider: parayı satış adisyonu tahsil eder,
+    // randevuya da fiyat yazılsaydı aynı iş iki kez ödetilirdi.
+    final sellNow = _sellFromCatalog && !coveredByPackage;
+    final price = (coveredByPackage || sellNow) ? 0 : (service['price'] ?? 0);
     // Client-side ön kontrol: personelin bu slotta zaten 2 aktif randevusu varsa doğrudan
     // "bekleme listesine ekle?" teklifi göster (sunucuya gitmeden).
     if (_overlapCount(start, end) >= 2) {
@@ -409,6 +448,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
     setState(() => saving = true);
     try {
+      // Sıra bilinçli: satış başarısızsa randevu HİÇ oluşturulmaz.
+      if (sellNow) await _sellSelectedServiceAsync(service);
       if (widget.waitlistEntryId != null) {
         // Bekleme listesinden aktarım: tek uçta randevu açılır, kayıt "Randevu yapıldı"
         // olur ve müşteriye "randevunuz oluşturuldu" WhatsApp mesajı kuyruğa alınır.
@@ -879,9 +920,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
-                          'Randevunun paketten dusmesi icin hizmetin ONCE satin alinmis olmasi gerekir. '
-                          'Kalan seansi olan hizmet ucretsiz acilir; seansi yoksa randevu katalog '
-                          'fiyatiyla UCRETLI acilir. Gerekiyorsa once yukaridan "Hizmet sat" / "Paket sat" yap.',
+                          'Kalan seansi olan hizmet ucretsiz acilir. Seansi yoksa randevu katalog '
+                          'fiyatiyla UCRETLI acilir; asagidaki anahtari acarsan bunun yerine HIZMET '
+                          'SATISI acilir ve randevu tamamlaninca cariye/seansa otomatik islenir.',
                           style: TextStyle(fontSize: 12, height: 1.4),
                         ),
                       ),
@@ -903,6 +944,26 @@ class _AppointmentFormState extends State<AppointmentForm> {
                     }
                   }),
                 ),
+                // Seansı olmayan hizmette: ücretli randevu mu, satış mı?
+                if (serviceId != null && !_hasSessionForSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      value: _sellFromCatalog,
+                      onChanged: (v) => setState(() => _sellFromCatalog = v),
+                      title: const Text(
+                        'Bu hizmeti sat',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: const Text(
+                        'Randevuyla birlikte satis acilir; cariye simdi islenmez, randevu '
+                        'tamamlaninca borc ve seans olusur.',
+                        style: TextStyle(fontSize: 11.5, height: 1.35),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 _select(
                   label: 'Personel',

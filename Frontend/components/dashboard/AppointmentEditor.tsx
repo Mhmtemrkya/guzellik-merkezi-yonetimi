@@ -31,6 +31,7 @@ import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarnin
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
+import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
 import AppointmentHelpDialog from '@/components/dashboard/AppointmentHelpDialog'
 import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
@@ -593,6 +594,17 @@ export default function AppointmentEditor({
   const [sessLoading, setSessLoading] = useState(false)
   // Modal içinden satış yapılınca seans bakiyelerini yeniden çekmek için sayaç.
   const [sessRefreshKey, setSessRefreshKey] = useState(0)
+
+  // KATALOGDAN SATARAK RANDEVU. Adım 2 normalde yalnız SATIN ALINMIŞ seansları listeler; müşterinin
+  // hakkı yoksa akış "önce sat, sonra randevu aç" diye ikiye bölünüyordu. Bu mod katalogdan hizmet
+  // ya da paket seçtirir; "Randevuyu oluştur"da satış (hizmet satış modalıyla AYNI kurallarla)
+  // otomatik açılır ve hemen ardından randevu oluşturulur.
+  const [sourceMode, setSourceMode] = useState<'session' | 'catalog'>('session')
+  const [catalogKind, setCatalogKind] = useState<'service' | 'package'>('service')
+  const [catalogServiceId, setCatalogServiceId] = useState('')
+  const [catalogPackageId, setCatalogPackageId] = useState('')
+  /** Paket birden çok hizmet içerdiğinde randevunun hangi hizmete açılacağı. */
+  const [packageServiceId, setPackageServiceId] = useState('')
   // ANLIK: yönetici personelin satışını onayladığında seanslar bu ekranda kendiliğinden
   // belirsin — personel modalı kapatıp açmak zorunda kalmasın.
   useRealtime(['sessions', 'adisyon', 'accounts'], () => setSessRefreshKey((k) => k + 1))
@@ -703,6 +715,80 @@ export default function AppointmentEditor({
     return Array.from(map.values())
   }, [custSessions])
 
+  // Katalog listeleri — satış modalındaki picker'ın aynısı (aynı bileşen, aynı meta düzeni).
+  const servicePickerItems = useMemo<PickerItem[]>(
+    () =>
+      services
+        .filter((s) => s.isActive !== false)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          price: s.price,
+          cat: s.group || '',
+          sub: s.subGroup || '',
+          meta: `${formatTL(s.price)}${s.duration ? ` · ${s.duration} dk` : ''}`,
+        })),
+    [services],
+  )
+  const packagePickerItems = useMemo<PickerItem[]>(
+    () =>
+      packages
+        .filter((p) => p.isActive !== false)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: p.totalPrice,
+          cat: p.category || '',
+          sub: p.subCategory || '',
+          meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans`,
+          content: p.items.slice(0, 5).map((it) => `${it.serviceName} ×${it.sessionCount}`),
+        })),
+    [packages],
+  )
+
+  const catalogService = services.find((s) => s.id === catalogServiceId)
+  const catalogPackage = packages.find((p) => p.id === catalogPackageId)
+  /** Pakette randevuya açılabilecek hizmetler (aynı hizmet birden çok satırdaysa tekilleşir). */
+  const packageServiceOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>()
+    for (const it of catalogPackage?.items || []) {
+      if (it.serviceDefinitionId) map.set(it.serviceDefinitionId, { id: it.serviceDefinitionId, name: it.serviceName });
+    }
+    return Array.from(map.values())
+  }, [catalogPackage])
+
+  /**
+   * Katalog seçimi randevu alanlarına yansıtılır. FİYAT 0: satış adisyonu müşteriyi zaten
+   * borçlandırır; randevuya da fiyat yazılsaydı aynı iş iki kez ödetilirdi (paketten karşılanan
+   * randevularla aynı kural).
+   */
+  const applyCatalogSelection = (serviceDefinitionId: string, packageId: string | null): void => {
+    const svc = services.find((s) => s.id === serviceDefinitionId)
+    setValues((v) => ({
+      ...v,
+      serviceDefinitionId,
+      packageId,
+      price: 0,
+      durationMinutes: svc?.duration || v.durationMinutes || 30,
+    }))
+  }
+
+  const handleCatalogServiceSelect = (id: string): void => {
+    setCatalogServiceId(id)
+    setCatalogPackageId('')
+    setPackageServiceId('')
+    applyCatalogSelection(id, null)
+  }
+
+  const handleCatalogPackageSelect = (id: string): void => {
+    setCatalogPackageId(id)
+    setCatalogServiceId('')
+    const pkg = packages.find((p) => p.id === id)
+    const first = pkg?.items.find((it) => it.serviceDefinitionId)?.serviceDefinitionId || ''
+    setPackageServiceId(first)
+    applyCatalogSelection(first, id || null)
+  }
+
   const handleSessionSelect = (serviceDefinitionId: string): void => {
     const svc = services.find((s) => s.id === serviceDefinitionId)
     setValues((v) => ({
@@ -717,11 +803,28 @@ export default function AppointmentEditor({
   // Tek işlem/hizmet kartı varsa otomatik seç — birden fazlaysa seçimi kullanıcı yapar (dokunma).
   useEffect(() => {
     if (!open || mode !== 'create' || sessLoading) return
+    if (sourceMode !== 'session') return
     if (values.serviceDefinitionId) return
     if (bookableByService.length !== 1) return
     handleSessionSelect(bookableByService[0].serviceDefinitionId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode, sessLoading, bookableByService, values.serviceDefinitionId])
+  }, [open, mode, sessLoading, sourceMode, bookableByService, values.serviceDefinitionId])
+
+  // Müşteri değişince katalog seçimi sıfırlanır ve mod yeniden belirlenir: seansı varsa
+  // "satın alınmış"tan başla, yoksa doğrudan katalogla (fazladan tıklama olmasın).
+  useEffect(() => {
+    if (mode !== 'create') return
+    setCatalogServiceId('')
+    setCatalogPackageId('')
+    setPackageServiceId('')
+    setSourceMode('session')
+  }, [values.customerId, mode])
+  useEffect(() => {
+    if (!open || mode !== 'create' || sessLoading || !values.customerId) return
+    if (values.serviceDefinitionId) return
+    if (bookableByService.length === 0) setSourceMode('catalog')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, sessLoading, values.customerId, bookableByService.length])
 
   // Seçili tarihte izinli personeller — izinli personele o gün randevu açılamaz.
   const [leaveStaffIds, setLeaveStaffIds] = useState<Set<string>>(new Set())
@@ -765,6 +868,61 @@ export default function AppointmentEditor({
     ? new Date(values.date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })
     : ''
 
+  /**
+   * Katalogdan seçilen hizmet/paketi SATIŞ olarak açar (adisyon + kalem).
+   *
+   * Hizmet satış modalındaki akışın aynısı: `forceNew` ile kendi adisyonunu açar,
+   * `autoApproveOnFirstAppointment` ile cariye şimdi işlenmez — müşteri ilk randevusunu
+   * tamamlayınca backend otomatik onaylar (borç + peşinat + seanslar o an oluşur).
+   */
+  const sellFromCatalogAsync = async (): Promise<void> => {
+    const isPackage = Boolean(catalogPackageId)
+    const pkg = packages.find((p) => p.id === catalogPackageId)
+    const svc = services.find((x) => x.id === catalogServiceId)
+    if (!isPackage && !svc) throw new Error('Seçilen hizmet bulunamadı.')
+    if (isPackage && !pkg) throw new Error('Seçilen paket bulunamadı.')
+
+    const adisyon = await adminApi.createAdisyon<{ id?: string }>(
+      {
+        customerId: values.customerId,
+        customerAccountId: null,
+        notes: null,
+        installmentCount: 0,
+        firstDueDate: null,
+        forceNew: true,
+        autoApproveOnFirstAppointment: true,
+      },
+      tenantId,
+    )
+    if (!adisyon?.id) throw new Error('Satış için adisyon açılamadı.')
+
+    await adminApi.addAdisyonItem(
+      adisyon.id,
+      isPackage
+        ? {
+            type: 'PackageSale',
+            refId: pkg!.id,
+            description: `Paket satışı: ${pkg!.name}`,
+            quantity: 1,
+            unitPrice: pkg!.totalPrice,
+            staffMemberId: values.staffMemberId || null,
+            coveredByPackage: false,
+          }
+        : {
+            type: 'Service',
+            refId: svc!.id,
+            description: svc!.name,
+            quantity: 1,
+            unitPrice: svc!.price,
+            staffMemberId: values.staffMemberId || null,
+            coveredByPackage: false,
+          },
+      tenantId,
+    )
+    // Satış seansları oluşturduğunda sağ raydaki dosya/geçmiş bayat kalmasın.
+    setSessRefreshKey((k) => k + 1)
+  }
+
   const handleSubmit = async (): Promise<void> => {
     setSaving(true)
     setError('')
@@ -775,6 +933,10 @@ export default function AppointmentEditor({
         const missing: string[] = []
         if (!values.customerId) missing.push('Müşteri')
         if (!values.serviceDefinitionId) missing.push('İşlem')
+        if (mode === 'create' && sourceMode === 'catalog' && !catalogServiceId && !catalogPackageId) {
+          setError('Katalogdan bir hizmet ya da paket seç.')
+          return
+        }
         if (!values.staffMemberId) missing.push('Personel')
         if (!values.date) missing.push('Tarih')
         if (!values.time) missing.push('Saat')
@@ -790,6 +952,13 @@ export default function AppointmentEditor({
           setError(`${selectedStaff?.name || 'Seçili personel'} "${selectedService?.name || 'bu hizmet'}" kategorisinde yetkili değil. Farklı bir personel seç ya da personel kartından kategori yetkisi ver.`)
           return
         }
+      }
+      // KATALOGDAN SATIŞ: randevudan ÖNCE satışı aç. Sıra bilinçli — satış başarısızsa randevu
+      // hiç oluşturulmaz (aksi hâlde ödemesi olmayan bir randevu ortada kalırdı). Kurallar hizmet
+      // satış modalıyla AYNI: her satış kendi adisyonunu açar (forceNew) ve cariye ŞİMDİ işlenmez;
+      // müşterinin ilk randevusu tamamlanınca backend otomatik onaylar (seanslar o an oluşur).
+      if (mode === 'create' && sourceMode === 'catalog') {
+        await sellFromCatalogAsync()
       }
       await onSubmit(values)
       setSaved(true)
@@ -968,24 +1137,10 @@ export default function AppointmentEditor({
                       <Step
                         n={2}
                         title="İşlem"
-                        hint={mode === 'create' ? 'Müşterinin satın aldığı seanslardan' : undefined}
+                        hint={mode === 'create' ? (sourceMode === 'catalog' ? 'Katalogdan seç — satış otomatik açılır' : 'Müşterinin satın aldığı seanslardan') : undefined}
                         done={step2Done}
                         locked={!values.customerId}
                       >
-                        {/* KURAL HER ZAMAN GÖRÜNÜR: liste doluyken bile "bunlar nereden geliyor"
-                            sorusunun cevabı burada. Eskiden yalnız liste boşken söyleniyordu. */}
-                        {mode === 'create' && (
-                          <div className="mb-3 flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
-                            <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
-                            <p className="text-[12px] leading-snug text-[#4a3a44]">
-                              Randevu açabilmek için işlemin <strong>önce satın alınmış olması gerekir</strong> — burada
-                              yalnızca müşterinin <strong>hizmet ya da paket satışından</strong> gelen, seansı kalan
-                              işlemler listelenir. Seansı yoksa sağdaki panelden{' '}
-                              <strong>Hizmet sat</strong> veya <strong>Paket sat</strong> de; satış biter bitmez burada
-                              görünür.
-                            </p>
-                          </div>
-                        )}
                         {mode === 'edit' ? (
                           <LockedFact icon={Scissors} label="Hizmet" value={selectedService?.name || serviceLabel || ''} />
                         ) : !values.customerId ? (
@@ -994,36 +1149,160 @@ export default function AppointmentEditor({
                           <EmptyNote icon={Loader2} spin>
                             Seans bakiyesi yükleniyor…
                           </EmptyNote>
-                        ) : bookableByService.length === 0 ? (
-                          <div className="rounded-2xl border border-[#f0dcc4] bg-[#fdf6ec] px-4 py-3.5">
-                            <div className="flex items-start gap-2.5">
-                              <Package className="mt-0.5 h-4 w-4 shrink-0 text-[#b8863b]" strokeWidth={1.8} />
-                              <div>
-                                <div className="text-[13px] font-semibold text-[#8a6524]">
-                                  Bu müşterinin randevuya uygun seansı yok.
-                                </div>
-                                <div className="mt-0.5 text-[11.5px] leading-snug text-[#8a6524]/90">
-                                  Henüz satın alınmış bir hizmet/paket yok ya da seansları bitmiş. Sağdaki panelden
-                                  satış yap; onaylandığında seanslar burada anında görünür.
-                                </div>
-                              </div>
-                            </div>
-                          </div>
                         ) : (
-                          /* Çok hizmetli müşteride liste uzayıp formu taşırmasın — kart alanı
-                             sınırlı, gerekirse yalnız BU alan kaydırılır. */
-                          <div className="grid max-h-[300px] gap-2.5 overflow-y-auto pr-0.5 sm:grid-cols-2">
-                            {bookableByService.map((s) => (
-                              <SessionCard
-                                key={s.serviceDefinitionId}
-                                active={values.serviceDefinitionId === s.serviceDefinitionId}
-                                onClick={() => handleSessionSelect(s.serviceDefinitionId)}
-                                name={s.serviceName}
-                                remaining={s.remaining}
-                                total={s.total}
-                              />
-                            ))}
-                          </div>
+                          <>
+                            {/* KAYNAK SEÇİMİ: hazır seans mı, katalogdan yeni satış mı.
+                                Eskiden seansı olmayan müşteride akış "önce sat, sonra randevu aç"
+                                diye ikiye bölünüyordu; artık ikisi tek işlemde yapılabiliyor. */}
+                            <div className="mb-3 flex items-center rounded-full border border-[#efe1e7] bg-white p-0.5">
+                              {([
+                                ['session', `Satın alınmış seans${bookableByService.length ? ` (${bookableByService.length})` : ''}`],
+                                ['catalog', 'Katalogdan sat'],
+                              ] as ['session' | 'catalog', string][]).map(([v, label]) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  aria-pressed={sourceMode === v}
+                                  onClick={() => {
+                                    setSourceMode(v)
+                                    // Mod değişince önceki seçim taşınmasın: yanlış fiyat/satış riski.
+                                    setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
+                                    setCatalogServiceId('')
+                                    setCatalogPackageId('')
+                                    setPackageServiceId('')
+                                  }}
+                                  className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                                    sourceMode === v ? 'bg-[#8e3f5b] text-white' : 'text-[#705a66] hover:text-[#2b1e29]'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+
+                            {sourceMode === 'session' ? (
+                              bookableByService.length === 0 ? (
+                                <div className="rounded-2xl border border-[#f0dcc4] bg-[#fdf6ec] px-4 py-3.5">
+                                  <div className="flex items-start gap-2.5">
+                                    <Package className="mt-0.5 h-4 w-4 shrink-0 text-[#b8863b]" strokeWidth={1.8} />
+                                    <div>
+                                      <div className="text-[13px] font-semibold text-[#8a6524]">
+                                        Bu müşterinin randevuya uygun seansı yok.
+                                      </div>
+                                      <div className="mt-0.5 text-[11.5px] leading-snug text-[#8a6524]/90">
+                                        Henüz satın alınmış bir hizmet/paket yok ya da seansları bitmiş.{' '}
+                                        <button
+                                          type="button"
+                                          onClick={() => setSourceMode('catalog')}
+                                          className="font-semibold text-[#8e3f5b] underline underline-offset-2"
+                                        >
+                                          Katalogdan sat
+                                        </button>{' '}
+                                        diyerek satışı ve randevuyu tek adımda yapabilirsin.
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Çok hizmetli müşteride liste uzayıp formu taşırmasın — kart alanı
+                                   sınırlı, gerekirse yalnız BU alan kaydırılır. */
+                                <div className="grid max-h-[300px] gap-2.5 overflow-y-auto pr-0.5 sm:grid-cols-2">
+                                  {bookableByService.map((s) => (
+                                    <SessionCard
+                                      key={s.serviceDefinitionId}
+                                      active={values.serviceDefinitionId === s.serviceDefinitionId}
+                                      onClick={() => handleSessionSelect(s.serviceDefinitionId)}
+                                      name={s.serviceName}
+                                      remaining={s.remaining}
+                                      total={s.total}
+                                    />
+                                  ))}
+                                </div>
+                              )
+                            ) : (
+                              <div className="space-y-3">
+                                {/* Hizmet mi paket mi */}
+                                <div className="flex items-center rounded-full border border-[#efe1e7] bg-[#fdf9fb] p-0.5">
+                                  {([['service', 'Hizmet'], ['package', 'Paket']] as ['service' | 'package', string][]).map(([v, label]) => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      aria-pressed={catalogKind === v}
+                                      onClick={() => {
+                                        setCatalogKind(v)
+                                        setCatalogServiceId('')
+                                        setCatalogPackageId('')
+                                        setPackageServiceId('')
+                                        setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
+                                      }}
+                                      className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                                        catalogKind === v ? 'bg-white text-[#8e3f5b] shadow-[0_2px_6px_-2px_rgba(120,71,88,0.35)]' : 'text-[#705a66] hover:text-[#2b1e29]'
+                                      }`}
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Katalog seçici — satış modalındaki bileşenin aynısı
+                                    (kategori + alt kategori + arama). */}
+                                <div className="max-h-[300px] overflow-y-auto pr-0.5">
+                                  {catalogKind === 'service' ? (
+                                    <CatalogPicker
+                                      items={servicePickerItems}
+                                      value={catalogServiceId}
+                                      onChange={handleCatalogServiceSelect}
+                                      accent="rose"
+                                      emptyText="Hizmet bulunamadı."
+                                    />
+                                  ) : (
+                                    <CatalogPicker
+                                      items={packagePickerItems}
+                                      value={catalogPackageId}
+                                      onChange={handleCatalogPackageSelect}
+                                      accent="rose"
+                                      emptyText="Paket bulunamadı."
+                                    />
+                                  )}
+                                </div>
+
+                                {/* Paket birden çok hizmet içeriyorsa: randevu HANGİ hizmete açılacak? */}
+                                {catalogPackage && packageServiceOptions.length > 1 && (
+                                  <Field label="Bu randevuda uygulanacak hizmet" required>
+                                    <select
+                                      className={control}
+                                      value={packageServiceId}
+                                      onChange={(e) => {
+                                        setPackageServiceId(e.target.value)
+                                        applyCatalogSelection(e.target.value, catalogPackage.id)
+                                      }}
+                                    >
+                                      {packageServiceOptions.map((o) => (
+                                        <option key={o.id} value={o.id}>{o.name}</option>
+                                      ))}
+                                    </select>
+                                  </Field>
+                                )}
+
+                                {/* Ne olacağını AÇIKÇA yaz: satış sessizce oluşmasın. */}
+                                {(catalogService || catalogPackage) && (
+                                  <div className="flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
+                                    <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
+                                    <p className="text-[12px] leading-snug text-[#4a3a44]">
+                                      <strong>{catalogService?.name || catalogPackage?.name}</strong>
+                                      {' — '}
+                                      <strong>{formatTL(catalogService?.price ?? catalogPackage?.totalPrice ?? 0)}</strong>
+                                      {catalogPackage ? ` · ${catalogPackage.totalSessions} seans` : ''}
+                                      <br />
+                                      &ldquo;Randevuyu oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu
+                                      hemen ardından oluşturulur. Satış cariye <strong>şimdi işlenmez</strong>; bu randevu
+                                      <strong> tamamlandığında</strong> borç, peşinat ve seanslar otomatik oluşur.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </Step>
                     </div>

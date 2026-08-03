@@ -23,6 +23,14 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         _clock = clock;
         _encryption = encryption;
         _searchIndex = searchIndex;
+
+        // SORGUDAN GELEN NESNE ARTIK "YENİ" DEĞİLDİR. Entity.IsTransient bellekte oluşturulan
+        // nesneleri işaretler (bkz. ApplyAuditInfo); materyalizasyonda temizlenmezse veritabanından
+        // okunan bir satır güncellendiğinde yanlışlıkla Added'a çevrilir ve INSERT çakışması olurdu.
+        ChangeTracker.Tracked += (_, e) =>
+        {
+            if (e.FromQuery && e.Entry.Entity is Entity tracked) tracked.MarkPersisted();
+        };
     }
 
     private bool TenantFilterDisabled => _tenantContext is null || _tenantContext.IsPlatformAdmin || _tenantContext.TenantId is null;
@@ -414,6 +422,20 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
                     entry.Entity.MarkCreated(utcNow, userId);
                     break;
                 case EntityState.Modified:
+                    // YENİ NESNE MODIFIED GÖRÜNÜYORSA Added'a ÇEVİR.
+                    //
+                    // Id'ler uygulamada üretildiği için (Guid.CreateVersion7) bir nesne daha
+                    // kaydedilmeden anahtarı dolu olur. EF, bir navigasyon koleksiyonuna eklenen
+                    // nesneyi keşfettiğinde "anahtarı var → kayıtlı" varsayıp Modified işaretliyor;
+                    // sonuç INSERT yerine var olmayan satıra UPDATE ve DbUpdateConcurrencyException
+                    // ("0 row(s) affected") oluyordu. Taksit planını yeniden kuran her yol
+                    // (adisyon onayı, cari düzenleme) bu yüzden 500 veriyordu.
+                    if (entry.Entity.IsTransient)
+                    {
+                        entry.State = EntityState.Added;
+                        entry.Entity.MarkCreated(utcNow, userId);
+                        break;
+                    }
                     entry.Entity.Touch(utcNow, userId);
                     break;
                 case EntityState.Deleted:
