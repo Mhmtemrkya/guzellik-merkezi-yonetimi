@@ -115,6 +115,12 @@ abstract final class CalendarText {
   static String hm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
+  /// Gün içi dakikayı "HH:MM" olarak yazar (540 → "09:00"); kapalı saat etiketlerinde kullanılır.
+  static String minuteLabel(int minute) {
+    final m = minute.clamp(0, 24 * 60);
+    return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  }
+
   static String statusLabel(String status) {
     switch (status.toLowerCase()) {
       case 'scheduled':
@@ -166,4 +172,18 @@ abstract final class CalendarText {
     }
     return '${negative ? '-' : ''}₺$buffer,${parts[1]}';
   }
+}
+
+/// Kapalı gün/saat kaydı (StaffTimeOff) tüm günü mü kapatıyor?
+///
+/// Backend `isFullDay` gönderir; alan yoksa (eski sürüm) 0–1440 aralığı tüm gün sayılır.
+bool timeOffIsFullDay(Map<String, dynamic> t) {
+  final flag = t['isFullDay'];
+  if (flag is bool) return flag;
+  final start = t['startMinute'];
+  final end = t['endMinute'];
+  if (start == null && end == null) return true;
+  final s = start is num ? start.toInt() : int.tryParse('$start') ?? 0;
+  final e = end is num ? end.toInt() : int.tryParse('$end') ?? 24 * 60;
+  return s <= 0 && e >= 24 * 60;
 }

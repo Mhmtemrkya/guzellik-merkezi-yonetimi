@@ -30,44 +30,75 @@ public sealed class ScheduleService : IScheduleService
             .ToDictionaryAsync(s => s.Id, s => s.FullName, cancellationToken);
 
         var dtos = rows
-            .OrderBy(t => t.Date)
-            .Select(t => new StaffTimeOffDto(t.Id, t.StaffMemberId,
-                staffMap.TryGetValue(t.StaffMemberId, out var n) ? n : null, t.Date, t.Reason))
+            .OrderBy(t => t.Date).ThenBy(t => t.StartMinute)
+            .Select(t => ToDto(t, staffMap.TryGetValue(t.StaffMemberId, out var n) ? n : null))
             .ToArray();
         return Result<IReadOnlyCollection<StaffTimeOffDto>>.Success(dtos);
     }
+
+    private static StaffTimeOffDto ToDto(StaffTimeOff t, string? staffName) =>
+        new(t.Id, t.StaffMemberId, staffName, t.Date, t.Reason, t.StartMinute, t.EndMinute, t.IsFullDay);
+
+    private static string Hhmm(int minute) => $"{minute / 60:00}:{minute % 60:00}";
 
     public async Task<Result<StaffTimeOffDto>> AddTimeOffAsync(Guid tenantId, CreateTimeOffRequest request, CancellationToken cancellationToken = default)
     {
         var staff = await _db.StaffMembers.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == request.StaffMemberId, cancellationToken);
         if (staff is null) return Result<StaffTimeOffDto>.Failure(Error.NotFound("Personel bulunamadı."));
 
-        // (StaffMemberId, Date) UNIQUE index'i soft-deleted satırları da kapsar. Query filter'ı yok sayıp
-        // fiziksel satırı ara: soft-deleted varsa canlandır (yeniden INSERT = unique çakışması = 500 önlenir),
-        // aktif satır varsa çakışma döndür, hiç yoksa yeni ekle. (izin ver → iptal → tekrar ver toggle'ı için.)
-        var existing = await _db.StaffTimeOffs
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == request.Date, cancellationToken);
+        // Aralık verilmemişse tüm gün kapatılır (eski "izinli yap" davranışı).
+        var start = request.StartMinute ?? StaffTimeOff.FullDayStartMinute;
+        var end = request.EndMinute ?? StaffTimeOff.FullDayEndMinute;
+        if (start < StaffTimeOff.FullDayStartMinute || end > StaffTimeOff.FullDayEndMinute || end <= start)
+            return Result<StaffTimeOffDto>.Failure(Error.Validation("Saat aralığı geçersiz (bitiş başlangıçtan sonra olmalı)."));
+        var fullDay = start <= StaffTimeOff.FullDayStartMinute && end >= StaffTimeOff.FullDayEndMinute;
 
+        // Benzersizlik (StaffMemberId, Date, StartMinute) soft-deleted satırları da kapsar; query filter'ı
+        // yok sayıp o günün TÜM fiziksel satırlarını al: aynı başlangıçlı silinmiş satır canlandırılır
+        // (yeniden INSERT = unique çakışması = 500 önlenir), aktif ve kesişen satır varsa çakışma döner.
+        var sameDay = await _db.StaffTimeOffs
+            .IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == request.Date)
+            .ToListAsync(cancellationToken);
+
+        var active = sameDay.Where(t => !t.IsDeleted).ToList();
+        if (fullDay)
+        {
+            if (active.Any(t => t.IsFullDay)) return Result<StaffTimeOffDto>.Failure(Error.Conflict("Bu gün için zaten izin tanımlı."));
+            // Tüm gün kapatılıyorsa mevcut saat aralıkları anlamsızlaşır — kapsandıkları için kaldırılır.
+            foreach (var partial in active) partial.SoftDelete();
+        }
+        else
+        {
+            var clash = active.FirstOrDefault(t => t.Overlaps(start, end));
+            if (clash is not null)
+                return Result<StaffTimeOffDto>.Failure(Error.Conflict(clash.IsFullDay
+                    ? "Bu personelin günü zaten tamamen kapalı."
+                    : $"Bu aralık {Hhmm(clash.StartMinute)}–{Hhmm(clash.EndMinute)} kapalı saatiyle çakışıyor."));
+        }
+
+        var existing = sameDay.FirstOrDefault(t => t.IsDeleted && t.StartMinute == start);
         StaffTimeOff timeOff;
         if (existing is not null)
         {
-            if (!existing.IsDeleted) return Result<StaffTimeOffDto>.Failure(Error.Conflict("Bu gün için zaten izin tanımlı."));
             existing.Restore();
+            existing.SetRange(start, end);
             existing.SetReason(request.Reason);
             timeOff = existing;
         }
         else
         {
-            timeOff = new StaffTimeOff(tenantId, request.StaffMemberId, request.Date, request.Reason);
+            timeOff = new StaffTimeOff(tenantId, request.StaffMemberId, request.Date, request.Reason, start, end);
             _db.StaffTimeOffs.Add(timeOff);
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        var label = fullDay ? "tüm gün" : $"{Hhmm(start)}–{Hhmm(end)}";
         await _audit.LogAsync(tenantId, staff.BranchId, "Create", "StaffTimeOff", timeOff.Id,
-            $"İzin: {staff.FullName} · {request.Date}", new { request.StaffMemberId, request.Date, request.Reason }, cancellationToken);
+            $"Kapalı saat: {staff.FullName} · {request.Date} · {label}",
+            new { request.StaffMemberId, request.Date, request.Reason, StartMinute = start, EndMinute = end }, cancellationToken);
 
-        return Result<StaffTimeOffDto>.Success(new StaffTimeOffDto(timeOff.Id, timeOff.StaffMemberId, staff.FullName, timeOff.Date, timeOff.Reason));
+        return Result<StaffTimeOffDto>.Success(ToDto(timeOff, staff.FullName));
     }
 
     public async Task<Result<StaffWorkingHoursDto>> GetWorkingHoursAsync(Guid tenantId, Guid staffMemberId, CancellationToken cancellationToken = default)

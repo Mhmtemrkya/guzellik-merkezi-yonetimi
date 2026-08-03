@@ -46,6 +46,13 @@ DateTime? parseUtcToLocal(dynamic value) {
   return d.toLocal();
 }
 
+/// JSON'dan tam sayı okur; alan yoksa/parse edilemezse null döner.
+int? asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('$value');
+}
+
 double numberOf(Map<String, dynamic> item, List<String> keys) {
   for (final key in keys) {
     final value = item[key];

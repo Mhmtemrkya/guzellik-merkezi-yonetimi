@@ -21,6 +21,9 @@ const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz'
 
 type ViewKey = 'day' | 'week' | 'month'
 
+/** Randevu sayfasındaki "Gün Kapat" ile kapatılan saat aralığı (yerel dakika). */
+type ClosedRange = { start: number; end: number; reason: string }
+
 /** Durum → görsel kimliği (Stitch çizelge paleti). */
 const STATUS_META: Record<AppointmentStatusKey, { bar: string; label: string; pillBg: string; pillText: string }> = {
   tamamlandi: { bar: '#2f9e72', label: 'Tamamlandı', pillBg: 'rgba(47,158,114,.12)', pillText: '#23805c' },
@@ -143,9 +146,26 @@ export default function StaffSchedulePage() {
     return map
   }, [appointments])
 
+  // Yalnız TÜM GÜN izinleri "izinli" sayılır. Randevu sayfasındaki "Gün Kapat" ile eklenen
+  // saat aralıkları da aynı tablodan gelir; onlar günü kapatmaz, ayrıca gösterilir.
+  const fullDayOffs = useMemo(() => timeOffs.filter((t) => t.isFullDay), [timeOffs])
   const timeOffIndex = useMemo(() => {
     const map = new Map<string, string>()
-    for (const t of timeOffs) map.set(`${t.staffMemberId}|${t.date}`, t.id)
+    for (const t of fullDayOffs) map.set(`${t.staffMemberId}|${t.date}`, t.id)
+    return map
+  }, [fullDayOffs])
+
+  /** staffId|date → o günün kapalı saat aralıkları (tüm gün izinleri hariç). */
+  const closedHoursIndex = useMemo(() => {
+    const map = new Map<string, ClosedRange[]>()
+    for (const t of timeOffs) {
+      if (t.isFullDay) continue
+      const k = `${t.staffMemberId}|${t.date}`
+      const arr = map.get(k) ?? []
+      arr.push({ start: t.startMinute, end: t.endMinute, reason: t.reason })
+      map.set(k, arr)
+    }
+    for (const arr of map.values()) arr.sort((a, b) => a.start - b.start)
     return map
   }, [timeOffs])
 
@@ -167,8 +187,8 @@ export default function StaffSchedulePage() {
       const days = monthInfo.last.getDate()
       occupancy = Math.round((byDay.size / days) * 100)
     }
-    return { planned, occupancy, leaves: timeOffs.length, staffCount: staff.length }
-  }, [appointments, staff, apptIndex, timeOffs, view, cursor, weekDays, monthInfo])
+    return { planned, occupancy, leaves: fullDayOffs.length, staffCount: staff.length }
+  }, [appointments, staff, apptIndex, fullDayOffs, view, cursor, weekDays, monthInfo])
 
   if (!canSchedule) {
     return (
@@ -319,7 +339,7 @@ export default function StaffSchedulePage() {
 
         {/* Görünümler */}
         {view === 'month' ? (
-          <MonthGrid monthInfo={monthInfo} appointments={appointments} timeOffs={timeOffs} todayKey={todayKey} onPickDay={jumpToDay} />
+          <MonthGrid monthInfo={monthInfo} appointments={appointments} timeOffs={fullDayOffs} todayKey={todayKey} onPickDay={jumpToDay} />
         ) : (
           <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
             <div>
@@ -329,6 +349,7 @@ export default function StaffSchedulePage() {
                   staff={staff}
                   appointments={appointments}
                   timeOffIndex={timeOffIndex}
+                  closedHoursIndex={closedHoursIndex}
                   busy={busy}
                   onToggleLeave={toggleLeave}
                   onUploadPhoto={uploadPhoto}
@@ -351,7 +372,7 @@ export default function StaffSchedulePage() {
               view={view}
               cursor={cursor}
               appointments={appointments}
-              timeOffs={timeOffs}
+              timeOffs={fullDayOffs}
               staff={staff}
               apptIndex={apptIndex}
               weekDays={weekDays}
@@ -409,12 +430,14 @@ function StaffAvatar({ s, onUpload, busy, size = 40 }: { s: StaffItem; onUpload:
 
 /** Saat ekseni + personel sütunları + zamana göre konumlanmış randevu kartları. */
 function DayAgenda({
-  dayKeyStr, staff, appointments, timeOffIndex, busy, onToggleLeave, onUploadPhoto,
+  dayKeyStr, staff, appointments, timeOffIndex, closedHoursIndex, busy, onToggleLeave, onUploadPhoto,
 }: {
   dayKeyStr: string
   staff: StaffItem[]
   appointments: ApptItem[]
   timeOffIndex: Map<string, string>
+  /** staffId|date → kapalı saat aralıkları (randevu sayfasındaki "Gün Kapat" ile eklenir). */
+  closedHoursIndex: Map<string, ClosedRange[]>
   busy: boolean
   onToggleLeave: (staffId: string, date: string) => void
   onUploadPhoto: (s: StaffItem, f: File) => void
@@ -484,6 +507,7 @@ function DayAgenda({
           {columns.map((col) => {
             const appts = byStaff.get(col.id) ?? []
             const leaveId = col.staff ? timeOffIndex.get(`${col.staff.id}|${dayKeyStr}`) : undefined
+            const closed = (col.staff && !leaveId ? closedHoursIndex.get(`${col.staff.id}|${dayKeyStr}`) : undefined) ?? []
             return (
               <div key={col.id} className="border-l border-[#ead8df]/50 first:border-l-0">
                 {/* Sütun başlığı */}
@@ -521,6 +545,24 @@ function DayAgenda({
                 <div className={`relative ${leaveId ? 'bg-[repeating-linear-gradient(45deg,#eef4fb,#eef4fb_10px,#fff_10px,#fff_20px)]' : ''}`} style={{ height: colH }}>
                   {hours.map((_, i) => (
                     <div key={i} className="absolute left-0 right-0 border-t border-dashed border-[#ead8df]/45" style={{ top: i * HOUR }} />
+                  ))}
+                  {/* Kapalı saat aralıkları — randevu sayfasındaki "Gün Kapat" ile eklenir. */}
+                  {closed.map((r) => (
+                    <div
+                      key={`${r.start}-${r.end}`}
+                      /* z-index verilmez: DOM sırası gereği randevu kartları üstte kalır. */
+                      className="absolute inset-x-0 flex items-center justify-center overflow-hidden border-y border-[#e2c3d0] bg-[#faf1f5]/85 px-1"
+                      style={{
+                        top: (r.start - startH * 60) * (HOUR / 60),
+                        height: Math.max(14, (r.end - r.start) * (HOUR / 60)),
+                        backgroundImage: 'repeating-linear-gradient(45deg, rgba(146,96,120,0.16) 0, rgba(146,96,120,0.16) 5px, transparent 5px, transparent 11px)',
+                      }}
+                      title={r.reason ? `Kapalı: ${minToHHMM(r.start)}–${minToHHMM(r.end)} · ${r.reason}` : `Kapalı saat: ${minToHHMM(r.start)}–${minToHHMM(r.end)}`}
+                    >
+                      <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[#e2c3d0] bg-white/90 px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums text-[#8a4e69]">
+                        <Lock className="h-2.5 w-2.5 shrink-0" /> {minToHHMM(r.start)}–{minToHHMM(r.end)}
+                      </span>
+                    </div>
                   ))}
                   {leaveId ? (
                     <div className="absolute inset-x-2 top-3 flex items-center justify-center gap-1.5 rounded-[10px] border border-[#bdd9f2] bg-white/80 py-2 text-[11px] font-medium text-[#3e86c0]">

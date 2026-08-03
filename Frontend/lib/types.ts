@@ -810,14 +810,21 @@ export interface ApiStaffTimeOff {
   staffName?: string | null
   date?: string
   reason?: string | null
+  startMinute?: number | null
+  endMinute?: number | null
+  isFullDay?: boolean | null
 }
 
+/** Kapalı gün/saat. Dakikalar yerel (TR) gün içi dakika: 540 = 09:00. Tüm gün = 0–1440. */
 export interface StaffTimeOff {
   id: string
   staffMemberId: string
   staffName: string
   date: string
   reason: string
+  startMinute: number
+  endMinute: number
+  isFullDay: boolean
 }
 
 // ---------- Kampanya (4C) ----------
@@ -1397,6 +1404,14 @@ export interface ApiPlatformMessagingSettings {
   whatsAppConfigured?: boolean
   hasWhatsAppAppSecret?: boolean
   whatsAppVerifyToken?: string | null
+  // Ödeme (iyzico) — anahtarların KENDİSİ dönmez, yalnız "tanımlı mı" bilgisi döner.
+  paymentsEnabled?: boolean
+  paymentProvider?: string
+  hasIyzicoApiKey?: boolean
+  hasIyzicoSecretKey?: boolean
+  iyzicoBaseUrl?: string | null
+  paymentsReturnUrl?: string | null
+  paymentsConfigured?: boolean
 }
 
 export interface ApiMessagingTestResult {

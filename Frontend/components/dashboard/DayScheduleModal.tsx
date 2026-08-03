@@ -15,6 +15,7 @@ import {
   Clock,
   GripVertical,
   Hourglass,
+  Lock,
   MessageCircle,
   Pencil,
   Percent,
@@ -303,6 +304,19 @@ export interface DayScheduleModalProps {
   onCreateAt?: (info: { date: string; time?: string; staffId?: string }) => void
   /** Personeli o gün izinli yap / iznini kaldır (yalnızca yönetici). */
   onToggleLeave?: (staffId: string, date: string, currentlyOnLeave: boolean) => void
+  /**
+   * Seçilen personellerin o gündeki BELİRLİ SAAT ARALIĞINI kapatır (tüm gün için
+   * dakikalar null gönderilir). "Gün Kapat" panelinden çağrılır — yalnızca yönetici.
+   */
+  onCloseHours?: (input: {
+    staffIds: string[]
+    date: string
+    startMinute: number | null
+    endMinute: number | null
+    reason: string | null
+  }) => void | Promise<void>
+  /** Kapalı saat/izin kaydını kaldırır (çizelgedeki kapalı blokun × düğmesi). */
+  onRemoveTimeOff?: (id: string) => void | Promise<void>
   /** Görüntülenen günü değiştir (üst bardaki ‹ › ile). */
   onChangeDate?: (isoDate: string) => void
   /** Taslak randevuyu onayla (yalnızca yönetici). */
@@ -355,6 +369,8 @@ export default function DayScheduleModal({
   onEditAppointment,
   onCreateAt,
   onToggleLeave,
+  onCloseHours,
+  onRemoveTimeOff,
   onChangeDate,
   onApprove,
   onStartService,
@@ -384,6 +400,8 @@ export default function DayScheduleModal({
   const [dropInfo, setDropInfo] = useState<{ colKey: string; startMin: number } | null>(null)
   /** Boş slot ipucu: imlecin hangi sütunda, hangi saate denk geldiği. */
   const [hoverSlot, setHoverSlot] = useState<{ colKey: string; startMin: number } | null>(null)
+  /** "Gün Kapat" paneli açık mı — personel + saat aralığı seçilip randevuya kapatılır. */
+  const [closePanelOpen, setClosePanelOpen] = useState(false)
   // Portal ile body'ye taşımak için (sidebar dahil her şeyin önünde) — SSR guard.
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
@@ -419,8 +437,13 @@ export default function DayScheduleModal({
       setChipOnaysiz(false)
       setChipVip(false)
       setChipOdeme(false)
+      setClosePanelOpen(false)
     }
   }, [open])
+  // Gün değişince açık kalan kapatma paneli yanlış güne işlem yapmasın.
+  useEffect(() => {
+    setClosePanelOpen(false)
+  }, [date])
 
   const dayAppts = useMemo(
     () => (date ? appointments.filter((a) => a.date === date) : []),
@@ -459,18 +482,45 @@ export default function DayScheduleModal({
   const rangeAppts = useMemo(() => appointments.filter((a) => curDaySet.has(a.date)), [appointments, curDaySet])
   const scopeAppts = view === 'day' ? dayAppts : rangeAppts
 
-  // O gün izinli personellerin id'leri — bu personellere randevu açılamaz.
+  // Görünen günün kapalı kayıtları (tüm gün izni + saat aralıkları).
+  const dayTimeOffs = useMemo(
+    () => (date ? (timeOffs || []).filter((t) => (t.date || '').slice(0, 10) === date && t.staffMemberId) : []),
+    [timeOffs, date],
+  )
+
+  // O gün TAMAMEN izinli personellerin id'leri — bu personellere hiç randevu açılamaz.
   const leaveIds = useMemo(() => {
     const s = new Set<string>()
-    if (!date) return s
-    for (const t of timeOffs || []) {
-      if ((t.date || '').slice(0, 10) === date && t.staffMemberId) s.add(t.staffMemberId)
-    }
+    for (const t of dayTimeOffs) if (t.isFullDay) s.add(t.staffMemberId)
     return s
-  }, [timeOffs, date])
+  }, [dayTimeOffs])
+
+  // Personel → o günün kapalı SAAT aralıkları (tüm gün olanlar sütun deseniyle ayrıca gösterilir).
+  const closedByStaff = useMemo(() => {
+    const m = new Map<string, StaffTimeOff[]>()
+    for (const t of dayTimeOffs) {
+      if (t.isFullDay) continue
+      const list = m.get(t.staffMemberId)
+      if (list) list.push(t)
+      else m.set(t.staffMemberId, [t])
+    }
+    for (const list of m.values()) list.sort((a, b) => a.startMinute - b.startMinute)
+    return m
+  }, [dayTimeOffs])
+
+  /** Verilen personelin `startMin`–`endMin` aralığı kapalı mı? (tüm gün izni dahil) */
+  const isRangeClosed = useCallback(
+    (staffId: string | null, startMin: number, endMin: number): boolean => {
+      if (!staffId) return false
+      if (leaveIds.has(staffId)) return true
+      return (closedByStaff.get(staffId) || []).some((t) => t.startMinute < endMin && startMin < t.endMinute)
+    },
+    [leaveIds, closedByStaff],
+  )
 
   // İzin yönetimi yalnızca yöneticide (personel görünümünde gizli).
   const canManageLeave = Boolean(onToggleLeave) && !isStaffUser
+  const canCloseHours = Boolean(onCloseHours) && !isStaffUser
 
   const custOf = (a: Appointment): Customer | undefined => (a.customerId ? customers?.[a.customerId] : undefined)
   // VIP: öncelikle randevu DTO'sundan (a.isVip), yoksa lookup'tan.
@@ -518,6 +568,12 @@ export default function DayScheduleModal({
         ? columns.filter((c) => c.id !== null).map((c) => ({ id: c.id as string, name: c.name }))
         : staff.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name })),
     [view, columns, staff],
+  )
+
+  // "Gün Kapat" personel listesi — sütunlardan bağımsız, tüm aktif kadro.
+  const closeHoursChoices = useMemo<{ id: string; name: string }[]>(
+    () => staff.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name })),
+    [staff],
   )
 
   // Zaman penceresi (en erken/en geç randevuya göre, en az 09–19)
@@ -707,11 +763,18 @@ export default function DayScheduleModal({
     const y = e.clientY - rect.top
     const raw = startHour * 60 + (y / PX_PER_HOUR) * 60
     const snapped = Math.max(startHour * 60, Math.round(raw / 15) * 15)
+    // Kapalı saate tıklanınca randevu formu açılmasın — sonrasında backend nasılsa reddederdi.
+    if (isRangeClosed(col.id, snapped, snapped + 15)) return
     onCreateAt({ date, time: minutesToLabel(snapped), staffId: col.id ?? undefined })
   }
 
   // Sürükle-bırak: yönetici + reschedule geri çağrısı gerekli; iptal/tamamlanan taşınamaz.
   const canDrag = Boolean(onReschedule) && !isStaffUser
+  /** Taşınan randevunun süresi — kapalı aralıkla çakışma önizlemesi için. */
+  const draggingDur = useMemo(() => {
+    const a = draggingId ? dayAppts.find((x) => x.id === draggingId) : null
+    return a ? apptDur(a) : 30
+  }, [draggingId, dayAppts])
   const dragAllowed = (a: Appointment): boolean => canDrag && a.status !== 'iptal' && a.status !== 'tamamlandi'
 
   // Bir sütun üzerindeki fare Y'sinden 15dk'ya yuvarlanmış başlangıç dakikasını hesapla.
@@ -733,6 +796,7 @@ export default function DayScheduleModal({
     const moved = dayAppts.find((a) => a.id === id)
     if (!moved) return
     const startMin = snappedMinFrom(e)
+    if (isRangeClosed(col.id, startMin, startMin + apptDur(moved))) return // kapalı saate bırakma
     // Farklı personel sütununa bırakınca aktar (Atanmamış sütununa aktarma yok).
     const newStaffId = col.id && col.id !== moved.staffMemberId ? col.id : undefined
     const timeSame = minutesToLabel(startMin) === moved.time
@@ -904,11 +968,47 @@ export default function DayScheduleModal({
                 </button>
               )}
               {anyFilter && (
-                <button type="button" onClick={() => { setStaffFilter(''); setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="ml-auto text-[11px] font-semibold text-[#c85776] hover:underline">
+                <button type="button" onClick={() => { setStaffFilter(''); setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="text-[11px] font-semibold text-[#c85776] hover:underline">
                   Filtreleri temizle
                 </button>
               )}
+
+              {/* GÜN KAPAT — personel + saat aralığı seçip randevuya kapatma.
+                  Filtre değil bir EYLEM olduğundan chip'lerden ayrı, sağ uçta durur. */}
+              {view === 'day' && canCloseHours && (
+                <button
+                  type="button"
+                  onClick={() => setClosePanelOpen(true)}
+                  disabled={busy}
+                  title="Seçtiğin personelin bu gündeki saatlerini randevuya kapat"
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#e0b6c7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#c85776] hover:bg-[#fff1f6] hover:text-[#c85776] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Lock className="h-3.5 w-3.5" /> Gün Kapat
+                </button>
+              )}
             </div>
+
+            {/* ===================== GÜN KAPAT PANELİ ===================== */}
+            <AnimatePresence>
+              {closePanelOpen && canCloseHours && onCloseHours && (
+                <CloseHoursPanel
+                  key="close-hours-panel"
+                  dayTitle={`${dayTitleLabel} · ${weekdayLabel}`}
+                  /* Sütunlar büyük ekipte yalnız o gün randevusu OLANLARI gösterir; oysa kapatmak
+                     istenen kişi çoğu zaman boştaki personeldir → tüm aktif kadro listelenir. */
+                  staffChoices={closeHoursChoices}
+                  dayAppts={dayAppts}
+                  closedByStaff={closedByStaff}
+                  leaveIds={leaveIds}
+                  busy={busy}
+                  onCancel={() => setClosePanelOpen(false)}
+                  onSubmit={async (input) => {
+                    await onCloseHours({ ...input, date })
+                    setClosePanelOpen(false)
+                  }}
+                />
+              )}
+            </AnimatePresence>
 
             {/* ===================== GÖVDE: takvim + detay ===================== */}
             <div className="flex min-h-0 flex-1">
@@ -1007,6 +1107,18 @@ export default function DayScheduleModal({
                                 {col.role && col.id !== null && (
                                   <span className="max-w-[86px] truncate rounded-full bg-[#f4edf0] px-1.5 py-0.5 text-[9px] font-medium text-[#9d8592]" title={col.role}>{col.role}</span>
                                 )}
+                                {(() => {
+                                  const closed = col.id ? closedByStaff.get(col.id) : undefined
+                                  if (!closed?.length) return null
+                                  return (
+                                    <span
+                                      title={`Kapalı saatler: ${closed.map((t) => `${minutesToLabel(t.startMinute)}–${minutesToLabel(t.endMinute)}`).join(', ')}`}
+                                      className="inline-flex items-center gap-0.5 rounded-full bg-[#f7e9ef] px-1.5 py-0.5 text-[9px] font-bold text-[#8a4e69]"
+                                    >
+                                      <Lock className="h-2.5 w-2.5" /> {closed.length} kapalı
+                                    </span>
+                                  )
+                                })()}
                                 {occ != null && (
                                   <span
                                     title="Günlük doluluk"
@@ -1053,6 +1165,9 @@ export default function DayScheduleModal({
                             const laid = packLanes(col.appts)
                             const onLeave = col.id ? leaveIds.has(col.id) : false
                             const colKey = col.id ?? 'none'
+                            const closedRanges = col.id ? closedByStaff.get(col.id) || [] : []
+                            const hoverBlocked =
+                              hoverSlot?.colKey === colKey && isRangeClosed(col.id, hoverSlot.startMin, hoverSlot.startMin + 15)
                             return (
                               <div
                                 key={colKey}
@@ -1065,12 +1180,12 @@ export default function DayScheduleModal({
                                    hangi saate düşeceğini bilmiyordu. */
                                 onMouseMove={!draggingId && !onLeave && onCreateAt ? (e) => setHoverSlot({ colKey, startMin: snappedMinFrom(e) }) : undefined}
                                 onMouseLeave={() => setHoverSlot((h) => (h?.colKey === colKey ? null : h))}
-                                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${onLeave ? 'cursor-not-allowed' : onCreateAt ? 'cursor-copy' : ''} ${draggingId && dropInfo?.colKey === colKey ? 'bg-[#fff1f6]/50' : ''}`}
+                                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${onLeave || hoverBlocked ? 'cursor-not-allowed' : onCreateAt ? 'cursor-copy' : ''} ${draggingId && dropInfo?.colKey === colKey ? 'bg-[#fff1f6]/50' : ''}`}
                                 style={onLeave ? { backgroundImage: 'repeating-linear-gradient(45deg, rgba(244,63,94,0.07) 0, rgba(244,63,94,0.07) 6px, transparent 6px, transparent 12px)' } : undefined}
                                 title={onLeave ? 'Bu personel bugün izinli — randevu verilemez' : onCreateAt ? 'Boş saate tıklayıp randevu ekle' : undefined}
                               >
-                                {/* Sürükle-bırak bırakma göstergesi */}
-                                {draggingId && !onLeave && dropInfo?.colKey === colKey && (
+                                {/* Sürükle-bırak bırakma göstergesi (kapalı aralığa bırakılamaz) */}
+                                {draggingId && !onLeave && dropInfo?.colKey === colKey && !isRangeClosed(col.id, dropInfo.startMin, dropInfo.startMin + draggingDur) && (
                                   <div className="pointer-events-none absolute inset-x-1 z-[4]" style={{ top: ((dropInfo.startMin - startHour * 60) / 60) * PX_PER_HOUR }} aria-hidden>
                                     <div className="relative h-0.5 rounded bg-[#c85776]">
                                       <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[#c85776]" />
@@ -1078,8 +1193,50 @@ export default function DayScheduleModal({
                                     </div>
                                   </div>
                                 )}
-                                {/* Boş slot ipucu — imlecin denk geldiği saat */}
-                                {!draggingId && !onLeave && onCreateAt && hoverSlot?.colKey === colKey && (
+                                {/* KAPALI SAAT BLOKLARI — "Gün Kapat" ile kapatılan aralıklar.
+                                    Randevu kartlarının altında (z-[1]) durur ki çakışan eski
+                                    randevu görünmeye devam etsin; × ile kaldırılır. */}
+                                {closedRanges.map((t) => {
+                                  const top = ((t.startMinute - startHour * 60) / 60) * PX_PER_HOUR
+                                  const height = ((t.endMinute - t.startMinute) / 60) * PX_PER_HOUR
+                                  const label = `${minutesToLabel(t.startMinute)} – ${minutesToLabel(t.endMinute)}`
+                                  return (
+                                    <div
+                                      key={t.id}
+                                      className="group/closed absolute inset-x-0 z-[1] overflow-hidden border-y border-[#e2c3d0] bg-[#faf1f5]/90"
+                                      style={{
+                                        top,
+                                        height: Math.max(14, height),
+                                        backgroundImage:
+                                          'repeating-linear-gradient(45deg, rgba(146,96,120,0.16) 0, rgba(146,96,120,0.16) 5px, transparent 5px, transparent 11px)',
+                                      }}
+                                      title={t.reason ? `Kapalı: ${label} · ${t.reason}` : `Kapalı saat: ${label}`}
+                                    >
+                                      <div className="pointer-events-none flex h-full flex-col items-center justify-center px-1 text-center">
+                                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[#e2c3d0] bg-white/90 px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums text-[#8a4e69]">
+                                          <Lock className="h-2.5 w-2.5 shrink-0" /> {label}
+                                        </span>
+                                        {height >= 44 && t.reason && (
+                                          <span className="mt-0.5 line-clamp-2 text-[9.5px] font-medium text-[#7c5568]">{t.reason}</span>
+                                        )}
+                                      </div>
+                                      {canCloseHours && onRemoveTimeOff && (
+                                        <button
+                                          type="button"
+                                          disabled={busy}
+                                          onClick={(e) => { e.stopPropagation(); void onRemoveTimeOff(t.id) }}
+                                          title="Kapalı saati kaldır — randevuya yeniden açılır"
+                                          aria-label="Kapalı saati kaldır"
+                                          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#e2c3d0] bg-white/95 text-[#a45a75] opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#c85776] focus:opacity-100 group-hover/closed:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                                {/* Boş slot ipucu — imlecin denk geldiği saat (kapalı aralıkta gösterilmez) */}
+                                {!draggingId && !onLeave && !hoverBlocked && onCreateAt && hoverSlot?.colKey === colKey && (
                                   <div
                                     className="pointer-events-none absolute inset-x-1 z-[1]"
                                     style={{ top: ((hoverSlot.startMin - startHour * 60) / 60) * PX_PER_HOUR }}
@@ -2016,5 +2173,329 @@ function MonthView({
         })}
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// GÜN KAPAT paneli — personel + saat aralığı seçip o günü randevuya kapatır.
+// "Tüm gün" seçilirse eski izin davranışıyla aynı kayıt üretilir (0–1440).
+// ---------------------------------------------------------------------------
+
+/** 'HH:MM' → gün içi dakika. Geçersizse null. */
+function timeToMinutes(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value || '')
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null
+  return h * 60 + min
+}
+
+interface CloseHoursPanelProps {
+  dayTitle: string
+  staffChoices: { id: string; name: string }[]
+  dayAppts: Appointment[]
+  closedByStaff: Map<string, StaffTimeOff[]>
+  leaveIds: Set<string>
+  busy: boolean
+  onCancel: () => void
+  onSubmit: (input: {
+    staffIds: string[]
+    startMinute: number | null
+    endMinute: number | null
+    reason: string | null
+  }) => Promise<void>
+}
+
+const CLOSE_PRESETS: { label: string; start: string; end: string }[] = [
+  { label: 'Öğle arası', start: '12:00', end: '13:00' },
+  { label: 'Sabah', start: '09:00', end: '13:00' },
+  { label: 'Öğleden sonra', start: '13:00', end: '19:00' },
+]
+
+function CloseHoursPanel({
+  dayTitle,
+  staffChoices,
+  dayAppts,
+  closedByStaff,
+  leaveIds,
+  busy,
+  onCancel,
+  onSubmit,
+}: CloseHoursPanelProps) {
+  const [staffIds, setStaffIds] = useState<string[]>([])
+  const [allDay, setAllDay] = useState(false)
+  const [start, setStart] = useState('12:00')
+  const [end, setEnd] = useState('13:00')
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const startMin = timeToMinutes(start)
+  const endMin = timeToMinutes(end)
+  const rangeValid = allDay || (startMin !== null && endMin !== null && endMin > startMin)
+
+  const toggleStaff = (id: string): void => {
+    setError('')
+    setStaffIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+  const allSelected = staffChoices.length > 0 && staffIds.length === staffChoices.length
+
+  // Kapatılacak aralıkta kalan randevular — otomatik iptal EDİLMEZ, uyarı olarak gösterilir.
+  const affected = useMemo(() => {
+    if (!staffIds.length || !rangeValid) return []
+    const s = allDay ? 0 : (startMin as number)
+    const e = allDay ? 1440 : (endMin as number)
+    return dayAppts.filter((a) => {
+      if (!a.staffMemberId || !staffIds.includes(a.staffMemberId)) return false
+      if (a.status === 'iptal') return false
+      const aStart = parseMinutes(a.time)
+      return aStart < e && s < aStart + apptDur(a)
+    })
+  }, [dayAppts, staffIds, allDay, startMin, endMin, rangeValid])
+
+  // Zaten kapalı olan seçimler — sunucu çakışma döndürmeden önce burada söylenir.
+  const alreadyClosed = useMemo(() => {
+    if (!staffIds.length || !rangeValid) return []
+    const s = allDay ? 0 : (startMin as number)
+    const e = allDay ? 1440 : (endMin as number)
+    return staffChoices.filter((c) => {
+      if (!staffIds.includes(c.id)) return false
+      if (leaveIds.has(c.id)) return true
+      return (closedByStaff.get(c.id) || []).some((t) => t.startMinute < e && s < t.endMinute)
+    })
+  }, [staffChoices, staffIds, leaveIds, closedByStaff, allDay, startMin, endMin, rangeValid])
+
+  const submit = async (): Promise<void> => {
+    if (!staffIds.length) { setError('En az bir personel seçin.'); return }
+    if (!rangeValid) { setError('Bitiş saati başlangıçtan sonra olmalı.'); return }
+    setError('')
+    setSaving(true)
+    try {
+      await onSubmit({
+        staffIds,
+        startMinute: allDay ? null : startMin,
+        endMinute: allDay ? null : endMin,
+        reason: reason.trim() || null,
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kapatma işlemi başarısız oldu.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const disabled = busy || saving
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="absolute inset-0 z-[60] flex items-start justify-center overflow-auto bg-[#4a2335]/25 p-4 backdrop-blur-[3px]"
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: -12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -8, scale: 0.99 }}
+        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+        onClick={(e) => e.stopPropagation()}
+        className="my-4 w-full max-w-[620px] overflow-hidden rounded-[20px] border border-[#ead8df] bg-white shadow-[0_40px_100px_-40px_rgba(120,71,88,0.65)]"
+      >
+        <div className="flex items-center gap-2.5 border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb] px-5 py-3.5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f8d8e2] bg-gradient-to-br from-[#fff2f6] to-[#ffd9e4] text-[#c85776]">
+            <Lock className="h-5 w-5" strokeWidth={1.7} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-display text-[17px] font-bold leading-none tracking-tight text-[#241923]">Gün / Saat Kapat</h3>
+            <div className="mt-1 truncate text-[11.5px] text-[#705a66]">{dayTitle}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+            aria-label="Kapat"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          {/* Personel seçimi */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-[12px] font-semibold text-[#3b2330]">Personel</label>
+              {staffChoices.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStaffIds(allSelected ? [] : staffChoices.map((c) => c.id))}
+                  className="text-[11px] font-semibold text-[#c85776] hover:underline"
+                >
+                  {allSelected ? 'Seçimi kaldır' : 'Tümünü seç'}
+                </button>
+              )}
+            </div>
+            {staffChoices.length === 0 ? (
+              <div className="rounded-[12px] border border-dashed border-[#ead8df] px-3 py-4 text-center text-[12px] text-[#705a66]">
+                Bu günde listelenen personel yok.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {staffChoices.map((c) => {
+                  const on = staffIds.includes(c.id)
+                  const fullDayOff = leaveIds.has(c.id)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => toggleStaff(c.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        on
+                          ? 'border-[#c85776] bg-[#c85776] text-white'
+                          : 'border-[#ead8df] bg-white text-[#5d4a56] hover:border-[#efbfd0] hover:bg-[#fff7fa]'
+                      }`}
+                    >
+                      {on ? <CheckCircle2 className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
+                      {c.name}
+                      {fullDayOff && (
+                        <span className={`rounded-full px-1.5 text-[9px] font-bold ${on ? 'bg-white/25 text-white' : 'bg-rose-50 text-rose-500'}`}>
+                          izinli
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Kapatma aralığı */}
+          <div>
+            <label className="mb-1.5 block text-[12px] font-semibold text-[#3b2330]">Kapatılacak zaman</label>
+            <div className="flex items-center rounded-full border border-[#ead8df] bg-white p-0.5">
+              {([[false, 'Saat aralığı'], [true, 'Tüm gün']] as [boolean, string][]).map(([v, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => { setAllDay(v); setError('') }}
+                  aria-pressed={allDay === v}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed ${
+                    allDay === v ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#c85776]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {!allDay && (
+              <div className="mt-2.5 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-[#c85776]" />
+                    <input
+                      type="time"
+                      step={900}
+                      value={start}
+                      disabled={disabled}
+                      onChange={(e) => { setStart(e.target.value); setError('') }}
+                      className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                    />
+                  </div>
+                  <span className="text-[12px] font-semibold text-[#9d7386]">→</span>
+                  <input
+                    type="time"
+                    step={900}
+                    value={end}
+                    disabled={disabled}
+                    onChange={(e) => { setEnd(e.target.value); setError('') }}
+                    className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                  />
+                  {rangeValid && !allDay && (
+                    <span className="text-[11.5px] font-medium text-[#705a66]">
+                      {Math.round((((endMin as number) - (startMin as number)) / 60) * 10) / 10} saat kapanacak
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {CLOSE_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => { setStart(p.start); setEnd(p.end); setError('') }}
+                      className="rounded-full border border-dashed border-[#e0b6c7] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#c85776] hover:bg-[#fff1f6] hover:text-[#c85776] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {p.label} · {p.start}–{p.end}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sebep */}
+          <div>
+            <label className="mb-1.5 block text-[12px] font-semibold text-[#3b2330]">
+              Sebep <span className="font-medium text-[#705a66]">(isteğe bağlı)</span>
+            </label>
+            <input
+              value={reason}
+              disabled={disabled}
+              maxLength={300}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Eğitim, izin, bakım…"
+              className="w-full rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+            />
+          </div>
+
+          {/* Uyarılar */}
+          {alreadyClosed.length > 0 && (
+            <div className="flex items-start gap-2 rounded-[12px] border border-[#e2c3d0] bg-[#faf1f5] px-3 py-2 text-[11.5px] text-[#7c5568]">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                <b>{alreadyClosed.map((c) => c.name).join(', ')}</b> için bu aralık zaten kapalı — o personel(ler) atlanacak.
+              </span>
+            </div>
+          )}
+          {affected.length > 0 && (
+            <div className="flex items-start gap-2 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Bu aralıkta <b>{affected.length} randevu</b> var. Kapatma bunları <b>iptal etmez</b> — çizelgede
+                kalırlar; gerekirse ayrıca taşıyın veya iptal edin.
+              </span>
+            </div>
+          )}
+          {error && (
+            <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{error}</div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#ead8df]/70 bg-[#fffafc] px-5 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={disabled}
+            className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5d4a56] transition-colors hover:border-[#efbfd0] hover:bg-[#fff7fa] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Vazgeç
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={disabled || !staffIds.length || !rangeValid}
+            className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12.5px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          >
+            <Lock className="h-4 w-4" />
+            {saving ? 'Kapatılıyor…' : allDay ? 'Günü kapat' : 'Saatleri kapat'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }

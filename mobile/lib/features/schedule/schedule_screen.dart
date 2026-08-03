@@ -391,7 +391,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       children: [
         _stat('Doluluk', '%$occupancy', Icons.donut_large_rounded, AppColors.primary),
         _stat('Randevu', '$planned', Icons.event_available_rounded, const Color(0xFFB88938)),
-        _stat('İzinli', '${data.timeOff.length}', Icons.beach_access_rounded, const Color(0xFF5AA9E6)),
+        _stat('İzinli', '${data.fullDayTimeOff.length}', Icons.beach_access_rounded, const Color(0xFF5AA9E6)),
         _stat('Personel', '${data.staff.length}', Icons.people_alt_rounded, const Color(0xFF2F9E72)),
       ],
     );
@@ -453,9 +453,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
     appts.sort((x, y) => x.start.compareTo(y.start));
 
-    // o gün izinli personel
+    // o gün izinli personel (tüm gün izni; kapalı saat aralıkları buraya girmez)
     final onLeave = <String>{};
-    for (final t in data.timeOff) {
+    for (final t in data.fullDayTimeOff) {
       final d = DateTime.tryParse('${t['date']}');
       if (d != null && _dk(d) == dk) onLeave.add('${t['staffMemberId']}');
     }
@@ -634,7 +634,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final days = List.generate(7, (i) => _weekStart.add(Duration(days: i)));
     // izin: staffId|dayKey -> id
     final leave = <String, String>{};
-    for (final t in data.timeOff) {
+    for (final t in data.fullDayTimeOff) {
       final date = DateTime.tryParse('${t['date']}');
       if (date != null) leave['${t['staffMemberId']}|${_dk(date)}'] = '${t['id']}';
     }
@@ -811,7 +811,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       apptByDay[_dk(d)] = (apptByDay[_dk(d)] ?? 0) + 1;
     }
     final leaveByDay = <String, int>{};
-    for (final t in data.timeOff) {
+    for (final t in data.fullDayTimeOff) {
       final d = DateTime.tryParse('${t['date']}');
       if (d != null) leaveByDay[_dk(d)] = (leaveByDay[_dk(d)] ?? 0) + 1;
     }
@@ -1010,4 +1010,9 @@ class _ScheduleData {
   final List<Map<String, dynamic>> staff;
   final List<Map<String, dynamic>> appointments;
   final List<Map<String, dynamic>> timeOff;
+
+  /// Yalnız TÜM GÜN izinleri. Randevu ekranındaki "Gün Kapat" ile eklenen saat aralıkları
+  /// aynı uçtan gelir ama günü kapatmaz — "izinli" sayımlarına girmemeli.
+  List<Map<String, dynamic>> get fullDayTimeOff =>
+      timeOff.where(timeOffIsFullDay).toList();
 }

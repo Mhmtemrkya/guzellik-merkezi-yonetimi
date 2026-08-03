@@ -21,6 +21,7 @@ import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPi
 import ConsentSaleNotice from '@/components/dashboard/ConsentSaleNotice'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import { useApiQuery } from '@/hooks/useApiQuery'
+import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
@@ -91,6 +92,8 @@ export default function PackageSaleDialog({
   const [error, setError] = useState('')
   // Onay yetkisi olmayan personelde satış açık adisyon olarak yönetici onayına bırakılır.
   const [pendingApproval, setPendingApproval] = useState(false)
+  const { user } = useAuth()
+  const isStaffUser = user?.role === 'Staff'
   // Faz 2: satış "ilk randevu tamamlanınca işlenecek" moduyla kaydedildiyse done ekranı bilgi modalı gösterir.
   const [deferred, setDeferred] = useState(false)
 
@@ -380,11 +383,16 @@ export default function PackageSaleDialog({
         setOpen(false)
         setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
       } else {
-        try {
-          await adminApi.approveAdisyon(adisyon.id, tenantId)
-          setPendingApproval(false)
-        } catch {
+        if (isStaffUser) {
+          // Personelde /approve zaten 403 döner — boşuna istek atma, doğrudan "onay bekliyor" göster.
           setPendingApproval(true)
+        } else {
+          try {
+            await adminApi.approveAdisyon(adisyon.id, tenantId)
+            setPendingApproval(false)
+          } catch {
+            setPendingApproval(true)
+          }
         }
         if (onDone) await onDone()
         setStep('done')

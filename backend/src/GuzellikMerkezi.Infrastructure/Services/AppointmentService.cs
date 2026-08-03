@@ -397,7 +397,7 @@ public sealed class AppointmentService : IAppointmentService
             select a.Id).AnyAsync(cancellationToken);
     }
 
-    public async Task<Result<AppointmentDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    public async Task<Result<AppointmentDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null, bool returnToApproval = false)
     {
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
@@ -422,7 +422,23 @@ public sealed class AppointmentService : IAppointmentService
             await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
             await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
             await RowLock.LockRowAsync(_db, "staff_members", targetStaff, cancellationToken);
+            // KİLİT ALTINDA TAZE OKUMA (bkz. ChangeStatusAsync). Kilitten önceki okuma bayat
+            // olabilir: araya giren bir tamamlama commit ettiyse, bu akış eski durumu yazıp
+            // "Tamamlandı"yı eziyordu — üstelik Reschedule/ReturnToApproval korumaları da bayat
+            // duruma baktığı için hiç devreye girmiyordu.
+            await _db.Entry(appointment).ReloadAsync(cancellationToken);
+            if (_db.Entry(appointment).State == EntityState.Detached)
+                return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
         }
+
+        // Taze durum üzerinden karar: tamamlanmış/iptal edilmiş randevu taşınamaz.
+        if (appointment.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+            return Result<AppointmentDto>.Failure(Error.Validation("Bu randevu artık taşınamaz."));
+
+        // Kapalı gün/saat + mesai penceresi: randevu OLUŞTURMADA olduğu gibi TAŞIMADA da geçerli;
+        // aksi hâlde sürükle-bırak "Gün Kapat" ile kapatılmış bir saate randevu sokabiliyordu.
+        var hoursBlock = await WorkingHoursGuard.BlockReasonAsync(_db, tenantId, targetStaff, request.StartUtc, request.EndUtc, cancellationToken);
+        if (hoursBlock is not null) return Result<AppointmentDto>.Failure(Error.Validation(hoursBlock));
 
         var overlap = await HasOverlapAsync(tenantId, targetStaff, request.StartUtc, request.EndUtc, appointment.Id, cancellationToken);
         if (overlap) return Result<AppointmentDto>.Failure(Error.Conflict("Personelin bu saat aralığında en fazla 2 randevusu olabilir."));
@@ -431,6 +447,7 @@ public sealed class AppointmentService : IAppointmentService
         var prevStaff = appointment.StaffMemberId;
         if (staffChanged) appointment.ReassignStaff(targetStaff);
         appointment.Reschedule(request.StartUtc, request.EndUtc);
+        if (returnToApproval) appointment.ReturnToApproval();
         await _db.SaveChangesAsync(cancellationToken);
         if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,

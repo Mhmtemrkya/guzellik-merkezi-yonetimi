@@ -1,13 +1,18 @@
 namespace GuzellikMerkezi.Application.Features.Schedule;
 
+/// <summary>Kapalı gün/saat kaydı. Dakikalar TR yerel saati (540=09:00); tüm gün = 0–1440.</summary>
 public sealed record StaffTimeOffDto(
     Guid Id,
     Guid StaffMemberId,
     string? StaffName,
     DateOnly Date,
-    string? Reason);
+    string? Reason,
+    int StartMinute,
+    int EndMinute,
+    bool IsFullDay);
 
-public sealed record CreateTimeOffRequest(Guid StaffMemberId, DateOnly Date, string? Reason);
+/// <summary>Aralık verilmezse (null) günün tamamı kapatılır — eski çağıranlar bu davranışta kalır.</summary>
+public sealed record CreateTimeOffRequest(Guid StaffMemberId, DateOnly Date, string? Reason, int? StartMinute = null, int? EndMinute = null);
 
 /// <summary>Bir günün çalışma penceresi — 0=Pazartesi … 6=Pazar; dakikalar TR yerel saati (540=09:00).</summary>
 public sealed record WorkingHourDto(int DayOfWeek, int StartMinute, int EndMinute, bool IsDayOff);

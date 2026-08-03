@@ -83,6 +83,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<PlatformIntegrationSettings> PlatformIntegrationSettings => Set<PlatformIntegrationSettings>();
     public DbSet<PlatformSystemSettings> PlatformSystemSettings => Set<PlatformSystemSettings>();
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
+    public DbSet<TenantPaymentMethod> TenantPaymentMethods => Set<TenantPaymentMethod>();
+    public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<ProcessedClientRequest> ProcessedClientRequests => Set<ProcessedClientRequest>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
@@ -522,7 +524,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         timeOff.Property(x => x.Date).HasConversion(DateOnlyConverter).HasColumnType("date");
         timeOff.Property(x => x.Reason).HasMaxLength(300);
         timeOff.HasIndex(x => new { x.TenantId, x.Date });
-        timeOff.HasIndex(x => new { x.StaffMemberId, x.Date }).IsUnique();
+        // Aynı gün için birden çok kapalı ARALIK tanımlanabildiğinden benzersizlik başlangıç
+        // dakikasını da kapsar (tüm gün = 0). Eski (StaffMemberId, Date) UNIQUE index'i kaldırıldı.
+        timeOff.HasIndex(x => new { x.StaffMemberId, x.Date, x.StartMinute }).IsUnique();
         timeOff.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Cascade);
         timeOff.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
@@ -822,6 +826,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         p.Property(x => x.WhatsAppBusinessAccountId).HasMaxLength(64);
         p.Property(x => x.WhatsAppAppSecretEncrypted).HasColumnType("TEXT");
         p.Property(x => x.WhatsAppVerifyToken).HasMaxLength(128);
+        p.Property(x => x.PaymentProvider).HasMaxLength(32).IsRequired();
+        p.Property(x => x.IyzicoApiKeyEncrypted).HasColumnType("TEXT");
+        p.Property(x => x.IyzicoSecretKeyEncrypted).HasColumnType("TEXT");
+        p.Property(x => x.IyzicoBaseUrl).HasMaxLength(256);
+        p.Property(x => x.PaymentsReturnUrl).HasMaxLength(512);
         // Platform geneli (tenant'sız) — query filter yok.
     }
 
@@ -846,9 +855,47 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         i.Property(x => x.Notes).HasMaxLength(512);
         i.HasIndex(x => x.Number).IsUnique();
         i.HasIndex(x => new { x.TenantId, x.PeriodStartUtc });
+        i.Property(x => x.VatRate).HasPrecision(5, 4);
+        i.Property(x => x.PaymentReference).HasMaxLength(64);
         i.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         // Platform faturası tenant kapsam filtresine girmez; yalnızca soft-delete süzülür.
         i.HasQueryFilter(x => !x.IsDeleted);
+
+        // --- Abonelik ödemesi: saklı kart + tahsilat defteri ---
+        // TenantInvoice ile AYNI model: tenant kapsam filtresine girmez, yalnız soft-delete süzülür.
+        // Bunlar platform↔kurum arası faturalama kayıtlarıdır ve platform admin hepsini görür;
+        // kurum uçları TenantId'yi HER SORGUDA açıkça süzmek zorundadır.
+        var pm = modelBuilder.Entity<TenantPaymentMethod>();
+        pm.ToTable("tenant_payment_methods");
+        pm.HasKey(x => x.Id);
+        pm.Property(x => x.Provider).HasMaxLength(24).IsRequired();
+        // Kart referansları at-rest şifreli (ENC:v1:) — şifreli metin uzun, TEXT kullanılır.
+        pm.Property(x => x.CardUserKeyEncrypted).HasColumnType("TEXT").IsRequired();
+        pm.Property(x => x.CardTokenEncrypted).HasColumnType("TEXT").IsRequired();
+        pm.Property(x => x.MaskedNumber).HasMaxLength(32);
+        pm.Property(x => x.Association).HasMaxLength(32);
+        pm.Property(x => x.Family).HasMaxLength(64);
+        pm.Property(x => x.BankName).HasMaxLength(128);
+        pm.HasIndex(x => new { x.TenantId, x.IsActive });
+        pm.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        pm.HasQueryFilter(x => !x.IsDeleted);
+
+        var sp = modelBuilder.Entity<SubscriptionPayment>();
+        sp.ToTable("subscription_payments");
+        sp.HasKey(x => x.Id);
+        sp.Property(x => x.Provider).HasMaxLength(24).IsRequired();
+        sp.Property(x => x.Status).HasMaxLength(16).IsRequired();
+        sp.Property(x => x.ConversationId).HasMaxLength(64).IsRequired();
+        sp.Property(x => x.ProviderPaymentId).HasMaxLength(64);
+        sp.Property(x => x.ErrorCode).HasMaxLength(64);
+        sp.Property(x => x.ErrorMessage).HasMaxLength(512);
+        sp.Property(x => x.AmountTRY).HasPrecision(18, 2);
+        // ÇİFT ÇEKİM KORUMASI (DB seviyesinde): aynı işlem anahtarı ikinci kez yazılamaz.
+        // Yenileme job'ı ile elle tetiklenen bir tahsilat aynı dönem için yarışırsa biri elenir.
+        sp.HasIndex(x => x.ConversationId).IsUnique();
+        sp.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        sp.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        sp.HasQueryFilter(x => !x.IsDeleted);
 
         var j = modelBuilder.Entity<BackgroundJob>();
         j.ToTable("background_jobs");

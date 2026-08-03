@@ -470,8 +470,9 @@ function RandevularPageInner() {
     setActionError('')
     try {
       if (currentlyOnLeave) {
+        // Tüm gün izni kaldırılır; saat aralıkları "Gün Kapat" bloklarının × düğmesiyle silinir.
         const existing = monthTimeOffs.find(
-          (t) => t.staffMemberId === staffId && (t.date || '').slice(0, 10) === date,
+          (t) => t.staffMemberId === staffId && (t.date || '').slice(0, 10) === date && t.isFullDay,
         )
         if (existing) await adminApi.removeTimeOff(existing.id, tenantId)
       } else {
@@ -480,6 +481,65 @@ function RandevularPageInner() {
       await reloadTimeOff()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'İzin güncellenemedi.')
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  /**
+   * "Gün Kapat" paneli — seçilen personellerin o gündeki saat aralığını (ya da tüm günü)
+   * randevuya kapatır. Zaten kapalı olanlar 409 döndürür; toplu işlemde bu ATLANIR, diğer
+   * hatalar toplanıp panele fırlatılır ki kullanıcı ne olduğunu görsün.
+   */
+  const handleCloseHours = async (input: {
+    staffIds: string[]
+    date: string
+    startMinute: number | null
+    endMinute: number | null
+    reason: string | null
+  }): Promise<void> => {
+    if (isStaffUser) return
+    setLeaveBusy(true)
+    setActionError('')
+    try {
+      const failures: string[] = []
+      for (const staffId of input.staffIds) {
+        try {
+          await adminApi.addTimeOff(
+            {
+              staffMemberId: staffId,
+              date: input.date,
+              reason: input.reason,
+              startMinute: input.startMinute,
+              endMinute: input.endMinute,
+            },
+            tenantId,
+          )
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : ''
+          // "zaten kapalı / zaten izin tanımlı" = hedef durum zaten sağlanmış, hata değil.
+          if (/zaten/i.test(msg)) continue
+          const name = staffList.find((s) => s.id === staffId)?.name || 'Personel'
+          failures.push(`${name}: ${msg || 'kapatılamadı'}`)
+        }
+      }
+      await reloadTimeOff()
+      if (failures.length) throw new Error(failures.join(' · '))
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  /** Kapalı saat/izin kaydını kaldırır (çizelgedeki kapalı blokun × düğmesi). */
+  const handleRemoveTimeOff = async (id: string): Promise<void> => {
+    if (isStaffUser) return
+    setLeaveBusy(true)
+    setActionError('')
+    try {
+      await adminApi.removeTimeOff(id, tenantId)
+      await reloadTimeOff()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Kapalı saat kaldırılamadı.')
     } finally {
       setLeaveBusy(false)
     }
@@ -1869,6 +1929,8 @@ function RandevularPageInner() {
         isStaffUser={isStaffUser}
         busy={leaveBusy}
         onToggleLeave={!isStaffUser ? handleToggleLeave : undefined}
+        onCloseHours={!isStaffUser ? handleCloseHours : undefined}
+        onRemoveTimeOff={!isStaffUser ? handleRemoveTimeOff : undefined}
         onChangeDate={(iso) => {
           setScheduleDate(iso)
           // Modal içinde hafta/ay gezinirken görünen aralığın verisi de yüklensin diye

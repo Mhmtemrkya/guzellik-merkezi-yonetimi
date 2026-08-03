@@ -194,8 +194,13 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (!await _db.StaffMembers.IgnoreQueryFilters().AsNoTracking().AnyAsync(s => s.TenantId == tenantId && s.Id == staffId && s.BranchId == branchId && s.IsActive, cancellationToken))
             return Result<PortalAvailabilityDto>.Failure(Error.NotFound("Uzman bulunamadı."));
 
-        var hasTimeOff = await _db.StaffTimeOffs.IgnoreQueryFilters().AsNoTracking()
-            .AnyAsync(t => t.TenantId == tenantId && t.StaffMemberId == staffId && t.Date == date, cancellationToken);
+        // Kapalı gün/saat aralıkları — tüm gün kapalıysa hiç slot açılmaz, kısmi kapalıysa
+        // yalnız kesişen slotlar kapanır (yerel dakika cinsinden karşılaştırılır).
+        var closedRanges = await _db.StaffTimeOffs.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => !t.IsDeleted && t.TenantId == tenantId && t.StaffMemberId == staffId && t.Date == date)
+            .Select(t => new { t.StartMinute, t.EndMinute })
+            .ToListAsync(cancellationToken);
+        var hasTimeOff = closedRanges.Any(r => r.StartMinute <= 0 && r.EndMinute >= 1440);
 
         var dayStartUtc = ToUtc(date, branch.OpenTime);
         var dayEndUtc = ToUtc(date, branch.CloseTime);
@@ -219,7 +224,10 @@ public sealed class CustomerPortalService : ICustomerPortalService
             if (slotEndLocal > branch.CloseTime.ToTimeSpan()) break;
             var startUtc = ToUtc(date, t);
             var endUtc = startUtc + duration;
-            var available = !hasTimeOff && startUtc > nowUtc
+            var slotStartMin = (int)t.ToTimeSpan().TotalMinutes;
+            var slotEndMin = (int)slotEndLocal.TotalMinutes;
+            var blocked = hasTimeOff || closedRanges.Any(r => r.StartMinute < slotEndMin && slotStartMin < r.EndMinute);
+            var available = !blocked && startUtc > nowUtc
                 && (dayAppointments is null || dayAppointments.Count(a => a.StartUtc < endUtc && startUtc < a.EndUtc) < MaxConcurrentAppointmentsPerStaff);
             slots.Add(new PortalSlotDto(t.ToString("HH:mm"), TimeOnly.FromTimeSpan(slotEndLocal).ToString("HH:mm"), available));
             if (t.Add(step) <= t) break;
@@ -254,7 +262,8 @@ public sealed class CustomerPortalService : ICustomerPortalService
         var endUtc = startUtc.AddMinutes(service.DurationMinutes);
 
         var date = DateOnly.FromDateTime(new DateTimeOffset(startUtc, TimeSpan.Zero).ToOffset(TurkeyOffset).DateTime);
-        if (await _db.StaffTimeOffs.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == date, cancellationToken))
+        // Tüm gün izin kısa devre: kısmi kapalı saatler aşağıdaki WorkingHoursGuard'da (aralık bazlı) yakalanır.
+        if (await _db.StaffTimeOffs.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => !t.IsDeleted && t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == date && t.StartMinute <= 0 && t.EndMinute >= 1440, cancellationToken))
             return Result<PortalAppointmentDto>.Failure(Error.Conflict("Seçilen uzman o gün için müsait değil."));
 
         var concurrent = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => a.TenantId == tenantId && a.StaffMemberId == request.StaffMemberId
@@ -493,10 +502,18 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (concurrent >= MaxConcurrentAppointmentsPerStaff)
             return Result.Failure(Error.Conflict("Seçilen saat dolu. Lütfen başka bir saat seçin."));
 
-        appointment.Reschedule(newStart, newEnd);
-        // Müşterinin taşıdığı saat doğrudan takvime düşmez; yönetici onayına (Draft) döner.
-        appointment.SubmitForApproval();
-        await _db.SaveChangesAsync(cancellationToken);
+        // ERTELEME KANONİK SERVİSTEN (iptalle aynı gerekçe). Doğrudan Reschedule()+SaveChanges
+        // yapılırken kilit/taze-okuma protokolü atlanıyordu: portal bayat (Planlandı) nesneyi
+        // yüklerken yönetici randevuyu tamamlayıp seansı tüketirse, portal o nesneyi "Taslak"
+        // olarak yazıp Tamamlandı'yı EZİYORDU — seans tüketilmiş, randevu onay bekliyor görünüyordu.
+        // Ayrıca eski kod Taslak/Onaylandı randevularda SubmitForApproval() ile iş kuralı istisnası
+        // fırlatıyordu (servis bu iki durumu kabul ettiği hâlde); artık ReturnToApproval kullanılıyor.
+        var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
+        var moved = await appointments.RescheduleAsync(appointment.TenantId, appointment.Id,
+            new Application.Features.Appointments.RescheduleAppointmentRequest(newStart, newEnd),
+            cancellationToken, returnToApproval: true);
+        if (moved.IsFailure) return Result.Failure(moved.Error);
+
         await _audit.LogAsync(appointment.TenantId, appointment.BranchId, "Reschedule", "Appointment", appointment.Id,
             $"Müşteri randevusunu online erteledi → {newStart:dd.MM.yyyy HH:mm} (onay bekliyor)", null, cancellationToken);
         await _notifications.NotifyRolesAsync(

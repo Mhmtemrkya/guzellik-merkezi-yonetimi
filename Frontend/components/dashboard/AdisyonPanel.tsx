@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
+import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
@@ -89,6 +90,10 @@ export default function AdisyonPanel({
 }) {
   const canAdisyon = useFeature('billing.adisyon')
   const giftCardsAllowed = useFeature('marketing.giftcards')
+  // Adisyon onayı yalnızca yönetici rollerinde (backend /approve personelde 403 döner).
+  // Butonu personele göstermek her tıklamada 403 üretiyordu — onun yerine bilgi kartı gösterilir.
+  const { user } = useAuth()
+  const isStaffUser = user?.role === 'Staff'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState<AddForm>(() => ({ ...emptyForm, staffMemberId: defaultStaffMemberId ?? '' }))
@@ -774,18 +779,31 @@ export default function AdisyonPanel({
 
             {/* ---------- ONAY / İPTAL / SİL ---------- */}
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={busy || adisyon.items.length === 0}
-                onClick={() => run(() => adminApi.approveAdisyon(adisyon.id, tenantId))}
-                className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(4,120,87,0.9)] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Onayla → cariye + kasaya aktar
-                {adisyon.items.length > 0 && (
-                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] tabular-nums">{formatTL(adisyon.chargeTotal)}</span>
-                )}
-              </button>
+              {isStaffUser ? (
+                <div className="col-span-2 flex items-start gap-2 rounded-[12px] border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 text-[11.5px] text-indigo-800">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    Satış kaydedildi, <b>onay yöneticide</b>. Adisyon açık kalır; kurum yöneticisi onayladığında
+                    cariye ve kasaya işlenir.
+                    {adisyon.items.length > 0 && (
+                      <b className="ml-1 tabular-nums">{formatTL(adisyon.chargeTotal)}</b>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy || adisyon.items.length === 0}
+                  onClick={() => run(() => adminApi.approveAdisyon(adisyon.id, tenantId))}
+                  className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(4,120,87,0.9)] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Onayla → cariye + kasaya aktar
+                  {adisyon.items.length > 0 && (
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] tabular-nums">{formatTL(adisyon.chargeTotal)}</span>
+                  )}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}

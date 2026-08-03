@@ -641,12 +641,18 @@ export function normalizeStaff(staff: ApiStaff | null | undefined, index = 0): S
 }
 
 export function normalizeStaffTimeOff(t: ApiStaffTimeOff | null | undefined, index = 0): StaffTimeOff {
+  // Aralık alanları yoksa (eski API) tüm gün kapalı say — davranış değişmez.
+  const startMinute = Number.isFinite(Number(t?.startMinute)) ? Number(t?.startMinute) : 0
+  const endMinute = Number.isFinite(Number(t?.endMinute)) && Number(t?.endMinute) > 0 ? Number(t?.endMinute) : 1440
   return {
     id: t?.id || `timeoff-${index}`,
     staffMemberId: t?.staffMemberId || '',
     staffName: t?.staffName || '',
     date: (t?.date || '').slice(0, 10),
     reason: t?.reason || '',
+    startMinute,
+    endMinute,
+    isFullDay: t?.isFullDay ?? (startMinute <= 0 && endMinute >= 1440),
   }
 }
 

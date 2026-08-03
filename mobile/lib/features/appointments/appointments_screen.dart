@@ -12,6 +12,7 @@ import '../customers/customer_picker.dart';
 import 'appointment_detail_sheet.dart';
 import 'appointment_form.dart';
 import 'calendar_theme.dart';
+import 'close_hours_sheet.dart';
 
 /// Randevu ekranı görünüm modu — web'deki Gün/Hafta/Ay sekmeleriyle parite.
 enum _CalView { day, week, month }
@@ -186,6 +187,70 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     if (changed == true) _refresh();
   }
 
+  /// "Gün Kapat" — personel + saat aralığı (ya da tüm gün) seçilip randevuya kapatılır.
+  Future<void> _openCloseHours() async {
+    final staff = _lastData?.staff ?? const <Map<String, dynamic>>[];
+    if (staff.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Önce personel listesi yüklensin.')));
+      return;
+    }
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => CloseHoursSheet(
+        api: widget.api,
+        date: _selectedDate,
+        staff: staff,
+        dayAppointments: _lastData?.appointments ?? const [],
+        existingTimeOff: _lastData?.timeOff ?? const [],
+        presetStaffId: _selectedStaffId,
+      ),
+    );
+    if (saved == true) _refresh();
+  }
+
+  /// Kapalı saat blokuna dokunulunca kaldırma onayı (randevuya yeniden açılır).
+  Future<void> _confirmRemoveTimeOff(Map<String, dynamic> timeOff) async {
+    final id = '${timeOff['id']}';
+    if (id.isEmpty || id == 'null') return;
+    final fullDay = timeOffIsFullDay(timeOff);
+    final label = fullDay
+        ? 'Tüm gün izni'
+        : '${CalendarText.minuteLabel(asInt(timeOff['startMinute']) ?? 0)} - '
+              '${CalendarText.minuteLabel(asInt(timeOff['endMinute']) ?? 1440)} kapalı saati';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kapalı saati kaldır'),
+        content: Text('$label kaldırılsın mı? Bu saat randevuya yeniden açılır.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kaldır'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.api.delete('/api/admin/schedule/timeoff/$id');
+      if (!mounted) return;
+      _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Kaldırılamadı: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.auth.user?.isPlatform == true) {
@@ -229,6 +294,33 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                 },
               ),
               const _Legend(),
+              // Gün Kapat — personel + saat aralığı seçip günü randevuya kapatır (yalnız yönetici).
+              if (!(widget.auth.user?.isStaff ?? false))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: _openCloseHours,
+                      icon: const Icon(Icons.lock_clock_rounded, size: 16),
+                      label: const Text('Gün Kapat'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: Color(0xFFE0B6C7)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ] else
               _PeriodNav(
                 label: _periodLabel(),
@@ -265,6 +357,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                         onTap: _openDetail,
                         onEmptyTap: (time, staffId) =>
                             _openCreate(presetStart: time, presetStaffId: staffId),
+                        onTapTimeOff: (widget.auth.user?.isStaff ?? false)
+                            ? null
+                            : _confirmRemoveTimeOff,
                       );
                     case _CalView.week:
                       final monday = _selectedDate
@@ -1492,6 +1587,7 @@ class _Timeline extends StatelessWidget {
     required this.hourHeight,
     required this.onTap,
     required this.onEmptyTap,
+    this.onTapTimeOff,
   });
 
   final List<Map<String, dynamic>> appointments;
@@ -1504,6 +1600,8 @@ class _Timeline extends StatelessWidget {
   final double hourHeight;
   final void Function(Map<String, dynamic>) onTap;
   final void Function(DateTime start, String? staffId) onEmptyTap;
+  /// Kapalı saat blokuna dokunma — yöneticide kaldırma onayı açar (personelde null).
+  final void Function(Map<String, dynamic>)? onTapTimeOff;
 
   static const double _gutter = 54;
   static const double _minColWidth = 168;
@@ -1614,6 +1712,16 @@ class _Timeline extends StatelessWidget {
                                 final staffId = columns[colIndex] == '_'
                                     ? null
                                     : columns[colIndex];
+                                final targetStaff = selectedStaffId ?? staffId;
+                                // Kapalı saate randevu açılamaz — backend zaten reddederdi.
+                                if (_isClosed(targetStaff, startHour * 60 + clamped)) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Bu saat randevuya kapalı.'),
+                                    ),
+                                  );
+                                  return;
+                                }
                                 onEmptyTap(
                                   DateTime(
                                     date.year,
@@ -1621,7 +1729,7 @@ class _Timeline extends StatelessWidget {
                                     date.day,
                                     startHour,
                                   ).add(Duration(minutes: clamped)),
-                                  selectedStaffId ?? staffId,
+                                  targetStaff,
                                 );
                               },
                             ),
@@ -1713,6 +1821,19 @@ class _Timeline extends StatelessWidget {
     );
   }
 
+  /// Personelin `minute` (gün içi yerel dakika) anı kapalı mı? Tüm gün izni de sayılır.
+  bool _isClosed(String? staffId, int minute) {
+    if (staffId == null) return false;
+    for (final t in timeOff) {
+      if ('${t['staffMemberId']}' != staffId) continue;
+      if (timeOffIsFullDay(t)) return true;
+      final s = asInt(t['startMinute']) ?? 0;
+      final e = asInt(t['endMinute']) ?? 24 * 60;
+      if (minute >= s && minute < e) return true;
+    }
+    return false;
+  }
+
   List<_Ev> _layout(List<String> columns) {
     final hours = endHour - startHour;
     int colOf(String? staffId) {
@@ -1753,17 +1874,36 @@ class _Timeline extends StatelessWidget {
           ? 0
           : columns.indexOf('${t['staffMemberId']}');
       if (ci < 0) continue;
+      // "Gün Kapat" ile kapatılan aralık: dakikalar yerel gün içi (540=09:00), tüm gün = 0–1440.
+      final fullDay = timeOffIsFullDay(t);
+      final rawStart = fullDay ? 0 : (asInt(t['startMinute']) ?? 0);
+      final rawEnd = fullDay ? 24 * 60 : (asInt(t['endMinute']) ?? 24 * 60);
+      // Görünen pencereye (startHour–endHour) kırp; tamamen dışarıdaysa çizme.
+      final startMin = rawStart - startHour * 60;
+      final endMin = rawEnd - startHour * 60;
+      final visibleStart = startMin.clamp(0, hours * 60);
+      final visibleEnd = endMin.clamp(0, hours * 60);
+      if (visibleEnd <= visibleStart) continue;
+      final reason = valueOf(t, const ['reason'], fallback: '');
       add(
         _Ev(
-          startMin: 0,
-          endMin: hours * 60,
-          top: 14,
-          height: hours * hourHeight,
-          title: 'İzinli',
-          subtitle: valueOf(t, const ['staffName'], fallback: ''),
-          timeLabel: 'Tüm gün',
+          startMin: visibleStart,
+          endMin: visibleEnd,
+          top: (visibleStart / 60 * hourHeight + 14).clamp(14, hours * hourHeight),
+          height: ((visibleEnd - visibleStart) / 60 * hourHeight).clamp(
+            24,
+            hours * hourHeight,
+          ),
+          title: fullDay ? 'İzinli' : 'Kapalı',
+          subtitle: reason.isNotEmpty
+              ? reason
+              : valueOf(t, const ['staffName'], fallback: ''),
+          timeLabel: fullDay
+              ? 'Tüm gün'
+              : '${CalendarText.minuteLabel(rawStart)} - ${CalendarText.minuteLabel(rawEnd)}',
           style: CalendarTheme.timeOff,
           colIndex: ci,
+          onTap: onTapTimeOff == null ? null : () => onTapTimeOff!(t),
         ),
       );
     }
