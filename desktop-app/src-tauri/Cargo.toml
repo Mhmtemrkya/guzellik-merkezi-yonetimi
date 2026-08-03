@@ -25,6 +25,12 @@ tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Otomatik güncelleme — yalnız masaüstü hedeflerinde derlenir (mobilde bu eklentiler yok).
+# updater: yeni sürümü indirir/kurar, process: kurulumdan sonra uygulamayı yeniden başlatır.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 

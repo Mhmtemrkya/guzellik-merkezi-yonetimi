@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "splash",
+  "description": "Açılış penceresi: sürüm kontrolü, güncellemeyi indirip kurma ve yeniden başlatma. Güncelleme akışı bilerek YEREL splash sayfasında durur — uzak panel penceresine güncelleyici/işlem yetkisi verilmez.",
+  "windows": ["splash"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-center",
+    "updater:default",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+  ]
+}

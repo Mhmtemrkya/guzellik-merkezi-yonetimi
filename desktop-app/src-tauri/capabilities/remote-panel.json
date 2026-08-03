@@ -1,9 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "remote-panel",
-  "description": "Panel (remote URL) penceresi kapat butonu + native bildirim kullanabilsin",
+  "description": "Panel (remote URL) penceresi kapat butonu + native bildirim kullanabilsin. CANLI ADRES BURADA OLMAK ZORUNDA: liste yalnız localhost içerdiği sürece canlı panelde IPC tamamen kapalıdır — tepsiye küçültme ve masaüstü bildirimleri sessizce çalışmaz.",
   "remote": {
-    "urls": ["http://localhost:3000"]
+    "urls": [
+      "https://beautyasist.com",
+      "https://beautyasist.com/*",
+      "http://localhost:3000",
+      "http://localhost:3000/*",
+      "http://localhost:37777",
+      "http://localhost:37777/*"
+    ]
   },
   "windows": ["main"],
   "permissions": [

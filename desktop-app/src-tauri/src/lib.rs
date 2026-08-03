@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{
@@ -17,6 +17,30 @@ const FOCUS_GRACE: Duration = Duration::from_secs(3);
 // Tepsiye küçülme / çıkış sırasında pencere odak kaybeder; bu sıradaki focus-lost
 // olayları oturum düşürmesin (arka planda bildirim yoklaması sürsün diye oturum yaşar).
 static SUPPRESS_FOCUS_LOST: AtomicBool = AtomicBool::new(false);
+
+// ---------------------------------------------------------------- güncelleme kapısı
+//
+// Açılışta splash penceresi yeni sürüm var mı diye bakar. Kontrol bitene (ya da kullanıcı
+// "Daha sonra" diyene) kadar ANA PENCERE GÖSTERİLMEZ: kullanıcı yarım kalan bir işe
+// başlayıp kurulumun yeniden başlatmasıyla kesilmesin.
+const GATE_CHECKING: u8 = 0; // splash kontrol ediyor (başlangıç durumu)
+const GATE_CLEAR: u8 = 1; // güncelleme yok / ertelendi → normal akış
+const GATE_PROMPT: u8 = 2; // modal açık, kullanıcı karar veriyor
+static UPDATE_GATE: AtomicU8 = AtomicU8::new(GATE_CHECKING);
+
+/// Splash JS hiç yanıt vermezse (çevrimdışı, hata, sayfa çökmesi) uygulama açılışta ASILI
+/// KALMAMALI: bu süre sonunda kapı kendiliğinden açılır ve panel normal şekilde gelir.
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Splash penceresi güncelleme kontrolünün sonucunu bildirir.
+/// `"prompt"` → modal açık, ana pencere beklesin. Diğer her değer → yola devam.
+#[tauri::command]
+fn set_update_gate(state: &str) {
+    UPDATE_GATE.store(
+        if state == "prompt" { GATE_PROMPT } else { GATE_CLEAR },
+        Ordering::SeqCst,
+    );
+}
 
 /// Ekran görüntüsü / ekran kaydı araçları pencereyi yakalayamasın (Windows).
 /// `block=false` ile koruma kaldırılır — yönetici "personel ekran görüntüsü alabilir"
@@ -80,15 +104,46 @@ pub fn run() {
         SUPPRESS_FOCUS_LOST.store(true, Ordering::SeqCst);
     }
 
-    tauri::Builder::default()
+    // Tepside sessiz açılışta güncelleme sorulmaz (kullanıcı ekranda değil); kapı baştan açık.
+    if start_hidden {
+        UPDATE_GATE.store(GATE_CLEAR, Ordering::SeqCst);
+    }
+
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
-        ))
-        .invoke_handler(tauri::generate_handler![set_screenshot_protection, hide_to_tray])
+        ));
+
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
+        .invoke_handler(tauri::generate_handler![
+            set_screenshot_protection,
+            hide_to_tray,
+            set_update_gate
+        ])
         .setup(move |app| {
+            // EMNİYET KEMERİ: splash sonucu bildirmezse kapı zaman aşımıyla açılır.
+            if !start_hidden {
+                std::thread::spawn(|| {
+                    std::thread::sleep(UPDATE_CHECK_TIMEOUT);
+                    let _ = UPDATE_GATE.compare_exchange(
+                        GATE_CHECKING,
+                        GATE_CLEAR,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    );
+                });
+            }
+
             // Açılışta otomatik başlatmayı kaydet (idempotent) — PC açılınca tepside hazır olur.
             {
                 use tauri_plugin_autostart::ManagerExt;
@@ -142,6 +197,13 @@ pub fn run() {
             std::thread::spawn(move || {
                 if elapsed < MIN_SPLASH {
                     std::thread::sleep(MIN_SPLASH - elapsed);
+                }
+                // GÜNCELLEME KAPISI: splash "temiz" diyene kadar ana pencere gösterilmez ve
+                // splash kapanmaz. Zaman aşımı emniyeti kapıyı en geç UPDATE_CHECK_TIMEOUT
+                // sonunda açtığı için burada sonsuz bekleme oluşmaz; modal açıkken ise kapı
+                // kullanıcı karar verene kadar bilerek kapalı kalır.
+                while UPDATE_GATE.load(Ordering::SeqCst) != GATE_CLEAR {
+                    std::thread::sleep(Duration::from_millis(120));
                 }
                 if let Some(main) = app.get_webview_window("main") {
                     block_capture(&main);

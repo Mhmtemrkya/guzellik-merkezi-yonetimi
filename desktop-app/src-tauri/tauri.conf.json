@@ -39,9 +39,18 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Mhmtemrkya/guzellik-merkezi-yonetimi/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1MTk2OEMxMUQ0QjMxMzUKUldRMU1Vc2R3V2daNVpoMkY4RStGaFpEYmhtZko2bTZJNWloRjNtK285bVNlTVowNlNrZXpybXEK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis", "dmg", "app"],
+    "createUpdaterArtifacts": true,
     "publisher": "BeautyAsist",
     "copyright": "© 2026 BeautyAsist. Tüm hakları saklıdır.",
     "category": "Business",

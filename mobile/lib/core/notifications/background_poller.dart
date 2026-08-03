@@ -19,11 +19,25 @@ import 'notification_service.dart';
 class BackgroundPoller {
   BackgroundPoller._();
 
+  /// LAN ÖN PLAN SERVİSİ — VARSAYILAN KAPALI.
+  ///
+  /// Android bir ön plan servisi için KALICI BİLDİRİM göstermeyi zorunlu tutar
+  /// ("BeautyAsist · Bildirimler dinleniyor"); bu bildirim gizlenemez, yalnızca servisi
+  /// çalıştırmayarak kaldırılabilir. Uygulama artık genel internetteki HTTPS backend'e
+  /// bağlandığı için "uygulama kapalıyken bildirim" işi FCM'e devredildi (bkz. FcmService):
+  /// anında gelir, pil tüketmez ve kalıcı bildirim gerektirmez.
+  ///
+  /// Bu katman yalnızca SALON İÇİ LAN kurulumu (internetsiz, kendi sunucusu) için anlamlı.
+  /// Geri açmak:  flutter build apk --release --dart-define=LAN_POLLER=true
+  static const bool enabled = bool.fromEnvironment('LAN_POLLER');
+
   static const _serviceChannelId = 'beautyasist_service';
   static const _serviceNotificationId = 8891;
   static const _pollInterval = Duration(seconds: 30);
 
   static Future<void> configure() async {
+    // Kapalıyken kanal bile oluşturulmaz: kullanıcı bildirim ayarlarında ölü bir kanal görmesin.
+    if (!enabled) return;
     // Ön plan servisinin kalıcı bildirimi için düşük önemli kanal (rahatsız etmesin).
     final fln = FlutterLocalNotificationsPlugin();
     final android = fln.resolvePlatformSpecificImplementation<
@@ -56,6 +70,7 @@ class BackgroundPoller {
   }
 
   static Future<void> start() async {
+    if (!enabled) return;
     try {
       final service = FlutterBackgroundService();
       if (!await service.isRunning()) await service.startService();
@@ -63,6 +78,7 @@ class BackgroundPoller {
   }
 
   static Future<void> stop() async {
+    if (!enabled) return;
     try {
       FlutterBackgroundService().invoke('stopService');
     } catch (_) {}

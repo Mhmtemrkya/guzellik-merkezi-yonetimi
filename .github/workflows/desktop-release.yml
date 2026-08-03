@@ -1,0 +1,96 @@
+name: Masaüstü sürüm yayınla
+
+# Neden: masaüstü uygulaması her güncellemede elle setup.exe / dmg kurmayı gerektiriyordu.
+# Bu iş akışı Windows + macOS paketlerini üretir, imzalar ve GitHub Release'e `latest.json`
+# ile birlikte yükler. Uygulama açılışta o dosyaya bakıp "yeni sürüm var" modalını açar
+# (bkz. desktop-app/src/splashscreen.html + src-tauri/src/lib.rs güncelleme kapısı).
+#
+# YAYIN NASIL YAPILIR
+#   1) desktop-app/src-tauri/tauri.conf.json içindeki "version" değerini yükselt
+#      (Cargo.toml sürümü de aynı olsun) ve commit'le.
+#   2) Aynı sürümle etiket at:  git tag desktop-v1.1.0 && git push origin desktop-v1.1.0
+#   Etiket "desktop-v" ile başlamalı; workflow_dispatch ile elle de çalıştırılabilir.
+#
+# GEREKEN DEPO SECRET'LARI (Settings → Secrets and variables → Actions)
+#   TAURI_SIGNING_PRIVATE_KEY           imza özel anahtarının İÇERİĞİ (~/.tauri/*.key)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  anahtar parolası (parolasız üretildiyse boş bırak)
+# Public karşılığı tauri.conf.json → plugins.updater.pubkey içindedir. ÖZEL ANAHTAR KAYBOLURSA
+# yayınlanmış uygulamalar bir daha güncellenemez — yedeğini güvenli bir yerde tut.
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+# Release oluşturmak/asset yüklemek için yazma izni şart.
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS: tek paket hem Intel hem Apple Silicon'a kurulsun.
+          - os: macos-latest
+            label: macOS (universal)
+            args: '--target universal-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          - os: windows-latest
+            label: Windows (x64)
+            args: ''
+            rust-targets: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop-app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      # Rust derlemesi pahalı; hedef klasörü sürümler arasında yeniden kullanılır.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-app/src-tauri -> target
+
+      - name: Bağımlılıklar
+        working-directory: desktop-app
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # İmza: updater paketlerinin .sig dosyaları bu anahtarla üretilir. Anahtar yoksa
+          # paketler yayınlanır ama uygulama imzayı doğrulayamayacağı için güncellemeyi REDDEDER.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop-app
+          # __VERSION__ tauri.conf.json'daki sürümle değiştirilir — etiket ile paket sürümü ayrışmasın.
+          tagName: desktop-v__VERSION__
+          releaseName: 'BeautyAsist Masaüstü v__VERSION__'
+          releaseBody: |
+            Bu sürüm uygulamanın içinden otomatik kurulur: BeautyAsist'i açtığınızda
+            "Yeni sürüm hazır" penceresi çıkar ve **Şimdi Güncelle** demeniz yeterlidir.
+
+            İlk kurulum (ya da elle kurmak isterseniz):
+            - Windows: `.exe` uzantılı kurulum dosyası
+            - macOS: `.dmg` dosyası
+          releaseDraft: false
+          prerelease: false
+          # latest.json'ı üretip Release'e ekler — uygulamanın baktığı adres budur.
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}

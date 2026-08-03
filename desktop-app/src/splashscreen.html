@@ -51,6 +51,55 @@
     animation: slide 1.15s ease-in-out infinite;
   }
   .status { font-size: 11px; color: #705a66; animation: rise .7s .34s both; }
+
+  /* ---- Güncelleme modalı (varsayılan gizli) ---- */
+  .update { display: none; width: 100%; padding: 0 30px; animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
+  body.updating .loader, body.updating .status, body.updating .tagline { display: none; }
+  body.updating .update { display: block; }
+  body.updating .card { gap: 14px; justify-content: center; }
+  body.updating .logo { width: 58px; height: 58px; border-radius: 16px; }
+
+  .update h1 { font-size: 17px; font-weight: 600; color: #722f37; text-align: center; }
+  .update .versions {
+    margin-top: 8px; text-align: center; font-size: 12.5px; color: #4a3a44;
+  }
+  .update .versions b { color: #722f37; font-weight: 600; }
+  .update .notes {
+    margin-top: 12px; max-height: 76px; overflow-y: auto;
+    font-size: 12px; line-height: 1.5; color: #4a3a44;
+    background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(114, 47, 55, 0.10);
+    border-radius: 10px; padding: 9px 11px; white-space: pre-wrap;
+  }
+  .update .actions { margin-top: 16px; display: flex; gap: 10px; }
+  .update button {
+    flex: 1; font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 11px 14px; border-radius: 11px; cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  }
+  .update button:active { transform: translateY(1px); }
+  .update button:disabled { cursor: default; opacity: .65; }
+  .btn-primary {
+    border: none; color: #fdf8f4;
+    background: linear-gradient(90deg, #722f37, #b76e79);
+    box-shadow: 0 10px 22px -10px rgba(114, 47, 55, 0.75);
+  }
+  .btn-ghost {
+    border: 1px solid rgba(114, 47, 55, 0.28); background: transparent; color: #722f37;
+  }
+  .progress {
+    display: none; margin-top: 14px; height: 6px; border-radius: 999px;
+    background: rgba(114, 47, 55, 0.12); overflow: hidden;
+  }
+  .progress > div {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, #722f37, #b76e79);
+    transition: width .2s ease;
+  }
+  .progress-text { display: none; margin-top: 7px; text-align: center; font-size: 11.5px; color: #4a3a44; }
+  body.installing .actions { display: none; }
+  body.installing .notes { display: none; }
+  body.installing .progress, body.installing .progress-text { display: block; }
+
   @keyframes rise {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -70,6 +119,138 @@
     <div class="tagline">Güzellik Merkezi Yönetimi</div>
     <div class="loader"></div>
     <div class="status">Panele bağlanılıyor…</div>
+
+    <div class="update">
+      <h1>Yeni sürüm hazır</h1>
+      <div class="versions">
+        Kullandığınız sürüm <b id="up-current">–</b> · yeni sürüm <b id="up-next">–</b>
+      </div>
+      <div class="notes" id="up-notes"></div>
+      <div class="actions">
+        <button class="btn-ghost" id="up-later" type="button">Daha Sonra</button>
+        <button class="btn-primary" id="up-now" type="button">Şimdi Güncelle</button>
+      </div>
+      <div class="progress"><div id="up-bar"></div></div>
+      <div class="progress-text" id="up-text">İndiriliyor…</div>
+    </div>
   </div>
+
+<script>
+/*
+  AÇILIŞ GÜNCELLEME AKIŞI.
+
+  Kontrol bilerek BU pencerede (yerel splash sayfası) yapılır: uzak panel penceresine
+  güncelleyici/işlem yetkisi verilmez (bkz. capabilities/remote-panel.json).
+
+  Rust tarafındaki "güncelleme kapısı" kontrol bitene kadar ana pencereyi göstermez;
+  bu sayfa sonucu `set_update_gate` ile bildirmek ZORUNDADIR. Bildirmezse Rust'taki
+  zaman aşımı emniyeti kapıyı yine de açar — uygulama açılışta asılı kalmaz.
+*/
+(function () {
+  const api = window.__TAURI__ || {};
+  const invoke = api.core && api.core.invoke;
+
+  // Kapıyı aç: panel normal şekilde gelsin.
+  function releaseGate() {
+    try { invoke && invoke('set_update_gate', { state: 'clear' }); } catch (_) {}
+  }
+  // Kapıyı tut: kullanıcı karar verene kadar panel gösterilmesin.
+  function holdGate() {
+    try { invoke && invoke('set_update_gate', { state: 'prompt' }); } catch (_) {}
+  }
+
+  function fmtMB(bytes) {
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
+  async function showPrompt(update) {
+    holdGate();
+    document.getElementById('up-current').textContent = update.currentVersion || '–';
+    document.getElementById('up-next').textContent = update.version || '–';
+
+    const notes = (update.body || '').trim();
+    const notesEl = document.getElementById('up-notes');
+    if (notes) notesEl.textContent = notes;
+    else notesEl.style.display = 'none';
+
+    document.body.classList.add('updating');
+    // Modal daha çok yer ister: pencereyi büyütüp yeniden ortala.
+    // LogicalSize Tauri v2'de `dpi` modülüne taşındı ama eski/ileri sürümlerde `window`
+    // altından da gelebiliyor; ikisini de dene. Bulunamazsa büyütmeden devam edilir —
+    // modal 460x340'a da sığacak şekilde ölçülendirildi, yalnızca daha sıkışık görünür.
+    try {
+      const LogicalSize =
+        (api.dpi && api.dpi.LogicalSize) || (api.window && api.window.LogicalSize);
+      const win = api.window.getCurrentWindow();
+      if (LogicalSize) {
+        await win.setSize(new LogicalSize(460, notes ? 460 : 390));
+        await win.center();
+      }
+    } catch (_) {}
+
+    document.getElementById('up-later').addEventListener('click', function () {
+      document.body.classList.remove('updating');
+      releaseGate();
+    });
+
+    document.getElementById('up-now').addEventListener('click', async function () {
+      document.body.classList.add('installing');
+      const bar = document.getElementById('up-bar');
+      const text = document.getElementById('up-text');
+      let total = 0;
+      let received = 0;
+      try {
+        await update.downloadAndInstall(function (event) {
+          if (event.event === 'Started') {
+            total = event.data.contentLength || 0;
+            text.textContent = 'İndiriliyor…';
+          } else if (event.event === 'Progress') {
+            received += event.data.chunkLength || 0;
+            if (total > 0) {
+              bar.style.width = Math.min(100, (received / total) * 100).toFixed(1) + '%';
+              text.textContent = fmtMB(received) + ' / ' + fmtMB(total);
+            } else {
+              text.textContent = fmtMB(received) + ' indirildi';
+            }
+          } else if (event.event === 'Finished') {
+            bar.style.width = '100%';
+            text.textContent = 'Kuruluyor… Uygulama birazdan yeniden başlayacak.';
+          }
+        });
+        // Windows'ta kurulum uygulamayı kendisi kapatır; macOS/Linux'ta yeniden başlatmak gerekir.
+        if (api.process && api.process.relaunch) await api.process.relaunch();
+      } catch (err) {
+        // Güncelleme başarısızsa kullanıcıyı kilitleme: panele normal şekilde devam et.
+        document.body.classList.remove('installing');
+        text.style.display = 'block';
+        text.textContent = 'Güncelleme tamamlanamadı, panele devam ediliyor.';
+        setTimeout(function () {
+          document.body.classList.remove('updating');
+          releaseGate();
+        }, 2600);
+      }
+    });
+  }
+
+  async function run() {
+    // Güncelleyici yoksa (dev sunucusu, eklenti devre dışı) akışı hiç bekletme.
+    if (!api.updater || !api.updater.check) { releaseGate(); return; }
+    try {
+      const update = await api.updater.check();
+      if (update) await showPrompt(update);
+      else releaseGate();
+    } catch (_) {
+      // Çevrimdışı / sunucuya ulaşılamadı / imza doğrulanamadı → sessizce devam.
+      releaseGate();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
+</script>
 </body>
 </html>

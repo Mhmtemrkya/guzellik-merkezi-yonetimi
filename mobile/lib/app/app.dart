@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -5,6 +7,7 @@ import '../core/auth/auth_controller.dart';
 import '../core/network/api_client.dart';
 import '../core/notifications/background_poller.dart';
 import '../core/notifications/notification_center.dart';
+import '../core/notifications/notification_service.dart';
 import '../core/storage/session_storage.dart';
 import '../core/theme/app_theme.dart';
 import 'router.dart';
@@ -49,8 +52,25 @@ class _BeautyAsistAppState extends State<BeautyAsistApp> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     BackgroundPoller.configure();
 
+    // BİLDİRİM İZNİ AÇILIŞTA İSTENİR.
+    //
+    // Android 13+ (ve iOS) bildirim iznini KURULUMDA değil çalışma anında sorar ve sistem bu
+    // diyaloğu yalnızca bir kez gösterir. İstek eskiden sadece GİRİŞTEN SONRA yapılıyordu
+    // (NotificationCenter.start): kullanıcı login ekranında kaldığı sürece hiç sorulmuyor,
+    // izin verilmemiş sayılıyor ve gelen push'lar sessizce düşüyordu.
+    unawaited(_requestNotificationPermission());
+
     auth.addListener(_onAuthChanged);
     auth.restore();
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    try {
+      await NotificationService.instance.init();
+      await NotificationService.instance.requestPermissions();
+    } catch (_) {
+      // İzin alınamazsa uygulama normal çalışır; kullanıcı ayarlardan sonradan verebilir.
+    }
   }
 
   /// Girişte bildirimleri başlat, çıkışta durdur (yalnızca personel/yönetici; müşteri portalı hariç).
