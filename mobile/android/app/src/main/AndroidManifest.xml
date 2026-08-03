@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
+    <!-- Ağ erişimi AÇIKÇA burada. Eklentilerin (bildirim/arka plan servis) kendi manifest'lerinden
+         merge ile de geliyordu; o eklenti bir gün kaldırılırsa release derlemesi SESSİZCE ağsız
+         kalırdı (debug/profile manifest'lerinde zaten tanımlı olduğu için hata yalnız release'te
+         görünürdü). Uygulamanın kendi ihtiyacı, kendi manifest'inde durur. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <!-- Canlı bildirim izinleri -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
@@ -16,10 +22,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
 
+    <!-- AĞ GÜVENLİĞİ: res/xml/network_security_config.xml BAĞLANDI.
+         Önceden bu dosya yazılmış ama manifest'ten HİÇ referans edilmemişti → ölü dosyaydı ve
+         usesCleartextTraffic="true" ile düz HTTP her adrese açıktı (canlı token'ı taşıyan bir
+         uygulamada downgrade/MITM riski + Play uyarısı). Artık kural dosyası geçerli:
+         internet üzerindeki canlı backend'e yalnız HTTPS, düz HTTP yalnız beyaz listedeki
+         yerel/LAN adreslerine (emülatör 10.0.2.2, localhost, salon içi sabit IP).
+         usesCleartextTraffic KALDIRILDI: config varken zaten ezilir, iki çelişkili sinyal kalmasın. -->
     <application
         android:label="BeautyAsist"
         android:name="${applicationName}"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher">
 
         <!-- API 34+/36'da ön plan servis tipi zorunlu — flutter_background_service'in servisine dataSync tipini birleştir.

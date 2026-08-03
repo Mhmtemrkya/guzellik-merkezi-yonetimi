@@ -12,18 +12,33 @@ flutter pub get
 flutter run
 ```
 
-Varsayılan API adresleri:
+API adresi TEK yerden çözülür: `lib/core/network/api_config.dart` (hem `ApiClient` hem arka plan
+bildirim yoklayıcısı onu kullanır — ayrı kopyalar tutulursa biri güncellenip diğeri unutulur).
 
-- Android emülatör: `http://10.0.2.2:5019`
-- iOS simülatör: `http://127.0.0.1:5019`
+Öncelik sırası: `--dart-define=API_BASE_URL=...` > release varsayılanı > yerel geliştirme.
 
-Gerçek cihaz veya canlı ortam için adres derleme anında verilir:
+| Derleme | Adres |
+| --- | --- |
+| debug/profile, Android emülatör | `http://10.0.2.2:5019` |
+| debug/profile, iOS simülatör | `http://127.0.0.1:5019` |
+| **release (APK/IPA)** | **`https://maydanozasist.beautyasist.com`** — canlı backend |
+
+Yani telefona yüklenecek APK için ek parametre gerekmez:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=https://api.ornek.com
-flutter build apk --dart-define=API_BASE_URL=https://api.ornek.com
-flutter build ios --dart-define=API_BASE_URL=https://api.ornek.com
+flutter build apk --release
 ```
+
+Başka bir sunucuya bağlamak için derleme anında ez:
+
+```bash
+flutter run   --dart-define=API_BASE_URL=https://baska.sunucu
+flutter build apk --release --dart-define=API_BASE_URL=https://baska.sunucu
+```
+
+> CORS mobil için geçerli DEĞİLDİR: tarayıcıya özgü bir mekanizmadır, native Android/iOS istemcisi
+> `Origin` başlığı göndermez ve preflight yapmaz. CORS yalnız web panelini ve Flutter **Web**
+> derlemesini ilgilendirir.
 
 ## Mimari
 

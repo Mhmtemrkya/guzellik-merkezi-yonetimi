@@ -25,4 +25,16 @@
         <!-- ÖRNEK salon içi LAN sunucusu — kendi sabit IP'nizle değiştir/çoğaltın -->
         <domain includeSubdomains="true">192.168.1.100</domain>
     </domain-config>
+
+    <!--
+      YALNIZCA debuggable (flutter run / debug APK) derlemelerde geçerlidir; release APK'ya
+      hiçbir etkisi yoktur. Gerçek telefonda LAN'daki dev sunucusuna düz HTTP ile bağlanmak
+      için her seferinde IP'yi yukarı eklemek gerekmesin diye var — canlı sürüm katı kalır.
+    -->
+    <debug-overrides cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
 </network-security-config>
