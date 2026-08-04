@@ -149,6 +149,119 @@ public sealed class AccountPlanAndStockReversalTests
         }
     }
 
+    /// <summary>
+    /// GERİDE KALAN SAPMA ONARILIR: plan toplamı cari toplamının altında kalmış kayıtlar açılışta
+    /// hizalanır (taksit sayısı ve ilk vade korunur), hizalı kayda DOKUNULMAZ (idempotent).
+    /// </summary>
+    [Fact]
+    public async Task RepairInstallmentPlanDrift_AlignsOnlyDriftedAccounts()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid driftedId, healthyId;
+        DateOnly firstDue;
+
+        await using (var db = NewDb(options))
+        {
+            // SAPMIŞ KAYIT: plan 8.500'e kuruldu, sonra toplam 8.750 oldu ama plan güncellenmedi
+            // (düzeltmeden önceki UpdateAsync davranışı — canlıdaki 250 TL fark).
+            var drifted = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Sapmış satış", 8500m, 0m);
+            drifted.RebuildInstallments(4, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(20)));
+            db.CustomerAccounts.Add(drifted);
+            await db.SaveChangesAsync();
+            drifted.ChangeTotal(8750m, 0m);              // plan bilerek yeniden kurulmadı
+            await db.SaveChangesAsync();
+            driftedId = drifted.Id;
+            firstDue = drifted.Installments.Min(i => i.DueDate);
+
+            var healthy = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Sağlam satış", 6000m, 0m);
+            healthy.RebuildInstallments(3, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)));
+            db.CustomerAccounts.Add(healthy);
+            await db.SaveChangesAsync();
+            healthyId = healthy.Id;
+        }
+
+        Guid[] healthyPlanBefore;
+        await using (var db = NewDb(options))
+        {
+            healthyPlanBefore = await db.Installments.Where(i => i.CustomerAccountId == healthyId)
+                .OrderBy(i => i.DueDate).Select(i => i.Id).ToArrayAsync();
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db);
+            Assert.Equal(1, repaired);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var drifted = await check.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == driftedId);
+            Assert.Equal(4, drifted.Installments.Count);                       // taksit sayısı korunur
+            Assert.Equal(8750m, drifted.Installments.Sum(i => i.Amount));      // kayıp alacak kapandı
+            Assert.Equal(firstDue, drifted.Installments.Min(i => i.DueDate));  // ilk vade korunur
+
+            // Sağlam kayıt hiç ellenmedi (satır kimlikleri aynı) → tekrar çalıştırmak zararsız.
+            var healthyPlanAfter = await check.Installments.Where(i => i.CustomerAccountId == healthyId)
+                .OrderBy(i => i.DueDate).Select(i => i.Id).ToArrayAsync();
+            Assert.Equal(healthyPlanBefore, healthyPlanAfter);
+        }
+
+        // İDEMPOTENT: ikinci koşuda onarılacak kayıt kalmaz.
+        await using (var db = NewDb(options))
+        {
+            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+        }
+    }
+
+    /// <summary>
+    /// AYNI ONARIM GERÇEK VERİTABANINDA: aday taraması sunucuda çalışan bir alt-sorgu (COUNT + SUM)
+    /// içerir. Çevrilemezse açılıştaki try/catch uyarı loglayıp SESSİZCE geçerdi — yani canlıda
+    /// hiçbir şey onarılmazdı. InMemory sağlayıcı bunu göstermez.
+    /// </summary>
+    [MySqlFact]
+    public async Task RepairInstallmentPlanDrift_RunsOnRealDatabase()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        Guid driftedId;
+
+        await using (var db = database.NewContext())
+        {
+            var tenant = new Tenant("Sapma QA", $"sapma-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+            var customer = new Customer(tenant.Id, branch.Id, "SAPMA MÜŞTERİ", "0555 909 80 70", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Sapmış satış", 8500m, 0m);
+            account.RebuildInstallments(4, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(20)));
+            db.CustomerAccounts.Add(account);
+            await db.SaveChangesAsync();
+            account.ChangeTotal(8750m, 0m);      // plan bilerek yeniden kurulmadı
+            await db.SaveChangesAsync();
+            driftedId = account.Id;
+        }
+
+        await using (var db = database.NewContext())
+        {
+            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var account = await check.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == driftedId);
+            Assert.Equal(4, account.Installments.Count);
+            Assert.Equal(8750m, account.Installments.Sum(i => i.Amount));
+        }
+
+        await using (var again = database.NewContext())
+        {
+            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(again));
+        }
+    }
+
     /// <summary>Satış sonrası ürün silinse bile adisyon silinince stok GERİ EKLENİR.</summary>
     [Fact]
     public async Task DeleteApprovedAdisyon_WithDeletedProduct_StillRestoresStock()

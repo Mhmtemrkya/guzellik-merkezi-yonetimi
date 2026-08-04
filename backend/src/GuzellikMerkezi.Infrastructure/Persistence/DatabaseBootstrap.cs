@@ -1,6 +1,7 @@
 ﻿using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -272,6 +273,95 @@ public static class DatabaseBootstrap
             // Şema henüz yoksa (migration uygulanmamış) ya da DB erişilemiyorsa açılış durmamalı.
             logger.LogWarning(ex, "İptal arşivi bakımı tamamlanamadı; tahsilat defteri eksik kalabilir.");
         }
+    }
+
+    /// <summary>
+    /// TAKSİT PLANI ↔ CARİ TOPLAMI SAPMASINI ONARIR — her ortamda çalışır, veri-only, idempotent.
+    ///
+    /// <para>
+    /// Cari toplamı elle güncellenirken plan yeniden kurulmuyordu (kod tarafı düzeltildi). Geride
+    /// kalan kayıtlarda plan toplamı cari toplamının ALTINDA duruyor ve aradaki fark hiçbir yerde
+    /// görünmüyor: taksit ve açık alacak raporları PLAN toplamını okuduğu için o alacak sessizce
+    /// kayboluyor (denetimde canlıda 8.750 cari ↔ 8.500 plan = 250 TL). Burada plan, uygulamanın
+    /// kendi kuralıyla (<see cref="CustomerAccount.RebuildInstallments"/>) yeniden bölünür:
+    /// taksit SAYISI ve ilk vade KORUNUR, yalnız tutarlar finanse edilen tutara göre düzeltilir.
+    /// </para>
+    /// <para>
+    /// Para YARATMAZ/SİLMEZ: "ödenen" bilgisi taksitte değil tahsilat satırlarında durur, plan
+    /// yeniden bölünse de tahsilatlar vade sırasıyla yeniden dağıtılır. İptal edilmiş satışa ve
+    /// planı olmayan (peşin) cariye dokunulmaz; finanse edilen tutar 0/negatif ise de dokunulmaz
+    /// (otomatik onarım plan SİLMEZ — böyle bir kayıt varsa elle incelenmelidir).
+    /// </para>
+    /// </summary>
+    public static async Task RepairInstallmentPlanDriftAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("InstallmentPlanDriftRepair");
+
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            if (db.Database.IsInMemory()) return;
+
+            var repaired = await RepairInstallmentPlanDriftAsync(db, logger);
+            if (repaired > 0)
+                logger.LogInformation("{Count} carinin taksit planı cari toplamıyla hizalandı.", repaired);
+        }
+        catch (Exception ex)
+        {
+            // Şema henüz yoksa ya da DB erişilemiyorsa açılış durmamalı.
+            logger.LogWarning(ex, "Taksit planı sapma onarımı tamamlanamadı.");
+        }
+    }
+
+    /// <summary>
+    /// <see cref="RepairInstallmentPlanDriftAsync(IServiceProvider)"/>'ın test edilebilir gövdesi;
+    /// onarılan cari sayısını döndürür.
+    /// </summary>
+    public static async Task<int> RepairInstallmentPlanDriftAsync(GuzellikDbContext db, ILogger? logger = null)
+    {
+        // ADAY TARAMASI SUNUCUDA: her açılışta tüm cariler belleğe alınmasın (100 binlerce satır).
+        // Startup'ta kiracı bağlamı yok → global süzgeçler atlanır, koşullar elle yazılır.
+        var drifted = await db.CustomerAccounts.IgnoreQueryFilters()
+            .Where(a => !a.IsDeleted && a.CancelledAtUtc == null)
+            .Select(a => new
+            {
+                a.Id,
+                Financed = a.TotalAmount - a.DepositAmount,
+                PlanCount = a.Installments.Count(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled),
+                PlanTotal = a.Installments
+                    .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
+                    .Sum(i => (decimal?)i.Amount) ?? 0m,
+            })
+            .Where(x => x.PlanCount > 0 && x.Financed > 0 && x.PlanTotal != x.Financed)
+            .Select(x => x.Id)
+            .ToListAsync();
+        if (drifted.Count == 0) return 0;
+
+        var repaired = 0;
+        foreach (var accountId in drifted)
+        {
+            var account = await db.CustomerAccounts.IgnoreQueryFilters()
+                .Include(a => a.Installments)
+                .FirstOrDefaultAsync(a => a.Id == accountId);
+            if (account is null) continue;
+
+            var activePlan = account.Installments
+                .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
+                .ToList();
+            if (activePlan.Count == 0) continue;
+
+            var before = activePlan.Sum(i => i.Amount);
+            account.RebuildInstallments(activePlan.Count, activePlan.Min(i => i.DueDate));
+            await db.SaveChangesAsync();
+            repaired++;
+
+            // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
+            logger?.LogInformation(
+                "Cari {AccountId}: plan {Before} → {After} (taksit {Count}).",
+                accountId, before, Math.Max(0, account.TotalAmount - account.DepositAmount), activePlan.Count);
+        }
+        return repaired;
     }
 
     /// <summary>

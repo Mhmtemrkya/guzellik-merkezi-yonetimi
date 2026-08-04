@@ -166,6 +166,11 @@ await DatabaseBootstrap.BackfillPackageSessionUsagesAsync(app.Services);
 // eşleştirme SQL'de yapılamaz; çözülmüş değer uygulama içinde adisyon Id'siyle eşlenir.
 await DatabaseBootstrap.BackfillAdisyonSourceLinksAsync(app.Services);
 
+// Taksit planı cari toplamının gerisinde kalmış carileri hizalar. Toplam elle güncellenirken plan
+// yeniden kurulmuyordu (kod tarafı düzeltildi); geride kalan kayıtlarda aradaki fark taksit/açık
+// alacak raporlarından sessizce düşüyordu. Veri-only + idempotent: hizalı kayda dokunmaz.
+await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(app.Services);
+
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
 // rate-limit ve audit/güvenlik logları proxy IP'sini değil GERÇEK istemciyi görür. En başta çalışmalı.
 // Varsayılan: yalnız loopback proxy güvenilir (aynı sunucudaki nginx/IIS için doğru çalışır). Cloud LB için:
