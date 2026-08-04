@@ -95,9 +95,25 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/images/logo.png
-  adaptive_icon_background: "#FFF7FA"
+
+  # ARKA PLAN SAYDAM — logonun etrafındaki beyaz kutuyu kaldırır.
+  #
+  # Android 8+ "adaptive icon" iki katmandır: arka plan + ön plan. Buraya bir RENK
+  # yazıldığında (eskiden #FFF7FA) launcher logoyu o rengin üstüne PLAKA olarak koyar;
+  # kullanıcının gördüğü beyaz kutu buydu. Logonun kendisinde zaten gerçek saydamlık var
+  # (%52.7 tamamen saydam piksel), bu yüzden arka planı saydam yapmak yeterli: yalnız
+  # logo görünür. Değer #AARRGGBB biçimindedir; AA=00 → tamamen saydam.
+  adaptive_icon_background: "#00000000"
   adaptive_icon_foreground: assets/images/logo.png
+
+  # Plaka kalkınca logo görsel olarak küçülür (launcher maskesi + güvenli alan payı).
+  # Varsayılan %16 kenar boşluğu yerine %6: logo diğer uygulama ikonlarıyla aynı ağırlıkta durur.
+  adaptive_icon_foreground_inset: 6
+
+  # iOS İKONLARI SAYDAM OLAMAZ — App Store saydam/alfa içeren ikonu reddeder.
+  # Alfa kaldırılıp marka kremi ile doldurulur (Android'i etkilemez).
   remove_alpha_ios: true
+  background_color_ios: "#FFF7FA"
 
   # To add assets to your application, add an assets section, like this:
   # assets:
