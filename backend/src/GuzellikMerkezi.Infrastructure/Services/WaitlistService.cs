@@ -231,11 +231,26 @@ public sealed class WaitlistService : IWaitlistService
         // bekleme listesi üzerinden ÜCRETSİZ randevu alabiliyordu. Kategori yetkisi ve çalışma
         // saati kontrolleri de CreateAsync içinde var, burada tekrarlanmaz.
         var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
-        var created = await appointments.CreateAsync(tenantId,
-            new Application.Features.Appointments.CreateAppointmentRequest(
-                branchId.Value, entry.CustomerId, staffId, serviceId, startUtc, endUtc, 0m,
-                "Bekleme listesinden aktifleşti"),
-            cancellationToken);
+        var appointmentRequest = new Application.Features.Appointments.CreateAppointmentRequest(
+            branchId.Value, entry.CustomerId, staffId, serviceId, startUtc, endUtc, 0m,
+            "Bekleme listesinden aktifleşti");
+
+        // HAKKI YOKSA SATIŞ DA AÇILIR — yoksa kayıt KALICI OLARAK dönüşemez hâlde kalırdı.
+        //
+        // Hakkı olmayan müşteride normal akış "satış + randevu"yu tek uçtan açar; slot doluysa
+        // randevu adımı düşer ve satış geri alınır, bekleme kaydına yalnız hizmet/slot yazılır.
+        // Yer açıldığında burada ÜCRETSİZ randevu denenince "kullanılabilir seansı yok" hatası
+        // alınıyor ve kayıt hiçbir zaman randevuya dönemiyordu. Satış BEKLETMELİDİR
+        // (AutoApproveOnFirstAppointment): para cariye şimdi işlenmez, randevu tamamlanınca işlenir.
+        var entitled = await appointments.HasServiceEntitlementAsync(
+            tenantId, entry.CustomerId, serviceId, cancellationToken);
+        var created = entitled
+            ? await appointments.CreateAsync(tenantId, appointmentRequest, cancellationToken)
+            : await appointments.CreateWithSaleAsync(tenantId,
+                new Application.Features.Appointments.CreateAppointmentWithSaleRequest(
+                    appointmentRequest,
+                    new Application.Features.Appointments.AppointmentCatalogSaleDto(serviceId, null, staffId)),
+                cancellationToken);
         if (created.IsFailure) return Result<Guid?>.Failure(created.Error);
         var appointmentId = created.Value!.Id;
 

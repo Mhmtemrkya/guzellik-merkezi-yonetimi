@@ -100,6 +100,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
   String _workKind = 'service'; // 'service' | 'package'
   /// Satın alınmış pakette seçilen satır: `${packageId}|${serviceDefinitionId}`
   String? _ownedPick;
+
+  /// Seçilen paket satırının seans kaydı — randevu SUNUCUDA tam olarak buna bağlanır.
+  /// Boş gönderilirse backend aynı hizmete ait en eski seansı tüketir (yanlış paketten düşme).
+  String? _sourceSessionId;
   bool _dossierLoading = false;
 
   /// Geçmiş panelini (seans/işlem/ödeme tabloları) tazeleyen sayaç — satış veya
@@ -474,16 +478,22 @@ class _AppointmentFormState extends State<AppointmentForm> {
           orElse: () => const <String, dynamic>{});
       final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
       final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
+      final sessionId = '${s['id'] ?? ''}';
       if (row.isEmpty) {
         rows.add({
           'serviceDefinitionId': sid,
           'serviceName': '${s['serviceName'] ?? 'Hizmet'}',
           'remaining': remaining,
           'total': total,
+          // Randevu TAM olarak bu seans kaydına bağlanır (aynı hizmet birden çok pakette olabilir).
+          'sessionId': remaining > 0 && sessionId.isNotEmpty ? sessionId : null,
         });
       } else {
         row['remaining'] = (row['remaining'] as int) + remaining;
         row['total'] = (row['total'] as int) + total;
+        if (row['sessionId'] == null && remaining > 0 && sessionId.isNotEmpty) {
+          row['sessionId'] = sessionId;
+        }
       }
     }
     final list = map.values.toList();
@@ -500,6 +510,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
   void _clearWorkSelection() {
     serviceId = null;
     _ownedPick = null;
+    _sourceSessionId = null;
   }
 
   Future<void> save() async {
@@ -569,6 +580,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
           'endUtc': end.toUtc().toIso8601String(),
           'price': price,
           'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
+          // SEÇİLEN PAKETİN SEANSI (web paritesi): gönderilmezse backend aynı hizmete ait EN
+          // ESKİ seansı tüketir ve kullanıcı B paketini seçse bile A paketinden düşerdi.
+          'sourceCustomerPackageSessionId': _sourceSessionId,
         };
         if (sellNow) {
           // SATIS + RANDEVU TEK TRANSACTION. Ayri cagrilarla yapilsaydi randevu adimi
@@ -800,6 +814,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
         onChanged: (value) => setState(() {
           serviceId = value;
           _ownedPick = null;
+          // Katalogdan hizmet seçimi bir paket satırına bağlı değildir.
+          _sourceSessionId = null;
           // Hizmet değişince kategori-yetkisiz personel seçili kalmasın.
           if (staffId != null && !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
             staffId = null;
@@ -855,9 +871,12 @@ class _AppointmentFormState extends State<AppointmentForm> {
           name: '${p['name']}',
           rows: (p['rows'] as List).cast<Map<String, dynamic>>(),
           selectedKey: _ownedPick,
-          onPick: (sid) => setState(() {
+          onPick: (row) => setState(() {
+            final sid = '${row['serviceDefinitionId']}';
             _ownedPick = '${p['packageId']}|$sid';
             serviceId = sid;
+            // Seans kimliği SUNUCUYA gider: randevu tam olarak SEÇİLEN paketin bakiyesine bağlanır.
+            _sourceSessionId = row['sessionId'] as String?;
             if (staffId != null && !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
               staffId = null;
             }
@@ -1311,7 +1330,9 @@ class _OwnedPackageCard extends StatelessWidget {
 
   /// Seçili satırın anahtarı: `${packageId}|${serviceDefinitionId}`
   final String? selectedKey;
-  final ValueChanged<String> onPick;
+
+  /// Seçilen SATIRIN tamamı döner — çağıran hem hizmeti hem seans kaydını (sessionId) alır.
+  final ValueChanged<Map<String, dynamic>> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -1360,7 +1381,7 @@ class _OwnedPackageCard extends StatelessWidget {
             _PackageRow(
               row: r,
               selected: selectedKey == '$packageId|${r['serviceDefinitionId']}',
-              onTap: () => onPick('${r['serviceDefinitionId']}'),
+              onTap: () => onPick(r),
             ),
         ],
       ),
@@ -1378,7 +1399,9 @@ class _PackageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final remaining = row['remaining'] as int;
     final total = row['total'] as int;
-    final usable = remaining > 0;
+    // Bakiyesi olsa da kullanılabilir seans KAYDI çözülemediyse seçtirme: randevu yanlış pakete
+    // bağlanmaktansa hiç bağlanmasın.
+    final usable = remaining > 0 && row['sessionId'] != null;
     final pct = total > 0 ? (total - remaining) / total : 0.0;
 
     return Material(

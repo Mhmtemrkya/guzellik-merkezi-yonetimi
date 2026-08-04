@@ -1,0 +1,207 @@
+using GuzellikMerkezi.Application.Features.Adisyonlar;
+using GuzellikMerkezi.Application.Features.Appointments;
+using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
+namespace GuzellikMerkezi.Tests.Infrastructure;
+
+/// <summary>
+/// SATIŞ ↔ CARİ BÜTÜNLÜĞÜ — deploy denetiminde bulunan üç açığın regresyon koruması.
+///
+/// <list type="number">
+/// <item>İstemcinin verdiği <c>CustomerAccountId</c> doğrulanmıyordu: başka müşterinin carisi
+/// hedef gösterilerek borç yanlış kişiye yazılabiliyor (BOLA), ayrıca satışa mevcut bir cari
+/// iliştirilerek "her satış kendi kartını açar" kuralı baypas edilebiliyordu.</item>
+/// <item>Bir randevu tamamlanınca müşterinin TÜM bekleyen satışları onaylanır; tahsilat hedefi
+/// "ilk onaylanan" seçildiği için B randevusunun parası A satışına yazılabiliyordu.</item>
+/// <item>Arayüz belirli bir paket satırı seçtiriyor ama seçim sunucuya taşınmıyordu: aynı hizmeti
+/// içeren iki paketten EN ESKİSİ tüketiliyordu.</item>
+/// </list>
+/// </summary>
+public sealed class SaleAccountIntegrityTests
+{
+    private static DbContextOptions<GuzellikDbContext> NewOptions() =>
+        new DbContextOptionsBuilder<GuzellikDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+    private static GuzellikDbContext NewDb(DbContextOptions<GuzellikDbContext> options) =>
+        new(options, null, new TestCurrentUser(), null, null, TestSearchIndex.Create());
+
+    private static AdisyonService NewAdisyon(GuzellikDbContext db)
+    {
+        var user = new TestCurrentUser(UserRole.InstitutionOwner);
+        return new AdisyonService(db, new NoopAuditLogger(), user,
+            new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
+    }
+
+    private static AppointmentService NewAppointments(GuzellikDbContext db)
+    {
+        var user = new TestCurrentUser(UserRole.InstitutionOwner);
+        return new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger(),
+            null!, new CapturingJobQueue(), null!, user, NewAdisyon(db), null!);
+    }
+
+    private sealed record Seed(
+        Guid TenantId, Guid BranchId, Guid CustomerId, Guid OtherCustomerId,
+        Guid StaffId, Guid ServiceA, Guid ServiceB, Guid OtherAccountId);
+
+    private static async Task<Seed> SeedAsync(DbContextOptions<GuzellikDbContext> options)
+    {
+        await using var db = NewDb(options);
+        var tenant = new Tenant("Cari QA", $"cari-qa-{Guid.NewGuid():N}"[..24], "Premium", TenantStatus.Active);
+        var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var customer = new Customer(tenant.Id, branch.Id, "ANA MÜŞTERİ", "0555 100 20 30", null);
+        var other = new Customer(tenant.Id, branch.Id, "BAŞKA MÜŞTERİ", "0555 900 80 70", null);
+        db.Customers.AddRange(customer, other);
+        var staff = new StaffMember(tenant.Id, branch.Id, "Uzman Elif", "Uzman");
+        db.StaffMembers.Add(staff);
+        var serviceA = new ServiceDefinition(tenant.Id, branch.Id, "Cilt Bakımı", 60, 500m, "Cilt");
+        var serviceB = new ServiceDefinition(tenant.Id, branch.Id, "Lazer Epilasyon", 45, 800m, "Epilasyon");
+        db.ServiceDefinitions.AddRange(serviceA, serviceB);
+        await db.SaveChangesAsync();
+
+        // BAŞKA müşterinin carisi — saldırı hedefi.
+        var otherAccount = new CustomerAccount(tenant.Id, branch.Id, other.Id, null, "Başkasının satışı", 5000m, 0m);
+        db.CustomerAccounts.Add(otherAccount);
+        await db.SaveChangesAsync();
+
+        return new Seed(tenant.Id, branch.Id, customer.Id, other.Id, staff.Id, serviceA.Id, serviceB.Id, otherAccount.Id);
+    }
+
+    // ── 1) BOLA: başka müşterinin carisi hedef gösterilemez ────────────────────────────────
+
+    [Fact]
+    public async Task CreateAdisyon_WithForeignCustomerAccount_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        await using var db = NewDb(options);
+        var result = await NewAdisyon(db).CreateAsync(seed.TenantId,
+            new CreateAdisyonRequest(seed.BranchId, seed.CustomerId, seed.OtherAccountId, null));
+
+        Assert.True(result.IsFailure, "Başka müşterinin carisi adisyona bağlanabildi (BOLA).");
+        Assert.Equal("Validation", result.Error.Code);
+        Assert.Empty(await db.Adisyonlar.ToListAsync());
+    }
+
+    [Fact]
+    public async Task UpdateAdisyon_WithForeignCustomerAccount_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var created = await NewAdisyon(db).CreateAsync(seed.TenantId,
+                new CreateAdisyonRequest(seed.BranchId, seed.CustomerId, null, null));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            adisyonId = created.Value!.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAdisyon(db).UpdateAsync(seed.TenantId, adisyonId,
+                new UpdateAdisyonRequest(seed.OtherAccountId, null));
+            Assert.True(result.IsFailure, "Başka müşterinin carisi adisyona sonradan bağlanabildi.");
+            Assert.Equal("Validation", result.Error.Code);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var adisyon = await check.Adisyonlar.SingleAsync(a => a.Id == adisyonId);
+            Assert.Null(adisyon.CustomerAccountId);
+        }
+    }
+
+    // ── 3) Seçilen paketin seansı sunucuda dikkate alınır ──────────────────────────────────
+
+    /// <summary>Müşterinin AYNI hizmeti içeren iki paketi var; kullanıcı YENİ olanı seçiyor.</summary>
+    [Fact]
+    public async Task CreateAsync_WithChosenSession_BindsThatSessionNotTheOldest()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid oldSessionId, newSessionId;
+
+        await using (var db = NewDb(options))
+        {
+            var acc = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Paketler", 2000m, 0m);
+            db.CustomerAccounts.Add(acc);
+            await db.SaveChangesAsync();
+
+            var older = new CustomerPackageSession(seed.TenantId, seed.CustomerId, acc.Id, Guid.NewGuid(), seed.ServiceA, 3);
+            db.CustomerPackageSessions.Add(older);
+            await db.SaveChangesAsync();          // CreatedAtUtc farkı için ayrı kaydedilir
+            var newer = new CustomerPackageSession(seed.TenantId, seed.CustomerId, acc.Id, Guid.NewGuid(), seed.ServiceA, 5);
+            db.CustomerPackageSessions.Add(newer);
+            await db.SaveChangesAsync();
+
+            oldSessionId = older.Id;
+            newSessionId = newer.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var request = new CreateAppointmentRequest(
+                seed.BranchId, seed.CustomerId, seed.StaffId, seed.ServiceA,
+                DateTime.UtcNow.AddHours(2), DateTime.UtcNow.AddHours(3), 0m, null,
+                SourceCustomerPackageSessionId: newSessionId);
+
+            var result = await NewAppointments(db).CreateAsync(seed.TenantId, request);
+            Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+
+            var appointment = await db.Appointments.SingleAsync();
+            Assert.Equal(newSessionId, appointment.SourceCustomerPackageSessionId);
+            Assert.NotEqual(oldSessionId, appointment.SourceCustomerPackageSessionId);
+        }
+    }
+
+    /// <summary>Seçilen seans BAŞKA müşteriye aitse randevu açılmaz (sessizce kaymaz).</summary>
+    [Fact]
+    public async Task CreateAsync_WithForeignSession_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid foreignSessionId;
+
+        await using (var db = NewDb(options))
+        {
+            // Başka müşterinin aynı hizmete ait seansı.
+            var foreign = new CustomerPackageSession(
+                seed.TenantId, seed.OtherCustomerId, seed.OtherAccountId, Guid.NewGuid(), seed.ServiceA, 5);
+            db.CustomerPackageSessions.Add(foreign);
+            // Ana müşterinin de kendi hakkı olsun ki ret SAHİPLİKTEN kaynaklansın.
+            var acc = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Kendi paketi", 500m, 0m);
+            db.CustomerAccounts.Add(acc);
+            await db.SaveChangesAsync();
+            db.CustomerPackageSessions.Add(new CustomerPackageSession(
+                seed.TenantId, seed.CustomerId, acc.Id, Guid.NewGuid(), seed.ServiceA, 2));
+            await db.SaveChangesAsync();
+            foreignSessionId = foreign.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var request = new CreateAppointmentRequest(
+                seed.BranchId, seed.CustomerId, seed.StaffId, seed.ServiceA,
+                DateTime.UtcNow.AddHours(2), DateTime.UtcNow.AddHours(3), 0m, null,
+                SourceCustomerPackageSessionId: foreignSessionId);
+
+            var result = await NewAppointments(db).CreateAsync(seed.TenantId, request);
+            Assert.True(result.IsFailure, "Başka müşterinin seansına randevu açılabildi.");
+            Assert.Equal("Validation", result.Error.Code);
+            Assert.Empty(await db.Appointments.ToListAsync());
+        }
+    }
+}

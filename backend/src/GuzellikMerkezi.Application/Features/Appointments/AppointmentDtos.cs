@@ -24,7 +24,22 @@ public sealed record AppointmentDto(
     string? CustomerPhone = null,
     bool CustomerIsVip = false,
     int? Number = null);
-public sealed record CreateAppointmentRequest(Guid BranchId, Guid CustomerId, Guid StaffMemberId, Guid ServiceDefinitionId, DateTime StartUtc, DateTime EndUtc, decimal Price, string? Notes);
+/// <param name="SourceCustomerPackageSessionId">
+/// Randevunun HANGİ satın alınmış seans bakiyesinden karşılanacağı. Arayüz paket kırılımında
+/// belirli bir satır seçtirdiği için bu bilgi sunucuya taşınmalıdır: aksi hâlde backend aynı
+/// hizmete ait EN ESKİ seansı tüketir ve kullanıcı B paketini seçse bile A paketinden düşer
+/// (iptal/izlenebilirlik de yanlış satışa bağlanır). Boş → eski davranış (en eski uygun seans).
+/// </param>
+public sealed record CreateAppointmentRequest(
+    Guid BranchId,
+    Guid CustomerId,
+    Guid StaffMemberId,
+    Guid ServiceDefinitionId,
+    DateTime StartUtc,
+    DateTime EndUtc,
+    decimal Price,
+    string? Notes,
+    Guid? SourceCustomerPackageSessionId = null);
 /// <summary>Sürükle-bırak taşıma: yeni zaman + (opsiyonel) yeni personel (farklı sütuna bırakınca).</summary>
 public sealed record RescheduleAppointmentRequest(DateTime StartUtc, DateTime EndUtc, Guid? StaffMemberId = null);
 public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, string? Reason);

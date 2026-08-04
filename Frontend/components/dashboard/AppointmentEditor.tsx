@@ -55,6 +55,12 @@ export interface AppointmentEditorValues {
   serviceDefinitionId: string
   staffMemberId: string
   packageId: string | null
+  /**
+   * Randevunun HANGİ satın alınmış seans bakiyesinden karşılanacağı (paket kırılımında seçilen
+   * satır). Boşsa backend aynı hizmete ait en eski uygun seansı kullanır — müşterinin aynı
+   * hizmeti içeren iki paketi varsa yanlış paketten düşerdi.
+   */
+  sourceSessionId: string | null
   date: string
   time: string
   durationMinutes: number
@@ -324,6 +330,8 @@ interface OwnedPackageRow {
   serviceName: string
   remaining: number
   total: number
+  /** Bu satırın kullanılabilir seans kaydı — randevu TAM olarak buna bağlanır. */
+  sessionId: string | null
 }
 
 /**
@@ -345,7 +353,7 @@ function OwnedPackageCard({
   rows: OwnedPackageRow[]
   /** Seçili satırın anahtarı: `${packageId}|${serviceDefinitionId}` */
   selectedKey: string
-  onPick: (serviceDefinitionId: string) => void
+  onPick: (row: OwnedPackageRow) => void
 }) {
   const remainingTotal = rows.reduce((n, r) => n + r.remaining, 0)
   const grandTotal = rows.reduce((n, r) => n + r.total, 0)
@@ -369,7 +377,9 @@ function OwnedPackageCard({
       <ul className="divide-y divide-[#f7eef2]">
         {rows.map((r) => {
           const active = selectedKey === `${packageId}|${r.serviceDefinitionId}`
-          const usable = r.remaining > 0
+          // Bakiyesi olsa da kullanılabilir seans KAYDI çözülemediyse seçtirme: randevu yanlış
+          // pakete bağlanmaktansa hiç bağlanmasın.
+          const usable = r.remaining > 0 && Boolean(r.sessionId)
           const pct = r.total > 0 ? Math.round(((r.total - r.remaining) / r.total) * 100) : 0
           return (
             <li key={r.serviceDefinitionId}>
@@ -377,7 +387,7 @@ function OwnedPackageCard({
                 type="button"
                 disabled={!usable}
                 aria-pressed={active}
-                onClick={() => onPick(r.serviceDefinitionId)}
+                onClick={() => onPick(r)}
                 className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
                   active ? 'bg-[#fff4f8]' : usable ? 'hover:bg-[#fdf6f9]' : 'cursor-not-allowed opacity-60'
                 }`}
@@ -575,6 +585,7 @@ export default function AppointmentEditor({
     serviceDefinitionId: mode === 'create' ? '' : services[0]?.id || '',
     staffMemberId: staff[0]?.id || '',
     packageId: null,
+    sourceSessionId: null,
     date: todayIso,
     time: '14:00',
     durationMinutes: mode === 'create' ? 30 : services[0]?.duration || 30,
@@ -755,14 +766,12 @@ export default function AppointmentEditor({
    * "Paket" sekmesine girmez, Hizmet sekmesinde seans bakiyesi olarak görünür.
    */
   const ownedPackages = useMemo(() => {
-    const map = new Map<
-      string,
-      { packageId: string; name: string; rows: { serviceDefinitionId: string; serviceName: string; remaining: number; total: number }[] }
-    >()
+    const map = new Map<string, { packageId: string; name: string; rows: OwnedPackageRow[] }>()
     for (const s of custSessions) {
       const pid = s.servicePackageId
       const sid = s.serviceDefinitionId
       if (!pid || pid === EMPTY_GUID || !sid) continue
+      const remaining = s.remainingSessions ?? 0
       const entry = map.get(pid) ?? {
         packageId: pid,
         name: packages.find((p) => p.id === pid)?.name || 'Paket',
@@ -770,14 +779,17 @@ export default function AppointmentEditor({
       }
       const row = entry.rows.find((r) => r.serviceDefinitionId === sid)
       if (row) {
-        row.remaining += s.remainingSessions ?? 0
+        row.remaining += remaining
         row.total += s.totalSessions ?? 0
+        // Randevu KALANI OLAN satıra bağlanmalı; aynı hizmet aynı pakette birden çok satırda olabilir.
+        if (!row.sessionId && remaining > 0 && s.id) row.sessionId = s.id
       } else {
         entry.rows.push({
           serviceDefinitionId: sid,
           serviceName: s.serviceName ?? 'Hizmet',
-          remaining: s.remainingSessions ?? 0,
+          remaining,
           total: s.totalSessions ?? 0,
+          sessionId: remaining > 0 ? s.id ?? null : null,
         })
       }
       map.set(pid, entry)
@@ -844,12 +856,17 @@ export default function AppointmentEditor({
    * borçlandırır; randevuya da fiyat yazılsaydı aynı iş iki kez ödetilirdi (paketten karşılanan
    * randevularla aynı kural).
    */
-  const applyCatalogSelection = (serviceDefinitionId: string, packageId: string | null): void => {
+  const applyCatalogSelection = (
+    serviceDefinitionId: string,
+    packageId: string | null,
+    sourceSessionId: string | null = null,
+  ): void => {
     const svc = services.find((s) => s.id === serviceDefinitionId)
     setValues((v) => ({
       ...v,
       serviceDefinitionId,
       packageId,
+      sourceSessionId,
       price: 0,
       durationMinutes: svc?.duration || v.durationMinutes || 30,
     }))
@@ -860,7 +877,7 @@ export default function AppointmentEditor({
     setPickedServiceId('')
     setOwnedPick('')
     setCatalogServiceId('')
-    setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
+    setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, sourceSessionId: null, price: 0 }))
   }
 
   /**
@@ -876,11 +893,12 @@ export default function AppointmentEditor({
   }
 
   /** PAKET SEKMESİ — satın alınmış paketin bir hizmet satırına randevu açar (satış yok). */
-  const handlePickOwned = (packageId: string, serviceDefinitionId: string): void => {
-    setOwnedPick(`${packageId}|${serviceDefinitionId}`)
+  const handlePickOwned = (packageId: string, row: OwnedPackageRow): void => {
+    setOwnedPick(`${packageId}|${row.serviceDefinitionId}`)
     setPickedServiceId('')
     setCatalogServiceId('')
-    applyCatalogSelection(serviceDefinitionId, packageId)
+    // Seans kimliği SUNUCUYA gider: randevu tam olarak SEÇİLEN paketin bakiyesine bağlanır.
+    applyCatalogSelection(row.serviceDefinitionId, packageId, row.sessionId)
   }
 
   // Müşteri değişince seçim sıfırlanır.
@@ -1261,7 +1279,7 @@ export default function AppointmentEditor({
                                       name={p.name}
                                       rows={p.rows}
                                       selectedKey={ownedPick}
-                                      onPick={(serviceDefinitionId) => handlePickOwned(p.packageId, serviceDefinitionId)}
+                                      onPick={(row) => handlePickOwned(p.packageId, row)}
                                     />
                                   ))}
                                 </div>

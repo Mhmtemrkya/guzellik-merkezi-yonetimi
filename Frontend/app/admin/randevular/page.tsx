@@ -736,6 +736,10 @@ function RandevularPageInner() {
       // Randevu ciro taşımaz — satış/ödeme adisyon+cari katmanında. Tamamlanınca seans düşer.
       price: 0,
       notes: values.notes || null,
+      // SEÇİLEN PAKETİN SEANSI: modal paket kırılımında belirli bir satır seçtiriyor. Bu bilgi
+      // gönderilmezse backend aynı hizmete ait EN ESKİ seansı tüketir ve kullanıcı B paketini
+      // seçse bile A paketinden düşerdi (iptal/izlenebilirlik de yanlış satışa bağlanırdı).
+      sourceCustomerPackageSessionId: values.sourceSessionId || null,
     }
   }
 

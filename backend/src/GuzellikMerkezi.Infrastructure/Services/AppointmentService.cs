@@ -316,8 +316,28 @@ public sealed class AppointmentService : IAppointmentService
         // tamamlamada gerçekten tüketilen seansla düzeltilir.
         if (request.Price <= 0m)
         {
-            var sourceSessionId = await FindBookableSessionAsync(
-                tenantId, request.CustomerId, request.ServiceDefinitionId, null, cancellationToken);
+            // İSTEMCİNİN SEÇTİĞİ SEANS ÖNCELİKLİ. Arayüz paket kırılımında belirli bir satır
+            // seçtiriyor; seçim sunucuya taşınmazsa aynı hizmete ait EN ESKİ seans tüketilir ve
+            // kullanıcı B paketini seçse bile A paketinden düşerdi. Seçim GEÇERSİZSE (başka
+            // müşteri/hizmet, bakiyesi bitmiş ya da açık randevulara ayrılmış) sessizce başka bir
+            // seansa kaymak yerine hata verilir — kullanıcı neyi seçtiğini bilmeli.
+            Guid? sourceSessionId;
+            if (request.SourceCustomerPackageSessionId is { } requestedSession && requestedSession != Guid.Empty)
+            {
+                if (!await IsSessionBookableAsync(
+                        tenantId, request.CustomerId, request.ServiceDefinitionId, requestedSession, null, cancellationToken))
+                {
+                    return Result<AppointmentDto>.Failure(Error.Validation(
+                        "Seçilen paketin bu hizmet için kullanılabilir seansı kalmadı. Kalan seanslar açık " +
+                        "randevulara ayrılmış olabilir; listeden başka bir paket/seans seçin."));
+                }
+                sourceSessionId = requestedSession;
+            }
+            else
+            {
+                sourceSessionId = await FindBookableSessionAsync(
+                    tenantId, request.CustomerId, request.ServiceDefinitionId, null, cancellationToken);
+            }
             if (sourceSessionId is not null)
             {
                 appointment.LinkToPackageSession(sourceSessionId);
@@ -406,6 +426,33 @@ public sealed class AppointmentService : IAppointmentService
     /// hakkı TUTAR: kalan seans, o seansa bağlı açık randevu sayısından büyük olmalı.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// İstemcinin SEÇTİĞİ seans gerçekten kullanılabilir mi? Sahiplik (tenant + müşteri + hizmet),
+    /// kalan bakiye ve açık randevu rezervasyonu birlikte doğrulanır — <see cref="FindBookableSessionAsync"/>
+    /// ile aynı cardinality kuralı.
+    /// </summary>
+    private async Task<bool> IsSessionBookableAsync(
+        Guid tenantId, Guid customerId, Guid serviceDefinitionId, Guid sessionId,
+        Guid? excludeAppointmentId, CancellationToken cancellationToken)
+    {
+        var session = await _db.CustomerPackageSessions.AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                     && s.Id == sessionId
+                     && s.CustomerId == customerId
+                     && s.ServiceDefinitionId == serviceDefinitionId)
+            .Select(s => new { Remaining = s.TotalSessions - s.UsedSessions })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (session is null || session.Remaining <= 0) return false;
+
+        var held = await _db.Appointments.AsNoTracking()
+            .CountAsync(a => a.TenantId == tenantId
+                          && a.CustomerId == customerId
+                          && a.SourceCustomerPackageSessionId == sessionId
+                          && (excludeAppointmentId == null || a.Id != excludeAppointmentId)
+                          && OpenAppointmentStatuses.Contains(a.Status), cancellationToken);
+        return session.Remaining > held;
+    }
+
     private async Task<Guid?> FindBookableSessionAsync(
         Guid tenantId, Guid customerId, Guid serviceDefinitionId, Guid? excludeAppointmentId, CancellationToken cancellationToken)
     {
@@ -475,6 +522,75 @@ public sealed class AppointmentService : IAppointmentService
             .ToListAsync(cancellationToken);
         return packageServices.Any(packageIds.Contains);
     }
+
+    /// <summary>
+    /// Verilen bekleyen satışlardan HANGİSİ bu hizmete aittir? (tahsilat hedefini seçmek için)
+    ///
+    /// <para>
+    /// Tekil hizmet satışı doğrudan hizmete işaret eder; paket satışı ise paketin içeriğinde bu
+    /// hizmet varsa eşleşir. Birden çok aday çıkarsa listedeki İLK (en eski) satış seçilir —
+    /// pendingSaleIds zaten <c>OpenedAtUtc</c> sırasındadır. Eşleşme yoksa null döner ve çağıran
+    /// eski davranışa (ilk onaylanan satış) düşer.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> FindSaleForServiceAsync(
+        Guid tenantId, List<Guid> pendingSaleIds, Guid serviceDefinitionId, CancellationToken cancellationToken)
+    {
+        if (pendingSaleIds.Count <= 1) return pendingSaleIds.Count == 1 ? pendingSaleIds[0] : null;
+
+        // (Guid listesiyle .Contains() MySQL'de çevrilemiyor → müşterinin fişleri değil, doğrudan
+        // bu adisyonların kalemleri okunur ve eşleştirme BELLEKTE yapılır.)
+        var items = await (
+            from i in _db.AdisyonItems.AsNoTracking()
+            join a in _db.Adisyonlar.AsNoTracking() on i.AdisyonId equals a.Id
+            where a.TenantId == tenantId
+                && a.Status == AdisyonStatus.Open
+                && a.AutoApproveOnFirstAppointment
+                && (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.PackageSale)
+            select new { i.AdisyonId, i.Type, i.RefId }).ToListAsync(cancellationToken);
+
+        var scoped = items.Where(x => pendingSaleIds.Contains(x.AdisyonId)).ToList();
+        if (scoped.Count == 0) return null;
+
+        // 1) Tekil hizmet satışı — en güçlü eşleşme.
+        foreach (var saleId in pendingSaleIds)
+        {
+            if (scoped.Any(x => x.AdisyonId == saleId
+                             && x.Type == AdisyonItemType.Service
+                             && x.RefId == serviceDefinitionId))
+                return saleId;
+        }
+
+        // 2) Paket satışı — paketin içeriğinde bu hizmet var mı?
+        var packageIds = scoped
+            .Where(x => x.Type == AdisyonItemType.PackageSale && x.RefId.HasValue)
+            .Select(x => x.RefId!.Value)
+            .ToHashSet();
+        if (packageIds.Count == 0) return null;
+
+        var packagesWithService = (await _db.ServicePackageItems.AsNoTracking()
+                .Where(pi => pi.ServiceDefinitionId == serviceDefinitionId)
+                .Select(pi => pi.ServicePackageId)
+                .ToListAsync(cancellationToken))
+            .Where(packageIds.Contains)
+            .ToHashSet();
+        if (packagesWithService.Count == 0) return null;
+
+        foreach (var saleId in pendingSaleIds)
+        {
+            if (scoped.Any(x => x.AdisyonId == saleId
+                             && x.Type == AdisyonItemType.PackageSale
+                             && x.RefId.HasValue
+                             && packagesWithService.Contains(x.RefId.Value)))
+                return saleId;
+        }
+        return null;
+    }
+
+    public async Task<bool> HasServiceEntitlementAsync(
+        Guid tenantId, Guid customerId, Guid serviceDefinitionId, CancellationToken cancellationToken = default)
+        => await FindBookableSessionAsync(tenantId, customerId, serviceDefinitionId, null, cancellationToken) is not null
+           || await HasPendingSaleForServiceAsync(tenantId, customerId, serviceDefinitionId, cancellationToken);
 
     private async Task<bool> HasApprovedSaleAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken)
     {
@@ -898,13 +1014,26 @@ public sealed class AppointmentService : IAppointmentService
                 .OrderBy(a => a.OpenedAtUtc)
                 .Select(a => a.Id)
                 .ToListAsync(cancellationToken);
+
+            // TAHSİLAT HEDEFİ = BU RANDEVUNUN SATIŞI, "en eski satış" DEĞİL.
+            //
+            // Müşterinin aynı anda birden çok bekleyen satışı olabilir (A hizmeti için satış+randevu,
+            // sonra B hizmeti için satış+randevu). Hepsi burada onaylanır (Faz 2 kuralı), ama ilk
+            // onaylananın carisini hedef almak B randevusunun parasını A satışına yazıyordu: B
+            // ödenmemiş görünüyor, A fazla tahsilat alıyordu. Bu yüzden bu randevunun HİZMETİNE
+            // karşılık gelen satış ayrıca belirlenir.
+            var matchingSaleId = await FindSaleForServiceAsync(
+                tenantId, pendingSaleIds, appointment.ServiceDefinitionId, cancellationToken);
+
             foreach (var saleId in pendingSaleIds)
             {
                 var approved = await _adisyon.ApproveAsync(tenantId, saleId, cancellationToken);
                 if (approved.IsSuccess)
                 {
-                    // İLK onaylanan satışın carisi tahsilat hedefi olur (en eski bekleyen satış).
-                    autoApprovedAccountId ??= approved.Value?.CustomerAccountId;
+                    // Eşleşen satış varsa YALNIZ onun carisi; yoksa (eşleşme kurulamadıysa) ilk
+                    // onaylanana düşülür — eski davranış, hiç hedef olmamasından iyidir.
+                    if (matchingSaleId == saleId) autoApprovedAccountId = approved.Value?.CustomerAccountId;
+                    else if (matchingSaleId is null) autoApprovedAccountId ??= approved.Value?.CustomerAccountId;
                 }
                 else
                 {

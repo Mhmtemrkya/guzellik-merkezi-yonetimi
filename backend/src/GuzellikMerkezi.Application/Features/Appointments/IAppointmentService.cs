@@ -22,6 +22,13 @@ public interface IAppointmentService
     Task<Result<AppointmentDto>> CreateWithSaleAsync(Guid tenantId, CreateAppointmentWithSaleRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
 
     /// <summary>
+    /// Müşterinin bu hizmete ÜCRETSİZ randevu hakkı var mı? (kullanılabilir seans bakiyesi ya da
+    /// ilk randevuda işlenecek bekleyen satış). Bekleme listesi, yer açıldığında randevuyu
+    /// ücretsiz mi açacağını yoksa satışı da mı başlatacağını buradan bilir.
+    /// </summary>
+    Task<bool> HasServiceEntitlementAsync(Guid tenantId, Guid customerId, Guid serviceDefinitionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Randevuyu "Tamamlandı" yapar ve tahsilatı TEK transaction'da alır (biri düşerse ikisi de
     /// uygulanmaz). Tahsilat verilmezse yalnız durum değişir.
     /// </summary>

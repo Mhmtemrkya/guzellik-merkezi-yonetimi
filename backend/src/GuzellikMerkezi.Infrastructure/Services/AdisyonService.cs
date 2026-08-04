@@ -84,10 +84,35 @@ public sealed class AdisyonService : IAdisyonService
         return Result<AdisyonDto?>.Success(ToDto(adisyon, staffMap));
     }
 
+    /// <summary>
+    /// İstemcinin verdiği cari hesabın BU MÜŞTERİYE ait ve iptal edilmemiş olduğunu doğrular.
+    ///
+    /// <para>
+    /// Alan hiç kontrol edilmiyordu. İki ayrı sonucu vardı: (1) başka bir müşterinin carisi hedef
+    /// gösterilerek A'nın hizmeti/seansı oluşurken borç B'nin carisine yazılabiliyordu (BOLA);
+    /// (2) satışa mevcut bir cari iliştirilerek "her satış kendi cari kartını açar" kuralı
+    /// baypas edilebiliyordu — onay, <c>CustomerAccountId</c> doluysa kart açma adımını atlar.
+    /// </para>
+    /// </summary>
+    private async Task<Error?> ValidateAccountOwnershipAsync(
+        Guid tenantId, Guid customerId, Guid? accountId, CancellationToken cancellationToken)
+    {
+        if (accountId is not { } id || id == Guid.Empty) return null;
+        var owns = await _db.CustomerAccounts.AsNoTracking()
+            .AnyAsync(a => a.Id == id
+                        && a.TenantId == tenantId
+                        && a.CustomerId == customerId
+                        && a.CancelledAtUtc == null, cancellationToken);
+        return owns ? null : Error.Validation("Seçilen cari hesap bu müşteriye ait değil ya da iptal edilmiş.");
+    }
+
     public async Task<Result<AdisyonDto>> CreateAsync(Guid tenantId, CreateAdisyonRequest request, CancellationToken cancellationToken = default)
     {
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId, cancellationToken);
         if (customer is null) return Result<AdisyonDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+
+        if (await ValidateAccountOwnershipAsync(tenantId, customer.Id, request.CustomerAccountId, cancellationToken) is { } accountError)
+            return Result<AdisyonDto>.Failure(accountError);
 
         // Bir müşterinin aynı anda tek açık adisyonu olur (restoran adisyonu modeli) —
         // açık fiş varsa yenisini açma, mevcut fişi döndür ki kalemler tek fişte toplansın.
@@ -127,6 +152,9 @@ public sealed class AdisyonService : IAdisyonService
     {
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
+        // Cari BU MÜŞTERİYE ait olmalı — aksi hâlde borç başka müşterinin kartına yazılabilirdi.
+        if (await ValidateAccountOwnershipAsync(tenantId, adisyon.CustomerId, request.CustomerAccountId, cancellationToken) is { } accountError)
+            return Result<AdisyonDto>.Failure(accountError);
         adisyon.SetCustomerAccount(request.CustomerAccountId);
         adisyon.SetNotes(request.Notes);
         // Taksit planı yalnızca satış modalı gönderdiğinde uygulanır (peşin = 0). Alakasız
