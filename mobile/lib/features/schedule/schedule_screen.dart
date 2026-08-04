@@ -51,6 +51,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   bool _busy = false;
   late Future<_ScheduleData> _future;
 
+  /// Son yüklenen personel listesi — onay diyaloğunda ismi göstermek için (FutureBuilder dışı).
+  List<Map<String, dynamic>> _lastStaff = const [];
+
   @override
   void initState() {
     super.initState();
@@ -98,8 +101,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           )
           .catchError((_) => const <dynamic>[]),
     ]);
+    final staff =
+        apiItems(results[0]).where((s) => s['isActive'] != false).toList();
+    _lastStaff = staff;
     return _ScheduleData(
-      staff: apiItems(results[0]).where((s) => s['isActive'] != false).toList(),
+      staff: staff,
       appointments: apiItems(results[1]),
       timeOff: apiItems(results[2]),
     );
@@ -179,6 +185,38 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Haftalık ızgarada hücreye dokunmak eskiden izni SESSİZCE açıp kapatıyordu
+  /// (kaydırırken kazara izin veriliyordu). Artık kim/hangi gün olduğu onaylatılır.
+  Future<void> _confirmLeave(
+      String staffId, DateTime day, String? leaveId, int apptCount) async {
+    final staff = _lastStaff.firstWhere((s) => '${s['id']}' == staffId,
+        orElse: () => const <String, dynamic>{});
+    final name = staff.isEmpty
+        ? 'Personel'
+        : valueOf(staff, const ['fullName', 'name'], fallback: 'Personel');
+    final dayLabel =
+        '${day.day} ${CalendarText.months[day.month - 1]} ${CalendarText.weekdayLong[day.weekday - 1]}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(leaveId != null ? 'İzni kaldır' : 'İzin ver'),
+        content: Text(leaveId != null
+            ? '$name · $dayLabel günündeki tüm gün izni kaldırılsın mı?'
+            : '$name · $dayLabel günü tüm gün izinli işaretlensin mi?'
+                '${apptCount > 0 ? '\n\nDikkat: bu günde $apptCount randevusu var.' : ''}'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgeç')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(leaveId != null ? 'İzni kaldır' : 'İzin ver')),
+        ],
+      ),
+    );
+    if (ok == true) await _toggleLeave(staffId, day, leaveId);
   }
 
   @override
@@ -464,29 +502,138 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         .map((s) => valueOf(s, const ['fullName', 'name'], fallback: 'Personel'))
         .toList();
 
-    if (appts.isEmpty && leaveStaff.isEmpty) {
-      return _emptyBox('Bu gün için randevu yok.');
+    // Gün için izin kimliği: staffId -> timeOff id (web timeOffIndex karşılığı).
+    final leaveIds = <String, String>{};
+    for (final t in data.fullDayTimeOff) {
+      final d = DateTime.tryParse('${t['date']}');
+      if (d != null && _dk(d) == dk) {
+        leaveIds['${t['staffMemberId']}'] = '${t['id']}';
+      }
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10, left: 2),
-          child: Text(
-            'Bugün · ${appts.length} randevu',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+        // Web'deki gün sütunu başlığındaki izin düğmesinin karşılığı: personel başına
+        // açık "İzin ver / İzni kaldır" aksiyonu. (Eskiden izin yalnızca haftalık ızgarada
+        // hücreye dokunarak veriliyordu; günlük görünümde hiç yoktu.)
+        _leaveManager(data, leaveIds),
+        const SizedBox(height: 14),
+        if (appts.isEmpty && leaveStaff.isEmpty)
+          _emptyBox('Bu gün için randevu yok.')
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10, left: 2),
+            child: Text(
+              'Bugün · ${appts.length} randevu',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+            ),
           ),
-        ),
-        for (final a in appts) ...[
-          _apptCard(a),
-          const SizedBox(height: 10),
-        ],
-        for (final name in leaveStaff) ...[
-          _leaveCard(name),
-          const SizedBox(height: 10),
+          for (final a in appts) ...[
+            _apptCard(a),
+            const SizedBox(height: 10),
+          ],
+          for (final name in leaveStaff) ...[
+            _leaveCard(name),
+            const SizedBox(height: 10),
+          ],
         ],
       ],
+    );
+  }
+
+  /// Seçili günde personel izinleri — her satırda tek dokunuşla izin ver/kaldır.
+  Widget _leaveManager(_ScheduleData data, Map<String, String> leaveIds) {
+    if (data.staff.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.beach_access_rounded,
+                  size: 16, color: Color(0xFF3E86C0)),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                    'İzin yönetimi · ${_cursor.day} ${CalendarText.months[_cursor.month - 1]}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w800)),
+              ),
+              Text('${leaveIds.length} izinli',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final s in data.staff)
+            Builder(builder: (_) {
+              final id = '${s['id']}';
+              final leaveId = leaveIds[id];
+              final onLeave = leaveId != null;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          valueOf(s, const ['fullName', 'name'],
+                              fallback: 'Personel'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: onLeave
+                                  ? const Color(0xFF2C5378)
+                                  : AppColors.ink)),
+                    ),
+                    SizedBox(
+                      height: 32,
+                      child: onLeave
+                          ? OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.danger,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: _busy
+                                  ? null
+                                  : () =>
+                                      _toggleLeave(id, _cursor, leaveId),
+                              icon: const Icon(Icons.close_rounded, size: 14),
+                              label: const Text('İzni kaldır',
+                                  style: TextStyle(fontSize: 11)),
+                            )
+                          : OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: _busy
+                                  ? null
+                                  : () => _toggleLeave(id, _cursor, null),
+                              icon: const Icon(Icons.flight_takeoff_rounded,
+                                  size: 14),
+                              label: const Text('İzin ver',
+                                  style: TextStyle(fontSize: 11)),
+                            ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 
@@ -787,7 +934,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF946D23)));
     }
     return GestureDetector(
-      onTap: () => _toggleLeave(staffId, day, leaveId),
+      onTap: () => _confirmLeave(staffId, day, leaveId, count),
       child: Container(
         width: cellW,
         height: 48,

@@ -115,7 +115,8 @@ export default function BranchSwitcher() {
                           {active && <Check className="h-3.5 w-3.5 shrink-0 text-[#c85776]" />}
                         </div>
                         <div className="mt-1 text-[10px] font-medium text-[#9d7386]">
-                          {branch.city} · {branch.staff} personel · {branch.rooms} oda
+                          {branch.city}
+                          {branch.staff !== null && ` · ${branch.staff} personel`}
                         </div>
                       </div>
                     </div>

@@ -108,8 +108,6 @@ export interface ApiLoginScopeBranch {
   branchName: string
   city?: string
   isDefault?: boolean
-  staff?: number
-  rooms?: number
 }
 
 export interface ApiLoginScopeTenant {
@@ -166,11 +164,10 @@ export interface ApiBranch {
   branchName?: string
   city?: string
   isDefault?: boolean
-  // Backend BranchDto bunları `staffCount`/`roomCount` olarak döndürür; eski `staff`/`rooms` login-scope içindir.
+  /** Şubeye kayıtlı AKTİF personel sayısı — backend canlı sayar (elle girilen kapasite alanı kaldırıldı). */
   staffCount?: number
-  roomCount?: number
+  /** Eski login-scope alanı; şube listesi `staffCount` döndürür. */
   staff?: number
-  rooms?: number
   todayAppointments?: number
   monthlyRevenue?: number
 }
@@ -266,8 +263,8 @@ export interface Branch {
   branchName: string
   city: string
   isDefault: boolean
-  staff: number
-  rooms: number
+  /** Aktif personel sayısı; `null` = henüz bilinmiyor (login-scope'ta gelmez, şube listesi çekilince dolar). */
+  staff: number | null
   todayAppointments: number
   monthlyRevenue: number
 }

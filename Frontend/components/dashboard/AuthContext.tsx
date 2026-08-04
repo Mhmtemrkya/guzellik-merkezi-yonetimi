@@ -71,8 +71,8 @@ function normalizeScopeBranch(branch: ApiLoginScopeBranch): Branch {
     branchName: branch.branchName,
     city: branch.city || 'Şube',
     isDefault: Boolean(branch.isDefault),
-    staff: branch.staff || 0,
-    rooms: branch.rooms || 0,
+    // Login scope personel sayısı taşımaz; şube listesi çekilene kadar "bilinmiyor" (0 yazmak yanlış bilgi olurdu).
+    staff: null,
     todayAppointments: 0,
     monthlyRevenue: 0,
   }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -10,6 +11,11 @@ import '../../core/theme/app_theme.dart';
 ///
 /// Çizgiler ekran koordinatında toplanır, dışa aktarırken [ui.PictureRecorder] ile
 /// devicePixelRatio ölçeğinde PNG'ye basılır — tablette imza net çıksın diye.
+///
+/// Dokunuş [Listener] ile ham pointer olaylarından okunur ve [EagerGestureRecognizer]
+/// ile arenada parmak iner inmez kapılır: aksi halde sayfayı saran `ListView`'in dikey
+/// sürükleme tanıyıcısı (~18px eşik) pan tanıyıcısından (~36px eşik) önce kazanıp
+/// dikey başlayan imzayı sayfa kaydırmaya çeviriyor. Web'deki `touch-action: none`ın karşılığı.
 class SignaturePad extends StatefulWidget {
   const SignaturePad({
     required this.onChanged,
@@ -32,16 +38,27 @@ class _SignaturePadState extends State<SignaturePad> {
   final List<List<Offset>> _strokes = [];
   Size _size = Size.zero;
 
+  /// Çizen parmak; imza sürerken değen ikinci parmak / avuç yok sayılır.
+  int? _activePointer;
+
   bool get _empty => _strokes.every((s) => s.isEmpty);
 
-  void _start(Offset p) {
-    if (!widget.enabled) return;
-    setState(() => _strokes.add([p]));
+  void _down(PointerDownEvent event) {
+    if (!widget.enabled || _activePointer != null) return;
+    _activePointer = event.pointer;
+    // Tek dokunuş da nokta bıraksın (web'de pointerdown'da kısa çizgi çekiliyor).
+    setState(() => _strokes.add([event.localPosition]));
   }
 
-  void _extend(Offset p) {
-    if (!widget.enabled || _strokes.isEmpty) return;
-    setState(() => _strokes.last.add(p));
+  void _move(PointerMoveEvent event) {
+    if (!widget.enabled || event.pointer != _activePointer || _strokes.isEmpty) return;
+    setState(() => _strokes.last.add(event.localPosition));
+  }
+
+  void _end(PointerEvent event) {
+    if (event.pointer != _activePointer) return;
+    _activePointer = null;
+    _emit();
   }
 
   Future<void> _emit() async {
@@ -91,6 +108,7 @@ class _SignaturePadState extends State<SignaturePad> {
   }
 
   void _clear() {
+    _activePointer = null;
     setState(_strokes.clear);
     widget.onChanged(null);
   }
@@ -113,14 +131,29 @@ class _SignaturePadState extends State<SignaturePad> {
               clipBehavior: Clip.antiAlias,
               child: Stack(
                 children: [
-                  GestureDetector(
-                    onPanStart: (d) => _start(d.localPosition),
-                    onPanUpdate: (d) => _extend(d.localPosition),
-                    onPanEnd: (_) => _emit(),
-                    child: CustomPaint(
-                      painter: _SignaturePainter(_strokes),
-                      size: Size.infinite,
-                      child: const SizedBox.expand(),
+                  RawGestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // Pad kapalıyken (kayıt sürerken) arenayı kapmayalım ki liste kaydırılabilsin.
+                    gestures: widget.enabled
+                        ? <Type, GestureRecognizerFactory>{
+                            EagerGestureRecognizer:
+                                GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+                              EagerGestureRecognizer.new,
+                              (_) {},
+                            ),
+                          }
+                        : const <Type, GestureRecognizerFactory>{},
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: _down,
+                      onPointerMove: _move,
+                      onPointerUp: _end,
+                      onPointerCancel: _end,
+                      child: CustomPaint(
+                        painter: _SignaturePainter(_strokes),
+                        size: Size.infinite,
+                        child: const SizedBox.expand(),
+                      ),
                     ),
                   ),
                   if (_empty)

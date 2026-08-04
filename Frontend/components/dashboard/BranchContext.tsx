@@ -42,8 +42,7 @@ function normalizeBranchEntry(branch: ApiBranch): Branch {
     branchName: branch.branchName || branch.name || 'Şube',
     city: branch.city || 'Şube',
     isDefault: Boolean(branch.isDefault),
-    staff: branch.staffCount ?? branch.staff ?? 0,
-    rooms: branch.roomCount ?? branch.rooms ?? 0,
+    staff: branch.staffCount ?? branch.staff ?? null,
     todayAppointments: branch.todayAppointments || 0,
     monthlyRevenue: branch.monthlyRevenue || 0,
   }

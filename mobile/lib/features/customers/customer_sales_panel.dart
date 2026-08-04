@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
+import '../accounting/collection_sheet.dart';
 import 'customer_picker.dart';
 
 /// Müşteri kartındaki "Paket & Hizmet Satışları" paneli (web paritesi).
@@ -629,6 +630,22 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
     if (res is Map && mounted) setState(() => _a = res.cast<String, dynamic>());
   }
 
+  /// Taksit satırından tahsilat: ortak tahsilat sayfasını bu cariye kilitli açar
+  /// (tutar kalan borçla dolar; kısmi tahsilat için kullanıcı düşürebilir).
+  Future<void> _collectInstallment(double remaining) async {
+    final saved = await showCollectionSheet(
+      context,
+      api: widget.api,
+      accounts: [_a],
+      initialAccountId: '${_a['id']}',
+      lockAccount: true,
+      title: 'Taksit tahsilatı',
+    );
+    if (saved == null || saved == 0) return;
+    _changed = true;
+    await _refresh();
+  }
+
   Future<void> _run(Future<void> Function() fn) async {
     setState(() => _busy = true);
     try {
@@ -1011,17 +1028,9 @@ class _SaleDetailSheetState extends State<SaleDetailSheet> {
                       backgroundColor: AppColors.success,
                       minimumSize: const Size.fromHeight(38),
                     ),
-                    onPressed: _busy
-                        ? null
-                        : () => _run(() => widget.api.post(
-                              '/api/admin/accounts/${_a['id']}/payments',
-                              {
-                                'amount': remaining,
-                                'method': 'cash',
-                                'reference': null,
-                                'occurredAtUtc': DateTime.now().toUtc().toIso8601String(),
-                              },
-                            )),
+                    // Eskiden tek dokunuşta NAKİT + "şimdi" damgasıyla yazıyordu; artık ortak
+                    // tahsilat sayfası açılır (yöntem kırılımı, tarih ve dekont seçilebilsin).
+                    onPressed: _busy ? null : () => _collectInstallment(remaining),
                     icon: const Icon(Icons.account_balance_wallet_rounded, size: 16),
                     label: Text('Bu taksiti tahsil et (${_money(remaining)})'),
                   ),

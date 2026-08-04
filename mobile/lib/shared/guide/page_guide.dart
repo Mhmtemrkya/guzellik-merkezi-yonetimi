@@ -299,6 +299,9 @@ class _GuideSheetState extends State<_GuideSheet> {
                 ),
               const SizedBox(width: 6),
               FilledButton(
+                // Satır içi düğme: tema varsayılanı sonsuz genişlik ister, soldaki
+                // adım metnini 0 piksele düşürüp harfleri alt alta dizerdi.
+                style: AppButtons.inline(height: 40),
                 onPressed: () {
                   if (isLast) {
                     Navigator.pop(context);

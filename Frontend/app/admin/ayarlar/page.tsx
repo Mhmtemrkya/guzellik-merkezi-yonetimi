@@ -21,7 +21,7 @@ import {
 import { motion } from 'framer-motion'
 import {
   AlertTriangle, ArrowRight, ArrowUpRight, Banknote, Building2, Calendar, CalendarClock, ClipboardList,
-  CreditCard, DoorOpen, FileText, Landmark, Layers3, Mail, MapPin, MessageSquare, Package, PenLine,
+  CreditCard, FileText, Landmark, Layers3, Mail, MapPin, MessageSquare, Package, PenLine,
   Percent, Phone as PhoneIcon, Plus, Receipt, ShoppingBag, Sparkles, Star, Tag, TrendingUp, Users, UsersRound, Wallet, Zap,
 } from 'lucide-react'
 import type {
@@ -34,8 +34,8 @@ interface SettingsBranch {
   name: string
   city: string
   isDefault: boolean
+  /** Backend'in canlı saydığı aktif personel sayısı. */
   staffCount: number
-  roomCount: number
 }
 
 function normalizeSettingsBranch(branch: ApiBranch | null | undefined, index = 0): SettingsBranch {
@@ -45,7 +45,6 @@ function normalizeSettingsBranch(branch: ApiBranch | null | undefined, index = 0
     city: branch?.city || 'Şehir yok',
     isDefault: Boolean(branch?.isDefault),
     staffCount: branch?.staffCount ?? branch?.staff ?? 0,
-    roomCount: branch?.roomCount ?? branch?.rooms ?? 0,
   }
 }
 
@@ -147,10 +146,10 @@ export default function AyarlarPage() {
   const kalemMax = Math.max(1, ...kalemler.map((k) => k.value))
 
   // ---------- handler'lar ----------
-  interface BranchFormValues { name?: string; city?: string; isDefault?: boolean; staffCount?: number; roomCount?: number }
+  // Personel sayısı artık şubeye kayıtlı personelden türetilir; formda kapasite alanı yok.
+  interface BranchFormValues { name?: string; city?: string; isDefault?: boolean }
   const branchPayload = (values: BranchFormValues): Record<string, unknown> => ({
     name: values.name, city: values.city, isDefault: Boolean(values.isDefault),
-    staffCount: Number(values.staffCount || 0), roomCount: Number(values.roomCount || 0),
   })
 
   interface TenantProfileValues { name?: string; legalName?: string; ownerName?: string; phone?: string; email?: string; domain?: string; taxNumber?: string; taxOffice?: string }
@@ -231,8 +230,6 @@ export default function AyarlarPage() {
                   { label: 'Şube adı', name: 'name', value: 'Yeni Şube', required: true, icon: Building2, section: 'Lokasyon' },
                   { label: 'Şehir', name: 'city', value: 'İstanbul', icon: MapPin },
                   { label: 'Varsayılan şube', name: 'isDefault', type: 'checkbox', value: !branches.length, icon: Star, fullWidth: true },
-                  { label: 'Personel kapasitesi', name: 'staffCount', type: 'number', value: 3, icon: UsersRound, section: 'Kapasite' },
-                  { label: 'Oda kapasitesi', name: 'roomCount', type: 'number', value: 2, icon: DoorOpen },
                 ]}
               />
             )}
@@ -516,19 +513,16 @@ export default function AyarlarPage() {
                   </div>
                   <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/45"><MapPin className="mr-1 inline h-3 w-3" />{b.city}</div>
                 </div>
-                <div className="md:col-span-2 text-[11px] font-mono text-[#352432]/55"><UsersRound className="mr-1 inline h-3 w-3" /> {b.staffCount}</div>
-                <div className="md:col-span-2 text-[11px] font-mono text-[#352432]/55"><DoorOpen className="mr-1 inline h-3 w-3" /> {b.roomCount}</div>
+                <div className="md:col-span-4 text-[11px] font-mono text-[#352432]/55"><UsersRound className="mr-1 inline h-3 w-3" /> {b.staffCount} personel</div>
                 <div className="md:col-span-3 flex justify-end">
                   <AdminEditDialog
                     triggerVariant="ghost" triggerLabel="Düzenle" titleIcon={PenLine} title={`${b.name} · şube ayarı`}
-                    description="Şubenin isim, lokasyon ve kapasite bilgilerini günceller." submitLabel="Şubeyi güncelle"
+                    description="Şubenin adı, lokasyonu ve varsayılan şube durumu. Personel sayısı şubeye kayıtlı personelden otomatik hesaplanır." submitLabel="Şubeyi güncelle"
                     onSubmit={async (values) => { await adminApi.updateBranch(b.id, branchPayload(values as BranchFormValues), tenantId); await reload(); refreshBranches() }}
                     fields={[
                       { label: 'Şube adı', name: 'name', value: b.name, required: true, icon: Tag, section: 'Lokasyon' },
                       { label: 'Şehir', name: 'city', value: b.city, icon: MapPin },
                       { label: 'Varsayılan şube', name: 'isDefault', type: 'checkbox', value: b.isDefault, icon: Star, fullWidth: true },
-                      { label: 'Personel kapasitesi', name: 'staffCount', type: 'number', value: b.staffCount, icon: UsersRound, section: 'Kapasite' },
-                      { label: 'Oda kapasitesi', name: 'roomCount', type: 'number', value: b.roomCount, icon: DoorOpen },
                     ]}
                   />
                 </div>

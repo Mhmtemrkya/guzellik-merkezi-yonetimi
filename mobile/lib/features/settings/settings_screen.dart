@@ -284,6 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: isEdit ? 'Şubeyi düzenle' : 'Yeni şube',
         icon: Icons.store_mall_directory_rounded,
         initial: b,
+        // Personel sayısı şubeye kayıtlı personelden otomatik hesaplanır (elle kapasite alanı yok).
         fields: const [
           CrudField(key: 'name', label: 'Şube adı', required: true),
           CrudField(key: 'city', label: 'Şehir'),
@@ -291,14 +292,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: 'isDefault',
               label: 'Varsayılan şube',
               type: CrudFieldType.toggle),
-          CrudField(
-              key: 'staffCount',
-              label: 'Personel kapasitesi',
-              type: CrudFieldType.number),
-          CrudField(
-              key: 'roomCount',
-              label: 'Oda kapasitesi',
-              type: CrudFieldType.number),
         ],
       ),
     );
@@ -1521,15 +1514,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           size: 11, color: AppColors.muted),
                       const SizedBox(width: 2),
                       Text(
-                          '${numberOf(b, const ['staffCount', 'staff']).toInt()}',
-                          style: const TextStyle(
-                              fontSize: 10.5, color: AppColors.muted)),
-                      const SizedBox(width: 10),
-                      const Icon(Icons.meeting_room_outlined,
-                          size: 11, color: AppColors.muted),
-                      const SizedBox(width: 2),
-                      Text(
-                          '${numberOf(b, const ['roomCount', 'rooms']).toInt()}',
+                          '${numberOf(b, const ['staffCount', 'staff']).toInt()} personel',
                           style: const TextStyle(
                               fontSize: 10.5, color: AppColors.muted)),
                     ],

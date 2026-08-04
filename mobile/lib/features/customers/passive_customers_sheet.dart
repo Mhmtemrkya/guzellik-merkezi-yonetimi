@@ -160,6 +160,7 @@ class _PassiveCustomersSheetState extends State<PassiveCustomersSheet> {
                       FilledButton(
                         onPressed: _saving ? null : _saveThreshold,
                         style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 40),
                             visualDensity: VisualDensity.compact),
                         child: Text(_saving ? '...' : 'Kaydet',
                             style: const TextStyle(fontSize: 12)),

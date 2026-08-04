@@ -108,3 +108,17 @@ abstract final class AppTheme {
     );
   }
 }
+
+/// Düğme yardımcıları.
+///
+/// KRİTİK: [AppTheme] `filledButtonTheme`'inde `minimumSize: Size.fromHeight(52)` verir;
+/// bu SONSUZ genişlik demektir (Size.fromHeight → Size(double.infinity, 52)) ve dikey
+/// yerleşimde düğmelerin tam genişlik olmasını sağlar. Ancak aynı düğme bir [Row] içine
+/// konduğunda satırın tamamını talep eder → yanındaki `Expanded` metin 0 piksele düşer ve
+/// yazı HER HARF ALT ALTA görünür. Row içindeki düğmelerde [AppButtons.inline] kullanın:
+/// yükseklik korunur, genişlik içeriğe göre daralır (tablet/telefon farkı olmadan).
+abstract final class AppButtons {
+  static ButtonStyle inline({double height = 44}) => ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(Size(0, height)),
+      );
+}

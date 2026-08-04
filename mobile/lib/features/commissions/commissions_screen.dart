@@ -24,6 +24,9 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
   late Future<_CommissionData> _future;
   String? _paying;
 
+  /// Hareket süzgeci: tümü / bekleyen / ödenen (verilen primler ayrıca görülebilsin).
+  String _filter = 'all';
+
   @override
   void initState() {
     super.initState();
@@ -138,21 +141,71 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
           for (final s in byStaff) _staffRow(s),
 
         const SizedBox(height: 18),
-        const Text('Prim hareketleri',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Prim hareketleri',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            ),
+            for (final (key, label) in const [
+              ('all', 'Tümü'),
+              ('unpaid', 'Bekleyen'),
+              ('paid', 'Ödenen'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: GestureDetector(
+                  onTap: () => setState(() => _filter = key),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color:
+                          _filter == key ? AppColors.primary : AppColors.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: _filter == key
+                              ? AppColors.primary
+                              : AppColors.border),
+                    ),
+                    child: Text(label,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _filter == key
+                                ? Colors.white
+                                : AppColors.muted)),
+                  ),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 8),
-        if (data.rows.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 18),
+        if (_filteredRows(data).isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
             child: Center(
-              child: Text('Kayıt yok.', style: TextStyle(color: AppColors.muted)),
+              child: Text(
+                  _filter == 'paid'
+                      ? 'Ödenmiş prim kaydı yok.'
+                      : _filter == 'unpaid'
+                          ? 'Bekleyen prim yok.'
+                          : 'Kayıt yok.',
+                  style: const TextStyle(color: AppColors.muted)),
             ),
           )
         else
-          for (final r in data.rows.take(50)) _movementRow(r),
+          for (final r in _filteredRows(data).take(50)) _movementRow(r),
       ],
     );
   }
+
+  List<Map<String, dynamic>> _filteredRows(_CommissionData data) =>
+      switch (_filter) {
+        'paid' => data.rows.where((r) => r['isPaid'] == true).toList(),
+        'unpaid' => data.rows.where((r) => r['isPaid'] != true).toList(),
+        _ => data.rows,
+      };
 
   Widget _kpi(String label, double value, Color tone) => Expanded(
         child: Container(
@@ -199,7 +252,9 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                 const SizedBox(height: 2),
-                Text('${s.count} kalem · ödenen ${CalendarText.tl(s.paid)}',
+                Text(
+                    '${s.count} kalem · kazanılan ${CalendarText.tl(s.paid + s.unpaid)} · ödenen ${CalendarText.tl(s.paid)}',
+                    maxLines: 2,
                     style: const TextStyle(fontSize: 11, color: AppColors.muted)),
               ],
             ),
@@ -222,6 +277,7 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.success,
+                minimumSize: const Size(0, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 visualDensity: VisualDensity.compact,
               ),
@@ -244,6 +300,24 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
 
   Widget _movementRow(Map<String, dynamic> r) {
     final paid = r['isPaid'] == true;
+    // DTO alanları: description + sourceType + baseAmount/ratePercent + earnedAtUtc/paidAtUtc.
+    // (Eskiden olmayan 'source'/'serviceName' okunduğu için alt satır hep boş görünüyordu.)
+    final description = valueOf(r, const ['description'], fallback: '');
+    final sourceType = valueOf(r, const ['sourceType'], fallback: '');
+    final base = numberOf(r, const ['baseAmount']);
+    final rate = numberOf(r, const ['ratePercent']);
+    final earned = parseUtcToLocal(r['earnedAtUtc']);
+    final paidAt = parseUtcToLocal(r['paidAtUtc']);
+    final detail = [
+      if (description != '—' && description.isNotEmpty) description,
+      if (base > 0) '${CalendarText.tl(base)} üzerinden %${_trimRate(rate)}',
+      if (sourceType.isNotEmpty && sourceType != '—') _sourceLabel(sourceType),
+    ].join(' · ');
+    final when = paid && paidAt != null
+        ? 'Ödendi · ${_fmtDate(paidAt)}'
+        : earned != null
+            ? 'Kazanıldı · ${_fmtDate(earned)}'
+            : '';
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -262,13 +336,18 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                Text(valueOf(r, const ['source', 'serviceName'], fallback: ''),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                if (detail.isNotEmpty)
+                  Text(detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                if (when.isNotEmpty)
+                  Text(when,
+                      style: const TextStyle(fontSize: 10, color: AppColors.muted)),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Text(CalendarText.tl(numberOf(r, const ['amount', 'commissionAmount'])),
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
           const SizedBox(width: 8),
@@ -288,6 +367,21 @@ class _CommissionsScreenState extends State<CommissionsScreen> {
       ),
     );
   }
+
+  String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+
+  String _trimRate(double rate) =>
+      rate == rate.roundToDouble() ? '${rate.toInt()}' : '$rate'.replaceAll('.', ',');
+
+  String _sourceLabel(String sourceType) => switch (sourceType) {
+        'Service' => 'Hizmet',
+        'Product' => 'Ürün',
+        'PackageSale' => 'Paket satışı',
+        'PackageUse' => 'Paketten kullanım',
+        'Extra' => 'Ek kalem',
+        _ => sourceType,
+      };
 
   /// Özet uçtaki byStaff; yoksa ham prim kayıtlarından personel bazında toplanır.
   List<_StaffCommission> _byStaff(_CommissionData data) {

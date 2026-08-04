@@ -424,7 +424,12 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             ),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8E3F5B), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
+            // minimumSize: tema Size.fromHeight(52) ile SONSUZ genişlik ister; Row içinde
+            // soldaki Expanded'i 0'a düşürüp yazıyı harf harf alt alta diziyordu.
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF8E3F5B),
+                minimumSize: const Size(0, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
             onPressed: () => _buyCredit(pkg),
             child: const Text('Talep et', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
           ),

@@ -414,7 +414,9 @@ class _AsyncListPageState extends State<AsyncListPage> {
             for (final action in widget.bulkActions) ...[
               const SizedBox(width: 4),
               FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    minimumSize: const Size(0, 40)),
                 onPressed: _bulkBusy ? null : () => _runBulkAction(action),
                 icon: Icon(action.icon, size: 17),
                 label: Text(action.label),
@@ -423,7 +425,9 @@ class _AsyncListPageState extends State<AsyncListPage> {
             if (widget.onBulkDelete != null) ...[
               const SizedBox(width: 4),
               FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+                style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    minimumSize: const Size(0, 40)),
                 onPressed: _bulkBusy ? null : _runBulkDelete,
                 icon: _bulkBusy
                     ? const SizedBox(

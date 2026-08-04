@@ -48,9 +48,7 @@ public static class DevelopmentDataSeeder
         var tenant = new Tenant("BeautyAsist Demo Güzellik Merkezi", "beautyasist-demo", "Premium", TenantStatus.Active);
         tenant.SetProfile("demo.beautyasist.app", "Deniz Kaya");
         var nisantasi = tenant.AddBranch("Nişantaşı", "İstanbul", true);
-        nisantasi.UpdateCapacity(staffCount: 6, roomCount: 5);
         var kadikoy = tenant.AddBranch("Kadıköy", "İstanbul", false);
-        kadikoy.UpdateCapacity(staffCount: 4, roomCount: 3);
 
         var platformAdmin = tenant.GrantAccess("platform@beautyasist.test", UserRole.PlatformAdmin, null, "Platform Admin");
         platformAdmin.SetPasswordHash(passwordHasher.Hash(password));
@@ -62,7 +60,6 @@ public static class DevelopmentDataSeeder
         var secondTenant = new Tenant("Lotus Klinik", "lotus-klinik", "Başlangıç", TenantStatus.Trial);
         secondTenant.SetProfile("lotus.beautyasist.app", "Selin Demir");
         var lotusBranch = secondTenant.AddBranch("Merkez", "Ankara", true);
-        lotusBranch.UpdateCapacity(staffCount: 2, roomCount: 2);
         var secondOwner = secondTenant.GrantAccess("lotus@beautyasist.test", UserRole.InstitutionOwner, null, "Selin Demir");
         secondOwner.SetPasswordHash(passwordHasher.Hash(password));
 

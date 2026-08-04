@@ -81,8 +81,6 @@ public sealed class UpsertBranchRequestValidator : AbstractValidator<UpsertBranc
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(140);
         RuleFor(x => x.City).NotEmpty().MaximumLength(80);
-        RuleFor(x => x.StaffCount).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.RoomCount).GreaterThanOrEqualTo(0);
     }
 }
 

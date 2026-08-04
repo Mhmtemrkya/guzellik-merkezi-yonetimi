@@ -533,6 +533,7 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                         FilledButton.icon(
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF25D366),
+                            minimumSize: const Size(0, 40),
                             visualDensity: VisualDensity.compact,
                           ),
                           onPressed: (_busy || _reminderBusy) ? null : _sendWhatsappReminder,

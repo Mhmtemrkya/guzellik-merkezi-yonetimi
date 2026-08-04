@@ -12,6 +12,7 @@ import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../appointments/calendar_theme.dart';
+import 'product_form_sheet.dart';
 
 /// Stok & Ürün — web `ProductLibrary` bileşeninin mobil karşılığı.
 ///
@@ -26,16 +27,6 @@ class StockScreen extends StatefulWidget {
   State<StockScreen> createState() => _StockScreenState();
 }
 
-const _productCategories = [
-  CrudOption('SkinCare', 'Cilt Bakım'),
-  CrudOption('Consumable', 'Sarf Malzeme'),
-  CrudOption('Sale', 'Satış Ürünü'),
-  CrudOption('HairCare', 'Saç Bakım'),
-  CrudOption('Makeup', 'Makyaj'),
-  CrudOption('NailCare', 'Tırnak Bakım'),
-  CrudOption('Other', 'Diğer'),
-];
-
 const _movementTypes = [
   CrudOption('Inbound', 'Giriş (Alım)'),
   CrudOption('Outbound', 'Çıkış (Sarf)'),
@@ -46,43 +37,9 @@ const _movementTypes = [
 
 const _moveTypeKeys = ['Inbound', 'Outbound', 'Sale', 'Adjustment', 'Damage'];
 
-String _categoryLabel(String key) => _productCategories
-    .firstWhere((c) => c.value == key, orElse: () => const CrudOption('', 'Diğer'))
-    .label;
-
-/// Ürün ekle/düzenle formu alanları (web ProductFormDialog ile aynı set).
-/// Stok yalnızca stok hareketiyle oluşur; üründe açılış stoğu alanı yoktur.
-/// Barkod ürünün tekil kimliğidir — okuyucudan okutulabilir, boşsa backend üretir.
-List<CrudField> _productFields({required bool isEdit}) => [
-      const CrudField(key: 'name', label: 'Ürün adı', required: true),
-      const CrudField(
-        key: 'category',
-        label: 'Kategori',
-        type: CrudFieldType.select,
-        options: _productCategories,
-        defaultValue: 'SkinCare',
-      ),
-      const CrudField(key: 'unit', label: 'Birim', defaultValue: 'Adet'),
-      const CrudField(key: 'brand', label: 'Marka'),
-      const CrudField(key: 'location', label: 'Konum / Depo'),
-      const CrudField(key: 'barcode', label: 'Barkod', barcodeScan: true),
-      const CrudField(key: 'cost', label: 'Alış fiyatı', type: CrudFieldType.decimal),
-      const CrudField(
-          key: 'salePrice', label: 'Satış fiyatı', type: CrudFieldType.decimal),
-      const CrudField(
-          key: 'minStockLevel',
-          label: 'Kritik stok seviyesi',
-          type: CrudFieldType.decimal),
-      const CrudField(key: 'lotNumber', label: 'Lot numarası'),
-      const CrudField(
-          key: 'expiryDate', label: 'Son kullanma tarihi', type: CrudFieldType.date),
-      const CrudField(
-        key: 'isActive',
-        label: 'Aktif',
-        type: CrudFieldType.toggle,
-        defaultValue: true,
-      ),
-    ];
+/// Ürün ekleme/düzenleme artık web ProductFormDialog paritesindeki
+/// [showProductFormSheet] ile yapılır (görsel + barkod okutma + canlı önizleme).
+String _categoryLabel(String key) => productCategoryLabel(key);
 
 enum _Tab { all, critical, sale, consumable }
 
@@ -101,9 +58,10 @@ class _StockScreenState extends State<StockScreen> {
     final results = await Future.wait<dynamic>([
       widget.api
           .get('/api/admin/products/', query: {'page': 1, 'pageSize': 500}),
+      // DİKKAT: bu uç page/pageSize DEĞİL `limit` alır ve parametre nullable olmadığından
+      // gönderilmezse 400 döner (hareketler sessizce boş görünüyordu). Web de limit:300 yollar.
       widget.api
-          .get('/api/admin/stock-movements/',
-              query: {'page': 1, 'pageSize': 300})
+          .get('/api/admin/stock-movements/', query: {'limit': 300})
           .catchError((_) => const <dynamic>[]),
     ]);
     return _StockData(
@@ -172,17 +130,7 @@ class _StockScreenState extends State<StockScreen> {
   // --- Aksiyonlar (form'lar CrudFormSheet ile) ---
 
   Future<void> _createProduct() async {
-    final result = await showModalBottomSheet<CrudSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => CrudFormSheet(
-        title: 'Yeni ürün',
-        icon: Icons.inventory_2_rounded,
-        fields: _productFields(isEdit: false),
-      ),
-    );
-    final body = result?.body;
+    final body = await showProductFormSheet(context);
     if (body == null) return;
     body['branchId'] = widget.api.auth?.user?.branchId;
     await _guard(() => widget.api.post('/api/admin/products/', body),
@@ -535,7 +483,7 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  // Son Stok Hareketleri
+  // Son Stok Hareketleri (web ProductLibrary "Son Stok Hareketleri" bloğu paritesi)
   Widget _movementsSection(_StockData data) {
     final moves = data.movements.take(8).toList();
     final stockById = {
@@ -544,6 +492,13 @@ class _StockScreenState extends State<StockScreen> {
     return _card(
       title: 'Son Stok Hareketleri',
       icon: Icons.swap_vert_rounded,
+      badge: '${data.movements.length}',
+      action: data.movements.length > 8
+          ? TextButton(
+              onPressed: () => _showAllMovements(data, stockById),
+              child: const Text('Tümü'),
+            )
+          : null,
       child: moves.isEmpty
           ? _empty('Hareket kaydı yok.')
           : Column(
@@ -551,6 +506,60 @@ class _StockScreenState extends State<StockScreen> {
                 for (final m in moves) _movementRow(m, stockById),
               ],
             ),
+    );
+  }
+
+  Future<void> _showAllMovements(
+      _StockData data, Map<String, Map<String, dynamic>> stockById) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.9),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 8, 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.swap_vert_rounded,
+                        size: 18, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                          'Stok Hareketleri (${data.movements.length})',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w800)),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  children: [
+                    for (final m in data.movements) _movementRow(m, stockById),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -605,14 +614,32 @@ class _StockScreenState extends State<StockScreen> {
                     ],
                   ],
                 ),
+                // Web tablosundaki "Kullanıcı" kolonu.
+                if (valueOf(m, const ['staffName'], fallback: '') != '')
+                  Text(valueOf(m, const ['staffName']),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(fontSize: 10, color: AppColors.muted)),
               ],
             ),
           ),
-          Text('${inbound ? '+' : '-'}${_trimNum(qty)}',
-              style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  color: inbound ? AppColors.success : AppColors.danger)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${inbound ? '+' : '-'}${_trimNum(qty)}',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: inbound ? AppColors.success : AppColors.danger)),
+              // Web tablosundaki "Stok" kolonu: hareketten sonraki güncel stok.
+              if (prod != null)
+                Text(
+                    'stok ${_trimNum((prod['currentStock'] as num?)?.toDouble() ?? 0)}',
+                    style:
+                        const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+            ],
+          ),
         ],
       ),
     );
@@ -746,7 +773,9 @@ class _StockScreenState extends State<StockScreen> {
   Widget _card(
           {required String title,
           required IconData icon,
-          required Widget child}) =>
+          required Widget child,
+          String? badge,
+          Widget? action}) =>
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
@@ -762,11 +791,33 @@ class _StockScreenState extends State<StockScreen> {
               children: [
                 Icon(icon, size: 15, color: AppColors.primary),
                 const SizedBox(width: 7),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryDark)),
+                Flexible(
+                  child: Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryDark)),
+                ),
+                if (badge != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceSoft,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(badge,
+                        style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primaryDark)),
+                  ),
+                ],
+                const Spacer(),
+                ?action,
               ],
             ),
             const SizedBox(height: 12),
@@ -828,19 +879,7 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
   }
 
   Future<void> _edit() async {
-    final fields = _productFields(isEdit: true);
-    final result = await showModalBottomSheet<CrudSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => CrudFormSheet(
-        title: 'Ürünü düzenle',
-        icon: Icons.edit_rounded,
-        initial: p,
-        fields: fields,
-      ),
-    );
-    final body = result?.body;
+    final body = await showProductFormSheet(context, product: p);
     if (body == null) return;
     body['branchId'] = p['branchId'] ?? widget.api.auth?.user?.branchId;
     try {

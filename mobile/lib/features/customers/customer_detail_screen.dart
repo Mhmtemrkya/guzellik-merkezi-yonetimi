@@ -12,6 +12,7 @@ import '../../shared/widgets/app_background.dart';
 import '../consent/consent_warning_banner.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../accounting/adisyon_detail_sheet.dart';
+import '../accounting/collection_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import 'operations_journal.dart';
 import 'customer_sales_panel.dart';
@@ -91,14 +92,6 @@ String _apptGroup(String status) {
       return 'bekliyor';
   }
 }
-
-/// Ön Muhasebe'deki tahsilat formuyla AYNI yöntem listesi (backend aynı değerleri bekler).
-const _customerPaymentMethods = <CrudOption>[
-  CrudOption('Cash', 'Nakit'),
-  CrudOption('Card', 'Kart'),
-  CrudOption('BankTransfer', 'Havale/EFT'),
-  CrudOption('Check', 'Çek'),
-];
 
 const _apptFilters = <(String, String)>[
   ('all', 'Tümü'),
@@ -251,102 +244,27 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           ((a['remainingAmount'] as num?)?.toDouble() ?? 0) > 0.005)
       .toList();
 
-  /// Hızlı işlemlerden tahsilat. Birden çok açık cari varsa önce hangisine yazılacağı sorulur;
-  /// tek cari varsa doğrudan tutar/yöntem formuna geçilir (gereksiz adım olmasın).
+  /// Hızlı işlemlerden tahsilat — ortak tahsilat sayfası (web CollectionDialog paritesi).
+  /// Müşterinin açık carileri listelenir; seçilince tutar kalan borçla dolar, çoklu ödeme
+  /// yöntemi (nakit + kart) kırılımı ve geçmiş tarihli tahsilat desteklenir.
   Future<void> _collectPayment() async {
     final open = _collectableAccounts;
     if (open.isEmpty) return;
-
-    var account = open.first;
-    if (open.length > 1) {
-      final picked = await showModalBottomSheet<Map<String, dynamic>>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(18, 16, 18, 8),
-                child: Text('Hangi satıştan tahsilat?',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final a in open)
-                      ListTile(
-                        title: Text(valueOf(a, const ['name'], fallback: 'Satış'),
-                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                        subtitle: Text(
-                            'Kalan ${CalendarText.tl((a['remainingAmount'] as num?)?.toDouble() ?? 0)}',
-                            style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
-                        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                        onTap: () => Navigator.pop(ctx, a),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-      );
-      if (picked == null) return;
-      account = picked;
-    }
-
-    if (!mounted) return;
-    final remaining = (account['remainingAmount'] as num?)?.toDouble() ?? 0;
-    final result = await showModalBottomSheet<CrudSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => CrudFormSheet(
-        title: 'Tahsilat kaydet',
-        icon: Icons.payments_rounded,
-        fields: [
-          CrudField(
-              key: 'amount',
-              label: 'Tutar',
-              type: CrudFieldType.decimal,
-              required: true,
-              // Varsayılan = kalan borç; kısmi tahsilatta kullanıcı düşürebilir.
-              defaultValue: remaining > 0 ? remaining.toStringAsFixed(0) : null),
-          const CrudField(
-            key: 'method',
-            label: 'Ödeme yöntemi',
-            type: CrudFieldType.select,
-            options: _customerPaymentMethods,
-            defaultValue: 'Cash',
-          ),
-          const CrudField(key: 'reference', label: 'Referans'),
-          const CrudField(
-            key: 'occurredAtUtc',
-            label: 'Tarih',
-            type: CrudFieldType.date,
-            dateOnly: false,
-            defaultValue: 'today',
-          ),
-        ],
-      ),
+    final saved = await showCollectionSheet(
+      context,
+      api: _api,
+      accounts: open,
+      initialAccountId: '${open.first['id']}',
+      lockAccount: open.length == 1,
+      title: 'Tahsilat kaydet',
     );
-    if (result?.body == null) return;
-
-    try {
-      await _api.post('/api/admin/accounts/${account['id']}/payments', result!.body!);
-      await _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tahsilat kaydedildi.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
+    if (saved == null || saved == 0) return;
+    await _reload();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(saved > 1
+              ? '$saved tahsilat kaydedildi.'
+              : 'Tahsilat kaydedildi.')));
     }
   }
 

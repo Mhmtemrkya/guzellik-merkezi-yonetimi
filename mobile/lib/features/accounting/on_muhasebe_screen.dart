@@ -17,6 +17,8 @@ import '../../shared/widgets/period_selector.dart';
 import '../appointments/calendar_theme.dart';
 import 'account_installments.dart';
 import 'adisyon_detail_sheet.dart';
+import 'collection_sheet.dart';
+import 'expense_form_sheet.dart';
 import 'adisyon_receipt_sheet.dart';
 import 'daily_adisyon_sheet.dart';
 import 'salary_payment_sheet.dart';
@@ -1217,6 +1219,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                     onPressed: () => _approveExpense(e),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.success,
+                      // Tema Size.fromHeight(52) ile sonsuz genişlik ister; bu satırda
+                      // soldaki açıklamayı 0 piksele düşürüp harfleri alt alta diziyordu.
+                      minimumSize: const Size(0, 26),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       visualDensity: VisualDensity.compact,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1268,58 +1273,12 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       );
       return;
     }
-    final result = await showModalBottomSheet<CrudSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => CrudFormSheet(
-        title: 'Yeni gider',
-        icon: Icons.receipt_long_rounded,
-        fields: [
-          const CrudField(
-            key: 'category',
-            label: 'Kategori',
-            type: CrudFieldType.select,
-            options: _expenseCategories,
-            defaultValue: 'Other',
-          ),
-          const CrudField(
-              key: 'amount',
-              label: 'Tutar',
-              type: CrudFieldType.decimal,
-              required: true),
-          const CrudField(
-            key: 'paymentMethod',
-            label: 'Ödeme yöntemi',
-            type: CrudFieldType.select,
-            options: _paymentMethods,
-            defaultValue: 'Cash',
-          ),
-          const CrudField(
-            key: 'occurredAtUtc',
-            label: 'Tarih',
-            type: CrudFieldType.date,
-            dateOnly: false,
-            defaultValue: 'today',
-            required: true,
-          ),
-          CrudField(
-            key: 'staffMemberId',
-            label: 'İşlem yapan / satış yapan',
-            hint: 'Boş bırakılırsa prim hesaplanmaz, kayıt Kurum Yöneticisi adına geçer.',
-            type: CrudFieldType.select,
-            optionsLoader: CrudOptions(widget.api).staff,
-          ),
-          const CrudField(
-              key: 'description',
-              label: 'Açıklama',
-              type: CrudFieldType.multiline),
-        ],
-      ),
-    );
-    if (result?.body == null) return;
+    // Gider formu web ExpenseFormDialog paritesi: kategori kartları, "Diğer"de kurumun
+    // özel gider kategorileri (ekle/seç/sil), dönem etiketi ve fiş/fatura no.
+    final payload = await showExpenseFormSheet(context, api: widget.api);
+    if (payload == null) return;
     final body = {
-      ...result!.body!,
+      ...payload,
       'branchId': widget.api.auth?.user?.branchId,
     };
     await _guard(
@@ -1483,55 +1442,23 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
   }
 
   Future<void> _payment() async {
-    // Varsayılan tutar = carinin kalan borcu (remainingAmount).
-    final remaining = (a['remainingAmount'] as num?)?.toDouble() ?? 0;
-    final result = await showModalBottomSheet<CrudSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => CrudFormSheet(
-        title: 'Tahsilat kaydet',
-        icon: Icons.payments_rounded,
-        fields: [
-          CrudField(
-              key: 'amount',
-              label: 'Tutar',
-              type: CrudFieldType.decimal,
-              required: true,
-              defaultValue:
-                  remaining > 0 ? remaining.toStringAsFixed(0) : null),
-          CrudField(
-            key: 'method',
-            label: 'Ödeme yöntemi',
-            type: CrudFieldType.select,
-            options: _paymentMethods,
-            defaultValue: 'Cash',
-          ),
-          CrudField(key: 'reference', label: 'Referans'),
-          CrudField(
-            key: 'occurredAtUtc',
-            label: 'Tarih',
-            type: CrudFieldType.date,
-            dateOnly: false,
-            defaultValue: 'today',
-          ),
-        ],
-      ),
+    // Ortak tahsilat sayfası (web CollectionDialog paritesi): kalan borçla dolan tutar,
+    // çoklu yöntem kırılımı (nakit+kart), yerel tarih ve dekont alanı.
+    final saved = await showCollectionSheet(
+      context,
+      api: widget.api,
+      accounts: [a],
+      initialAccountId: '${a['id']}',
+      lockAccount: true,
+      title: 'Tahsilat kaydet',
     );
-    if (result?.body == null) return;
-    try {
-      await widget.api
-          .post('/api/admin/accounts/${a['id']}/payments', result!.body!);
-      await _refresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tahsilat kaydedildi.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
-      }
+    if (saved == null || saved == 0) return;
+    await _refresh();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(saved > 1
+              ? '$saved tahsilat kaydedildi.'
+              : 'Tahsilat kaydedildi.')));
     }
   }
 

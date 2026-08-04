@@ -18,6 +18,9 @@ public sealed class Branch : Entity
     public string Name { get; private set; } = string.Empty;
     public string City { get; private set; } = string.Empty;
     public bool IsDefault { get; private set; }
+    /// <summary>ESKİ elle girilen kapasite alanları — artık hiçbir yerde okunmuyor/yazılmıyor.
+    /// Şube personel sayısı canlı olarak staff_members'tan sayılır (bkz. BranchService.StaffCountsAsync),
+    /// oda kapasitesi ise arayüzden kaldırıldı. Kolonlar NOT NULL olduğundan tabloda bırakıldı (0 yazılır).</summary>
     public int StaffCount { get; private set; }
     public int RoomCount { get; private set; }
 
@@ -33,15 +36,6 @@ public sealed class Branch : Entity
         if (string.IsNullOrWhiteSpace(city)) throw new DomainException("Şehir/ilçe boş olamaz.");
         Name = name.Trim();
         City = city.Trim();
-        Touch();
-    }
-
-    public void UpdateCapacity(int staffCount, int roomCount)
-    {
-        if (staffCount < 0) throw new DomainException("Personel sayısı negatif olamaz.");
-        if (roomCount < 0) throw new DomainException("Oda sayısı negatif olamaz.");
-        StaffCount = staffCount;
-        RoomCount = roomCount;
         Touch();
     }
 

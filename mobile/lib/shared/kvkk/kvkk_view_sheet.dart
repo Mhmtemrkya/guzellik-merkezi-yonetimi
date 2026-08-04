@@ -89,6 +89,7 @@ Future<void> showKvkkViewSheet(BuildContext context, ApiClient api) async {
                           style: TextStyle(fontSize: 11, color: AppColors.muted)),
                     ),
                     FilledButton.icon(
+                      style: AppButtons.inline(),
                       onPressed: loading
                           ? null
                           : () async {
