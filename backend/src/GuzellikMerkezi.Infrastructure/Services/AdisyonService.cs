@@ -88,10 +88,15 @@ public sealed class AdisyonService : IAdisyonService
     /// İstemcinin verdiği cari hesabın BU MÜŞTERİYE ait ve iptal edilmemiş olduğunu doğrular.
     ///
     /// <para>
-    /// Alan hiç kontrol edilmiyordu. İki ayrı sonucu vardı: (1) başka bir müşterinin carisi hedef
-    /// gösterilerek A'nın hizmeti/seansı oluşurken borç B'nin carisine yazılabiliyordu (BOLA);
-    /// (2) satışa mevcut bir cari iliştirilerek "her satış kendi cari kartını açar" kuralı
-    /// baypas edilebiliyordu — onay, <c>CustomerAccountId</c> doluysa kart açma adımını atlar.
+    /// Alan hiç kontrol edilmiyordu: başka bir müşterinin carisi hedef gösterilerek A'nın
+    /// hizmeti/seansı oluşurken borç B'nin carisine yazılabiliyordu (BOLA).
+    /// </para>
+    ///
+    /// <para>
+    /// Sahiplik TEK BAŞINA yetmez: müşterinin KENDİ carisi verildiğinde kontrol geçer ama bu kez
+    /// "her satış kendi cari kartını açar" kuralı baypas edilirdi. O yön ayrıca kapatılır —
+    /// <see cref="AddItemAsync"/> (cariye bağlı fişe satış kalemi yok), <see cref="UpdateAsync"/>
+    /// (satış fişine cari bağlama + onay sonrası rebind yok) ve onay (satışta bağ yok sayılır).
     /// </para>
     /// </summary>
     private async Task<Error?> ValidateAccountOwnershipAsync(
@@ -155,14 +160,41 @@ public sealed class AdisyonService : IAdisyonService
         // Cari BU MÜŞTERİYE ait olmalı — aksi hâlde borç başka müşterinin kartına yazılabilirdi.
         if (await ValidateAccountOwnershipAsync(tenantId, adisyon.CustomerId, request.CustomerAccountId, cancellationToken) is { } accountError)
             return Result<AdisyonDto>.Failure(accountError);
-        adisyon.SetCustomerAccount(request.CustomerAccountId);
-        adisyon.SetNotes(request.Notes);
-        // Taksit planı yalnızca satış modalı gönderdiğinde uygulanır (peşin = 0). Alakasız
-        // güncellemeler (ör. not) InstallmentCount göndermez → mevcut plan korunur.
-        if (request.InstallmentCount.HasValue) adisyon.SetInstallmentPlan(request.InstallmentCount, request.FirstDueDate);
-        // Faz 2 bayrağı yalnızca açık adisyonda anlamlı (onaylanmışta no-op → EnsureOpen atmasın).
-        if (request.AutoApproveOnFirstAppointment.HasValue && adisyon.Status == AdisyonStatus.Open)
-            adisyon.SetAutoApproveOnFirstAppointment(request.AutoApproveOnFirstAppointment.Value);
+
+        // CARİ BAĞI DEĞİŞİYOR MU? Aynı değer geri gönderildiyse (not güncellemesi) değişiklik yok →
+        // aşağıdaki kısıtlar tetiklenmez, istek normal ilerler.
+        var accountChanged = request.CustomerAccountId != adisyon.CustomerAccountId;
+
+        // ONAYDAN SONRA CARİ BAĞI DEĞİŞMEZ. Onayda tahsilat, seans bakiyesi ve taksit planı BİR
+        // cariye yazıldı; bağ aynı müşterinin başka kartına çevrilirse para eski kartta kalır, borç
+        // yeni karta geçer, silme/iptal ters kaydı da tahsilatı yanlış kartta arar (defter ayrışır).
+        if (accountChanged && adisyon.Status != AdisyonStatus.Open)
+            return Result<AdisyonDto>.Failure(Error.Validation(
+                "Onaylanmış adisyonun cari hesabı değiştirilemez: tahsilat ve seanslar mevcut karta işlendi."));
+
+        // SATIŞ FİŞİ MEVCUT BİR CARİYE BAĞLANAMAZ (bkz. AddItemAsync — aynı kural, diğer yön):
+        // önce satış kalemi eklenip sonra cari bağlanarak da baypas edilebiliyordu. Bağı KALDIRMAK
+        // (null) serbesttir; eski kayıtların düzeltilebilmesi için gereken yön odur.
+        if (accountChanged && request.CustomerAccountId is not null && adisyon.HasSaleItems)
+            return Result<AdisyonDto>.Failure(Error.Validation(
+                "Satış kalemi olan fiş mevcut bir cari hesaba bağlanamaz: her satış kendi cari kartını açar."));
+
+        try
+        {
+            if (accountChanged) adisyon.SetCustomerAccount(request.CustomerAccountId);
+            adisyon.SetNotes(request.Notes);
+            // Taksit planı yalnızca satış modalı gönderdiğinde uygulanır (peşin = 0). Alakasız
+            // güncellemeler (ör. not) InstallmentCount göndermez → mevcut plan korunur.
+            if (request.InstallmentCount.HasValue) adisyon.SetInstallmentPlan(request.InstallmentCount, request.FirstDueDate);
+            // Faz 2 bayrağı yalnızca açık adisyonda anlamlı (onaylanmışta no-op → EnsureOpen atmasın).
+            if (request.AutoApproveOnFirstAppointment.HasValue && adisyon.Status == AdisyonStatus.Open)
+                adisyon.SetAutoApproveOnFirstAppointment(request.AutoApproveOnFirstAppointment.Value);
+        }
+        catch (DomainException ex)
+        {
+            // Açık olmayan fişte plan/bağ değişimi domain kuralına takılır → 500 değil, anlamlı 400.
+            return Result<AdisyonDto>.Failure(Error.Validation(ex.Message));
+        }
         await _db.SaveChangesAsync(cancellationToken);
         return await GetAsync(tenantId, id, cancellationToken);
     }
@@ -171,6 +203,21 @@ public sealed class AdisyonService : IAdisyonService
     {
         var adisyon = await LoadAsync(tenantId, id, cancellationToken);
         if (adisyon is null) return Result<AdisyonDto>.Failure(Error.NotFound("Adisyon bulunamadı."));
+
+        // SATIŞ KALEMİ CARİYE BAĞLI FİŞE EKLENEMEZ.
+        //
+        // "Her satış kendi cari kartını açar" kuralı onayda uygulanır ve YALNIZ fişin cari bağı
+        // boşken yeni kart açardı; fişe önceden bir cari bağlanmışsa satışın borcu o eski kartın
+        // toplamına ekleniyordu (kural tek alan gönderilerek baypas edilebiliyordu). Onay tarafı da
+        // kapatıldı, ama karışık fiş zaten anlamsız: mevcut cari borcuna alınan tahsilat ile yeni
+        // satışın parası aynı fişte ayırt edilemez. Satış için ayrı fiş açılmalı.
+        if (adisyon.CustomerAccountId is not null
+            && Adisyon.IsSaleItem(request.Type, request.RefId, request.CoveredByPackage))
+        {
+            return Result<AdisyonDto>.Failure(Error.Validation(
+                "Cari hesaba bağlı fişe satış kalemi eklenemez: her satış kendi cari kartını açar. Satış için yeni fiş açın."));
+        }
+
         AdisyonItem item;
         try
         {
@@ -566,6 +613,18 @@ public sealed class AdisyonService : IAdisyonService
         // o para mevcut cariye aittir, yeni bir "satış" kartı üretmemelidir.
         var hasInstallmentPlan = adisyon.PlannedInstallmentCount > 0 && adisyon.PlannedFirstDueDate.HasValue;
         var isSale = namedSaleItems.Count > 0;
+
+        // SATIŞ FİŞİNE ÖNCEDEN BAĞLANMIŞ CARİ YOK SAYILIR — kuralın son baypas kapısı.
+        //
+        // Yeni kart yalnız CustomerAccountId BOŞKEN açılıyordu. Fişe müşterinin mevcut carisi
+        // bağlıysa (istemci alanı gönderir ya da bu düzeltmeden önce açılmış eski kayıt) satışın
+        // borcu sessizce o eski kartın toplamına ekleniyor, satışın kendi kartı hiç oluşmuyordu:
+        // tahsilat/iptal/taksit ve raporlar satışla değil bambaşka bir kartla eşleşiyordu.
+        // Kalem ekleme ve güncelleme yolları da bu bağı kurmayı reddeder; burası eski kayıtları da
+        // kapsayan son savunmadır. Bağ DÜŞÜRÜLÜR ki finansal etki üretmeyen uç durumda (bedelsiz
+        // satış → aşağıdaki blok hiç çalışmaz) fiş ilgisiz bir kartı işaret ederek kalmasın.
+        if (isSale && adisyon.CustomerAccountId is not null) adisyon.SetCustomerAccount(null);
+
         var newlyCreated = false;
         Guid? accountId = adisyon.CustomerAccountId;
         if ((charge > 0 || payment > 0 || packageSaleItems.Count > 0 || serviceSaleItems.Count > 0) && accountId is null)

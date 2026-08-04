@@ -20,6 +20,10 @@ namespace GuzellikMerkezi.Tests.Infrastructure;
 /// "ilk onaylanan" seçildiği için B randevusunun parası A satışına yazılabiliyordu.</item>
 /// <item>Arayüz belirli bir paket satırı seçtiriyor ama seçim sunucuya taşınmıyordu: aynı hizmeti
 /// içeren iki paketten EN ESKİSİ tüketiliyordu.</item>
+/// <item>"Her satış kendi cari kartını açar" kuralı, fişe AYNI MÜŞTERİNİN mevcut carisi bağlanarak
+/// baypas edilebiliyordu (sahiplik kontrolünü geçer): onay yeni kart açmayı atlıyor, satışın borcu
+/// eski kartın toplamına ekleniyordu. Onaylanmış fişin cari bağı da sonradan değiştirilebiliyordu —
+/// tahsilat eski kartta kalırken borç yenisine geçiyor, silme/iptal parayı yanlış kartta arıyordu.</item>
 /// </list>
 /// </summary>
 public sealed class SaleAccountIntegrityTests
@@ -49,7 +53,11 @@ public sealed class SaleAccountIntegrityTests
 
     private sealed record Seed(
         Guid TenantId, Guid BranchId, Guid CustomerId, Guid OtherCustomerId,
-        Guid StaffId, Guid ServiceA, Guid ServiceB, Guid OtherAccountId);
+        Guid StaffId, Guid ServiceA, Guid ServiceB, Guid OtherAccountId,
+        // Müşterinin KENDİ geçmiş satış kartı (4 taksitli) — baypas denemesinin hedefi.
+        Guid OwnAccountId,
+        // Müşterinin ikinci kartı — onay sonrası "başka kendi kartıma" rebind denemesi için.
+        Guid SecondOwnAccountId);
 
     private static async Task<Seed> SeedAsync(DbContextOptions<GuzellikDbContext> options)
     {
@@ -72,9 +80,16 @@ public sealed class SaleAccountIntegrityTests
         // BAŞKA müşterinin carisi — saldırı hedefi.
         var otherAccount = new CustomerAccount(tenant.Id, branch.Id, other.Id, null, "Başkasının satışı", 5000m, 0m);
         db.CustomerAccounts.Add(otherAccount);
+        // Müşterinin KENDİ geçmiş kartı: taksitli, ödenmemiş. Yeni satış buraya YAZILMAMALI.
+        var ownAccount = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Önceki satış", 5000m, 0m);
+        ownAccount.RebuildInstallments(4, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)));
+        db.CustomerAccounts.Add(ownAccount);
+        var secondOwn = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "İkinci kart", 1000m, 0m);
+        db.CustomerAccounts.Add(secondOwn);
         await db.SaveChangesAsync();
 
-        return new Seed(tenant.Id, branch.Id, customer.Id, other.Id, staff.Id, serviceA.Id, serviceB.Id, otherAccount.Id);
+        return new Seed(tenant.Id, branch.Id, customer.Id, other.Id, staff.Id, serviceA.Id, serviceB.Id,
+            otherAccount.Id, ownAccount.Id, secondOwn.Id);
     }
 
     // ── 1) BOLA: başka müşterinin carisi hedef gösterilemez ────────────────────────────────
@@ -202,6 +217,249 @@ public sealed class SaleAccountIntegrityTests
             Assert.True(result.IsFailure, "Başka müşterinin seansına randevu açılabildi.");
             Assert.Equal("Validation", result.Error.Code);
             Assert.Empty(await db.Appointments.ToListAsync());
+        }
+    }
+
+    // ── 4) Kural "kendi carim" verilerek de baypas edilemez ────────────────────────────────
+
+    /// <summary>
+    /// Kartın taksit SATIR KİMLİKLERİ. <c>RebuildInstallments</c> planı silip yeniden kurduğu için
+    /// kimlikler değişir: "eski kartın taksitleri hiç dokunulmadı" iddiası ancak böyle kanıtlanır
+    /// (tutar toplamı yanıltıcıdır — borç eklenip geri alındığında da eski toplama döner).
+    /// </summary>
+    private static async Task<Guid[]> InstallmentIdsAsync(DbContextOptions<GuzellikDbContext> options, Guid accountId)
+    {
+        await using var db = NewDb(options);
+        return await db.Installments
+            .Where(i => i.CustomerAccountId == accountId)
+            .OrderBy(i => i.DueDate).ThenBy(i => i.Id)
+            .Select(i => i.Id)
+            .ToArrayAsync();
+    }
+
+    /// <summary>Fişi doğrudan bir cariye bağlı olarak açar (düzeltmeden önceki eski kayıt hâli).</summary>
+    private static async Task<Guid> SeedAccountBoundSaleAsync(
+        DbContextOptions<GuzellikDbContext> options, Seed seed, Guid boundAccountId)
+    {
+        await using var db = NewDb(options);
+        var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, boundAccountId, null);
+        db.Adisyonlar.Add(adisyon);
+        await db.SaveChangesAsync();
+        db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 1250m, null, false));
+        db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Payment, null, "Peşinat", 1, 500m, null, false, "cash"));
+        await db.SaveChangesAsync();
+        return adisyon.Id;
+    }
+
+    /// <summary>
+    /// MÜŞTERİNİN KENDİ carisi bağlı olsa bile satış onayı YENİ kart açar: eski kartın toplamı ve
+    /// taksit planı değişmez, tahsilat da satışın kendi kartına yazılır.
+    /// </summary>
+    [Fact]
+    public async Task Approve_SaleOnAccountBoundAdisyon_OpensOwnAccount_AndLeavesExistingUntouched()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var adisyonId = await SeedAccountBoundSaleAsync(options, seed, seed.OwnAccountId);
+        var planBefore = await InstallmentIdsAsync(options, seed.OwnAccountId);
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        Assert.Equal(planBefore, await InstallmentIdsAsync(options, seed.OwnAccountId)); // plan yeniden kurulmadı
+
+        await using (var check = NewDb(options))
+        {
+            var accounts = await check.CustomerAccounts
+                .Include(a => a.Installments)
+                .Where(a => a.CustomerId == seed.CustomerId)
+                .ToListAsync();
+            Assert.Equal(3, accounts.Count); // iki eski kart + satışın KENDİ kartı
+
+            var existing = accounts.Single(a => a.Id == seed.OwnAccountId);
+            Assert.Equal(5000m, existing.TotalAmount);                     // eski kart DOKUNULMAZ
+            Assert.Equal(4, existing.Installments.Count);
+            Assert.Equal(5000m, existing.Installments.Sum(i => i.Amount)); // plan da aynı kalır
+
+            var sale = accounts.Single(a => a.Id != seed.OwnAccountId && a.Id != seed.SecondOwnAccountId);
+            Assert.Equal(1250m, sale.TotalAmount);
+            Assert.Equal("Cilt Bakımı", sale.Name);
+
+            // Fişin bağı satışın kendi kartına taşınır — silme/iptal ters kaydı buradan arar.
+            var adisyon = await check.Adisyonlar.SingleAsync(a => a.Id == adisyonId);
+            Assert.Equal(sale.Id, adisyon.CustomerAccountId);
+
+            // Tahsilat da satışın kartına yazılır; eski kartta hiç ödeme görünmez.
+            var payment = Assert.Single(await check.AccountPayments.ToListAsync());
+            Assert.Equal(sale.Id, payment.CustomerAccountId);
+            Assert.Equal(500m, payment.Amount);
+            Assert.Equal(adisyonId, payment.SourceAdisyonId);
+        }
+    }
+
+    /// <summary>
+    /// SİLME DOĞRU KARTI BULUR: satış kendi kartını açtığı için ters kayıt tahsilatı orada bulur,
+    /// kart kapanır; müşterinin eski kartının toplamı ve taksitleri hiç değişmez.
+    /// </summary>
+    [Fact]
+    public async Task Delete_AfterSaleOnAccountBoundAdisyon_ReversesFromSaleAccountOnly()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var adisyonId = await SeedAccountBoundSaleAsync(options, seed, seed.OwnAccountId);
+        var planBefore = await InstallmentIdsAsync(options, seed.OwnAccountId);
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            // Tahsilatlı fiş yalnız yönetici onayıyla (force) silinir — defter guard'ı.
+            var deleted = await NewAdisyon(db).DeleteAsync(seed.TenantId, adisyonId, force: true);
+            Assert.True(deleted.IsSuccess, deleted.IsFailure ? deleted.Error.Message : null);
+        }
+
+        // Eski kartın planı satış boyunca hiç ELLENMEDİ: borç oraya yazılıp geri alınsaydı satır
+        // kimlikleri değişirdi (toplam yine 5.000'e dönerdi — kimlik karşılaştırması bunu yakalar).
+        Assert.Equal(planBefore, await InstallmentIdsAsync(options, seed.OwnAccountId));
+
+        await using (var check = NewDb(options))
+        {
+            var accounts = await check.CustomerAccounts
+                .Include(a => a.Installments)
+                .Where(a => a.CustomerId == seed.CustomerId)
+                .ToListAsync();
+            Assert.Equal(2, accounts.Count); // satışın kartı kapandı, eski kartlar duruyor
+
+            var existing = accounts.Single(a => a.Id == seed.OwnAccountId);
+            Assert.Equal(5000m, existing.TotalAmount);
+            Assert.Equal(4, existing.Installments.Count);
+            Assert.Equal(5000m, existing.Installments.Sum(i => i.Amount));
+
+            Assert.Empty(await check.AccountPayments.ToListAsync()); // tahsilat doğru kartta bulundu
+            Assert.Empty(await check.Adisyonlar.ToListAsync());
+        }
+    }
+
+    /// <summary>Cariye bağlı fişe SATIŞ kalemi eklenemez; tahsilat kalemi (fişin asıl amacı) eklenebilir.</summary>
+    [Fact]
+    public async Task AddItem_SaleItemOntoAccountBoundAdisyon_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var created = await NewAdisyon(db).CreateAsync(seed.TenantId,
+                new CreateAdisyonRequest(seed.BranchId, seed.CustomerId, seed.OwnAccountId, "Cari tahsilatı"));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            adisyonId = created.Value!.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var service = NewAdisyon(db);
+            var sale = await service.AddItemAsync(seed.TenantId, adisyonId,
+                new AddAdisyonItemRequest(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 1250m, null, false));
+            Assert.True(sale.IsFailure, "Cariye bağlı fişe satış kalemi eklenebildi.");
+            Assert.Equal("Validation", sale.Error.Code);
+
+            var payment = await service.AddItemAsync(seed.TenantId, adisyonId,
+                new AddAdisyonItemRequest(AdisyonItemType.Payment, null, "Tahsilat", 1, 500m, null, false, "cash"));
+            Assert.True(payment.IsSuccess, payment.IsFailure ? payment.Error.Message : null);
+        }
+    }
+
+    /// <summary>Ters yön: önce satış kalemi eklenip SONRA mevcut cari bağlanarak da baypas edilemez.</summary>
+    [Fact]
+    public async Task UpdateAdisyon_BindingOwnAccountToSaleAdisyon_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var service = NewAdisyon(db);
+            var created = await service.CreateAsync(seed.TenantId,
+                new CreateAdisyonRequest(seed.BranchId, seed.CustomerId, null, null, ForceNew: true));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            adisyonId = created.Value!.Id;
+
+            var item = await service.AddItemAsync(seed.TenantId, adisyonId,
+                new AddAdisyonItemRequest(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 1250m, null, false));
+            Assert.True(item.IsSuccess, item.IsFailure ? item.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAdisyon(db).UpdateAsync(seed.TenantId, adisyonId,
+                new UpdateAdisyonRequest(seed.OwnAccountId, null));
+            Assert.True(result.IsFailure, "Satış fişi mevcut cariye bağlanabildi.");
+            Assert.Equal("Validation", result.Error.Code);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var adisyon = await check.Adisyonlar.SingleAsync(a => a.Id == adisyonId);
+            Assert.Null(adisyon.CustomerAccountId);
+        }
+    }
+
+    /// <summary>
+    /// ONAY SONRASI REBIND YOK: fiş onaylandıktan sonra cari bağı aynı müşterinin başka kartına
+    /// çevrilemez (para eski kartta kalıp borç yenisine geçerdi). Ret gerekçesi satış kuralı değil
+    /// ONAY DURUMU olsun diye fişte satış değil EK KALEM var.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAdisyon_RebindingApprovedAdisyon_IsRejected()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId, boundAccountId;
+
+        await using (var db = NewDb(options))
+        {
+            var service = NewAdisyon(db);
+            var created = await service.CreateAsync(seed.TenantId,
+                new CreateAdisyonRequest(seed.BranchId, seed.CustomerId, null, null, ForceNew: true));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            adisyonId = created.Value!.Id;
+
+            var item = await service.AddItemAsync(seed.TenantId, adisyonId,
+                new AddAdisyonItemRequest(AdisyonItemType.Extra, null, "Ek hizmet farkı", 1, 300m, null, false));
+            Assert.True(item.IsSuccess, item.IsFailure ? item.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+            boundAccountId = approved.Value!.CustomerAccountId!.Value;
+        }
+
+        // Hedef: müşterinin DİĞER kendi kartı (sahiplik kontrolünü geçer, kural yalnız duruma bakar).
+        var otherOwnAccountId = boundAccountId == seed.OwnAccountId ? seed.SecondOwnAccountId : seed.OwnAccountId;
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAdisyon(db).UpdateAsync(seed.TenantId, adisyonId,
+                new UpdateAdisyonRequest(otherOwnAccountId, "not"));
+            Assert.True(result.IsFailure, "Onaylı adisyonun cari bağı değiştirilebildi.");
+            Assert.Equal("Validation", result.Error.Code);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var adisyon = await check.Adisyonlar.SingleAsync(a => a.Id == adisyonId);
+            Assert.Equal(boundAccountId, adisyon.CustomerAccountId);
         }
     }
 }

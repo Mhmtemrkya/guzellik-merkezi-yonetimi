@@ -59,6 +59,21 @@ public sealed class Adisyon : Entity
 
     public IReadOnlyCollection<AdisyonItem> Items => _items.AsReadOnly();
 
+    /// <summary>
+    /// SATIŞ KALEMİ ölçütü — onaydaki "her satış kendi cari kartını açar" kuralının kapsadığı küme
+    /// ile BİREBİR aynıdır (paket satışı + paketten karşılanmayan hizmet/ürün satışı). Kural iki
+    /// yerde zorlanır (kalem ekleme / onay), ikisi de bu tek tanımı kullanır ki ölçüt ayrışmasın.
+    /// </summary>
+    public static bool IsSaleItem(AdisyonItemType type, Guid? refId, bool coveredByPackage) =>
+        refId.HasValue
+        && (type == AdisyonItemType.PackageSale
+            || ((type == AdisyonItemType.Service || type == AdisyonItemType.Product) && !coveredByPackage));
+
+    public static bool IsSaleItem(AdisyonItem item) => IsSaleItem(item.Type, item.RefId, item.CoveredByPackage);
+
+    /// <summary>Fişte satış kalemi var mı? Varsa fiş mevcut bir cariye BAĞLANAMAZ (kendi kartını açar).</summary>
+    public bool HasSaleItems => _items.Any(IsSaleItem);
+
     /// <summary>Cariye borç yazılacak net tutar: hizmet+ürün+ek+paket satışı kalemleri − indirimler (paketten karşılananlar hariç).</summary>
     public decimal ChargeTotal =>
         _items.Where(i => (i.Type == AdisyonItemType.Service || i.Type == AdisyonItemType.Product || i.Type == AdisyonItemType.Extra || i.Type == AdisyonItemType.PackageSale) && !i.CoveredByPackage)
@@ -74,8 +89,20 @@ public sealed class Adisyon : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Fişin cari bağını kurar/kaldırır — YALNIZCA AÇIK fişte.
+    ///
+    /// <para>
+    /// Durum kontrolü yoktu: onaylanmış bir fişin bağı aynı müşterinin BAŞKA kartına
+    /// çevrilebiliyordu. Onayda tahsilat, seans bakiyesi ve taksit planı ilk cariye yazıldığı için
+    /// sonuç kalıcı ayrışmaydı — para eski kartta kalır, borç yeni karta geçer, silme/iptal ters
+    /// kaydı ise tahsilatı artık orada olmayan kartta arardı. Onay akışı bu metodu fiş HÂLÂ açıkken
+    /// (Approve'dan önce) çağırır, kısıt onu etkilemez.
+    /// </para>
+    /// </summary>
     public void SetCustomerAccount(Guid? accountId)
     {
+        EnsureOpen();
         CustomerAccountId = accountId;
         Touch();
     }
