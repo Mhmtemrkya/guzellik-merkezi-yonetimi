@@ -200,6 +200,19 @@ public sealed class AppointmentService : IAppointmentService
         // Randevu açılamadıysa COMMIT YOK → satış da geri alınır.
         if (created.IsFailure) return created;
 
+        // SATIŞ ↔ RANDEVU KALICI BAĞI. Tamamlamada tahsilatın hangi satışın carisine yazılacağı
+        // buradan bilinir; bağ olmadan hedef satış kalemlerinin HİZMETİYLE tahmin ediliyordu ve
+        // müşterinin AYNI hizmet için iki bekleyen satışı varsa daima en eskisi seçiliyordu
+        // (ikinci randevu önce tamamlanınca para yanlış satışa yazılırdı). Aynı transaction.
+        // Find: kayıt bu istekte oluşturulduğu için izleyicide DURUYOR → ne ek sorgu ne de global
+        // şube süzgeci araya girer (süzgeç eşleşmezse bağ sessizce kurulmadan kalırdı).
+        var appointment = await _db.Appointments.FindAsync([created.Value!.Id], cancellationToken);
+        if (appointment is not null && appointment.TenantId == tenantId)
+        {
+            appointment.LinkToSaleAdisyon(sold.Value);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         if (tx is not null) await tx.CommitAsync(cancellationToken);
         return created;
     }
@@ -207,8 +220,9 @@ public sealed class AppointmentService : IAppointmentService
     /// <summary>
     /// Katalog satışını açar: kendi adisyonu (forceNew) + cariye ŞİMDİ işlenmez
     /// (autoApproveOnFirstAppointment) — randevu tamamlanınca backend otomatik onaylar.
+    /// Açılan fişin kimliğini döndürür: randevu ona bağlanır (tahsilat hedefi bu bağla bulunur).
     /// </summary>
-    private async Task<Result> SellForAppointmentAsync(Guid tenantId, Guid customerId, AppointmentCatalogSaleDto sale, CancellationToken ct)
+    private async Task<Result<Guid>> SellForAppointmentAsync(Guid tenantId, Guid customerId, AppointmentCatalogSaleDto sale, CancellationToken ct)
     {
         // Katalog kaydı ve fiyatı SUNUCUDAN okunur: istemcinin gönderdiği fiyata güvenilmez.
         string description;
@@ -220,7 +234,7 @@ public sealed class AppointmentService : IAppointmentService
         {
             var pkg = await _db.ServicePackages.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == packageId, ct);
-            if (pkg is null) return Result.Failure(Error.NotFound("Paket bulunamadı."));
+            if (pkg is null) return Result<Guid>.Failure(Error.NotFound("Paket bulunamadı."));
             itemType = AdisyonItemType.PackageSale;
             refId = pkg.Id;
             description = $"Paket satışı: {pkg.Name}";
@@ -230,7 +244,7 @@ public sealed class AppointmentService : IAppointmentService
         {
             var svc = await _db.ServiceDefinitions.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sale.ServiceDefinitionId!.Value, ct);
-            if (svc is null) return Result.Failure(Error.NotFound("Hizmet bulunamadı."));
+            if (svc is null) return Result<Guid>.Failure(Error.NotFound("Hizmet bulunamadı."));
             itemType = AdisyonItemType.Service;
             refId = svc.Id;
             description = svc.Name;
@@ -239,11 +253,13 @@ public sealed class AppointmentService : IAppointmentService
 
         var adisyon = await _adisyon.CreateAsync(tenantId,
             new CreateAdisyonRequest(null, customerId, null, null, ForceNew: true, AutoApproveOnFirstAppointment: true), ct);
-        if (adisyon.IsFailure) return Result.Failure(adisyon.Error);
+        if (adisyon.IsFailure) return Result<Guid>.Failure(adisyon.Error);
 
         var item = await _adisyon.AddItemAsync(tenantId, adisyon.Value!.Id,
             new AddAdisyonItemRequest(itemType, refId, description, 1, unitPrice, sale.StaffMemberId, false), ct);
-        return item.IsFailure ? Result.Failure(item.Error) : Result.Success();
+        return item.IsFailure
+            ? Result<Guid>.Failure(item.Error)
+            : Result<Guid>.Success(adisyon.Value!.Id);
     }
 
     public async Task<Result<AppointmentDto>> CreateAsync(Guid tenantId, CreateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
@@ -1020,10 +1036,17 @@ public sealed class AppointmentService : IAppointmentService
             // Müşterinin aynı anda birden çok bekleyen satışı olabilir (A hizmeti için satış+randevu,
             // sonra B hizmeti için satış+randevu). Hepsi burada onaylanır (Faz 2 kuralı), ama ilk
             // onaylananın carisini hedef almak B randevusunun parasını A satışına yazıyordu: B
-            // ödenmemiş görünüyor, A fazla tahsilat alıyordu. Bu yüzden bu randevunun HİZMETİNE
-            // karşılık gelen satış ayrıca belirlenir.
-            var matchingSaleId = await FindSaleForServiceAsync(
-                tenantId, pendingSaleIds, appointment.ServiceDefinitionId, cancellationToken);
+            // ödenmemiş görünüyor, A fazla tahsilat alıyordu.
+            //
+            // 1) KALICI BAĞ önce gelir: randevu satışla birlikte açıldıysa (randevu+satış atomik ucu,
+            //    bekleme listesi dönüşümü) hangi fişten doğduğu KESİN bilinir.
+            // 2) Bağsız kayıtlarda (eski randevular, ayrı akışlar) hizmet eşleştirmesine düşülür.
+            //    Eşleştirme AYNI hizmetin iki bekleyen satışını ayırt EDEMEZ — daima en eskisini
+            //    seçer; kalıcı bağ tam olarak bu boşluğu kapatır.
+            var matchingSaleId = appointment.SourceAdisyonId is { } linkedSaleId && pendingSaleIds.Contains(linkedSaleId)
+                ? linkedSaleId
+                : await FindSaleForServiceAsync(
+                    tenantId, pendingSaleIds, appointment.ServiceDefinitionId, cancellationToken);
 
             foreach (var saleId in pendingSaleIds)
             {

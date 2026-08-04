@@ -413,6 +413,72 @@ public sealed class SaleAccountIntegrityTests
         }
     }
 
+    // ── 5) Net tutarı SIFIR olan satış da kendi kartını açar ──────────────────────────────
+
+    /// <summary>Ürün ekler ve satış fişini onaylar; müşterinin kartlarını döndürür.</summary>
+    private static async Task<List<CustomerAccount>> ApproveProductSaleAsync(
+        DbContextOptions<GuzellikDbContext> options, Seed seed, decimal salePrice, decimal discount)
+    {
+        Guid adisyonId;
+        await using (var db = NewDb(options))
+        {
+            var product = new Product(seed.TenantId, seed.BranchId, "Bakım Şampuanı", ProductCategory.Other, "adet",
+                cost: 40m, salePrice: salePrice, currentStock: 5m, minStockLevel: 0m);
+            db.Products.Add(product);
+            await db.SaveChangesAsync();
+
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(
+                AdisyonItemType.Product, product.Id, "Bakım Şampuanı", 1, salePrice, null, false));
+            if (discount > 0)
+                db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Discount, null, "İndirim", 1, discount, null, false));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var approve = NewDb(options))
+        {
+            var approved = await NewAdisyon(approve).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        await using var check = NewDb(options);
+        return await check.CustomerAccounts
+            .Where(a => a.CustomerId == seed.CustomerId && a.Id != seed.OwnAccountId && a.Id != seed.SecondOwnAccountId)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// BEDELSİZ ÜRÜN SATIŞI da kendi kartını açar. Kart açma kapısı ürün kalemini hiç saymıyordu:
+    /// birim fiyat 0 iken stok düşüyor, fiş onaylanıyor, ama satışın cari kartı hiç oluşmuyordu.
+    /// </summary>
+    [Fact]
+    public async Task Approve_ZeroPricedProductSale_StillOpensItsOwnAccount()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        var sale = Assert.Single(await ApproveProductSaleAsync(options, seed, salePrice: 0m, discount: 0m));
+        Assert.Equal(0m, sale.TotalAmount);
+        Assert.Equal("Bakım Şampuanı", sale.Name);
+    }
+
+    /// <summary>
+    /// İNDİRİMLE NET TUTARI SIFIRLANAN satış da kendi kartını açar (kapı charge &gt; 0'a bakıyordu).
+    /// </summary>
+    [Fact]
+    public async Task Approve_ProductSaleDiscountedToZero_StillOpensItsOwnAccount()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        var sale = Assert.Single(await ApproveProductSaleAsync(options, seed, salePrice: 500m, discount: 500m));
+        Assert.Equal(0m, sale.TotalAmount);   // borç yok ama satış kartı VAR
+        Assert.Equal("Bakım Şampuanı", sale.Name);
+    }
+
     /// <summary>
     /// ONAY SONRASI REBIND YOK: fiş onaylandıktan sonra cari bağı aynı müşterinin başka kartına
     /// çevrilemez (para eski kartta kalıp borç yenisine geçerdi). Ret gerekçesi satış kuralı değil

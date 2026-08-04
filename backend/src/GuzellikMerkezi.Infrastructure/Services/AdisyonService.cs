@@ -627,7 +627,12 @@ public sealed class AdisyonService : IAdisyonService
 
         var newlyCreated = false;
         Guid? accountId = adisyon.CustomerAccountId;
-        if ((charge > 0 || payment > 0 || packageSaleItems.Count > 0 || serviceSaleItems.Count > 0) && accountId is null)
+        // KAPI KOŞULU SATIŞIN TAMAMINI KAPSAR (isSale). Eskiden paket/hizmet satışı tek tek sayılıyor,
+        // ÜRÜN satışı hiç sayılmıyordu: net tutarı 0 olan ürün satışında (bedelsiz ürün ya da tutarı
+        // indirimle sıfırlanan satış) charge/payment de 0 olduğundan kapı hiç açılmıyordu. Stok
+        // düşüyor, fiş onaylanıyor, ama satışın cari kartı OLUŞMUYORDU — "her satış kendi kartını
+        // açar" kuralı bu uçta sessizce bozuluyordu. Tutarsız kart 0 TL açılır: kayıt görünür kalsın.
+        if ((isSale || charge > 0 || payment > 0) && accountId is null)
         {
             if (isSale || (hasInstallmentPlan && charge > 0))
             {

@@ -65,6 +65,28 @@ public sealed class Appointment : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Bu randevuyu AÇAN satış fişi (randevu+satış atomik ucu). Randevu tamamlanınca müşterinin
+    /// "ilk randevuda işle" bekleyen TÜM satışları onaylanır; tahsilatın HANGİ satışın carisine
+    /// yazılacağı bu bağdan bilinir.
+    ///
+    /// <para>
+    /// Bağ yokken hedef, satış kalemlerinin HİZMETİ eşleştirilerek tahmin ediliyordu. Müşterinin
+    /// AYNI hizmet için iki bekleyen satışı varsa (iki ayrı seans ayrı ayrı satıldı) eşleşme daima
+    /// en eski fişi seçiyor, ikinci randevu önce tamamlandığında para yanlış satışa yazılıyor ve o
+    /// satış ödenmemiş görünüyordu. Eski kayıtlarda null → sezgisel eşleştirme onlar için korunur.
+    /// </para>
+    /// </summary>
+    public Guid? SourceAdisyonId { get; private set; }
+
+    /// <summary>Randevuyu, onu açan satış fişine bağlar.</summary>
+    public void LinkToSaleAdisyon(Guid? adisyonId)
+    {
+        if (SourceAdisyonId == adisyonId) return;
+        SourceAdisyonId = adisyonId;
+        Touch();
+    }
+
     /// <summary>Sıralı randevu numarasını atar (yalnızca bir kez, oluşturma anında).</summary>
     public void AssignNumber(int number)
     {

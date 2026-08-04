@@ -63,9 +63,13 @@ public sealed class MultiPendingSalePaymentMySqlTests
         return new Seed(tenant.Id, branch.Id, customer.Id, staff.Id, serviceA.Id, serviceB.Id);
     }
 
-    /// <summary>Randevu + bekleyen satış açar; randevunun kimliğini döndürür.</summary>
-    private static async Task<Guid> CreateSaleAndAppointmentAsync(
-        MySqlTestDatabase database, Seed seed, Guid serviceId, int hourOffset)
+    /// <summary>
+    /// Randevu + bekleyen satış açar; randevunun VE o istekte açılan fişin kimliğini döndürür.
+    /// Fiş, "önceden bilinenler" kümesinin dışında kalan tek kayıt olarak bulunur: satışları
+    /// zaman damgasına ya da test edilen bağın kendisine bakmadan ayırt etmek için.
+    /// </summary>
+    private static async Task<(Guid AppointmentId, Guid AdisyonId)> CreateSaleAndAppointmentAsync(
+        MySqlTestDatabase database, Seed seed, Guid serviceId, int hourOffset, HashSet<Guid> knownAdisyonIds)
     {
         await using var db = database.NewContext();
         var request = new CreateAppointmentWithSaleRequest(
@@ -77,7 +81,11 @@ public sealed class MultiPendingSalePaymentMySqlTests
 
         var created = await NewAppointments(db).CreateWithSaleAsync(seed.TenantId, request);
         Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
-        return created.Value!.Id;
+
+        var adisyonId = (await db.Adisyonlar.AsNoTracking().Select(a => a.Id).ToListAsync())
+            .Single(id => !knownAdisyonIds.Contains(id));
+        knownAdisyonIds.Add(adisyonId);
+        return (created.Value!.Id, adisyonId);
     }
 
     /// <summary>
@@ -89,9 +97,10 @@ public sealed class MultiPendingSalePaymentMySqlTests
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
         var seed = await SeedAsync(database);
+        var known = new HashSet<Guid>();
 
-        await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 2);
-        var appointmentB = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceB, 6);
+        await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 2, known);
+        var (appointmentB, _) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceB, 6, known);
 
         await using (var db = database.NewContext())
         {
@@ -116,6 +125,61 @@ public sealed class MultiPendingSalePaymentMySqlTests
 
             Assert.Equal(2000m, saleB.Payments.Sum(p => p.Amount));
             Assert.Equal(0m, saleA.Payments.Sum(p => p.Amount));
+        }
+    }
+
+    /// <summary>
+    /// AYNI HİZMETE ait iki bekleyen satış — hizmet eşleştirmesinin ayırt EDEMEDİĞİ durum.
+    ///
+    /// <para>
+    /// Müşteri aynı hizmetten iki seans ayrı ayrı satın alır (iki fiş, iki randevu). İkinci randevu
+    /// önce tamamlanınca hizmet eşleştirmesi daima EN ESKİ fişi seçiyor ve para birinci satışın
+    /// carisine yazılıyordu: ikinci satış ödenmemiş görünürdü. Randevu artık kendisini açan fişe
+    /// kalıcı olarak bağlıdır (<c>Appointment.SourceAdisyonId</c>) ve tahsilat o fişe gider.
+    /// </para>
+    ///
+    /// <para>
+    /// Fişler zaman damgasıyla DEĞİL, oluşturma sırasında toplanan kimliklerle ayırt edilir; iki
+    /// fiş aynı saniyede açılabilir ve tutarları da eşittir.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task CompleteWithPayment_TwoPendingSalesForSameService_PaysTheAppointmentsOwnSale()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        var known = new HashSet<Guid>();
+
+        var (_, firstSaleId) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 2, known);
+        var (secondAppointmentId, secondSaleId) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 6, known);
+
+        await using (var db = database.NewContext())
+        {
+            var complete = new CompleteAppointmentRequest(null,
+                new CompleteAppointmentPaymentDto(1000m, "cash", "Randevu tahsilatı", null, DateTime.UtcNow));
+            var done = await NewAppointments(db).CompleteWithPaymentAsync(seed.TenantId, secondAppointmentId, complete);
+            Assert.True(done.IsSuccess, done.IsFailure ? done.Error.Message : null);
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var sales = await check.Adisyonlar.AsNoTracking()
+                .Where(a => a.Id == firstSaleId || a.Id == secondSaleId)
+                .Select(a => new { a.Id, a.CustomerAccountId })
+                .ToListAsync();
+            var firstAccountId = sales.Single(a => a.Id == firstSaleId).CustomerAccountId;
+            var secondAccountId = sales.Single(a => a.Id == secondSaleId).CustomerAccountId;
+            Assert.NotNull(firstAccountId);
+            Assert.NotNull(secondAccountId);
+            Assert.NotEqual(firstAccountId, secondAccountId); // her satış kendi kartını açtı
+
+            var accounts = await check.CustomerAccounts
+                .Include(a => a.Payments)
+                .Where(a => a.CustomerId == seed.CustomerId)
+                .ToListAsync();
+
+            Assert.Equal(1000m, accounts.Single(a => a.Id == secondAccountId).Payments.Sum(p => p.Amount));
+            Assert.Equal(0m, accounts.Single(a => a.Id == firstAccountId).Payments.Sum(p => p.Amount));
         }
     }
 }
