@@ -51,7 +51,28 @@ public sealed class CustomerOtpService
     private readonly IHostEnvironment _env;
     private readonly ILogger<CustomerOtpService> _logger;
 
-    public CustomerOtpService(GuzellikDbContext db, IMemoryCache cache, IPlatformMessagingService messaging, IAuthService auth, IHostEnvironment env, ILogger<CustomerOtpService> logger)
+    /// <summary>
+    /// MAĞAZA İNCELEME HESABI — App Store / Play Store denetçileri için.
+    /// <para>
+    /// Denetçiler uygulamayı test ederken WhatsApp'a kod ALAMAZ; hesap açamayınca uygulama
+    /// reddedilir. Bu yüzden yalnızca BU telefon numarası için kod rastgele üretilmez ve
+    /// gönderilmez: sabit kod kullanılır. Denetçiye bu bilgiler
+    /// mağaza panelindeki "demo hesap" alanından verilir.
+    /// </para>
+    /// <para>
+    /// DOĞRULAMANIN GERİ KALANI AYNEN GEÇERLİDİR: kimlik eşleşmesi (ad + doğum tarihi),
+    /// tek kullanım, deneme freni, istek freni. Yani bu, "OTP'yi kapatmak" DEĞİLDİR —
+    /// gerçek müşterilerin verisi korunmaya devam eder. OTP tümden kaldırılsaydı, ad +
+    /// telefon + doğum tarihi bilen herkes o müşterinin randevu ve iletişim geçmişine girerdi.
+    /// </para>
+    /// <para>
+    /// Tanımsızsa (varsayılan) özellik tamamen KAPALIDIR. İnceleme bitince config'ten kaldırın.
+    /// </para>
+    /// </summary>
+    private readonly string? _demoPhoneKey;
+    private readonly string? _demoCode;
+
+    public CustomerOtpService(GuzellikDbContext db, IMemoryCache cache, IPlatformMessagingService messaging, IAuthService auth, IHostEnvironment env, IConfiguration configuration, ILogger<CustomerOtpService> logger)
     {
         _db = db;
         _cache = cache;
@@ -59,7 +80,24 @@ public sealed class CustomerOtpService
         _auth = auth;
         _env = env;
         _logger = logger;
+
+        var phone = configuration["CustomerOtp:StoreReviewPhone"];
+        var code = configuration["CustomerOtp:StoreReviewCode"];
+        // İkisi de dolu olmadan devreye girmez; yarım yapılandırma sessizce "açık" sayılmasın.
+        if (!string.IsNullOrWhiteSpace(phone) && !string.IsNullOrWhiteSpace(code?.Trim()))
+        {
+            _demoPhoneKey = PhoneMask.LoginKey(phone);
+            _demoCode = code!.Trim();
+            _logger.LogWarning(
+                "MAĞAZA İNCELEME HESABI AÇIK: {Phone} numarası için sabit doğrulama kodu kullanılıyor. " +
+                "İnceleme bittiğinde CustomerOtp:StoreReviewPhone/StoreReviewCode ayarlarını KALDIRIN.",
+                PhoneMask.Mask(phone));
+        }
     }
+
+    /// <summary>Bu telefon mağaza inceleme hesabı mı? (yapılandırılmadıysa her zaman false)</summary>
+    private bool IsStoreReviewPhone(string phoneKey) =>
+        _demoPhoneKey is not null && string.Equals(phoneKey, _demoPhoneKey, StringComparison.Ordinal);
 
     private sealed class OtpEntry
     {
@@ -136,21 +174,32 @@ public sealed class CustomerOtpService
             shouldSend = candidates.Any(c => PhoneMask.LoginKey(c.Phone) == key && NormalizeName(c.FullName) == name);
         }
 
+        // MAĞAZA İNCELEME HESABI: denetçi WhatsApp'a kod alamayacağı için bu numarada kod
+        // rastgele üretilmez ve gönderilmez. Kimlik eşleşmesi zorunluluğu (yukarıdaki
+        // shouldSend) DEĞİŞMEZ — yani kayıt gerçekten var olmalıdır.
+        var isReview = IsStoreReviewPhone(key);
+
         string? devCode = null;
         if (shouldSend)
         {
-            var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var code = isReview
+                ? _demoCode!
+                : RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
             _cache.Set(
                 CacheKey(key, purpose),
                 new OtpEntry { Code = code, Identity = IdentityOf(request.FullName, request.BirthDate) },
                 CodeLifetime);
-            try
+
+            if (!isReview)
             {
-                await _messaging.SendWhatsAppAsync(request.Phone, $"BeautyAsist giriş kodunuz: {code}. Kod 5 dakika geçerlidir. Kimseyle paylaşmayın.", ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "OTP WhatsApp gönderilemedi.");
+                try
+                {
+                    await _messaging.SendWhatsAppAsync(request.Phone, $"BeautyAsist giriş kodunuz: {code}. Kod 5 dakika geçerlidir. Kimseyle paylaşmayın.", ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "OTP WhatsApp gönderilemedi.");
+                }
             }
             // Geliştirme ortamında kodu yanıtla da döndür (simülasyonda gerçek gönderim yapılmaz).
             if (_env.IsDevelopment()) devCode = code;
