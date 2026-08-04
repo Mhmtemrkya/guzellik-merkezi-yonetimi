@@ -526,24 +526,34 @@ public sealed class AdisyonService : IAdisyonService
             .Concat(serviceSaleItems)
             .Concat(productSaleItems)
             .ToList();
-        // Satış taksitlendirildiyse bu satışa AİT yeni cari aç (mevcut cariyi kullanma) ki taksit
-        // planı temiz kurulsun ve her satışın kendi planı olsun. Peşin satışta eski davranış: mevcut
-        // aktif cari varsa ona yaz, yoksa tek bir "Adisyon · tarih" carisi aç.
+        // HER SATIŞ KENDİ CARİ KARTINI AÇAR.
+        //
+        // Eskiden yalnız TAKSİTLİ satış kendi carisini açıyor, peşin satış "mevcut aktif cari varsa
+        // ona yaz" diyordu. Sonuç: geçmişi olan müşteriye yapılan yeni satış, aylar önce açılmış bir
+        // kartın toplamını sessizce şişiriyor ve Ön Muhasebe → Cari Hesaplar'da O SATIŞA ait bir kart
+        // hiç görünmüyordu (randevu modalinden hizmet satıp randevuyu tamamlayınca da böyle oluyordu).
+        // Adisyon tarafında aynı hata ForceNew ile kapatılmıştı; cari katmanında açık kalmış.
+        // Kural artık tek: fişte SATIŞ kalemi (paket/hizmet/ürün) varsa satışın kendi kartı açılır.
+        // Satış kalemi olmayan fiş (yalnız tahsilat / ek kalem / indirim) eski davranışı korur —
+        // o para mevcut cariye aittir, yeni bir "satış" kartı üretmemelidir.
         var hasInstallmentPlan = adisyon.PlannedInstallmentCount > 0 && adisyon.PlannedFirstDueDate.HasValue;
+        var isSale = namedSaleItems.Count > 0;
         var newlyCreated = false;
         Guid? accountId = adisyon.CustomerAccountId;
         if ((charge > 0 || payment > 0 || packageSaleItems.Count > 0 || serviceSaleItems.Count > 0) && accountId is null)
         {
-            if (hasInstallmentPlan && charge > 0)
+            if (isSale || (hasInstallmentPlan && charge > 0))
             {
                 // İsim: tek paket/hizmet/ürün satışıysa onun adı, değilse genel. (ServicePackageId NULL bırakılır —
                 // adisyon satışı paketi kalemde tutar; cariye de bağlanırsa rapor paketi çift sayar.)
-                var name = namedSaleItems.Count == 1 ? namedSaleItems[0].Description
-                    : $"Taksitli satış · {saleAtUtc:dd.MM.yyyy}";
+                var name = namedSaleItems.Count == 1
+                    ? namedSaleItems[0].Description
+                    : $"{(hasInstallmentPlan ? "Taksitli satış" : "Satış")} · {saleAtUtc:dd.MM.yyyy}";
                 var account = new CustomerAccount(tenantId, adisyon.BranchId, adisyon.CustomerId, null,
                     name, Math.Max(0, charge), 0m);
                 account.SetSaleInfo(saleAtUtc, null);
-                account.RebuildInstallments(adisyon.PlannedInstallmentCount, adisyon.PlannedFirstDueDate!.Value);
+                if (hasInstallmentPlan && charge > 0)
+                    account.RebuildInstallments(adisyon.PlannedInstallmentCount, adisyon.PlannedFirstDueDate!.Value);
                 _db.CustomerAccounts.Add(account);
                 accountId = account.Id;
                 newlyCreated = true;

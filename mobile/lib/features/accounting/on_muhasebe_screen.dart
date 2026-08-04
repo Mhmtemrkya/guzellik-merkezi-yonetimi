@@ -705,12 +705,18 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       ].join(' ').toLowerCase();
       return hay.contains(query);
     }).toList()
+      // SIRALAMA: EN YENİ CARİ HER ZAMAN EN ÜSTTE (web paritesi).
+      //
+      // Eskiden gecikenler önce, sonra açık hesaplar (en yakın vade) diye diziliyordu: yeni açılan
+      // bir satış listenin ortasına düşüyor, "az önce yaptığım satış nerede" diye aranıyordu.
+      // Geciken/açık/kapalı ayrımı zaten üstteki süzgeç çipleriyle yapılıyor; sıralamanın taşıması
+      // gereken bilgi TAZELİK. Aynı anda açılan kayıtlarda vade sırası ikincil ölçüt kalır.
       ..sort((a, b) {
-        final ao = hasOverdue(a), bo = hasOverdue(b);
-        if (ao != bo) return ao ? -1 : 1;
-        final aOpen = numberOf(a, const ['remainingAmount']) > 0.005;
-        final bOpen = numberOf(b, const ['remainingAmount']) > 0.005;
-        if (aOpen != bOpen) return aOpen ? -1 : 1;
+        final at = DateTime.tryParse(valueOf(a, const ['createdAtUtc'], fallback: ''));
+        final bt = DateTime.tryParse(valueOf(b, const ['createdAtUtc'], fallback: ''));
+        final am = at?.millisecondsSinceEpoch ?? 0;
+        final bm = bt?.millisecondsSinceEpoch ?? 0;
+        if (am != bm) return bm.compareTo(am);
         return valueOf(a, const ['nextDueDate'], fallback: '9999')
             .compareTo(valueOf(b, const ['nextDueDate'], fallback: '9999'));
       });

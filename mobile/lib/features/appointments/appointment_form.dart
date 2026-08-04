@@ -1,6 +1,9 @@
+﻿import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
@@ -8,6 +11,7 @@ import '../../shared/json_helpers.dart';
 import '../accounting/account_installments.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
+import '../customers/consultation_form_screen.dart';
 import '../customers/customer_picker.dart';
 import 'appointment_help_sheet.dart';
 import 'calendar_theme.dart';
@@ -60,6 +64,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
   List<Map<String, dynamic>> customers = [];
   List<Map<String, dynamic>> staff = [];
   List<Map<String, dynamic>> services = [];
+  List<Map<String, dynamic>> packages = [];
   String? customerId;
   // Seçici alt sayfasından dönen ad — customers listesinde bulunamazsa yedek.
   String? customerName;
@@ -75,11 +80,26 @@ class _AppointmentFormState extends State<AppointmentForm> {
   List<Map<String, dynamic>> _accounts = [];
   List<Map<String, dynamic>> _sessions = [];
 
-  /// KATALOGDAN SAT (web paritesi): seçilen hizmetin kalan seansı yoksa randevu normalde
-  /// katalog fiyatıyla ÜCRETLİ açılır. Bu anahtar açıkken bunun yerine hizmet SATIŞI açılır
-  /// (kendi adisyonu, cariye şimdi işlenmez) ve randevu ücretsiz gider; randevu tamamlanınca
-  /// backend satışı otomatik onaylar ve seans o an oluşur.
-  bool _sellFromCatalog = false;
+  /// MÜŞTERİ BİLGİ VE ONAY FORMU (web `ConsultationWarningBanner` paritesi).
+  /// null = henüz bakılmadı / plan kapsamı dışı → hiçbir şey gösterme.
+  /// false = form YOK (doldurulmalı), true = form var.
+  bool? _hasConsultation;
+
+  /// İŞLEM = HİZMET ya da PAKET (web AppointmentEditor paritesi).
+  ///
+  /// - **Hizmet**: katalogdan hizmet seçilir. Müşterinin o hizmete kalan seansı varsa randevu
+  ///   O SEANSA açılır (satış yok); yoksa randevuyla birlikte hizmet SATIŞI açılır — cariye
+  ///   şimdi işlenmez, randevu tamamlanınca borç ve seans oluşur.
+  /// - **Paket**: YALNIZCA müşterinin satın aldığı paketler, içindeki her işlemden kaç seans
+  ///   kaldığıyla listelenir; randevu seçilen satıra açılır. Buradan paket SATILMAZ — paket
+  ///   satışının kendi modalı var ("Paket sat").
+  ///
+  /// Eskiden burada "Bu hizmeti sat" anahtarı vardı ve KAPALIYKEN randevu katalog fiyatıyla
+  /// ÜCRETLİ açılıyordu: para ne adisyona ne cariye yazıldığı için Ön Muhasebe'de hiç
+  /// görünmüyordu. Artık hakkı olmayan hizmet her zaman satışa dönüşür (web ile aynı).
+  String _workKind = 'service'; // 'service' | 'package'
+  /// Satın alınmış pakette seçilen satır: `${packageId}|${serviceDefinitionId}`
+  String? _ownedPick;
   bool _dossierLoading = false;
 
   /// Geçmiş panelini (seans/işlem/ödeme tabloları) tazeleyen sayaç — satış veya
@@ -102,13 +122,30 @@ class _AppointmentFormState extends State<AppointmentForm> {
     await _loadDossier();
   }
 
+  /// Bilgi ve onay formu var mı? Yoksa randevu adımında uyarı + "Formu doldur" çıkar.
+  /// Hata/plan kapsamı dışı → null bırakılır ve hiçbir şey gösterilmez (akış bozulmasın).
+  Future<void> _loadConsultation() async {
+    final cid = customerId;
+    if (cid == null || cid.isEmpty) {
+      if (mounted) setState(() => _hasConsultation = null);
+      return;
+    }
+    try {
+      final res = await widget.api.get('/api/admin/customers/$cid/consultation');
+      if (mounted) setState(() => _hasConsultation = res is Map && res.isNotEmpty);
+    } catch (_) {
+      if (mounted) setState(() => _hasConsultation = null);
+    }
+  }
+
   /// Müşteri değişince dosyayı tazeler. Satış/tahsilat sonrası da çağrılır.
   Future<void> _loadDossier() async {
     final cid = customerId;
     if (cid == null || cid.isEmpty) {
-      if (mounted) setState(() { _accounts = []; _sessions = []; });
+      if (mounted) setState(() { _accounts = []; _sessions = []; _hasConsultation = null; });
       return;
     }
+    unawaited(_loadConsultation());
     if (mounted) setState(() => _dossierLoading = true);
     try {
       final res = await Future.wait([
@@ -126,6 +163,11 @@ class _AppointmentFormState extends State<AppointmentForm> {
             .toList();
         _sessions = apiItems(res[1]);
       });
+      // Açılış sekmesi: müşterinin kullanılabilir paketi varsa PAKET'ten başla (randevu
+      // çoğunlukla ona açılır), yoksa HİZMET. Kullanıcı seçim yaptıysa dokunma.
+      if (mounted && serviceId == null && _ownedPick == null) {
+        setState(() => _workKind = _hasBookablePackage ? 'package' : 'service');
+      }
     } catch (_) {
       if (mounted) setState(() { _accounts = []; _sessions = []; });
     } finally {
@@ -158,6 +200,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
           : Future.value(const <String, dynamic>{}),
       widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
       widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 200}),
+      // Paket sekmesi: satın alınmış paketin ADI ve katalogdan yeni paket satışı için.
+      widget.api
+          .get('/api/admin/packages/', query: {'page': 1, 'pageSize': 200})
+          .catchError((_) => const <String, dynamic>{}),
     ]);
     final presetCustomer =
         values[0] is Map ? (values[0] as Map).cast<String, dynamic>() : null;
@@ -166,6 +212,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
         : [];
     staff = apiItems(values[1]);
     services = apiItems(values[2]);
+    packages = apiItems(values[3]);
     customerId =
         (preset != null && customers.isNotEmpty) ? preset : null;
     staffId = widget.presetStaffId ??
@@ -392,6 +439,69 @@ class _AppointmentFormState extends State<AppointmentForm> {
       '${s['serviceDefinitionId']}' == serviceId &&
       (((s['remainingSessions'] as num?)?.toInt() ?? 0) > 0));
 
+  /// Hizmet → müşterinin kalan seans sayısı (0 olanlar da haritada değil, yalnız pozitifler).
+  Map<String, int> get _remainingByService {
+    final map = <String, int>{};
+    for (final s in _sessions) {
+      final id = '${s['serviceDefinitionId']}';
+      if (id.isEmpty || id == 'null') continue;
+      final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
+      if (remaining <= 0) continue;
+      map[id] = (map[id] ?? 0) + remaining;
+    }
+    return map;
+  }
+
+  /// MÜŞTERİNİN SATIN ALDIĞI PAKETLER — paket → içindeki hizmetlerin seans kırılımı.
+  /// Tekil hizmet satışında ServicePackageId boş GUID gelir; o satırlar pakete girmez.
+  List<Map<String, dynamic>> get _ownedPackages {
+    const emptyGuid = '00000000-0000-0000-0000-000000000000';
+    final map = <String, Map<String, dynamic>>{};
+    for (final s in _sessions) {
+      final pid = '${s['servicePackageId']}';
+      final sid = '${s['serviceDefinitionId']}';
+      if (pid.isEmpty || pid == 'null' || pid == emptyGuid) continue;
+      if (sid.isEmpty || sid == 'null') continue;
+      final pkg = packages.firstWhere((p) => '${p['id']}' == pid,
+          orElse: () => const <String, dynamic>{});
+      final entry = map[pid] ??= {
+        'packageId': pid,
+        'name': '${pkg['name'] ?? 'Paket'}',
+        'rows': <Map<String, dynamic>>[],
+      };
+      final rows = entry['rows'] as List<Map<String, dynamic>>;
+      final row = rows.firstWhere((r) => r['serviceDefinitionId'] == sid,
+          orElse: () => const <String, dynamic>{});
+      final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
+      final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
+      if (row.isEmpty) {
+        rows.add({
+          'serviceDefinitionId': sid,
+          'serviceName': '${s['serviceName'] ?? 'Hizmet'}',
+          'remaining': remaining,
+          'total': total,
+        });
+      } else {
+        row['remaining'] = (row['remaining'] as int) + remaining;
+        row['total'] = (row['total'] as int) + total;
+      }
+    }
+    final list = map.values.toList();
+    list.sort((a, b) => _pkgRemaining(b).compareTo(_pkgRemaining(a)));
+    return list;
+  }
+
+  static int _pkgRemaining(Map<String, dynamic> pkg) => (pkg['rows'] as List)
+      .fold<int>(0, (n, r) => n + ((r as Map)['remaining'] as int));
+
+  bool get _hasBookablePackage => _ownedPackages.any((p) => _pkgRemaining(p) > 0);
+
+  /// Seçimi sıfırlar — sekme değişince önceki seçim (ve satış riski) taşınmasın.
+  void _clearWorkSelection() {
+    serviceId = null;
+    _ownedPick = null;
+  }
+
   Future<void> save() async {
     if (customerId == null || staffId == null) return;
     if (serviceId == null) {
@@ -399,13 +509,16 @@ class _AppointmentFormState extends State<AppointmentForm> {
           const SnackBar(content: Text('Lütfen bir hizmet/işlem seçin.')));
       return;
     }
-    final service = services.firstWhere((e) => '${e['id']}' == serviceId);
+    // Paket sekmesinden gelen hizmet katalogda bulunamazsa (silinmiş/pasif) boş harita döner;
+    // süre varsayılana düşer ve yetki kontrolü atlanır — backend yine doğrular.
+    final service = services.firstWhere((e) => '${e['id']}' == serviceId,
+        orElse: () => const <String, dynamic>{});
     // Kategori yetkisi (backend de doğrular; burada erken uyarı).
     final chosenStaff = staff.firstWhere(
       (s) => '${s['id']}' == staffId,
       orElse: () => const {},
     );
-    if (chosenStaff.isNotEmpty && !_staffCanPerform(chosenStaff, service)) {
+    if (chosenStaff.isNotEmpty && service.isNotEmpty && !_staffCanPerform(chosenStaff, service)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Seçili personel bu hizmetin kategorisinde yetkili değil. Farklı personel seçin.')));
@@ -413,16 +526,17 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
     final duration = (service['durationMinutes'] as num?)?.toInt() ?? 60;
     final end = start.add(Duration(minutes: duration));
-    // WEB PARİTESİ: paketten karşılanan randevu ÜCRETSİZ gönderilir (price 0). Mobil katalog
-    // fiyatını gönderdiği için randevu "ücretli" sayılıyordu: backend yalnız price <= 0 iken
-    // kaynak seans bağını kurar ve hizmet hakkını doğrular → mobilde deterministik bağ hiç
-    // oluşmuyor, satış iptalinde tahminî eşleştirmeye düşülüyor ve paket randevusu ücretli
-    // görünüyordu. Kalan seansı olmayan hizmet katalog fiyatıyla (ücretli) açılmaya devam eder.
+    // RANDEVU HER ZAMAN ÜCRETSİZ GİDER (price 0): ya paketten/hizmet hakkından karşılanır ya da
+    // bedelini satış adisyonu tahsil eder. Randevuya da fiyat yazılsaydı aynı iş iki kez
+    // ödetilirdi. Ayrıca backend yalnız price <= 0 iken kaynak seans bağını kurar ve hizmet
+    // hakkını doğrular; ücretli gönderilen randevuda deterministik bağ hiç oluşmuyordu.
+    //
+    // SATIŞ, HAKKI OLMAYAN HİZMET SEÇİMİNDE AÇILIR (web ile aynı). Eskiden bu bir anahtara
+    // bağlıydı ve KAPALIYKEN randevu katalog fiyatıyla ücretli açılıyordu: para ne adisyona ne
+    // cariye yazıldığı için Ön Muhasebe'de hiç görünmüyordu. Paket satışı bu formun işi değil.
     final coveredByPackage = _hasSessionForSelected;
-    // Katalogdan satışta da randevu ÜCRETSİZ gider: parayı satış adisyonu tahsil eder,
-    // randevuya da fiyat yazılsaydı aynı iş iki kez ödetilirdi.
-    final sellNow = _sellFromCatalog && !coveredByPackage;
-    final price = (coveredByPackage || sellNow) ? 0 : (service['price'] ?? 0);
+    final sellNow = !coveredByPackage;
+    const price = 0;
     // Client-side ön kontrol: personelin bu slotta zaten 2 aktif randevusu varsa doğrudan
     // "bekleme listesine ekle?" teklifi göster (sunucuya gitmeden).
     if (_overlapCount(start, end) >= 2) {
@@ -605,110 +719,259 @@ class _AppointmentFormState extends State<AppointmentForm> {
   static String _money(double v) =>
       NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(v);
 
-  /// MÜŞTERİNİN SATIN ALDIĞI PAKET / HİZMETLER — kalan seansıyla, tek dokunuşla seçilir.
-  ///
-  /// Aynı hizmet birden çok paketten gelebilir (iki ayrı satış), bu yüzden hizmet bazında
-  /// toplanır. Seansı biten hizmet listelenmez: seçilse randevu ÜCRETLİ açılırdı ve
-  /// "paketten düşecek" beklentisini boşa çıkarırdı — o durumda katalog dropdown'ı doğru yer.
-  Widget _purchasedPicker() {
-    final byService = <String, Map<String, dynamic>>{};
-    for (final s in _sessions) {
-      final id = '${s['serviceDefinitionId']}';
-      final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
-      if (id.isEmpty || id == 'null' || remaining <= 0) continue;
-      final e = byService[id];
-      if (e == null) {
-        byService[id] = {
-          'name': '${s['serviceName'] ?? 'Hizmet'}',
-          'remaining': remaining,
-          'total': (s['totalSessions'] as num?)?.toInt() ?? 0,
-        };
-      } else {
-        e['remaining'] = (e['remaining'] as int) + remaining;
-        e['total'] = (e['total'] as int) + ((s['totalSessions'] as num?)?.toInt() ?? 0);
-      }
+  /// HİZMET / PAKET sekmeleri — tek soruluk seçim.
+  Widget _workKindTabs() {
+    Widget tab(String v, String label, IconData icon) {
+      final active = _workKind == v;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() {
+            _workKind = v;
+            _clearWorkSelection();
+          }),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF8E3F5B) : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15, color: active ? Colors.white : const Color(0xFF7A6672)),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : const Color(0xFF7A6672),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
-    if (byService.isEmpty) return const SizedBox.shrink();
 
-    final entries = byService.entries.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.confirmation_number_rounded,
-                size: 15, color: Color(0xFF8E3F5B)),
-            const SizedBox(width: 6),
-            const Text('Satın aldığı paket / hizmetler',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 6),
-            Text('(${entries.length})',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF7A6672))),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final e in entries)
-              _PurchasedChip(
-                name: '${e.value['name']}',
-                remaining: e.value['remaining'] as int,
-                total: e.value['total'] as int,
-                selected: serviceId == e.key,
-                onTap: () => setState(() {
-                  serviceId = e.key;
-                  // Katalog satışı bu hizmet için gereksiz: seansı zaten var.
-                  _sellFromCatalog = false;
-                  // Hizmet değişince kategori yetkisi olmayan personel seçili kalmasın.
-                  if (staffId != null &&
-                      !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
-                    staffId = null;
-                  }
-                }),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-      ],
+    final pkgCount = _ownedPackages.length;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFEFE1E7)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(children: [
+        tab('service', 'Hizmet', Icons.content_cut_rounded),
+        tab('package', pkgCount > 0 ? 'Paket ($pkgCount)' : 'Paket', Icons.card_giftcard_rounded),
+      ]),
     );
   }
 
-  /// Para durumu + satışlar (kim sattı) + seans dökümü + son tahsilatlar.
-  Widget _customerDossier() {
-    // Hizmet bazında seans dökümü: yapılan / toplam.
-    final ledger = <String, List<int>>{};
-    for (final s in _sessions) {
-      final name = '${s['serviceName'] ?? 'Hizmet'}';
-      final used = (s['usedSessions'] as num?)?.toInt() ?? 0;
-      final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
-      final e = ledger[name] ?? [0, 0];
-      ledger[name] = [e[0] + used, e[1] + total];
-    }
+  /// HİZMET SEKMESİ — katalogdan hizmet seçimi + ne olacağının açık anlatımı.
+  List<Widget> _serviceTab() {
+    final remainingMap = _remainingByService;
+    // Hakkı olan hizmetler üstte ve rozetli: seçmeden önce satış açılıp açılmayacağı görünsün.
+    final items = services.map((s) {
+      final id = '${s['id']}';
+      final remaining = remainingMap[id] ?? 0;
+      return {
+        ...s,
+        '_label': remaining > 0 ? '${s['name']}  ·  $remaining seans hakkı' : '${s['name']}',
+        '_remaining': remaining,
+      };
+    }).toList()
+      ..sort((a, b) => (b['_remaining'] as int).compareTo(a['_remaining'] as int));
 
-    // Son tahsilatlar — tüm carilerin ödemeleri, yeniden eskiye.
-    final payments = <Map<String, dynamic>>[];
-    for (final a in _accounts) {
-      for (final p in (a['payments'] as List? ?? const [])) {
-        if (p is Map) payments.add(p.cast<String, dynamic>());
-      }
-    }
-    payments.sort((x, y) => '${y['occurredAtUtc']}'.compareTo('${x['occurredAtUtc']}'));
+    final selected = serviceId == null
+        ? null
+        : services.firstWhere((s) => '${s['id']}' == serviceId,
+            orElse: () => const <String, dynamic>{});
+    final remaining = serviceId == null ? 0 : (remainingMap[serviceId!] ?? 0);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEFE1E7)),
+    return [
+      _select(
+        label: 'Hizmet',
+        value: serviceId,
+        items: items,
+        titleKeys: const ['_label'],
+        onChanged: (value) => setState(() {
+          serviceId = value;
+          _ownedPick = null;
+          // Hizmet değişince kategori-yetkisiz personel seçili kalmasın.
+          if (staffId != null && !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
+            staffId = null;
+          }
+        }),
       ),
-      child: Column(
+      if (selected != null && selected.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        if (remaining > 0)
+          _noteBox(
+            icon: Icons.check_circle_rounded,
+            bg: const Color(0xFFECFDF5),
+            border: const Color(0xFFA7F3D0),
+            fg: const Color(0xFF065F46),
+            text: '${selected['name']} için müşterinin $remaining seans hakkı var. '
+                'Yeni satış açılmaz; randevu bu bakiyeye açılır ve tamamlanınca 1 seans düşer.',
+          )
+        else
+          _noteBox(
+            icon: Icons.shopping_bag_rounded,
+            bg: const Color(0xFFFFF6F9),
+            border: const Color(0xFFE8C2D1),
+            fg: const Color(0xFF4A3A44),
+            text: '${selected['name']} — ${_money(((selected['price'] as num?) ?? 0).toDouble())}. '
+                'Müşterinin bu hizmete hakkı yok; randevuyla birlikte SATIŞ açılır. Cariye şimdi '
+                'işlenmez, randevu tamamlanınca borç ve seans oluşur.',
+          ),
+      ],
+    ];
+  }
+
+  /// PAKET SEKMESİ — YALNIZ satın alınmış paketler, işlem/seans kırılımıyla.
+  ///
+  /// Buradan paket SATILMAZ: satışın kendi modalı var ("Paket sat"), aynı işi iki yerde yapmayalım.
+  List<Widget> _packageTab() {
+    final owned = _ownedPackages;
+    if (owned.isEmpty) {
+      return [
+        _noteBox(
+          icon: Icons.card_giftcard_rounded,
+          bg: const Color(0xFFFDF6EC),
+          border: const Color(0xFFF0DCC4),
+          fg: const Color(0xFF8A6524),
+          text: 'Bu müşterinin satın aldığı paket yok. Yukarıdaki "Paket sat" ile paketi satabilir, '
+              'sonra buradan randevusunu açabilirsin. Tek seferlik iş için "Hizmet" sekmesini kullan.',
+        ),
+      ];
+    }
+    return [
+      for (final p in owned) ...[
+        _OwnedPackageCard(
+          packageId: '${p['packageId']}',
+          name: '${p['name']}',
+          rows: (p['rows'] as List).cast<Map<String, dynamic>>(),
+          selectedKey: _ownedPick,
+          onPick: (sid) => setState(() {
+            _ownedPick = '${p['packageId']}|$sid';
+            serviceId = sid;
+            if (staffId != null && !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
+              staffId = null;
+            }
+          }),
+        ),
+        const SizedBox(height: 8),
+      ],
+    ];
+  }
+
+  /// MÜŞTERİ BİLGİ VE ONAY FORMU bandı — eksikse doldurma butonuyla (web paritesi).
+  ///
+  /// Form randevu verilirken eksik görünüyor ama doldurmak için müşteri kartına gidip randevuyu
+  /// yarıda bırakmak gerekiyordu. Buton formu üstte açar; dönüşte durum tazelenir.
+  Widget _consultationBanner() {
+    final has = _hasConsultation;
+    if (has == null) return const SizedBox.shrink();
+    // Form ekranı /consultation rotasıyla aynı izne tabidir; burada rota gating'i atlandığı
+    // için kontrol elle yapılır (yetkisiz personel butonu görmez, uyarıyı görür).
+    final canOpen = widget.api.auth?.user?.hasPage(Perm.customers) ?? false;
+
+    Future<void> openForm() async {
+      final cid = customerId;
+      if (cid == null) return;
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => ConsultationFormScreen(
+          api: widget.api,
+          customerId: cid,
+          customerName: customerName,
+          startInCreateMode: has == false,
+        ),
+      ));
+      await _loadConsultation();
+    }
+
+    final missing = has == false;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: missing ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
+          border: Border.all(color: missing ? const Color(0xFFFDE68A) : const Color(0xFFA7F3D0)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(missing ? Icons.assignment_late_rounded : Icons.verified_rounded,
+                size: 16, color: missing ? const Color(0xFF92400E) : const Color(0xFF065F46)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                missing
+                    ? 'Müşteri bilgi ve onay formu doldurulmamış. İşlemden önce alınması önerilir.'
+                    : 'Müşteri bilgi ve onay formu mevcut.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: missing ? const Color(0xFF92400E) : const Color(0xFF065F46),
+                ),
+              ),
+            ),
+            if (canOpen) ...[
+              const SizedBox(width: 8),
+              OutlinedButton(
+                // Row içinde tema minimumSize'ı sonsuz genişlik verip yazıyı harf harf sarıyor.
+                style: AppButtons.inline(height: 36),
+                onPressed: openForm,
+                child: Text(missing ? 'Formu doldur' : 'Formu aç',
+                    style: const TextStyle(fontSize: 12)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Ne olacağını açıkça yazan bilgi kutusu (satış açılacak mı, seanstan mı düşecek).
+  Widget _noteBox({
+    required IconData icon,
+    required Color bg,
+    required Color border,
+    required Color fg,
+    required String text,
+  }) =>
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(text, style: TextStyle(fontSize: 12, height: 1.4, color: fg)),
+            ),
+          ],
+        ),
+      );
+
+  /// MÜŞTERİNİN PARASI — tek satır. Detay (satışlar, seanslar, tahsilatlar) alttaki geçmiş
+  /// panelinde; ikisi eskiden aynı listeleri iki kez gösteriyordu (web paritesi).
+  Widget _customerDossier() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_dossierLoading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 6),
+              padding: EdgeInsets.only(bottom: 8),
               child: SizedBox(
                 height: 16,
                 width: 16,
@@ -722,117 +985,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
               Expanded(child: _metric('Tahsil edilen', _money(_paidTotal))),
             ],
           ),
-
-          // SATIŞLAR — kim sattı
-          if (_accounts.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _dossierTitle('Satışlar'),
-            for (final a in _accounts.take(4))
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text('${a['name'] ?? 'Satış'}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        ),
-                        Text(_money(_positive(a['totalAmount'])),
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                    Text(
-                      '${a['soldByStaffName'] != null && '${a['soldByStaffName']}'.isNotEmpty ? 'Satan: ${a['soldByStaffName']}' : 'Satan belirtilmemiş'}'
-                      '${_positive(a['remainingAmount']) > 0 ? ' · ${_money(_positive(a['remainingAmount']))} kalan' : ''}',
-                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF705A66)),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-
-          // SEANSLAR — yapılan / toplam
-          if (ledger.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _dossierTitle('Seanslar'),
-            for (final e in ledger.entries)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(e.key,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        ),
-                        Text('${e.value[0]} / ${e.value[1]} yapıldı',
-                            style: const TextStyle(
-                                fontSize: 11.5, color: Color(0xFF705A66))),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: e.value[1] > 0 ? e.value[0] / e.value[1] : 0,
-                        minHeight: 4,
-                        backgroundColor: const Color(0xFFF4E4EA),
-                        valueColor:
-                            const AlwaysStoppedAnimation(Color(0xFF8E3F5B)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-
-          // SON TAHSİLATLAR
-          if (payments.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _dossierTitle('Son tahsilatlar'),
-            for (final p in payments.take(4))
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${_shortDate(p['occurredAtUtc'])}  ${_methodLabel('${p['method'] ?? ''}')}',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF705A66)),
-                      ),
-                    ),
-                    Text(_money(_positive(p['amount'])),
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-          ],
         ],
-      ),
-    );
-  }
-
-  Widget _dossierTitle(String text) => Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.8,
-          color: Color(0xFFA3576F),
-        ),
       );
 
   Widget _metric(String label, String value, {bool debt = false}) => Container(
@@ -857,19 +1010,6 @@ class _AppointmentFormState extends State<AppointmentForm> {
           ],
         ),
       );
-
-  static String _shortDate(dynamic iso) {
-    final d = DateTime.tryParse('$iso')?.toLocal();
-    return d == null ? '—' : DateFormat('dd MMM', 'tr_TR').format(d);
-  }
-
-  static String _methodLabel(String m) {
-    final k = m.toLowerCase();
-    if (k.contains('cash') || k.contains('nakit')) return 'Nakit';
-    if (k.contains('card') || k.contains('kart')) return 'Kart';
-    if (k.contains('transfer') || k.contains('havale') || k.contains('eft')) return 'Havale';
-    return m;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -939,6 +1079,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
                 ),
                 if (customerId != null) ...[
                   const SizedBox(height: 12),
+                  // Bilgi/onay formu eksikse buradan doldurulur — randevu yarıda kalmasın.
+                  _consultationBanner(),
                   _customerDossier(),
                   const SizedBox(height: 12),
                   // MÜŞTERİ GEÇMİŞİ — kullanılan seansların TARİHLERİ, işlem defteri
@@ -947,6 +1089,8 @@ class _AppointmentFormState extends State<AppointmentForm> {
                     api: widget.api,
                     customerId: customerId!,
                     accounts: _accounts,
+                    sessions: _sessions,
+                    packages: packages,
                     refreshKey: _historyKey,
                   ),
                 ],
@@ -979,73 +1123,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // SEANS KURALI: seansi olan hizmet paketten dusulur, olmayan UCRETLI acilir.
-                // Kullanici "neden bu randevu ucretli cikti" sorusunu burada gorsun.
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF6F9),
-                    border: Border.all(color: const Color(0xFFE8C2D1)),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.shopping_bag_rounded,
-                          size: 16, color: Color(0xFF8E3F5B)),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Kalan seansi olan hizmet ucretsiz acilir. Seansi yoksa randevu katalog '
-                          'fiyatiyla UCRETLI acilir; asagidaki anahtari acarsan bunun yerine HIZMET '
-                          'SATISI acilir ve randevu tamamlaninca cariye/seansa otomatik islenir.',
-                          style: TextStyle(fontSize: 12, height: 1.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // MÜŞTERİNİN SATIN ALDIKLARI — tek dokunuşla hizmet seçimi.
-                // Katalog dropdown'ı tüm hizmetleri listeliyor; kullanıcı "bu müşteri
-                // hangi paketi almıştı, hangi seansı kalmıştı" diye dosyaya bakıp
-                // dropdown'da aynı adı elle aramak zorundaydı. Burada müşterinin
-                // KALAN SEANSLI hizmetleri doğrudan seçilebilir.
-                if (customerId != null) _purchasedPicker(),
-                _select(
-                  label: 'Hizmet',
-                  value: serviceId,
-                  items: services,
-                  titleKeys: const ['name'],
-                  onChanged: (value) => setState(() {
-                    serviceId = value;
-                    // Hizmet değişince kategori-yetkisiz personel seçili kalmasın.
-                    if (staffId != null &&
-                        !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
-                      staffId = null;
-                    }
-                  }),
-                ),
-                // Seansı olmayan hizmette: ücretli randevu mu, satış mı?
-                if (serviceId != null && !_hasSessionForSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      value: _sellFromCatalog,
-                      onChanged: (v) => setState(() => _sellFromCatalog = v),
-                      title: const Text(
-                        'Bu hizmeti sat',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: const Text(
-                        'Randevuyla birlikte satis acilir; cariye simdi islenmez, randevu '
-                        'tamamlaninca borc ve seans olusur.',
-                        style: TextStyle(fontSize: 11.5, height: 1.35),
-                      ),
-                    ),
-                  ),
+                // İŞLEM — Hizmet mi, Paket mi (web AppointmentEditor 2. adımıyla parite).
+                _workKindTabs(),
+                const SizedBox(height: 10),
+                if (_workKind == 'service') ..._serviceTab() else ..._packageTab(),
                 const SizedBox(height: 12),
                 _select(
                   label: 'Personel',
@@ -1211,66 +1292,159 @@ class _AppointmentFormState extends State<AppointmentForm> {
       );
 }
 
-/// "Satın aldığı paket / hizmetler" seçim çipi — ad + kalan/toplam seans.
+/// MÜŞTERİNİN SATIN ALDIĞI PAKET — içindeki her işlemin seans kırılımıyla.
 ///
-/// Kalan seans sayısı çipin üstünde durur: kullanıcı dosyaya inip saymak zorunda
-/// kalmadan "bu hizmetten kaç hakkı var" bilgisini seçim anında görür.
-class _PurchasedChip extends StatelessWidget {
-  const _PurchasedChip({
+/// Paket adı tek başına randevuya yetmez: bir paketin içinde birden çok işlem olabilir ve randevu
+/// bunlardan BİRİNE açılır. Kart bu yüzden paketi başlık, işlemleri seçilebilir satır yapar;
+/// kalanı biten satır seçilemez ama gizlenmez (paketin tamamı görünsün).
+class _OwnedPackageCard extends StatelessWidget {
+  const _OwnedPackageCard({
+    required this.packageId,
     required this.name,
-    required this.remaining,
-    required this.total,
-    required this.selected,
-    required this.onTap,
+    required this.rows,
+    required this.selectedKey,
+    required this.onPick,
   });
+  final String packageId;
   final String name;
-  final int remaining;
-  final int total;
+  final List<Map<String, dynamic>> rows;
+
+  /// Seçili satırın anahtarı: `${packageId}|${serviceDefinitionId}`
+  final String? selectedKey;
+  final ValueChanged<String> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final remainingTotal = rows.fold<int>(0, (n, r) => n + (r['remaining'] as int));
+    final grandTotal = rows.fold<int>(0, (n, r) => n + (r['total'] as int));
+    final depleted = remainingTotal <= 0;
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: depleted ? const Color(0xFFFBF5F7) : Colors.white,
+        border: Border.all(
+            color: depleted ? const Color(0xFFEFE1E7) : const Color(0xFFE8C2D1)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFF4E8EE))),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text(
+                  '$remainingTotal / $grandTotal seans',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: depleted ? const Color(0xFF7A6672) : const Color(0xFF8E3F5B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final r in rows)
+            _PackageRow(
+              row: r,
+              selected: selectedKey == '$packageId|${r['serviceDefinitionId']}',
+              onTap: () => onPick('${r['serviceDefinitionId']}'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackageRow extends StatelessWidget {
+  const _PackageRow({required this.row, required this.selected, required this.onTap});
+  final Map<String, dynamic> row;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final remaining = row['remaining'] as int;
+    final total = row['total'] as int;
+    final usable = remaining > 0;
+    final pct = total > 0 ? (total - remaining) / total : 0.0;
+
     return Material(
-      color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFFFF6F9),
-      borderRadius: BorderRadius.circular(13),
+      color: selected ? const Color(0xFFFFF4F8) : Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(13),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-              color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFE8C2D1),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 190),
-                child: Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : const Color(0xFF3B2A33),
+        onTap: usable ? onTap : null,
+        child: Opacity(
+          opacity: usable ? 1 : 0.6,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected ? const Color(0xFF8E3F5B) : Colors.white,
+                    border: Border.all(
+                        color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFE3D2DA)),
+                  ),
+                  child: selected
+                      ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${row['serviceName']}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: pct,
+                          minHeight: 4,
+                          backgroundColor: const Color(0xFFF4E4EA),
+                          valueColor: const AlwaysStoppedAnimation(Color(0xFF8E3F5B)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$remaining seans kaldı${total > 0 ? ' · $total toplam' : ''}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: selected ? Colors.white70 : const Color(0xFF7A6672),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$remaining / $total',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF8E3F5B)),
+                    ),
+                    Text(
+                      usable ? 'kalan seans' : 'bitti',
+                      style: const TextStyle(fontSize: 10, color: Color(0xFF7A6672)),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

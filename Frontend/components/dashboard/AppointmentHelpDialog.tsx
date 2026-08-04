@@ -89,10 +89,10 @@ export default function AppointmentHelpDialog({
               ))}
             </div>
             <p className="mt-3 text-[12.5px] leading-relaxed text-[#4a3a44]">
-              Müşterinin seansı yoksa modalı kapatmana gerek yok. 2. adımda{' '}
-              <strong>Katalogdan sat</strong>&apos;a geç, hizmeti ya da paketi seç — &ldquo;Randevuyu
-              oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu hemen ardından
-              oluşturulur. (Sağdaki panelden ayrı ayrı satış yapmayı da sürdürebilirsin.)
+              Müşterinin hakkı yoksa modalı kapatmana gerek yok. 2. adımda hizmeti (ya da paketi) seç —
+              &ldquo;Randevuyu oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu
+              hemen ardından oluşturulur. Hakkı VARSA satış açılmaz, randevu mevcut seansa yazılır.
+              (Sağdaki panelden ayrı ayrı satış yapmayı da sürdürebilirsin.)
             </p>
           </section>
 
@@ -108,9 +108,11 @@ export default function AppointmentHelpDialog({
                 geçmişi tek bakışta görünür.
               </HelpStep>
               <HelpStep n={2} icon={Scissors} title="İşlem">
-                İki kaynak var. <strong>Satın alınmış seans</strong>: müşterinin hakkı olan işlemler
-                listelenir, karttaki sayı kalan seansı gösterir. <strong>Katalogdan sat</strong>: tüm
-                hizmet/paket listesinden seçersin, satış randevuyla birlikte otomatik açılır.
+                İki seçenek var. <strong>Hizmet</strong>: katalogdan arayıp seçersin; müşterinin o hizmete
+                seans hakkı varsa yeşil rozet çıkar ve satış AÇILMAZ, yoksa satış randevuyla birlikte
+                otomatik açılır. <strong>Paket</strong>: yalnız müşterinin <em>satın aldığı</em> paketler,
+                içindeki her işlemden kaç seans kaldığıyla listelenir; randevuyu o satıra açarsın. Yeni
+                paket satmak için sağdaki <strong>Paket sat</strong> kullanılır.
               </HelpStep>
               <HelpStep n={3} icon={CalendarClock} title="Zaman ve personel">
                 Tarih, saat, personel ve süreyi seç. Süre hizmetin varsayılanından gelir, gerekirse
@@ -128,9 +130,9 @@ export default function AppointmentHelpDialog({
               Sık takılınan noktalar
             </h3>
             <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
-              <HelpTip icon={Package} title="İşlem listesi boş">
-                Müşteri o hizmeti satın almamış ya da seansları bitmiş. <strong>Katalogdan sat</strong>&apos;a
-                geçip aynı adımda satıp randevuyu açabilirsin.
+              <HelpTip icon={Package} title="Paket listesi boş">
+                Müşteri henüz paket satın almamış. Sağdaki <strong>Paket sat</strong> ile paketi sat, sonra
+                buradan randevusunu aç. Tek seferlik iş için <strong>Hizmet</strong> sekmesi yeter.
               </HelpTip>
               <HelpTip icon={UserCog} title="Personel seçilemiyor">
                 Personel o hizmet kategorisinde yetkili değildir. Başka personel seç ya da personel

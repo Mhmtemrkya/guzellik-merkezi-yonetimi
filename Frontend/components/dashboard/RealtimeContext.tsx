@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection } from '@microsoft/signalr'
-import { getAccessToken } from '@/lib/apiClient'
+import { getAccessToken, getStoredSession } from '@/lib/apiClient'
 
 /**
  * Sunucudan gelen anlık olay. VERİ TAŞIMAZ, yalnız "şu konu değişti" der; ekran ilgilendiği
@@ -43,6 +43,25 @@ const RealtimeContext = createContext<RealtimeContextValue>({
  * bağlantı doğrudan API'ye kurulur. Adres verilmemişse gerçek zamanlı katman sessizce
  * devre dışı kalır; uygulama normal isteklerle çalışmaya devam eder.
  */
+/**
+ * BAĞLANMAYA DEĞER TOKEN. Yalnız "token var mı" bakmak yetmiyordu: sekme uzun süre açık kaldıysa
+ * (ya da kayıtlı oturumla yeniden açıldıysa) depodaki access token SÜRESİ DOLMUŞ olabilir. Bu
+ * durumda negotiate kesin 401 döner ve SignalR istemcisi konsola hata basar — kullanıcı çalışan
+ * bir uygulamada kırmızı hata görür. Süresi dolmuşsa hiç denemeyiz; uygulamanın kendi token
+ * yenilemesi tamamlanınca (birkaç saniye) bağlantı sessizce kurulur.
+ *
+ * Süre bilgisi yoksa ENGELLEMEYİZ (fail-open): eski/eksik oturum şekilleri gerçek zamanlı katmanı
+ * büsbütün kapatmasın.
+ */
+function usableToken(): string | null {
+  const token = getAccessToken()
+  if (!token) return null
+  const expiresAt = Date.parse(getStoredSession()?.expiresAtUtc || '')
+  // 10 sn pay: negotiate/handshake sırasında dolacak token da işe yaramaz.
+  if (Number.isFinite(expiresAt) && expiresAt - Date.now() < 10_000) return null
+  return token
+}
+
 function resolveHubUrl(): string | null {
   const explicit = process.env.NEXT_PUBLIC_REALTIME_URL
   if (explicit) return explicit.replace(/\/$/, '')
@@ -93,7 +112,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     const start = async (): Promise<void> => {
       if (disposed) return
-      if (!getAccessToken()) {
+      // Token yok ya da süresi dolmuş: giriş/yenileme tamamlanana kadar sessizce bekle.
+      if (!usableToken()) {
         retryTimer = setTimeout(() => void start(), 3000)
         return
       }

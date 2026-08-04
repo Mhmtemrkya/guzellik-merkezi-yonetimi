@@ -12,6 +12,8 @@ export interface PickerItem {
   sub: string
   meta?: string
   content?: string[]
+  /** Adın yanında vurgulu rozet (ör. "3 seans hakkı") — seçmeden önce görülmesi gereken bilgi. */
+  badge?: string
 }
 
 /**
@@ -130,7 +132,14 @@ export default function CatalogPicker({
               }`}
             >
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-medium text-[#352432]">{i.name}</div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="truncate text-[13px] font-medium text-[#352432]">{i.name}</span>
+                  {i.badge && (
+                    <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      {i.badge}
+                    </span>
+                  )}
+                </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[#352432]/45">
                   {i.cat && <span className="rounded bg-[#fff1f6] px-1 py-0.5 text-[#b14d6c]">{i.cat}</span>}
                   {i.sub && <span className="rounded bg-[#f4ecf9] px-1 py-0.5 text-violet-600">{i.sub}</span>}

@@ -708,7 +708,8 @@ public sealed class AppointmentService : IAppointmentService
 
         if (payment is not null)
         {
-            var collected = await CollectOnCompleteAsync(tenantId, customerId, payment, cancellationToken);
+            var collected = await CollectOnCompleteAsync(
+                tenantId, customerId, payment, outcome.AutoApprovedAccountId, cancellationToken);
             // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez ve
             // ertelenen yan etkiler HİÇ çalışmaz.
             if (collected.IsFailure) return Result<AppointmentDto>.Failure(collected.Error);
@@ -725,8 +726,15 @@ public sealed class AppointmentService : IAppointmentService
     /// Tahsilatı doğru deftere yazar: açık cari varsa oraya (vade sırasına dağıtılır), yoksa
     /// müşterinin adisyonu üzerinden. Arayüzdeki hedef-seçme mantığı sunucuya taşındı ki
     /// çok adımlı akış tek transaction'da kalabilsin.
+    /// <para>
+    /// HEDEF SIRASI: (1) istemcinin seçtiği cari, (2) bu tamamlamada otomatik onaylanan SATIŞIN
+    /// carisi, (3) borcu olan en eski cari, (4) adisyon defteri. (2) olmasaydı, randevu modalinden
+    /// satılan hizmetin parası müşterinin aylar önceki başka bir satışına yazılıyor, yeni satış
+    /// ödenmemiş görünüyordu — ekranda önerilen tutar da o satışın kalanıydı.
+    /// </para>
     /// </summary>
-    private async Task<Result> CollectOnCompleteAsync(Guid tenantId, Guid customerId, CompleteAppointmentPaymentDto payment, CancellationToken ct)
+    private async Task<Result> CollectOnCompleteAsync(
+        Guid tenantId, Guid customerId, CompleteAppointmentPaymentDto payment, Guid? preferredAccountId, CancellationToken ct)
     {
         var occurredAt = payment.OccurredAtUtc ?? DateTime.UtcNow;
         var reference = string.IsNullOrWhiteSpace(payment.Reference) ? "Randevu tahsilatı" : payment.Reference;
@@ -754,7 +762,11 @@ public sealed class AppointmentService : IAppointmentService
                 .Where(a => a.TenantId == tenantId && a.CustomerId == customerId && a.CancelledAtUtc == null)
                 .OrderBy(a => a.CreatedAtUtc)
                 .ToListAsync(ct);
-            accountId = accounts.FirstOrDefault(a => a.RemainingAmount > 0)?.Id;
+            // Bu randevuyla birlikte işlenen satışın carisi öncelikli — parayı kendi satışına yaz.
+            var preferred = preferredAccountId is { } pid
+                ? accounts.FirstOrDefault(a => a.Id == pid && a.RemainingAmount > 0)
+                : null;
+            accountId = (preferred ?? accounts.FirstOrDefault(a => a.RemainingAmount > 0))?.Id;
         }
 
         if (accountId is { } target)
@@ -791,8 +803,18 @@ public sealed class AppointmentService : IAppointmentService
         return outcome.Result;
     }
 
-    /// <summary>Durum değişikliğinin sonucu + (ertelendiyse) commit sonrası çalıştırılacak yan işler.</summary>
-    private readonly record struct StatusChangeOutcome(Result<AppointmentDto> Result, Func<Task>? RunDeferredSideEffects);
+    /// <summary>
+    /// Durum değişikliğinin sonucu + (ertelendiyse) commit sonrası çalıştırılacak yan işler.
+    /// <para>
+    /// <paramref name="AutoApprovedAccountId"/>: tamamlama sırasında "ilk randevuda işle" bekleyen
+    /// satış otomatik onaylandıysa O SATIŞIN cari hesabı. Tahsilat hedefi bundan seçilir — aksi
+    /// hâlde para, müşterinin borcu olan EN ESKİ carisine (bambaşka bir satışa) yazılıyordu.
+    /// </para>
+    /// </summary>
+    private readonly record struct StatusChangeOutcome(
+        Result<AppointmentDto> Result,
+        Func<Task>? RunDeferredSideEffects,
+        Guid? AutoApprovedAccountId = null);
 
     /// <summary>
     /// <see cref="ChangeStatusAsync"/>'in gövdesi.
@@ -854,6 +876,8 @@ public sealed class AppointmentService : IAppointmentService
         }
 
         var isCompleting = request.Status == AppointmentStatus.Completed && prevStatus != AppointmentStatus.Completed;
+        // Bu tamamlamada otomatik onaylanan satışın cari hesabı — tahsilat oraya yazılsın diye taşınır.
+        Guid? autoApprovedAccountId = null;
 
         // Randevu Tamamlandı'ya geçtiyse, müşterinin bu hizmete ait paket seansından otomatik düş.
         // Complete() yalnızca Scheduled/Confirmed'dan çağrılabildiği için bu blok randevu başına tek kez çalışır.
@@ -877,7 +901,12 @@ public sealed class AppointmentService : IAppointmentService
             foreach (var saleId in pendingSaleIds)
             {
                 var approved = await _adisyon.ApproveAsync(tenantId, saleId, cancellationToken);
-                if (!approved.IsSuccess)
+                if (approved.IsSuccess)
+                {
+                    // İLK onaylanan satışın carisi tahsilat hedefi olur (en eski bekleyen satış).
+                    autoApprovedAccountId ??= approved.Value?.CustomerAccountId;
+                }
+                else
                 {
                     await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveFailed", "Adisyon", saleId,
                         $"İlk randevu tamamlandı ama satış otomatik cariye işlenemedi: {approved.Error.Message}",
@@ -971,10 +1000,10 @@ public sealed class AppointmentService : IAppointmentService
         var success = Result<AppointmentDto>.Success(appointment.ToDto());
         // Dış transaction'ın parçasıysak yan işler ÇAĞIRANA bırakılır: tahsilat sonradan
         // reddedilirse hiç çalışmasınlar, yoksa gerçekle çelişen denetim/bildirim izi kalırdı.
-        if (deferSideEffects) return new StatusChangeOutcome(success, RunSideEffectsAsync);
+        if (deferSideEffects) return new StatusChangeOutcome(success, RunSideEffectsAsync, autoApprovedAccountId);
 
         await RunSideEffectsAsync();
-        return new StatusChangeOutcome(success, null);
+        return new StatusChangeOutcome(success, null, autoApprovedAccountId);
     }
 
     /// <summary>

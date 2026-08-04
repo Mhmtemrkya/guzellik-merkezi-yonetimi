@@ -317,15 +317,20 @@ function OnMuhasebePageInner() {
     const q = accountQuery.trim().toLocaleLowerCase('tr')
     if (q) list = list.filter((a) => `${a.customerName} ${a.name} ${a.servicePackageName} ${a.customerPhone}`.toLocaleLowerCase('tr').includes(q))
 
-    // Sıralama: gecikenler önce, sonra açık hesaplar (en yakın vade), en sonda kapananlar.
+    // SIRALAMA: EN YENİ CARİ HER ZAMAN EN ÜSTTE.
+    //
+    // Eskiden gecikenler önce, sonra açık hesaplar (en yakın vade) diye diziliyordu: yeni açılan
+    // bir satış listenin ortasına düşüyor, "az önce yaptığım satış nerede" diye aranıyordu.
+    // Geciken/açık/kapalı ayrımı zaten üstteki süzgeç çipleriyle (sayılarıyla birlikte) yapılıyor,
+    // bu yüzden sıralamanın taşıması gereken bilgi TAZELİK.
+    // Aynı anda açılan kayıtlar için vade sırası ikincil ölçüt olarak korunur.
     return [...list].sort((a, b) => {
-      if (a.hasOverdue !== b.hasOverdue) return a.hasOverdue ? -1 : 1
-      const aOpen = a.remainingAmount > 0.005
-      const bOpen = b.remainingAmount > 0.005
-      if (aOpen !== bOpen) return aOpen ? -1 : 1
+      const at = Date.parse(a.createdAtUtc || '') || 0
+      const bt = Date.parse(b.createdAtUtc || '') || 0
+      if (at !== bt) return bt - at
       return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999')
     })
-  }, [liveAccounts, accountFilter, accountQuery, todayIso])
+  }, [liveAccounts, accountFilter, accountQuery])
 
   const selAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) || null, [accounts, selectedAccountId])
   const openAccount = (id: string): void => { setSelectedAccountId(id); setAccountDetailOpen(true) }

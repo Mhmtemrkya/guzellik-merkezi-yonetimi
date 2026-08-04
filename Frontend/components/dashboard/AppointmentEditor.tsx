@@ -28,6 +28,7 @@ import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeAccount, staffCanPerform } from '@/lib/apiMappers'
 import CollectionDialog from '@/components/dashboard/CollectionDialog'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
+import ConsultationFormModal from '@/components/dashboard/ConsultationFormModal'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
@@ -66,6 +67,9 @@ export interface AppointmentEditorValues {
    */
   catalogSale?: { serviceDefinitionId: string | null; servicePackageId: string | null; staffMemberId: string | null } | null
 }
+
+/** Pakete bağlı OLMAYAN seans satırı (tekil hizmet satışı) bu GUID ile gelir. */
+const EMPTY_GUID = '00000000-0000-0000-0000-000000000000'
 
 const statusOptions: Array<{ value: string; label: string }> = [
   { value: 'Scheduled', label: 'Bekliyor' },
@@ -315,59 +319,101 @@ function TicketRow({
   )
 }
 
-/** Müşteriye satılmış paket/hizmetin seans kartı — randevu buna açılır. */
-function SessionCard({
-  active,
-  onClick,
-  name,
-  remaining,
-  total,
-}: {
-  active: boolean
-  onClick: () => void
-  name: string
+interface OwnedPackageRow {
+  serviceDefinitionId: string
+  serviceName: string
   remaining: number
   total: number
+}
+
+/**
+ * MÜŞTERİNİN SATIN ALDIĞI PAKET — içindeki her işlemin seans kırılımıyla.
+ *
+ * Paket adı tek başına randevuya yetmez: "Cilt Bakım Paketi"nin içinde üç ayrı işlem olabilir ve
+ * randevu bunlardan BİRİNE açılır. Kart bu yüzden paketi başlık, işlemleri seçilebilir satır
+ * yapar; kalanı biten satır seçilemez ama gizlenmez (paketin tamamı görünsün).
+ */
+function OwnedPackageCard({
+  packageId,
+  name,
+  rows,
+  selectedKey,
+  onPick,
+}: {
+  packageId: string
+  name: string
+  rows: OwnedPackageRow[]
+  /** Seçili satırın anahtarı: `${packageId}|${serviceDefinitionId}` */
+  selectedKey: string
+  onPick: (serviceDefinitionId: string) => void
 }) {
-  const pct = total > 0 ? Math.round((remaining / total) * 100) : 0
+  const remainingTotal = rows.reduce((n, r) => n + r.remaining, 0)
+  const grandTotal = rows.reduce((n, r) => n + r.total, 0)
+  const depleted = remainingTotal <= 0
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`group relative w-full rounded-2xl border p-3.5 text-left transition-all duration-200 ${
-        active
-          ? 'border-[#8e3f5b] bg-[#fff4f8] shadow-[0_14px_32px_-22px_rgba(142,63,91,0.6)]'
-          : 'border-[#efe1e7] bg-white hover:-translate-y-0.5 hover:border-[#e8c2d1] hover:shadow-[0_12px_26px_-20px_rgba(142,63,91,0.45)]'
+    <div
+      className={`overflow-hidden rounded-2xl border ${
+        depleted ? 'border-[#efe1e7] bg-[#fbf5f7]' : 'border-[#e8c2d1] bg-white'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-display text-[14.5px] font-bold leading-snug tracking-[-0.015em] text-[#2b1e29]">
+      <div className="flex items-baseline justify-between gap-2 border-b border-[#f4e8ee] px-3.5 py-2.5">
+        <span className="min-w-0 truncate font-display text-[13.5px] font-extrabold tracking-[-0.015em] text-[#2b1e29]">
           {name}
         </span>
-        <span
-          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-            active ? 'border-[#8e3f5b] bg-[#8e3f5b]' : 'border-[#e3d2da] bg-white'
-          }`}
-        >
-          {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[#705a66]">
+          <span className={depleted ? 'text-[#705a66]' : 'text-[#8e3f5b]'}>{remainingTotal}</span> / {grandTotal} seans
         </span>
       </div>
 
-      <div className="mt-2.5 flex items-baseline justify-between">
-        <span className="text-[11.5px] text-[#705a66]">Kalan seans</span>
-        <span className="font-display text-[15px] font-extrabold tabular-nums text-[#8e3f5b]">
-          {remaining}
-          <span className="text-[11.5px] font-semibold text-[#705a66]"> / {total}</span>
-        </span>
-      </div>
-      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[#f4e4ea]">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-[#c7768f] to-[#8e3f5b] transition-[width] duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </button>
+      <ul className="divide-y divide-[#f7eef2]">
+        {rows.map((r) => {
+          const active = selectedKey === `${packageId}|${r.serviceDefinitionId}`
+          const usable = r.remaining > 0
+          const pct = r.total > 0 ? Math.round(((r.total - r.remaining) / r.total) * 100) : 0
+          return (
+            <li key={r.serviceDefinitionId}>
+              <button
+                type="button"
+                disabled={!usable}
+                aria-pressed={active}
+                onClick={() => onPick(r.serviceDefinitionId)}
+                className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
+                  active ? 'bg-[#fff4f8]' : usable ? 'hover:bg-[#fdf6f9]' : 'cursor-not-allowed opacity-60'
+                }`}
+              >
+                <span
+                  className={`grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full border ${
+                    active ? 'border-[#8e3f5b] bg-[#8e3f5b]' : 'border-[#e3d2da] bg-white'
+                  }`}
+                  style={{ height: 18, width: 18 }}
+                >
+                  {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-semibold text-[#2b1e29]">{r.serviceName}</span>
+                  <span className="mt-1 block h-1 overflow-hidden rounded-full bg-[#f4e4ea]">
+                    <span
+                      className="block h-full rounded-full bg-gradient-to-r from-[#c7768f] to-[#8e3f5b]"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </span>
+                </span>
+
+                <span className="shrink-0 text-right">
+                  <span className="block font-display text-[14px] font-extrabold leading-none tabular-nums text-[#8e3f5b]">
+                    {r.remaining}
+                    <span className="text-[11px] font-semibold text-[#705a66]"> / {r.total}</span>
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-[#705a66]">{usable ? 'kalan seans' : 'bitti'}</span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -552,6 +598,9 @@ export default function AppointmentEditor({
   // olmasalar da seçilebilsinler diye yerel olarak eklenir.
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false) // "Bu modal nasıl çalışır?" kılavuzu
+  // Müşteri bilgi ve onay formu — modaldan çıkmadan doldurulur; kapanınca uyarı bandı tazelenir.
+  const [consultOpen, setConsultOpen] = useState(false)
+  const [consultRefreshKey, setConsultRefreshKey] = useState(0)
   const [extraCustomers, setExtraCustomers] = useState<Customer[]>([])
   const allCustomers = useMemo(() => {
     const known = new Set(customers.map((c) => c.id))
@@ -600,16 +649,26 @@ export default function AppointmentEditor({
   // Modal içinden satış yapılınca seans bakiyelerini yeniden çekmek için sayaç.
   const [sessRefreshKey, setSessRefreshKey] = useState(0)
 
-  // KATALOGDAN SATARAK RANDEVU. Adım 2 normalde yalnız SATIN ALINMIŞ seansları listeler; müşterinin
-  // hakkı yoksa akış "önce sat, sonra randevu aç" diye ikiye bölünüyordu. Bu mod katalogdan hizmet
-  // ya da paket seçtirir; "Randevuyu oluştur"da satış (hizmet satış modalıyla AYNI kurallarla)
-  // otomatik açılır ve hemen ardından randevu oluşturulur.
-  const [sourceMode, setSourceMode] = useState<'session' | 'catalog'>('session')
-  const [catalogKind, setCatalogKind] = useState<'service' | 'package'>('service')
+  /**
+   * ADIM 2 = İŞLEM. İki seçenek: HİZMET ya da PAKET.
+   *
+   * - **Hizmet**: katalogdaki hizmetler aranıp seçilir. Müşterinin o hizmete ait kalan seansı
+   *   varsa randevu O SEANSA açılır (yeniden satılmaz); yoksa "Randevuyu oluştur"da satış
+   *   otomatik açılır ve randevu hemen ardından oluşturulur.
+   * - **Paket**: YALNIZCA müşterinin daha önce satın aldığı paketler listelenir; her paket içinde
+   *   hangi hizmetten kaç seans kaldığı dökülür ve randevu seçilen satıra açılır. Buradan paket
+   *   SATILMAZ — paket satışının kendi modalı var (sağ raydaki "Paket sat").
+   *
+   * Eski sürümde önce "satın alınmış seans / katalogdan sat", sonra ayrıca "hizmet / paket"
+   * seçiliyordu; iki kademeli seçim aynı soruyu iki kez soruyordu.
+   */
+  const [workKind, setWorkKind] = useState<'service' | 'package'>('service')
+  /** Hizmet sekmesinde seçilen hizmet (seansı olsa da olmasa da). */
+  const [pickedServiceId, setPickedServiceId] = useState('')
+  /** Satın alınmış pakette seçilen satır: `${packageId}|${serviceDefinitionId}` */
+  const [ownedPick, setOwnedPick] = useState('')
+  /** SATIŞ GEREKTİREN: dolu ise "Randevuyu oluştur" hizmet satışını da açar. */
   const [catalogServiceId, setCatalogServiceId] = useState('')
-  const [catalogPackageId, setCatalogPackageId] = useState('')
-  /** Paket birden çok hizmet içerdiğinde randevunun hangi hizmete açılacağı. */
-  const [packageServiceId, setPackageServiceId] = useState('')
   // ANLIK: yönetici personelin satışını onayladığında seanslar bu ekranda kendiliğinden
   // belirsin — personel modalı kapatıp açmak zorunda kalmasın.
   useRealtime(['sessions', 'adisyon', 'accounts'], () => setSessRefreshKey((k) => k + 1))
@@ -676,29 +735,63 @@ export default function AppointmentEditor({
     [custAccounts],
   )
 
-  /** Son tahsilatlar — tüm carilerin ödemeleri, yeniden eskiye. */
-  const recentPayments = useMemo(
-    () =>
-      custAccounts
-        .flatMap((a) => a.payments || [])
-        .slice()
-        .sort((x, y) => new Date(y.occurredAtUtc).getTime() - new Date(x.occurredAtUtc).getTime())
-        .slice(0, 4),
-    [custAccounts],
-  )
-
-  /** Hizmet bazında seans dökümü: yapılan / toplam (kalanı olmayanlar da görünür). */
-  const sessionLedger = useMemo(() => {
-    const map = new Map<string, { name: string; used: number; total: number }>()
+  /** Hizmet → müşterinin toplam seans bakiyesi (kalanı 0 olanlar da var). */
+  const sessionByService = useMemo(() => {
+    const map = new Map<string, { remaining: number; total: number }>()
     for (const s of custSessions) {
-      const key = s.serviceDefinitionId || s.serviceName || 'x'
-      const e = map.get(key) ?? { name: s.serviceName ?? 'Hizmet', used: 0, total: 0 }
-      e.used += s.usedSessions ?? 0
+      const sid = s.serviceDefinitionId
+      if (!sid) continue
+      const e = map.get(sid) ?? { remaining: 0, total: 0 }
+      e.remaining += s.remainingSessions ?? 0
       e.total += s.totalSessions ?? 0
-      map.set(key, e)
+      map.set(sid, e)
     }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+    return map
   }, [custSessions])
+
+  /**
+   * MÜŞTERİNİN SATIN ALDIĞI PAKETLER — paket → içindeki hizmetlerin seans kırılımı.
+   * Tekil hizmet satışında ServicePackageId boş GUID gelir (pakete bağlı değildir); onlar
+   * "Paket" sekmesine girmez, Hizmet sekmesinde seans bakiyesi olarak görünür.
+   */
+  const ownedPackages = useMemo(() => {
+    const map = new Map<
+      string,
+      { packageId: string; name: string; rows: { serviceDefinitionId: string; serviceName: string; remaining: number; total: number }[] }
+    >()
+    for (const s of custSessions) {
+      const pid = s.servicePackageId
+      const sid = s.serviceDefinitionId
+      if (!pid || pid === EMPTY_GUID || !sid) continue
+      const entry = map.get(pid) ?? {
+        packageId: pid,
+        name: packages.find((p) => p.id === pid)?.name || 'Paket',
+        rows: [],
+      }
+      const row = entry.rows.find((r) => r.serviceDefinitionId === sid)
+      if (row) {
+        row.remaining += s.remainingSessions ?? 0
+        row.total += s.totalSessions ?? 0
+      } else {
+        entry.rows.push({
+          serviceDefinitionId: sid,
+          serviceName: s.serviceName ?? 'Hizmet',
+          remaining: s.remainingSessions ?? 0,
+          total: s.totalSessions ?? 0,
+        })
+      }
+      map.set(pid, entry)
+    }
+    // Kalanı olan paketler üstte — randevu çoğunlukla onlara açılır.
+    return Array.from(map.values()).sort(
+      (a, b) => b.rows.reduce((n, r) => n + r.remaining, 0) - a.rows.reduce((n, r) => n + r.remaining, 0),
+    )
+  }, [custSessions, packages])
+
+  const hasBookablePackage = useMemo(
+    () => ownedPackages.some((p) => p.rows.some((r) => r.remaining > 0)),
+    [ownedPackages],
+  )
 
   // Hizmet bazında grupla (aynı hizmet birden çok pakette olabilir) — kalan seansları topla.
   const bookableByService = useMemo(() => {
@@ -725,42 +818,26 @@ export default function AppointmentEditor({
     () =>
       services
         .filter((s) => s.isActive !== false)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          price: s.price,
-          cat: s.group || '',
-          sub: s.subGroup || '',
-          meta: `${formatTL(s.price)}${s.duration ? ` · ${s.duration} dk` : ''}`,
-        })),
-    [services],
+        .map((s) => {
+          // Müşterinin bu hizmete ait hakkı varsa satış YAPILMAZ; rozet bunu seçmeden önce söyler.
+          const remaining = sessionByService.get(s.id)?.remaining ?? 0
+          return {
+            id: s.id,
+            name: s.name,
+            price: s.price,
+            cat: s.group || '',
+            sub: s.subGroup || '',
+            meta: `${formatTL(s.price)}${s.duration ? ` · ${s.duration} dk` : ''}`,
+            badge: remaining > 0 ? `${remaining} seans hakkı` : undefined,
+          }
+        })
+        // Hakkı olan hizmetler üstte: randevu çoğunlukla onlara açılır.
+        .sort((a, b) => (b.badge ? 1 : 0) - (a.badge ? 1 : 0)),
+    [services, sessionByService],
   )
-  const packagePickerItems = useMemo<PickerItem[]>(
-    () =>
-      packages
-        .filter((p) => p.isActive !== false)
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          price: p.totalPrice,
-          cat: p.category || '',
-          sub: p.subCategory || '',
-          meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans`,
-          content: p.items.slice(0, 5).map((it) => `${it.serviceName} ×${it.sessionCount}`),
-        })),
-    [packages],
-  )
-
-  const catalogService = services.find((s) => s.id === catalogServiceId)
-  const catalogPackage = packages.find((p) => p.id === catalogPackageId)
-  /** Pakette randevuya açılabilecek hizmetler (aynı hizmet birden çok satırdaysa tekilleşir). */
-  const packageServiceOptions = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>()
-    for (const it of catalogPackage?.items || []) {
-      if (it.serviceDefinitionId) map.set(it.serviceDefinitionId, { id: it.serviceDefinitionId, name: it.serviceName });
-    }
-    return Array.from(map.values())
-  }, [catalogPackage])
+  const pickedService = services.find((s) => s.id === pickedServiceId)
+  /** Seçili hizmette müşterinin kalan seansı — 0 ise randevu oluşturulurken satış açılır. */
+  const pickedServiceRemaining = pickedServiceId ? sessionByService.get(pickedServiceId)?.remaining ?? 0 : 0
 
   /**
    * Katalog seçimi randevu alanlarına yansıtılır. FİYAT 0: satış adisyonu müşteriyi zaten
@@ -778,58 +855,50 @@ export default function AppointmentEditor({
     }))
   }
 
-  const handleCatalogServiceSelect = (id: string): void => {
-    setCatalogServiceId(id)
-    setCatalogPackageId('')
-    setPackageServiceId('')
+  /** Seçimden önce her şeyi temizler — iki sekme arasında yanlış satış/fiyat taşınmasın. */
+  const clearWorkSelection = (): void => {
+    setPickedServiceId('')
+    setOwnedPick('')
+    setCatalogServiceId('')
+    setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
+  }
+
+  /**
+   * HİZMET SEKMESİ. Müşterinin o hizmete ait kalan seansı varsa satış AÇILMAZ (randevu mevcut
+   * seansa açılır, tamamlanınca ondan düşer); yoksa satış "Randevuyu oluştur"da açılır.
+   */
+  const handlePickService = (id: string): void => {
+    setPickedServiceId(id)
+    setOwnedPick('')
+    const remaining = id ? sessionByService.get(id)?.remaining ?? 0 : 0
+    setCatalogServiceId(id && remaining <= 0 ? id : '')
     applyCatalogSelection(id, null)
   }
 
-  const handleCatalogPackageSelect = (id: string): void => {
-    setCatalogPackageId(id)
+  /** PAKET SEKMESİ — satın alınmış paketin bir hizmet satırına randevu açar (satış yok). */
+  const handlePickOwned = (packageId: string, serviceDefinitionId: string): void => {
+    setOwnedPick(`${packageId}|${serviceDefinitionId}`)
+    setPickedServiceId('')
     setCatalogServiceId('')
-    const pkg = packages.find((p) => p.id === id)
-    const first = pkg?.items.find((it) => it.serviceDefinitionId)?.serviceDefinitionId || ''
-    setPackageServiceId(first)
-    applyCatalogSelection(first, id || null)
+    applyCatalogSelection(serviceDefinitionId, packageId)
   }
 
-  const handleSessionSelect = (serviceDefinitionId: string): void => {
-    const svc = services.find((s) => s.id === serviceDefinitionId)
-    setValues((v) => ({
-      ...v,
-      serviceDefinitionId,
-      packageId: null,
-      price: 0,
-      durationMinutes: svc?.duration || v.durationMinutes || 30,
-    }))
-  }
-
-  // Tek işlem/hizmet kartı varsa otomatik seç — birden fazlaysa seçimi kullanıcı yapar (dokunma).
-  useEffect(() => {
-    if (!open || mode !== 'create' || sessLoading) return
-    if (sourceMode !== 'session') return
-    if (values.serviceDefinitionId) return
-    if (bookableByService.length !== 1) return
-    handleSessionSelect(bookableByService[0].serviceDefinitionId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode, sessLoading, sourceMode, bookableByService, values.serviceDefinitionId])
-
-  // Müşteri değişince katalog seçimi sıfırlanır ve mod yeniden belirlenir: seansı varsa
-  // "satın alınmış"tan başla, yoksa doğrudan katalogla (fazladan tıklama olmasın).
+  // Müşteri değişince seçim sıfırlanır.
   useEffect(() => {
     if (mode !== 'create') return
+    setPickedServiceId('')
+    setOwnedPick('')
     setCatalogServiceId('')
-    setCatalogPackageId('')
-    setPackageServiceId('')
-    setSourceMode('session')
   }, [values.customerId, mode])
+
+  // Açılış sekmesi: müşterinin kullanılabilir paketi varsa PAKET'ten başla (randevu çoğunlukla
+  // ona açılır), yoksa HİZMET. Kullanıcı seçim yaptıktan sonra sekme kendiliğinden değişmez.
   useEffect(() => {
     if (!open || mode !== 'create' || sessLoading || !values.customerId) return
     if (values.serviceDefinitionId) return
-    if (bookableByService.length === 0) setSourceMode('catalog')
+    setWorkKind(hasBookablePackage ? 'package' : 'service')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode, sessLoading, values.customerId, bookableByService.length])
+  }, [open, mode, sessLoading, values.customerId, hasBookablePackage])
 
   // Seçili tarihte izinli personeller — izinli personele o gün randevu açılamaz.
   const [leaveStaffIds, setLeaveStaffIds] = useState<Set<string>>(new Set())
@@ -883,10 +952,6 @@ export default function AppointmentEditor({
         const missing: string[] = []
         if (!values.customerId) missing.push('Müşteri')
         if (!values.serviceDefinitionId) missing.push('İşlem')
-        if (mode === 'create' && sourceMode === 'catalog' && !catalogServiceId && !catalogPackageId) {
-          setError('Katalogdan bir hizmet ya da paket seç.')
-          return
-        }
         if (!values.staffMemberId) missing.push('Personel')
         if (!values.date) missing.push('Tarih')
         if (!values.time) missing.push('Saat')
@@ -906,11 +971,14 @@ export default function AppointmentEditor({
       // KATALOGDAN SATIŞ: satış + randevu SUNUCUDA tek transaction'da açılır. İstemcide
       // "önce sat, sonra randevu" zinciri kurulsaydı randevu adımı düştüğünde müşteriye
       // yazılmış açık satış ortada kalırdı.
+      // Satış YALNIZCA hakkı olmayan HİZMET seçiminde açılır: satın alınmış paket satırında bu
+      // alan boş kalır, randevu mevcut bakiyeye açılır ve müşteri ikinci kez borçlanmaz.
+      // (Paket satışı bu modalın işi değil — kendi modalı var.)
       const catalogSale =
-        mode === 'create' && sourceMode === 'catalog'
+        mode === 'create' && catalogServiceId
           ? {
-              serviceDefinitionId: catalogServiceId || null,
-              servicePackageId: catalogPackageId || null,
+              serviceDefinitionId: catalogServiceId,
+              servicePackageId: null,
               staffMemberId: values.staffMemberId || null,
             }
           : null
@@ -1084,177 +1152,135 @@ export default function AppointmentEditor({
                             )}
                           </>
                         )}
-                        <ConsultationWarningBanner customerId={values.customerId} tenantId={tenantId} />
+                        {/* Bilgi/onay formu eksikse buradan doldurulur — randevu yarıda kalmasın. */}
+                        <ConsultationWarningBanner
+                          customerId={values.customerId}
+                          tenantId={tenantId}
+                          onEdit={() => setConsultOpen(true)}
+                          refreshKey={consultRefreshKey}
+                        />
                       </Step>
 
-                      {/* 2 — İŞLEM */}
+                      {/* 2 — İŞLEM: Hizmet mi, Paket mi */}
                       <Step
                         n={2}
                         title="İşlem"
-                        hint={mode === 'create' ? (sourceMode === 'catalog' ? 'Katalogdan seç — satış otomatik açılır' : 'Müşterinin satın aldığı seanslardan') : undefined}
+                        hint={
+                          mode === 'create'
+                            ? workKind === 'service'
+                              ? 'Hizmeti ara ve seç'
+                              : 'Müşterinin satın aldığı paketler'
+                            : undefined
+                        }
                         done={step2Done}
                         locked={!values.customerId}
                       >
                         {mode === 'edit' ? (
                           <LockedFact icon={Scissors} label="Hizmet" value={selectedService?.name || serviceLabel || ''} />
                         ) : !values.customerId ? (
-                          <EmptyNote icon={User}>Önce müşteriyi seç — satın aldığı işlemler burada listelenir.</EmptyNote>
+                          <EmptyNote icon={User}>Önce müşteriyi seç — hizmetleri ve paketleri burada listelenir.</EmptyNote>
                         ) : sessLoading ? (
                           <EmptyNote icon={Loader2} spin>
                             Seans bakiyesi yükleniyor…
                           </EmptyNote>
                         ) : (
                           <>
-                            {/* KAYNAK SEÇİMİ: hazır seans mı, katalogdan yeni satış mı.
-                                Eskiden seansı olmayan müşteride akış "önce sat, sonra randevu aç"
-                                diye ikiye bölünüyordu; artık ikisi tek işlemde yapılabiliyor. */}
+                            {/* HİZMET / PAKET — tek soruluk seçim. */}
                             <div className="mb-3 flex items-center rounded-full border border-[#efe1e7] bg-white p-0.5">
                               {([
-                                ['session', `Satın alınmış seans${bookableByService.length ? ` (${bookableByService.length})` : ''}`],
-                                ['catalog', 'Katalogdan sat'],
-                              ] as ['session' | 'catalog', string][]).map(([v, label]) => (
+                                ['service', 'Hizmet', Scissors],
+                                ['package', `Paket${ownedPackages.length ? ` (${ownedPackages.length})` : ''}`, Package],
+                              ] as ['service' | 'package', string, typeof Scissors][]).map(([v, label, Icon]) => (
                                 <button
                                   key={v}
                                   type="button"
-                                  aria-pressed={sourceMode === v}
+                                  aria-pressed={workKind === v}
                                   onClick={() => {
-                                    setSourceMode(v)
-                                    // Mod değişince önceki seçim taşınmasın: yanlış fiyat/satış riski.
-                                    setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
-                                    setCatalogServiceId('')
-                                    setCatalogPackageId('')
-                                    setPackageServiceId('')
+                                    setWorkKind(v)
+                                    // Sekme değişince önceki seçim taşınmasın: yanlış fiyat/satış riski.
+                                    clearWorkSelection()
                                   }}
-                                  className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                                    sourceMode === v ? 'bg-[#8e3f5b] text-white' : 'text-[#705a66] hover:text-[#2b1e29]'
+                                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                                    workKind === v ? 'bg-[#8e3f5b] text-white' : 'text-[#705a66] hover:text-[#2b1e29]'
                                   }`}
                                 >
+                                  <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
                                   {label}
                                 </button>
                               ))}
                             </div>
 
-                            {sourceMode === 'session' ? (
-                              bookableByService.length === 0 ? (
+                            {workKind === 'service' ? (
+                              <div className="space-y-3">
+                                {/* Katalog hizmet arama/seçme — satış modalındaki bileşenin aynısı. */}
+                                <div className="max-h-[300px] overflow-y-auto pr-0.5">
+                                  <CatalogPicker
+                                    items={servicePickerItems}
+                                    value={pickedServiceId}
+                                    onChange={handlePickService}
+                                    accent="rose"
+                                    emptyText="Hizmet bulunamadı."
+                                  />
+                                </div>
+
+                                {/* Ne olacağını AÇIKÇA yaz: satış sessizce oluşmasın. */}
+                                {pickedService && (
+                                  pickedServiceRemaining > 0 ? (
+                                    <div className="flex items-start gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+                                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" strokeWidth={1.9} />
+                                      <p className="text-[12px] leading-snug text-emerald-900">
+                                        <strong>{pickedService.name}</strong> için müşterinin{' '}
+                                        <strong>{pickedServiceRemaining} seans hakkı</strong> var. Yeni satış açılmaz;
+                                        randevu bu bakiyeye açılır ve <strong>tamamlanınca 1 seans düşer</strong>.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
+                                      <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
+                                      <p className="text-[12px] leading-snug text-[#4a3a44]">
+                                        <strong>{pickedService.name}</strong> — <strong>{formatTL(pickedService.price)}</strong>
+                                        <br />
+                                        Müşterinin bu hizmete hakkı yok. &ldquo;Randevuyu oluştur&rdquo; dediğinde{' '}
+                                        <strong>satış otomatik açılır</strong>. Satış cariye <strong>şimdi işlenmez</strong>;
+                                        bu randevu <strong>tamamlandığında</strong> borç, peşinat ve seanslar oluşur.
+                                      </p>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            ) : (
+                              /* YALNIZ SATIN ALINMIŞ PAKETLER — hangi paketin içinde hangi işlemden
+                                 kaç seans kaldı. Buradan paket SATILMAZ: satışın kendi modalı var
+                                 (aşağıdaki "Paket sat"), aynı işi iki yerde yapmayalım. */
+                              ownedPackages.length > 0 ? (
+                                <div className="max-h-[320px] space-y-2.5 overflow-y-auto pr-0.5">
+                                  {ownedPackages.map((p) => (
+                                    <OwnedPackageCard
+                                      key={p.packageId}
+                                      packageId={p.packageId}
+                                      name={p.name}
+                                      rows={p.rows}
+                                      selectedKey={ownedPick}
+                                      onPick={(serviceDefinitionId) => handlePickOwned(p.packageId, serviceDefinitionId)}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
                                 <div className="rounded-2xl border border-[#f0dcc4] bg-[#fdf6ec] px-4 py-3.5">
                                   <div className="flex items-start gap-2.5">
                                     <Package className="mt-0.5 h-4 w-4 shrink-0 text-[#b8863b]" strokeWidth={1.8} />
                                     <div>
                                       <div className="text-[13px] font-semibold text-[#8a6524]">
-                                        Bu müşterinin randevuya uygun seansı yok.
+                                        Bu müşterinin satın aldığı paket yok.
                                       </div>
                                       <div className="mt-0.5 text-[11.5px] leading-snug text-[#8a6524]/90">
-                                        Henüz satın alınmış bir hizmet/paket yok ya da seansları bitmiş.{' '}
-                                        <button
-                                          type="button"
-                                          onClick={() => setSourceMode('catalog')}
-                                          className="font-semibold text-[#8e3f5b] underline underline-offset-2"
-                                        >
-                                          Katalogdan sat
-                                        </button>{' '}
-                                        diyerek satışı ve randevuyu tek adımda yapabilirsin.
+                                        Sağdaki <strong>Paket sat</strong> ile paketi satabilir, sonra buradan randevusunu
+                                        açabilirsin. Tek seferlik iş için <strong>Hizmet</strong> sekmesini kullan.
                                       </div>
                                     </div>
                                   </div>
                                 </div>
-                              ) : (
-                                /* Çok hizmetli müşteride liste uzayıp formu taşırmasın — kart alanı
-                                   sınırlı, gerekirse yalnız BU alan kaydırılır. */
-                                <div className="grid max-h-[300px] gap-2.5 overflow-y-auto pr-0.5 sm:grid-cols-2">
-                                  {bookableByService.map((s) => (
-                                    <SessionCard
-                                      key={s.serviceDefinitionId}
-                                      active={values.serviceDefinitionId === s.serviceDefinitionId}
-                                      onClick={() => handleSessionSelect(s.serviceDefinitionId)}
-                                      name={s.serviceName}
-                                      remaining={s.remaining}
-                                      total={s.total}
-                                    />
-                                  ))}
-                                </div>
                               )
-                            ) : (
-                              <div className="space-y-3">
-                                {/* Hizmet mi paket mi */}
-                                <div className="flex items-center rounded-full border border-[#efe1e7] bg-[#fdf9fb] p-0.5">
-                                  {([['service', 'Hizmet'], ['package', 'Paket']] as ['service' | 'package', string][]).map(([v, label]) => (
-                                    <button
-                                      key={v}
-                                      type="button"
-                                      aria-pressed={catalogKind === v}
-                                      onClick={() => {
-                                        setCatalogKind(v)
-                                        setCatalogServiceId('')
-                                        setCatalogPackageId('')
-                                        setPackageServiceId('')
-                                        setValues((prev) => ({ ...prev, serviceDefinitionId: '', packageId: null, price: 0 }))
-                                      }}
-                                      className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                                        catalogKind === v ? 'bg-white text-[#8e3f5b] shadow-[0_2px_6px_-2px_rgba(120,71,88,0.35)]' : 'text-[#705a66] hover:text-[#2b1e29]'
-                                      }`}
-                                    >
-                                      {label}
-                                    </button>
-                                  ))}
-                                </div>
-
-                                {/* Katalog seçici — satış modalındaki bileşenin aynısı
-                                    (kategori + alt kategori + arama). */}
-                                <div className="max-h-[300px] overflow-y-auto pr-0.5">
-                                  {catalogKind === 'service' ? (
-                                    <CatalogPicker
-                                      items={servicePickerItems}
-                                      value={catalogServiceId}
-                                      onChange={handleCatalogServiceSelect}
-                                      accent="rose"
-                                      emptyText="Hizmet bulunamadı."
-                                    />
-                                  ) : (
-                                    <CatalogPicker
-                                      items={packagePickerItems}
-                                      value={catalogPackageId}
-                                      onChange={handleCatalogPackageSelect}
-                                      accent="rose"
-                                      emptyText="Paket bulunamadı."
-                                    />
-                                  )}
-                                </div>
-
-                                {/* Paket birden çok hizmet içeriyorsa: randevu HANGİ hizmete açılacak? */}
-                                {catalogPackage && packageServiceOptions.length > 1 && (
-                                  <Field label="Bu randevuda uygulanacak hizmet" required>
-                                    <select
-                                      className={control}
-                                      value={packageServiceId}
-                                      onChange={(e) => {
-                                        setPackageServiceId(e.target.value)
-                                        applyCatalogSelection(e.target.value, catalogPackage.id)
-                                      }}
-                                    >
-                                      {packageServiceOptions.map((o) => (
-                                        <option key={o.id} value={o.id}>{o.name}</option>
-                                      ))}
-                                    </select>
-                                  </Field>
-                                )}
-
-                                {/* Ne olacağını AÇIKÇA yaz: satış sessizce oluşmasın. */}
-                                {(catalogService || catalogPackage) && (
-                                  <div className="flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
-                                    <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
-                                    <p className="text-[12px] leading-snug text-[#4a3a44]">
-                                      <strong>{catalogService?.name || catalogPackage?.name}</strong>
-                                      {' — '}
-                                      <strong>{formatTL(catalogService?.price ?? catalogPackage?.totalPrice ?? 0)}</strong>
-                                      {catalogPackage ? ` · ${catalogPackage.totalSessions} seans` : ''}
-                                      <br />
-                                      &ldquo;Randevuyu oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu
-                                      hemen ardından oluşturulur. Satış cariye <strong>şimdi işlenmez</strong>; bu randevu
-                                      <strong> tamamlandığında</strong> borç, peşinat ve seanslar otomatik oluşur.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
                             )}
                           </>
                         )}
@@ -1386,107 +1412,24 @@ export default function AppointmentEditor({
                     complete={ticketComplete}
                   />
 
-                  {/* MÜŞTERİ DOSYASI — para durumu, seans dökümü, son tahsilatlar.
-                      Randevu verirken "bu müşteri kim, ne ödedi, kaç seansı kaldı" sorusunun
-                      cevabı için başka ekrana gitmek gerekmiyordu. */}
+                  {/* MÜŞTERİNİN PARASI — tek satır. Detay (satışlar, seanslar, tahsilatlar) alttaki
+                      geçmiş panelinde; ikisi eskiden aynı listeleri iki kez gösteriyordu. */}
                   {selectedCustomer && (
-                    <div className="space-y-3 rounded-2xl border border-[#efe1e7] bg-white p-4">
-                      {/* Para */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <Metric label="Açık borç" value={formatTL(openDebt)} tone={openDebt > 0 ? 'debt' : 'plain'} />
-                        <Metric label="Tahsil edilen" value={formatTL(paidTotal)} tone="plain" />
-                      </div>
-
-                      {/* SATIŞLAR — hangi paket/hizmet, ne kadar ve KİM SATTI.
-                          Prim ve "bu müşteriyi kim kazandı" sorusu buradan okunur. */}
-                      {custAccounts.length > 0 && (
-                        <div className="border-t border-[#f4e8ee] pt-3">
-                          <h5 className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-[#a3576f]">Satışlar</h5>
-                          <ul className="mt-2 space-y-2">
-                            {custAccounts.slice(0, 4).map((a) => (
-                              <li key={a.id}>
-                                <div className="flex items-baseline justify-between gap-2">
-                                  <span className="min-w-0 truncate text-[12.5px] font-medium text-[#2b1e29]">{a.name}</span>
-                                  <span className="shrink-0 text-[12px] font-semibold tabular-nums text-[#2b1e29]">
-                                    {formatTL(a.totalAmount)}
-                                  </span>
-                                </div>
-                                <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[11.5px]">
-                                  <span className="min-w-0 truncate text-[#705a66]">
-                                    {a.soldByStaffName ? `Satan: ${a.soldByStaffName}` : 'Satan belirtilmemiş'}
-                                  </span>
-                                  {a.remainingAmount > 0 && (
-                                    <span className="shrink-0 font-semibold tabular-nums text-[#8e3f5b]">
-                                      {formatTL(a.remainingAmount)} kalan
-                                    </span>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Seans dökümü: yapılan / toplam */}
-                      {sessionLedger.length > 0 && (
-                        <div className="border-t border-[#f4e8ee] pt-3">
-                          <h5 className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-[#a3576f]">Seanslar</h5>
-                          <ul className="mt-2 space-y-2">
-                            {sessionLedger.map((s) => {
-                              const pct = s.total > 0 ? Math.round((s.used / s.total) * 100) : 0
-                              return (
-                                <li key={s.name}>
-                                  <div className="flex items-baseline justify-between gap-2">
-                                    <span className="min-w-0 truncate text-[12.5px] font-medium text-[#2b1e29]">{s.name}</span>
-                                    <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-[#705a66]">
-                                      <span className="text-[#8e3f5b]">{s.used}</span> / {s.total} yapıldı
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-[#f4e4ea]">
-                                    <div
-                                      className="h-full rounded-full bg-gradient-to-r from-[#c7768f] to-[#8e3f5b]"
-                                      style={{ width: `${pct}%` }}
-                                    />
-                                  </div>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Son tahsilatlar */}
-                      {recentPayments.length > 0 && (
-                        <div className="border-t border-[#f4e8ee] pt-3">
-                          <h5 className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-[#a3576f]">
-                            Son tahsilatlar
-                          </h5>
-                          <ul className="mt-2 space-y-1.5">
-                            {recentPayments.map((p) => (
-                              <li key={p.id} className="flex items-baseline justify-between gap-2 text-[12.5px]">
-                                <span className="text-[#705a66]">
-                                  {new Date(p.occurredAtUtc).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
-                                  {p.method && <span className="ml-1.5 text-[#4a3a44]">{methodLabel(p.method)}</span>}
-                                </span>
-                                <span className="shrink-0 font-semibold tabular-nums text-[#2b1e29]">
-                                  {formatTL(p.amount)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Metric label="Açık borç" value={formatTL(openDebt)} tone={openDebt > 0 ? 'debt' : 'plain'} />
+                      <Metric label="Tahsil edilen" value={formatTL(paidTotal)} tone="plain" />
                     </div>
                   )}
 
-                  {/* MÜŞTERİ GEÇMİŞİ — paketten kullanılan seansların TARİHLERİ, işlem defteri
-                      ve tahsilat listesi. Üstteki dosya kartı "kaç seans kaldı"yı söylüyordu ama
-                      "hangi gün geldi, ne zaman ödedi" hiçbir ekranda yan yana yoktu. */}
+                  {/* MÜŞTERİ GEÇMİŞİ — Seanslar (paketten), İşlemler (hizmetten: kim sattı/kim yaptı)
+                      ve Ödemeler. Tek kaynak: bu panel. */}
                   {selectedCustomer && (
                     <CustomerHistoryPanel
                       customerId={selectedCustomer.id}
                       tenantId={tenantId}
                       accounts={custAccounts}
+                      sessions={custSessions}
+                      packages={packages}
                       refreshKey={sessRefreshKey}
                     />
                   )}
@@ -1694,6 +1637,20 @@ export default function AppointmentEditor({
       {/* "Bu modal nasıl çalışır?" — akış, altın kural ve sık takılınan noktalar */}
       <AppointmentHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
 
+      {/* Müşteri bilgi ve onay formu — randevu modalından çıkmadan doldurulur */}
+      <ConsultationFormModal
+        open={consultOpen}
+        onOpenChange={(o) => {
+          setConsultOpen(o)
+          // Kapanışta bandı tazele: form dolduysa uyarılar/uygunluk hemen görünsün.
+          if (!o) setConsultRefreshKey((k) => k + 1)
+        }}
+        customerId={values.customerId}
+        customerName={selectedCustomer?.name}
+        tenantId={tenantId}
+        branchId={selectedCustomer?.branchId ?? null}
+      />
+
       {/* Randevu modalı içinden müşteri adisyon kartı — Ön Muhasebe'ye gitmeden */}
       {selectedCustomer && (
         <AdisyonModal
@@ -1785,15 +1742,6 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: 'd
       </div>
     </div>
   )
-}
-
-/** Backend ödeme yöntemi kodunu insan diline çevirir. */
-function methodLabel(method: string): string {
-  const key = method.toLowerCase()
-  if (key.includes('cash') || key.includes('nakit')) return 'Nakit'
-  if (key.includes('card') || key.includes('kart')) return 'Kart'
-  if (key.includes('transfer') || key.includes('havale') || key.includes('eft')) return 'Havale'
-  return method
 }
 
 function SelectedSessionNote({
