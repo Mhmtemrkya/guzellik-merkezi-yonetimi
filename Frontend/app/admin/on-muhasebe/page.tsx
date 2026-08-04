@@ -1234,7 +1234,11 @@ function OnMuhasebePageInner() {
                         <span className="inline-flex items-center gap-1">· <Landmark className="h-3 w-3 text-[#c85776]" />{METHOD_LABEL[e.paymentMethod] || e.paymentMethod}</span>
                       </div>
                     </div>
-                    {e.isApproved ? (
+                    {/* Sistem üretimi satır (müşteri iadesi): gider ÖZETİNDE zaten sayılıyordu,
+                        artık listede de görünür. Elle girilmiş kayıt olmadığı için onay/silme yok. */}
+                    {e.isSystemGenerated ? (
+                      <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[9.5px] font-bold text-slate-600" title="İptal edilen satışın iadesi — sistem kaydı">SİSTEM</span>
+                    ) : e.isApproved ? (
                       <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-[9.5px] font-bold text-emerald-700">ONAYLI</span>
                     ) : (
                       // Personelin girdiği kayıt onay bekler; yönetici tek tıkla onaylar.
@@ -1248,17 +1252,24 @@ function OnMuhasebePageInner() {
                       </button>
                     )}
                     <span className="shrink-0 font-display text-[18px] tabular-nums text-[#c85776]">{formatTL(e.amount)}</span>
-                    <ConfirmDialog
-                      destructive title="Gider silinsin mi?"
-                      description={`${e.description || expenseCategoryLabels[e.category]} · ${formatTL(e.amount)}`}
-                      confirmLabel="Sil"
-                      onConfirm={() => deleteExpense(e)}
-                      trigger={
-                        <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      }
-                    />
+                    {e.isSystemGenerated ? (
+                      // İade kaydı buradan silinemez: kaynağı iptal edilmiş satıştır (defter kaydı).
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#f0e6ea] bg-[#faf6f8] text-[#c9b7c0]" title="Sistem kaydı — buradan silinemez">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </span>
+                    ) : (
+                      <ConfirmDialog
+                        destructive title="Gider silinsin mi?"
+                        description={`${e.description || expenseCategoryLabels[e.category]} · ${formatTL(e.amount)}`}
+                        confirmLabel="Sil"
+                        onConfirm={() => deleteExpense(e)}
+                        trigger={
+                          <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        }
+                      />
+                    )}
                   </div>
                 )
               })}

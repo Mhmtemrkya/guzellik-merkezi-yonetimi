@@ -42,7 +42,36 @@ public sealed class ExpenseService : IExpenseService
         if (filter.Category.HasValue) baseQuery = baseQuery.Where(x => x.Category == filter.Category.Value);
         if (filter.StaffMemberId.HasValue) baseQuery = baseQuery.Where(x => x.StaffMemberId == filter.StaffMemberId.Value);
 
-        var total = await baseQuery.CountAsync(cancellationToken);
+        // MÜŞTERİ İADELERİ LİSTEDE DE GÖRÜNÜR. Gider ÖZETİ (bkz. SummaryAsync) iadeleri gider
+        // sayıyordu ama liste saymıyordu: kullanıcı aynı dönemde özet 1.000 TL derken satır
+        // toplamını 600 TL görüyordu. Kayıtlar sistem üretimidir (IsSystemGenerated) — düzenlenemez.
+        // Süzgeç kuralı özetle aynı: iade "Other" kategorisinde ve personelsizdir.
+        var refundsApply = filter.StaffMemberId is null
+            && (filter.Category is null || filter.Category == ExpenseCategory.Other);
+        var refundRows = new List<BusinessExpenseDto>();
+        if (refundsApply)
+        {
+            var refundQuery = _db.RefundTransactions.AsNoTracking().Where(r => r.TenantId == tenantId);
+            if (filter.FromUtc.HasValue)
+            {
+                var from = filter.FromUtc.Value.Kind == DateTimeKind.Utc ? filter.FromUtc.Value : DateTime.SpecifyKind(filter.FromUtc.Value, DateTimeKind.Utc);
+                refundQuery = refundQuery.Where(r => r.RefundedAtUtc >= from);
+            }
+            if (filter.ToUtc.HasValue)
+            {
+                var to = filter.ToUtc.Value.Kind == DateTimeKind.Utc ? filter.ToUtc.Value : DateTime.SpecifyKind(filter.ToUtc.Value, DateTimeKind.Utc);
+                refundQuery = refundQuery.Where(r => r.RefundedAtUtc < to);
+            }
+            refundRows = (await refundQuery.ToListAsync(cancellationToken))
+                .Select(r => new BusinessExpenseDto(
+                    r.Id, r.TenantId, r.BranchId, ExpenseCategory.Other, r.Amount,
+                    ExpensePaymentMethod.Cash, r.RefundedAtUtc, null, null, null,
+                    string.IsNullOrWhiteSpace(r.Reason) ? "Müşteri iadesi (iptal edilen satış)" : $"Müşteri iadesi — {r.Reason}",
+                    r.Reference, true, r.RefundedAtUtc, r.CreatedAtUtc, IsSystemGenerated: true))
+                .ToList();
+        }
+
+        var total = await baseQuery.CountAsync(cancellationToken) + refundRows.Count;
 
         // Materialize: önce row'ları çek, sonra in-memory'de order + page + project
         var rows = await baseQuery.ToListAsync(cancellationToken);
@@ -59,9 +88,6 @@ public sealed class ExpenseService : IExpenseService
                 .ToDictionary(s => s.Id, s => s.FullName);
 
         var items = rows
-            .OrderByDescending(r => r.OccurredAtUtc)
-            .Skip(pageRequest.Skip)
-            .Take(pageRequest.SafePageSize)
             .Select(r => new BusinessExpenseDto(
                 r.Id,
                 r.TenantId,
@@ -78,6 +104,10 @@ public sealed class ExpenseService : IExpenseService
                 r.IsApproved,
                 r.ApprovedAtUtc,
                 r.CreatedAtUtc))
+            .Concat(refundRows)
+            .OrderByDescending(r => r.OccurredAtUtc)
+            .Skip(pageRequest.Skip)
+            .Take(pageRequest.SafePageSize)
             .ToArray();
 
         return Result<PagedResult<BusinessExpenseDto>>.Success(new PagedResult<BusinessExpenseDto>(items, total, pageRequest.SafePage, pageRequest.SafePageSize));

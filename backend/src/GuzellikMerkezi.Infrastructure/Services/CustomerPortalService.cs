@@ -302,6 +302,14 @@ public sealed class CustomerPortalService : ICustomerPortalService
 
         var appointment = new Appointment(tenantId, request.BranchId, bookingCustomerId, request.StaffMemberId, request.ServiceDefinitionId,
             startUtc, endUtc, service.Price, request.Notes, isOnline: true);
+        // #RNDV NUMARASI BURADA DA ATANIR. Yalnız yönetici yolu numara veriyordu; portal/mobil
+        // üzerinden gelen randevular Number = null kalıyor, onayda da tamamlanmıyordu → listelerde
+        // ve aramada numarasız kayıtlar oluşuyordu. Kural yönetici yoluyla aynı: MAX(Number)+1,
+        // taban 10000. (Benzersiz indeks çakışırsa istek hata verir; portal talebi tekrarlanabilir.)
+        var maxNumber = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.Number != null)
+            .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
+        appointment.AssignNumber(maxNumber + 1);
         // Online randevu doğrudan takvime düşmez: kurum yöneticisi onayına (Draft) gönderilir.
         // Yönetici onay kutusunda (inbox) görür; onaylayınca Scheduled olur. Draft slot bloke etmez.
         appointment.SubmitForApproval();

@@ -114,7 +114,7 @@ public sealed class WaitlistService : IWaitlistService
                 : (DateTime?)null;
             var entry = new WaitlistEntry(tenantId, request.BranchId, request.CustomerId,
                 request.ServiceDefinitionId, request.StaffMemberId, request.PreferredDate, request.Note,
-                startUtc, request.DurationMinutes);
+                startUtc, request.DurationMinutes, request.SourceCustomerPackageSessionId);
             _db.WaitlistEntries.Add(entry);
             await _db.SaveChangesAsync(cancellationToken);
             await _audit.LogAsync(tenantId, entry.BranchId, "Create", "WaitlistEntry", entry.Id, "Bekleme listesine eklendi", null, cancellationToken);
@@ -231,9 +231,19 @@ public sealed class WaitlistService : IWaitlistService
         // bekleme listesi üzerinden ÜCRETSİZ randevu alabiliyordu. Kategori yetkisi ve çalışma
         // saati kontrolleri de CreateAsync içinde var, burada tekrarlanmaz.
         var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
+
+        // SEÇİLEN PAKET/SEANS KORUNUR. Randevu ekranında belirli bir seans seçilip slot dolu
+        // çıktığında seçim kayda yazılır; yer açıldığında randevu YİNE o seansa bağlanmalıdır —
+        // aksi hâlde aynı hizmeti içeren en eski paket tüketilir (kullanıcı B'yi seçmişken A'dan
+        // düşer). Seans bu arada tükendiyse kayıt kilitlenmesin diye otomatik seçime düşülür.
+        var chosenSessionId = entry.SourceCustomerPackageSessionId is { } stored
+            && await appointments.IsSessionStillBookableAsync(tenantId, entry.CustomerId, serviceId, stored, cancellationToken)
+                ? stored
+                : (Guid?)null;
+
         var appointmentRequest = new Application.Features.Appointments.CreateAppointmentRequest(
             branchId.Value, entry.CustomerId, staffId, serviceId, startUtc, endUtc, 0m,
-            "Bekleme listesinden aktifleşti");
+            "Bekleme listesinden aktifleşti", chosenSessionId);
 
         // HAKKI YOKSA SATIŞ DA AÇILIR — yoksa kayıt KALICI OLARAK dönüşemez hâlde kalırdı.
         //
@@ -391,7 +401,8 @@ public sealed class WaitlistService : IWaitlistService
 
     private static WaitlistEntryDto ToDto(WaitlistEntry w) => new(
         w.Id, w.TenantId, w.BranchId, w.CustomerId, w.ServiceDefinitionId, w.StaffMemberId,
-        w.PreferredDate, w.Status, w.Note, w.CreatedAtUtc, w.PreferredStartUtc, w.DurationMinutes);
+        w.PreferredDate, w.Status, w.Note, w.CreatedAtUtc, w.PreferredStartUtc, w.DurationMinutes,
+        w.SourceCustomerPackageSessionId);
 
     /// <summary>Boşalan somut slot: başlangıç/bitiş (UTC), personel, hizmet, şube.</summary>
     private readonly record struct OfferSlot(DateTime StartUtc, DateTime EndUtc, Guid StaffMemberId, Guid ServiceDefinitionId, Guid? BranchId)

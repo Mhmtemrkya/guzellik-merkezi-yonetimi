@@ -319,8 +319,13 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
             .ToList();
         if (items.Count == 0) return [];
 
+        // SİLİNMİŞ ÜRÜN DE BULUNUR (IgnoreQueryFilters). Ürün, geçmiş satış bağı denetlenmeden
+        // soft-delete edilebiliyor; varsayılan süzgeç onu gizlediği için iptal/geri alma yolunda
+        // satır hiç bulunamıyor ve STOK GERİ EKLENMİYORDU (10 → satışla 8 → ürün silinir → iptal
+        // edilir → stok 8 kalır). Kurum koşulu elle yazılır: kapsam yine bu kurumla sınırlıdır.
         var wanted = items.Select(i => i.RefId!.Value).ToHashSet();
-        var products = (await _db.Products.Where(p => p.TenantId == tenantId).ToListAsync(cancellationToken))
+        var products = (await _db.Products.IgnoreQueryFilters()
+                .Where(p => p.TenantId == tenantId).ToListAsync(cancellationToken))
             .Where(p => wanted.Contains(p.Id))
             .ToDictionary(p => p.Id);
 

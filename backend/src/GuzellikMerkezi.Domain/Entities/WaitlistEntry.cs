@@ -21,7 +21,8 @@ public sealed class WaitlistEntry : Entity
         DateOnly preferredDate,
         string? note,
         DateTime? preferredStartUtc = null,
-        int? durationMinutes = null)
+        int? durationMinutes = null,
+        Guid? sourceCustomerPackageSessionId = null)
     {
         if (customerId == Guid.Empty) throw new DomainException("Müşteri seçilmeli.");
         if (preferredStartUtc is { } s && s.Kind != DateTimeKind.Utc)
@@ -34,6 +35,7 @@ public sealed class WaitlistEntry : Entity
         PreferredDate = preferredDate;
         PreferredStartUtc = preferredStartUtc;
         DurationMinutes = durationMinutes is > 0 ? durationMinutes : null;
+        SourceCustomerPackageSessionId = sourceCustomerPackageSessionId == Guid.Empty ? null : sourceCustomerPackageSessionId;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         Status = WaitlistStatus.Waiting;
     }
@@ -48,6 +50,14 @@ public sealed class WaitlistEntry : Entity
     public DateTime? PreferredStartUtc { get; private set; }
     /// <summary>İstenen slot süresi (dk) — teklif kabul edilince randevu bitişini hesaplamak için.</summary>
     public int? DurationMinutes { get; private set; }
+
+    /// <summary>
+    /// Randevu ekranında SEÇİLMİŞ olan paket/seans bakiyesi. Slot dolu çıkıp kayıt bekleme listesine
+    /// düştüğünde bu seçim taşınmıyordu: yer açılınca sistem aynı hizmete ait EN ESKİ seansı
+    /// tüketiyor, kullanıcı B paketini seçmiş olsa bile A paketinden düşüyordu. Yer açıldığında
+    /// seans hâlâ kullanılabilirse randevu buna bağlanır; değilse eski (otomatik) davranışa düşülür.
+    /// </summary>
+    public Guid? SourceCustomerPackageSessionId { get; private set; }
     public WaitlistStatus Status { get; private set; }
     public string? Note { get; private set; }
 

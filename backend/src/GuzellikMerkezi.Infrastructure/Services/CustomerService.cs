@@ -268,16 +268,35 @@ LIMIT 2000")
             command.CommandText = $@"
 -- İPTAL EDİLEN SATIŞ BORÇ DOĞURMAZ: CancelledAtUtc doluysa kalan alacak 0 sayılır.
 -- Tahsil edilen tutar (Spent) korunur — para gerçekten alınmıştır, yalnızca alacak düşer.
-SELECT a.CustomerId,
-       COALESCE(SUM(CASE WHEN a.CancelledAtUtc IS NULL
-                         THEN GREATEST(a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0), 0)
-                         ELSE 0 END), 0) AS Debt,
-       COALESCE(SUM(COALESCE(p.Paid, 0) - a.RefundedAmount), 0) AS Spent
-FROM customer_accounts a
-LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
-       ON p.CustomerAccountId = a.Id
-WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}' AND a.CustomerId IN ({inList})
-GROUP BY a.CustomerId;";
+--
+-- ARŞİVLENMİŞ TAHSİLAT + İADE DE SAYILIR: iptalde cari/tahsilat satırları canlı tablodan SİLİNİP
+-- arşive taşınıyor, bu yüzden yalnız customer_accounts'a bakan hesap o parayı göremiyordu. Genel
+-- rapor arşivi sayarken müşteri kartı 0 gösteriyordu (aynı gerçek, iki farklı rakam).
+-- İade satırları YALNIZ arşivlenmiş (iptal) satışlara aittir → canlı a.RefundedAmount ile çakışmaz.
+SELECT t.CustomerId, COALESCE(SUM(t.Debt), 0) AS Debt, COALESCE(SUM(t.Spent), 0) AS Spent
+FROM (
+  SELECT a.CustomerId AS CustomerId,
+         SUM(CASE WHEN a.CancelledAtUtc IS NULL
+                  THEN GREATEST(a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0), 0)
+                  ELSE 0 END) AS Debt,
+         SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
+  FROM customer_accounts a
+  LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
+         ON p.CustomerAccountId = a.Id
+  WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}' AND a.CustomerId IN ({inList})
+  GROUP BY a.CustomerId
+  UNION ALL
+  SELECT ap.CustomerId, 0 AS Debt, SUM(ap.Amount) AS Spent
+  FROM archived_sale_payments ap
+  WHERE ap.IsDeleted = 0 AND ap.TenantId = '{tenantId}' AND ap.CustomerId IN ({inList})
+  GROUP BY ap.CustomerId
+  UNION ALL
+  SELECT r.CustomerId, 0 AS Debt, -SUM(r.Amount) AS Spent
+  FROM refund_transactions r
+  WHERE r.IsDeleted = 0 AND r.TenantId = '{tenantId}' AND r.CustomerId IN ({inList})
+  GROUP BY r.CustomerId
+) t
+GROUP BY t.CustomerId;";
             if (command.Connection!.State != System.Data.ConnectionState.Open)
                 await command.Connection.OpenAsync(cancellationToken);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -503,17 +522,34 @@ SELECT COALESCE(SUM(GREATEST(t.Debt, 0)), 0) AS TotalDebt,
        COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
        COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders
 FROM (
-  -- İptal edilen satış borç doğurmaz (bkz. LoadDebtSpent); tahsil edilen tutar korunur.
-  SELECT a.CustomerId,
-         SUM(CASE WHEN a.CancelledAtUtc IS NULL
-                  THEN a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0)
-                  ELSE 0 END) AS Debt,
-         SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
-  FROM customer_accounts a
-  LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
-         ON p.CustomerAccountId = a.Id
-  WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
-  GROUP BY a.CustomerId
+  -- Müşteri başına tek satır: canlı cariler + arşivlenmiş (iptal) tahsilatlar − iadeler.
+  -- Arşiv dahil edilmezse iptal edilmiş satışın gerçekten alınmış parası hiçbir müşteri
+  -- istatistiğinde görünmüyor, genel rapor ise onu sayıyordu (bkz. EnrichAsync).
+  SELECT u.CustomerId, SUM(u.Debt) AS Debt, SUM(u.Spent) AS Spent
+  FROM (
+    -- İptal edilen satış borç doğurmaz (bkz. LoadDebtSpent); tahsil edilen tutar korunur.
+    SELECT a.CustomerId AS CustomerId,
+           SUM(CASE WHEN a.CancelledAtUtc IS NULL
+                    THEN a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0)
+                    ELSE 0 END) AS Debt,
+           SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
+    FROM customer_accounts a
+    LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
+           ON p.CustomerAccountId = a.Id
+    WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
+    GROUP BY a.CustomerId
+    UNION ALL
+    SELECT ap.CustomerId, 0 AS Debt, SUM(ap.Amount) AS Spent
+    FROM archived_sale_payments ap
+    WHERE ap.IsDeleted = 0 AND ap.TenantId = '{tenantId}'
+    GROUP BY ap.CustomerId
+    UNION ALL
+    SELECT r.CustomerId, 0 AS Debt, -SUM(r.Amount) AS Spent
+    FROM refund_transactions r
+    WHERE r.IsDeleted = 0 AND r.TenantId = '{tenantId}'
+    GROUP BY r.CustomerId
+  ) u
+  GROUP BY u.CustomerId
 ) t;";
             if (command.Connection!.State != System.Data.ConnectionState.Open)
                 await command.Connection.OpenAsync(cancellationToken);
@@ -597,6 +633,10 @@ FROM (
         // "Tüm zamanlar"a döndüğünde değer oynamasın).
         var refundTerm = since is null ? " - a.RefundedAmount" : string.Empty;
         var paymentFilter = since is null ? string.Empty : $" AND OccurredAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
+        // Arşiv/iade satırlarının GERÇEK tarihi vardır → pencere onlara da uygulanır (canlı
+        // carideki korunmuş iadenin tarihi yoktur, o yüzden orada yalnız tüm-zamanlarda düşülür).
+        var archivedFilter = since is null ? string.Empty : $" AND ap.OccurredAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
+        var refundFilter = since is null ? string.Empty : $" AND r.RefundedAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
 
         await using var command = _db.Database.GetDbConnection().CreateCommand();
         command.CommandText = $@"
@@ -604,16 +644,31 @@ SELECT COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
        COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders,
        COALESCE(SUM(GREATEST(t.Spent, 0)), 0) AS TotalSpent
 FROM (
-  SELECT a.CustomerId,
-         SUM(COALESCE(p.Paid, 0){refundTerm}) AS Spent
-  FROM customer_accounts a
-  LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid
-             FROM account_payments
-             WHERE IsDeleted = 0{paymentFilter}
-             GROUP BY CustomerAccountId) p
-         ON p.CustomerAccountId = a.Id
-  WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
-  GROUP BY a.CustomerId
+  SELECT u.CustomerId, SUM(u.Spent) AS Spent
+  FROM (
+    SELECT a.CustomerId AS CustomerId,
+           SUM(COALESCE(p.Paid, 0){refundTerm}) AS Spent
+    FROM customer_accounts a
+    LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid
+               FROM account_payments
+               WHERE IsDeleted = 0{paymentFilter}
+               GROUP BY CustomerAccountId) p
+           ON p.CustomerAccountId = a.Id
+    WHERE a.IsDeleted = 0 AND a.TenantId = '{tenantId}'
+    GROUP BY a.CustomerId
+    UNION ALL
+    -- İptal edilen satışın arşivlenmiş tahsilatı (canlı satır silinmiştir).
+    SELECT ap.CustomerId, SUM(ap.Amount) AS Spent
+    FROM archived_sale_payments ap
+    WHERE ap.IsDeleted = 0 AND ap.TenantId = '{tenantId}'{archivedFilter}
+    GROUP BY ap.CustomerId
+    UNION ALL
+    SELECT r.CustomerId, -SUM(r.Amount) AS Spent
+    FROM refund_transactions r
+    WHERE r.IsDeleted = 0 AND r.TenantId = '{tenantId}'{refundFilter}
+    GROUP BY r.CustomerId
+  ) u
+  GROUP BY u.CustomerId
 ) t;";
         if (command.Connection!.State != System.Data.ConnectionState.Open)
             await command.Connection.OpenAsync(cancellationToken);

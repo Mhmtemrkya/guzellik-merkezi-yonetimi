@@ -5,6 +5,7 @@ using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.GiftCards;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -108,6 +109,23 @@ public sealed class GiftCardService : IGiftCardService
     {
         var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == id, cancellationToken);
         if (card is null) return Result.Failure(Error.NotFound("Kod bulunamadı."));
+
+        // AÇIK FİŞTE KULLANILIYORSA SİLİNEMEZ. Kod, uygulandığı adisyon onaylanmadan silinince
+        // indirim kalemi fişte kalıyor ama onayda karşılığı bulunamıyordu: müşteri o kadar az
+        // borçlanıyor, çekin bakiyesi/kullanım sayısı ise hiç düşmüyordu (bedava indirim).
+        var openUsage = await _db.AdisyonItems.AsNoTracking()
+            .AnyAsync(i => i.RefId == id
+                        && i.Type == AdisyonItemType.Discount
+                        && _db.Adisyonlar.Any(a => a.Id == i.AdisyonId
+                                                && a.TenantId == tenantId
+                                                && a.Status == AdisyonStatus.Open), cancellationToken);
+        if (openUsage)
+        {
+            return Result.Failure(Error.Conflict(
+                "Bu kod henüz onaylanmamış bir adisyonda kullanılıyor; silinemez. Önce ilgili fişten indirim " +
+                "kalemini kaldırın ya da fişi onaylayın."));
+        }
+
         card.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         return Result.Success();

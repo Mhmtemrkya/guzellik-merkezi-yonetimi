@@ -15,6 +15,8 @@ public sealed record WaitlistEntryDto(
     DateTime CreatedAtUtc,
     DateTime? PreferredStartUtc,
     int? DurationMinutes,
+    /// <summary>Randevu ekranında seçilmiş paket/seans — yer açıldığında randevu buna bağlanır.</summary>
+    Guid? SourceCustomerPackageSessionId = null,
     string? CustomerName = null,
     string? CustomerPhone = null,
     string? ServiceName = null,
@@ -28,7 +30,12 @@ public sealed record CreateWaitlistRequest(
     string? Note,
     Guid? BranchId,
     DateTime? PreferredStartUtc = null,
-    int? DurationMinutes = null);
+    int? DurationMinutes = null,
+    /// <summary>
+    /// Randevu ekranında seçilmiş paket/seans. Slot dolu çıkınca kayıt bekleme listesine düşer;
+    /// bu alan taşınmazsa yer açıldığında aynı hizmetin EN ESKİ seansı tüketilir (yanlış paket).
+    /// </summary>
+    Guid? SourceCustomerPackageSessionId = null);
 
 public sealed record UpdateWaitlistStatusRequest(WaitlistStatus Status);
 

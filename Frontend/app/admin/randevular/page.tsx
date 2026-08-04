@@ -784,6 +784,10 @@ function RandevularPageInner() {
         durationMinutes: duration,
         branchId: branchId ?? null,
         note: null,
+        // SEÇİLEN PAKET/SEANS BEKLEME KAYDINDA DA SAKLANIR. Randevu payload'ında taşınan bu bilgi
+        // slot dolduğunda kayboluyordu: yer açılınca sistem aynı hizmete ait EN ESKİ seansı
+        // tüketiyor, kullanıcı B paketini seçmiş olsa bile A'dan düşüyordu.
+        sourceCustomerPackageSessionId: values.sourceSessionId || null,
       },
       tenantId,
     )

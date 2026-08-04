@@ -29,6 +29,14 @@ public interface IAppointmentService
     Task<bool> HasServiceEntitlementAsync(Guid tenantId, Guid customerId, Guid serviceDefinitionId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// SEÇİLMİŞ bir paket/seans bakiyesi hâlâ kullanılabilir mi? (sahiplik + kalan bakiye + açık
+    /// randevu rezervasyonu). Bekleme listesi, yer açıldığında kayıtta saklı seçimi randevuya
+    /// taşımadan önce buradan doğrular: seans bu arada tükenmişse kayıt kilitlenmesin, otomatik
+    /// seçime düşülsün.
+    /// </summary>
+    Task<bool> IsSessionStillBookableAsync(Guid tenantId, Guid customerId, Guid serviceDefinitionId, Guid sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Randevuyu "Tamamlandı" yapar ve tahsilatı TEK transaction'da alır (biri düşerse ikisi de
     /// uygulanmaz). Tahsilat verilmezse yalnız durum değişir.
     /// </summary>

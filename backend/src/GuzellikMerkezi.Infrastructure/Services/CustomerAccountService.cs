@@ -1137,10 +1137,27 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 "Ek para alındıysa tahsilat girin, geri ödendiyse satışı iptal edip iade kaydedin."));
         }
 
+        var totalChanged = Math.Round(request.TotalAmount, 2) != Math.Round(account.TotalAmount, 2);
+
         account.Rename(request.Name);
         account.ChangeTotal(request.TotalAmount, request.DepositAmount);
         account.SetNotes(request.Notes);
         if (request.IsActive) account.Activate(); else account.Deactivate();
+
+        // TOPLAM DEĞİŞTİYSE TAKSİT PLANI DA YENİDEN KURULUR.
+        //
+        // Yalnız TotalAmount güncelleniyordu; plan eski toplama göre kalıyordu. Taksit ve açık
+        // alacak raporları plan toplamını kullandığı için aradaki fark HİÇBİR YERDE görünmüyordu
+        // (canlıda 8.750 cari ↔ 8.500 plan = 250 TL kayıp alacak). Adisyon onayı bu senkronu zaten
+        // yapıyor (bkz. AdisyonService 4. adım); elle güncelleme yolu ondan geri kalmamalı.
+        // Yeniden bölmek parayı bozmaz: "ödenen" taksitte değil tahsilatlarda tutulur.
+        if (totalChanged)
+        {
+            var activePlan = account.Installments.Where(i => i.Status != InstallmentStatus.Cancelled).ToList();
+            if (activePlan.Count > 0)
+                account.RebuildInstallments(activePlan.Count, activePlan.Min(i => i.DueDate));
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         var (revenue, count) = await GetAppointmentStatsAsync(tenantId, account.CustomerId, cancellationToken);
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, account, revenue, count, cancellationToken));
@@ -1151,6 +1168,15 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // EF Core change tracker'ı bypass et — ExecuteUpdateAsync ile direkt SQL.
         // MySql.EntityFrameworkCore'un Add/Remove kombinasyonunda hatalı SQL üretip
         // DbUpdateConcurrencyException fırlatması bilinen bir bug.
+
+        // TAKSİT SAYISI SINIRI. Negatif sayı için doğrulama yoktu: akış ÖNCE mevcut planın tamamını
+        // siliyor, yeni taksitleri yalnız sayı > 0 iken oluşturuyordu → InstallmentCount = -1 planı
+        // yok ediyor, yerine hiçbir şey koymuyor ve istek BAŞARILI dönüyordu (açık alacak taksit
+        // raporundan kayboluyordu). 0 meşrudur: "planı kaldır, peşine çevir".
+        if (request.InstallmentCount < 0)
+            return Result<CustomerAccountDto>.Failure(Error.Validation("Taksit sayısı negatif olamaz."));
+        if (request.InstallmentCount > 120)
+            return Result<CustomerAccountDto>.Failure(Error.Validation("Taksit sayısı en fazla 120 olabilir."));
 
         var accountInfo = await _db.CustomerAccounts
             .AsNoTracking()

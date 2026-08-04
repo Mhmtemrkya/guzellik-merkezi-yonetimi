@@ -147,8 +147,14 @@ export default function CompleteAppointmentDialog({
    * yoksa adisyon defteri). Buradan yalnız yüzeyden gelen accountId iletilir.
    */
   const completeAtomically = async (payment: { amount: number; method: string } | null): Promise<void> => {
+    const targetAccountId = accountId || openAdisyon?.customerAccountId || null
+    // ANAHTAR PAYLOAD'IN TAMAMINI TEMSİL ETMELİ. Eskiden yalnız randevu + tutar + yöntem giriyordu:
+    // yanlış cariyle yapılan ilk deneme 4xx alınca, kullanıcı DOĞRU cariyi seçip tekrar
+    // gönderdiğinde anahtar aynı kaldığı için sunucu eski hatayı replay edebiliyordu (istek hiç
+    // çalışmadan başarısız görünürdü). Hedef cari de anahtara girer.
+    const accountPart = targetAccountId ? targetAccountId.replace(/-/g, '').slice(0, 8) : 'auto'
     const idem = payment
-      ? `apc${appointmentId.replace(/-/g, '')}-${Math.round(payment.amount * 100)}-${payment.method}`.slice(0, 52)
+      ? `apc${appointmentId.replace(/-/g, '')}-${Math.round(payment.amount * 100)}-${payment.method}-${accountPart}`.slice(0, 52)
       : `apc${appointmentId.replace(/-/g, '')}`.slice(0, 52)
     await adminApi.completeAppointment(
       appointmentId,
@@ -159,7 +165,7 @@ export default function CompleteAppointmentDialog({
               amount: payment.amount,
               method: payment.method,
               reference: 'Randevu tahsilatı',
-              accountId: accountId || openAdisyon?.customerAccountId || null,
+              accountId: targetAccountId,
               occurredAtUtc: new Date().toISOString(),
             }
           : null,

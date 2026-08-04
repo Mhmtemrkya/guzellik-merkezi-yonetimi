@@ -1829,6 +1829,8 @@ export interface ApiBusinessExpense {
   isApproved?: boolean
   approvedAtUtc?: string | null
   createdAtUtc?: string
+  /** Sistem üretimi satır (müşteri iadesi) — düzenlenemez/silinemez. */
+  isSystemGenerated?: boolean
 }
 
 export interface BusinessExpense {
@@ -1847,6 +1849,8 @@ export interface BusinessExpense {
   isApproved: boolean
   approvedAt: string | null
   createdAt: string
+  /** Sistem üretimi satır (müşteri iadesi) — düzenlenemez/silinemez. */
+  isSystemGenerated: boolean
 }
 
 export interface ApiExpenseCategoryTotal {

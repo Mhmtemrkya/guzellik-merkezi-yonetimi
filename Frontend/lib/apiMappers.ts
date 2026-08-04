@@ -1014,6 +1014,8 @@ export function normalizeExpense(expense: ApiBusinessExpense | null | undefined,
     isApproved: expense?.isApproved ?? false,
     approvedAt: expense?.approvedAtUtc || null,
     createdAt: expense?.createdAtUtc || '',
+    // Müşteri iadeleri gider listesinde de görünür ama elle girilmiş kayıt değildir.
+    isSystemGenerated: expense?.isSystemGenerated ?? false,
   }
 }
 

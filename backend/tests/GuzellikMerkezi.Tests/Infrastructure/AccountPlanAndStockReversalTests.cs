@@ -1,0 +1,204 @@
+using GuzellikMerkezi.Application.Features.CustomerAccounts;
+using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
+namespace GuzellikMerkezi.Tests.Infrastructure;
+
+/// <summary>
+/// CARİ TAKSİT PLANI + SİLİNMİŞ ÜRÜNÜN STOK TERS KAYDI (mantık denetimi).
+///
+/// <list type="number">
+/// <item>Cari toplamı elle değiştirilince YALNIZ TotalAmount güncelleniyordu; plan eski toplama
+/// göre kalıyordu. Taksit/açık alacak raporları plan toplamını kullandığı için aradaki fark
+/// hiçbir yerde görünmüyordu (canlıda 8.750 cari ↔ 8.500 plan = 250 TL kayıp alacak).</item>
+/// <item>Taksitlendirme ucunda negatif sayı doğrulaması yoktu: akış önce planın tamamını siliyor,
+/// yeni taksitleri yalnız sayı &gt; 0 iken kuruyordu → -1 planı yok edip başarılı dönüyordu.</item>
+/// <item>Ürün, geçmiş satış bağı denetlenmeden silinebiliyor; iptal/geri alma yolunda varsayılan
+/// süzgeç onu gizlediği için STOK GERİ EKLENMİYORDU.</item>
+/// </list>
+/// </summary>
+public sealed class AccountPlanAndStockReversalTests
+{
+    private static DbContextOptions<GuzellikDbContext> NewOptions() =>
+        new DbContextOptionsBuilder<GuzellikDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+    private static GuzellikDbContext NewDb(DbContextOptions<GuzellikDbContext> options) =>
+        new(options, null, new TestCurrentUser(), null, null, TestSearchIndex.Create());
+
+    private static CustomerAccountService NewAccounts(GuzellikDbContext db) =>
+        new(db, new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
+
+    private static AdisyonService NewAdisyon(GuzellikDbContext db)
+    {
+        var user = new TestCurrentUser(UserRole.InstitutionOwner);
+        return new AdisyonService(db, new NoopAuditLogger(), user,
+            new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
+    }
+
+    private sealed record Seed(Guid TenantId, Guid BranchId, Guid CustomerId);
+
+    private static async Task<Seed> SeedAsync(DbContextOptions<GuzellikDbContext> options)
+    {
+        await using var db = NewDb(options);
+        var tenant = new Tenant("Plan QA", $"plan-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+        var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var customer = new Customer(tenant.Id, branch.Id, "PLAN MÜŞTERİ", "0555 222 33 44", null);
+        db.Customers.Add(customer);
+        await db.SaveChangesAsync();
+
+        return new Seed(tenant.Id, branch.Id, customer.Id);
+    }
+
+    private static async Task<Guid> SeedAccountWithPlanAsync(
+        DbContextOptions<GuzellikDbContext> options, Seed seed, decimal total, int installments)
+    {
+        await using var db = NewDb(options);
+        var account = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Paket satışı", total, 0m);
+        account.RebuildInstallments(installments, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(15)));
+        db.CustomerAccounts.Add(account);
+        await db.SaveChangesAsync();
+        return account.Id;
+    }
+
+    /// <summary>Toplam değişince plan da yeniden kurulur: cari toplamı ile plan toplamı ayrışmaz.</summary>
+    [Fact]
+    public async Task UpdateAccount_ChangingTotal_RebuildsInstallmentPlan()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var accountId = await SeedAccountWithPlanAsync(options, seed, 8500m, 4);
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAccounts(db).UpdateAsync(seed.TenantId, accountId,
+                new UpdateCustomerAccountRequest("Paket satışı", 8750m, 0m, true, null));
+            Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var account = await check.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == accountId);
+            Assert.Equal(8750m, account.TotalAmount);
+            Assert.Equal(4, account.Installments.Count);
+            // Kayıp alacak yok: plan toplamı cari toplamına eşit.
+            Assert.Equal(8750m, account.Installments.Sum(i => i.Amount));
+        }
+    }
+
+    /// <summary>Toplam DEĞİŞMEDİYSE plana dokunulmaz (ad/not güncellemesi planı bozmamalı).</summary>
+    [Fact]
+    public async Task UpdateAccount_WithoutTotalChange_KeepsPlanUntouched()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var accountId = await SeedAccountWithPlanAsync(options, seed, 8500m, 4);
+
+        Guid[] before;
+        await using (var db = NewDb(options))
+        {
+            before = await db.Installments.Where(i => i.CustomerAccountId == accountId)
+                .OrderBy(i => i.DueDate).Select(i => i.Id).ToArrayAsync();
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAccounts(db).UpdateAsync(seed.TenantId, accountId,
+                new UpdateCustomerAccountRequest("Yeni ad", 8500m, 0m, true, "not"));
+            Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var after = await check.Installments.Where(i => i.CustomerAccountId == accountId)
+                .OrderBy(i => i.DueDate).Select(i => i.Id).ToArrayAsync();
+            Assert.Equal(before, after);
+        }
+    }
+
+    /// <summary>Negatif taksit sayısı reddedilir; mevcut plan olduğu gibi kalır.</summary>
+    [Fact]
+    public async Task Reschedule_WithNegativeInstallmentCount_IsRejectedAndKeepsPlan()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var accountId = await SeedAccountWithPlanAsync(options, seed, 8000m, 4);
+
+        await using (var db = NewDb(options))
+        {
+            var result = await NewAccounts(db).RescheduleAsync(seed.TenantId, accountId,
+                new RescheduleAccountRequest(-1, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30))));
+            Assert.True(result.IsFailure, "Negatif taksit sayısı kabul edildi: plan silinir, yenisi kurulmaz.");
+            Assert.Equal("Validation", result.Error.Code);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var account = await check.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == accountId);
+            Assert.Equal(4, account.Installments.Count);
+            Assert.Equal(8000m, account.Installments.Sum(i => i.Amount));
+        }
+    }
+
+    /// <summary>Satış sonrası ürün silinse bile adisyon silinince stok GERİ EKLENİR.</summary>
+    [Fact]
+    public async Task DeleteApprovedAdisyon_WithDeletedProduct_StillRestoresStock()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId, productId;
+
+        await using (var db = NewDb(options))
+        {
+            var product = new Product(seed.TenantId, seed.BranchId, "Şampuan", ProductCategory.Other, "adet",
+                cost: 50m, salePrice: 100m, currentStock: 10m, minStockLevel: 0m);
+            db.Products.Add(product);
+            await db.SaveChangesAsync();
+            productId = product.Id;
+
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Product, product.Id, "Şampuan", 2, 100m, null, false));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+            var product = await db.Products.SingleAsync(p => p.Id == productId);
+            Assert.Equal(8m, product.CurrentStock);
+        }
+
+        // Ürün katalogdan kaldırılır (geçmiş satış bağı denetlenmiyor).
+        await using (var db = NewDb(options))
+        {
+            var product = await db.Products.SingleAsync(p => p.Id == productId);
+            product.SoftDelete();
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var deleted = await NewAdisyon(db).DeleteAsync(seed.TenantId, adisyonId);
+            Assert.True(deleted.IsSuccess, deleted.IsFailure ? deleted.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var product = await check.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == productId);
+            Assert.Equal(10m, product.CurrentStock);
+        }
+    }
+}

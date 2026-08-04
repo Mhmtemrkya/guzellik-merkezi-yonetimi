@@ -17,7 +17,13 @@ public sealed record BusinessExpenseDto(
     string? Reference,
     bool IsApproved,
     DateTime? ApprovedAtUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    /// <summary>
+    /// true = elle girilmiş gider DEĞİL, sistemin ürettiği kayıt (müşteri iadesi). Gider ÖZETİ bu
+    /// tutarları zaten sayıyordu ama liste göstermiyordu: aynı dönem için özet 1.000, satırlar 600
+    /// diyordu. Satır artık listede de var; düzenlenemez/silinemez olduğu bu bayrakla ayırt edilir.
+    /// </summary>
+    bool IsSystemGenerated = false);
 
 public sealed record CreateExpenseRequest(
     Guid? BranchId,

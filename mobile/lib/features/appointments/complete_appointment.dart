@@ -103,10 +103,16 @@ Future<bool> runCompleteAppointment(
 /// tekrarı güvenli kılar, ATOMİKLİĞİ sağlamaz — sunucu artık ikisini birlikte uygular.
 Future<void> _completeAtomically(ApiClient api, String appointmentId,
     String? accountId, Map<String, dynamic>? payment) async {
+  // ANAHTAR PAYLOAD'IN TAMAMINI TEMSİL ETMELİ (web ile aynı kural): hedef cari anahtara
+  // girmezse, yanlış cariyle 4xx alan istek düzeltilip tekrar gönderildiğinde sunucu aynı
+  // anahtarı görüp ESKİ HATAYI replay edebiliyordu.
+  final accountPart = (accountId == null || accountId.isEmpty)
+      ? 'auto'
+      : accountId.replaceAll('-', '').substring(0, 8);
   final base = payment == null
       ? 'apc${appointmentId.replaceAll('-', '')}'
       : 'apc${appointmentId.replaceAll('-', '')}'
-          '-${((payment['amount'] as double) * 100).round()}-${payment['method']}';
+          '-${((payment['amount'] as double) * 100).round()}-${payment['method']}-$accountPart';
   final idem = base.length > 52 ? base.substring(0, 52) : base;
   await api.post('/api/admin/appointments/$appointmentId/complete', {
     'reason': null,

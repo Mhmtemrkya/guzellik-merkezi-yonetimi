@@ -39,6 +39,9 @@ class ExpensesScreen extends StatelessWidget {
       canCreate: me?.canAction(Perm.accountingExpenses) ?? true,
       canUpdate: me?.canAction(Perm.accountingExpenses) ?? true,
       canDelete: me?.canAction(Perm.accountingExpenses) ?? true,
+      // Müşteri iadeleri gider listesinde de görünür (gider özeti onları zaten sayıyordu),
+      // ama elle girilmiş kayıt değildir: düzenlenemez/silinemez.
+      isReadOnlyItem: (item) => item['isSystemGenerated'] == true,
       eyebrow: 'Ön Muhasebe',
       title: 'Giderler',
       subtitle: 'Gider kayıtları, kategori ve ödeme yöntemleri.',

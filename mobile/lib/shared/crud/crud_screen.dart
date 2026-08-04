@@ -162,6 +162,7 @@ class CrudListScreen extends StatefulWidget {
     this.canCreate = true,
     this.canUpdate = true,
     this.canDelete = true,
+    this.isReadOnlyItem,
     this.formExtra,
     this.remoteSearch,
     super.key,
@@ -220,6 +221,12 @@ class CrudListScreen extends StatefulWidget {
   final bool canUpdate;
   final bool canDelete;
 
+  /// SATIR BAZLI salt-okunurluk: listede, kullanıcının girmediği SİSTEM kayıtları da
+  /// görünebiliyor (ör. gider listesindeki müşteri iadeleri — gider özeti onları zaten
+  /// sayıyor). Bu satırlar düzenlenemez/silinemez; uç zaten bulamaz ama kullanıcıya
+  /// çalışmayacak buton gösterilmemelidir.
+  final bool Function(Map<String, dynamic> item)? isReadOnlyItem;
+
   /// Form sheet'inde alanların altında gösterilen ek içerik (ör. KVKK metnini
   /// görüntüle butonu + açıklama notu). Oluşturma ve düzenleme sheet'lerinde görünür.
   final Widget? formExtra;
@@ -264,18 +271,21 @@ class _CrudListScreenState extends State<CrudListScreen> {
   }
 
   Future<void> _openEdit(Map<String, dynamic> item) async {
+    // Sistem kaydı (ör. müşteri iadesi satırı): görüntülenir, değiştirilemez.
+    final readOnly = widget.isReadOnlyItem?.call(item) ?? false;
+    final canEdit = widget.canUpdate && !readOnly;
     final result = await showModalBottomSheet<CrudSheetResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => CrudFormSheet(
-        title: widget.onUpdate == null || !widget.canUpdate ? 'İşlemler' : 'Düzenle',
-        fields: widget.onUpdate == null || !widget.canUpdate
+        title: widget.onUpdate == null || !canEdit ? 'İşlemler' : 'Düzenle',
+        fields: widget.onUpdate == null || !canEdit
             ? const []
             : widget.fields.where((f) => f.showOnEdit).toList(),
         icon: widget.icon,
         initial: item,
-        canDelete: widget.onDelete != null && widget.canDelete,
+        canDelete: widget.onDelete != null && widget.canDelete && !readOnly,
         deleteLabel: widget.deleteLabel,
         rowActions: widget.rowActions,
         extra: widget.formExtra,
@@ -292,7 +302,7 @@ class _CrudListScreenState extends State<CrudListScreen> {
       _refresh();
       return;
     }
-    if (result.body != null && widget.onUpdate != null && widget.canUpdate) {
+    if (result.body != null && widget.onUpdate != null && canEdit) {
       widget.decorateUpdate?.call(result.body!, item);
       await _guard(
         () => widget.onUpdate!(item, result.body!),
@@ -363,6 +373,8 @@ class _CrudListScreenState extends State<CrudListScreen> {
           ? null
           : (items) async {
               for (final item in items) {
+                // Sistem kayıtları toplu silmede de atlanır (uç zaten bulamaz).
+                if (widget.isReadOnlyItem?.call(item) ?? false) continue;
                 await widget.onDelete!(item);
               }
             },

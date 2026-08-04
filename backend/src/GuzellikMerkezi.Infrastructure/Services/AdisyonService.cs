@@ -111,6 +111,42 @@ public sealed class AdisyonService : IAdisyonService
         return owns ? null : Error.Validation("Seçilen cari hesap bu müşteriye ait değil ya da iptal edilmiş.");
     }
 
+    /// <summary>
+    /// Kalemin işaret ettiği personel ve katalog kaydı BU KURUMA ait mi?
+    ///
+    /// <para>
+    /// Global süzgeçler atlanır, koşullar elle yazılır: doğrulanan şey KURUM üyeliğidir; aktif şube
+    /// kapsamı yüzünden başka şubenin hizmeti/ürünü "yok" sayılıp meşru fiş kırılmamalıdır.
+    /// Silinmiş kayıt yine reddedilir — silinmiş ürün/pakete satış açılmamalı.
+    /// </para>
+    /// </summary>
+    private async Task<Error?> ValidateItemScopeAsync(Guid tenantId, AddAdisyonItemRequest request, CancellationToken ct)
+    {
+        if (request.StaffMemberId is { } staffId && staffId != Guid.Empty
+            && !await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(s => s.TenantId == tenantId && s.Id == staffId && !s.IsDeleted, ct))
+        {
+            return Error.Validation("Seçilen personel bu kuruma ait değil.");
+        }
+
+        if (request.RefId is not { } refId || refId == Guid.Empty) return null;
+
+        var exists = request.Type switch
+        {
+            AdisyonItemType.Service or AdisyonItemType.PackageUse => await _db.ServiceDefinitions.AsNoTracking()
+                .IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Id == refId && !x.IsDeleted, ct),
+            AdisyonItemType.PackageSale => await _db.ServicePackages.AsNoTracking()
+                .IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Id == refId && !x.IsDeleted, ct),
+            AdisyonItemType.Product => await _db.Products.AsNoTracking()
+                .IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Id == refId && !x.IsDeleted, ct),
+            AdisyonItemType.Discount => await _db.GiftCards.AsNoTracking()
+                .IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Id == refId && !x.IsDeleted, ct),
+            // Tahsilat/ek kalemde RefId'nin katalog karşılığı yoktur (serbest referans).
+            _ => true,
+        };
+        return exists ? null : Error.Validation("Seçilen kayıt bu kuruma ait değil ya da silinmiş.");
+    }
+
     public async Task<Result<AdisyonDto>> CreateAsync(Guid tenantId, CreateAdisyonRequest request, CancellationToken cancellationToken = default)
     {
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId, cancellationToken);
@@ -217,6 +253,12 @@ public sealed class AdisyonService : IAdisyonService
             return Result<AdisyonDto>.Failure(Error.Validation(
                 "Cari hesaba bağlı fişe satış kalemi eklenemez: her satış kendi cari kartını açar. Satış için yeni fiş açın."));
         }
+
+        // KALEMİN BAĞLANDIĞI KAYITLAR BU KURUMA AİT OLMALI. Personel ve RefId hiç doğrulanmıyordu:
+        // doğrudan API çağrısıyla BAŞKA kurumun personeli prim alabilir, başka kurumun hizmeti/paketi
+        // satılıp müşteriye o kurumun seansı açılabilirdi (DB'de bileşik TenantId+Id bütünlüğü yok).
+        if (await ValidateItemScopeAsync(tenantId, request, cancellationToken) is { } scopeError)
+            return Result<AdisyonDto>.Failure(scopeError);
 
         AdisyonItem item;
         try
@@ -683,7 +725,16 @@ public sealed class AdisyonService : IAdisyonService
                 var package = await _db.ServicePackages
                     .Include(p => p.Items)
                     .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == item.RefId!.Value, cancellationToken);
-                if (package is null) continue;
+                // PAKET YOKSA ONAY DURUR. Sessizce atlanıyordu: fiş satılan paketin BEDELİNİ cariye
+                // borç yazıyor ama karşılığındaki seanslar hiç açılmıyordu (paket fiş açıkken
+                // silinmişse müşteri parayı öder, hakkı oluşmaz). Kalem kaldırılıp güncel paketle
+                // yeniden eklenmeli.
+                if (package is null)
+                {
+                    return Result<AdisyonDto>.Failure(Error.Validation(
+                        $"'{item.Description}' paketi artık bulunamıyor (silinmiş olabilir); onay durduruldu. " +
+                        "Kalemi kaldırıp güncel paketi ekleyin — aksi hâlde bedel tahakkuk eder ama seans açılmaz."));
+                }
                 var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
                 foreach (var pkgItem in package.Items)
                 {
@@ -738,7 +789,16 @@ public sealed class AdisyonService : IAdisyonService
         foreach (var discountItem in adisyon.Items.Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue))
         {
             var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == discountItem.RefId!.Value, cancellationToken);
-            if (card is null) continue; // elle indirim ya da silinmiş kod → atla
+            // KOD YOKSA ONAY DURUR. "Silinmiş kod → atla" deniyordu: indirim fişte kalıyor, müşteri
+            // o kadar az borçlanıyor, ama hediye çekinin bakiyesi hiç düşmüyordu (bedava indirim).
+            // Elle indirimin RefId'si zaten YOKTUR (döngü RefId dolu kalemleri gezer) → bu dal
+            // yalnızca gerçekten kaybolmuş/başka kuruma ait kodu yakalar.
+            if (card is null)
+            {
+                return Result<AdisyonDto>.Failure(Error.Validation(
+                    $"'{discountItem.Description}' indirimine bağlı kod artık bulunamıyor (silinmiş olabilir); " +
+                    "onay durduruldu. İndirim kalemini kaldırıp tekrar deneyin."));
+            }
             try
             {
                 card.Redeem(discountItem.LineTotal, nowUtc);
@@ -832,6 +892,32 @@ public sealed class AdisyonService : IAdisyonService
     public async Task<Result<AdisyonDto>> CancelAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
         => await InAdisyonTransactionAsync(() => CancelCoreAsync(tenantId, id, cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// Bu SATIŞ FİŞİNDEN doğan ve hâlâ açık olan randevular (<c>Appointment.SourceAdisyonId</c>).
+    ///
+    /// <para>
+    /// Randevu+satış atomik açılıyor ama fiş silinip/iptal edilince randevu yaşamaya devam
+    /// ediyordu: hakkı olmayan bir randevu takvimde kalıyor, tamamlanınca ne satış ne seans
+    /// bulunuyor (hizmet fiilen bedava veriliyor) ve müşterinin BAŞKA bekleyen satışı varsa
+    /// tahsilat yine yanlış fişe kayabiliyordu. Onaylı fiş silinirken bağlı randevular zaten
+    /// kapatılıyordu (bkz. 5b); açık/iptal yolu bu korumadan yoksundu.
+    /// </para>
+    /// <para>
+    /// TAMAMLANMIŞ randevuya DOKUNULMAZ: yapılan iş geçmiştir, silinmesi/iptali defteri bozar.
+    /// (Kilit alınmaz — onaylı fiş yolu da randevuları kilitsiz kapatır; kilit sırasında
+    /// appointments, adisyonlar'dan ÖNCE gelir ve burada adisyon kilidi zaten alınmıştır.)
+    /// </para>
+    /// </summary>
+    private Task<List<Appointment>> LoadOpenAppointmentsBoundToSaleAsync(Guid tenantId, Guid adisyonId, CancellationToken ct) =>
+        _db.Appointments
+            .Where(a => a.TenantId == tenantId
+                     && a.SourceAdisyonId == adisyonId
+                     && (a.Status == AppointmentStatus.Draft
+                      || a.Status == AppointmentStatus.Scheduled
+                      || a.Status == AppointmentStatus.Confirmed
+                      || a.Status == AppointmentStatus.InProgress))
+            .ToListAsync(ct);
+
     private async Task<Result<AdisyonDto>> CancelCoreAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         // ÖNCE KİLİT, SONRA OKUMA (bkz. ApproveCoreAsync — aynı tablo, aynı sıra).
@@ -849,8 +935,15 @@ public sealed class AdisyonService : IAdisyonService
         {
             return Result<AdisyonDto>.Failure(Error.Validation(ex.Message));
         }
+
+        // Bu satıştan doğan açık randevular da iptal edilir — karşılıksız randevu takvimde kalmasın.
+        var bound = await LoadOpenAppointmentsBoundToSaleAsync(tenantId, adisyon.Id, cancellationToken);
+        foreach (var appointment in bound) appointment.Cancel("Satış iptal edildi");
+
         await _db.SaveChangesAsync(cancellationToken);
-        await _audit.LogAsync(tenantId, adisyon.BranchId, "Cancel", "Adisyon", adisyon.Id, "Adisyon iptal edildi", null, cancellationToken);
+        await _audit.LogAsync(tenantId, adisyon.BranchId, "Cancel", "Adisyon", adisyon.Id,
+            bound.Count > 0 ? $"Adisyon iptal edildi · bağlı {bound.Count} randevu iptal edildi" : "Adisyon iptal edildi",
+            new { CancelledAppointments = bound.Select(a => a.Id).ToArray() }, cancellationToken);
         return await GetAsync(tenantId, id, cancellationToken);
     }
 
@@ -890,10 +983,18 @@ public sealed class AdisyonService : IAdisyonService
         // Açık veya İptal edilmiş adisyonun onaydan doğan finansal etkisi yoktur → doğrudan silinir.
         if (adisyon.Status != AdisyonStatus.Approved)
         {
+            // Fişten doğan açık randevular da kapatılır (onaylı fiş yolundaki 5b ile aynı kural):
+            // satış ortadan kalkınca randevunun dayanağı da kalmaz.
+            var boundAppointments = await LoadOpenAppointmentsBoundToSaleAsync(tenantId, adisyon.Id, cancellationToken);
+            _db.Appointments.RemoveRange(boundAppointments);
             _db.AdisyonItems.RemoveRange(adisyon.Items);
             _db.Adisyonlar.Remove(adisyon);
             await _db.SaveChangesAsync(cancellationToken);
-            await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id, $"Adisyon silindi ({adisyon.Status})", null, cancellationToken);
+            await _audit.LogAsync(tenantId, adisyon.BranchId, "Delete", "Adisyon", adisyon.Id,
+                boundAppointments.Count > 0
+                    ? $"Adisyon silindi ({adisyon.Status}) · bağlı {boundAppointments.Count} randevu kapatıldı"
+                    : $"Adisyon silindi ({adisyon.Status})",
+                new { DeletedAppointments = boundAppointments.Select(a => a.Id).ToArray() }, cancellationToken);
             return Result.Success();
         }
 
@@ -999,6 +1100,11 @@ public sealed class AdisyonService : IAdisyonService
             .Where(u => u.TenantId == tenantId && u.AdisyonId == adisyon.Id)
             .ToListAsync(cancellationToken);
         _db.PackageSessionUsages.RemoveRange(usageLinksToDrop);
+
+        // 5a-2) KALICI BAĞ: bu fişten doğan açık randevular seans izinden BAĞIMSIZ olarak kapatılır
+        //       (ör. seans üretmeyen satışta ya da seans satırı elle temizlenmişse de dayanak kalmaz).
+        _db.Appointments.RemoveRange(
+            await LoadOpenAppointmentsBoundToSaleAsync(tenantId, adisyon.Id, cancellationToken));
 
         // 5b) İlgili randevuları sil — bu satıştan açılan hizmet/paket seansları için müşterinin
         //     AKTİF (Planlandı/Onaylandı/Taslak) randevuları silinir. Tamamlanmış randevular seansı

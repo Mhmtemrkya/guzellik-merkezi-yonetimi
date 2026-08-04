@@ -193,7 +193,8 @@ public sealed class AppointmentService : IAppointmentService
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
 
-        var sold = await SellForAppointmentAsync(tenantId, request.Appointment.CustomerId, sale, cancellationToken);
+        var sold = await SellForAppointmentAsync(
+            tenantId, request.Appointment.CustomerId, request.Appointment.ServiceDefinitionId, sale, cancellationToken);
         if (sold.IsFailure) return Result<AppointmentDto>.Failure(sold.Error);
 
         var created = await CreateAsync(tenantId, request.Appointment, cancellationToken, staffTenantUserId);
@@ -221,8 +222,17 @@ public sealed class AppointmentService : IAppointmentService
     /// Katalog satışını açar: kendi adisyonu (forceNew) + cariye ŞİMDİ işlenmez
     /// (autoApproveOnFirstAppointment) — randevu tamamlanınca backend otomatik onaylar.
     /// Açılan fişin kimliğini döndürür: randevu ona bağlanır (tahsilat hedefi bu bağla bulunur).
+    ///
+    /// <para>
+    /// SATILAN ŞEY RANDEVUNUN HİZMETİNİ KARŞILAMALI. Satış ile randevu ayrı ayrı doğrulanıyor ama
+    /// BİRBİRİYLE eşleştirilmiyordu: istekte "A hizmetini sat + B hizmetine randevu aç" yazılabilir,
+    /// randevu B'nin eski hakkından karşılanır ve A satışının fişine bağlanırdı — tamamlamadaki
+    /// tahsilat da A'nın carisine giderdi. Hizmet satışında kimlikler AYNI olmalı, paket satışında
+    /// paketin İÇERİĞİNDE randevunun hizmeti bulunmalıdır.
+    /// </para>
     /// </summary>
-    private async Task<Result<Guid>> SellForAppointmentAsync(Guid tenantId, Guid customerId, AppointmentCatalogSaleDto sale, CancellationToken ct)
+    private async Task<Result<Guid>> SellForAppointmentAsync(
+        Guid tenantId, Guid customerId, Guid appointmentServiceId, AppointmentCatalogSaleDto sale, CancellationToken ct)
     {
         // Katalog kaydı ve fiyatı SUNUCUDAN okunur: istemcinin gönderdiği fiyata güvenilmez.
         string description;
@@ -235,6 +245,13 @@ public sealed class AppointmentService : IAppointmentService
             var pkg = await _db.ServicePackages.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == packageId, ct);
             if (pkg is null) return Result<Guid>.Failure(Error.NotFound("Paket bulunamadı."));
+            // Paket randevunun hizmetini KAPSAMALI; kapsamıyorsa randevu bu satıştan karşılanamaz.
+            if (!await _db.ServicePackageItems.AsNoTracking()
+                    .AnyAsync(pi => pi.ServicePackageId == pkg.Id && pi.ServiceDefinitionId == appointmentServiceId, ct))
+            {
+                return Result<Guid>.Failure(Error.Validation(
+                    "Seçilen paket bu randevunun hizmetini içermiyor. Randevunun hizmetini kapsayan bir paket seçin."));
+            }
             itemType = AdisyonItemType.PackageSale;
             refId = pkg.Id;
             description = $"Paket satışı: {pkg.Name}";
@@ -245,6 +262,12 @@ public sealed class AppointmentService : IAppointmentService
             var svc = await _db.ServiceDefinitions.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sale.ServiceDefinitionId!.Value, ct);
             if (svc is null) return Result<Guid>.Failure(Error.NotFound("Hizmet bulunamadı."));
+            // Satılan hizmet randevunun hizmetiyle AYNI olmalı (bkz. metot notu).
+            if (svc.Id != appointmentServiceId)
+            {
+                return Result<Guid>.Failure(Error.Validation(
+                    "Satılan hizmet randevunun hizmetinden farklı. Randevu hangi hizmet içinse o satılmalı."));
+            }
             itemType = AdisyonItemType.Service;
             refId = svc.Id;
             description = svc.Name;
@@ -266,6 +289,13 @@ public sealed class AppointmentService : IAppointmentService
     {
         var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);
         if (limit.IsFailure) return Result<AppointmentDto>.Failure(limit.Error);
+
+        // KURUM BÜTÜNLÜĞÜ ÖNCE: müşteri/şube/personel/hizmet bu kuruma ait olmalı (bkz. metot notu).
+        if (await ValidateAppointmentScopeAsync(tenantId, request.BranchId, request.CustomerId,
+                request.StaffMemberId, request.ServiceDefinitionId, cancellationToken) is { } scopeError)
+        {
+            return Result<AppointmentDto>.Failure(scopeError);
+        }
 
         if (!await IsStaffInScopeAsync(tenantId, request.StaffMemberId, staffTenantUserId, cancellationToken))
         {
@@ -603,6 +633,12 @@ public sealed class AppointmentService : IAppointmentService
         return null;
     }
 
+    public Task<bool> IsSessionStillBookableAsync(
+        Guid tenantId, Guid customerId, Guid serviceDefinitionId, Guid sessionId, CancellationToken cancellationToken = default)
+        => sessionId == Guid.Empty
+            ? Task.FromResult(false)
+            : IsSessionBookableAsync(tenantId, customerId, serviceDefinitionId, sessionId, null, cancellationToken);
+
     public async Task<bool> HasServiceEntitlementAsync(
         Guid tenantId, Guid customerId, Guid serviceDefinitionId, CancellationToken cancellationToken = default)
         => await FindBookableSessionAsync(tenantId, customerId, serviceDefinitionId, null, cancellationToken) is not null
@@ -663,9 +699,19 @@ public sealed class AppointmentService : IAppointmentService
         // uygulanıyor, üstelik staff_members kilidi de yanlış satıra alınıyordu.
         var targetStaff = request.StaffMemberId ?? appointment.StaffMemberId;
         var staffChanged = request.StaffMemberId.HasValue && request.StaffMemberId.Value != appointment.StaffMemberId;
-        if (staffChanged && !await IsStaffInScopeAsync(tenantId, targetStaff, staffTenantUserId, cancellationToken))
+        if (staffChanged)
         {
-            return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
+            // KURUM BÜTÜNLÜĞÜ: personel aktarımı da başka kurumun personeline yapılamaz
+            // (yönetici çağrısında kapsam kontrolü kaydı hiç sorgulamadan true döner).
+            if (!await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                    .AnyAsync(s => s.TenantId == tenantId && s.Id == targetStaff && !s.IsDeleted, cancellationToken))
+            {
+                return Result<AppointmentDto>.Failure(Error.NotFound("Personel bulunamadı."));
+            }
+            if (!await IsStaffInScopeAsync(tenantId, targetStaff, staffTenantUserId, cancellationToken))
+            {
+                return Result<AppointmentDto>.Failure(Error.NotFound("Hedef personel kapsamı bulunamadı."));
+            }
         }
         // Kilit protokolünün son halkası: hedef personel artık kesin olarak biliniyor.
         if (_db.Database.IsRelational())
@@ -1371,5 +1417,39 @@ public sealed class AppointmentService : IAppointmentService
         if (!staffTenantUserId.HasValue) return Task.FromResult(true);
         var tenantUserId = staffTenantUserId.Value;
         return _db.StaffMembers.AnyAsync(x => x.TenantId == tenantId && x.Id == staffMemberId && x.TenantUserId == tenantUserId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Randevunun bağlanacağı TÜM varlıklar bu kuruma ait mi? (müşteri, şube, personel, hizmet)
+    ///
+    /// <para>
+    /// Hiçbiri doğrulanmıyordu: <see cref="IsStaffInScopeAsync"/> yönetici çağrısında kaydı hiç
+    /// sorgulamadan true döner, <c>StaffSkill.BlockReasonAsync</c> kayıt bulunamayınca "engel yok"
+    /// der, DB tarafında da bileşik (TenantId + Id) bütünlük yoktur — ilişkiler yalın GUID FK'dır.
+    /// Sonuç: doğrudan API çağrısıyla BAŞKA kuruma ait şube/personel/hizmet/müşteri kimlikleri
+    /// gönderilerek kurumlar arası bağları olan randevu oluşturulabiliyordu (BOLA).
+    /// </para>
+    /// <para>
+    /// Kontrol global süzgeçleri ATLAR ve koşulları kendisi yazar: amaç yalnız KURUM üyeliğini
+    /// doğrulamak; aktif şube kapsamı (X-Branch-Id) yüzünden başka şubenin müşterisi "yok"
+    /// sayılıp meşru akış kırılmasın. Silinmiş kayıtlar yine reddedilir.
+    /// </para>
+    /// </summary>
+    private async Task<Error?> ValidateAppointmentScopeAsync(
+        Guid tenantId, Guid branchId, Guid customerId, Guid staffMemberId, Guid serviceDefinitionId, CancellationToken ct)
+    {
+        if (!await _db.Customers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == customerId && !x.IsDeleted, ct))
+            return Error.NotFound("Müşteri bulunamadı.");
+        if (!await _db.Branches.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == branchId && !x.IsDeleted, ct))
+            return Error.NotFound("Şube bulunamadı.");
+        if (!await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == staffMemberId && !x.IsDeleted, ct))
+            return Error.NotFound("Personel bulunamadı.");
+        if (!await _db.ServiceDefinitions.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == serviceDefinitionId && !x.IsDeleted, ct))
+            return Error.NotFound("Hizmet bulunamadı.");
+        return null;
     }
 }

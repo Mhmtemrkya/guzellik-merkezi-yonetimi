@@ -656,6 +656,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
         'preferredStartUtc': start.toUtc().toIso8601String(),
         'durationMinutes': duration,
         'branchId': branchId,
+        // SEÇİLEN PAKET/SEANS BEKLEME KAYDINDA DA SAKLANIR (web paritesi): taşınmazsa yer
+        // açıldığında aynı hizmetin EN ESKİ seansı tüketilir, kullanıcının seçimi kaybolur.
+        'sourceCustomerPackageSessionId': _sourceSessionId,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
