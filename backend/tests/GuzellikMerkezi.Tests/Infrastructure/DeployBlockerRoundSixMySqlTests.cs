@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Appointments;
 using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Application.Features.CustomerPortal;
 using GuzellikMerkezi.Application.Features.Customers;
@@ -428,6 +429,268 @@ public sealed class DeployBlockerRoundSixMySqlTests
 
         Assert.Equal(1, dispatcher.Calls);
         Assert.Equal(1, await ExpenseCountAsync(database, seed.TenantId));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════
+    // 2b) Önceden onaylanmış bağlı satışta tahsilat KENDİ carisine gider
+    // ═════════════════════════════════════════════════════════════════════════════════════
+
+    private static AdisyonService NewAdisyon(GuzellikDbContext db)
+    {
+        var user = new TestCurrentUser(UserRole.InstitutionOwner);
+        return new AdisyonService(db, new NoopAuditLogger(), user,
+            new CustomerAccountService(db, new NoopAuditLogger(), user), new AllowAllFeatureService());
+    }
+
+    private static AppointmentService NewAppointments(GuzellikDbContext db)
+    {
+        var user = new TestCurrentUser(UserRole.InstitutionOwner);
+        return new AppointmentService(db, new AlwaysAllowUsageService(), new NoopAuditLogger(),
+            null!, new CapturingJobQueue(), new NoopAppNotificationService(), user, NewAdisyon(db),
+            new CustomerAccountService(db, new NoopAuditLogger(), user));
+    }
+
+    private sealed record BoundSaleSeed(
+        Guid TenantId, Guid BranchId, Guid CustomerId, Guid StaffId, Guid ServiceId, Guid OldDebtAccountId);
+
+    /// <summary>Müşteriye ESKİ ve BORÇLU bir cari kurar — yanlış hedef seçilirse para oraya kayar.</summary>
+    private static async Task<BoundSaleSeed> SeedCustomerWithOldDebtAsync(MySqlTestDatabase database)
+    {
+        await using var db = database.NewContext();
+        var tenant = new Tenant("Bagli Satis", $"bagli-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+        var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var customer = new Customer(tenant.Id, branch.Id, "BAGLI MUSTERI", "0555 616 71 81", null);
+        db.Customers.Add(customer);
+        var staff = new StaffMember(tenant.Id, branch.Id, "Uzman", "Uzman");
+        db.StaffMembers.Add(staff);
+        var service = new ServiceDefinition(tenant.Id, branch.Id, "Hizmet", 45, 1000m, "Cilt");
+        db.ServiceDefinitions.Add(service);
+        await db.SaveChangesAsync();
+
+        // ESKİ BORÇ: hiç ödenmemiş, bu yüzden "borcu olan en eski cari" fallback'inin ilk adayı.
+        var oldDebt = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Eski paket", 5000m, 0m);
+        db.CustomerAccounts.Add(oldDebt);
+        await db.SaveChangesAsync();
+
+        return new BoundSaleSeed(tenant.Id, branch.Id, customer.Id, staff.Id, service.Id, oldDebt.Id);
+    }
+
+    /// <summary>Randevu + bekleyen satış açar ve satışı ELLE onaylar (randevu tamamlanmadan).</summary>
+    private static async Task<(Guid AppointmentId, Guid SaleId, Guid SaleAccountId)> CreateAndApproveSaleAsync(
+        MySqlTestDatabase database, BoundSaleSeed seed, int hourOffset)
+    {
+        Guid appointmentId, saleId;
+        await using (var db = database.NewContext())
+        {
+            var request = new CreateAppointmentWithSaleRequest(
+                new CreateAppointmentRequest(seed.BranchId, seed.CustomerId, seed.StaffId, seed.ServiceId,
+                    DateTime.UtcNow.AddHours(hourOffset), DateTime.UtcNow.AddHours(hourOffset).AddMinutes(45), 0m, null),
+                new AppointmentCatalogSaleDto(seed.ServiceId, null, seed.StaffId));
+
+            var created = await NewAppointments(db).CreateWithSaleAsync(seed.TenantId, request);
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            appointmentId = created.Value!.Id;
+
+            saleId = await db.Appointments.AsNoTracking()
+                .Where(a => a.Id == appointmentId).Select(a => a.SourceAdisyonId!.Value).SingleAsync();
+        }
+
+        // SATIŞ RANDEVUDAN ÖNCE ELLE ONAYLANIR: otomatik onay artık tetiklenmez, dolayısıyla
+        // tamamlamada dönen "otomatik onaylanan cari" BOŞ kalır — hatanın tetikleyicisi budur.
+        await using (var db = database.NewContext())
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, saleId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var accountId = await check.Adisyonlar.AsNoTracking()
+                .Where(a => a.Id == saleId).Select(a => a.CustomerAccountId).SingleAsync();
+            Assert.NotNull(accountId);
+            return (appointmentId, saleId, accountId!.Value);
+        }
+    }
+
+    /// <summary>
+    /// ASIL İDDİA: bağlı satış DAHA ÖNCE onaylanmış olsa bile randevu tahsilatı O SATIŞIN carisine
+    /// yazılır. Eskiden otomatik onay tetiklenmediği için hedef boş kalıyor ve para müşterinin
+    /// borçlu ESKİ carisine yazılıyordu (yeni satış ödenmemiş görünüyordu).
+    /// </summary>
+    [MySqlFact]
+    public async Task CompleteWithPayment_PreApprovedBoundSale_PaysItsOwnAccount_NotTheOldDebt()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+        var (appointmentId, _, saleAccountId) = await CreateAndApproveSaleAsync(database, seed, 3);
+
+        await using (var db = database.NewContext())
+        {
+            var complete = new CompleteAppointmentRequest(null,
+                new CompleteAppointmentPaymentDto(1000m, "cash", "Randevu tahsilatı", null, DateTime.UtcNow));
+            var done = await NewAppointments(db).CompleteWithPaymentAsync(seed.TenantId, appointmentId, complete);
+            Assert.True(done.IsSuccess, done.IsFailure ? done.Error.Message : null);
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var accounts = await check.CustomerAccounts.Include(a => a.Payments)
+                .Where(a => a.CustomerId == seed.CustomerId).ToListAsync();
+
+            var saleAccount = accounts.Single(a => a.Id == saleAccountId);
+            var oldDebt = accounts.Single(a => a.Id == seed.OldDebtAccountId);
+
+            Assert.Equal(1000m, saleAccount.Payments.Sum(p => p.Amount));   // parası kendi satışında
+            Assert.Equal(0m, oldDebt.Payments.Sum(p => p.Amount));          // eski borca DOKUNULMADI
+        }
+    }
+
+    /// <summary>
+    /// İstemci, randevunun bağlı satışıyla UYUŞMAYAN bir cari gönderirse istek reddedilir ve
+    /// hiçbir şey yazılmaz (randevu da tamamlanmaz) — hata istemci eliyle geri gelmemeli.
+    /// </summary>
+    [MySqlFact]
+    public async Task CompleteWithPayment_ClientAccountConflictingWithBoundSale_IsRejected()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+        var (appointmentId, _, saleAccountId) = await CreateAndApproveSaleAsync(database, seed, 3);
+
+        await using (var db = database.NewContext())
+        {
+            var complete = new CompleteAppointmentRequest(null,
+                new CompleteAppointmentPaymentDto(1000m, "cash", "Randevu tahsilatı",
+                    seed.OldDebtAccountId, DateTime.UtcNow));
+            var done = await NewAppointments(db).CompleteWithPaymentAsync(seed.TenantId, appointmentId, complete);
+
+            Assert.True(done.IsFailure, "Baska satisin carisi hedef gosterilebildi.");
+            Assert.Equal("Validation", done.Error.Code);
+        }
+
+        await using (var check = database.NewContext())
+        {
+            // Ne tahsilat ne de tamamlama uygulandı.
+            Assert.Empty(await check.AccountPayments.AsNoTracking().ToListAsync());
+            var status = await check.Appointments.AsNoTracking()
+                .Where(a => a.Id == appointmentId).Select(a => a.Status).SingleAsync();
+            Assert.NotEqual(AppointmentStatus.Completed, status);
+            Assert.NotEqual(Guid.Empty, saleAccountId);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════
+    // 2c) Taksit bakımı: çoklu hedef ATOMİK (hepsi ya da hiçbiri)
+    // ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Sapmış cari kurar: plan 8.500'de kalmış, toplam 8.750'ye çıkmış.</summary>
+    private static async Task<Guid> SeedDriftedAccountAsync(
+        MySqlTestDatabase database, Guid tenantId, Guid branchId, Guid customerId, string name)
+    {
+        await using var db = database.NewContext();
+        var account = new CustomerAccount(tenantId, branchId, customerId, null, name, 8500m, 0m);
+        account.RebuildInstallments(4, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(20)));
+        db.CustomerAccounts.Add(account);
+        await db.SaveChangesAsync();
+        account.ChangeTotal(8750m, 0m);      // plan bilerek yeniden kurulmadı
+        await db.SaveChangesAsync();
+        return account.Id;
+    }
+
+    private sealed record PlanSnapshot(decimal Total, Guid[] Ids, string[] Statuses, DateOnly[] DueDates);
+
+    private static async Task<PlanSnapshot> ReadPlanAsync(MySqlTestDatabase database, Guid accountId)
+    {
+        await using var db = database.NewContext();
+        var rows = await db.Installments.AsNoTracking()
+            .Where(i => i.CustomerAccountId == accountId)
+            .OrderBy(i => i.No)
+            .Select(i => new { i.Id, i.Amount, i.Status, i.DueDate })
+            .ToListAsync();
+        return new PlanSnapshot(
+            rows.Sum(r => r.Amount),
+            rows.Select(r => r.Id).ToArray(),
+            rows.Select(r => r.Status.ToString()).ToArray(),
+            rows.Select(r => r.DueDate).ToArray());
+    }
+
+    /// <summary>
+    /// ASIL İDDİA: hedeflerden BİRİ bile doğrulamayı geçemezse, doğrulamayı geçen hedefte de
+    /// HİÇBİR değişiklik kalmaz. Eskiden her hedef ayrı transaction'da commit ediliyordu: A
+    /// düzeltilip yazılıyor, B patlıyor, açılış duruyor ama A'daki para etkileyen değişiklik
+    /// kalıcı oluyordu. Gerçek transaction davranışı yalnız MariaDB'de görülebilir.
+    /// </summary>
+    [MySqlFact]
+    public async Task InstallmentMaintenance_OneTargetFails_LeavesTheOtherTargetUntouched()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+
+        var goodId = await SeedDriftedAccountAsync(database, seed.TenantId, seed.BranchId, seed.CustomerId, "Saglam hedef");
+        var badId = await SeedDriftedAccountAsync(database, seed.TenantId, seed.BranchId, seed.CustomerId, "Uyusmayan hedef");
+
+        // Tahsilat da eklensin: "tahsilatlar değişmedi" iddiası ölçülebilsin.
+        await using (var db = database.NewContext())
+        {
+            var account = await db.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == goodId);
+            account.RegisterPayment(2000m, "cash", null, DateTime.UtcNow.AddDays(-1));
+            await db.SaveChangesAsync();
+        }
+
+        var before = await ReadPlanAsync(database, goodId);
+        Assert.Equal(8500m, before.Total);
+
+        await using (var db = database.NewContext())
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                    // Geçerli hedef (beklenen tuple TUTUYOR).
+                    new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                        goodId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4),
+                    // Uyuşmayan hedef: PlanTotal beklentisi YANLIŞ.
+                    new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                        badId, seed.TenantId, 8750m, 0m, 8750m, 1m, 4)]));
+        }
+
+        // ASIL KANIT: geçerli hedefte KISMİ MUTASYON KALMADI.
+        var after = await ReadPlanAsync(database, goodId);
+        Assert.Equal(8500m, after.Total);              // plan hizalanmadı (8750 OLMADI)
+        Assert.Equal(before.Ids, after.Ids);           // taksit kimlikleri aynı
+        Assert.Equal(before.Statuses, after.Statuses); // durumlar aynı
+        Assert.Equal(before.DueDates, after.DueDates); // vadeler aynı
+
+        await using (var check = database.NewContext())
+        {
+            var payments = await check.AccountPayments.AsNoTracking()
+                .Where(p => p.CustomerAccountId == goodId).ToListAsync();
+            Assert.Equal(2000m, payments.Sum(p => p.Amount));   // tahsilatlar değişmedi
+            // Diğer hedef de el değmemiş.
+            var badPlan = await ReadPlanAsync(database, badId);
+            Assert.Equal(8500m, badPlan.Total);
+        }
+    }
+
+    /// <summary>Bütün hedefler doğrulamayı geçerse hepsi TEK transaction'da hizalanır.</summary>
+    [MySqlFact]
+    public async Task InstallmentMaintenance_AllTargetsValid_RepairsAllInOneTransaction()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+        var firstId = await SeedDriftedAccountAsync(database, seed.TenantId, seed.BranchId, seed.CustomerId, "Hedef 1");
+        var secondId = await SeedDriftedAccountAsync(database, seed.TenantId, seed.BranchId, seed.CustomerId, "Hedef 2");
+
+        await using (var db = database.NewContext())
+        {
+            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                new DatabaseBootstrap.InstallmentPlanRepairTarget(firstId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4),
+                new DatabaseBootstrap.InstallmentPlanRepairTarget(secondId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]);
+            Assert.Equal(2, repaired);
+        }
+
+        Assert.Equal(8750m, (await ReadPlanAsync(database, firstId)).Total);
+        Assert.Equal(8750m, (await ReadPlanAsync(database, secondId)).Total);
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════

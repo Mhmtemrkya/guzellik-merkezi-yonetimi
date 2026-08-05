@@ -66,21 +66,12 @@ Future<bool> runCompleteAppointment(
   final payment = await _askPayment(context, defaultAmount);
   if (payment == null) return false;
 
-  // Cari hedefi biliniyorsa iletilir; bilinmiyorsa sunucu (borcu olan en eski cari →
-  // yoksa adisyon defteri) kendisi çözer.
-  String? accountId;
-  if (cid.isNotEmpty && cid.toLowerCase() != 'null') {
-    try {
-      final open = await api.get('/api/admin/adisyonlar/open/$cid');
-      if (open is Map &&
-          open['customerAccountId'] != null &&
-          '${open['customerAccountId']}' != 'null') {
-        accountId = '${open['customerAccountId']}';
-      }
-    } catch (_) {}
-  }
+  // HEDEF CARİYİ İSTEMCİ TAHMİN ETMEZ (web ile aynı kural). Burada müşterinin AÇIK ADİSYONUNUN
+  // carisi gönderiliyordu: randevu kendi satışından doğmuşsa o cari BAŞKA bir satışa ait olabilir
+  // ve tahsilat yanlış deftere yazılırdı. Sunucu doğru hedefi zaten biliyor (randevunun kendi
+  // satışının carisi → borçlu en eski cari → adisyon defteri) ve uyuşmayan cariyi reddediyor.
   try {
-    await _completeAtomically(api, id, accountId, {
+    await _completeAtomically(api, id, null, {
       'amount': payment['amount'] as double,
       'method': payment['method'] as String,
     });

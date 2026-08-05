@@ -377,19 +377,36 @@ public static class DatabaseBootstrap
                 + "Para etkileyen bu bakım yalnızca AÇIKÇA listelenen cariler için çalışır; genel tarama yapılmaz.");
         }
 
-        var ids = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // BOŞ TOKEN ELENMEZ, HATA SAYILIR. RemoveEmptyEntries ile "id1,,id2", "id1," ve ",id1"
+        // sessizce geçerli kabul ediliyordu: para etkileyen bir bakım ayarındaki yazım hatası fark
+        // edilmeden geçiyor, operatör listenin tamamının okunduğunu sanıyordu.
+        var ids = raw.Split(',', StringSplitOptions.TrimEntries);
         var targets = new List<InstallmentPlanRepairTarget>(ids.Length);
         var seen = new HashSet<Guid>();
 
         foreach (var entry in ids)
         {
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                throw new InvalidOperationException(
+                    "Maintenance:RepairInstallmentPlanAccountIds içinde boş girdi var (baştaki/sondaki ya da "
+                    + "art arda gelen virgül). Liste yazım hatası sessizce yok sayılmaz; ayar düzeltilmeli.");
+            }
             if (!Guid.TryParse(entry, out var accountId) || accountId == Guid.Empty)
             {
                 throw new InvalidOperationException(
                     $"Maintenance:RepairInstallmentPlanAccountIds içinde geçersiz cari kimliği: '{entry}'. "
                     + "Hatalı kimlik sessizce atlanmaz; konfigürasyon düzeltilmeli.");
             }
-            if (!seen.Add(accountId)) continue;
+            // MÜKERRER KİMLİK DE HATADIR: sessizce atlamak, operatörün yanlış yazdığı listeyi
+            // "başarıyla uygulandı" gibi gösterirdi (ikinci kayıt aslında hedeflenmek istenen
+            // BAŞKA bir cari olabilir).
+            if (!seen.Add(accountId))
+            {
+                throw new InvalidOperationException(
+                    $"Maintenance:RepairInstallmentPlanAccountIds içinde mükerrer cari kimliği: {accountId}. "
+                    + "Liste her cariyi yalnız bir kez içermelidir.");
+            }
 
             var section = configuration.GetSection($"Maintenance:RepairInstallmentPlanExpected:{accountId}");
             if (!section.Exists())
@@ -489,9 +506,15 @@ public static class DatabaseBootstrap
     /// FAIL-FAST: hedef listesi boşsa, sınır aşılmışsa, hedef cari yoksa, veritabanındaki değerler
     /// beklenen tuple ile eşleşmiyorsa ya da onarım uygulanamıyorsa istisna atılır. Eskiden bunların
     /// hepsi "0 onarıldı" ile sessizce geçiliyordu: operatör düzeltmenin yapıldığını sanıyor, kayıt
-    /// el değmemiş kalıyordu. Her hedef KENDİ transaction'ında onarılır; biri patlarsa o kayıt geri
-    /// alınır, daha önce onarılanlar (ayrı transaction) kalır — hata açılışı durdurduğu için canlıya
-    /// yarım durumla çıkılmaz.
+    /// el değmemiş kalıyordu.
+    /// </para>
+    /// <para>
+    /// HEPSİ YA DA HİÇBİRİ. Hedefler eskiden AYRI transaction'larda onarılıp tek tek commit
+    /// ediliyordu: A düzeltilip commit edildikten sonra B doğrulamada patlarsa açılış duruyor ama
+    /// A'daki PARA ETKİLEYEN değişiklik kalıcı kalıyordu — "bir hedef hata verirse hiçbir veri
+    /// değişmez" garantisi tutmuyordu. Artık iki fazlı ve TEK transaction: önce tüm hedefler kilit
+    /// altında doğrulanır, sonra hepsi hizalanır, en sonda tek <c>SaveChanges</c> + commit yapılır.
+    /// Herhangi bir aşamadaki hata tamamını geri alır.
     /// </para>
     /// </summary>
     public static async Task<int> RepairInstallmentPlanDriftAsync(
@@ -510,32 +533,59 @@ public static class DatabaseBootstrap
                 + "Bu, bilinen tek seferlik artığın ötesinde; para etkileyen düzeltme bu ölçekte otomatik uygulanmaz.");
         }
 
-        var repaired = 0;
-        foreach (var target in targets)
+        var relational = db.Database.IsRelational();
+        await using var tx = relational && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
+            : null;
+
+        // FAZ 1 — TÜM hedefleri kilitle ve doğrula. Hiçbir yazma yapılmaz; ilk uyuşmazlıkta
+        // istisna atılır ve transaction (varsa) dispose ile geri alınır.
+        // Kilitler ID sırasına göre alınır (RowLock protokolü): aynı anda açılan iki backend
+        // hedefleri aynı sırayla kilitler, çapraz bekleme oluşmaz.
+        var validated = new List<ValidatedRepairTarget>(targets.Count);
+        foreach (var target in targets.OrderBy(t => t.AccountId))
         {
-            // Hata YUTULMAZ: tek bir hedef onarılamadıysa deployment başarısız olmalı.
-            await RepairSingleInstallmentPlanAsync(db, target, logger);
-            repaired++;
+            validated.Add(await LockAndValidateRepairTargetAsync(db, target, relational));
         }
 
-        if (repaired != targets.Count)
+        // FAZ 2 — hizalama (bellekte) + TEK kalıcılık noktası.
+        foreach (var item in validated)
         {
-            throw new InvalidOperationException(
-                $"Taksit planı bakımı {targets.Count} hedeften {repaired} tanesini onardı; eksik onarımla devam edilmez.");
+            if (!item.Account.RealignInstallmentAmounts())
+                throw new InvalidOperationException($"Hedef cari {item.Target.AccountId}: taksit tutarları hizalanamadı.");
         }
-        return repaired;
+
+        await db.SaveChangesAsync();
+        if (tx is not null) await tx.CommitAsync();
+
+        // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
+        foreach (var item in validated)
+        {
+            logger?.LogInformation(
+                "Cari {AccountId}: plan {Before} → {After} (taksit {Count}; satır kimlikleri ve vadeler korundu).",
+                item.Target.AccountId, item.PlanTotalBefore, item.FinancedAmount, item.InstallmentCount);
+        }
+        return validated.Count;
     }
 
+    /// <summary>Kilit altında doğrulanmış hedef: hizalama bu nesne üzerinden yapılır.</summary>
+    private sealed record ValidatedRepairTarget(
+        InstallmentPlanRepairTarget Target,
+        CustomerAccount Account,
+        decimal PlanTotalBefore,
+        decimal FinancedAmount,
+        int InstallmentCount);
+
     /// <summary>
-    /// TEK CARİYİ KİLİT ALTINDA, BEKLENEN DEĞERLERİNİ DOĞRULAYARAK onarır. Onarılamayan her durum
-    /// istisnadır (hiçbir veri değişmeden geri alınır).
+    /// TEK CARİYİ KİLİT ALTINDA OKUR VE BEKLENEN DEĞERLERİNİ DOĞRULAR — hiçbir şey YAZMAZ.
+    /// Uyuşmayan her durum istisnadır; hizalama çağıranın FAZ 2'sinde, tek transaction içinde yapılır.
     ///
     /// <para>
     /// PARA ETKİLEYEN YAZMA, İSTEK YOLUNDAKİYLE AYNI PROTOKOLE UYAR (bkz. <see cref="RowLock"/>):
-    /// kendi transaction'ı + <c>customer_accounts</c> satır kilidi + kilitten SONRA taze okuma.
-    /// Kilitsiz sürüm iki riski taşıyordu: (1) iki backend aynı anda açılırsa ikisi de sapmayı
-    /// görüp planı ayrı ayrı yazıyordu; (2) okuma ile yazma arasında bir kullanıcı toplamı
-    /// güncellerse onarım BAYAT tutara göre bölüyordu.
+    /// <c>customer_accounts</c> satır kilidi + kilitten SONRA taze okuma. Kilitsiz sürüm iki riski
+    /// taşıyordu: (1) iki backend aynı anda açılırsa ikisi de sapmayı görüp planı ayrı ayrı
+    /// yazıyordu; (2) okuma ile yazma arasında bir kullanıcı toplamı güncellerse onarım BAYAT
+    /// tutara göre bölüyordu. Kilit çağıranın transaction'ı boyunca durur.
     /// </para>
     /// <para>
     /// BEKLENEN TUPLE KİLİT ALTINDA DOĞRULANIR: kurum, toplam, peşinat, finanse edilen tutar, plan
@@ -549,14 +599,10 @@ public static class DatabaseBootstrap
     /// ödeme damgaları ve elle girilmiş vadeler korunur.
     /// </para>
     /// </summary>
-    private static async Task RepairSingleInstallmentPlanAsync(
-        GuzellikDbContext db, InstallmentPlanRepairTarget target, ILogger? logger)
+    private static async Task<ValidatedRepairTarget> LockAndValidateRepairTargetAsync(
+        GuzellikDbContext db, InstallmentPlanRepairTarget target, bool relational)
     {
         var accountId = target.AccountId;
-        var relational = db.Database.IsRelational();
-        await using var tx = relational && db.Database.CurrentTransaction is null
-            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
-            : null;
 
         if (relational && !await RowLock.LockRowAsync(db, "customer_accounts", accountId, CancellationToken.None))
             throw new InvalidOperationException($"Hedef cari {accountId} bulunamadı (satır kilitlenemedi).");
@@ -596,16 +642,7 @@ public static class DatabaseBootstrap
                 + "Kayıt zaten hizalı olabilir; bakım bayrağı kaldırılmalı.");
         }
 
-        if (!account.RealignInstallmentAmounts())
-            throw new InvalidOperationException($"Hedef cari {accountId}: taksit tutarları hizalanamadı.");
-
-        await db.SaveChangesAsync();
-        if (tx is not null) await tx.CommitAsync();
-
-        // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
-        logger?.LogInformation(
-            "Cari {AccountId}: plan {Before} → {After} (taksit {Count}; satır kimlikleri ve vadeler korundu).",
-            accountId, before, financed, activePlan.Count);
+        return new ValidatedRepairTarget(target, account, before, financed, activePlan.Count);
     }
 
     /// <summary>Beklenen ile gerçekleşen değer aynı değilse bakımı durdurur (hiçbir yazma yapılmadan).</summary>

@@ -480,7 +480,24 @@ public sealed class DeployBlockerRoundSixTests
             .AddInMemoryCollection(entries.ToDictionary(e => e.Key, e => (string?)e.Value))
             .Build();
 
-    public static TheoryData<string?> InvalidTargetLists => new() { null, "", "   ", "not-a-guid", "00000000-0000-0000-0000-000000000000" };
+    /// <summary>
+    /// Geçersiz hedef listeleri. Boş/bozuk kimliklerin yanında BOŞ TOKEN'lar da vardır: eskiden
+    /// <c>RemoveEmptyEntries</c> yüzünden "id1,,id2", "id1," ve ",id1" sessizce kabul ediliyordu —
+    /// finansal bir bakım ayarındaki yazım hatası fark edilmeden geçiyordu. Mükerrer kimlik de
+    /// hatadır: sessizce atlamak, operatörün yanlış listesini "uygulandı" gibi gösterirdi.
+    /// </summary>
+    public static TheoryData<string?> InvalidTargetLists => new()
+    {
+        null,
+        "",
+        "   ",
+        "not-a-guid",
+        "00000000-0000-0000-0000-000000000000",
+        "019f0000-0000-7000-8000-000000000001,,019f0000-0000-7000-8000-000000000002",
+        "019f0000-0000-7000-8000-000000000001,",
+        ",019f0000-0000-7000-8000-000000000001",
+        "019f0000-0000-7000-8000-000000000001,019f0000-0000-7000-8000-000000000001",
+    };
 
     /// <summary>
     /// BAYRAK TEK BAŞINA YETMEZ: hedef listesi boş ya da bozuksa açılış BAŞARISIZ olur. Eskiden

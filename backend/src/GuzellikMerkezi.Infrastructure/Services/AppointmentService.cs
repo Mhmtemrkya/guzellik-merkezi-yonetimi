@@ -900,6 +900,15 @@ public sealed class AppointmentService : IAppointmentService
             return await GetAsync(tenantId, id, cancellationToken, staffTenantUserId);
         }
 
+        // RANDEVUNUN KENDİ SATIŞININ CARİSİ — tahsilat hedefinin BİRİNCİ adayı.
+        //
+        // Otomatik onay yalnız satış HÂLÂ AÇIKKEN çalışır ve carisini o an döndürür. Satış daha
+        // önce elle onaylanmışsa (fiş cariye çoktan işlendi) onay tetiklenmez, dönen hedef boş
+        // kalır ve tahsilat "borcu olan en eski cari" fallback'ine düşerdi: bu randevunun parası
+        // müşterinin AYLAR ÖNCEKİ başka satışına yazılıyor, kendi satışı ödenmemiş görünüyordu.
+        // Kalıcı bağ (SourceAdisyonId) bu bilgiyi onay zamanından bağımsız olarak verir.
+        var boundSaleAccountId = await BoundSaleAccountIdAsync(tenantId, id, cancellationToken);
+
         // İstemcinin verdiği cari, HİÇBİR ŞEY DEĞİŞMEDEN önce doğrulanır (fail-fast): hatayı
         // tahsilat adımına bırakırsak randevu önce tamamlanır, sonra geri alınır — doğru sonucu
         // yalnız transaction'a borçlu oluruz. Kontrol burada olunca yanlış cari asla iş başlatmaz.
@@ -912,6 +921,16 @@ public sealed class AppointmentService : IAppointmentService
                             && a.CancelledAtUtc == null, cancellationToken);
             if (!owns)
                 return Result<AppointmentDto>.Failure(Error.Validation("Seçilen cari hesap bu randevunun müşterisine ait değil ya da iptal edilmiş."));
+
+            // MÜŞTERİYE AİT OLMASI YETMEZ: randevu bir satıştan doğduysa parası O satışın carisine
+            // yazılır. Aynı müşterinin başka bir carisi gönderildiğinde sessizce oraya yazmak,
+            // düzeltilen hatanın istemci eliyle geri gelmesi olurdu — açıkça reddedilir.
+            if (boundSaleAccountId is { } boundAccount && boundAccount != requestedAccount)
+            {
+                return Result<AppointmentDto>.Failure(Error.Validation(
+                    "Bu randevunun tahsilatı kendi satışının cari hesabına yazılır; farklı bir cari seçilemez. " +
+                    "Başka bir satışın borcunu tahsil etmek için cari hesap ekranını kullanın."));
+            }
         }
 
         // Yan etkiler (denetim kaydı, bildirim, kuyruk) ERTELENİR: ChangeStatusAsync onları
@@ -925,8 +944,16 @@ public sealed class AppointmentService : IAppointmentService
 
         if (payment is not null)
         {
+            // HEDEF SIRASI: (1) bu tamamlamada onaylanan satışın carisi, (2) randevunun bağlı
+            // satışının carisi (satış daha önce onaylanmışsa ya da bağ onaydan sonra kurulmuşsa
+            // buradan gelir — kilit altında TEKRAR okunur), (3) yoksa CollectOnCompleteAsync'in
+            // kendi fallback'i.
+            var preferredAccountId = outcome.AutoApprovedAccountId
+                                     ?? boundSaleAccountId
+                                     ?? await BoundSaleAccountIdAsync(tenantId, id, cancellationToken);
+
             var collected = await CollectOnCompleteAsync(
-                tenantId, customerId, payment, outcome.AutoApprovedAccountId, cancellationToken);
+                tenantId, customerId, payment, preferredAccountId, cancellationToken);
             // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez ve
             // ertelenen yan etkiler HİÇ çalışmaz.
             if (collected.IsFailure) return Result<AppointmentDto>.Failure(collected.Error);
@@ -940,14 +967,44 @@ public sealed class AppointmentService : IAppointmentService
     }
 
     /// <summary>
+    /// RANDEVUNUN DOĞDUĞU SATIŞIN CARİ HESABI (yoksa null).
+    ///
+    /// <para>
+    /// Kalıcı bağ (<c>Appointment.SourceAdisyonId</c>) üzerinden okunur ve satışın NE ZAMAN
+    /// onaylandığından bağımsızdır: elle onaylanmış (dolayısıyla tamamlamada otomatik onay
+    /// tetiklenmeyen) bir satışın carisi de böyle bulunur. Global süzgeçler atlanır — aktif şube
+    /// kapsamı yüzünden fiş "yok" sayılıp hedef sessizce kaybolmasın.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> BoundSaleAccountIdAsync(Guid tenantId, Guid appointmentId, CancellationToken ct)
+    {
+        var saleId = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.Id == appointmentId)
+            .Select(a => a.SourceAdisyonId)
+            .FirstOrDefaultAsync(ct);
+        if (saleId is not { } id) return null;
+
+        return await _db.Adisyonlar.AsNoTracking().IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.Id == id && !a.IsDeleted)
+            .Select(a => a.CustomerAccountId)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
     /// Tahsilatı doğru deftere yazar: açık cari varsa oraya (vade sırasına dağıtılır), yoksa
     /// müşterinin adisyonu üzerinden. Arayüzdeki hedef-seçme mantığı sunucuya taşındı ki
     /// çok adımlı akış tek transaction'da kalabilsin.
     /// <para>
-    /// HEDEF SIRASI: (1) istemcinin seçtiği cari, (2) bu tamamlamada otomatik onaylanan SATIŞIN
-    /// carisi, (3) borcu olan en eski cari, (4) adisyon defteri. (2) olmasaydı, randevu modalinden
-    /// satılan hizmetin parası müşterinin aylar önceki başka bir satışına yazılıyor, yeni satış
-    /// ödenmemiş görünüyordu — ekranda önerilen tutar da o satışın kalanıydı.
+    /// HEDEF SIRASI: (1) istemcinin seçtiği cari — randevunun bağlı satışıyla uyumlu olduğu
+    /// çağıranda doğrulanır, (2) RANDEVUNUN KENDİ SATIŞININ carisi (bu tamamlamada onaylanmış ya da
+    /// daha önce onaylanmış olabilir), (3) borcu olan en eski cari, (4) adisyon defteri.
+    /// (2) olmasaydı, randevu modalinden satılan hizmetin parası müşterinin aylar önceki başka bir
+    /// satışına yazılıyor, yeni satış ödenmemiş görünüyordu.
+    /// </para>
+    /// <para>
+    /// (2) BORCU KAPANMIŞ OLSA DA SEÇİLİR: eskiden yalnız <c>RemainingAmount &gt; 0</c> olan tercih
+    /// edilen cari kabul ediliyordu; peşin kapanmış bir satışa alınan ek tahsilat yine eski borçlu
+    /// cariye kayardı. Fazla ödeme kendi kartında "credit" olarak durur, yanlış deftere gitmez.
     /// </para>
     /// </summary>
     private async Task<Result> CollectOnCompleteAsync(
@@ -979,9 +1036,11 @@ public sealed class AppointmentService : IAppointmentService
                 .Where(a => a.TenantId == tenantId && a.CustomerId == customerId && a.CancelledAtUtc == null)
                 .OrderBy(a => a.CreatedAtUtc)
                 .ToListAsync(ct);
-            // Bu randevuyla birlikte işlenen satışın carisi öncelikli — parayı kendi satışına yaz.
+            // Bu randevunun satışının carisi ÖNCELİKLİ — parayı kendi satışına yaz. Borcu kalmamış
+            // olsa bile (peşin kapanmış satış) hedef odur: fazla ödeme kendi kartında durur,
+            // müşterinin başka bir satışına kaymaz.
             var preferred = preferredAccountId is { } pid
-                ? accounts.FirstOrDefault(a => a.Id == pid && a.RemainingAmount > 0)
+                ? accounts.FirstOrDefault(a => a.Id == pid)
                 : null;
             accountId = (preferred ?? accounts.FirstOrDefault(a => a.RemainingAmount > 0))?.Id;
         }

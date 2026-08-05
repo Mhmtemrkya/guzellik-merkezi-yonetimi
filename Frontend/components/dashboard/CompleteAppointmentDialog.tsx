@@ -167,7 +167,12 @@ export default function CompleteAppointmentDialog({
    * yoksa adisyon defteri). Buradan yalnız yüzeyden gelen accountId iletilir.
    */
   const completeAtomically = async (payment: { amount: number; method: string } | null): Promise<void> => {
-    const targetAccountId = accountId || openAdisyon?.customerAccountId || null
+    // HEDEF CARİYİ İSTEMCİ TAHMİN ETMEZ. Burada müşterinin AÇIK ADİSYONUNUN carisi ekleniyordu:
+    // randevu kendi satışından doğmuşsa (SourceAdisyonId) o cari BAŞKA bir satışa ait olabiliyor ve
+    // tahsilat yanlış deftere yazılıyordu. Sunucu doğru hedefi zaten biliyor (randevunun kendi
+    // satışının carisi → borçlu en eski cari → adisyon defteri) ve uyuşmayan bir cari gönderilirse
+    // isteği reddediyor. Yalnız çağıranın AÇIKÇA verdiği cari iletilir.
+    const targetAccountId = accountId || null
     // ANAHTAR PAYLOAD'IN TAMAMINI TEMSİL ETMELİ. Eskiden yalnız randevu + tutar + yöntem giriyordu:
     // yanlış cariyle yapılan ilk deneme 4xx alınca, kullanıcı DOĞRU cariyi seçip tekrar
     // gönderdiğinde anahtar aynı kaldığı için sunucu eski hatayı replay edebiliyordu (istek hiç
