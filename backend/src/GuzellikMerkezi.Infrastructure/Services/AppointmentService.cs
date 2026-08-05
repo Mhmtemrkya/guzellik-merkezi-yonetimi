@@ -290,6 +290,16 @@ public sealed class AppointmentService : IAppointmentService
         var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);
         if (limit.IsFailure) return Result<AppointmentDto>.Failure(limit.Error);
 
+        // ŞUBE KAPSAMI GÖVDEDEN GELMEZ (bkz. PinnedBranchId). Sabitlenmiş rolde istemcinin
+        // gönderdiği şube yok sayılır; farklıysa iz bırakılır (arayüz bunu üretmez).
+        if (PinnedBranchId() is { } pinned && pinned != request.BranchId)
+        {
+            await _audit.LogAsync(tenantId, pinned, "BranchScopeOverride", "Appointment", null,
+                "Randevu isteğinde başka şube gönderildi; kullanıcının kendi şubesine sabitlendi.",
+                new { RequestedBranchId = request.BranchId, EffectiveBranchId = pinned, _currentUser.Role }, cancellationToken);
+            request = request with { BranchId = pinned };
+        }
+
         // KURUM BÜTÜNLÜĞÜ ÖNCE: müşteri/şube/personel/hizmet bu kuruma ait olmalı (bkz. metot notu).
         if (await ValidateAppointmentScopeAsync(tenantId, request.BranchId, request.CustomerId,
                 request.StaffMemberId, request.ServiceDefinitionId, cancellationToken) is { } scopeError)
@@ -1155,6 +1165,15 @@ public sealed class AppointmentService : IAppointmentService
             }
         }
 
+        // RANDEVU İPTALİ ONU DOĞURAN AÇIK SATIŞI DA KAPATIR — yaşam döngüsünün ters yönü
+        // (bkz. CloseOpenSaleBoundToAppointmentAsync). Aynı SaveChanges'e girer: fiş ancak
+        // randevu gerçekten iptal olduysa kapanır.
+        Guid? closedSaleId = null;
+        if (request.Status == AppointmentStatus.Cancelled && prevStatus != AppointmentStatus.Cancelled)
+        {
+            closedSaleId = await CloseOpenSaleBoundToAppointmentAsync(tenantId, appointment, cancellationToken);
+        }
+
         // Tamamlanınca müşteriye WhatsApp'tan değerlendirme linki (personel + salon yıldızı) gönder.
         // OUTBOX SATIRI ANA İŞLEMİN İÇİNE yazılır (kuyruk aynı DbContext'i kullanır): commit'ten
         // SONRA yazılırsa, kuyruğa yazarken hata alındığında durum değişikliği kalıcı olduğu hâlde
@@ -1180,7 +1199,7 @@ public sealed class AppointmentService : IAppointmentService
         {
             try
             {
-                await RunPostStatusChangeSideEffectsAsync(tenantId, appointment, request, prevStatus, staffTenantUserId, cancellationToken);
+                await RunPostStatusChangeSideEffectsAsync(tenantId, appointment, request, prevStatus, staffTenantUserId, closedSaleId, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -1210,7 +1229,7 @@ public sealed class AppointmentService : IAppointmentService
     /// </summary>
     private async Task RunPostStatusChangeSideEffectsAsync(
         Guid tenantId, Appointment appointment, ChangeAppointmentStatusRequest request,
-        AppointmentStatus prevStatus, Guid? staffTenantUserId, CancellationToken cancellationToken)
+        AppointmentStatus prevStatus, Guid? staffTenantUserId, Guid? closedSaleId, CancellationToken cancellationToken)
     {
         // İptalde yer açıldı → bekleme listesindeki ilk uygun müşteriye WhatsApp'tan "yer açıldı, ister misiniz?"
         // teklifi götür (offer-first). Best-effort: teklif/gönderim başarısız olsa da iptal geçerli kalır.
@@ -1229,8 +1248,10 @@ public sealed class AppointmentService : IAppointmentService
         }
 
         await _audit.LogAsync(tenantId, appointment.BranchId, "ChangeStatus", "Appointment", appointment.Id,
-            $"Randevu durumu: {prevStatus} → {appointment.Status}{(offeredWaitlistId is not null ? " · bekleme listesine teklif gönderildi" : "")}",
-            new { prevStatus, NewStatus = appointment.Status, request.Reason, offeredWaitlistId }, cancellationToken);
+            $"Randevu durumu: {prevStatus} → {appointment.Status}"
+                + (offeredWaitlistId is not null ? " · bekleme listesine teklif gönderildi" : string.Empty)
+                + (closedSaleId is not null ? " · bağlı açık satış fişi iptal edildi" : string.Empty),
+            new { prevStatus, NewStatus = appointment.Status, request.Reason, offeredWaitlistId, closedSaleId }, cancellationToken);
 
         // İptal / Gelmedi → kurum/şube yöneticisine bildirim (yeni randevu için slot boşaldı / takip).
         if ((request.Status == AppointmentStatus.Cancelled || request.Status == AppointmentStatus.NoShow)
@@ -1257,6 +1278,49 @@ public sealed class AppointmentService : IAppointmentService
                 isCancel ? "Randevun iptal edildi" : "Müşterin gelmedi",
                 $"appt-staff-{appointment.Status}", cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// RANDEVU → SATIŞ YAŞAM DÖNGÜSÜ: iptal edilen/silinen randevuyu DOĞURAN açık satış fişini kapatır;
+    /// kapatıldıysa fişin kimliğini döndürür.
+    ///
+    /// <para>
+    /// Ters yön zaten vardı (<c>AdisyonService.CancelCoreAsync</c> / <c>DeleteCoreAsync</c>: fiş
+    /// kapanınca ondan doğan açık randevular da kapanır). Bu yön eksikti: randevu+satış atomik
+    /// ucundan (<see cref="CreateWithSaleAsync"/>) açılan bir randevu iptal edilince/silinince fiş
+    /// AÇIK kalıyordu. Sonuç para etkiliydi — müşterinin BAŞKA bir randevusu tamamlandığında
+    /// "ilk randevuda cariye işle" kuralı (bkz. <see cref="ChangeStatusInternalAsync"/>) müşterinin
+    /// TÜM bekleyen fişlerini onaylıyor, dolayısıyla karşılıksız kalan bu fiş de cariye borç
+    /// yazılıyor ve tahsilat hedefi yanlış fişe kayabiliyordu.
+    /// </para>
+    /// <para>
+    /// ÜÇ KORUMA: (1) yalnız AÇIK fiş kapatılır — onaylı fişin parası kasaya, borcu cariye,
+    /// seansı müşteriye işlenmiştir, onu geri almanın yolu satış iptali ekranıdır; (2) fiş başka
+    /// canlı randevuyu da besliyorsa dokunulmaz; (3) global süzgeçler atlanır — aktif şube kapsamı
+    /// yüzünden fiş "yok" sayılıp bağ sessizce kopmasın.
+    /// </para>
+    /// <para>
+    /// Kilit sırası (<see cref="RowLock.TableOrder"/>): … → appointments → customer_accounts →
+    /// adisyonlar. Çağıranlar randevu kilidini ZATEN almış olur; adisyon ondan sonra gelir.
+    /// </para>
+    /// </summary>
+    private async Task<Guid?> CloseOpenSaleBoundToAppointmentAsync(
+        Guid tenantId, Appointment appointment, CancellationToken ct)
+    {
+        if (appointment.SourceAdisyonId is not { } saleId) return null;
+        if (!await RowLock.LockRowAsync(_db, "adisyonlar", saleId, ct)) return null;
+
+        var sale = await _db.Adisyonlar.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == saleId && !a.IsDeleted, ct);
+        if (sale is null || sale.Status != AdisyonStatus.Open) return null;
+
+        var feedsOtherAppointments = await _db.Appointments.IgnoreQueryFilters().AnyAsync(a =>
+            a.TenantId == tenantId && a.SourceAdisyonId == saleId && a.Id != appointment.Id && !a.IsDeleted
+            && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow, ct);
+        if (feedsOtherAppointments) return null;
+
+        sale.Cancel(_currentUser.UserId);
+        return sale.Id;
     }
 
     public async Task<Result<AppointmentDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
@@ -1370,6 +1434,24 @@ public sealed class AppointmentService : IAppointmentService
         var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (appointment is null) return Result.Failure(Error.NotFound("Randevu bulunamadı."));
 
+        // SİLME DE ORTAK KİLİT PROTOKOLÜNE KATILIR (bkz. ChangeStatusInternalAsync). İki gerekçe:
+        // (1) silme artık randevuyu doğuran açık satış fişini de kapatıyor — iki satır TEK
+        // transaction'da, protokol sırasıyla (customers → appointments → adisyonlar) değişmeli;
+        // (2) randevu eskiden kilitsiz okunuyordu: araya giren bir tamamlama commit ettiyse
+        // "tamamlanmış silinemez" koruması BAYAT duruma bakıp silmeye izin veriyordu.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational)
+        {
+            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
+            await _db.Entry(appointment).ReloadAsync(cancellationToken);
+            if (_db.Entry(appointment).State == EntityState.Detached)
+                return Result.Failure(Error.NotFound("Randevu bulunamadı."));
+        }
+
         // TAMAMLANMIŞ RANDEVU SİLİNEMEZ: seans tüketildi, prim/rapor ona dayanıyor. Silmek
         // tüketimi geride bırakıp geçmişi yok ediyordu (ters kayıt da uygulanmıyor).
         // "Yanlış tamamlandı" durumunun doğru yolu durumu geri almaktır.
@@ -1381,10 +1463,15 @@ public sealed class AppointmentService : IAppointmentService
         }
 
         var snapshot = new { appointment.StartUtc, appointment.CustomerId, appointment.StaffMemberId };
+        // Randevu ortadan kalkınca onu doğuran açık satışın da dayanağı kalmaz (bkz. metot notu).
+        var closedSaleId = await CloseOpenSaleBoundToAppointmentAsync(tenantId, appointment, cancellationToken);
         appointment.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Delete", "Appointment", appointment.Id,
-            $"Randevu silindi ({appointment.StartUtc:dd.MM.yyyy HH:mm})", snapshot, cancellationToken);
+            $"Randevu silindi ({appointment.StartUtc:dd.MM.yyyy HH:mm})"
+                + (closedSaleId is not null ? " · bağlı açık satış fişi iptal edildi" : string.Empty),
+            new { snapshot.StartUtc, snapshot.CustomerId, snapshot.StaffMemberId, closedSaleId }, cancellationToken);
         return Result.Success();
     }
 
@@ -1417,6 +1504,30 @@ public sealed class AppointmentService : IAppointmentService
         if (!staffTenantUserId.HasValue) return Task.FromResult(true);
         var tenantUserId = staffTenantUserId.Value;
         return _db.StaffMembers.AnyAsync(x => x.TenantId == tenantId && x.Id == staffMemberId && x.TenantUserId == tenantUserId, cancellationToken);
+    }
+
+    /// <summary>
+    /// KULLANICININ SABİTLENDİĞİ ŞUBE — yoksa (kurum sahibi / platform / şubesiz kullanıcı) null.
+    ///
+    /// <para>
+    /// <c>TenantResolutionMiddleware</c> şube yöneticisini ve personeli JWT'deki şubeye sabitler:
+    /// <c>X-Branch-Id</c> başlığıyla başka şube seçemezler. Ama randevu oluşturmada şube
+    /// GÖVDEDEN geliyor ve yalnız "aynı kuruma ait mi" diye bakılıyordu — Şube A yöneticisi
+    /// istek gövdesine aynı kurumun Şube B kimliğini yazarak B'ye randevu açabiliyordu
+    /// (başlık koruması baypas edilmiş oluyordu).
+    /// </para>
+    /// <para>
+    /// REDDETMEK YERİNE SABİTLERİZ: kural başlıktakiyle birebir aynı olsun ("gönderilen değer yok
+    /// sayılır"). Sabitlenmiş rolün zaten tek meşru şubesi vardır, dolayısıyla ezme meşru akışı
+    /// bozmaz; gövdedeki değer farklıysa denetim kaydı yazılır (arayüz bunu üretmez).
+    /// </para>
+    /// </summary>
+    private Guid? PinnedBranchId()
+    {
+        if (_currentUser.IsPlatformAdmin) return null;
+        if (_currentUser.Role is not (UserRole.BranchManager or UserRole.Staff)) return null;
+        // Şubesi atanmamış kullanıcı kurum genelindedir (middleware de ona kapsam koymaz).
+        return _currentUser.BranchId;
     }
 
     /// <summary>

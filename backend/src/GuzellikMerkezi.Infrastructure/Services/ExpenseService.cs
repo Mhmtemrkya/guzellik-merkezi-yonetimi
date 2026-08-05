@@ -65,7 +65,11 @@ public sealed class ExpenseService : IExpenseService
             refundRows = (await refundQuery.ToListAsync(cancellationToken))
                 .Select(r => new BusinessExpenseDto(
                     r.Id, r.TenantId, r.BranchId, ExpenseCategory.Other, r.Amount,
-                    ExpensePaymentMethod.Cash, r.RefundedAtUtc, null, null, null,
+                    // YÖNTEM İADENİN KENDİSİNDEN GELİR. Sabit "Nakit" yazılıyordu: kart/havale ile
+                    // yapılan iade gider listesinde nakit çıkış görünüyor, kasa kırılımı ve nakit
+                    // sayımı o kadar yanlış kapanıyordu. Kaynak alan RefundTransaction.Method'tur
+                    // (tahsilatlarla aynı sözlük: cash/card/transfer).
+                    MapRefundMethod(r.Method), r.RefundedAtUtc, null, null, null,
                     string.IsNullOrWhiteSpace(r.Reason) ? "Müşteri iadesi (iptal edilen satış)" : $"Müşteri iadesi — {r.Reason}",
                     r.Reference, true, r.RefundedAtUtc, r.CreatedAtUtc, IsSystemGenerated: true))
                 .ToList();
@@ -112,6 +116,19 @@ public sealed class ExpenseService : IExpenseService
 
         return Result<PagedResult<BusinessExpenseDto>>.Success(new PagedResult<BusinessExpenseDto>(items, total, pageRequest.SafePage, pageRequest.SafePageSize));
     }
+
+    /// <summary>
+    /// İade yöntemini (cash/card/transfer — <see cref="RefundTransaction.Method"/>) gider
+    /// listesinin enum'una çevirir. Bilinmeyen/boş değer nakit sayılır: <c>NormalizeMethod</c>
+    /// zaten bu üçüne indirger, buradaki varsayılan yalnız eski/bozuk satırlar içindir.
+    /// </summary>
+    private static ExpensePaymentMethod MapRefundMethod(string? method) =>
+        (method ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "card" => ExpensePaymentMethod.Card,
+            "transfer" => ExpensePaymentMethod.BankTransfer,
+            _ => ExpensePaymentMethod.Cash,
+        };
 
     public async Task<Result<BusinessExpenseDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {

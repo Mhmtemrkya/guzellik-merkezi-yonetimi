@@ -106,14 +106,20 @@ Future<void> _completeAtomically(ApiClient api, String appointmentId,
   // ANAHTAR PAYLOAD'IN TAMAMINI TEMSİL ETMELİ (web ile aynı kural): hedef cari anahtara
   // girmezse, yanlış cariyle 4xx alan istek düzeltilip tekrar gönderildiğinde sunucu aynı
   // anahtarı görüp ESKİ HATAYI replay edebiliyordu.
-  final accountPart = (accountId == null || accountId.isEmpty)
-      ? 'auto'
-      : accountId.replaceAll('-', '').substring(0, 8);
-  final base = payment == null
-      ? 'apc${appointmentId.replaceAll('-', '')}'
-      : 'apc${appointmentId.replaceAll('-', '')}'
-          '-${((payment['amount'] as double) * 100).round()}-${payment['method']}-$accountPart';
-  final idem = base.length > 52 ? base.substring(0, 52) : base;
+  //
+  // AYIRT EDİCİ ALANLAR KUYRUĞA EKLENİP KIRPILMAZ, HASH'LENİR. Cari kimliğini sona ekleyip
+  // anahtarı 52 karakterde kesmek aynı hatayı geri getiriyordu: 'apc' + 32 hane randevu +
+  // tutar + 'transfer' zaten 52'yi doldurabildiği için cari parçası tümüyle kesilebiliyordu.
+  // Sabit uzunluklu parmak izi (3+32+1+14 = 50 karakter) hiçbir koşulda kırpılmaz.
+  final base = 'apc${appointmentId.replaceAll('-', '')}';
+  var idem = base;
+  if (payment != null) {
+    final kurus = ((payment['amount'] as double) * 100).round();
+    final method = '${payment['method']}';
+    final account =
+        (accountId == null || accountId.isEmpty) ? 'auto' : accountId;
+    idem = '$base-${_fingerprint('$kurus|$method|$account')}';
+  }
   await api.post('/api/admin/appointments/$appointmentId/complete', {
     'reason': null,
     'payment': payment == null
@@ -126,6 +132,23 @@ Future<void> _completeAtomically(ApiClient api, String appointmentId,
             'occurredAtUtc': DateTime.now().toUtc().toIso8601String(),
           },
   }, idem);
+}
+
+/// 32-bit FNV-1a. Kriptografik değil; amaç yalnızca kararlı ve çakışmayan bir ayırt edici üretmek.
+int _fnv1a32(String text, int seed) {
+  var hash = seed & 0xFFFFFFFF;
+  for (var i = 0; i < text.length; i++) {
+    hash = ((hash ^ text.codeUnitAt(i)) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return hash;
+}
+
+/// İsteği ayırt eden alanların SABİT UZUNLUKLU (14 karakter) parmak izi — idempotency anahtarı için.
+/// İki farklı tohumla 32'şer bit → 64 bit; her şerit base36'da 7 haneye doldurulur, böylece uzunluk
+/// girdiden bağımsızdır. Web ile AYNI algoritma (Frontend/components/dashboard/CompleteAppointmentDialog.tsx).
+String _fingerprint(String text) {
+  String lane(int seed) => _fnv1a32(text, seed).toRadixString(36).padLeft(7, '0');
+  return '${lane(0x811c9dc5)}${lane(0x7b1a5f3d)}';
 }
 
 /// Eksik onam formu varsa uyarı gösterir. Devam edilecekse true döner.

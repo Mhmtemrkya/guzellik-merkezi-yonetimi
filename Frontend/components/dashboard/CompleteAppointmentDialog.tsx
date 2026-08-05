@@ -61,6 +61,26 @@ function roundKurus(value: number): number {
   return Math.max(0, Math.round((Number(value) || 0) * 100) / 100)
 }
 
+/** 32-bit FNV-1a. Kriptografik değil; amaç yalnızca kararlı ve çakışmayan bir ayırt edici üretmek. */
+function fnv1a32(text: string, seed: number): number {
+  let hash = seed >>> 0
+  for (let i = 0; i < text.length; i += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0
+  }
+  return hash >>> 0
+}
+
+/**
+ * İsteği ayırt eden alanların SABİT UZUNLUKLU (14 karakter) parmak izi — idempotency anahtarı için.
+ * İki farklı tohumla 32'şer bit → 64 bit; her şerit base36'da 7 haneye doldurulur, böylece uzunluk
+ * girdiden bağımsızdır ve anahtar hiçbir zaman kırpılıp ayırt edici alan kaybetmez.
+ * Aynı algoritma mobilde de var (mobile/lib/features/appointments/complete_appointment.dart).
+ */
+function fingerprint(text: string): string {
+  const lane = (seed: number): string => fnv1a32(text, seed).toString(36).padStart(7, '0')
+  return `${lane(0x811c9dc5)}${lane(0x7b1a5f3d)}`
+}
+
 export default function CompleteAppointmentDialog({
   open,
   onOpenChange,
@@ -151,11 +171,18 @@ export default function CompleteAppointmentDialog({
     // ANAHTAR PAYLOAD'IN TAMAMINI TEMSİL ETMELİ. Eskiden yalnız randevu + tutar + yöntem giriyordu:
     // yanlış cariyle yapılan ilk deneme 4xx alınca, kullanıcı DOĞRU cariyi seçip tekrar
     // gönderdiğinde anahtar aynı kaldığı için sunucu eski hatayı replay edebiliyordu (istek hiç
-    // çalışmadan başarısız görünürdü). Hedef cari de anahtara girer.
-    const accountPart = targetAccountId ? targetAccountId.replace(/-/g, '').slice(0, 8) : 'auto'
+    // çalışmadan başarısız görünürdü).
+    //
+    // AYIRT EDİCİ ALANLAR ANAHTARA HASH OLARAK GİRER, KUYRUĞA EKLENİP KIRPILMAZ. Cari kimliğini
+    // sona ekleyip anahtarı 52 karakterde kesmek aynı hatayı geri getiriyordu: "apc" + 32 hane
+    // randevu + tutar (7 hane) + "transfer" zaten 52'yi doldurabildiği için cari parçası tümüyle
+    // kesilebiliyor ve düzeltilmiş istek YİNE eski anahtarı üretiyordu. Sabit uzunluklu parmak izi
+    // (3+32+1+14 = 50 karakter) hiçbir koşulda kırpılmaz.
     const idem = payment
-      ? `apc${appointmentId.replace(/-/g, '')}-${Math.round(payment.amount * 100)}-${payment.method}-${accountPart}`.slice(0, 52)
-      : `apc${appointmentId.replace(/-/g, '')}`.slice(0, 52)
+      ? `apc${appointmentId.replace(/-/g, '')}-${fingerprint(
+          `${Math.round(payment.amount * 100)}|${payment.method}|${targetAccountId ?? 'auto'}`,
+        )}`
+      : `apc${appointmentId.replace(/-/g, '')}`
     await adminApi.completeAppointment(
       appointmentId,
       {

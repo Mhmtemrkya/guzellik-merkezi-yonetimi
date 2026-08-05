@@ -309,10 +309,23 @@ public static class DatabaseBootstrap
         }
         catch (Exception ex)
         {
-            // Şema henüz yoksa ya da DB erişilemiyorsa açılış durmamalı.
-            logger.LogWarning(ex, "Taksit planı sapma onarımı tamamlanamadı.");
+            // Açılış DURMAZ (bir bakım işi yüzünden canlıyı kapatmak daha kötü) ama bu bir UYARI
+            // değil HATA'dır: iş yapılmadıysa sapma yerinde duruyor ve raporlardan eksik alacak
+            // düşmeye devam ediyor demektir — log'da görünmesi ve elle incelenmesi gerekir.
+            logger.LogError(ex, "Taksit planı sapma onarımı tamamlanamadı; sapmış kayıtlar DÜZELTİLMEDİ, elle inceleyin.");
         }
     }
+
+    /// <summary>
+    /// TEK AÇILIŞTA ONARILACAK EN ÇOK CARİ — devre kesici.
+    /// <para>
+    /// Bu iş bilinen, DAR bir hatanın (elle güncellenen toplamın planı yeniden kurmaması) geride
+    /// bıraktığı kayıtlar içindir; canlıda böyle TEK kayıt var. Sayı bunun üstüne çıkıyorsa ortada
+    /// tek seferlik bir artık değil SİSTEMİK bir sorun vardır ve para etkileyen bir düzeltmeyi
+    /// binlerce kayda otomatik uygulamak yanlış olur — iş hiç çalışmaz, hata loglanır, karar insana kalır.
+    /// </para>
+    /// </summary>
+    private const int MaxInstallmentPlanRepairsPerRun = 25;
 
     /// <summary>
     /// <see cref="RepairInstallmentPlanDriftAsync(IServiceProvider)"/>'ın test edilebilir gövdesi;
@@ -322,6 +335,11 @@ public static class DatabaseBootstrap
     {
         // ADAY TARAMASI SUNUCUDA: her açılışta tüm cariler belleğe alınmasın (100 binlerce satır).
         // Startup'ta kiracı bağlamı yok → global süzgeçler atlanır, koşullar elle yazılır.
+        //
+        // YALNIZ "PLAN EKSİK" YÖNÜ: bilinen hata planı cari toplamının ALTINDA bırakıyor
+        // (8.750 cari ↔ 8.500 plan) ve o fark raporlardan sessizce düşüyor. Ters yön
+        // (plan > finanse edilen) bu hatanın imzası DEĞİLDİR; sebebi bilinmeyen bir kaydın
+        // planını otomatik KÜÇÜLTMEK müşteriden beklenen alacağı azaltır → dokunulmaz.
         var drifted = await db.CustomerAccounts.IgnoreQueryFilters()
             .Where(a => !a.IsDeleted && a.CancelledAtUtc == null)
             .Select(a => new
@@ -333,35 +351,107 @@ public static class DatabaseBootstrap
                     .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
                     .Sum(i => (decimal?)i.Amount) ?? 0m,
             })
-            .Where(x => x.PlanCount > 0 && x.Financed > 0 && x.PlanTotal != x.Financed)
+            .Where(x => x.PlanCount > 0 && x.Financed > 0 && x.PlanTotal < x.Financed)
             .Select(x => x.Id)
             .ToListAsync();
         if (drifted.Count == 0) return 0;
 
+        if (drifted.Count > MaxInstallmentPlanRepairsPerRun)
+        {
+            logger?.LogError(
+                "Taksit planı sapması {Count} caride bulundu (sınır {Limit}). Bu bilinen tek seferlik artığın ötesinde; "
+                + "otomatik onarım ÇALIŞMADI. Kayıtları inceleyip düzeltmeyi elle uygulayın.",
+                drifted.Count, MaxInstallmentPlanRepairsPerRun);
+            return 0;
+        }
+
         var repaired = 0;
         foreach (var accountId in drifted)
         {
-            var account = await db.CustomerAccounts.IgnoreQueryFilters()
-                .Include(a => a.Installments)
-                .FirstOrDefaultAsync(a => a.Id == accountId);
-            if (account is null) continue;
-
-            var activePlan = account.Installments
-                .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
-                .ToList();
-            if (activePlan.Count == 0) continue;
-
-            var before = activePlan.Sum(i => i.Amount);
-            account.RebuildInstallments(activePlan.Count, activePlan.Min(i => i.DueDate));
-            await db.SaveChangesAsync();
-            repaired++;
-
-            // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
-            logger?.LogInformation(
-                "Cari {AccountId}: plan {Before} → {After} (taksit {Count}).",
-                accountId, before, Math.Max(0, account.TotalAmount - account.DepositAmount), activePlan.Count);
+            try
+            {
+                if (await RepairSingleInstallmentPlanAsync(db, accountId, logger)) repaired++;
+            }
+            catch (Exception ex)
+            {
+                // Bir kaydın onarılamaması diğerlerini durdurmasın; ama sessiz kalmasın.
+                logger?.LogError(ex, "Cari {AccountId} taksit planı onarılamadı.", accountId);
+            }
         }
         return repaired;
+    }
+
+    /// <summary>
+    /// TEK CARİYİ KİLİT ALTINDA onarır. Onarım yapıldıysa true.
+    ///
+    /// <para>
+    /// PARA ETKİLEYEN YAZMA, İSTEK YOLUNDAKİYLE AYNI PROTOKOLE UYAR (bkz. <see cref="RowLock"/>):
+    /// kendi transaction'ı + <c>customer_accounts</c> satır kilidi + kilitten SONRA taze okuma.
+    /// Kilitsiz sürüm iki riski taşıyordu: (1) iki backend aynı anda açılırsa ikisi de sapmayı
+    /// görüp planı ayrı ayrı yazıyordu; (2) tarama ile yazma arasında bir kullanıcı toplamı
+    /// güncellerse onarım BAYAT tutara göre bölüyordu. Kilit altında sapma yeniden doğrulanır;
+    /// bu arada kapanmışsa hiçbir şey yazılmaz (idempotent).
+    /// </para>
+    /// <para>
+    /// Plan YENİDEN KURULMAZ, tutarlar yerinde düzeltilir
+    /// (<see cref="CustomerAccount.RealignInstallmentAmounts"/>): taksit kimlikleri, durumları,
+    /// ödeme damgaları ve elle girilmiş vadeler korunur.
+    /// </para>
+    /// </summary>
+    private static async Task<bool> RepairSingleInstallmentPlanAsync(GuzellikDbContext db, Guid accountId, ILogger? logger)
+    {
+        var relational = db.Database.IsRelational();
+        await using var tx = relational && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
+            : null;
+
+        if (relational && !await RowLock.LockRowAsync(db, "customer_accounts", accountId, CancellationToken.None))
+            return false;
+
+        // HEDEFLİ DETACH (genel ChangeTracker.Clear DEĞİL — o, dış akışın bekleyen değişikliklerini
+        // de silerdi): izleyicide bu cariye ait bayat bir kopya varsa sorgu onu DÖNDÜRÜR ve
+        // "kilitten sonra taze oku" protokolü hiçbir şey korumaz.
+        DetachAccountAggregate(db, accountId);
+
+        var account = await db.CustomerAccounts.IgnoreQueryFilters()
+            .Include(a => a.Installments)
+            .FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account is null || account.IsDeleted || account.CancelledAtUtc is not null) return false;
+
+        var activePlan = account.Installments
+            .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
+            .ToList();
+        if (activePlan.Count == 0) return false;
+
+        // SAPMA KİLİT ALTINDA YENİDEN DOĞRULANIR — taramadaki anlık görüntüye güvenilmez.
+        var financed = account.TotalAmount - account.DepositAmount;
+        var before = activePlan.Sum(i => i.Amount);
+        if (financed <= 0 || before >= financed) return false;
+
+        if (!account.RealignInstallmentAmounts()) return false;
+        await db.SaveChangesAsync();
+        if (tx is not null) await tx.CommitAsync();
+
+        // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
+        logger?.LogInformation(
+            "Cari {AccountId}: plan {Before} → {After} (taksit {Count}; satır kimlikleri ve vadeler korundu).",
+            accountId, before, financed, activePlan.Count);
+        return true;
+    }
+
+    /// <summary>Bir cariyi ve taksitlerini izleyiciden düşürür (bkz. <c>AdisyonService.DetachAdisyonAggregate</c>).</summary>
+    private static void DetachAccountAggregate(GuzellikDbContext db, Guid accountId)
+    {
+        foreach (var entry in db.ChangeTracker.Entries<Installment>()
+                     .Where(e => e.Entity.CustomerAccountId == accountId).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+        foreach (var entry in db.ChangeTracker.Entries<CustomerAccount>()
+                     .Where(e => e.Entity.Id == accountId).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     /// <summary>

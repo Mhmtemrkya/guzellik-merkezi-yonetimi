@@ -97,6 +97,60 @@ public sealed class CustomerSpendingStatsTests
         Assert.Equal(700m, result.Value.AvgSpent);
     }
 
+    /// <summary>
+    /// NEGATİF HARCAMA ORTALAMAYI BOZMAZ (ham SQL yolu — bu hata yalnız orada vardı).
+    ///
+    /// <para>
+    /// <c>AVG(NULLIF(t.Spent, 0))</c> yalnız TAM SIFIRI eliyor, NEGATİFİ paydaya katıyordu; oysa
+    /// "harcayan" sayısı ve toplam yalnız pozitifleri sayıyordu. İadesi tahsilatını aşan tek bir
+    /// müşteri kartı kendi içinde tutarsız hâle getiriyordu: A 100 TL harcarken B −50 TL ise
+    /// ortalama 25 TL görünüyordu — harcayan 1 kişi ve toplam 100 TL olduğu hâlde.
+    /// </para>
+    /// <para>
+    /// InMemory yolu zaten pozitifleri süzdüğü için bu testin GERÇEK veritabanında koşması şart.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task GetSpendingStatsAsync_NegativeSpenderDoesNotDragTheAverage()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        Guid tenantId;
+
+        await using (var db = database.NewContext())
+        {
+            var tenant = new Tenant("Negatif QA", $"negatif-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+            tenantId = tenant.Id;
+
+            var spender = new Customer(tenant.Id, branch.Id, "HARCAYAN", "0555 121 31 41", null);
+            var refunded = new Customer(tenant.Id, branch.Id, "IADESI ASAN", "0555 151 61 71", null);
+            db.Customers.AddRange(spender, refunded);
+            await db.SaveChangesAsync();
+
+            var account = new CustomerAccount(tenant.Id, branch.Id, spender.Id, null, "Paket", 1000m, 0m);
+            account.RegisterPayment(100m, "cash", null, DateTime.UtcNow.AddDays(-3));
+            db.CustomerAccounts.Add(account);
+            // İkinci müşterinin tahsilatı yok, iadesi var → net harcaması −50.
+            db.RefundTransactions.Add(new RefundTransaction(
+                tenant.Id, branch.Id, Guid.CreateVersion7(), refunded.Id, 50m, "cash"));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var search = TestSearchIndex.Create();
+            var result = await NewService(db, search).GetSpendingStatsAsync(tenantId, days: null);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(1, result.Value!.SpenderCount);
+            Assert.Equal(100m, result.Value.TotalSpent);
+            // Hata varken 25 TL dönüyordu (100 ile −50'nin ortalaması).
+            Assert.Equal(100m, result.Value.AvgSpent);
+        }
+    }
+
     /// <summary>Hiç ödemesi olmayan müşteri ortalamaya 0 olarak KATILMAZ (dayanak sayısı da artmaz).</summary>
     [Fact]
     public async Task GetSpendingStatsAsync_IgnoresCustomersWithoutPayments()

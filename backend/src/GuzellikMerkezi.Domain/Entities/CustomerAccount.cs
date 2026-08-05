@@ -151,6 +151,52 @@ public sealed class CustomerAccount : Entity
     }
 
     /// <summary>
+    /// PLAN TOPLAMINI cari toplamıyla HİZALAR — planı yeniden KURMADAN. Değişiklik yapıldıysa true.
+    ///
+    /// <para>
+    /// <see cref="RebuildInstallments"/> planı yıkıp yeniden kurar: taksit satırları SİLİNİP yeniden
+    /// yaratılır, dolayısıyla taksit kimlikleri, <see cref="Installment.Status"/> /
+    /// <see cref="Installment.PaidAtUtc"/> alanları ve elle girilmiş VADELER kaybolur (yeni vadeler
+    /// "ilk vade + n ay" olarak üretilir). Kullanıcının kurduğu bir planı düzeltmek için bu fazla
+    /// yıkıcıdır: raporlar, ödeme geçmişi ve taksit kimliğine bakan ekranlar kaymaya başlar.
+    /// </para>
+    /// <para>
+    /// Burada YALNIZ TUTARLAR düzeltilir; satır kimliği, sırası, vadesi ve durumu olduğu gibi kalır.
+    /// Bölme kuralı <see cref="RebuildInstallments"/> ile aynıdır (eşit pay + kuruş farkı sonuncuya),
+    /// böylece hizalanan plan yeniden kurulmuş planla aynı tutarları verir. İptal edilmiş/silinmiş
+    /// taksitlere dokunulmaz. Para yaratmaz/silmez: "ödenen" bilgisi taksitte değil tahsilat
+    /// satırlarındadır ve <see cref="AllocatePayments"/> ile vade sırasıyla yeniden dağıtılır.
+    /// </para>
+    /// </summary>
+    public bool RealignInstallmentAmounts()
+    {
+        var active = _installments
+            .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
+            .OrderBy(i => i.No)
+            .ThenBy(i => i.DueDate)
+            .ToList();
+        if (active.Count == 0) return false;
+
+        var financed = Math.Max(0, TotalAmount - DepositAmount);
+        // Finanse edilen tutar yoksa plan SİLİNMESİ gerekirdi; otomatik onarım plan silmez.
+        if (financed <= 0) return false;
+
+        var per = Math.Round(financed / active.Count, 2, MidpointRounding.AwayFromZero);
+        var drift = financed - per * active.Count;
+
+        var changed = false;
+        for (var i = 0; i < active.Count; i++)
+        {
+            var amount = i == active.Count - 1 ? per + drift : per;
+            if (active[i].Amount == amount) continue;
+            active[i].SetAmount(amount);
+            changed = true;
+        }
+        if (changed) Touch();
+        return changed;
+    }
+
+    /// <summary>
     /// Tahsilat kaydeder. Taksit planı <b>değişmez</b>; ödenen tutar
     /// <see cref="AllocatePayments"/> ile vade sırasına göre taksitlere dağıtılır.
     /// Böylece eksik ödemede ilgili taksit kısmen, fazla ödemede birden çok taksit kapanır.

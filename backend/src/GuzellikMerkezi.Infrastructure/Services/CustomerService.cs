@@ -517,9 +517,13 @@ GROUP BY Segment;";
         await using (var command = _db.Database.GetDbConnection().CreateCommand())
         {
             command.CommandText = $@"
+-- ORTALAMA YALNIZ HARCAYAN MÜŞTERİLER ÜZERİNDEN (bkz. GetSpendingStatsAsync'teki aynı ifade).
+-- NULLIF(t.Spent, 0) yalnız TAM SIFIRI eliyor, NEGATİFİ paydaya katıyordu: iadesi tahsilatını
+-- aşan müşteri (Spent < 0) ortalamayı aşağı çekiyordu. A 100 TL, B −50 TL ise kart 25 TL
+-- gösteriyordu — oysa harcayan sayısı 1 ve toplam 100 TL, dolayısıyla ortalama 100 TL olmalı.
 SELECT COALESCE(SUM(GREATEST(t.Debt, 0)), 0) AS TotalDebt,
        COALESCE(SUM(CASE WHEN t.Debt > 0 THEN 1 ELSE 0 END), 0) AS Debtors,
-       COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
+       COALESCE(AVG(CASE WHEN t.Spent > 0 THEN t.Spent END), 0) AS AvgSpent,
        COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders
 FROM (
   -- Müşteri başına tek satır: canlı cariler + arşivlenmiş (iptal) tahsilatlar − iadeler.
@@ -640,7 +644,11 @@ FROM (
 
         await using var command = _db.Database.GetDbConnection().CreateCommand();
         command.CommandText = $@"
-SELECT COALESCE(AVG(NULLIF(t.Spent, 0)), 0) AS AvgSpent,
+-- ÜÇ SAYAÇ AYNI KÜMEYE BAKAR (harcaması pozitif müşteriler): ortalama = toplam ÷ harcayan.
+-- NULLIF(t.Spent, 0) negatifi paydaya katıyor, toplam ve sayaç ise (GREATEST/CASE) katmıyordu:
+-- iadesi tahsilatını aşan tek bir müşteri kartı kendi içinde tutarsız hâle getiriyordu.
+-- InMemory yolu zaten pozitifleri süzüyordu (Where x > 0) — iki yol artık aynı sonucu verir.
+SELECT COALESCE(AVG(CASE WHEN t.Spent > 0 THEN t.Spent END), 0) AS AvgSpent,
        COALESCE(SUM(CASE WHEN t.Spent > 0 THEN 1 ELSE 0 END), 0) AS Spenders,
        COALESCE(SUM(GREATEST(t.Spent, 0)), 0) AS TotalSpent
 FROM (
