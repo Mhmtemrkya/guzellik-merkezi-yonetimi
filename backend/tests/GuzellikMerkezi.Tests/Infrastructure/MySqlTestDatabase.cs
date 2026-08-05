@@ -67,6 +67,29 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
         _connectionString = connectionString;
     }
 
+    /// <summary>
+    /// BOŞ bir şema oluşturur; model UYGULANMAZ. Migration zincirinin kendisini test etmek için:
+    /// <c>EnsureCreated</c> şemayı modelden kurar ve migration geçmişi yazmaz, dolayısıyla gerçek
+    /// "yeni kurulum" senaryosunu göstermez.
+    /// </summary>
+    public static async Task<MySqlTestDatabase> CreateEmptyAsync()
+    {
+        var server = ServerConnection.Value
+                     ?? throw new InvalidOperationException("Sunucuya erişilemiyor; MySqlFact ile korunmalıydı.");
+
+        var database = $"guzellik_mig_{Guid.NewGuid():N}"[..40];
+        await using (var connection = new MySqlConnection(server))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var builder = new MySqlConnectionStringBuilder(server) { Database = database };
+        return new MySqlTestDatabase(database, builder.ConnectionString);
+    }
+
     /// <summary>Boş bir şema oluşturur ve modeli uygular (migration zinciri değil — hızlı olsun).</summary>
     public static async Task<MySqlTestDatabase> CreateAsync()
     {

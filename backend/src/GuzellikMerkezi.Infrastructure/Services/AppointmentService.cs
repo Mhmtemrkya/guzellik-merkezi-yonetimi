@@ -952,6 +952,18 @@ public sealed class AppointmentService : IAppointmentService
                                      ?? boundSaleAccountId
                                      ?? await BoundSaleAccountIdAsync(tenantId, id, cancellationToken);
 
+            // BAĞLI SATIŞ VARKEN "EN ESKİ BORÇLU CARİ" FALLBACK'İ KULLANILMAZ. Randevu bir satıştan
+            // doğduysa ve o satışın carisi hâlâ çözülemiyorsa (beklenmedik durum), parayı rastgele
+            // bir deftere yazmaktansa işlemi reddederiz — yanlış cariye tahsilat sessiz bir veri
+            // bozulmasıdır, hata ise görünür ve düzeltilebilir.
+            if (payment.AccountId is null && preferredAccountId is null
+                && await HasBoundSaleAsync(tenantId, id, cancellationToken))
+            {
+                return Result<AppointmentDto>.Failure(Error.Conflict(
+                    "Randevunun bağlı satışının cari hesabı bulunamadı; tahsilat başka bir cariye yazılmasın diye " +
+                    "işlem durduruldu. Satışın durumunu kontrol edin."));
+            }
+
             var collected = await CollectOnCompleteAsync(
                 tenantId, customerId, payment, preferredAccountId, cancellationToken);
             // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez ve
@@ -976,6 +988,11 @@ public sealed class AppointmentService : IAppointmentService
     /// kapsamı yüzünden fiş "yok" sayılıp hedef sessizce kaybolmasın.
     /// </para>
     /// </summary>
+    /// <summary>Randevu bir satıştan mı doğdu? (kalıcı bağ var mı)</summary>
+    private Task<bool> HasBoundSaleAsync(Guid tenantId, Guid appointmentId, CancellationToken ct) =>
+        _db.Appointments.AsNoTracking().IgnoreQueryFilters()
+            .AnyAsync(a => a.TenantId == tenantId && a.Id == appointmentId && a.SourceAdisyonId != null, ct);
+
     private async Task<Guid?> BoundSaleAccountIdAsync(Guid tenantId, Guid appointmentId, CancellationToken ct)
     {
         var saleId = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
@@ -1165,7 +1182,8 @@ public sealed class AppointmentService : IAppointmentService
             // Faz 2: Bu randevunun DOĞDUĞU satış "ilk randevu tamamlanınca işle" bayrağıyla açık
             // beklerse şimdi otomatik onaylanır → satış cariye borç, peşinat kasaya gelir, satılan
             // seanslar o an oluşur. Onay seansları yaratır → hemen aşağıdaki seans düşümü onları bulur.
-            // best-effort: satış onaylanamazsa (ör. stok/guard) randevu tamamlanmayı engelleme, denetime yaz.
+            // Onay BAŞARISIZSA tamamlama da başarısız olur (aşağıya bak): karşılıksız tamamlanmış
+            // randevu + açık satış + yanlış deftere tahsilat üçlüsü ancak böyle önlenir.
             var pendingSaleIds = await _db.Adisyonlar.AsNoTracking()
                 .Where(a => a.TenantId == tenantId
                          && a.CustomerId == appointment.CustomerId
@@ -1198,16 +1216,21 @@ public sealed class AppointmentService : IAppointmentService
             if (matchingSaleId is { } targetSaleId)
             {
                 var approved = await _adisyon.ApproveAsync(tenantId, targetSaleId, cancellationToken);
-                if (approved.IsSuccess)
+                if (approved.IsFailure)
                 {
-                    autoApprovedAccountId = approved.Value?.CustomerAccountId;
+                    // ONAY BAŞARISIZSA TAMAMLAMA DA BAŞARISIZDIR — "best-effort" DEĞİL.
+                    //
+                    // Eskiden hata yalnız denetime yazılıp akış sürdürülüyordu. Sonuç para
+                    // etkiliydi: randevu Completed oluyor, seans tüketiliyor, ama satış Open
+                    // kalıyordu; carisi de oluşmadığı için tahsilat "borcu olan en eski cari"
+                    // fallback'ine düşüp müşterinin BAŞKA satışına yazılıyordu (aynı anda hem
+                    // yanlış deftere para hem karşılıksız tamamlanmış randevu).
+                    // Çağıran transaction'ı commit etmez → durum değişikliği, seans düşümü ve
+                    // tahsilat birlikte geri alınır; kullanıcı gerçek sebebi görür ve düzeltir.
+                    return new StatusChangeOutcome(Result<AppointmentDto>.Failure(Error.Conflict(
+                        $"Randevunun satışı cariye işlenemediği için tamamlanamadı: {approved.Error.Message}")), null);
                 }
-                else
-                {
-                    await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveFailed", "Adisyon", targetSaleId,
-                        $"İlk randevu tamamlandı ama satış otomatik cariye işlenemedi: {approved.Error.Message}",
-                        new { appointment.Id, appointment.CustomerId }, cancellationToken);
-                }
+                autoApprovedAccountId = approved.Value?.CustomerAccountId;
             }
             else if (pendingSaleIds.Count > 0)
             {

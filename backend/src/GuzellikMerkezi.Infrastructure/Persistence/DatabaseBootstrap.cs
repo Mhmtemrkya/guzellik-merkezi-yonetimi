@@ -4,6 +4,9 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+// DbContext.GetService<T>() — migration'ları sağlayıcının kilidi olmadan uygulamak için gereken
+// EF iç servisleri (bkz. ApplyPendingMigrationsAsync).
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -83,9 +86,128 @@ public static class DatabaseBootstrap
             await db.Database.ExecuteSqlAsync(
                 $"INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`) VALUES ({initialMigration}, {productVersion});");
             logger?.LogInformation("Mevcut veritabanı baseline alındı: {Migration} uygulanmış sayıldı.", initialMigration);
+            // Baseline yazıldı; bekleyen liste yeniden hesaplanmalı (ilk migration artık uygulanmış).
+            pending = (await db.Database.GetPendingMigrationsAsync()).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            if (pending.Length == 0) return;
         }
 
-        await db.Database.MigrateAsync();
+        await ApplyPendingMigrationsAsync(db, pending, logger);
+    }
+
+    /// <summary>
+    /// Bekleyen migration'ları TEK TEK uygular — <c>Database.MigrateAsync()</c> KULLANILMAZ.
+    ///
+    /// <para>
+    /// NEDEN: MySQL sağlayıcısı migration'lara başlamadan önce bir "veritabanı kilidi" alıyor
+    /// (<c>MySQLHistoryRepository.AcquireDatabaseLockAsync</c>) ve dönen değeri koşulsuz
+    /// <c>long</c>'a çeviriyor. Canlıdaki MariaDB 10.6'da bu çağrı <c>NULL</c> dönebiliyor ve
+    /// açılış <c>InvalidCastException: Unable to cast object of type 'System.DBNull' to type
+    /// 'System.Int64'</c> ile PATLIYOR — yani uygulamanın kendi migration yolu MariaDB'de hiç
+    /// çalışmıyordu (boş şemaya kurulum ve otomatik yükseltme senaryoları). Sağlayıcı sürümüne
+    /// bağımlı kalmamak için migration SQL'ini EF'in kendi üreticisinden alıp kendimiz uygularız;
+    /// üretilen SQL <c>dotnet ef database update</c> ile AYNIDIR.
+    /// </para>
+    /// <para>
+    /// ÇOK INSTANCE KORUMASI KAYBOLMAZ: sağlayıcının kilidi yerine kendi adlandırılmış kilidimizi
+    /// alırız (<c>GET_LOCK</c>) ve NULL dönüşünü doğru ele alırız. Kilit alınamazsa migration
+    /// uygulanmaz — iki backend aynı anda açılırsa biri bekler, sonra bekleyen migration kalmadığını
+    /// görür.
+    /// </para>
+    /// <para>
+    /// Her migration KENDİ transaction'ında uygulanır ve geçmiş satırı aynı transaction'da yazılır:
+    /// yarıda kalan bir migration "uygulanmış" görünmez. (DDL'in MySQL'de örtük commit ürettiği
+    /// durumlar sağlayıcının kendi davranışıyla aynıdır.)
+    /// </para>
+    /// </summary>
+    private static async Task ApplyPendingMigrationsAsync(GuzellikDbContext db, string[] pending, ILogger? logger)
+    {
+        const string LockName = "beautyasist_migrations";
+
+        var migrationsAssembly = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsAssembly>();
+        var sqlGenerator = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>();
+        var commandExecutor = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationCommandExecutor>();
+        var history = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository>();
+        var connection = db.GetService<Microsoft.EntityFrameworkCore.Storage.IRelationalConnection>();
+        // Migration'ın hedef modeli SQL üretiminden ÖNCE "finalize" edilmeli; aksi hâlde sağlayıcı
+        // GetRelationalModel() çağrısında "model must be finalized" hatası verir (EF'in kendi
+        // Migrator'ı da tam olarak bunu yapar).
+        var modelInitializer = db.GetService<IModelRuntimeInitializer>();
+        var productVersion = typeof(DbContext).Assembly.GetName().Version?.ToString(3) ?? "10.0.0";
+
+        if (!await TryAcquireMigrationLockAsync(db, LockName))
+        {
+            logger?.LogWarning("Migration kilidi alınamadı (başka bir örnek uyguluyor olabilir); bu açılışta migration uygulanmadı.");
+            return;
+        }
+
+        try
+        {
+            // Kilit beklerken başka bir örnek uygulamış olabilir → listeyi tazele.
+            pending = (await db.Database.GetPendingMigrationsAsync()).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            if (pending.Length == 0) return;
+
+            await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript());
+
+            foreach (var migrationId in pending)
+            {
+                if (!migrationsAssembly.Migrations.TryGetValue(migrationId, out var migrationType))
+                    throw new InvalidOperationException($"Migration bulunamadı: {migrationId}");
+
+                var migration = migrationsAssembly.CreateMigration(migrationType, db.Database.ProviderName!);
+                var targetModel = migration.TargetModel is { } m ? modelInitializer.Initialize(m) : null;
+                var commands = sqlGenerator.Generate(migration.UpOperations, targetModel);
+                await commandExecutor.ExecuteNonQueryAsync(commands, connection);
+
+                await db.Database.ExecuteSqlRawAsync(
+                    history.GetInsertScript(new Microsoft.EntityFrameworkCore.Migrations.HistoryRow(migrationId, productVersion)));
+                logger?.LogInformation("Migration uygulandı: {Migration}", migrationId);
+            }
+        }
+        finally
+        {
+            await ReleaseMigrationLockAsync(db, LockName);
+        }
+    }
+
+    /// <summary>
+    /// Adlandırılmış kilit alır. <c>GET_LOCK</c> 1 (alındı), 0 (zaman aşımı) ya da NULL (hata)
+    /// döner — NULL'u <c>long</c>'a çevirmeye çalışmak sağlayıcıdaki hatanın ta kendisiydi;
+    /// burada açıkça "alınamadı" sayılır. İlişkisel olmayan sağlayıcıda kilit yoktur (true döner).
+    /// </summary>
+    private static async Task<bool> TryAcquireMigrationLockAsync(GuzellikDbContext db, string lockName)
+    {
+        if (!db.Database.IsRelational()) return true;
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT GET_LOCK(@n, 90);";
+        var p = cmd.CreateParameter();
+        p.ParameterName = "@n";
+        p.Value = lockName;
+        cmd.Parameters.Add(p);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is not null && result != DBNull.Value && Convert.ToInt64(result) == 1;
+    }
+
+    private static async Task ReleaseMigrationLockAsync(GuzellikDbContext db, string lockName)
+    {
+        if (!db.Database.IsRelational()) return;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DO RELEASE_LOCK(@n);";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "@n";
+            p.Value = lockName;
+            cmd.Parameters.Add(p);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Bağlantı kapanınca kilit zaten düşer; bırakma hatası açılışı engellememeli.
+        }
     }
 
     private static async Task<bool> TableExistsAsync(GuzellikDbContext db, string tableName)
@@ -542,30 +664,42 @@ public static class DatabaseBootstrap
         // istisna atılır ve transaction (varsa) dispose ile geri alınır.
         // Kilitler ID sırasına göre alınır (RowLock protokolü): aynı anda açılan iki backend
         // hedefleri aynı sırayla kilitler, çapraz bekleme oluşmaz.
-        var validated = new List<ValidatedRepairTarget>(targets.Count);
+        var pending = new List<ValidatedRepairTarget>(targets.Count);
+        var alreadyAligned = 0;
         foreach (var target in targets.OrderBy(t => t.AccountId))
         {
-            validated.Add(await LockAndValidateRepairTargetAsync(db, target, relational));
+            var validated = await LockAndValidateRepairTargetAsync(db, target, relational);
+            if (validated is null) alreadyAligned++;   // bakım bu kayıtta ZATEN uygulanmış
+            else pending.Add(validated);
         }
 
         // FAZ 2 — hizalama (bellekte) + TEK kalıcılık noktası.
-        foreach (var item in validated)
+        foreach (var item in pending)
         {
             if (!item.Account.RealignInstallmentAmounts())
                 throw new InvalidOperationException($"Hedef cari {item.Target.AccountId}: taksit tutarları hizalanamadı.");
         }
 
-        await db.SaveChangesAsync();
-        if (tx is not null) await tx.CommitAsync();
+        if (pending.Count > 0)
+        {
+            await db.SaveChangesAsync();
+            if (tx is not null) await tx.CommitAsync();
+        }
 
         // Para etkileyen düzeltme: hangi kayıt, ne kadar kaymıştı — izlenebilir kalsın.
-        foreach (var item in validated)
+        foreach (var item in pending)
         {
             logger?.LogInformation(
                 "Cari {AccountId}: plan {Before} → {After} (taksit {Count}; satır kimlikleri ve vadeler korundu).",
                 item.Target.AccountId, item.PlanTotalBefore, item.FinancedAmount, item.InstallmentCount);
         }
-        return validated.Count;
+        if (alreadyAligned > 0)
+        {
+            logger?.LogInformation(
+                "{Count} hedef zaten hizalıydı (bakım daha önce uygulanmış) — hiçbir değişiklik yapılmadı.",
+                alreadyAligned);
+        }
+        return pending.Count + alreadyAligned;
     }
 
     /// <summary>Kilit altında doğrulanmış hedef: hizalama bu nesne üzerinden yapılır.</summary>
@@ -599,7 +733,10 @@ public static class DatabaseBootstrap
     /// ödeme damgaları ve elle girilmiş vadeler korunur.
     /// </para>
     /// </summary>
-    private static async Task<ValidatedRepairTarget> LockAndValidateRepairTargetAsync(
+    /// <returns>
+    /// Onarılacak hedef; kayıt ZATEN hedeflenen duruma getirilmişse <c>null</c> (idempotent başarı).
+    /// </returns>
+    private static async Task<ValidatedRepairTarget?> LockAndValidateRepairTargetAsync(
         GuzellikDbContext db, InstallmentPlanRepairTarget target, bool relational)
     {
         var accountId = target.AccountId;
@@ -627,19 +764,37 @@ public static class DatabaseBootstrap
         var financed = account.TotalAmount - account.DepositAmount;
         var before = activePlan.Sum(i => i.Amount);
 
-        // BEKLENEN DEĞERLER — hepsi kilit altında, tek tek.
+        // KİMLİK ALANLARI HER DURUMDA TUTMALI: yanlış cari ya da yedekten dönülmüş başka bir
+        // veritabanı burada yakalanır (bunlar "zaten uygulanmış" sayılamaz).
         Expect(accountId, "TenantId", target.TenantId, account.TenantId);
         Expect(accountId, "TotalAmount", target.TotalAmount, account.TotalAmount);
         Expect(accountId, "DepositAmount", target.DepositAmount, account.DepositAmount);
         Expect(accountId, "FinancedAmount", target.FinancedAmount, financed);
-        Expect(accountId, "PlanTotal", target.PlanTotal, before);
         Expect(accountId, "InstallmentCount", target.InstallmentCount, activePlan.Count);
 
-        if (financed <= 0 || before >= financed)
+        // ÜÇ DURUM AYRILIR (bakım İDEMPOTENT olmalı):
+        //
+        //   plan == beklenen ESKİ değer  → onarılacak
+        //   plan == finanse edilen tutar → ZATEN UYGULANMIŞ, sessizce başarı
+        //   bunların dışında            → fail-fast
+        //
+        // Üçüncü durum eskiden ikinciyi de kapsıyordu: ilk instance planı 8.500 → 8.750 yapıyor,
+        // aynı ayarla açılan İKİNCİ instance hâlâ 8.500 beklediği için istisna atıyor ve SERVİS
+        // AÇILMIYORDU. Rolling deploy'da (iki instance) ya da commit sonrası herhangi bir açılış
+        // hatasından sonra yeniden başlatmada bu, erişilebilirlik kaybı demekti. Kilit altında
+        // taze okunan plan zaten hedef değerdeyse yapacak iş yoktur.
+        if (before == financed)
+        {
+            return null;
+        }
+
+        Expect(accountId, "PlanTotal", target.PlanTotal, before);
+
+        if (financed <= 0 || before > financed)
         {
             throw new InvalidOperationException(
                 $"Hedef cari {accountId}: beklenen sapma yok (finanse {financed}, plan {before}). "
-                + "Kayıt zaten hizalı olabilir; bakım bayrağı kaldırılmalı.");
+                + "Bakım yalnızca 'plan eksik' yönünü onarır.");
         }
 
         return new ValidatedRepairTarget(target, account, before, financed, activePlan.Count);

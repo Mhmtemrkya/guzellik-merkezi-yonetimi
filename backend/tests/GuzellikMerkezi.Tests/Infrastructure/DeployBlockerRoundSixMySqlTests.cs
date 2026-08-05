@@ -581,8 +581,71 @@ public sealed class DeployBlockerRoundSixMySqlTests
         }
     }
 
+    /// <summary>
+    /// ASIL İDDİA: bağlı satışın otomatik onayı BAŞARISIZ olursa randevu da tamamlanmaz ve hiçbir
+    /// tahsilat yazılmaz. Eskiden hata yalnız denetime yazılıyordu: randevu Completed oluyor, satış
+    /// Open kalıyor, carisi de olmadığı için para müşterinin ESKİ borçlu carisine yazılıyordu.
+    /// </summary>
+    [MySqlFact]
+    public async Task CompleteWithPayment_WhenBoundSaleApprovalFails_RollsBackEverything()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+
+        // PAKET SATIŞI: onayın iş kuralı reddi ile durabildiği gerçek yol (paket kaybolursa
+        // "bedel tahakkuk eder ama seans açılmaz" diye onay durdurulur).
+        Guid packageId, appointmentId;
+        await using (var db = database.NewContext())
+        {
+            var package = new ServicePackage(seed.TenantId, seed.BranchId, "Paket", 1000m, 0m, 0);
+            package.ReplaceItems([(seed.ServiceId, 4, 250m)]);
+            db.ServicePackages.Add(package);
+            await db.SaveChangesAsync();
+            packageId = package.Id;
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var request = new CreateAppointmentWithSaleRequest(
+                new CreateAppointmentRequest(seed.BranchId, seed.CustomerId, seed.StaffId, seed.ServiceId,
+                    DateTime.UtcNow.AddHours(4), DateTime.UtcNow.AddHours(4).AddMinutes(45), 0m, null),
+                new AppointmentCatalogSaleDto(null, packageId, seed.StaffId));
+            var created = await NewAppointments(db).CreateWithSaleAsync(seed.TenantId, request);
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            appointmentId = created.Value!.Id;
+        }
+
+        // ONAYI BOZ: satılan paket ortadan kalkarsa onay iş kuralıyla DURUR (Result.Failure).
+        await using (var db = database.NewContext())
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE service_packages SET IsDeleted = 1 WHERE Id = {0}", packageId.ToString());
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var complete = new CompleteAppointmentRequest(null,
+                new CompleteAppointmentPaymentDto(1000m, "cash", "Randevu tahsilatı", null, DateTime.UtcNow));
+            var done = await NewAppointments(db).CompleteWithPaymentAsync(seed.TenantId, appointmentId, complete);
+            Assert.True(done.IsFailure, "Satis onaylanamadigi halde randevu tamamlandi.");
+        }
+
+        await using (var check = database.NewContext())
+        {
+            // Randevu tamamlanmadı, hiçbir tahsilat yazılmadı, eski cariye DOKUNULMADI.
+            var status = await check.Appointments.AsNoTracking()
+                .Where(a => a.Id == appointmentId).Select(a => a.Status).SingleAsync();
+            Assert.NotEqual(AppointmentStatus.Completed, status);
+            Assert.Empty(await check.AccountPayments.AsNoTracking().ToListAsync());
+
+            var oldDebt = await check.CustomerAccounts.Include(a => a.Payments)
+                .SingleAsync(a => a.Id == seed.OldDebtAccountId);
+            Assert.Equal(0m, oldDebt.Payments.Sum(p => p.Amount));
+        }
+    }
+
     // ═════════════════════════════════════════════════════════════════════════════════════
-    // 2c) Taksit bakımı: çoklu hedef ATOMİK (hepsi ya da hiçbiri)
+    // 2c) Taksit bakımı: çoklu hedef ATOMİK (hepsi ya da hiçbiri) + İDEMPOTENT
     // ═════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Sapmış cari kurar: plan 8.500'de kalmış, toplam 8.750'ye çıkmış.</summary>
@@ -691,6 +754,90 @@ public sealed class DeployBlockerRoundSixMySqlTests
 
         Assert.Equal(8750m, (await ReadPlanAsync(database, firstId)).Total);
         Assert.Equal(8750m, (await ReadPlanAsync(database, secondId)).Total);
+    }
+
+    /// <summary>
+    /// ASIL İDDİA: bakım İDEMPOTENTTİR. Aynı ayarla açılan İKİNCİ instance (rolling deploy) ya da
+    /// bir sonraki restart hata vermez; kilit altında taze okunan plan zaten hedef değerdeyse
+    /// hiçbir şey yazılmaz. Eskiden ikinci açılış "PlanTotal uyuşmuyor" diye patlıyor ve SERVİS
+    /// AÇILMIYORDU. Eşzamanlı iki açılış gerçek kilit gerektirdiği için MariaDB'de doğrulanır.
+    /// </summary>
+    [MySqlFact]
+    public async Task InstallmentMaintenance_SecondAndConcurrentStartups_AreIdempotent()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedCustomerWithOldDebtAsync(database);
+        var accountId = await SeedDriftedAccountAsync(database, seed.TenantId, seed.BranchId, seed.CustomerId, "Hedef");
+
+        DatabaseBootstrap.InstallmentPlanRepairTarget Target() =>
+            new(accountId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4);
+
+        // İKİ INSTANCE AYNI ANDA AÇILIYOR: biri onarır, diğeri kilidi bekleyip "zaten hizalı" görür.
+        async Task<int> StartupAsync()
+        {
+            await using var db = database.NewContext();
+            return await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [Target()]);
+        }
+
+        var results = await Task.WhenAll(StartupAsync(), StartupAsync());
+        Assert.All(results, r => Assert.Equal(1, r));   // ikisi de BAŞARILI (biri no-op)
+
+        // Üçüncü (sonraki restart) de sorunsuz açılmalı.
+        Assert.Equal(1, await StartupAsync());
+
+        // Plan bir kez hizalandı; tekrar tekrar bölünmedi.
+        Assert.Equal(8750m, (await ReadPlanAsync(database, accountId)).Total);
+        await using (var check = database.NewContext())
+        {
+            var count = await check.Installments.AsNoTracking()
+                .CountAsync(i => i.CustomerAccountId == accountId);
+            Assert.Equal(4, count);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════
+    // 4) Uygulama içi migration yolu — sağlayıcının kilidi olmadan
+    // ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// ASIL İDDİA: BOŞ ŞEMAYA tüm migration zinciri uygulanabilir ve ikinci çalıştırma idempotenttir.
+    ///
+    /// <para>
+    /// <c>Database.MigrateAsync()</c> kullanılmıyor: MySQL sağlayıcısı migration'lardan önce aldığı
+    /// "veritabanı kilidi"nin sonucunu koşulsuz <c>long</c>'a çeviriyor ve canlı MariaDB 10.6'da
+    /// <c>DBNull → Int64</c> cast hatasıyla açılışı düşürüyordu. Bu test, kilitsiz (kendi
+    /// GET_LOCK'umuzla) uygulanan yolun gerçek bir sunucuda baştan sona çalıştığını doğrular.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task MigrateDatabase_OnEmptySchema_AppliesFullChainAndIsIdempotent()
+    {
+        await using var database = await MySqlTestDatabase.CreateEmptyAsync();
+
+        await using (var db = database.NewContext())
+        {
+            await DatabaseBootstrap.MigrateDatabaseAsync(db, null);
+        }
+
+        await using (var check = database.NewContext())
+        {
+            // Bekleyen migration kalmadı ve geçmiş tablosu doldu.
+            Assert.Empty(await check.Database.GetPendingMigrationsAsync());
+            var applied = (await check.Database.GetAppliedMigrationsAsync()).ToList();
+            Assert.NotEmpty(applied);
+
+            // Şema gerçekten kuruldu: son turda dokunulan tablolar sorgulanabilmeli.
+            Assert.Equal(0, await check.Appointments.IgnoreQueryFilters().CountAsync());
+            Assert.Equal(0, await check.ProcessedClientRequests.CountAsync());
+            Assert.Equal(0, await check.CustomerAccounts.IgnoreQueryFilters().CountAsync());
+        }
+
+        // İKİNCİ ÇALIŞTIRMA: hiçbir şey yapmamalı (bekleyen migration yok) ve patlamamalı.
+        await using (var again = database.NewContext())
+        {
+            await DatabaseBootstrap.MigrateDatabaseAsync(again, null);
+            Assert.Empty(await again.Database.GetPendingMigrationsAsync());
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════

@@ -210,15 +210,21 @@ public sealed class AccountPlanAndStockReversalTests
             Assert.Equal(healthyPlanBefore, healthyPlanAfter);
         }
 
-        // AYNI AYARLA İKİNCİ AÇILIŞ SESSİZCE GEÇMEZ: sapma kapandığı için bakım artık "beklenen
-        // sapma yok" diyerek açılışı durdurur — operatör bayrağı kaldırmaya zorlanır. (Eskiden
-        // 0 döndürüp devam ediyordu; bu, ayarın canlıda unutulmasını görünmez kılıyordu.)
+        // İDEMPOTENT: aynı ayarla ikinci açılış (rolling deploy'un ikinci instance'ı ya da bir
+        // sonraki restart) HATA VERMEZ — kilit altında taze okunan plan zaten hedef değerdedir,
+        // yapacak iş yoktur. Eskiden burada istisna atılıyor ve SERVİS AÇILMIYORDU.
         await using (var db = NewDb(options))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
-                    new DatabaseBootstrap.InstallmentPlanRepairTarget(
-                        driftedId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]));
+            var again = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                    driftedId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]);
+            Assert.Equal(1, again);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var drifted = await check.CustomerAccounts.Include(a => a.Installments).SingleAsync(a => a.Id == driftedId);
+            Assert.Equal(8750m, drifted.Installments.Sum(i => i.Amount));   // ikinci koşu bir şey değiştirmedi
         }
     }
 
@@ -268,11 +274,10 @@ public sealed class AccountPlanAndStockReversalTests
             Assert.Equal(8750m, account.Installments.Sum(i => i.Amount));
         }
 
-        // Sapma kapandı → aynı ayarla ikinci açılış BAŞARISIZ olur (bayrak kaldırılmalı).
+        // Sapma kapandı → aynı ayarla ikinci açılış İDEMPOTENT başarıdır (servis açılmalı).
         await using (var again = database.NewContext())
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(again, null, [Target()]));
+            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(again, null, [Target()]));
         }
     }
 

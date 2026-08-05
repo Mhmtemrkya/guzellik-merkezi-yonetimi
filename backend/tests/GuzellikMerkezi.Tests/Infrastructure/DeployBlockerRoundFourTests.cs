@@ -316,11 +316,11 @@ public sealed class DeployBlockerRoundFourTests
             Assert.Equal(8750m, active.Sum(i => i.Amount));
         }
 
-        // Sapma kapandı: aynı hedefle ikinci koşu SESSİZCE GEÇMEZ, açılışı durdurur.
+        // İDEMPOTENT: sapma kapandıktan sonra aynı hedefle ikinci koşu hata VERMEZ ve hiçbir şey
+        // değiştirmez (ikinci instance / restart açılabilmeli).
         await using (var db = NewDb(options))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [target]));
+            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [target]));
         }
     }
 
