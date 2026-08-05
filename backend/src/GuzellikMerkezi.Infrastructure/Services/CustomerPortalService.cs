@@ -305,7 +305,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
         // #RNDV NUMARASI BURADA DA ATANIR. Yalnız yönetici yolu numara veriyordu; portal/mobil
         // üzerinden gelen randevular Number = null kalıyor, onayda da tamamlanmıyordu → listelerde
         // ve aramada numarasız kayıtlar oluşuyordu. Kural yönetici yoluyla aynı: MAX(Number)+1,
-        // taban 10000. (Benzersiz indeks çakışırsa istek hata verir; portal talebi tekrarlanabilir.)
+        // taban 10000.
         var maxNumber = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
             .Where(a => a.TenantId == tenantId && a.Number != null)
             .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
@@ -314,7 +314,27 @@ public sealed class CustomerPortalService : ICustomerPortalService
         // Yönetici onay kutusunda (inbox) görür; onaylayınca Scheduled olur. Draft slot bloke etmez.
         appointment.SubmitForApproval();
         _db.Appointments.Add(appointment);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        // NUMARA YARIŞI PORTALDA DA ELE ALINIR (yönetici yolundaki desenin aynısı). MAX(Number)+1
+        // kilitsiz hesaplanıyor: iki eşzamanlı online talep aynı numarayı seçerse {TenantId, Number}
+        // benzersiz indeksi ikinciyi reddeder ve müşteri 500 görürdü. Eskiden bu "istek hata verir,
+        // müşteri tekrar dener" diye kabulleniliyordu; sunucunun kendi ürettiği bir çakışmayı
+        // müşteriye yansıtmak doğru değil — numara yeniden hesaplanıp yeniden denenir.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                var next = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
+                    .Where(a => a.TenantId == tenantId && a.Number != null)
+                    .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
+                appointment.ReassignNumberForRetry(next + 1);
+            }
+        }
 
         await _audit.LogAsync(tenantId, request.BranchId, "Create", "Appointment", appointment.Id,
             $"Online randevu talebi alındı — yönetici onayı bekliyor ({appointment.StartUtc:dd.MM.yyyy HH:mm})",

@@ -188,6 +188,20 @@ public sealed class AppointmentService : IAppointmentService
         if (sale.ServiceDefinitionId is not null && sale.ServicePackageId is not null)
             return Result<AppointmentDto>.Failure(Error.Validation("Aynı anda hem hizmet hem paket satılamaz."));
 
+        // KAPSAM KONTROLÜ SATIŞTAN ÖNCE — "yazmadan önce yetkilendir".
+        //
+        // Sıra eskiden tersiydi: fiş açılıp kalem ekleniyor, randevu kapsamı ancak CreateAsync
+        // içinde denetleniyordu. Reddedilen istekte satış geri alınıyordu ama YALNIZCA dıştaki
+        // transaction sayesinde; yani yetkisiz bir istek önce yazıyor, sonra rollback'e güveniyordu.
+        // Kapsam ihlali artık hiç yazmadan durur (aynı kontrol CreateAsync'te de kalır — orası
+        // doğrudan da çağrılan kanonik giriş noktası).
+        var appt = request.Appointment;
+        if (await ValidateAppointmentScopeAsync(tenantId, PinnedBranchId() ?? appt.BranchId,
+                appt.CustomerId, appt.StaffMemberId, appt.ServiceDefinitionId, cancellationToken) is { } scopeError)
+        {
+            return Result<AppointmentDto>.Failure(scopeError);
+        }
+
         var relational = _db.Database.IsRelational();
         await using var tx = relational && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
@@ -234,6 +248,12 @@ public sealed class AppointmentService : IAppointmentService
     private async Task<Result<Guid>> SellForAppointmentAsync(
         Guid tenantId, Guid customerId, Guid appointmentServiceId, AppointmentCatalogSaleDto sale, CancellationToken ct)
     {
+        // ŞUBE KAPSAMI SATIŞ KALEMİNDE DE ZORLANIR: randevunun hizmeti doğrulanırken satılan
+        // katalog kaydı atlanırsa, şubeye sabitlenmiş kullanıcı başka şubenin paketini/hizmetini
+        // satabilirdi (bkz. IsCatalogItemInBranchScopeAsync).
+        if (!await IsCatalogItemInBranchScopeAsync(tenantId, sale.ServiceDefinitionId, sale.ServicePackageId, ct))
+            return Result<Guid>.Failure(Error.NotFound("Satılacak katalog kaydı bulunamadı."));
+
         // Katalog kaydı ve fiyatı SUNUCUDAN okunur: istemcinin gönderdiği fiyata güvenilmez.
         string description;
         decimal unitPrice;
@@ -711,10 +731,14 @@ public sealed class AppointmentService : IAppointmentService
         var staffChanged = request.StaffMemberId.HasValue && request.StaffMemberId.Value != appointment.StaffMemberId;
         if (staffChanged)
         {
-            // KURUM BÜTÜNLÜĞÜ: personel aktarımı da başka kurumun personeline yapılamaz
-            // (yönetici çağrısında kapsam kontrolü kaydı hiç sorgulamadan true döner).
+            // KURUM + ŞUBE BÜTÜNLÜĞÜ: personel aktarımı başka kurumun personeline yapılamaz
+            // (yönetici çağrısında kapsam kontrolü kaydı hiç sorgulamadan true döner) ve şubeye
+            // SABİTLENMİŞ kullanıcı randevuyu başka şubenin personeline aktaramaz — oluşturmada
+            // kapatılan açık taşımada açık kalırdı (bkz. ValidateAppointmentScopeAsync).
+            var pinnedBranch = PinnedBranchId();
             if (!await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
-                    .AnyAsync(s => s.TenantId == tenantId && s.Id == targetStaff && !s.IsDeleted, cancellationToken))
+                    .AnyAsync(s => s.TenantId == tenantId && s.Id == targetStaff && !s.IsDeleted
+                                && (pinnedBranch == null || s.BranchId == pinnedBranch), cancellationToken))
             {
                 return Result<AppointmentDto>.Failure(Error.NotFound("Personel bulunamadı."));
             }
@@ -1541,26 +1565,70 @@ public sealed class AppointmentService : IAppointmentService
     /// gönderilerek kurumlar arası bağları olan randevu oluşturulabiliyordu (BOLA).
     /// </para>
     /// <para>
-    /// Kontrol global süzgeçleri ATLAR ve koşulları kendisi yazar: amaç yalnız KURUM üyeliğini
-    /// doğrulamak; aktif şube kapsamı (X-Branch-Id) yüzünden başka şubenin müşterisi "yok"
-    /// sayılıp meşru akış kırılmasın. Silinmiş kayıtlar yine reddedilir.
+    /// Kontrol global süzgeçleri ATLAR ve koşulları kendisi yazar: kurum üyeliğini her rolde,
+    /// ŞUBE üyeliğini ise yalnız sabitlenmiş rolde doğrular (bkz. <see cref="PinnedBranchId"/>) —
+    /// kurum sahibinde aktif şube kapsamı yüzünden başka şubenin müşterisi "yok" sayılıp meşru
+    /// akış kırılmasın. Silinmiş kayıtlar yine reddedilir.
+    /// </para>
+    /// <para>
+    /// ŞUBE KONTROLÜ RANDEVUNUN KENDİ ŞUBESİYLE YETİNMEZ. Randevunun <c>BranchId</c>'si
+    /// sabitleniyordu ama BAĞLANDIĞI kayıtlar yalnız "aynı kurumda mı" diye bakılıyordu: Şube A
+    /// yöneticisi Şube B'nin müşteri/personel/hizmet kimliklerini gönderip Şube A'ya randevu
+    /// (ve satış) açabiliyor, böylece göremeyeceği kayıtlara dokunabiliyordu. Sabitleme deliğin
+    /// yalnız yarısını kapatıyordu.
+    /// </para>
+    /// <para>
+    /// KATALOG KAYITLARI KURUM GENELİ OLABİLİR: <c>ServiceDefinition</c>/<c>ServicePackage</c>
+    /// için <c>BranchId</c> null demek "tüm şubeler" demektir, o yüzden null kabul edilir.
+    /// Müşteri ve personelin şubesi ise zorunludur (null olamaz).
     /// </para>
     /// </summary>
     private async Task<Error?> ValidateAppointmentScopeAsync(
         Guid tenantId, Guid branchId, Guid customerId, Guid staffMemberId, Guid serviceDefinitionId, CancellationToken ct)
     {
+        // null → kurum sahibi/platform/şubesiz kullanıcı: şube kısıtı uygulanmaz.
+        var pinned = PinnedBranchId();
+
         if (!await _db.Customers.AsNoTracking().IgnoreQueryFilters()
-                .AnyAsync(x => x.TenantId == tenantId && x.Id == customerId && !x.IsDeleted, ct))
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == customerId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == pinned), ct))
             return Error.NotFound("Müşteri bulunamadı.");
         if (!await _db.Branches.AsNoTracking().IgnoreQueryFilters()
                 .AnyAsync(x => x.TenantId == tenantId && x.Id == branchId && !x.IsDeleted, ct))
             return Error.NotFound("Şube bulunamadı.");
         if (!await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
-                .AnyAsync(x => x.TenantId == tenantId && x.Id == staffMemberId && !x.IsDeleted, ct))
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == staffMemberId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == pinned), ct))
             return Error.NotFound("Personel bulunamadı.");
         if (!await _db.ServiceDefinitions.AsNoTracking().IgnoreQueryFilters()
-                .AnyAsync(x => x.TenantId == tenantId && x.Id == serviceDefinitionId && !x.IsDeleted, ct))
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == serviceDefinitionId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == null || x.BranchId == pinned), ct))
             return Error.NotFound("Hizmet bulunamadı.");
         return null;
+    }
+
+    /// <summary>
+    /// Katalog kaydı (hizmet/paket) sabitlenmiş rolün şubesinde mi? Kurum geneli (null şube) kayıt
+    /// her şubede geçerlidir. Randevuyla birlikte SATIŞ açan uç de bu kapıdan geçer: aksi hâlde
+    /// şube kapsamı randevuda zorlanırken satış kaleminde delik kalırdı.
+    /// </summary>
+    private async Task<bool> IsCatalogItemInBranchScopeAsync(
+        Guid tenantId, Guid? serviceDefinitionId, Guid? servicePackageId, CancellationToken ct)
+    {
+        if (PinnedBranchId() is not { } pinned) return true;
+
+        if (serviceDefinitionId is { } svcId
+            && !await _db.ServiceDefinitions.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == svcId && !x.IsDeleted
+                            && (x.BranchId == null || x.BranchId == pinned), ct))
+            return false;
+
+        if (servicePackageId is { } pkgId
+            && !await _db.ServicePackages.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == pkgId && !x.IsDeleted
+                            && (x.BranchId == null || x.BranchId == pinned), ct))
+            return false;
+
+        return true;
     }
 }

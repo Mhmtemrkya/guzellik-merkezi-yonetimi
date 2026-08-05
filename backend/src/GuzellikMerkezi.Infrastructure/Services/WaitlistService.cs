@@ -107,6 +107,33 @@ public sealed class WaitlistService : IWaitlistService
     {
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.AppointmentsWaitlist, cancellationToken))
             return Result<WaitlistEntryDto>.Failure(Error.Conflict(FeatureDeniedMessage));
+        // KAYNAK SEANS BAĞI DOĞRULANIR — istemciden geldiği gibi saklanmaz.
+        //
+        // Alan "bu kayıt şu paketten karşılanacak" iddiasını taşır ve yer açıldığında randevu
+        // GERÇEKTEN o seansa bağlanır. Hiçbir kontrol yoktu: başka KURUMUN ya da başka MÜŞTERİNİN
+        // gerçek bir seans kimliği gönderilip sahte kaynak olarak kaydedilebiliyordu. Kolonun
+        // veritabanı tarafında FK'sı da yok (migration yalnız nullable kolon ekliyor), dolayısıyla
+        // bütünlüğü uygulama kurmak zorunda. Yalnız SAHİPLİK doğrulanır (kurum + müşteri + hizmet);
+        // seansın o an kullanılabilir olup olmadığı yer açıldığında zaten yeniden bakılıyor.
+        if (request.SourceCustomerPackageSessionId is { } sessionId && sessionId != Guid.Empty)
+        {
+            if (request.ServiceDefinitionId is not { } sessionService)
+            {
+                return Result<WaitlistEntryDto>.Failure(Error.Validation(
+                    "Paket seansı seçildiğinde hizmet de seçilmelidir."));
+            }
+            if (!await _db.CustomerPackageSessions.AsNoTracking().IgnoreQueryFilters()
+                    .AnyAsync(s => s.Id == sessionId
+                                && s.TenantId == tenantId
+                                && s.CustomerId == request.CustomerId
+                                && s.ServiceDefinitionId == sessionService
+                                && !s.IsDeleted, cancellationToken))
+            {
+                return Result<WaitlistEntryDto>.Failure(Error.Validation(
+                    "Seçilen paket seansı bu müşteriye ve hizmete ait değil."));
+            }
+        }
+
         try
         {
             var startUtc = request.PreferredStartUtc is { } s

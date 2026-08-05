@@ -276,15 +276,33 @@ public static class DatabaseBootstrap
     }
 
     /// <summary>
-    /// TAKSİT PLANI ↔ CARİ TOPLAMI SAPMASINI ONARIR — her ortamda çalışır, veri-only, idempotent.
+    /// TAKSİT PLANI ↔ CARİ TOPLAMI SAPMASINI ONARIR — OPT-IN, varsayılan KAPALI.
     ///
     /// <para>
     /// Cari toplamı elle güncellenirken plan yeniden kurulmuyordu (kod tarafı düzeltildi). Geride
     /// kalan kayıtlarda plan toplamı cari toplamının ALTINDA duruyor ve aradaki fark hiçbir yerde
     /// görünmüyor: taksit ve açık alacak raporları PLAN toplamını okuduğu için o alacak sessizce
-    /// kayboluyor (denetimde canlıda 8.750 cari ↔ 8.500 plan = 250 TL). Burada plan, uygulamanın
-    /// kendi kuralıyla (<see cref="CustomerAccount.RebuildInstallments"/>) yeniden bölünür:
-    /// taksit SAYISI ve ilk vade KORUNUR, yalnız tutarlar finanse edilen tutara göre düzeltilir.
+    /// kayboluyor (denetimde canlıda 8.750 cari ↔ 8.500 plan = 250 TL).
+    /// </para>
+    /// <para>
+    /// NEDEN OPT-IN: bu, PARA ETKİLEYEN bir veri düzeltmesidir ve bilinen TEK bir kayıt içindir.
+    /// Her açılışta, her kurumda kendiliğinden çalışması onu "bakım" olmaktan çıkarıp kalıcı bir
+    /// otomatik yazma davranışına dönüştürüyordu: gelecekte başka bir sebeple sapan kayıtlar da
+    /// kimse istemeden yeniden bölünürdü. Artık yalnızca operatör açıkça istediğinde çalışır:
+    /// </para>
+    /// <code>
+    /// Maintenance:RepairInstallmentPlanDrift=true          # işi etkinleştirir (varsayılan false)
+    /// Maintenance:RepairInstallmentPlanAccountIds=&lt;guid&gt;,…  # opsiyonel: YALNIZ bu cariler
+    /// </code>
+    /// <para>
+    /// Önerilen kullanım: bilinen kaydın Id'si listeye yazılır, bir kez deploy edilir, sonuç
+    /// doğrulanır, bayrak tekrar kapatılır. Liste boş bırakılırsa sapmış tüm kayıtlar hedeflenir
+    /// (yine <see cref="MaxInstallmentPlanRepairsPerRun"/> ile sınırlı).
+    /// </para>
+    /// <para>
+    /// AÇIKKEN HATA AÇILIŞI DURDURUR: operatör bilinçli olarak bir düzeltme istemişse ve düzeltme
+    /// yapılamadıysa, uygulamanın sonucu bilinmeyen bir durumla trafik almaya devam etmesi yanlış
+    /// olur — deployment başarısız sayılmalıdır. Bayrak kapatılarak her zaman açılışa dönülebilir.
     /// </para>
     /// <para>
     /// Para YARATMAZ/SİLMEZ: "ödenen" bilgisi taksitte değil tahsilat satırlarında durur, plan
@@ -293,9 +311,12 @@ public static class DatabaseBootstrap
     /// (otomatik onarım plan SİLMEZ — böyle bir kayıt varsa elle incelenmelidir).
     /// </para>
     /// </summary>
-    public static async Task RepairInstallmentPlanDriftAsync(IServiceProvider services)
+    public static async Task RepairInstallmentPlanDriftAsync(IServiceProvider services, IConfiguration configuration)
     {
+        if (!bool.TryParse(configuration["Maintenance:RepairInstallmentPlanDrift"], out var enabled) || !enabled) return;
+
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("InstallmentPlanDriftRepair");
+        var only = ParseAccountIds(configuration["Maintenance:RepairInstallmentPlanAccountIds"]);
 
         try
         {
@@ -303,18 +324,29 @@ public static class DatabaseBootstrap
             var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
             if (db.Database.IsInMemory()) return;
 
-            var repaired = await RepairInstallmentPlanDriftAsync(db, logger);
-            if (repaired > 0)
-                logger.LogInformation("{Count} carinin taksit planı cari toplamıyla hizalandı.", repaired);
+            logger.LogWarning(
+                "Taksit planı sapma onarımı ETKİN (Maintenance:RepairInstallmentPlanDrift=true). Hedef: {Target}.",
+                only.Count > 0 ? string.Join(", ", only) : "sapmış tüm kayıtlar");
+
+            var repaired = await RepairInstallmentPlanDriftAsync(db, logger, only);
+            logger.LogInformation("{Count} carinin taksit planı cari toplamıyla hizalandı.", repaired);
         }
         catch (Exception ex)
         {
-            // Açılış DURMAZ (bir bakım işi yüzünden canlıyı kapatmak daha kötü) ama bu bir UYARI
-            // değil HATA'dır: iş yapılmadıysa sapma yerinde duruyor ve raporlardan eksik alacak
-            // düşmeye devam ediyor demektir — log'da görünmesi ve elle incelenmesi gerekir.
-            logger.LogError(ex, "Taksit planı sapma onarımı tamamlanamadı; sapmış kayıtlar DÜZELTİLMEDİ, elle inceleyin.");
+            // Bilinçli olarak istenen, para etkileyen bir düzeltme yapılamadı → açılış BAŞARISIZ.
+            logger.LogError(ex, "Taksit planı sapma onarımı tamamlanamadı; açılış durduruluyor.");
+            throw;
         }
     }
+
+    /// <summary>Virgülle ayrılmış cari kimliklerini okur; geçersiz/boş girdi boş küme döner.</summary>
+    private static HashSet<Guid> ParseAccountIds(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                 .Select(x => Guid.TryParse(x, out var id) ? id : Guid.Empty)
+                 .Where(x => x != Guid.Empty)
+                 .ToHashSet();
 
     /// <summary>
     /// TEK AÇILIŞTA ONARILACAK EN ÇOK CARİ — devre kesici.
@@ -331,8 +363,12 @@ public static class DatabaseBootstrap
     /// <see cref="RepairInstallmentPlanDriftAsync(IServiceProvider)"/>'ın test edilebilir gövdesi;
     /// onarılan cari sayısını döndürür.
     /// </summary>
-    public static async Task<int> RepairInstallmentPlanDriftAsync(GuzellikDbContext db, ILogger? logger = null)
+    public static async Task<int> RepairInstallmentPlanDriftAsync(
+        GuzellikDbContext db, ILogger? logger = null, IReadOnlySet<Guid>? onlyAccountIds = null)
     {
+        // Operatör belirli kayıtları hedeflediyse tarama da onlarla sınırlanır (bkz. opt-in notu).
+        var restrictTo = onlyAccountIds is { Count: > 0 } ? onlyAccountIds : null;
+
         // ADAY TARAMASI SUNUCUDA: her açılışta tüm cariler belleğe alınmasın (100 binlerce satır).
         // Startup'ta kiracı bağlamı yok → global süzgeçler atlanır, koşullar elle yazılır.
         //
@@ -354,6 +390,10 @@ public static class DatabaseBootstrap
             .Where(x => x.PlanCount > 0 && x.Financed > 0 && x.PlanTotal < x.Financed)
             .Select(x => x.Id)
             .ToListAsync();
+
+        // Hedef listesi BELLEKTE süzülür: yerel bir koleksiyonun .Contains()'i MySQL sağlayıcısında
+        // çevrilemiyor ve çalışma zamanında 500 üretiyor (kodda yerleşik tuzak).
+        if (restrictTo is not null) drifted = drifted.Where(restrictTo.Contains).ToList();
         if (drifted.Count == 0) return 0;
 
         if (drifted.Count > MaxInstallmentPlanRepairsPerRun)

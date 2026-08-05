@@ -471,6 +471,11 @@ function MusterilerPageInner() {
       serviceDefinitionId: values.serviceDefinitionId, startUtc: start.toISOString(), endUtc: end.toISOString(),
       // Randevu ciro taşımaz — satış adisyon+cari katmanında; tamamlanınca seans düşer.
       price: 0, notes: values.notes || null,
+      // SEÇİLEN PAKET/SEANS SUNUCUYA TAŞINMALI. Editör bu alanı üretiyordu ama bu ekran payload'a
+      // koymuyordu (randevular sayfası koyuyor): müşterinin aynı hizmeti içeren iki paketi varsa
+      // kullanıcı B'yi seçse bile backend EN ESKİ paketi bağlıyor ve tamamlamada A'nın seansı
+      // tükeniyordu. İki ekran aynı sözleşmeyi göndermeli.
+      sourceCustomerPackageSessionId: values.sourceSessionId || null,
     }
     // Randevu artık PendingOperation'a değil doğrudan oluşturulur; personel oluşturursa
     // backend onu "taslak" yapıp kurum yöneticisi onayına düşürür (randevularda taslak → aktif akışı).

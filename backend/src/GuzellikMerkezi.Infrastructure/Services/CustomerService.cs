@@ -532,11 +532,17 @@ FROM (
   SELECT u.CustomerId, SUM(u.Debt) AS Debt, SUM(u.Spent) AS Spent
   FROM (
     -- İptal edilen satış borç doğurmaz (bkz. LoadDebtSpent); tahsil edilen tutar korunur.
+    -- İADE BURADAN DÜŞÜLMEZ, YALNIZ refund_transactions'tan (aşağıdaki UNION dalı).
+    -- İptal geri alınırken korunan iade HEM a.RefundedAmount alanına yazılıyor HEM de iade
+    -- satırı CANLI kalıyordu (silinmiyor — para gerçekten çıktı, kasa defterinde durmalı).
+    -- İkisi birden düşülünce aynı para iki kez gidiyordu: 1.000 tahsilat − 400 iade net 600
+    -- olmalıyken kart 200 gösteriyordu. Borç hesabı ise RefundedAmount'u kullanmayı SÜRDÜRÜR:
+    -- orada amaç PaidAmount'un iade kadar azalmasını telafi etmektir (Total − (Paid − Refunded)).
     SELECT a.CustomerId AS CustomerId,
            SUM(CASE WHEN a.CancelledAtUtc IS NULL
                     THEN a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0)
                     ELSE 0 END) AS Debt,
-           SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
+           SUM(COALESCE(p.Paid, 0)) AS Spent
     FROM customer_accounts a
     LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
            ON p.CustomerAccountId = a.Id
@@ -611,19 +617,27 @@ FROM (
             // InMemory (testler): aynı hesap LINQ ile — ölçek kaygısı yok.
             var accounts = await _db.CustomerAccounts.AsNoTracking()
                 .Where(x => x.TenantId == tenantId)
-                .Select(x => new { x.Id, x.CustomerId, x.RefundedAmount })
+                .Select(x => new { x.Id, x.CustomerId })
                 .ToListAsync(cancellationToken);
             var payments = await _db.AccountPayments.AsNoTracking()
                 .Select(x => new { x.CustomerAccountId, x.Amount, x.OccurredAtUtc })
+                .ToListAsync(cancellationToken);
+            // İADE TEK KAYNAKTAN: refund_transactions. a.RefundedAmount aynı parayı ikinci kez
+            // düşüyordu (bkz. ham SQL yolundaki not) ve tarihi olmadığı için pencereye de
+            // giremiyordu; iade satırının gerçek tarihi vardır, dönem süzgeci ona uygulanır.
+            var refunds = await _db.RefundTransactions.AsNoTracking()
+                .Where(r => r.TenantId == tenantId)
+                .Select(r => new { r.CustomerId, r.Amount, r.RefundedAtUtc })
                 .ToListAsync(cancellationToken);
             var spentPerCustomer = accounts
                 .GroupBy(a => a.CustomerId)
                 .Select(g => g.Sum(a =>
                     payments
                         .Where(p => p.CustomerAccountId == a.Id && (since is null || p.OccurredAtUtc >= since))
-                        .Sum(p => p.Amount)
-                    // Korunmuş iadenin tarihi yoktur; yalnız tüm-zamanlar hesabından düşülür.
-                    - (since is null ? a.RefundedAmount : 0m)))
+                        .Sum(p => p.Amount))
+                    - refunds
+                        .Where(r => r.CustomerId == g.Key && (since is null || r.RefundedAtUtc >= since))
+                        .Sum(r => r.Amount))
                 .Where(x => x > 0)
                 .ToList();
             spenderCount = spentPerCustomer.Count;
@@ -635,10 +649,8 @@ FROM (
 
         // Tüm zamanlar hesabı /stats ile BİREBİR aynı ifadeyi kullanır (kart dönem değiştirip
         // "Tüm zamanlar"a döndüğünde değer oynamasın).
-        var refundTerm = since is null ? " - a.RefundedAmount" : string.Empty;
         var paymentFilter = since is null ? string.Empty : $" AND OccurredAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
-        // Arşiv/iade satırlarının GERÇEK tarihi vardır → pencere onlara da uygulanır (canlı
-        // carideki korunmuş iadenin tarihi yoktur, o yüzden orada yalnız tüm-zamanlarda düşülür).
+        // Arşiv/iade satırlarının GERÇEK tarihi vardır → pencere onlara da uygulanır.
         var archivedFilter = since is null ? string.Empty : $" AND ap.OccurredAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
         var refundFilter = since is null ? string.Empty : $" AND r.RefundedAtUtc >= '{since:yyyy-MM-dd HH:mm:ss}'";
 
@@ -654,8 +666,10 @@ SELECT COALESCE(AVG(CASE WHEN t.Spent > 0 THEN t.Spent END), 0) AS AvgSpent,
 FROM (
   SELECT u.CustomerId, SUM(u.Spent) AS Spent
   FROM (
+    -- İADE YALNIZ refund_transactions dalından düşülür; a.RefundedAmount aynı parayı ikinci kez
+    -- düşüyordu (iptal geri alınırken korunan iade hem o alana yazılıyor hem satır canlı kalıyor).
     SELECT a.CustomerId AS CustomerId,
-           SUM(COALESCE(p.Paid, 0){refundTerm}) AS Spent
+           SUM(COALESCE(p.Paid, 0)) AS Spent
     FROM customer_accounts a
     LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid
                FROM account_payments
