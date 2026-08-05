@@ -103,18 +103,90 @@ public sealed class WaitlistService : IWaitlistService
         return Result<IReadOnlyCollection<WaitlistEntryDto>>.Success(dtos);
     }
 
+    /// <summary>
+    /// KULLANICININ SABİTLENDİĞİ ŞUBE — yoksa (kurum sahibi / platform / şubesiz kullanıcı) null.
+    /// <c>AppointmentService.PinnedBranchId</c> ile birebir aynı kural.
+    /// </summary>
+    private Guid? PinnedBranchId()
+    {
+        if (_currentUser.IsPlatformAdmin) return null;
+        if (_currentUser.Role is not (UserRole.BranchManager or UserRole.Staff)) return null;
+        return _currentUser.BranchId;
+    }
+
+    /// <summary>
+    /// Bekleme kaydının bağlanacağı TÜM varlıklar bu kuruma (ve sabitlenmiş role göre şubeye) ait mi?
+    ///
+    /// <para>
+    /// Hiçbiri doğrulanmıyordu: uç yalnız kiracıyı token'dan çözüyor, gövdedeki müşteri/şube/personel/
+    /// hizmet kimlikleri olduğu gibi kaydediliyordu. Doğrudan API çağrısıyla BAŞKA kurumun kayıtlarına
+    /// işaret eden bekleme kaydı açılabiliyor (BOLA), açılan slot teklif akışında o kayıtlar üzerinden
+    /// randevuya çevrilmeye çalışılıyordu. İlişkiler yalın GUID FK olduğu için bütünlüğü uygulama kurar.
+    /// </para>
+    /// <para>
+    /// Kurum üyeliği her rolde, ŞUBE üyeliği yalnız sabitlenmiş rolde denetlenir
+    /// (bkz. <see cref="PinnedBranchId"/>) — kurum sahibinde aktif şube kapsamı meşru akışı kırmasın.
+    /// Katalog kaydı (hizmet) kurum geneli olabilir: <c>BranchId = null</c> her şubede geçerlidir.
+    /// </para>
+    /// </summary>
+    private async Task<Error?> ValidateWaitlistScopeAsync(Guid tenantId, CreateWaitlistRequest request, CancellationToken ct)
+    {
+        var pinned = PinnedBranchId();
+
+        if (!await _db.Customers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == request.CustomerId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == pinned), ct))
+            return Error.NotFound("Müşteri bulunamadı.");
+
+        if (request.BranchId is { } branchId && branchId != Guid.Empty
+            && !await _db.Branches.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == branchId && !x.IsDeleted, ct))
+            return Error.NotFound("Şube bulunamadı.");
+
+        if (request.StaffMemberId is { } staffId && staffId != Guid.Empty
+            && !await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == staffId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == pinned), ct))
+            return Error.NotFound("Personel bulunamadı.");
+
+        if (request.ServiceDefinitionId is { } serviceId && serviceId != Guid.Empty
+            && !await _db.ServiceDefinitions.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == serviceId && !x.IsDeleted
+                            && (pinned == null || x.BranchId == null || x.BranchId == pinned), ct))
+            return Error.NotFound("Hizmet bulunamadı.");
+
+        return null;
+    }
+
     public async Task<Result<WaitlistEntryDto>> CreateAsync(Guid tenantId, CreateWaitlistRequest request, CancellationToken cancellationToken = default)
     {
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.AppointmentsWaitlist, cancellationToken))
             return Result<WaitlistEntryDto>.Failure(Error.Conflict(FeatureDeniedMessage));
+
+        // ŞUBE KAPSAMI GÖVDEDEN GELMEZ (randevu oluşturmayla aynı kural): sabitlenmiş rolde
+        // istemcinin gönderdiği şube yok sayılır, kullanıcının kendi şubesine çekilir; farklıysa
+        // iz bırakılır (arayüz bunu üretmez).
+        if (PinnedBranchId() is { } pinnedBranch && request.BranchId != pinnedBranch)
+        {
+            await _audit.LogAsync(tenantId, pinnedBranch, "BranchScopeOverride", "WaitlistEntry", null,
+                "Bekleme kaydı isteğinde başka şube gönderildi; kullanıcının kendi şubesine sabitlendi.",
+                new { RequestedBranchId = request.BranchId, EffectiveBranchId = pinnedBranch, _currentUser.Role }, cancellationToken);
+            request = request with { BranchId = pinnedBranch };
+        }
+
+        // KURUM/ŞUBE BÜTÜNLÜĞÜ ÖNCE: müşteri/şube/personel/hizmet bu kuruma (ve kapsanan şubeye) ait olmalı.
+        if (await ValidateWaitlistScopeAsync(tenantId, request, cancellationToken) is { } scopeError)
+            return Result<WaitlistEntryDto>.Failure(scopeError);
+
         // KAYNAK SEANS BAĞI DOĞRULANIR — istemciden geldiği gibi saklanmaz.
         //
         // Alan "bu kayıt şu paketten karşılanacak" iddiasını taşır ve yer açıldığında randevu
         // GERÇEKTEN o seansa bağlanır. Hiçbir kontrol yoktu: başka KURUMUN ya da başka MÜŞTERİNİN
         // gerçek bir seans kimliği gönderilip sahte kaynak olarak kaydedilebiliyordu. Kolonun
         // veritabanı tarafında FK'sı da yok (migration yalnız nullable kolon ekliyor), dolayısıyla
-        // bütünlüğü uygulama kurmak zorunda. Yalnız SAHİPLİK doğrulanır (kurum + müşteri + hizmet);
-        // seansın o an kullanılabilir olup olmadığı yer açıldığında zaten yeniden bakılıyor.
+        // bütünlüğü uygulama kurmak zorunda. Sahiplik (kurum + müşteri + hizmet) ve seansın
+        // BAKİYESİ doğrulanır; bakiyenin açık randevulara ayrılmış olup olmadığına bakılmaz —
+        // o, yer açıldığında yeniden değerlendirilir (bkz. AppointmentService.IsSessionBookableAsync).
         if (request.SourceCustomerPackageSessionId is { } sessionId && sessionId != Guid.Empty)
         {
             if (request.ServiceDefinitionId is not { } sessionService)
@@ -122,15 +194,34 @@ public sealed class WaitlistService : IWaitlistService
                 return Result<WaitlistEntryDto>.Failure(Error.Validation(
                     "Paket seansı seçildiğinde hizmet de seçilmelidir."));
             }
-            if (!await _db.CustomerPackageSessions.AsNoTracking().IgnoreQueryFilters()
-                    .AnyAsync(s => s.Id == sessionId
-                                && s.TenantId == tenantId
-                                && s.CustomerId == request.CustomerId
-                                && s.ServiceDefinitionId == sessionService
-                                && !s.IsDeleted, cancellationToken))
+            var session = await _db.CustomerPackageSessions.AsNoTracking().IgnoreQueryFilters()
+                .Where(s => s.Id == sessionId
+                         && s.TenantId == tenantId
+                         && s.CustomerId == request.CustomerId
+                         && s.ServiceDefinitionId == sessionService
+                         && !s.IsDeleted)
+                .Select(s => new { s.TotalSessions, s.UsedSessions, s.CustomerAccountId })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (session is null)
             {
                 return Result<WaitlistEntryDto>.Failure(Error.Validation(
                     "Seçilen paket seansı bu müşteriye ve hizmete ait değil."));
+            }
+            // İPTAL EDİLMİŞ SATIŞIN SEANSI KAYNAK OLAMAZ. İptal satırları arşive taşıyıp siliyor,
+            // ama eski/yarım kalmış kayıtlarda cari iptal damgalı kalabilir — bekleme kaydı böyle
+            // bir hakka bağlanırsa yer açıldığında karşılıksız randevu açılır.
+            if (session.CustomerAccountId != Guid.Empty
+                && await _db.CustomerAccounts.AsNoTracking().IgnoreQueryFilters()
+                    .AnyAsync(a => a.Id == session.CustomerAccountId && a.TenantId == tenantId
+                                && (a.IsDeleted || a.CancelledAtUtc != null), cancellationToken))
+            {
+                return Result<WaitlistEntryDto>.Failure(Error.Validation(
+                    "Seçilen paket seansının satışı iptal edilmiş; bu paket bekleme kaydına kaynak gösterilemez."));
+            }
+            if (session.TotalSessions - session.UsedSessions <= 0)
+            {
+                return Result<WaitlistEntryDto>.Failure(Error.Validation(
+                    "Seçilen paketin bu hizmet için kalan seansı yok; bekleme kaydına kaynak gösterilemez."));
             }
         }
 
@@ -217,7 +308,15 @@ public sealed class WaitlistService : IWaitlistService
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
         if (_db.Database.IsRelational())
+        {
+            // KİLİT SIRASI (RowLock.TableOrder): tenants → … → waitlist_entries.
+            // Bu akış randevuyu KANONİK servisten açar ve orası randevu numarası için kurum satırını
+            // kilitler; kurum kilidi burada ALINMAZSA sıra tersine döner (waitlist_entries → tenants)
+            // ve ileride kurum satırını tutup bekleme kaydına uzanan bir yol eklendiğinde kilitlenme
+            // (deadlock) doğar. Sırayı burada, en başta düzeltiriz.
+            await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
             await RowLock.LockRowAsync(_db, "waitlist_entries", waitlistEntryId, cancellationToken);
+        }
 
         var entry = await _db.WaitlistEntries.IgnoreQueryFilters()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Id == waitlistEntryId && !w.IsDeleted, cancellationToken);

@@ -140,22 +140,30 @@ düzeldi ama canlıdaki 1 kayıt drift'li kalır (cari 8.750 ↔ plan 8.500).
 Drift'li carileri bulun:
 
 ```sql
-SELECT a.Id, a.TotalAmount, a.DepositAmount,
+-- Tablo adı account_installments'tır (installments DEĞİL — eski sürümde yanlış yazılmıştı).
+SELECT a.Id, a.TenantId, a.TotalAmount, a.DepositAmount,
        COALESCE(SUM(i.Amount), 0) AS PlanToplami,
+       COUNT(i.Id)                AS AktifTaksit,
        (a.TotalAmount - a.DepositAmount) - COALESCE(SUM(i.Amount), 0) AS Fark
 FROM customer_accounts a
-LEFT JOIN installments i
-       ON CAST(i.CustomerAccountId AS BINARY) = CAST(a.Id AS BINARY)
+LEFT JOIN account_installments i
+       ON i.CustomerAccountId = a.Id
       AND i.IsDeleted = 0
-      AND CAST(i.Status AS BINARY) <> CAST('Cancelled' AS BINARY)
+      AND i.Status <> 'Cancelled'
 WHERE a.IsDeleted = 0 AND a.CancelledAtUtc IS NULL
-GROUP BY a.Id, a.TotalAmount, a.DepositAmount
+GROUP BY a.Id, a.TenantId, a.TotalAmount, a.DepositAmount
 HAVING ABS(Fark) > 0.01;
 ```
 
-**Onarım SQL ile YAPILMAZ.** Panelden ilgili carinin **Yeniden Planla** işlemini çalıştırın —
-plan mevcut toplam üzerinden yeniden kurulur, tahsilatlar vade sırasına göre yeniden dağıtılır.
-Elle `installments` satırı yazmak tahsilat dağıtımını bozar.
+**Onarım SQL ile YAPILMAZ.** İki desteklenen yol var:
+
+1. Panelden ilgili carinin **Yeniden Planla** işlemi — plan mevcut toplam üzerinden yeniden kurulur.
+2. **Hedefli açılış bakımı** (taksit kimliklerini/vadelerini KORUR): yukarıdaki sorgunun verdiği
+   `Id`, `TenantId`, tutarlar ve `AktifTaksit` değerleri `Maintenance:RepairInstallmentPlan*`
+   ayarlarına yazılır — adım adım akış `CANLI_DEPLOY_NOTLARI.md` → "Taksit planı sapma bakımı".
+   Beklenen değerlerden biri bile tutmazsa açılış durur, veri değişmez.
+
+Elle `account_installments` satırı yazmak tahsilat dağıtımını bozar.
 
 ## 8. Deploy ve doğrulama
 

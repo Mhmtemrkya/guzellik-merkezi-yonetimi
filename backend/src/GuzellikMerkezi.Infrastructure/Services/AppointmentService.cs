@@ -254,6 +254,23 @@ public sealed class AppointmentService : IAppointmentService
         if (!await IsCatalogItemInBranchScopeAsync(tenantId, sale.ServiceDefinitionId, sale.ServicePackageId, ct))
             return Result<Guid>.Failure(Error.NotFound("Satılacak katalog kaydı bulunamadı."));
 
+        // SATIŞ PERSONELİ DE KAPSAM İÇİNDE OLMALI — "yazmadan önce yetkilendir".
+        //
+        // Randevunun personeli ValidateAppointmentScopeAsync'te sabitlenmiş şubeye göre
+        // doğrulanıyordu ama SATIŞ KALEMİNİN personeli (sale.staffMemberId) ayrı bir alandır ve
+        // yalnız kurum üyeliğine bakılıyordu: Şube A yöneticisi Şube B'nin personelini satış
+        // kalemine bağlayıp o personele prim tahakkuk ettirebiliyordu. AdisyonService.AddItemAsync
+        // aynı kuralı kanonik kapı olarak uygular (o da doğrudan çağrılıyor); burada ERKEN durur
+        // ki reddedilen istek fiş açmaya hiç başlamasın.
+        if (sale.StaffMemberId is { } saleStaffId && saleStaffId != Guid.Empty
+            && PinnedBranchId() is { } pinnedBranch
+            && !await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                .AnyAsync(s => s.TenantId == tenantId && s.Id == saleStaffId && !s.IsDeleted
+                            && s.BranchId == pinnedBranch, ct))
+        {
+            return Result<Guid>.Failure(Error.Validation("Seçilen satış personeli bu şubeye ait değil."));
+        }
+
         // Katalog kaydı ve fiyatı SUNUCUDAN okunur: istemcinin gönderdiği fiyata güvenilmez.
         string description;
         decimal unitPrice;
@@ -365,10 +382,14 @@ public sealed class AppointmentService : IAppointmentService
             : null;
         if (_db.Database.IsRelational())
         {
-            // Kilit sırası (RowLock.TableOrder): customers → … → staff_members.
+            // Kilit sırası (RowLock.TableOrder): tenants → customers → … → staff_members.
+            // KURUM satırı randevu NUMARASINI serileştirir (bkz. AppointmentNumbering): iki farklı
+            // personele giden eşzamanlı istek aynı MAX(Number)+1'i hesaplayabiliyordu. Sıra bozulmasın
+            // diye numara okuması aşağıda olsa da kilit burada, en başta alınır.
             // MÜŞTERİ kilidi seans REZERVASYONUNU serileştirir: yalnız personel kilitlenirse,
             // aynı müşterinin tek kalan seansı için FARKLI personellere açılan iki eşzamanlı
             // istek ayrı kilitler alıp ikisi de rezervasyonu boş görebiliyordu.
+            await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
             await RowLock.LockRowAsync(_db, "customers", request.CustomerId, cancellationToken);
             await RowLock.LockRowAsync(_db, "staff_members", request.StaffMemberId, cancellationToken);
         }
@@ -379,11 +400,10 @@ public sealed class AppointmentService : IAppointmentService
 
         var appointment = new Appointment(tenantId, request.BranchId, request.CustomerId, request.StaffMemberId, request.ServiceDefinitionId, request.StartUtc, request.EndUtc, request.Price, request.Notes);
 
-        // Kurum içi sıralı randevu numarası (#RNDV-…): mevcut en büyük + 1, taban 10000.
-        var maxNumber = await _db.Appointments.AsNoTracking()
-            .Where(a => a.TenantId == tenantId && a.Number != null)
-            .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
-        appointment.AssignNumber(maxNumber + 1);
+        // Kurum içi sıralı randevu numarası (#RNDV-…): mevcut en büyük + 1 (kurum satırı yukarıda
+        // kilitlendi). Global süzgeç ATLANIR: başka şubenin (ya da silinmiş) bir kaydı numarayı
+        // zaten kullanıyor olabilir; süzülmüş MAX ondan haberdar olmadığı için çakışma üretiyordu.
+        appointment.AssignNumber(await AppointmentNumbering.NextNumberAsync(_db, tenantId, cancellationToken));
 
         // KAYNAK SEANS BAĞI: randevu ücretsizse (paketten karşılanıyorsa) hangi seanstan geldiği
         // ŞİMDİ işaretlenir. Satış iptali eskiden bunu tahmin ediyordu (aynı müşteri + aynı hizmet,
@@ -434,26 +454,10 @@ public sealed class AppointmentService : IAppointmentService
         if (isStaffRequest) appointment.SubmitForApproval();
 
         _db.Appointments.Add(appointment);
-        // Numara çakışırsa (benzersiz indeks reddeder) yeniden hesapla ve dene: personel kilidi
-        // aynı personeli serileştirir ama farklı personellere giden iki istek aynı numarayı
-        // hesaplayabilir.
-        for (var attempt = 0; ; attempt++)
-        {
-            try
-            {
-                await _db.SaveChangesAsync(cancellationToken);
-                break;
-            }
-            catch (DbUpdateException) when (attempt < 3)
-            {
-                // AssignNumber "yalnız bir kez" kuralı gereği dolu numarayı DEĞİŞTİRMEZ; yeniden
-                // deneme aynı numarayla tekrarlanıp dört kez patlıyordu. Retry'a özel setter.
-                var next = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
-                    .Where(a => a.TenantId == tenantId && a.Number != null)
-                    .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
-                appointment.ReassignNumberForRetry(next + 1);
-            }
-        }
+        // Numara çakışırsa (benzersiz indeks reddeder) yeniden hesapla ve dene — kurum kilidi
+        // olmayan yollarla (ör. eski kayıt aktarımı) yarışa karşı güvenlik ağı. Numarayla İLGİSİZ
+        // kalıcılık hataları yutulmaz (bkz. AppointmentNumbering).
+        await AppointmentNumbering.SaveWithNumberRetryAsync(_db, tenantId, appointment, cancellationToken);
         if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, appointment.BranchId, "Create", "Appointment", appointment.Id,
             isStaffRequest
@@ -606,7 +610,8 @@ public sealed class AppointmentService : IAppointmentService
     /// Tekil hizmet satışı doğrudan hizmete işaret eder; paket satışı ise paketin içeriğinde bu
     /// hizmet varsa eşleşir. Birden çok aday çıkarsa listedeki İLK (en eski) satış seçilir —
     /// pendingSaleIds zaten <c>OpenedAtUtc</c> sırasındadır. Eşleşme yoksa null döner ve çağıran
-    /// eski davranışa (ilk onaylanan satış) düşer.
+    /// HİÇBİR satışı onaylamaz (bkz. ChangeStatusInternalAsync): kanıtlanamayan bir eşleşmede
+    /// rastgele fiş işlemek yanlış cariye borç, yanlış personele prim ve karşılıksız stok düşümü üretir.
     /// </para>
     /// </summary>
     private async Task<Guid?> FindSaleForServiceAsync(
@@ -1098,10 +1103,10 @@ public sealed class AppointmentService : IAppointmentService
             // Sıra: customers → appointments → (otomatik onay: adisyonlar → products → gift_cards
             // → sessions) → sessions. Müşteri ve randevu kilitleri yukarıda, durum geçişinden
             // ÖNCE alındı; burada tekrar alınmaz.
-            // Faz 2: Müşterinin "ilk randevu tamamlanınca işle" bekleyen (açık) satış adisyonları varsa
-            // şimdi otomatik onayla → satış cariye borç, peşinat kasaya gelir, satılan seanslar o an oluşur.
-            // Onay seansları yaratır → hemen aşağıdaki seans düşümü (satılan hizmet bu randevuysa) onları bulur.
-            // best-effort: bir satış onaylanamazsa (ör. stok/guard) randevu tamamlanmayı engelleme, denetime yaz.
+            // Faz 2: Bu randevunun DOĞDUĞU satış "ilk randevu tamamlanınca işle" bayrağıyla açık
+            // beklerse şimdi otomatik onaylanır → satış cariye borç, peşinat kasaya gelir, satılan
+            // seanslar o an oluşur. Onay seansları yaratır → hemen aşağıdaki seans düşümü onları bulur.
+            // best-effort: satış onaylanamazsa (ör. stok/guard) randevu tamamlanmayı engelleme, denetime yaz.
             var pendingSaleIds = await _db.Adisyonlar.AsNoTracking()
                 .Where(a => a.TenantId == tenantId
                          && a.CustomerId == appointment.CustomerId
@@ -1111,39 +1116,49 @@ public sealed class AppointmentService : IAppointmentService
                 .Select(a => a.Id)
                 .ToListAsync(cancellationToken);
 
-            // TAHSİLAT HEDEFİ = BU RANDEVUNUN SATIŞI, "en eski satış" DEĞİL.
+            // YALNIZ BU RANDEVUNUN SATIŞI ONAYLANIR — müşterinin bekleyen TÜM satışları değil.
             //
-            // Müşterinin aynı anda birden çok bekleyen satışı olabilir (A hizmeti için satış+randevu,
-            // sonra B hizmeti için satış+randevu). Hepsi burada onaylanır (Faz 2 kuralı), ama ilk
-            // onaylananın carisini hedef almak B randevusunun parasını A satışına yazıyordu: B
-            // ödenmemiş görünüyor, A fazla tahsilat alıyordu.
+            // Eskiden buradaki döngü müşterinin bekleyen her fişini onaylıyordu: A ve B satışları
+            // (her biri kendi randevusuyla) açıkken A randevusu tamamlandığında B de cariye borç
+            // yazılıyor, B'nin seansları/stok düşümü/personel primi HENÜZ GERÇEKLEŞMEMİŞ bir hizmet
+            // için oluşuyordu. Müşteri B'ye hiç gelmezse borç ve prim ortada kalıyordu. Tahsilat
+            // hedefi ayrıca doğru fişe yazılsa bile yan etkiler geri alınmıyordu.
             //
-            // 1) KALICI BAĞ önce gelir: randevu satışla birlikte açıldıysa (randevu+satış atomik ucu,
-            //    bekleme listesi dönüşümü) hangi fişten doğduğu KESİN bilinir.
-            // 2) Bağsız kayıtlarda (eski randevular, ayrı akışlar) hizmet eşleştirmesine düşülür.
-            //    Eşleştirme AYNI hizmetin iki bekleyen satışını ayırt EDEMEZ — daima en eskisini
-            //    seçer; kalıcı bağ tam olarak bu boşluğu kapatır.
-            var matchingSaleId = appointment.SourceAdisyonId is { } linkedSaleId && pendingSaleIds.Contains(linkedSaleId)
-                ? linkedSaleId
+            // 1) KALICI BAĞ önce gelir ve BAĞLAYICIDIR: randevu satışla birlikte açıldıysa
+            //    (randevu+satış atomik ucu, bekleme listesi dönüşümü) hangi fişten doğduğu KESİN
+            //    bilinir. Bağlı fiş artık bekleyenler arasında değilse (zaten onaylanmış, iptal
+            //    olmuş) BAŞKA fişe geçilmez — bu randevunun karşılığı çoktan işlenmiştir.
+            // 2) Bağsız kayıtlarda (eski randevular, ayrı akışlar) hizmet eşleştirmesine düşülür;
+            //    tek bekleyen fiş varsa o seçilir. Eşleşme kurulamazsa HİÇBİR fiş onaylanmaz:
+            //    rastgele bir satışı işlemektense iz bırakıp insana bırakmak doğrudur.
+            var matchingSaleId = appointment.SourceAdisyonId is { } linkedSaleId
+                ? (pendingSaleIds.Contains(linkedSaleId) ? linkedSaleId : null)
                 : await FindSaleForServiceAsync(
                     tenantId, pendingSaleIds, appointment.ServiceDefinitionId, cancellationToken);
 
-            foreach (var saleId in pendingSaleIds)
+            if (matchingSaleId is { } targetSaleId)
             {
-                var approved = await _adisyon.ApproveAsync(tenantId, saleId, cancellationToken);
+                var approved = await _adisyon.ApproveAsync(tenantId, targetSaleId, cancellationToken);
                 if (approved.IsSuccess)
                 {
-                    // Eşleşen satış varsa YALNIZ onun carisi; yoksa (eşleşme kurulamadıysa) ilk
-                    // onaylanana düşülür — eski davranış, hiç hedef olmamasından iyidir.
-                    if (matchingSaleId == saleId) autoApprovedAccountId = approved.Value?.CustomerAccountId;
-                    else if (matchingSaleId is null) autoApprovedAccountId ??= approved.Value?.CustomerAccountId;
+                    autoApprovedAccountId = approved.Value?.CustomerAccountId;
                 }
                 else
                 {
-                    await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveFailed", "Adisyon", saleId,
+                    await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveFailed", "Adisyon", targetSaleId,
                         $"İlk randevu tamamlandı ama satış otomatik cariye işlenemedi: {approved.Error.Message}",
                         new { appointment.Id, appointment.CustomerId }, cancellationToken);
                 }
+            }
+            else if (pendingSaleIds.Count > 0)
+            {
+                // Bekleyen satış VAR ama bu randevuya ait olduğu kanıtlanamadı (bağ yok + hizmet
+                // eşleşmiyor). Sessizce en eskisini işlemek yanlış fişe borç/prim yazardı.
+                await _audit.LogAsync(tenantId, appointment.BranchId, "AutoApproveSkipped", "Appointment", appointment.Id,
+                    "Randevu tamamlandı ancak bekleyen satışlardan hangisinin bu randevuya ait olduğu belirlenemedi; " +
+                    "hiçbiri otomatik cariye işlenmedi.",
+                    new { appointment.CustomerId, appointment.ServiceDefinitionId, PendingSaleCount = pendingSaleIds.Count },
+                    cancellationToken);
             }
 
             // Seans satırları KİLİTLENİR, sonra okunur — otomatik onay yeni seans açmış olabilir.
@@ -1314,8 +1329,10 @@ public sealed class AppointmentService : IAppointmentService
     /// ucundan (<see cref="CreateWithSaleAsync"/>) açılan bir randevu iptal edilince/silinince fiş
     /// AÇIK kalıyordu. Sonuç para etkiliydi — müşterinin BAŞKA bir randevusu tamamlandığında
     /// "ilk randevuda cariye işle" kuralı (bkz. <see cref="ChangeStatusInternalAsync"/>) müşterinin
-    /// TÜM bekleyen fişlerini onaylıyor, dolayısıyla karşılıksız kalan bu fiş de cariye borç
-    /// yazılıyor ve tahsilat hedefi yanlış fişe kayabiliyordu.
+    /// TÜM bekleyen fişlerini onaylıyordu, dolayısıyla karşılıksız kalan bu fiş de cariye borç
+    /// yazılıyor ve tahsilat hedefi yanlış fişe kayabiliyordu. O kural artık yalnız randevunun KENDİ
+    /// fişini onaylar; bu temizlik ise açık kalan fişin ileride başka bir randevuya hizmet
+    /// eşleştirmesiyle yanlışlıkla bağlanmasını engeller.
     /// </para>
     /// <para>
     /// ÜÇ KORUMA: (1) yalnız AÇIK fiş kapatılır — onaylı fişin parası kasaya, borcu cariye,

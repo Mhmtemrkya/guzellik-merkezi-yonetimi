@@ -112,6 +112,18 @@ public sealed class AdisyonService : IAdisyonService
     }
 
     /// <summary>
+    /// KULLANICININ SABİTLENDİĞİ ŞUBE — yoksa (kurum sahibi / platform / şubesiz kullanıcı) null.
+    /// <c>AppointmentService.PinnedBranchId</c> ile birebir aynı kural: şube yöneticisi ve personel
+    /// JWT'deki şubeye sabitlidir, kurum sahibi şubeler arası çalışmaya devam eder.
+    /// </summary>
+    private Guid? PinnedBranchId()
+    {
+        if (_currentUser.IsPlatformAdmin) return null;
+        if (_currentUser.Role is not (UserRole.BranchManager or UserRole.Staff)) return null;
+        return _currentUser.BranchId;
+    }
+
+    /// <summary>
     /// Kalemin işaret ettiği personel ve katalog kaydı BU KURUMA ait mi?
     ///
     /// <para>
@@ -119,14 +131,28 @@ public sealed class AdisyonService : IAdisyonService
     /// kapsamı yüzünden başka şubenin hizmeti/ürünü "yok" sayılıp meşru fiş kırılmamalıdır.
     /// Silinmiş kayıt yine reddedilir — silinmiş ürün/pakete satış açılmamalı.
     /// </para>
+    /// <para>
+    /// PERSONELDE ŞUBE DE ZORLANIR (katalogdan farkı budur): kalemdeki personel prim kazanır ve
+    /// "kim sattı" etiketini alır. Yalnız kurum üyeliği denetlenince Şube A'ya sabitlenmiş bir
+    /// kullanıcı Şube B'nin personelini satış kalemine bağlayıp o personele prim tahakkuk
+    /// ettirebiliyordu (bkz. onaydaki prim bloğu) — göremeyeceği bir kayda para yazmak demektir.
+    /// Katalog kaydı kurum geneli olabilir, personel ise HER ZAMAN bir şubeye aittir; kurum sahibi
+    /// (sabitlenmemiş rol) şubeler arası kullanmayı sürdürür.
+    /// </para>
     /// </summary>
     private async Task<Error?> ValidateItemScopeAsync(Guid tenantId, AddAdisyonItemRequest request, CancellationToken ct)
     {
-        if (request.StaffMemberId is { } staffId && staffId != Guid.Empty
-            && !await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
-                .AnyAsync(s => s.TenantId == tenantId && s.Id == staffId && !s.IsDeleted, ct))
+        if (request.StaffMemberId is { } staffId && staffId != Guid.Empty)
         {
-            return Error.Validation("Seçilen personel bu kuruma ait değil.");
+            var pinned = PinnedBranchId();
+            if (!await _db.StaffMembers.AsNoTracking().IgnoreQueryFilters()
+                    .AnyAsync(s => s.TenantId == tenantId && s.Id == staffId && !s.IsDeleted
+                                && (pinned == null || s.BranchId == pinned), ct))
+            {
+                return Error.Validation(pinned is null
+                    ? "Seçilen personel bu kuruma ait değil."
+                    : "Seçilen personel bu şubeye ait değil.");
+            }
         }
 
         if (request.RefId is not { } refId || refId == Guid.Empty) return null;

@@ -292,9 +292,13 @@ public sealed class DeployBlockerRoundFourTests
         var seed = await SeedAsync(options);
         var before = await SeedDriftedAccountAsync(options, seed, 8500m, 8750m);
 
+        // Aktif plan 3 taksit (biri iptal edilmişti): 8500 × 3/4 = 6375.
+        var target = new DatabaseBootstrap.InstallmentPlanRepairTarget(
+            before.AccountId, seed.TenantId, 8750m, 0m, 8750m, 6375m, 3);
+
         await using (var db = NewDb(options))
         {
-            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [target]));
         }
 
         await using (var check = NewDb(options))
@@ -312,10 +316,11 @@ public sealed class DeployBlockerRoundFourTests
             Assert.Equal(8750m, active.Sum(i => i.Amount));
         }
 
-        // İDEMPOTENT.
+        // Sapma kapandı: aynı hedefle ikinci koşu SESSİZCE GEÇMEZ, açılışı durdurur.
         await using (var db = NewDb(options))
         {
-            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [target]));
         }
     }
 
@@ -332,7 +337,11 @@ public sealed class DeployBlockerRoundFourTests
 
         await using (var db = NewDb(options))
         {
-            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            // Aktif plan 3 × 2250 = 6750 > finanse 6000 → onarım UYGULANMAZ, hata fırlatılır.
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                    new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                        before.AccountId, seed.TenantId, 6000m, 0m, 6000m, 6750m, 3)]));
         }
 
         await using (var check = NewDb(options))
@@ -344,14 +353,16 @@ public sealed class DeployBlockerRoundFourTests
     }
 
     /// <summary>
-    /// DEVRE KESİCİ: sapma bilinen tek seferlik artığın ötesine yayılmışsa iş HİÇ çalışmaz
-    /// (para etkileyen düzeltme binlerce kayda otomatik uygulanmamalı).
+    /// DEVRE KESİCİ: hedef sayısı bilinen tek seferlik artığın ötesine geçmişse iş HİÇ çalışmaz
+    /// (para etkileyen düzeltme bu ölçekte otomatik uygulanmamalı) ve HATA FIRLATIR — eskiden
+    /// 0 döndürüp devam ediyordu, yani deployment "başarılı" görünüyordu.
     /// </summary>
     [Fact]
     public async Task RepairInstallmentPlanDrift_RefusesWhenTooManyAccountsAreDrifted()
     {
         var options = NewOptions();
         var seed = await SeedAsync(options);
+        var targets = new List<DatabaseBootstrap.InstallmentPlanRepairTarget>();
 
         await using (var db = NewDb(options))
         {
@@ -363,12 +374,15 @@ public sealed class DeployBlockerRoundFourTests
                 await db.SaveChangesAsync();
                 account.ChangeTotal(1500m, 0m);
                 await db.SaveChangesAsync();
+                targets.Add(new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                    account.Id, seed.TenantId, 1500m, 0m, 1500m, 1000m, 2));
             }
         }
 
         await using (var db = NewDb(options))
         {
-            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, targets));
             // Hiçbir plana dokunulmamış olmalı.
             Assert.Equal(0, await db.Installments.CountAsync(i => i.Amount != 500m));
         }

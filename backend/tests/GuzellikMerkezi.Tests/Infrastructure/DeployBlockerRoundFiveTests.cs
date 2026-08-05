@@ -334,8 +334,9 @@ public sealed class DeployBlockerRoundFiveTests
 
         await using (var db = NewDb(options))
         {
-            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(
-                db, null, new HashSet<Guid> { targetId });
+            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                    targetId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]);
             Assert.Equal(1, repaired);
         }
 

@@ -211,6 +211,75 @@ public sealed class PendingOperationService : IPendingOperationService
     }
 
     /// <summary>
+    /// GENERIC DISPATCH'İ TAM BİR KEZ UYGULAR.
+    ///
+    /// <para>
+    /// HttpReplay yolunda bu güvenceyi <c>IdempotencyMiddleware</c> veriyordu: replay isteği kararlı
+    /// <c>sys:</c> anahtarıyla gidiyor, tekrar denemede endpoint yeniden ÇALIŞMIYORdu. Generic
+    /// dispatcher ise servisleri doğrudan çağırdığı için HTTP hattına hiç uğramıyor ve hiçbir koruma
+    /// altında değildi. Somut hata: tahsilat/gider/stok hareketi commit edildikten SONRA, bekleyen
+    /// kayıt "Approved" yapılmadan süreç çökerse (ya da yanıt kaybolursa) kayıt Processing'de kalır;
+    /// zaman aşımından sonra yeniden sahiplenilir ve AYNI hareket ikinci kez oluşurdu.
+    /// </para>
+    /// <para>
+    /// SIRA: anahtar önce REZERVE EDİLİR (kalıcı), iş sonra yapılır. Tersi olsaydı eşzamanlı iki
+    /// deneme (ya da retry ile orijinalin yarışı) rezervasyonu birlikte geçip işi iki kez yapardı.
+    /// Anahtar <see cref="ReplayIdempotencyKey"/> ile aynıdır: kurum kapsamlı ve işlem kimliğinden
+    /// türediği için hangi yönetici tekrar denerse denesin aynı kapıya çarpar.
+    /// </para>
+    /// <para>
+    /// ÜÇ SONUÇ: (1) daha önce uygulanmış → iş TEKRARLANMAZ, saklanan sonuç kimliği döner ve
+    /// bekleyen kayıt normal şekilde Approved'a geçer; (2) önceki deneme sürüyor / sonucu belirsiz →
+    /// "sonuç doğrulanamadı" (sahiplenme bırakılmaz, insan doğrular); (3) taze rezervasyon → iş
+    /// yapılır. İş kuralı reddinde (hedef hiçbir şey uygulamadı) rezervasyon SERBEST bırakılır ki
+    /// düzeltilip yeniden onaylanabilsin.
+    /// </para>
+    /// </summary>
+    private async Task<Result<Guid?>> DispatchOnceAsync(
+        Guid tenantId, Guid id, PendingOperationType operationType, string payloadJson, CancellationToken ct)
+    {
+        var claim = await OperationIdempotency.TryBeginAsync(
+            _db, tenantId, ReplayIdempotencyKey(id), "DISPATCH", $"/approvals/{operationType}", ct);
+
+        if (claim.Kind == OperationIdempotency.ClaimKind.AlreadyApplied)
+            return Result<Guid?>.Success(claim.ResultEntityId);
+
+        if (claim.Kind == OperationIdempotency.ClaimKind.Unresolved)
+        {
+            return Result<Guid?>.Failure(new Error(IApprovalReplayer.UnknownOutcomeCode,
+                "Bu işlemin önceki denemesi sürüyor ya da sonucu doğrulanamadı; işlem ikinci kez uygulanmadı. "
+                + "Kaydı kontrol edin."));
+        }
+
+        Result<Guid?> result;
+        try
+        {
+            result = await _dispatcher.DispatchAsync(tenantId, operationType, payloadJson, ct);
+        }
+        catch
+        {
+            // SONUÇ BİLİNMİYOR: hedef commit etmiş olabilir → rezervasyonu SİLME, damgala.
+            await OperationIdempotency.MarkOutcomeUnknownAsync(_db, claim.ReservationId);
+            throw;
+        }
+
+        if (result.IsFailure)
+        {
+            // İş kuralı reddi: dispatcher hedef servisi çağırdı, servis kendi transaction'ında
+            // doğrulamada durdu → hiçbir şey uygulanmadı. Anahtar dürüst tekrara açık kalmalı.
+            await OperationIdempotency.ReleaseAsync(_db, claim.ReservationId);
+            return result;
+        }
+
+        // İŞ UYGULANDI. Kayıt tutulamazsa (nadir) anahtarı "sonuç belirsiz" damgalarız: bu istek
+        // başarıyla tamamlanacağı için tekrar beklenmiyor, ama olası bir tekrar işi yinelemesin.
+        if (!await OperationIdempotency.CompleteAsync(_db, claim.ReservationId, result.Value))
+            await OperationIdempotency.MarkOutcomeUnknownAsync(_db, claim.ReservationId);
+
+        return result;
+    }
+
+    /// <summary>
     /// Kapsam dışıysa hata döndürür (yoksa null). Yetkisizde "yok" denir: var/yok bilgisi sızmasın.
     /// </summary>
     private async Task<Error?> EnsureInScopeAsync(Guid tenantId, Guid id, UserRole? actorRole, Guid? actorBranchId, CancellationToken ct)
@@ -301,7 +370,7 @@ public sealed class PendingOperationService : IPendingOperationService
         {
             dispatchResult = operationType == PendingOperationType.HttpReplay
                 ? await _replayer.ReplayAsync(payloadJson, ReplayIdempotencyKey(id), cancellationToken)
-                : await _dispatcher.DispatchAsync(tenantId, operationType, payloadJson, cancellationToken);
+                : await DispatchOnceAsync(tenantId, id, operationType, payloadJson, cancellationToken);
         }
         catch (Exception ex)
         {

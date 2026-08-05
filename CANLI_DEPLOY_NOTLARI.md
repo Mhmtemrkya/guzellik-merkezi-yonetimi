@@ -107,6 +107,47 @@ WebSocket, Next.js route handler'ından (`/api/proxy`) **GEÇEMEZ**; hub bağlan
 - [ ] Çok instance çalıştırıyorsan `Redis__ConnectionString` ver (backplane). Tek instance'ta **gerekmez** —
       verilmezse in-memory kullanılır.
 
+### Taksit planı sapma bakımı — TEK SEFERLİK, HEDEFLİ (opsiyonel)
+Para etkileyen bir **veri düzeltmesidir**; varsayılan KAPALIDIR ve bayrağı açmak tek başına yetmez.
+Yalnızca kimliği ve **onarım öncesi beklenen değerleri** açıkça yazılan cariler onarılır. Eksik ayar,
+uyuşmayan tek bir değer, bulunamayan hedef ya da 25'ten fazla hedef → **hiçbir veri değiştirilmeden
+açılış (ve deployment) başarısız olur.**
+
+Sıra:
+1. [ ] **Taze ve doğrulanmış yedek al** (`gzip -t` + SHA-256) — bu adım atlanamaz.
+2. [ ] Sapmayı ölç (hedef cari(ler)i ve beklenen değerleri buradan yaz):
+      ```sql
+      SELECT a.Id, a.TenantId, a.TotalAmount, a.DepositAmount,
+             (a.TotalAmount - a.DepositAmount)                        AS Financed,
+             COALESCE(SUM(i.Amount), 0)                               AS PlanTotal,
+             COUNT(i.Id)                                              AS InstallmentCount
+      FROM customer_accounts a
+      LEFT JOIN account_installments i
+             ON i.CustomerAccountId = a.Id AND i.IsDeleted = 0 AND i.Status <> 'Cancelled'
+      WHERE a.IsDeleted = 0 AND a.CancelledAtUtc IS NULL
+      GROUP BY a.Id
+      HAVING InstallmentCount > 0 AND Financed > 0 AND PlanTotal < Financed;
+      ```
+3. [ ] Bakımı **yalnız o kayıt(lar) için** aç (env; `<accountId>` yukarıdaki `Id`):
+      ```
+      Maintenance__RepairInstallmentPlanDrift=true
+      Maintenance__RepairInstallmentPlanAccountIds=<accountId>
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__TenantId=<tenantId>
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__TotalAmount=8750
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__DepositAmount=0
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__FinancedAmount=8750
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__PlanTotal=8500
+      Maintenance__RepairInstallmentPlanExpected__<accountId>__InstallmentCount=10
+      ```
+      Ondalık ayırıcı **nokta** olmalı (kültürden bağımsız okunur).
+4. [ ] Servisi başlat ve logda `plan 8500 → 8750` satırını gör; **2. adımdaki sorgu artık 0 satır dönmeli.**
+5. [ ] Taksit **kimlikleri, sırası, durumu, `PaidAtUtc`, vadeleri ve tahsilatlar korunmuş olmalı**
+      (plan yeniden kurulmaz, tutarlar yerinde hizalanır).
+6. [ ] Bayrağı ve `Expected__*` değişkenlerini **kaldır**, servisi yeniden başlat.
+      ⚠️ Ayar açık bırakılırsa ikinci açılış "beklenen sapma yok" diyerek **servisi başlatmaz** —
+      bu kasıtlıdır: unutulan bir veri-yazma ayarı sessizce canlıda kalmamalı.
+7. [ ] İkinci açılışta **yeni mutasyon olmamalı** (log temiz, sapma sorgusu 0).
+
 ### Altyapı
 - [ ] **HTTPS zorunlu.** Kopyalama butonları (`navigator.clipboard`) ve genel güvenlik secure-context gerektirir; HTTP'de mobil tarayıcıda kopyalama sessizce çalışmaz.
 - [ ] WhatsApp gerçek modda kullanılacaksa `WhatsApp:PublicBaseUrl` public domaine ayarlanmalı (yoksa `http://localhost:5019`'a düşer → webhook/medya URL'leri yanlış).

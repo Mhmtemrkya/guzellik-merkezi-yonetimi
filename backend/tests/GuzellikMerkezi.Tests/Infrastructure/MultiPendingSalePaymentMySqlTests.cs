@@ -9,13 +9,14 @@ using Microsoft.EntityFrameworkCore;
 namespace GuzellikMerkezi.Tests.Infrastructure;
 
 /// <summary>
-/// BİRDEN ÇOK BEKLEYEN SATIŞTA TAHSİLAT DOĞRU CARİYE YAZILIR.
+/// BİRDEN ÇOK BEKLEYEN SATIŞTA YALNIZ RANDEVUNUN KENDİ SATIŞI İŞLENİR.
 ///
 /// <para>
-/// Randevu tamamlanınca müşterinin "ilk randevuda işle" bekleyen TÜM satışları onaylanır (Faz 2).
-/// Tahsilat hedefi olarak İLK ONAYLANAN satışın carisi seçiliyordu. Senaryo: A hizmeti için
-/// satış+randevu açıldı, sonra B hizmeti için satış+randevu açıldı, B randevusu ÖNCE tamamlandı →
-/// B için alınan para A satışının carisine yazılıyor, B satışı ödenmemiş görünüyordu.
+/// Randevu tamamlanınca müşterinin "ilk randevuda işle" bekleyen TÜM satışları onaylanıyordu (Faz 2)
+/// ve tahsilat hedefi olarak İLK ONAYLANAN satışın carisi seçiliyordu. İki hata iç içeydi: (1) B
+/// randevusu için alınan para A satışının carisine yazılıyordu; (2) daha ağırı, HENÜZ GERÇEKLEŞMEMİŞ
+/// A hizmeti için cariye borç, müşteriye seans ve personele prim oluşuyordu — müşteri A'ya hiç
+/// gelmezse bunlar ortada kalıyordu. Artık yalnız randevunun kendi fişi (kalıcı bağ) onaylanır.
 /// </para>
 ///
 /// <para>
@@ -90,7 +91,8 @@ public sealed class MultiPendingSalePaymentMySqlTests
 
     /// <summary>
     /// Önce A satışı+randevusu, sonra B satışı+randevusu açılır; B randevusu ÖNCE tamamlanır ve
-    /// 2.000 TL tahsil edilir. Para B'nin carisine yazılmalı, A'nınki ödenmemiş kalmalı.
+    /// 2.000 TL tahsil edilir. Para B'nin carisine yazılmalı; A satışı AÇIK kalmalı — cari, seans
+    /// ve prim üretmemeli (müşteri A randevusuna henüz gelmedi).
     /// </summary>
     [MySqlFact]
     public async Task CompleteWithPayment_PaysTheSaleOfThisAppointment_NotTheOldestPendingSale()
@@ -99,8 +101,8 @@ public sealed class MultiPendingSalePaymentMySqlTests
         var seed = await SeedAsync(database);
         var known = new HashSet<Guid>();
 
-        await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 2, known);
-        var (appointmentB, _) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceB, 6, known);
+        var (_, saleAId) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceA, 2, known);
+        var (appointmentB, saleBId) = await CreateSaleAndAppointmentAsync(database, seed, seed.ServiceB, 6, known);
 
         await using (var db = database.NewContext())
         {
@@ -117,14 +119,26 @@ public sealed class MultiPendingSalePaymentMySqlTests
                 .Where(a => a.CustomerId == seed.CustomerId)
                 .ToListAsync();
 
-            // Her satış kendi kartını açar → iki cari.
-            Assert.Equal(2, accounts.Count);
-
-            var saleB = accounts.Single(a => a.TotalAmount == 2000m);
-            var saleA = accounts.Single(a => a.TotalAmount == 1000m);
-
+            // YALNIZ B satışı işlendi → tek cari kartı (A'nınki hiç açılmadı).
+            var saleB = Assert.Single(accounts);
+            Assert.Equal(2000m, saleB.TotalAmount);
             Assert.Equal(2000m, saleB.Payments.Sum(p => p.Amount));
-            Assert.Equal(0m, saleA.Payments.Sum(p => p.Amount));
+
+            var sales = await check.Adisyonlar.AsNoTracking()
+                .Where(a => a.Id == saleAId || a.Id == saleBId)
+                .Select(a => new { a.Id, a.Status, a.CustomerAccountId })
+                .ToListAsync();
+            Assert.Equal(AdisyonStatus.Approved, sales.Single(a => a.Id == saleBId).Status);
+
+            var pendingA = sales.Single(a => a.Id == saleAId);
+            Assert.Equal(AdisyonStatus.Open, pendingA.Status);   // A hâlâ bekliyor
+            Assert.Null(pendingA.CustomerAccountId);             // A'ya borç yazılmadı
+
+            // A satışının seansı ve primi de OLUŞMAMALI: hizmet henüz verilmedi.
+            Assert.Empty(await check.CustomerPackageSessions.AsNoTracking()
+                .Where(s => s.TenantId == seed.TenantId && s.ServiceDefinitionId == seed.ServiceA).ToListAsync());
+            Assert.Empty(await check.StaffCommissions.AsNoTracking()
+                .Where(c => c.TenantId == seed.TenantId && c.SourceAdisyonId == saleAId).ToListAsync());
         }
     }
 
@@ -165,21 +179,25 @@ public sealed class MultiPendingSalePaymentMySqlTests
         {
             var sales = await check.Adisyonlar.AsNoTracking()
                 .Where(a => a.Id == firstSaleId || a.Id == secondSaleId)
-                .Select(a => new { a.Id, a.CustomerAccountId })
+                .Select(a => new { a.Id, a.Status, a.CustomerAccountId })
                 .ToListAsync();
-            var firstAccountId = sales.Single(a => a.Id == firstSaleId).CustomerAccountId;
-            var secondAccountId = sales.Single(a => a.Id == secondSaleId).CustomerAccountId;
-            Assert.NotNull(firstAccountId);
-            Assert.NotNull(secondAccountId);
-            Assert.NotEqual(firstAccountId, secondAccountId); // her satış kendi kartını açtı
+            var first = sales.Single(a => a.Id == firstSaleId);
+            var second = sales.Single(a => a.Id == secondSaleId);
+
+            // Tamamlanan randevunun fişi işlendi; AYNI hizmete ait diğer fiş açık kaldı.
+            Assert.Equal(AdisyonStatus.Approved, second.Status);
+            Assert.NotNull(second.CustomerAccountId);
+            Assert.Equal(AdisyonStatus.Open, first.Status);
+            Assert.Null(first.CustomerAccountId);
 
             var accounts = await check.CustomerAccounts
                 .Include(a => a.Payments)
                 .Where(a => a.CustomerId == seed.CustomerId)
                 .ToListAsync();
 
-            Assert.Equal(1000m, accounts.Single(a => a.Id == secondAccountId).Payments.Sum(p => p.Amount));
-            Assert.Equal(0m, accounts.Single(a => a.Id == firstAccountId).Payments.Sum(p => p.Amount));
+            var account = Assert.Single(accounts);
+            Assert.Equal(second.CustomerAccountId, account.Id);
+            Assert.Equal(1000m, account.Payments.Sum(p => p.Amount));
         }
     }
 }

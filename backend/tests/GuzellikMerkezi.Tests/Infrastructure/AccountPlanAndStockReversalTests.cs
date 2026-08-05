@@ -190,7 +190,10 @@ public sealed class AccountPlanAndStockReversalTests
 
         await using (var db = NewDb(options))
         {
-            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db);
+            // Bakım artık HEDEFLİDİR: cari kimliği + beklenen (onarım öncesi) değerler verilir.
+            var repaired = await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                    driftedId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]);
             Assert.Equal(1, repaired);
         }
 
@@ -207,10 +210,15 @@ public sealed class AccountPlanAndStockReversalTests
             Assert.Equal(healthyPlanBefore, healthyPlanAfter);
         }
 
-        // İDEMPOTENT: ikinci koşuda onarılacak kayıt kalmaz.
+        // AYNI AYARLA İKİNCİ AÇILIŞ SESSİZCE GEÇMEZ: sapma kapandığı için bakım artık "beklenen
+        // sapma yok" diyerek açılışı durdurur — operatör bayrağı kaldırmaya zorlanır. (Eskiden
+        // 0 döndürüp devam ediyordu; bu, ayarın canlıda unutulmasını görünmez kılıyordu.)
         await using (var db = NewDb(options))
         {
-            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [
+                    new DatabaseBootstrap.InstallmentPlanRepairTarget(
+                        driftedId, seed.TenantId, 8750m, 0m, 8750m, 8500m, 4)]));
         }
     }
 
@@ -223,7 +231,7 @@ public sealed class AccountPlanAndStockReversalTests
     public async Task RepairInstallmentPlanDrift_RunsOnRealDatabase()
     {
         await using var database = await MySqlTestDatabase.CreateAsync();
-        Guid driftedId;
+        Guid driftedId, driftedTenantId;
 
         await using (var db = database.NewContext())
         {
@@ -242,11 +250,15 @@ public sealed class AccountPlanAndStockReversalTests
             account.ChangeTotal(8750m, 0m);      // plan bilerek yeniden kurulmadı
             await db.SaveChangesAsync();
             driftedId = account.Id;
+            driftedTenantId = tenant.Id;
         }
+
+        DatabaseBootstrap.InstallmentPlanRepairTarget Target() => new(
+            driftedId, driftedTenantId, 8750m, 0m, 8750m, 8500m, 4);
 
         await using (var db = database.NewContext())
         {
-            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db));
+            Assert.Equal(1, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(db, null, [Target()]));
         }
 
         await using (var check = database.NewContext())
@@ -256,9 +268,11 @@ public sealed class AccountPlanAndStockReversalTests
             Assert.Equal(8750m, account.Installments.Sum(i => i.Amount));
         }
 
+        // Sapma kapandı → aynı ayarla ikinci açılış BAŞARISIZ olur (bayrak kaldırılmalı).
         await using (var again = database.NewContext())
         {
-            Assert.Equal(0, await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(again));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseBootstrap.RepairInstallmentPlanDriftAsync(again, null, [Target()]));
         }
     }
 

@@ -227,10 +227,22 @@ LIMIT 2000")
                 .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id && a.CancelledAtUtc == null)
                 .Sum(a => (decimal?)(a.TotalAmount + a.RefundedAmount - a.Payments.Sum(p => p.Amount))) ?? 0m)
             .ThenByDescending(x => x.CreatedAtUtc),
+        // SIRALAMA, SATIRDA GÖSTERİLEN NET HARCAMAYLA AYNI FORMÜLÜ KULLANIR (bkz. EnrichAsync).
+        // Eskiden yalnız canlı carilere bakıyor ve iadeyi a.RefundedAmount üzerinden düşüyordu:
+        // (1) iptal edilmiş satışın arşivlenmiş tahsilatı hiç sayılmıyor, (2) iptali geri alınmış
+        // satışta iade iki kez düşülüyordu. Liste "12.000 TL" yazan müşteriyi "0 TL" yazanın altına
+        // koyabiliyordu — aynı ekranda iki farklı gerçek.
         CustomerListSort.Spent => q
-            .OrderByDescending(x => _db.CustomerAccounts
-                .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
-                .Sum(a => (decimal?)(a.Payments.Sum(p => p.Amount) - a.RefundedAmount)) ?? 0m)
+            .OrderByDescending(x =>
+                (_db.CustomerAccounts
+                    .Where(a => a.TenantId == tenantId && a.CustomerId == x.Id)
+                    .Sum(a => (decimal?)a.Payments.Sum(p => p.Amount)) ?? 0m)
+                + (_db.ArchivedSalePayments
+                    .Where(ap => ap.TenantId == tenantId && ap.CustomerId == x.Id)
+                    .Sum(ap => (decimal?)ap.Amount) ?? 0m)
+                - (_db.RefundTransactions
+                    .Where(r => r.TenantId == tenantId && r.CustomerId == x.Id)
+                    .Sum(r => (decimal?)r.Amount) ?? 0m))
             .ThenByDescending(x => x.CreatedAtUtc),
         CustomerListSort.LastVisit => q
             .OrderByDescending(x => _db.Appointments
@@ -272,14 +284,21 @@ LIMIT 2000")
 -- ARŞİVLENMİŞ TAHSİLAT + İADE DE SAYILIR: iptalde cari/tahsilat satırları canlı tablodan SİLİNİP
 -- arşive taşınıyor, bu yüzden yalnız customer_accounts'a bakan hesap o parayı göremiyordu. Genel
 -- rapor arşivi sayarken müşteri kartı 0 gösteriyordu (aynı gerçek, iki farklı rakam).
--- İade satırları YALNIZ arşivlenmiş (iptal) satışlara aittir → canlı a.RefundedAmount ile çakışmaz.
+--
+-- İADE TEK KAYNAKTAN DÜŞÜLÜR: refund_transactions (aşağıdaki UNION dalı). İade satırlarının yalnız
+-- arşivlenmiş satışlara ait olduğu varsayımı YANLIŞTI: iptal GERİ ALINDIĞINDA satır canlı kalır (para
+-- gerçekten çıktı, kasa defterinde durmalı) ve aynı tutar ayrıca a.RefundedAmount alanına yazılır.
+-- İkisi birden düşülünce aynı para iki kez gidiyordu — 1.000 tahsilat − 400 iade net 600 olmalıyken
+-- liste 200 gösteriyordu (kart, /stats ve /spending-stats zaten tek kaynağa geçmişti).
+-- Borç hesabı a.RefundedAmount'u kullanmayı SÜRDÜRÜR: orada amaç tahsilatın iade kadar
+-- azalmasını telafi etmektir (Total − (Paid − Refunded)).
 SELECT t.CustomerId, COALESCE(SUM(t.Debt), 0) AS Debt, COALESCE(SUM(t.Spent), 0) AS Spent
 FROM (
   SELECT a.CustomerId AS CustomerId,
          SUM(CASE WHEN a.CancelledAtUtc IS NULL
                   THEN GREATEST(a.TotalAmount + a.RefundedAmount - COALESCE(p.Paid, 0), 0)
                   ELSE 0 END) AS Debt,
-         SUM(COALESCE(p.Paid, 0) - a.RefundedAmount) AS Spent
+         SUM(COALESCE(p.Paid, 0)) AS Spent
   FROM customer_accounts a
   LEFT JOIN (SELECT CustomerAccountId, SUM(Amount) AS Paid FROM account_payments WHERE IsDeleted = 0 GROUP BY CustomerAccountId) p
          ON p.CustomerAccountId = a.Id

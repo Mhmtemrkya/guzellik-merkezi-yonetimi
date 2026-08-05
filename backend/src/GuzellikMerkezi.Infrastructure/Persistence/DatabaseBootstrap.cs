@@ -285,30 +285,38 @@ public static class DatabaseBootstrap
     /// kayboluyor (denetimde canlıda 8.750 cari ↔ 8.500 plan = 250 TL).
     /// </para>
     /// <para>
-    /// NEDEN OPT-IN: bu, PARA ETKİLEYEN bir veri düzeltmesidir ve bilinen TEK bir kayıt içindir.
-    /// Her açılışta, her kurumda kendiliğinden çalışması onu "bakım" olmaktan çıkarıp kalıcı bir
-    /// otomatik yazma davranışına dönüştürüyordu: gelecekte başka bir sebeple sapan kayıtlar da
-    /// kimse istemeden yeniden bölünürdü. Artık yalnızca operatör açıkça istediğinde çalışır:
+    /// NEDEN OPT-IN VE HEDEFLİ: bu, PARA ETKİLEYEN bir veri düzeltmesidir ve bilinen TEK bir kayıt
+    /// içindir. Her açılışta kendiliğinden çalışması onu "bakım" olmaktan çıkarıp kalıcı bir otomatik
+    /// yazma davranışına dönüştürüyordu. Bayrağın TEK BAŞINA açılması da yetmez: hedef liste boşken
+    /// iş "sapmış tüm kayıtları" tarayıp düzeltiyordu — operatörün görmediği, sebebi bilinmeyen
+    /// kayıtlar da sessizce yeniden bölünürdü. Artık her hedef AÇIKÇA yazılır ve BEKLENEN DEĞERLERİYLE
+    /// birlikte doğrulanır:
     /// </para>
     /// <code>
-    /// Maintenance:RepairInstallmentPlanDrift=true          # işi etkinleştirir (varsayılan false)
-    /// Maintenance:RepairInstallmentPlanAccountIds=&lt;guid&gt;,…  # opsiyonel: YALNIZ bu cariler
+    /// Maintenance:RepairInstallmentPlanDrift=true                                 # işi etkinleştirir
+    /// Maintenance:RepairInstallmentPlanAccountIds=&lt;accountId&gt;[,&lt;accountId&gt;…]        # ZORUNLU, boş olamaz
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:TenantId=&lt;guid&gt;
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:TotalAmount=8750
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:DepositAmount=0
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:FinancedAmount=8750
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:PlanTotal=8500
+    /// Maintenance:RepairInstallmentPlanExpected:&lt;accountId&gt;:InstallmentCount=10
     /// </code>
     /// <para>
-    /// Önerilen kullanım: bilinen kaydın Id'si listeye yazılır, bir kez deploy edilir, sonuç
-    /// doğrulanır, bayrak tekrar kapatılır. Liste boş bırakılırsa sapmış tüm kayıtlar hedeflenir
-    /// (yine <see cref="MaxInstallmentPlanRepairsPerRun"/> ile sınırlı).
+    /// FAIL-FAST, HER YERDE: bayrak açık ama liste boşsa, bir kimlik/sayı ayrıştırılamıyorsa, hedef
+    /// cari bulunamıyorsa, veritabanındaki değerler beklenen tuple ile BİREBİR eşleşmiyorsa ya da
+    /// hedeflerden biri onarılamıyorsa HİÇBİR VERİ DEĞİŞTİRİLMEDEN istisna fırlatılır ve açılış
+    /// (dolayısıyla deployment) başarısız olur. Sessizce "0 kayıt onarıldı" deyip devam etmek, operatöre
+    /// düzeltme yapıldığını düşündürürdü. Başarıda onarılan sayı hedef sayısına EŞİTTİR.
     /// </para>
     /// <para>
-    /// AÇIKKEN HATA AÇILIŞI DURDURUR: operatör bilinçli olarak bir düzeltme istemişse ve düzeltme
-    /// yapılamadıysa, uygulamanın sonucu bilinmeyen bir durumla trafik almaya devam etmesi yanlış
-    /// olur — deployment başarısız sayılmalıdır. Bayrak kapatılarak her zaman açılışa dönülebilir.
+    /// Önerilen kullanım: yedek alınır, bilinen kaydın kimliği ve beklenen değerleri yazılır, bir kez
+    /// deploy edilir, sapma 1 → 0 doğrulanır, bayrak kapatılır ve servis yeniden başlatılır.
     /// </para>
     /// <para>
     /// Para YARATMAZ/SİLMEZ: "ödenen" bilgisi taksitte değil tahsilat satırlarında durur, plan
     /// yeniden bölünse de tahsilatlar vade sırasıyla yeniden dağıtılır. İptal edilmiş satışa ve
-    /// planı olmayan (peşin) cariye dokunulmaz; finanse edilen tutar 0/negatif ise de dokunulmaz
-    /// (otomatik onarım plan SİLMEZ — böyle bir kayıt varsa elle incelenmelidir).
+    /// planı olmayan (peşin) cariye dokunulmaz; finanse edilen tutar 0/negatif ise de dokunulmaz.
     /// </para>
     /// </summary>
     public static async Task RepairInstallmentPlanDriftAsync(IServiceProvider services, IConfiguration configuration)
@@ -316,19 +324,21 @@ public static class DatabaseBootstrap
         if (!bool.TryParse(configuration["Maintenance:RepairInstallmentPlanDrift"], out var enabled) || !enabled) return;
 
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("InstallmentPlanDriftRepair");
-        var only = ParseAccountIds(configuration["Maintenance:RepairInstallmentPlanAccountIds"]);
 
         try
         {
+            // Konfigürasyon ÖNCE ayrıştırılır: hatalı kurulum veritabanına hiç dokunmadan yakalanır.
+            var targets = ParseRepairTargets(configuration);
+
             using var scope = services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
             if (db.Database.IsInMemory()) return;
 
             logger.LogWarning(
-                "Taksit planı sapma onarımı ETKİN (Maintenance:RepairInstallmentPlanDrift=true). Hedef: {Target}.",
-                only.Count > 0 ? string.Join(", ", only) : "sapmış tüm kayıtlar");
+                "Taksit planı sapma onarımı ETKİN (Maintenance:RepairInstallmentPlanDrift=true). Hedef cari sayısı: {Count} — {Ids}.",
+                targets.Count, string.Join(", ", targets.Select(t => t.AccountId)));
 
-            var repaired = await RepairInstallmentPlanDriftAsync(db, logger, only);
+            var repaired = await RepairInstallmentPlanDriftAsync(db, logger, targets);
             logger.LogInformation("{Count} carinin taksit planı cari toplamıyla hizalandı.", repaired);
         }
         catch (Exception ex)
@@ -339,98 +349,199 @@ public static class DatabaseBootstrap
         }
     }
 
-    /// <summary>Virgülle ayrılmış cari kimliklerini okur; geçersiz/boş girdi boş küme döner.</summary>
-    private static HashSet<Guid> ParseAccountIds(string? raw) =>
-        string.IsNullOrWhiteSpace(raw)
-            ? []
-            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                 .Select(x => Guid.TryParse(x, out var id) ? id : Guid.Empty)
-                 .Where(x => x != Guid.Empty)
-                 .ToHashSet();
+    /// <summary>Bakımın onaracağı TEK cari ve onarımdan ÖNCE beklenen durumu (doğrulama tuple'ı).</summary>
+    /// <param name="FinancedAmount">Beklenen finanse edilen tutar — <c>TotalAmount − DepositAmount</c>.</param>
+    /// <param name="PlanTotal">Beklenen (sapmış) aktif plan toplamı.</param>
+    /// <param name="InstallmentCount">Beklenen aktif taksit sayısı.</param>
+    public sealed record InstallmentPlanRepairTarget(
+        Guid AccountId,
+        Guid TenantId,
+        decimal TotalAmount,
+        decimal DepositAmount,
+        decimal FinancedAmount,
+        decimal PlanTotal,
+        int InstallmentCount);
+
+    /// <summary>
+    /// Hedefleri ve beklenen değerlerini konfigürasyondan STRICT okur. Eksik/bozuk her girdi
+    /// istisnadır: sessizce atlanan bir kimlik, operatörün onardığını sandığı kaydın el değmemiş
+    /// kalması demektir.
+    /// </summary>
+    private static List<InstallmentPlanRepairTarget> ParseRepairTargets(IConfiguration configuration)
+    {
+        var raw = configuration["Maintenance:RepairInstallmentPlanAccountIds"];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            throw new InvalidOperationException(
+                "Maintenance:RepairInstallmentPlanDrift açık ama Maintenance:RepairInstallmentPlanAccountIds boş. "
+                + "Para etkileyen bu bakım yalnızca AÇIKÇA listelenen cariler için çalışır; genel tarama yapılmaz.");
+        }
+
+        var ids = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var targets = new List<InstallmentPlanRepairTarget>(ids.Length);
+        var seen = new HashSet<Guid>();
+
+        foreach (var entry in ids)
+        {
+            if (!Guid.TryParse(entry, out var accountId) || accountId == Guid.Empty)
+            {
+                throw new InvalidOperationException(
+                    $"Maintenance:RepairInstallmentPlanAccountIds içinde geçersiz cari kimliği: '{entry}'. "
+                    + "Hatalı kimlik sessizce atlanmaz; konfigürasyon düzeltilmeli.");
+            }
+            if (!seen.Add(accountId)) continue;
+
+            var section = configuration.GetSection($"Maintenance:RepairInstallmentPlanExpected:{accountId}");
+            if (!section.Exists())
+            {
+                throw new InvalidOperationException(
+                    $"Cari {accountId} için beklenen değerler yok "
+                    + $"(Maintenance:RepairInstallmentPlanExpected:{accountId}:…). Bakım, doğrulanmamış bir kayda dokunmaz.");
+            }
+
+            var tenantIdRaw = section["TenantId"];
+            if (!Guid.TryParse(tenantIdRaw, out var tenantId) || tenantId == Guid.Empty)
+            {
+                throw new InvalidOperationException(
+                    $"Cari {accountId} için beklenen TenantId okunamadı: '{tenantIdRaw}'.");
+            }
+
+            var target = new InstallmentPlanRepairTarget(
+                accountId,
+                tenantId,
+                ReadDecimal(section, accountId, "TotalAmount"),
+                ReadDecimal(section, accountId, "DepositAmount"),
+                ReadDecimal(section, accountId, "FinancedAmount"),
+                ReadDecimal(section, accountId, "PlanTotal"),
+                ReadInt(section, accountId, "InstallmentCount"));
+
+            // Beklenen değerler KENDİ İÇİNDE tutarlı olmalı: finanse = toplam − peşinat ve plan
+            // gerçekten sapmış (plan < finanse) olmalı. Tutarsız bir tuple, operatörün elindeki
+            // rakamların bu kayda ait olmadığını gösterir.
+            if (target.FinancedAmount != target.TotalAmount - target.DepositAmount)
+            {
+                throw new InvalidOperationException(
+                    $"Cari {accountId}: beklenen FinancedAmount ({target.FinancedAmount}) "
+                    + $"TotalAmount − DepositAmount ({target.TotalAmount - target.DepositAmount}) ile uyuşmuyor.");
+            }
+            if (target.InstallmentCount <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Cari {accountId}: beklenen InstallmentCount pozitif olmalı (verilen: {target.InstallmentCount}).");
+            }
+            if (target.PlanTotal >= target.FinancedAmount)
+            {
+                throw new InvalidOperationException(
+                    $"Cari {accountId}: beklenen PlanTotal ({target.PlanTotal}) finanse edilen tutarın "
+                    + $"({target.FinancedAmount}) altında olmalı — bakım yalnızca 'plan eksik' yönünü onarır.");
+            }
+
+            targets.Add(target);
+        }
+
+        if (targets.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Maintenance:RepairInstallmentPlanAccountIds geçerli bir cari kimliği içermiyor.");
+        }
+        return targets;
+    }
+
+    private static decimal ReadDecimal(IConfiguration section, Guid accountId, string key)
+    {
+        var raw = section[key];
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+        throw new InvalidOperationException($"Cari {accountId}: beklenen {key} okunamadı ('{raw}'). Ondalık ayırıcı nokta olmalı.");
+    }
+
+    private static int ReadInt(IConfiguration section, Guid accountId, string key)
+    {
+        var raw = section[key];
+        if (int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+        throw new InvalidOperationException($"Cari {accountId}: beklenen {key} okunamadı ('{raw}').");
+    }
 
     /// <summary>
     /// TEK AÇILIŞTA ONARILACAK EN ÇOK CARİ — devre kesici.
     /// <para>
     /// Bu iş bilinen, DAR bir hatanın (elle güncellenen toplamın planı yeniden kurmaması) geride
-    /// bıraktığı kayıtlar içindir; canlıda böyle TEK kayıt var. Sayı bunun üstüne çıkıyorsa ortada
-    /// tek seferlik bir artık değil SİSTEMİK bir sorun vardır ve para etkileyen bir düzeltmeyi
-    /// binlerce kayda otomatik uygulamak yanlış olur — iş hiç çalışmaz, hata loglanır, karar insana kalır.
+    /// bıraktığı kayıtlar içindir; canlıda böyle TEK kayıt var. Hedef sayısı bunun üstüne çıkıyorsa
+    /// ortada tek seferlik bir artık değil SİSTEMİK bir sorun vardır ve para etkileyen bir düzeltmeyi
+    /// bu ölçekte otomatik uygulamak yanlış olur — iş HATA FIRLATIR, karar insana kalır.
     /// </para>
     /// </summary>
     private const int MaxInstallmentPlanRepairsPerRun = 25;
 
     /// <summary>
-    /// <see cref="RepairInstallmentPlanDriftAsync(IServiceProvider)"/>'ın test edilebilir gövdesi;
-    /// onarılan cari sayısını döndürür.
+    /// <see cref="RepairInstallmentPlanDriftAsync(IServiceProvider, IConfiguration)"/>'ın test edilebilir
+    /// gövdesi; onarılan cari sayısını döndürür — bu sayı DAİMA hedef sayısına eşittir, aksi hâlde
+    /// istisna fırlatılmıştır.
+    ///
+    /// <para>
+    /// FAIL-FAST: hedef listesi boşsa, sınır aşılmışsa, hedef cari yoksa, veritabanındaki değerler
+    /// beklenen tuple ile eşleşmiyorsa ya da onarım uygulanamıyorsa istisna atılır. Eskiden bunların
+    /// hepsi "0 onarıldı" ile sessizce geçiliyordu: operatör düzeltmenin yapıldığını sanıyor, kayıt
+    /// el değmemiş kalıyordu. Her hedef KENDİ transaction'ında onarılır; biri patlarsa o kayıt geri
+    /// alınır, daha önce onarılanlar (ayrı transaction) kalır — hata açılışı durdurduğu için canlıya
+    /// yarım durumla çıkılmaz.
+    /// </para>
     /// </summary>
     public static async Task<int> RepairInstallmentPlanDriftAsync(
-        GuzellikDbContext db, ILogger? logger = null, IReadOnlySet<Guid>? onlyAccountIds = null)
+        GuzellikDbContext db, ILogger? logger, IReadOnlyCollection<InstallmentPlanRepairTarget> targets)
     {
-        // Operatör belirli kayıtları hedeflediyse tarama da onlarla sınırlanır (bkz. opt-in notu).
-        var restrictTo = onlyAccountIds is { Count: > 0 } ? onlyAccountIds : null;
-
-        // ADAY TARAMASI SUNUCUDA: her açılışta tüm cariler belleğe alınmasın (100 binlerce satır).
-        // Startup'ta kiracı bağlamı yok → global süzgeçler atlanır, koşullar elle yazılır.
-        //
-        // YALNIZ "PLAN EKSİK" YÖNÜ: bilinen hata planı cari toplamının ALTINDA bırakıyor
-        // (8.750 cari ↔ 8.500 plan) ve o fark raporlardan sessizce düşüyor. Ters yön
-        // (plan > finanse edilen) bu hatanın imzası DEĞİLDİR; sebebi bilinmeyen bir kaydın
-        // planını otomatik KÜÇÜLTMEK müşteriden beklenen alacağı azaltır → dokunulmaz.
-        var drifted = await db.CustomerAccounts.IgnoreQueryFilters()
-            .Where(a => !a.IsDeleted && a.CancelledAtUtc == null)
-            .Select(a => new
-            {
-                a.Id,
-                Financed = a.TotalAmount - a.DepositAmount,
-                PlanCount = a.Installments.Count(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled),
-                PlanTotal = a.Installments
-                    .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
-                    .Sum(i => (decimal?)i.Amount) ?? 0m,
-            })
-            .Where(x => x.PlanCount > 0 && x.Financed > 0 && x.PlanTotal < x.Financed)
-            .Select(x => x.Id)
-            .ToListAsync();
-
-        // Hedef listesi BELLEKTE süzülür: yerel bir koleksiyonun .Contains()'i MySQL sağlayıcısında
-        // çevrilemiyor ve çalışma zamanında 500 üretiyor (kodda yerleşik tuzak).
-        if (restrictTo is not null) drifted = drifted.Where(restrictTo.Contains).ToList();
-        if (drifted.Count == 0) return 0;
-
-        if (drifted.Count > MaxInstallmentPlanRepairsPerRun)
+        if (targets is null || targets.Count == 0)
         {
-            logger?.LogError(
-                "Taksit planı sapması {Count} caride bulundu (sınır {Limit}). Bu bilinen tek seferlik artığın ötesinde; "
-                + "otomatik onarım ÇALIŞMADI. Kayıtları inceleyip düzeltmeyi elle uygulayın.",
-                drifted.Count, MaxInstallmentPlanRepairsPerRun);
-            return 0;
+            throw new InvalidOperationException(
+                "Taksit planı bakımı hedefsiz çalıştırılamaz: onarılacak cariler açıkça verilmelidir.");
+        }
+
+        if (targets.Count > MaxInstallmentPlanRepairsPerRun)
+        {
+            throw new InvalidOperationException(
+                $"Taksit planı bakımı {targets.Count} cari için istendi (sınır {MaxInstallmentPlanRepairsPerRun}). "
+                + "Bu, bilinen tek seferlik artığın ötesinde; para etkileyen düzeltme bu ölçekte otomatik uygulanmaz.");
         }
 
         var repaired = 0;
-        foreach (var accountId in drifted)
+        foreach (var target in targets)
         {
-            try
-            {
-                if (await RepairSingleInstallmentPlanAsync(db, accountId, logger)) repaired++;
-            }
-            catch (Exception ex)
-            {
-                // Bir kaydın onarılamaması diğerlerini durdurmasın; ama sessiz kalmasın.
-                logger?.LogError(ex, "Cari {AccountId} taksit planı onarılamadı.", accountId);
-            }
+            // Hata YUTULMAZ: tek bir hedef onarılamadıysa deployment başarısız olmalı.
+            await RepairSingleInstallmentPlanAsync(db, target, logger);
+            repaired++;
+        }
+
+        if (repaired != targets.Count)
+        {
+            throw new InvalidOperationException(
+                $"Taksit planı bakımı {targets.Count} hedeften {repaired} tanesini onardı; eksik onarımla devam edilmez.");
         }
         return repaired;
     }
 
     /// <summary>
-    /// TEK CARİYİ KİLİT ALTINDA onarır. Onarım yapıldıysa true.
+    /// TEK CARİYİ KİLİT ALTINDA, BEKLENEN DEĞERLERİNİ DOĞRULAYARAK onarır. Onarılamayan her durum
+    /// istisnadır (hiçbir veri değişmeden geri alınır).
     ///
     /// <para>
     /// PARA ETKİLEYEN YAZMA, İSTEK YOLUNDAKİYLE AYNI PROTOKOLE UYAR (bkz. <see cref="RowLock"/>):
     /// kendi transaction'ı + <c>customer_accounts</c> satır kilidi + kilitten SONRA taze okuma.
     /// Kilitsiz sürüm iki riski taşıyordu: (1) iki backend aynı anda açılırsa ikisi de sapmayı
-    /// görüp planı ayrı ayrı yazıyordu; (2) tarama ile yazma arasında bir kullanıcı toplamı
-    /// güncellerse onarım BAYAT tutara göre bölüyordu. Kilit altında sapma yeniden doğrulanır;
-    /// bu arada kapanmışsa hiçbir şey yazılmaz (idempotent).
+    /// görüp planı ayrı ayrı yazıyordu; (2) okuma ile yazma arasında bir kullanıcı toplamı
+    /// güncellerse onarım BAYAT tutara göre bölüyordu.
+    /// </para>
+    /// <para>
+    /// BEKLENEN TUPLE KİLİT ALTINDA DOĞRULANIR: kurum, toplam, peşinat, finanse edilen tutar, plan
+    /// toplamı ve aktif taksit sayısı operatörün verdiği değerlerle BİREBİR eşleşmezse yazma
+    /// yapılmaz. Böylece yanlış kimlik girilmesi, kaydın arada değişmiş olması ya da yedekten
+    /// dönülmüş bir veritabanına aynı ayarla açılmak sessiz bir mutasyona dönüşemez.
     /// </para>
     /// <para>
     /// Plan YENİDEN KURULMAZ, tutarlar yerinde düzeltilir
@@ -438,15 +549,17 @@ public static class DatabaseBootstrap
     /// ödeme damgaları ve elle girilmiş vadeler korunur.
     /// </para>
     /// </summary>
-    private static async Task<bool> RepairSingleInstallmentPlanAsync(GuzellikDbContext db, Guid accountId, ILogger? logger)
+    private static async Task RepairSingleInstallmentPlanAsync(
+        GuzellikDbContext db, InstallmentPlanRepairTarget target, ILogger? logger)
     {
+        var accountId = target.AccountId;
         var relational = db.Database.IsRelational();
         await using var tx = relational && db.Database.CurrentTransaction is null
             ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
             : null;
 
         if (relational && !await RowLock.LockRowAsync(db, "customer_accounts", accountId, CancellationToken.None))
-            return false;
+            throw new InvalidOperationException($"Hedef cari {accountId} bulunamadı (satır kilitlenemedi).");
 
         // HEDEFLİ DETACH (genel ChangeTracker.Clear DEĞİL — o, dış akışın bekleyen değişikliklerini
         // de silerdi): izleyicide bu cariye ait bayat bir kopya varsa sorgu onu DÖNDÜRÜR ve
@@ -456,19 +569,36 @@ public static class DatabaseBootstrap
         var account = await db.CustomerAccounts.IgnoreQueryFilters()
             .Include(a => a.Installments)
             .FirstOrDefaultAsync(a => a.Id == accountId);
-        if (account is null || account.IsDeleted || account.CancelledAtUtc is not null) return false;
+        if (account is null)
+            throw new InvalidOperationException($"Hedef cari {accountId} bulunamadı.");
+        if (account.IsDeleted || account.CancelledAtUtc is not null)
+            throw new InvalidOperationException($"Hedef cari {accountId} silinmiş ya da iptal edilmiş; bakım uygulanmaz.");
 
         var activePlan = account.Installments
             .Where(i => !i.IsDeleted && i.Status != InstallmentStatus.Cancelled)
             .ToList();
-        if (activePlan.Count == 0) return false;
 
-        // SAPMA KİLİT ALTINDA YENİDEN DOĞRULANIR — taramadaki anlık görüntüye güvenilmez.
         var financed = account.TotalAmount - account.DepositAmount;
         var before = activePlan.Sum(i => i.Amount);
-        if (financed <= 0 || before >= financed) return false;
 
-        if (!account.RealignInstallmentAmounts()) return false;
+        // BEKLENEN DEĞERLER — hepsi kilit altında, tek tek.
+        Expect(accountId, "TenantId", target.TenantId, account.TenantId);
+        Expect(accountId, "TotalAmount", target.TotalAmount, account.TotalAmount);
+        Expect(accountId, "DepositAmount", target.DepositAmount, account.DepositAmount);
+        Expect(accountId, "FinancedAmount", target.FinancedAmount, financed);
+        Expect(accountId, "PlanTotal", target.PlanTotal, before);
+        Expect(accountId, "InstallmentCount", target.InstallmentCount, activePlan.Count);
+
+        if (financed <= 0 || before >= financed)
+        {
+            throw new InvalidOperationException(
+                $"Hedef cari {accountId}: beklenen sapma yok (finanse {financed}, plan {before}). "
+                + "Kayıt zaten hizalı olabilir; bakım bayrağı kaldırılmalı.");
+        }
+
+        if (!account.RealignInstallmentAmounts())
+            throw new InvalidOperationException($"Hedef cari {accountId}: taksit tutarları hizalanamadı.");
+
         await db.SaveChangesAsync();
         if (tx is not null) await tx.CommitAsync();
 
@@ -476,7 +606,15 @@ public static class DatabaseBootstrap
         logger?.LogInformation(
             "Cari {AccountId}: plan {Before} → {After} (taksit {Count}; satır kimlikleri ve vadeler korundu).",
             accountId, before, financed, activePlan.Count);
-        return true;
+    }
+
+    /// <summary>Beklenen ile gerçekleşen değer aynı değilse bakımı durdurur (hiçbir yazma yapılmadan).</summary>
+    private static void Expect<T>(Guid accountId, string field, T expected, T actual)
+    {
+        if (EqualityComparer<T>.Default.Equals(expected, actual)) return;
+        throw new InvalidOperationException(
+            $"Hedef cari {accountId}: {field} beklenenle uyuşmuyor (beklenen {expected}, veritabanında {actual}). "
+            + "Hiçbir veri değiştirilmedi.");
     }
 
     /// <summary>Bir cariyi ve taksitlerini izleyiciden düşürür (bkz. <c>AdisyonService.DetachAdisyonAggregate</c>).</summary>

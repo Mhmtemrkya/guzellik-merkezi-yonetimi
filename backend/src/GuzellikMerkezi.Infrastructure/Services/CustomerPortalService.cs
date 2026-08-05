@@ -302,39 +302,29 @@ public sealed class CustomerPortalService : ICustomerPortalService
 
         var appointment = new Appointment(tenantId, request.BranchId, bookingCustomerId, request.StaffMemberId, request.ServiceDefinitionId,
             startUtc, endUtc, service.Price, request.Notes, isOnline: true);
-        // #RNDV NUMARASI BURADA DA ATANIR. Yalnız yönetici yolu numara veriyordu; portal/mobil
-        // üzerinden gelen randevular Number = null kalıyor, onayda da tamamlanmıyordu → listelerde
-        // ve aramada numarasız kayıtlar oluşuyordu. Kural yönetici yoluyla aynı: MAX(Number)+1,
-        // taban 10000.
-        var maxNumber = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
-            .Where(a => a.TenantId == tenantId && a.Number != null)
-            .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
-        appointment.AssignNumber(maxNumber + 1);
+
+        // NUMARA ÜRETİMİ KİLİT ALTINDA SERİLEŞTİRİLİR (bkz. AppointmentNumbering).
+        //
+        // #RNDV numarası portalda da verilir (yalnız yönetici yolu veriyordu; portal kayıtları
+        // numarasız kalıyordu). Ama MAX(Number)+1 KİLİTSİZ hesaplanıyordu: aynı kuruma gelen
+        // eşzamanlı online talepler aynı numarayı seçiyor, {TenantId, Number} benzersiz indeksi
+        // ikinciyi reddediyordu. "Yeniden dener" döngüsü bunu maskeliyordu ama iki sorunu vardı:
+        // (1) yoğun eşzamanlılıkta üç deneme de aynı yarışı kaybedip müşteriye 500 dönebiliyordu,
+        // (2) numarayla İLGİSİZ her DbUpdateException da yutuluyordu. Kurum satırının kilidi
+        // yarışı kaynağında bitirir; retry yalnızca güvenlik ağı olarak kalır.
+        var transactional = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null;
+        await using var tx = transactional
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        appointment.AssignNumber(await AppointmentNumbering.NextNumberLockedAsync(_db, tenantId, cancellationToken));
         // Online randevu doğrudan takvime düşmez: kurum yöneticisi onayına (Draft) gönderilir.
         // Yönetici onay kutusunda (inbox) görür; onaylayınca Scheduled olur. Draft slot bloke etmez.
         appointment.SubmitForApproval();
         _db.Appointments.Add(appointment);
 
-        // NUMARA YARIŞI PORTALDA DA ELE ALINIR (yönetici yolundaki desenin aynısı). MAX(Number)+1
-        // kilitsiz hesaplanıyor: iki eşzamanlı online talep aynı numarayı seçerse {TenantId, Number}
-        // benzersiz indeksi ikinciyi reddeder ve müşteri 500 görürdü. Eskiden bu "istek hata verir,
-        // müşteri tekrar dener" diye kabulleniliyordu; sunucunun kendi ürettiği bir çakışmayı
-        // müşteriye yansıtmak doğru değil — numara yeniden hesaplanıp yeniden denenir.
-        for (var attempt = 0; ; attempt++)
-        {
-            try
-            {
-                await _db.SaveChangesAsync(cancellationToken);
-                break;
-            }
-            catch (DbUpdateException) when (attempt < 3)
-            {
-                var next = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
-                    .Where(a => a.TenantId == tenantId && a.Number != null)
-                    .MaxAsync(a => (int?)a.Number, cancellationToken) ?? 10000;
-                appointment.ReassignNumberForRetry(next + 1);
-            }
-        }
+        await AppointmentNumbering.SaveWithNumberRetryAsync(_db, tenantId, appointment, cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         await _audit.LogAsync(tenantId, request.BranchId, "Create", "Appointment", appointment.Id,
             $"Online randevu talebi alındı — yönetici onayı bekliyor ({appointment.StartUtc:dd.MM.yyyy HH:mm})",

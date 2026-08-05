@@ -166,10 +166,11 @@ await DatabaseBootstrap.BackfillPackageSessionUsagesAsync(app.Services);
 // eşleştirme SQL'de yapılamaz; çözülmüş değer uygulama içinde adisyon Id'siyle eşlenir.
 await DatabaseBootstrap.BackfillAdisyonSourceLinksAsync(app.Services);
 
-// Taksit planı cari toplamının gerisinde kalmış carileri hizalar. OPT-IN — varsayılan KAPALI:
-// para etkileyen bir veri düzeltmesi her açılışta, her kurumda kendiliğinden çalışmamalı.
-// Operatör Maintenance:RepairInstallmentPlanDrift=true (+ opsiyonel ...AccountIds listesi) ile
-// bilinçli olarak açar, doğrular, kapatır. Açıkken hata alınırsa açılış BAŞARISIZ olur.
+// Taksit planı cari toplamının gerisinde kalmış carileri hizalar. OPT-IN + HEDEFLİ — varsayılan
+// KAPALI: para etkileyen bir veri düzeltmesi her açılışta, her kurumda kendiliğinden çalışmamalı.
+// Bayrağın tek başına açılması YETMEZ; ...AccountIds listesi ve her cari için beklenen değerler
+// (...Expected:<accountId>:TenantId/TotalAmount/DepositAmount/FinancedAmount/PlanTotal/InstallmentCount)
+// zorunludur. Eksik ayar, uyuşmayan değer ya da onarılamayan hedef → açılış BAŞARISIZ (veri değişmez).
 await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(app.Services, app.Configuration);
 
 // GÜVENLİK: reverse proxy arkasında gerçek istemci IP'sini X-Forwarded-For / -Proto'dan çöz — böylece
