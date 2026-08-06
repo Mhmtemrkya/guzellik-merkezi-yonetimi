@@ -88,7 +88,6 @@ public sealed class CommissionService : ICommissionService
 
         var total = unpaid.Sum(c => c.Amount);
         var nowUtc = DateTime.UtcNow;
-        foreach (var commission in unpaid) commission.MarkPaid(nowUtc);
 
         // Kasaya gider olarak yansıt (Salary kategorisi) — AYNI transaction, AYNI SaveChanges.
         var expense = new BusinessExpense(
@@ -97,6 +96,14 @@ public sealed class CommissionService : ICommissionService
             periodLabel: $"{nowUtc:yyyy-MM}", reference: "PRIM");
         expense.Approve();
         _db.BusinessExpenses.Add(expense);
+
+        // PARTİ BAĞI: her prim, kendisini ödeyen kasa çıkışını taşır.
+        //
+        // Eskiden bağ yoktu; gider satırı ile primler arasında yalnız tutar/tarih benzerliği vardı.
+        // "Bu 4.500 TL hangi primleri kapatıyor?" sorusunun kesin cevabı yoktu ve ödeme iptal
+        // edilirse hangi primlerin yeniden açılacağı bilinemiyordu. Bağ ÖNCE gider oluşturulup
+        // sonra yazılır; ikisi aynı SaveChanges'te kalıcı olur.
+        foreach (var commission in unpaid) commission.MarkPaid(nowUtc, expense.Id);
 
         await _db.SaveChangesAsync(cancellationToken);
         if (tx is not null) await tx.CommitAsync(cancellationToken);

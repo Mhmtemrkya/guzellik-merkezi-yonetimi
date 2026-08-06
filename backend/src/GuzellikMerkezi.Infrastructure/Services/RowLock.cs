@@ -52,6 +52,11 @@ public static class RowLock
         "products",
         "gift_cards",
         "customer_package_sessions",
+        // Gider iptali: "iptal edilmiş mi?" kontrolü ile ters kaydın yazılması arasında başka bir
+        // istek araya girip İKİNCİ bir ters kayıt üretebiliyordu (defter, giderin tutarı kadar
+        // eksiye kayardı). Zincirin SONUNDA durur: bu yolu kullanan servis başka kilit almaz,
+        // dolayısıyla mevcut sıraları bozmaz.
+        "business_expenses",
     ];
 
     /// <summary>Tek bir satırı kilitler; satır yoksa false döner.</summary>

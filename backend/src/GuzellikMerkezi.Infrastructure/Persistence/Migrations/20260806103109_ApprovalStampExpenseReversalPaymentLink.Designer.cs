@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GuzellikDbContext))]
-    [Migration("20260806090820_ApprovalStampExpenseReversalPaymentLink")]
+    [Migration("20260806103109_ApprovalStampExpenseReversalPaymentLink")]
     partial class ApprovalStampExpenseReversalPaymentLink
     {
         /// <inheritdoc />
@@ -873,7 +873,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BranchId");
 
-                    b.HasIndex("ReversalOfExpenseId");
+                    b.HasIndex("ReversalOfExpenseId")
+                        .IsUnique();
 
                     b.HasIndex("StaffMemberId");
 
@@ -3231,6 +3232,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("PayoutExpenseId")
+                        .HasColumnType("char(36)");
+
                     b.Property<decimal>("RatePercent")
                         .HasPrecision(9, 2)
                         .HasColumnType("decimal(9,2)");
@@ -3259,6 +3263,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PayoutExpenseId");
 
                     b.HasIndex("SourceItemId");
 

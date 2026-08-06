@@ -159,7 +159,7 @@ public sealed class AppointmentWithSaleAndBranchScopeTests
 
         // ŞUBE B'ye ait bekleyen işlem.
         var op = new PendingOperation(tenant.Id, b.Id, staff.Id, "Personel B",
-            PendingOperationType.HttpReplay, "Şube B satışı", "POST /api/admin/adisyonlar/x/approve", "{}");
+            PendingOperationType.HttpReplay, "Şube B satışı", "POST /api/admin/adisyonlar/x/approve", "{}", DateTime.MinValue);
         db.PendingOperations.Add(op);
         await db.SaveChangesAsync();
 

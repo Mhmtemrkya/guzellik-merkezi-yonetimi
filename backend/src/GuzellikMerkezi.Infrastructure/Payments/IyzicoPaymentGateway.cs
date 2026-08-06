@@ -114,7 +114,8 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
             Str(json, "cardFamily"),
             Str(json, "cardBankName"),
             paid ? null : Str(json, "errorCode"),
-            paid ? null : ErrorText(json, "Ödeme tamamlanamadı.")));
+            paid ? null : ErrorText(json, "Ödeme tamamlanamadı."),
+            Str(json, "currency")));
     }
 
     public async Task<Result<ChargeResult>> ChargeStoredCardAsync(StoredCardChargeRequest request, CancellationToken ct = default)

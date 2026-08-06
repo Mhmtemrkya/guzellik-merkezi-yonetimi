@@ -88,8 +88,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # SÜRÜM SABİT. `channel: stable` her koşuda O ANKİ en güncel Flutter'ı çeker: CI, hiç kimsenin
+      # üzerinde çalışmadığı bir araç zinciriyle analiz yapar ve yeni analizör kuralları yüzünden
+      # kod değişmeden kırmızıya döner (bu gerçekten yaşandı). Geliştirme ortamıyla AYNI sürüm
+      # sabitlenir; SDK yükseltmesi ayrı ve bilinçli bir iş olmalıdır (yükseltip raporladıklarını
+      # düzeltmek, sürprizle karşılaşmak değil).
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.35.5'
           channel: stable
           cache: true
 

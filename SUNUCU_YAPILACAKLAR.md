@@ -3,6 +3,37 @@
 Denetim bulgularının **sunucu tarafına düşen** kısmı. Kod tarafı ayrı; burada yalnızca makinede
 yapılacak işler var.
 
+---
+
+## 0. ⚠️ DEPLOY HELPER'I GÜNCELLE (bu deploy'dan ÖNCE)
+
+Sunucudaki deploy betiği migration'ları hâlâ **üretilmiş SQL dosyasını içeri aktararak** uyguluyor.
+Bu yol uygulamanın korumalarını **kullanmaz**:
+
+- veritabanına özel `GET_LOCK` yok → iki örnek aynı anda migrate edebilir,
+- `__migration_attempt` izi yazılmaz → DDL uygulanıp geçmiş yazılmadan çökerse bir sonraki açılış
+  "Duplicate column" ile **kalıcı olarak** patlar,
+- çok ifadeli betikte bir sözdizimi hatası şemayı **yarıda bırakır** (71→75 provasında yaşandı).
+
+Betikteki migration adımı şununla değiştirilmeli:
+
+```bash
+# ESKİ (kaldır):
+#   dotnet ef migrations script <from> <to> -o /tmp/up.sql && mysql ... < /tmp/up.sql
+#   veya  dotnet ef database update ...
+
+# YENİ:
+./GuzellikMerkezi.Api --migrate-only
+if [ $? -ne 0 ]; then
+  echo "Migration basarisiz — deploy durduruldu, symlink/servis DEGISTIRILMEDI."
+  exit 1
+fi
+```
+
+Sıra **kesin**: `--migrate-only` 0 dönmeden servis yeni sürüme alınmaz. Sunucuda EF CLI'ye de
+gerek kalmaz. `/health/ready` artık şema paritesine baktığı için, migration uygulanmadan trafiğe
+alınan bir örnek zaten **503 SchemaOutOfDate** döner.
+
 > **Ön koşul:** 2–6 arası maddeler yeni sürüm deploy edildikten sonra anlamlıdır. Madde 1 (nginx)
 > deploy'dan bağımsız ve tek başına güvenli — hemen yapılabilir.
 

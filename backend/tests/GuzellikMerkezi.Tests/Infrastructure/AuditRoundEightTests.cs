@@ -355,6 +355,179 @@ public sealed class AuditRoundEightTests
         }
     }
 
+    // ── Y2b/Y3b: ters kayıt tekilliği ve değişmezliği ────────────────────────────────────
+
+    private static async Task<(Guid TenantId, Guid ExpenseId)> SeedApprovedExpenseAsync(
+        DbContextOptions<GuzellikDbContext> options, decimal amount = 1000m)
+    {
+        await using var db = NewDb(options);
+        var tenant = new Tenant("Ters QA", $"ters-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+        var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var expense = new BusinessExpense(tenant.Id, branch.Id, ExpenseCategory.Rent, amount, DateTime.UtcNow);
+        expense.Approve();
+        db.BusinessExpenses.Add(expense);
+        await db.SaveChangesAsync();
+        return (tenant.Id, expense.Id);
+    }
+
+    /// <summary>
+    /// ASIL İDDİA: ters kayıt SONRADAN DÜZENLENEMEZ. Düzenlenebilseydi asıl satırla oluşturduğu
+    /// çift birbirini götürmez, defter kalıcı olarak şişer ya da eksilirdi — hiçbir yerde hata
+    /// görünmeden.
+    /// </summary>
+    [Fact]
+    public async Task UpdateExpense_ReversalRow_IsRejected()
+    {
+        var options = NewOptions();
+        var (tenantId, expenseId) = await SeedApprovedExpenseAsync(options);
+        var owner = new TestCurrentUser(UserRole.InstitutionOwner, tenantId, null);
+
+        await using (var db = NewDb(options))
+            await new ExpenseService(db, new NoopAuditLogger(), owner)
+                .VoidAsync(tenantId, expenseId, new VoidExpenseRequest("Yanlis girildi"));
+
+        Guid reversalId;
+        await using (var check = NewDb(options))
+            reversalId = (await check.BusinessExpenses.AsNoTracking().SingleAsync(e => e.ReversalOfExpenseId != null)).Id;
+
+        await using (var db = NewDb(options))
+        {
+            var result = await new ExpenseService(db, new NoopAuditLogger(), owner).UpdateAsync(tenantId, reversalId,
+                new UpdateExpenseRequest(ExpenseCategory.Rent, 1m, ExpensePaymentMethod.Cash, DateTime.UtcNow,
+                    null, null, "degistirildi", null));
+            Assert.True(result.IsFailure, "Ters kayit duzenlenebildi — defter dengesi bozulabilir.");
+            Assert.Equal("Conflict", result.Error.Code);
+        }
+
+        await using (var final = NewDb(options))
+            Assert.Equal(0m, await final.BusinessExpenses.AsNoTracking().Where(e => e.IsApproved).SumAsync(e => e.Amount));
+    }
+
+    /// <summary>
+    /// GEÇERSİZ KILINMIŞ ASIL SATIR da düzenlenemez — çiftin diğer ucu.
+    /// </summary>
+    [Fact]
+    public async Task UpdateExpense_VoidedOriginal_IsRejected()
+    {
+        var options = NewOptions();
+        var (tenantId, expenseId) = await SeedApprovedExpenseAsync(options);
+        var owner = new TestCurrentUser(UserRole.InstitutionOwner, tenantId, null);
+
+        await using (var db = NewDb(options))
+            await new ExpenseService(db, new NoopAuditLogger(), owner)
+                .VoidAsync(tenantId, expenseId, new VoidExpenseRequest("Yanlis girildi"));
+
+        await using (var db = NewDb(options))
+        {
+            var result = await new ExpenseService(db, new NoopAuditLogger(), owner).UpdateAsync(tenantId, expenseId,
+                new UpdateExpenseRequest(ExpenseCategory.Rent, 9999m, ExpensePaymentMethod.Cash, DateTime.UtcNow,
+                    null, null, "degistirildi", null));
+            Assert.True(result.IsFailure, "Iptal edilmis gider duzenlenebildi.");
+        }
+    }
+
+    /// <summary>
+    /// ASIL İDDİA (GERÇEK VERİTABANI): aynı gider için EŞZAMANLI iki iptal TEK ters kayıt üretir.
+    /// İkisi de yazabilseydi defter, giderin tutarı kadar EKSİYE kayardı.
+    /// </summary>
+    [MySqlFact]
+    public async Task VoidExpense_Concurrent_ProducesExactlyOneReversal()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        Guid tenantId, expenseId;
+
+        await using (var db = database.NewContext())
+        {
+            var tenant = new Tenant("Ters SQL", $"terssql-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var expense = new BusinessExpense(tenant.Id, branch.Id, ExpenseCategory.Rent, 1000m, DateTime.UtcNow);
+            expense.Approve();
+            db.BusinessExpenses.Add(expense);
+            await db.SaveChangesAsync();
+            tenantId = tenant.Id;
+            expenseId = expense.Id;
+        }
+
+        async Task<bool> VoidOnceAsync()
+        {
+            await using var db = database.NewContext();
+            var owner = new TestCurrentUser(UserRole.InstitutionOwner, tenantId, null);
+            var result = await new ExpenseService(db, new NoopAuditLogger(), owner)
+                .VoidAsync(tenantId, expenseId, new VoidExpenseRequest("Eszamanli iptal"));
+            return result.IsSuccess;
+        }
+
+        var outcomes = await Task.WhenAll(VoidOnceAsync(), VoidOnceAsync());
+        Assert.Equal(1, outcomes.Count(ok => ok));
+
+        await using (var check = database.NewContext())
+        {
+            var rows = await check.BusinessExpenses.AsNoTracking().Where(e => e.TenantId == tenantId).ToListAsync();
+            Assert.Equal(1, rows.Count(e => e.ReversalOfExpenseId == expenseId));
+            // NET SIFIR: çift iptal defteri eksiye çekmedi.
+            Assert.Equal(0m, rows.Where(e => e.IsApproved).Sum(e => e.Amount));
+        }
+    }
+
+    // ── Y4b: komisyon ödemesi parti bağı ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// ASIL İDDİA: prim ödemesinde her prim, kendisini ödeyen KASA ÇIKIŞINI taşır. Bağ olmadan
+    /// "bu 4.500 TL hangi primleri kapatıyor?" sorusunun kesin cevabı yoktu.
+    /// </summary>
+    [Fact]
+    public async Task PayCommissions_LinksEachCommissionToPayoutExpense()
+    {
+        var options = NewOptions();
+        Guid tenantId, staffId;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Prim QA", $"prim-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var staff = new StaffMember(tenant.Id, branch.Id, "Uzman", "Uzman");
+            db.StaffMembers.Add(staff);
+            await db.SaveChangesAsync();
+
+            db.StaffCommissions.AddRange(
+                new StaffCommission(tenant.Id, branch.Id, staff.Id, Guid.CreateVersion7(), null,
+                    "Service", "Prim 1", 15000m, 10m, DateTime.UtcNow.AddDays(-2)),
+                new StaffCommission(tenant.Id, branch.Id, staff.Id, Guid.CreateVersion7(), null,
+                    "Service", "Prim 2", 30000m, 10m, DateTime.UtcNow.AddDays(-1)));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            staffId = staff.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var result = await new CommissionService(db, new NoopAuditLogger()).PayAsync(tenantId, staffId, null, null);
+            Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var expense = await check.BusinessExpenses.AsNoTracking().SingleAsync();
+            var commissions = await check.StaffCommissions.AsNoTracking().ToListAsync();
+
+            Assert.Equal(4500m, expense.Amount);
+            Assert.All(commissions, c => Assert.True(c.IsPaid));
+            // PARTİ BAĞI: her prim aynı kasa çıkışını gösterir.
+            Assert.All(commissions, c => Assert.Equal(expense.Id, c.PayoutExpenseId));
+            Assert.Equal(expense.Amount, commissions.Sum(c => c.Amount));
+        }
+    }
+
     // ── Y3: şube kasa kapanışı ───────────────────────────────────────────────────────────
 
     private sealed record CashSeed(Guid TenantId, Guid BranchA, Guid BranchB);
@@ -590,11 +763,17 @@ public sealed class AuditRoundEightTests
     }
 
     /// <summary>
-    /// ESKİ KAYITLAR (damgasız) çalışmaya devam eder: geçiş sırasında kuyrukta bekleyen istekler
-    /// kilitlenmemeli.
+    /// ASIL İDDİA (KRİTİK): DAMGASIZ bekleyen kayıt FAIL-CLOSED'dır — uygulanmaz.
+    ///
+    /// <para>
+    /// Kolon eklenmeden önce kuyrukta bekleyen istekler null damgalıydı ve karşılaştırma
+    /// atlandığı için parola sıfırlama / zorunlu çıkış SONRASINDA bile uygulanabiliyorlardı;
+    /// yani korumanın engellemesi gereken durumun ta kendisi açık kalıyordu. Geçiş migration'ı
+    /// bu kayıtları doldurur, kod da yine de null gördüğünde durur.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task RequesterScope_LegacyOperationWithoutStamp_IssuesToken()
+    public async Task RequesterScope_LegacyOperationWithoutStamp_IsRefused()
     {
         var options = NewOptions();
         var (tenantId, staffId, _) = await SeedStaffAsync(options);
@@ -610,7 +789,72 @@ public sealed class AuditRoundEightTests
         {
             var scope = new ApprovalRequesterScope(db, TestTokens.Create());
             var result = await scope.CreateAccessTokenAsync(tenantId, staffId, null, Guid.CreateVersion7(), null);
-            Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+            Assert.True(result.IsFailure, "Damgasiz eski kayit replay edilebildi (fail-open).");
+            Assert.Equal("Conflict", result.Error.Code);
+        }
+    }
+
+    /// <summary>
+    /// GEÇİŞ MIGRATION'I eski bekleyen kayıtların damgasını doldurur; böylece yükseltmeden sonra
+    /// kuyrukta kalan meşru istekler kilitlenmez ve fail-open penceresi de kapanır.
+    /// </summary>
+    [MySqlFact]
+    public async Task Migration_BackfillsPendingApprovalStamps()
+    {
+        await using var database = await MySqlTestDatabase.CreateEmptyAsync();
+
+        await using (var db = database.NewContext())
+            await DatabaseBootstrap.MigrateDatabaseAsync(db, null);
+
+        Guid pendingId, decidedId;
+        DateTime? staffStamp;
+
+        await using (var db = database.NewContext())
+        {
+            var tenant = new Tenant("Backfill QA", $"bf-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var staff = tenant.GrantAccess($"p-{Guid.NewGuid():N}"[..14] + "@qa.test", UserRole.Staff, null, "Personel");
+            staff.InvalidateSessions(DateTime.UtcNow.AddMinutes(-5));   // gerçek damga
+            db.TenantUsers.Add(staff);
+            await db.SaveChangesAsync();
+            staffStamp = staff.SecurityStampUtc;
+
+            var pending = new PendingOperation(tenant.Id, null, staff.Id, "Personel",
+                PendingOperationType.HttpReplay, "Bekleyen", "x", "{}");
+            var decided = new PendingOperation(tenant.Id, null, staff.Id, "Personel",
+                PendingOperationType.HttpReplay, "Karara baglanmis", "x", "{}");
+            decided.Reject(staff.Id, "eski kayit");
+            db.PendingOperations.AddRange(pending, decided);
+            await db.SaveChangesAsync();
+            pendingId = pending.Id;
+            decidedId = decided.Id;
+
+            // Yükseltme ÖNCESİ durumu taklit et: damgaları NULL'a çek.
+            await db.Database.ExecuteSqlRawAsync("UPDATE pending_operations SET RequesterSecurityStampUtc = NULL");
+        }
+
+        // Migration'ın backfill adımını yeniden çalıştır (idempotent: yalnız NULL satırlara dokunur).
+        await using (var db = database.NewContext())
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE `pending_operations` p " +
+                "LEFT JOIN `tenant_users` u ON u.`Id` = p.`RequestedByUserId` " +
+                "SET p.`RequesterSecurityStampUtc` = COALESCE(u.`SecurityStampUtc`, '0001-01-01 00:00:00') " +
+                "WHERE p.`RequesterSecurityStampUtc` IS NULL AND p.`Status` IN ('Pending', 'Processing')");
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var pending = await check.PendingOperations.AsNoTracking().SingleAsync(x => x.Id == pendingId);
+            Assert.NotNull(pending.RequesterSecurityStampUtc);
+            Assert.Equal(staffStamp!.Value.ToString("yyyy-MM-dd HH:mm:ss"),
+                pending.RequesterSecurityStampUtc!.Value.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            // Karara bağlanmış kayda dokunulmaz: damgası anlamsızdır.
+            var decided = await check.PendingOperations.AsNoTracking().SingleAsync(x => x.Id == decidedId);
+            Assert.Null(decided.RequesterSecurityStampUtc);
         }
     }
 

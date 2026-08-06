@@ -239,7 +239,7 @@ public sealed class AuditRoundSevenPhase1Tests
         await db.SaveChangesAsync();
 
         var op = new PendingOperation(tenant.Id, branchA.Id, staff.Id, "Personel",
-            PendingOperationType.HttpReplay, "Randevu oluştur", "POST /api/admin/appointments", "{}");
+            PendingOperationType.HttpReplay, "Randevu oluştur", "POST /api/admin/appointments", "{}", DateTime.MinValue);
         db.PendingOperations.Add(op);
         await db.SaveChangesAsync();
 

@@ -239,7 +239,7 @@ public sealed class DeployBlockerRoundSixMySqlTests
 
         // GENERIC dispatch türü (HttpReplay DEĞİL): korumanın eksik olduğu yol tam olarak buydu.
         var op = new PendingOperation(tenant.Id, branch.Id, staff.Id, "Personel",
-            PendingOperationType.CreateExpense, "Gider kaydı", "POST /api/admin/expenses", "{}");
+            PendingOperationType.CreateExpense, "Gider kaydı", "POST /api/admin/expenses", "{}", DateTime.MinValue);
         db.PendingOperations.Add(op);
         await db.SaveChangesAsync();
 

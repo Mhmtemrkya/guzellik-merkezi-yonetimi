@@ -870,7 +870,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BranchId");
 
-                    b.HasIndex("ReversalOfExpenseId");
+                    b.HasIndex("ReversalOfExpenseId")
+                        .IsUnique();
 
                     b.HasIndex("StaffMemberId");
 
@@ -3228,6 +3229,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("PayoutExpenseId")
+                        .HasColumnType("char(36)");
+
                     b.Property<decimal>("RatePercent")
                         .HasPrecision(9, 2)
                         .HasColumnType("decimal(9,2)");
@@ -3256,6 +3260,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PayoutExpenseId");
 
                     b.HasIndex("SourceItemId");
 

@@ -80,7 +80,13 @@ public sealed record CheckoutResult(
     string? CardFamily,
     string? CardBankName,
     string? ErrorCode,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    /// <summary>
+    /// Sağlayıcının DÖNDÜĞÜ para birimi. Tutar tek başına yetmez: istek TRY gönderse bile sonuç
+    /// başka bir birimde dönebilir ve "100" değeri 100 TL sanılıp abonelik açılabilirdi.
+    /// Boş bırakılırsa (eski/sahte sağlayıcı) doğrulama atlanmaz — çağıran TRY bekler.
+    /// </summary>
+    string? Currency = null);
 
 public sealed record StoredCardChargeRequest(
     string ConversationId,

@@ -47,11 +47,22 @@ public sealed class ApprovalRequesterScope : IApprovalRequesterScope
         // oturumlarını düşür" olaylarında tazelenir. Replay burada YENİ bir token ürettiği için,
         // damga karşılaştırılmazsa bu iptal olayı sessizce atlanırdı: hesabı ele geçirilmiş bir
         // personelin kuyrukta bekleyen isteği, parola sıfırlandıktan SONRA bile uygulanabilirdi.
+        // DAMGASIZ KAYIT FAIL-CLOSED. Kolon eklenmeden ÖNCE oluşmuş bekleyen istekler null damgalı
+        // kalıyordu ve karşılaştırma atlandığı için, parola sıfırlama/zorunlu çıkış sonrasında bile
+        // uygulanabiliyorlardı — tam da bu korumanın engellemesi gereken durum. Geçiş migration'ı
+        // bekleyen kayıtları backfill eder; yine de null kalan bir kayıt varsa (elle eklenmiş,
+        // backfill'den sonra oluşmuş bozuk satır) İŞLEM UYGULANMAZ.
+        if (requesterSecurityStampUtc is null)
+        {
+            return Result<string>.Failure(Error.Conflict(
+                "Bu bekleyen işlemde istek sahibinin oturum güvenlik damgası kayıtlı değil; " +
+                "onay güvenli biçimde uygulanamaz. İşlemi reddedip personelden yeniden göndermesini isteyin."));
+        }
+
         // Kayıtlı değer sentinel (MinValue) olabilir: "istek anında hiç oturum iptali yaşanmamıştı".
         // Karşılaştırma bu yüzden aynı sentinel'e normalize edilir; sonradan yapılan gerçek bir
         // iptal (parola sıfırlama) MinValue'dan farklı olacağı için yakalanır.
-        if (requesterSecurityStampUtc is { } stampedAt
-            && (requester.SecurityStampUtc ?? DateTime.MinValue) != stampedAt)
+        if ((requester.SecurityStampUtc ?? DateTime.MinValue) != requesterSecurityStampUtc.Value)
         {
             return Result<string>.Failure(Error.Conflict(
                 "İsteği gönderen kullanıcının oturum güvenliği istekten sonra değişmiş (parola sıfırlama, " +

@@ -37,11 +37,41 @@ public sealed class AuditRoundSevenPhase5Tests
     {
         await using var database = await MySqlTestDatabase.CreateEmptyAsync();
 
+        // ŞEMA UYGULAMANIN KENDİ ÇALIŞTIRICISIYLA KURULUR — canlıdaki desteklenen yol budur
+        // (`--migrate-only`). Betik yolu YÜKSELTME için kullanılır ve aşağıda o sınanır.
+        //
+        // Sıfırdan kurulumun betikle yapılamamasının bilinen bir nedeni var: zincirdeki eski bir
+        // migration (StaffTimeOffHourRange) saklı yordam gövdesi içerir ve `;` ile bölünen bir
+        // dosyada parçalanır. O migration CANLIDA UYGULANMIŞ durumdadır; uygulanmış migration
+        // DEĞİŞTİRİLMEZ (bkz. migration-manifest.sh) — bu yüzden düzeltilmez, kapsam dışı bırakılır.
+        await using (var db = database.NewContext())
+            await DatabaseBootstrap.MigrateDatabaseAsync(db, null);
+
+        // Şimdi asıl iddia: SON migration'ı geri alıp YÜKSELTME BETİĞİYLE tekrar uygula.
+        // Deploy tam olarak bunu yapar (mevcut sürümden head'e betik).
+        string lastMigration;
+        await using (var db = database.NewContext())
+        {
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).OrderBy(x => x, StringComparer.Ordinal).ToList();
+            lastMigration = applied[^1];
+            var previous = applied[^2];
+
+            // Son migration'ın etkisini geri al ve geçmişten düş — "bir önceki sürümdeki sunucu".
+            var downScript = db.GetService<IMigrator>().GenerateScript(lastMigration, previous);
+            await using var downConn = new MySqlConnection(database.ConnectionString);
+            await downConn.OpenAsync();
+            new MySqlScript(downConn, downScript).Execute();
+        }
+
         string script;
         await using (var db = database.NewContext())
-            script = db.GetService<IMigrator>().GenerateScript();
+        {
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).OrderBy(x => x, StringComparer.Ordinal).ToList();
+            script = db.GetService<IMigrator>().GenerateScript(applied[^1], lastMigration);
+        }
 
         // Betiği DEPLOY'DAKİ GİBİ çalıştır: çok ifadeli dosya, `;` ayracıyla.
+        // 1064 (eksik noktalı virgül) tam burada yakalanır — production-clone provası da burada düşmüştü.
         await using var connection = new MySqlConnection(database.ConnectionString);
         await connection.OpenAsync();
         var runner = new MySqlScript(connection, script);
@@ -85,8 +115,13 @@ public sealed class AuditRoundSevenPhase5Tests
             if (trimmed.Length == 0 || trimmed.StartsWith("--", StringComparison.Ordinal)) continue;
 
             var startsStatement = starters.Any(s => trimmed.StartsWith(s, StringComparison.OrdinalIgnoreCase));
+            // BEGIN/END: saklı yordam gövdesinin içi. Zincirdeki eski (ve CANLIDA UYGULANMIŞ, bu
+            // yüzden değiştirilemez) bir migration böyle bir gövde içerir; kural onu işaretlemez.
+            // Aranan şey, gövde DIŞINDAKİ sonlandırılmamış ham SQL'dir — 1064'ü üreten tam buydu.
             if (startsStatement && previousNonEmpty is { } prev
-                && !prev.EndsWith(';') && !prev.EndsWith("BEGIN", StringComparison.OrdinalIgnoreCase))
+                && !prev.EndsWith(';')
+                && !prev.EndsWith("BEGIN", StringComparison.OrdinalIgnoreCase)
+                && !prev.EndsWith("END", StringComparison.OrdinalIgnoreCase))
             {
                 unterminated.Add($"'{prev}' → '{trimmed}'");
             }

@@ -441,4 +441,15 @@ public sealed class AccountPayment : Entity
         if (SourceAdisyonId is not null) return;
         SourceAdisyonId = adisyonId;
     }
+
+    /// <summary>
+    /// Randevu bağını yazar. Tahsilat, cari yerine ADİSYON defterine düştüğünde (cari yoksa)
+    /// satır adisyon onayı sırasında oluşur ve randevuyu bilmez; bağ orada, adisyon kimliği
+    /// üzerinden bulunup burada tamamlanır. Bir kez yazılır (ilk kaynak kazanır).
+    /// </summary>
+    public void LinkToAppointment(Guid appointmentId)
+    {
+        if (SourceAppointmentId is not null) return;
+        SourceAppointmentId = appointmentId;
+    }
 }

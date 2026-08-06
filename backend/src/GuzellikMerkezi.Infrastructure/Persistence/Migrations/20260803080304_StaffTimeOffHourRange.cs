@@ -14,21 +14,13 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
         // "IX_staff_time_offs_StaffMemberId_Date" ve ham-SQL bootstrap döneminden kalan
         // "IX_staff_time_offs_Staff_Date". Adı sabit yazan DROP INDEX diğer ortamda patlıyor, MySQL'de
         // "DROP INDEX IF EXISTS" de yok. Bu yüzden hatayı yutan bir yordamla iki adı da deniyoruz.
-    // ESKİ BENZERSİZ İNDEKSİN DÜŞÜRÜLMESİ — SAKLI YORDAM KULLANILMAZ.
-    //
-    // Burada eskiden "hata yut" işleyicili bir CREATE PROCEDURE vardı: indeks var da olabilir yok
-    // da (elle düzeltilmiş kurulumlar için). Gövdesi içinde noktalı virgül taşıdığı için
-    // `dotnet ef migrations script` ile üretilen betik ÇALIŞMIYORDU: betik `;` ile bölündüğünden
-    // yordam gövdesi parçalanıp MariaDB/MySQL 1064 veriyordu. Yani SIFIRDAN KURULUM betik yoluyla
-    // yapılamıyordu (uygulama içi çalıştırıcı komutları tek tek yürüttüğü için hatayı gizliyordu).
-    //
-    // ARTIK GEREKSİZ: `IX_staff_time_offs_StaffMemberId_Date` zincirde InitialCreate tarafından
-    // oluşturuluyor, yani bu migration'a gelen HER veritabanında vardır → koşulsuz düşürülebilir.
-    // `IX_staff_time_offs_Staff_Date` ise hiçbir migration'da oluşturulmuyor; yalnız elle
-    // düzeltilmiş eski kurulumlarda olabilirdi ve onların hepsi bu migration'ı ÇOKTAN uyguladı.
-    // Bundan sonra bu migration yalnız yeni kurulumlarda çalışacağı için o indeks hiç var olmaz.
-    // Sonuç: uygulanmış kurulumlarda son durum aynı, yeni kurulumlarda betik yolu artık çalışıyor.
-
+        private const string DropLegacyUniqueIndex = @"
+CREATE PROCEDURE __drop_legacy_timeoff_idx()
+BEGIN
+    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN END;
+    ALTER TABLE staff_time_offs DROP INDEX IX_staff_time_offs_StaffMemberId_Date;
+    ALTER TABLE staff_time_offs DROP INDEX IX_staff_time_offs_Staff_Date;
+END";
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -60,7 +52,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                 columns: new[] { "StaffMemberId", "Date", "StartMinute" },
                 unique: true);
 
-            migrationBuilder.Sql("ALTER TABLE `staff_time_offs` DROP INDEX `IX_staff_time_offs_StaffMemberId_Date`;");
+            migrationBuilder.Sql("DROP PROCEDURE IF EXISTS __drop_legacy_timeoff_idx;");
+            migrationBuilder.Sql(DropLegacyUniqueIndex);
+            migrationBuilder.Sql("CALL __drop_legacy_timeoff_idx();");
+            migrationBuilder.Sql("DROP PROCEDURE __drop_legacy_timeoff_idx;");
         }
 
         /// <inheritdoc />

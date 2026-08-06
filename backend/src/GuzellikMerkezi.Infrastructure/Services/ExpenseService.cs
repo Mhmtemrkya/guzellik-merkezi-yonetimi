@@ -192,6 +192,23 @@ public sealed class ExpenseService : IExpenseService
         var expense = await _db.BusinessExpenses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (expense is null) return Result<BusinessExpenseDto>.Failure(Error.NotFound("Gider bulunamadı."));
 
+        // DEFTER DENGESİ SONRADAN BOZULAMAZ.
+        //
+        // İptal, asıl satır + ters kayıt ÇİFTİ olarak durur ve toplamları sıfırlar. İkisinden biri
+        // sonradan düzenlenebilseydi (tutar/tarih değişimi) çift artık birbirini götürmez, defter
+        // kalıcı olarak şişer ya da eksilir — üstelik hiçbir yerde hata görünmeden.
+        if (expense.IsReversal)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Conflict(
+                "İptal düzeltmesi (ters kayıt) düzenlenemez: asıl gideri sıfırlayan muhasebe kaydıdır."));
+        }
+        if (expense.VoidedAtUtc is not null)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Conflict(
+                "Geçersiz kılınmış gider düzenlenemez. Kayıt, ters kaydıyla birlikte olduğu gibi kalır; " +
+                "yeni bir gider girmeniz gerekiyorsa ayrı kayıt açın."));
+        }
+
         var approvalDropped = expense.Update(
             request.Category,
             request.Amount,
@@ -269,8 +286,26 @@ public sealed class ExpenseService : IExpenseService
                 "Gideri geçersiz kılmak için gerekçe zorunludur (ör. 'yanlış girildi, para çıkmadı')."));
         }
 
+        // EŞZAMANLI İKİ İPTAL TEK TERS KAYIT ÜRETİR.
+        //
+        // Kontrol ile yazma arasında kilit yoktu: aynı gider için iki istek birlikte "iptal
+        // edilmemiş" görüp İKİ ters kayıt yazabiliyordu ve defter, giderin tutarı kadar EKSİYE
+        // kayıyordu. Satır kilitlenir, karar kilit altında TAZE okumayla verilir.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "business_expenses", id, cancellationToken);
+
         var expense = await _db.BusinessExpenses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (expense is null) return Result<BusinessExpenseDto>.Failure(Error.NotFound("Gider bulunamadı."));
+        if (relational) await _db.Entry(expense).ReloadAsync(cancellationToken);
+
+        if (expense.IsReversal)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Conflict(
+                "İptal düzeltmesi (ters kayıt) geçersiz kılınamaz: zaten bir iptalin karşı kaydıdır."));
+        }
         if (!expense.IsApproved)
         {
             return Result<BusinessExpenseDto>.Failure(Error.Validation(
@@ -298,6 +333,8 @@ public sealed class ExpenseService : IExpenseService
         _db.BusinessExpenses.Add(reversal);
 
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
         await _audit.LogAsync(tenantId, expense.BranchId, "Void", "Expense", expense.Id,
             $"Gider geçersiz kılındı: {expense.Category} · {expense.Amount:N2} · {expense.VoidReason} " +
             $"· ters kayıt {reversal.Id}",

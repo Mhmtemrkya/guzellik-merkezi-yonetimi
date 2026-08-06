@@ -89,7 +89,11 @@ public static class CustomerAccountEndpoints
             // girilmiş bağımsız bir tahsilata başka bir fişin kimliği yazılıp o fiş silindiğinde
             // gerçek para kasadan sessizce düşürülebilirdi. Alan yalnız İÇ çağrıda (adisyon onayı)
             // sunucu tarafından doldurulur.
-            var sanitized = request with { SourceAdisyonId = null };
+            // SourceAppointmentId de AYNI SINIFTA. İstemci bunu doldurabilseydi kendi tahsilatını
+            // BAŞKA bir randevunun üstüne yazabilir, o randevunun tamamlaması geri alınamaz hâle
+            // gelir (hizmet reddi) ya da kendi randevusunun parası gizlenebilirdi. Provenance'ı
+            // yalnız sunucu yazar (bkz. AppointmentService.CollectOnCompleteAsync).
+            var sanitized = request with { SourceAdisyonId = null, SourceAppointmentId = null };
             return (await service.RegisterPaymentAsync(resolvedTenantId, id, sanitized, ct)).ToHttpResult(http);
         });
 

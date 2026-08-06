@@ -42,7 +42,7 @@ public sealed class SecurityHardeningTests
         {
             var op = new PendingOperation(
                 tenantId, null, staffB, "Personel B", PendingOperationType.HttpReplay,
-                "Müşteri güncelle", "özet", "{\"secret\":\"payload\"}");
+                "Müşteri güncelle", "özet", "{\"secret\":\"payload\"}", DateTime.MinValue);
             db.PendingOperations.Add(op);
             await db.SaveChangesAsync();
             operationOfB = op.Id;

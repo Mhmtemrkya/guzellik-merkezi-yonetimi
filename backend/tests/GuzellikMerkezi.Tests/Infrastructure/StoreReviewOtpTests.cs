@@ -152,7 +152,9 @@ public sealed class StoreReviewOtpTests
 
         await messaging.DidNotReceive().SendWhatsAppAsync(
             Arg.Any<string>(),
-            Arg.Is<string>(m => m.Contains(ReviewCode)),
+            // m null olamaz (NSubstitute eşleştiricisi çağrıdaki gerçek argümanı verir) ama
+            // derleyici bunu bilemez; CI --warnaserror ile derlendiği için açıkça korunur.
+            Arg.Is<string>(m => m != null && m.Contains(ReviewCode)),
             Arg.Any<CancellationToken>());
     }
 

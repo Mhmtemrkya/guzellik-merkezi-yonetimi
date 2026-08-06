@@ -129,10 +129,29 @@ public static class DurableJobClaim
                     await Task.Delay(interval, ct);
                     if (ct.IsCancellationRequested) return;
 
-                    using var scope = scopeFactory.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
-                    // false → sahiplenmeyi kaybettik; uzatmaya devam etmenin anlamı yok.
-                    if (!await HeartbeatAsync(db, jobId, token, lockDuration, ct)) return;
+                    // GEÇİCİ HATA BAKICIYI ÖLDÜRMEZ.
+                    //
+                    // SOMUT AÇIK: tüm döngü tek bir try/catch içindeydi; bir vuruşta anlık bir
+                    // bağlantı hatası (DB yeniden başlatma, ağ takılması) bakıcıyı SONLANDIRIYOR,
+                    // kira bir daha hiç uzatılmıyordu. Uzun süren iş çalışmaya devam ederken kilit
+                    // doluyor, başka worker işi yeniden alıyor ve dış etki (WhatsApp/push) İKİ KEZ
+                    // üretiliyordu. Hata artık yalnız O VURUŞU düşürür; döngü bir sonrakinde
+                    // yeniden dener. Yalnız "sahipliği kaybettik" kesin sonucu döngüyü bitirir.
+                    try
+                    {
+                        using var scope = scopeFactory.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+                        // false → sahiplenmeyi kaybettik; uzatmaya devam etmenin anlamı yok.
+                        if (!await HeartbeatAsync(db, jobId, token, lockDuration, ct)) return;
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        return;   // kapanış
+                    }
+                    catch
+                    {
+                        // Geçici hata: bir sonraki vuruşta yeniden denenir.
+                    }
                 }
             }
             catch (OperationCanceledException)

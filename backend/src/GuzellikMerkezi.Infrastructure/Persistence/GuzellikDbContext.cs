@@ -946,8 +946,12 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
         // Idempotent istek kayıtları — masaüstü çevrimdışı kuyruğunun tekrar oynatma güvencesi.
         // İptal düzeltmesi (ters kayıt) → asıl gider bağı. Silme davranışı yok: satır kalıcı defterdir.
+        // BENZERSİZ: bir gider EN FAZLA BİR KEZ ters kayıt alabilir. Kilit + taze okuma ilk savunma;
+        // bu kısıt ikinci katmandır (iki ayrı backend örneği aynı anda iptal ederse ikincisi düşer).
+        // NULL'lar kısıtlanmaz (MySQL/MariaDB) → sıradan giderler etkilenmez.
         modelBuilder.Entity<BusinessExpense>()
-            .HasIndex(x => x.ReversalOfExpenseId);
+            .HasIndex(x => x.ReversalOfExpenseId)
+            .IsUnique();
 
         var pcr = modelBuilder.Entity<ProcessedClientRequest>();
         pcr.ToTable("processed_client_requests");
@@ -1200,6 +1204,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         c.Property(x => x.RatePercent).HasPrecision(9, 2);
         c.Property(x => x.Amount).HasPrecision(18, 2);
         c.HasIndex(x => new { x.TenantId, x.StaffMemberId, x.EarnedAtUtc });
+        // Ödeme partisi bağı: "bu kasa çıkışı hangi primleri kapatıyor?" sorgusu buradan gelir.
+        c.HasIndex(x => x.PayoutExpenseId);
         c.HasIndex(x => x.SourceItemId);
         c.HasOne(x => x.StaffMember).WithMany().HasForeignKey(x => x.StaffMemberId).OnDelete(DeleteBehavior.Restrict);
         c.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));

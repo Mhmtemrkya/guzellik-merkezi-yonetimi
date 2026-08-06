@@ -110,12 +110,23 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
                 };
 
                 // Bu şablon için zaten gönderilmiş müşterileri çıkar (dedupe).
+                // BAYAT "Queued" SATIR "GÖNDERİLDİ" SAYILMAZ.
+                //
+                // SOMUT AÇIK: bu ön süzgeç satırın DURUMUNA bakmıyordu. Rezervasyon yazılıp süreç
+                // çöktüğünde satır sonsuza dek Queued kalıyor, müşteri burada eleniyor ve gönderim
+                // hiç DENENMİYORDU — servisteki devralma mantığına (TryReserveAsync) sıra bile
+                // gelmiyordu. Mesaj kalıcı olarak bastırılıyordu. İki katman AYNI eşiği kullanır.
+                var staleBefore = now - GuzellikMerkezi.Infrastructure.Services.NotificationService.StaleReservationTimeout;
                 var alreadySent = (await db.NotificationLogs
                         .Where(l => l.TenantId == tenantId && l.TemplateId == template.Id
                                  && l.CustomerId != null && l.CreatedAtUtc >= dedupeSince)
-                        .Select(l => l.CustomerId)
+                        .Select(l => new { l.CustomerId, l.Status, l.CreatedAtUtc, l.UpdatedAtUtc })
                         .ToListAsync(ct))
-                    .Where(id => id.HasValue).Select(id => id!.Value)
+                    // Terminal durum (Sent/Failed) gerçekten işlenmiştir; Queued ise ancak HÂLÂ
+                    // TAZEYSE bastırır (yaşayan bir gönderim varsa çift mesaj üretmeyelim).
+                    .Where(l => l.Status != NotificationLogStatus.Queued
+                                || (l.UpdatedAtUtc ?? l.CreatedAtUtc) > staleBefore)
+                    .Where(l => l.CustomerId.HasValue).Select(l => l.CustomerId!.Value)
                     .ToHashSet();
 
                 var targets = template.Trigger switch

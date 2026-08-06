@@ -231,6 +231,18 @@ public sealed class BillingService : IBillingService
                 $"Ödeme sağlayıcısı uyuşmuyor (beklenen {payment.Provider}, dönen {expectedProvider}).", nowUtc, ct);
         }
 
+        // PARA BİRİMİ DE DOĞRULANIR — tutar tek başına yetmez.
+        //
+        // İstek TRY gönderiyor ama SONUÇ başka bir birimde dönebilir; yalnız sayıya bakan kontrol
+        // "100 USD"yi "100 TL" sanıp aboneliği açardı. Sağlayıcı birim bildirmiyorsa (boş) eski
+        // davranış korunur: bu üründe tüm akış TRY'dir ve tutar zaten karşılaştırılmıştır.
+        if (!string.IsNullOrWhiteSpace(result.Currency)
+            && !string.Equals(result.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RejectMismatchedCallbackAsync(payment,
+                $"Ödeme para birimi uyuşmuyor (beklenen TRY, dönen {result.Currency}).", nowUtc, ct);
+        }
+
         if (result.PaidAmountTry != payment.AmountTRY)
         {
             return await RejectMismatchedCallbackAsync(payment,

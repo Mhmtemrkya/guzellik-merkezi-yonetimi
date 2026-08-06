@@ -100,7 +100,7 @@ public sealed class ApprovalClaimMySqlTests
         await db.SaveChangesAsync();
 
         var op = new PendingOperation(tenant.Id, null, staff.Id, "Personel",
-            PendingOperationType.HttpReplay, "Adisyon onayı", "POST /api/admin/adisyonlar/x/approve", "{}");
+            PendingOperationType.HttpReplay, "Adisyon onayı", "POST /api/admin/adisyonlar/x/approve", "{}", DateTime.MinValue);
         db.PendingOperations.Add(op);
         await db.SaveChangesAsync();
 

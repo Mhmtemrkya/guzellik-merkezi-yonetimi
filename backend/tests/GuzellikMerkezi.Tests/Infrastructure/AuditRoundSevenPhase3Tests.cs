@@ -380,7 +380,7 @@ public sealed class AuditRoundSevenPhase3Tests
         await db.SaveChangesAsync();
 
         var op = new PendingOperation(tenant.Id, null, staff.Id, "Personel",
-            PendingOperationType.HttpReplay, "Tahsilat kaydı", "POST /api/admin/tahsilatlar", "{}");
+            PendingOperationType.HttpReplay, "Tahsilat kaydı", "POST /api/admin/tahsilatlar", "{}", DateTime.MinValue);
         op.BeginProcessing(manager.Id);
         db.PendingOperations.Add(op);
 
@@ -693,7 +693,7 @@ public sealed class AuditRoundSevenPhase3Tests
             await db.SaveChangesAsync();
 
             var op = new PendingOperation(tenant.Id, null, staff.Id, "Personel",
-                PendingOperationType.HttpReplay, "Tahsilat kaydı", "POST /api/admin/tahsilatlar", "{}");
+                PendingOperationType.HttpReplay, "Tahsilat kaydı", "POST /api/admin/tahsilatlar", "{}", DateTime.MinValue);
             op.BeginProcessing(manager.Id);
             db.PendingOperations.Add(op);
 

@@ -1110,7 +1110,22 @@ public sealed class AppointmentService : IAppointmentService
         if (item.IsFailure) return Result.Failure(item.Error);
 
         var approved = await _adisyon.ApproveAsync(tenantId, adisyonId.Value, ct);
-        return approved.IsFailure ? Result.Failure(approved.Error) : Result.Success();
+        if (approved.IsFailure) return Result.Failure(approved.Error);
+
+        // RANDEVU BAĞI BU YOLDA DA YAZILIR.
+        //
+        // SOMUT AÇIK: cari bulunamadığında tahsilat ADİSYON defterine düşüyor ve satır, adisyon
+        // onayı sırasında oluşuyor — o kod randevuyu bilmiyor. Bağ yazılmayınca tamamlamayı geri
+        // alma kapısı bu parayı GÖREMİYOR ve randevu, ödemesi ortada kalacak şekilde geri
+        // alınabiliyordu. Satırlar adisyon kimliğinden bulunup bağ burada tamamlanır (aynı
+        // transaction; commit çağıranındır).
+        var linked = await _db.AccountPayments
+            .Where(p => p.SourceAdisyonId == adisyonId.Value && p.SourceAppointmentId == null)
+            .ToListAsync(ct);
+        foreach (var p in linked) p.LinkToAppointment(appointmentId);
+        if (linked.Count > 0) await _db.SaveChangesAsync(ct);
+
+        return Result.Success();
     }
 
     /// <summary>

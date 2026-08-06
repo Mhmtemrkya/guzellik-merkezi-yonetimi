@@ -311,7 +311,7 @@ public sealed class NotificationService : INotificationService
     /// "Queued" bir rezervasyonun terk edilmiş sayılacağı süre. Gerçek gönderim saniyeler sürer;
     /// bu eşik yalnız çökme/yeniden başlatma sonrası kalan satırları kurtarmak içindir.
     /// </summary>
-    private static readonly TimeSpan StaleReservationTimeout = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan StaleReservationTimeout = TimeSpan.FromMinutes(15);
 
     private async Task<List<Customer>> ResolveAudienceAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct)
     {
