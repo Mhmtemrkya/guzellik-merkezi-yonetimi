@@ -9,6 +9,8 @@ public static class ServicePackageEndpoints
 {
     public static IEndpointRouteBuilder MapServicePackageEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — paket kataloğu randevu/adisyon ekranlarının temel verisidir.
+        // YAZMA yolları Services.Manage işlem iznine tabidir (bkz. StaffApprovalGateMiddleware.RequiredAction).
         var group = app.MapGroup("/api/admin/packages").WithTags("ServicePackages").RequireAuthorization();
 
         group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, IServicePackageService service, HttpContext http, CancellationToken ct) =>

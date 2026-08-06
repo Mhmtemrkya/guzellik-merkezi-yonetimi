@@ -81,12 +81,15 @@ public sealed class AuditRoundSevenPhase6Tests
 
     // ── M11: müşteri oturumu kurum grubuna girmez ────────────────────────────────────────
 
-    private static RealtimeHub NewHub(IGroupManager groups, ClaimsPrincipal user)
+    private static RealtimeHub NewHub(IGroupManager groups, ClaimsPrincipal user) =>
+        NewHub(groups, user, new RealtimeConnectionRegistry());
+
+    private static RealtimeHub NewHub(IGroupManager groups, ClaimsPrincipal user, RealtimeConnectionRegistry registry)
     {
         var context = Substitute.For<HubCallerContext>();
         context.ConnectionId.Returns("conn-1");
         context.User.Returns(user);
-        return new RealtimeHub { Context = context, Groups = groups };
+        return new RealtimeHub(registry) { Context = context, Groups = groups };
     }
 
     private static ClaimsPrincipal Principal(Guid tenantId, Guid userId, Guid? customerId)

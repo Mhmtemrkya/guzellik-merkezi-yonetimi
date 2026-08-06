@@ -8,6 +8,8 @@ public static class LoyaltyEndpoints
 {
     public static IEndpointRouteBuilder MapLoyaltyEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — puan bakiyesi müşteri kartında görünür.
+        // Puan DÜZELTME (/adjust) personelde onay kapısına düşer.
         var group = app.MapGroup("/api/admin/loyalty").WithTags("Loyalty").RequireAuthorization();
 
         group.MapGet("/{customerId:guid}", async (Guid customerId, Guid? tenantId, ICurrentUser currentUser, ILoyaltyService service, HttpContext http, CancellationToken ct) =>

@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -16,6 +17,10 @@ namespace GuzellikMerkezi.Api.Realtime;
 public sealed class RealtimeHub : Hub
 {
     public const string Path = "/hubs/realtime";
+
+    private readonly RealtimeConnectionRegistry _registry;
+
+    public RealtimeHub(RealtimeConnectionRegistry registry) => _registry = registry;
 
     /// <summary>Kurum İÇİ yayın grubu — yalnız personel/yönetici oturumları katılır.</summary>
     public static string TenantGroup(Guid tenantId) => $"tenant:{tenantId}";
@@ -41,8 +46,31 @@ public sealed class RealtimeHub : Hub
         }
 
         if (Guid.TryParse(user?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) && userId != Guid.Empty)
+        {
             await Groups.AddToGroupAsync(Context.ConnectionId, UserGroup(userId));
+
+            // OTURUM İPTALİ AÇIK SOKETİ DE KAPATIR. Bağlantı kaydedilir; nöbetçi servis token'ın
+            // üretim anını kullanıcının güncel güvenlik damgasıyla karşılaştırıp iptal edilmiş
+            // oturumları koparır (bkz. RealtimeSessionSentinel).
+            _registry.Add(new RealtimeConnectionRegistry.LiveConnection(
+                Context.ConnectionId, userId, TokenIssuedAtUtc(user), isCustomer, Context.Abort));
+        }
 
         await base.OnConnectedAsync();
     }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        _registry.Remove(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>
+    /// Token'ın üretim anı (<c>iat</c>). Yoksa <c>null</c> döner: damga karşılaştırması atlanır —
+    /// HTTP tarafındaki <c>OnTokenValidated</c> ile aynı (bilinçli) fail-open davranışı.
+    /// </summary>
+    private static DateTime? TokenIssuedAtUtc(ClaimsPrincipal? user) =>
+        long.TryParse(user?.FindFirst(JwtRegisteredClaimNames.Iat)?.Value, out var issuedUnix)
+            ? DateTimeOffset.FromUnixTimeSeconds(issuedUnix).UtcDateTime
+            : null;
 }

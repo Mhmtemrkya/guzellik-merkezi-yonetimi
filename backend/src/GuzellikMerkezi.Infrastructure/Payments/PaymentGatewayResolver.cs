@@ -19,15 +19,19 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
     /// <summary>Simülasyon form anahtarını imzalayan sunucu sırrı (bkz. SimulationPaymentGateway).</summary>
     private readonly string _simulationSigningSecret;
 
-    /// <summary>iyzico test ortamı — anahtar girilip base URL boş bırakılırsa buraya düşülür.</summary>
+    /// <summary>iyzico test ortamı — ÜRETİM DIŞINDA, base URL boş bırakılırsa buraya düşülür.</summary>
     private const string SandboxBaseUrl = "https://sandbox-api.iyzipay.com";
+
+    /// <summary>Sandbox olduğu ad üzerinden anlaşılan host parçası; üretimde yasaktır.</summary>
+    private const string SandboxHostMarker = "sandbox";
 
     /// <summary>Simülasyonun AÇIKÇA seçilmesi gereken adı.</summary>
     private const string SimulationProvider = "Simulation";
     private const string IyzicoProvider = "Iyzico";
 
-    /// <summary>Simülasyon üretimde çalışabilir mi (varsayılan: HAYIR).</summary>
-    private readonly bool _allowSimulationInProduction;
+    /// <summary>Eski kaçış kapısının anahtarı — üretimde AÇIKSA başlangıçta hata verilir.</summary>
+    public const string LegacySimulationOverrideKey = "Payments:AllowSimulationInProduction";
+
     private readonly bool _isProduction;
 
     public PaymentGatewayResolver(
@@ -52,8 +56,30 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
                   ?? "Production";
         _isProduction = !string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(env, "Staging", StringComparison.OrdinalIgnoreCase);
-        _allowSimulationInProduction =
-            bool.TryParse(configuration["Payments:AllowSimulationInProduction"], out var allow) && allow;
+    }
+
+    /// <summary>
+    /// ÜRETİMDE SAHTE ÖDEMEYE KONFİGÜRASYONLA GEÇİLEMEZ (başlangıç kapısı).
+    ///
+    /// <para>
+    /// Eskiden <c>Payments:AllowSimulationInProduction=true</c> canlıda simülasyon sağlayıcısını
+    /// açıyordu: hiç para çekilmeden her abonelik "ödendi" sayılırdı. Kaçış kapısı kaldırıldı;
+    /// ayarı devralan bir kurulum SESSİZCE farklı davranmasın diye uygulama AÇILMAZ — operatör
+    /// satırı silmek zorunda kalır.
+    /// </para>
+    /// </summary>
+    public static void EnsureProductionPaymentConfiguration(IConfiguration configuration, string environmentName)
+    {
+        var isProduction = !string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase)
+                           && !string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase);
+        if (!isProduction) return;
+
+        if (bool.TryParse(configuration[LegacySimulationOverrideKey], out var allow) && allow)
+        {
+            throw new InvalidOperationException(
+                $"'{LegacySimulationOverrideKey}' üretimde açık. Bu kaçış kapısı kaldırıldı: canlı ortamda " +
+                "simülasyon ödeme sağlayıcısı çalıştırılamaz. Ayarı konfigürasyondan kaldırın.");
+        }
     }
 
     public async Task<Result<PaymentGatewayContext>> ResolveAsync(CancellationToken ct = default)
@@ -75,9 +101,10 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
 
         if (string.Equals(provider, SimulationProvider, StringComparison.OrdinalIgnoreCase))
         {
-            // ÜRETİMDE SİMÜLASYON KAPALI: açıkça seçilmiş olsa bile gerçek para bekleyen bir
-            // ortamda sahte başarı üretmemeli. Bilinçli istisna için açık bayrak gerekir.
-            if (_isProduction && !_allowSimulationInProduction)
+            // ÜRETİMDE SİMÜLASYON KAPALI — İSTİSNASIZ. Açıkça seçilmiş olsa bile gerçek para
+            // bekleyen bir ortamda sahte başarı üretemez; konfigürasyonla açılabilen bir kaçış
+            // kapısı da yoktur (bkz. EnsureProductionPaymentConfiguration).
+            if (_isProduction)
             {
                 _logger.LogError("Üretimde simülasyon ödeme sağlayıcısı seçili; ödeme akışı durduruldu.");
                 return Result<PaymentGatewayContext>.Failure(Error.Conflict(
@@ -106,7 +133,32 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
                 "Ödeme sağlayıcısı anahtarları tanımlı değil. Platform yöneticisi ödeme ayarlarını tamamlamalı."));
         }
 
-        var baseUrl = string.IsNullOrWhiteSpace(settings.IyzicoBaseUrl) ? SandboxBaseUrl : settings.IyzicoBaseUrl!;
+        // ÜRETİMDE SANDBOX'A DÜŞÜLMEZ.
+        //
+        // Base URL boş bırakıldığında sessizce test ortamına düşülüyordu: sandbox her çekimi
+        // gerçek para hareketi OLMADAN başarılı döner, yani canlı kurumlar ücretsiz abone olurdu.
+        // Ayarın boş kalması bir yapılandırma hatasıdır ve canlıda hata verir; sandbox adresinin
+        // ELLE girilmesi de aynı sonucu doğurduğu için ayrıca reddedilir.
+        var configuredBaseUrl = settings.IyzicoBaseUrl?.Trim();
+        if (_isProduction)
+        {
+            if (string.IsNullOrWhiteSpace(configuredBaseUrl))
+            {
+                _logger.LogError("Canlı ortamda iyzico API adresi tanımlı değil; ödeme akışı durduruldu.");
+                return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                    "Ödeme sağlayıcısı API adresi tanımlı değil. Canlı ortamda test adresine düşülmez; " +
+                    "platform yöneticisi canlı iyzico adresini girmeli."));
+            }
+
+            if (configuredBaseUrl.Contains(SandboxHostMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError("Canlı ortamda iyzico test (sandbox) adresi tanımlı: {BaseUrl}", configuredBaseUrl);
+                return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                    "Ödeme sağlayıcısı test (sandbox) adresine ayarlı; canlı ortamda gerçek API adresi kullanılmalıdır."));
+            }
+        }
+
+        var baseUrl = string.IsNullOrWhiteSpace(configuredBaseUrl) ? SandboxBaseUrl : configuredBaseUrl!;
         var http = _httpFactory.CreateClient("Iyzico");
         var gateway = new IyzicoPaymentGateway(http, apiKey!, secretKey!, baseUrl, _logger);
         return Result<PaymentGatewayContext>.Success(new PaymentGatewayContext(gateway, settings.PaymentsReturnUrl));

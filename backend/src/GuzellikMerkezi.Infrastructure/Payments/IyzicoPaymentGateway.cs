@@ -154,7 +154,8 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
             Str(json, "paymentId"),
             Decimal(json, "paidPrice"),
             ok ? null : Str(json, "errorCode"),
-            ok ? null : ErrorText(json, "Kartdan tahsilat yapılamadı.")));
+            ok ? null : ErrorText(json, "Kartdan tahsilat yapılamadı."),
+            Str(json, "currency")));
     }
 
     public async Task<Result<ChargeResult>> RetrievePaymentAsync(string conversationId, CancellationToken ct = default)
@@ -172,7 +173,8 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
         var ok = IsSuccess(json) && string.Equals(Str(json, "paymentStatus"), "SUCCESS", StringComparison.OrdinalIgnoreCase);
         return Result<ChargeResult>.Success(new ChargeResult(
             ok, conversationId, Str(json, "paymentId"), Decimal(json, "paidPrice"),
-            ok ? null : Str(json, "errorCode"), ok ? null : ErrorText(json, "Tahsilat bulunamadı.")));
+            ok ? null : Str(json, "errorCode"), ok ? null : ErrorText(json, "Tahsilat bulunamadı."),
+            Str(json, "currency")));
     }
 
     public async Task<Result> RefundAsync(string providerPaymentId, decimal amount, CancellationToken ct = default)

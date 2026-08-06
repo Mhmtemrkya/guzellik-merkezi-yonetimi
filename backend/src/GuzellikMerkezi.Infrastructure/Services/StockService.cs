@@ -145,8 +145,29 @@ public sealed class StockService : IStockService
 
     public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {
+        // SİLME DE STOK PROTOKOLÜNE KATILIR (bkz. AddMovementAsync).
+        //
+        // SOMUT AÇIK: bakiye kontrolü kilitsiz yapılıyordu. Silme "stok 0" görüp devam ederken
+        // eşzamanlı bir giriş hareketi (satın alma / iade) ürünü stoklu hâle getirebiliyor, sonra
+        // soft-delete satırı gizliyordu: POZİTİF stoklu ürün, tam da bu kontrolün engellemesi
+        // gereken biçimde envanterden hareketsiz kayboluyordu. Aynı satır kilidi alınır, bakiye
+        // KİLİT ALTINDA taze okunur ve karar gerçek değere göre verilir.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "products", id, cancellationToken);
+
         var product = await _db.Products.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, cancellationToken);
         if (product is null) return Result.Failure(Error.NotFound("Ürün bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(product).ReloadAsync(cancellationToken);
+            if (_db.Entry(product).State == EntityState.Detached)
+                return Result.Failure(Error.NotFound("Ürün bulunamadı."));
+        }
+
         var snapshot = new { product.Name, product.Barcode, product.CurrentStock };
 
         // STOKLU ÜRÜN HAREKETSİZ SİLİNEMEZ.
@@ -166,6 +187,8 @@ public sealed class StockService : IStockService
 
         product.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
         await _audit.LogAsync(tenantId, product.BranchId, "Delete", "Product", product.Id,
             $"Ürün silindi: {product.Name}", snapshot, cancellationToken);
         return Result.Success();

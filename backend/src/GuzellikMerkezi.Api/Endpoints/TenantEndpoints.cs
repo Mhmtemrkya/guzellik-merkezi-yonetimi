@@ -46,6 +46,10 @@ public static class TenantEndpoints
             (await service.ResetOwnerPasswordAsync(id, ct)).ToHttpResult(http));
 
         // /api/admin/tenant — kurum yöneticisi kendi tenant'ını okuyup günceller.
+        // YETKİ: TÜM KURUM KULLANICILARI — kurum profili (ad, logo, KVKK metni, vitrin) her ekranın
+        // temel verisidir; okuma kurum içinde serbesttir. TÜM YAZMA yolları personelde onay kapısına
+        // düşer (StaffApprovalGateMiddleware /api/admin/* yazmalarını taslağa çevirir), abonelik/paket
+        // alanları ise bu DTO'ya HİÇ girmez — plan/dönem değişimi yalnız ödeme yollarından yapılır.
         var adminGroup = app.MapGroup("/api/admin/tenant").WithTags("Admin Tenant").RequireAuthorization();
 
         adminGroup.MapGet("/", async (Guid? tenantId, ICurrentUser cu, ITenantService service, HttpContext http, CancellationToken ct) =>

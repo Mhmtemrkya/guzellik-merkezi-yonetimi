@@ -20,7 +20,14 @@ namespace GuzellikMerkezi.Tests.Infrastructure;
 /// <para>
 /// Bağlantı <c>GUZELLIK_TEST_MYSQL</c> ortam değişkeninden okunur (veritabanı adı YAZILMAZ; her test
 /// kendi geçici şemasını kurar ve sonunda düşürür). Değişken yoksa ya da sunucuya erişilemiyorsa
-/// testler ATLANIR — CI'da MySQL servisi olmadan da yeşil kalır.
+/// testler ATLANIR — geliştirici yerelde veritabanı kurmak zorunda kalmasın.
+/// </para>
+///
+/// <para>
+/// CI'DA ATLAMA YOKTUR: <c>GUZELLIK_TEST_MYSQL_REQUIRED=1</c> ile atlama kapatılır. Bu kural
+/// olmadan yanlış bir bağlantı dizesi ya da ayağa kalkmayan bir servis kabı 78 testi sessizce
+/// eleyip kapıyı yeşil bırakıyordu; oysa transaction / satır kilidi / MariaDB lehçesi YALNIZ
+/// burada doğrulanıyor.
 /// </para>
 ///
 /// <example>
@@ -32,18 +39,52 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
 {
     private const string EnvVar = "GUZELLIK_TEST_MYSQL";
 
+    /// <summary>
+    /// "GERÇEK VERİTABANI TESTLERİ ZORUNLU" bayrağı (CI bunu 1 yapar).
+    ///
+    /// <para>
+    /// SOMUT AÇIK: atlama davranışı geliştirici makinesi için doğruydu ama CI'da SESSİZ bir boşluk
+    /// üretiyordu — sunucu yoksa (ya da bağlantı dizesi yanlışsa) 78 test atlanıyor, kapı yine de
+    /// YEŞİL yanıyordu. Transaction, <c>SELECT … FOR UPDATE</c> ve MariaDB lehçesi yalnız bu
+    /// testlerde doğrulandığı için, CI "geçti" derken riskli yolların HİÇBİRİ denenmemiş oluyordu.
+    /// Bayrak açıkken sunucuya erişilemezse test ATLANMAZ, PATLAR: yapılandırma hatası deploy'a
+    /// değil, PR'a düşer.
+    /// </para>
+    /// </summary>
+    private const string RequiredEnvVar = "GUZELLIK_TEST_MYSQL_REQUIRED";
+
     private static readonly Lazy<string?> ServerConnection = new(ProbeServer);
+    private static readonly Lazy<string?> ProbeFailure = new(() => _probeError);
+    private static string? _probeError;
 
     /// <summary>Sunucuya bağlanılabiliyor mu (test keşfi sırasında bir kez ölçülür).</summary>
     public static bool Available => ServerConnection.Value is not null;
 
+    /// <summary>Gerçek veritabanı testleri ZORUNLU mu (CI)? Zorunluysa atlama yapılmaz.</summary>
+    public static bool Required =>
+        Environment.GetEnvironmentVariable(RequiredEnvVar) is { } v
+        && (v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase));
+
     public static string SkipReason =>
         $"Gerçek veritabanı testi atlandı: {EnvVar} tanımlı değil ya da sunucuya erişilemiyor.";
+
+    /// <summary>
+    /// Zorunlu moddayken sunucuya erişilemiyorsa fırlatılacak hata. Sebebi de taşır: "değişken yok"
+    /// ile "sunucu ayakta değil" farklı yapılandırma hatalarıdır.
+    /// </summary>
+    public static Exception RequiredButUnavailable() => new InvalidOperationException(
+        $"{RequiredEnvVar} açık ama gerçek veritabanına bağlanılamadı; testler ATLANAMAZ. " +
+        $"Sebep: {ProbeFailure.Value ?? $"{EnvVar} tanımlı değil"}. " +
+        "CI'da bu, veritabanı servisinin ayağa kalkmadığı ya da bağlantı dizesinin yanlış olduğu anlamına gelir.");
 
     private static string? ProbeServer()
     {
         var raw = Environment.GetEnvironmentVariable(EnvVar);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _probeError = $"{EnvVar} tanımlı değil";
+            return null;
+        }
 
         try
         {
@@ -52,14 +93,16 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
             var builder = new MySqlConnectionStringBuilder(MySqlConnectionStrings.EnsureUtf8Mb4(raw))
             {
                 Database = string.Empty,
-                ConnectionTimeout = 3,
+                // CI'da servis kabı birkaç saniye gecikebilir; yerelde "sunucu yok" kararı hızlı olsun.
+                ConnectionTimeout = Required ? (uint)30 : 3,
             };
             using var connection = new MySqlConnection(builder.ConnectionString);
             connection.Open();
             return builder.ConnectionString;
         }
-        catch
+        catch (Exception ex)
         {
+            _probeError = ex.Message;
             return null;
         }
     }
@@ -83,8 +126,12 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
     /// </summary>
     public static async Task<MySqlTestDatabase> CreateEmptyAsync()
     {
+        // Zorunlu modda hatanın SEBEBİ görünmeli: "servis kalkmadı" ile "değişken yok" farklı
+        // yapılandırma hatalarıdır ve CI çıktısında ayırt edilebilmeleri gerekir.
         var server = ServerConnection.Value
-                     ?? throw new InvalidOperationException("Sunucuya erişilemiyor; MySqlFact ile korunmalıydı.");
+                     ?? throw (Required
+                         ? RequiredButUnavailable()
+                         : new InvalidOperationException("Sunucuya erişilemiyor; MySqlFact ile korunmalıydı."));
 
         var database = $"guzellik_mig_{Guid.NewGuid():N}"[..40];
         await using (var connection = new MySqlConnection(server))
@@ -102,8 +149,12 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
     /// <summary>Boş bir şema oluşturur ve modeli uygular (migration zinciri değil — hızlı olsun).</summary>
     public static async Task<MySqlTestDatabase> CreateAsync()
     {
+        // Zorunlu modda hatanın SEBEBİ görünmeli: "servis kalkmadı" ile "değişken yok" farklı
+        // yapılandırma hatalarıdır ve CI çıktısında ayırt edilebilmeleri gerekir.
         var server = ServerConnection.Value
-                     ?? throw new InvalidOperationException("Sunucuya erişilemiyor; MySqlFact ile korunmalıydı.");
+                     ?? throw (Required
+                         ? RequiredButUnavailable()
+                         : new InvalidOperationException("Sunucuya erişilemiyor; MySqlFact ile korunmalıydı."));
 
         var database = $"guzellik_it_{Guid.NewGuid():N}"[..40];
         await using (var connection = new MySqlConnection(server))
@@ -160,11 +211,23 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
     }
 }
 
-/// <summary>Yalnız erişilebilir bir MySQL/MariaDB varken çalışan test — yoksa atlanır.</summary>
+/// <summary>
+/// Yalnız erişilebilir bir MySQL/MariaDB varken çalışan test.
+///
+/// <para>
+/// Geliştirici makinesinde sunucu yoksa test ATLANIR (kimse yerelde veritabanı kurmak zorunda
+/// kalmasın). CI'da ise <c>GUZELLIK_TEST_MYSQL_REQUIRED=1</c> ile atlama KAPATILIR: sunucuya
+/// erişilemiyorsa test atlanmaz, başarısız olur. Aksi hâlde yanlış bir bağlantı dizesi ya da
+/// ayağa kalkmayan bir servis kabı, 78 testi sessizce eleyip kapıyı yeşil bırakırdı.
+/// </para>
+/// </summary>
 public sealed class MySqlFactAttribute : FactAttribute
 {
     public MySqlFactAttribute()
     {
-        if (!MySqlTestDatabase.Available) Skip = MySqlTestDatabase.SkipReason;
+        if (MySqlTestDatabase.Available) return;
+        // ZORUNLU MODDA ATLAMA YOK: Skip boş bırakılır, test gövdesi ilk çağrıda patlar
+        // (bkz. MySqlTestDatabase.CreateAsync → RequiredButUnavailable).
+        if (!MySqlTestDatabase.Required) Skip = MySqlTestDatabase.SkipReason;
     }
 }

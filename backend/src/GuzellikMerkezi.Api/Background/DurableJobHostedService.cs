@@ -99,7 +99,13 @@ public sealed class DurableJobHostedService : BackgroundService
     {
         // KİLİT KALP ATIŞI (ortak yardımcı — RabbitMQ yolu da aynısını kullanır, ayrışamazlar).
         // Kendi scope'unda çalışır: DbContext iş parçacığı güvenli değildir.
-        var heartbeat = DurableJobClaim.KeepAlive(_scopeFactory, job.Id, token, LockDuration);
+        var lease = DurableJobClaim.KeepAlive(_scopeFactory, job.Id, token, LockDuration);
+
+        // KİRA KAYBI İŞİ DURDURUR. Kalp atışı "sahiplenmeyi kaybettik" dediğinde handler eskiden
+        // çalışmaya devam ediyordu; işi bu arada başka bir worker almış oluyor ve dış etki
+        // (WhatsApp mesajı, push bildirimi) İKİ KEZ üretiliyordu. Jeton bağlanır: kayıp anında
+        // handler iptal edilir.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lease.Lost);
 
         bool succeeded;
         string? error = null;
@@ -107,26 +113,39 @@ public sealed class DurableJobHostedService : BackgroundService
         {
             if (!handlers.TryGetValue(job.Type, out var handler))
                 throw new InvalidOperationException($"'{job.Type}' için kayıtlı handler yok.");
-            await handler.ExecuteAsync(job.PayloadJson, ct);
+            await handler.ExecuteAsync(job.PayloadJson, linked.Token);
             succeeded = true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Kapanış: kilit süresi dolunca iş yeniden alınacak; durumu değiştirme.
-            await heartbeat.DisposeAsync();
+            await lease.DisposeAsync();
             throw;
         }
         catch (Exception ex)
         {
             succeeded = false;
             error = ex.Message;
-            _logger.LogWarning(ex, "Kalıcı iş başarısız (type={Type}, attempt={Attempt}/{Max}).",
-                job.Type, job.Attempts + 1, job.MaxAttempts);
+            if (!lease.IsLost)
+            {
+                _logger.LogWarning(ex, "Kalıcı iş başarısız (type={Type}, attempt={Attempt}/{Max}).",
+                    job.Type, job.Attempts + 1, job.MaxAttempts);
+            }
         }
 
         // Sonucu yazmadan ÖNCE kalp atışı durdurulur: aksi hâlde kirayı uzatan bir vuruş ile
         // tamamlama yazması yarışabilirdi.
-        await heartbeat.DisposeAsync();
+        await lease.DisposeAsync();
+
+        if (lease.IsLost)
+        {
+            // Kirayı kaybettik: iş artık BAŞKASININ. Sonuç yazmaya kalkışmak yeni sahibi ezme
+            // denemesidir; deneme sayacını da haksız yere artırırdı.
+            _logger.LogWarning(
+                "Kalıcı işin kirası kaybedildi, çalışma durduruldu (id={JobId}, type={Type}). "
+                + "İşi yeni sahibi tamamlayacak.", job.Id, job.Type);
+            return;
+        }
 
         if (!await DurableJobClaim.TryCompleteAsync(db, job, token, succeeded, error, ct))
         {

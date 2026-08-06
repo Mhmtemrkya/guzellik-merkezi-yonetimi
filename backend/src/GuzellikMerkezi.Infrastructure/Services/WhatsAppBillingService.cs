@@ -87,13 +87,24 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                     $"Aylık kontör harcama tavanına ulaşıldı (₺{cap.Value:0.##}). Tavanı yükseltin ya da sonraki ayı bekleyin.");
         }
 
-        // 4) Bakiye rezervasyonu.
-        var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-        if (!wallet.TryReserve(price.Value))
-            return BillingDecision.Block(category,
-                $"Kontör bakiyeniz yetersiz (gerekli ₺{price.Value:0.##}, kullanılabilir ₺{wallet.AvailableTry:0.##}). Kontör yükleyin.");
+        // 4) Bakiye rezervasyonu — KİLİT ALTINDA.
+        //
+        // "Yeter mi?" kontrolü ile rezervasyonun yazılması tek bir atomik adım olmalı: aksi hâlde
+        // iki eşzamanlı gönderim aynı bakiyeyi görüp ikisi de geçiyor ve kullanılabilir bakiye
+        // eksiye düşüyordu. Rezervasyon BURADA kalıcı yapılır; çağıran (DispatchAsync) mesaj
+        // satırını yazana kadar bakiye gerçekten ayrılmış olmalı.
+        return await InWalletTransactionAsync(async () =>
+        {
+            var wallet = await GetOrCreateWalletAsync(tenantId, ct);
+            if (!wallet.TryReserve(price.Value))
+            {
+                return BillingDecision.Block(category,
+                    $"Kontör bakiyeniz yetersiz (gerekli ₺{price.Value:0.##}, kullanılabilir ₺{wallet.AvailableTry:0.##}). Kontör yükleyin.");
+            }
 
-        return BillingDecision.Charged(category, price.Value);
+            await _db.SaveChangesAsync(ct);
+            return BillingDecision.Charged(category, price.Value);
+        }, ct);
     }
 
     public Task RefundInlineAsync(Guid tenantId, WhatsAppMessage message, CancellationToken ct = default)
@@ -106,27 +117,50 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     {
         if (message.BillingSource != WhatsAppBillingSource.Wallet || message.ChargedAmountTry <= 0) return;
 
-        var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
-        wallet.Capture(message.ChargedAmountTry);
-        _db.WalletTransactions.Add(new WalletTransaction(
-            message.TenantId, WalletTransactionType.Capture, -message.ChargedAmountTry,
-            wallet.BalanceTry, wallet.ReservedTry,
-            description: $"{message.Category} teslim edildi", category: message.Category, whatsAppMessageId: message.Id));
-        await _db.SaveChangesAsync(ct);
+        await InWalletTransactionAsync(async () =>
+        {
+            var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
+            wallet.Capture(message.ChargedAmountTry);
+            _db.WalletTransactions.Add(new WalletTransaction(
+                message.TenantId, WalletTransactionType.Capture, -message.ChargedAmountTry,
+                wallet.BalanceTry, wallet.ReservedTry,
+                description: $"{message.Category} teslim edildi", category: message.Category, whatsAppMessageId: message.Id));
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
     }
 
     public Task RefundAsync(WhatsAppMessage message, CancellationToken ct = default)
         => ReverseReservationAsync(message, save: true, ct);
 
+    /// <summary>
+    /// Rezervasyonu geri verir. <paramref name="save"/> false ise yazma ÇAĞIRANA aittir: gönderim
+    /// anındaki iade, mesaj satırının güncellenmesiyle AYNI kayıtta kalmalıdır (bkz. RefundInlineAsync).
+    /// </summary>
     private async Task ReverseReservationAsync(WhatsAppMessage message, bool save, CancellationToken ct)
     {
         if (message.BillingSource != WhatsAppBillingSource.Wallet || message.ChargedAmountTry <= 0) return;
 
         var amount = message.ChargedAmountTry;
-        var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
-        wallet.Refund(amount);
-        message.ClearCharge(); // tekrar iade edilmesin + aylık taahhüt sayımından düşsün
-        if (save) await _db.SaveChangesAsync(ct);
+
+        // Çağıran yazmayı üstlendiğinde transaction da onundur; burada ayrı bir transaction açmak
+        // iadeyi asıl kayıttan koparırdı.
+        if (!save)
+        {
+            var inlineWallet = await GetOrCreateWalletAsync(message.TenantId, ct);
+            inlineWallet.Refund(amount);
+            message.ClearCharge(); // tekrar iade edilmesin + aylık taahhüt sayımından düşsün
+            return;
+        }
+
+        await InWalletTransactionAsync(async () =>
+        {
+            var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
+            wallet.Refund(amount);
+            message.ClearCharge();
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
     }
 
     public async Task<int> SweepStaleReservationsAsync(TimeSpan olderThan, CancellationToken ct = default)
@@ -144,15 +178,39 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             .ToListAsync(ct);
         if (stale.Count == 0) return 0;
 
+        // HER MESAJ KENDİ TRANSACTION'INDA İADE EDİLİR — hepsi tek transaction'da DEĞİL.
+        //
+        // Değişmez mesaj başınadır: "cüzdanın iadesi ile o mesajın ücret kaydının silinmesi birlikte
+        // olur". Tek bir transaction 200 satırı kapsasaydı 200 AYRI kurumun cüzdan kilidi aynı anda
+        // ve GELİŞİGÜZEL SIRAYLA tutulurdu: ortak protokolün deadlock önlemi kilitlerin her zaman
+        // aynı sırada alınmasına dayanır (bkz. RowLock), üstelik süpürge sürerken o kurumların
+        // gönderimleri de beklerdi. Bir mesajın iadesi başarısız olursa yalnız o atlanır; kalanlar
+        // iade edilir ve bir sonraki turda yeniden denenir.
+        var refunded = 0;
         foreach (var m in stale)
         {
-            var wallet = await GetOrCreateWalletAsync(m.TenantId, ct);
-            wallet.Refund(m.ChargedAmountTry);
-            m.ClearCharge();
+            try
+            {
+                await InWalletTransactionAsync(async () =>
+                {
+                    var wallet = await GetOrCreateWalletAsync(m.TenantId, ct);
+                    wallet.Refund(m.ChargedAmountTry);
+                    m.ClearCharge();
+                    await _db.SaveChangesAsync(ct);
+                    return true;
+                }, ct);
+                refunded++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Bayat WhatsApp rezervasyonu iade edilemedi (mesaj {MessageId}); sonraki turda yeniden denenecek.", m.Id);
+            }
         }
-        await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("{Count} WhatsApp rezervasyonu teslim onayı gelmediği için iade edildi.", stale.Count);
-        return stale.Count;
+
+        if (refunded > 0)
+            _logger.LogInformation("{Count} WhatsApp rezervasyonu teslim onayı gelmediği için iade edildi.", refunded);
+        return refunded;
     }
 
     // ==================== KURUM CÜZDANI ====================
@@ -190,12 +248,16 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
         // Otomatik onay açıksa (ör. ödeme ağ geçidi bağlıysa) hemen bakiyeye yansıt.
         var billing = await GetOrCreateBillingSettingsAsync(ct);
-        if (billing.AutoApproveTopUps)
+        await InWalletTransactionAsync(async () =>
         {
-            purchase.Approve(requestedByUserId);
-            await CreditWalletAsync(tenantId, grants, $"Kontör: {name}", packageId, requestedByUserId, ct);
-        }
-        await _db.SaveChangesAsync(ct);
+            if (billing.AutoApproveTopUps)
+            {
+                purchase.Approve(requestedByUserId);
+                await CreditWalletAsync(tenantId, grants, $"Kontör: {name}", packageId, requestedByUserId, ct);
+            }
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
 
         return Result<CreditPurchaseDto>.Success(await ToPurchaseDtoAsync(purchase, ct));
     }
@@ -230,9 +292,16 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         if (purchase is null) return Result<CreditPurchaseDto>.Failure(Error.NotFound("Kontör talebi bulunamadı."));
         if (purchase.Status != CreditPurchaseStatus.Pending) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
-        purchase.Approve(processedByUserId);
-        await CreditWalletAsync(purchase.TenantId, purchase.GrantsTry, $"Kontör: {purchase.PackageName}", purchase.CreditPackageId, processedByUserId, ct);
-        await _db.SaveChangesAsync(ct);
+        // Talebin "onaylandı" damgası ile bakiyenin artması AYNI kayıtta olmalı: biri olup diğeri
+        // olmazsa ya para yüklenmeden talep kapanır ya da aynı talep ikinci kez yüklenebilir.
+        await InWalletTransactionAsync(async () =>
+        {
+            purchase.Approve(processedByUserId);
+            await CreditWalletAsync(purchase.TenantId, purchase.GrantsTry, $"Kontör: {purchase.PackageName}", purchase.CreditPackageId, processedByUserId, ct);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+
         return Result<CreditPurchaseDto>.Success(await ToPurchaseDtoAsync(purchase, ct));
     }
 
@@ -382,13 +451,21 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     public async Task<Result<MessagingWalletDto>> AdjustWalletAsync(Guid tenantId, AdjustWalletRequest request, Guid? performedByUserId, CancellationToken ct = default)
     {
         if (request.DeltaTry == 0) return Result<MessagingWalletDto>.Failure(Error.Validation("Düzeltme tutarı 0 olamaz."));
-        var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-        wallet.Adjust(request.DeltaTry);
-        _db.WalletTransactions.Add(new WalletTransaction(
-            tenantId, WalletTransactionType.Adjustment, request.DeltaTry, wallet.BalanceTry, wallet.ReservedTry,
-            description: string.IsNullOrWhiteSpace(request.Description) ? "Platform düzeltmesi" : request.Description,
-            performedByUserId: performedByUserId));
-        await _db.SaveChangesAsync(ct);
+
+        // Elle düzeltme de bakiyeyi okuyup yazar: eşzamanlı bir gönderim/yükleme ile yarışırsa
+        // biri diğerinin yazdığını ezer. Diğer bakiye yolları ile AYNI kilit protokolünden geçer.
+        await InWalletTransactionAsync(async () =>
+        {
+            var wallet = await GetOrCreateWalletAsync(tenantId, ct);
+            wallet.Adjust(request.DeltaTry);
+            _db.WalletTransactions.Add(new WalletTransaction(
+                tenantId, WalletTransactionType.Adjustment, request.DeltaTry, wallet.BalanceTry, wallet.ReservedTry,
+                description: string.IsNullOrWhiteSpace(request.Description) ? "Platform düzeltmesi" : request.Description,
+                performedByUserId: performedByUserId));
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+
         return Result<MessagingWalletDto>.Success(await BuildWalletDtoAsync(tenantId, ct));
     }
 
@@ -421,6 +498,27 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         return billing.DefaultMonthlySpendCapTry;
     }
 
+    /// <summary>
+    /// CÜZDANI KİLİT ALTINDA OKUR — bakiyeye dokunan HER yolun tek giriş kapısı.
+    ///
+    /// <para>
+    /// SOMUT AÇIK: bakiye "oku → bellekte hesapla → yaz" biçiminde güncelleniyordu ve bu servis
+    /// hiçbir satır kilidi almıyordu. Bakiye 10 ₺ iken iki eşzamanlı gönderim ikisi de 10 ₺'yi
+    /// görüp ikisi de rezerve ediyor, kullanılabilir bakiye EKSİYE düşüyordu; teslim onayı ile
+    /// iade yolu da birbirinin yazdığını eziyor (biri Reserved'ı düşürürken diğeri bayat değerin
+    /// üstüne yazıyor) ve rezerve tutarı gerçek gönderimlerle tutmuyordu. <c>products</c> ve
+    /// <c>gift_cards</c> aynı sınıf için çoktan kilitleniyordu; bu tablo listede bile yoktu.
+    /// </para>
+    /// <para>
+    /// Protokol <see cref="StockService"/> ile aynıdır: (1) satırı kilitle, (2) kilit ALTINDA taze
+    /// oku, (3) deltayı uygula. Kilidi çağıran açar; bu metot yalnız "kilitli ve taze" nesneyi
+    /// döndürmekle sorumludur.
+    /// </para>
+    /// <para>
+    /// Cüzdan satırı henüz YOKSA kilitlenecek bir şey de yoktur: <c>TenantId</c> benzersiz
+    /// indekslidir, dolayısıyla eşzamanlı iki oluşturmadan biri zaten veritabanında elenir.
+    /// </para>
+    /// </summary>
     private async Task<TenantMessagingWallet> GetOrCreateWalletAsync(Guid tenantId, CancellationToken ct)
     {
         var wallet = await _db.TenantMessagingWallets.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.TenantId == tenantId && !w.IsDeleted, ct);
@@ -428,8 +526,34 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         {
             wallet = new TenantMessagingWallet(tenantId);
             _db.TenantMessagingWallets.Add(wallet);
+            return wallet;
         }
+
+        if (_db.Database.IsRelational())
+        {
+            await RowLock.LockRowAsync(_db, "tenant_messaging_wallets", wallet.Id, ct);
+            // Kilitten ÖNCE okunmuş olabilir (izleyicide bayat nesne) → kilit altında yeniden oku.
+            await _db.Entry(wallet).ReloadAsync(ct);
+        }
+
         return wallet;
+    }
+
+    /// <summary>
+    /// Bakiye mutasyonunu KENDİ transaction'ında yürütür (çağıran zaten bir transaction açtıysa ona
+    /// katılır). Kilit tek başına yetmez: <c>FOR UPDATE</c> yalnız bir transaction içinde tutulur;
+    /// otomatik commit modunda kilit sorgu biter bitmez bırakılır ve koruma kâğıt üstünde kalırdı.
+    /// </summary>
+    private async Task<T> InWalletTransactionAsync<T>(Func<Task<T>> action, CancellationToken ct)
+    {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
+        var result = await action();
+        if (tx is not null) await tx.CommitAsync(ct);
+        return result;
     }
 
     private async Task<WhatsAppBillingSettings> GetOrCreateBillingSettingsAsync(CancellationToken ct)

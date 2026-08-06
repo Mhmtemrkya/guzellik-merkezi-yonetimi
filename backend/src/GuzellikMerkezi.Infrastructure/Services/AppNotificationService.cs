@@ -197,15 +197,22 @@ public sealed class AppNotificationService : IAppNotificationService
 
         // Satır yazıldıktan SONRA anlık haber ver: alıcı o an ekrandaysa zil sayacı ve akış
         // yoklamayı beklemeden güncellenir. Ulaşmazsa kayıp yok — satır veritabanında duruyor.
-        // NOT: anlık olay KALICI DEĞİLDİR ve yalnız "tazele" anlamı taşır. Açık bir transaction
-        // içinde erken gitmesi en fazla istemciye bir tazeleme fazlası yaptırır; kalıcı bildirim
-        // ise artık aynı transaction'a bağlıdır (bkz. LeaseContext) ve geri alınırsa o da gider.
+        //
+        // COMMIT EDİLMEMİŞ İÇERİK YAYINLANMAZ.
+        //
+        // Açık bir transaction içindeyken (çağıranın bağlamına katıldık, bkz. LeaseContext) satır
+        // HENÜZ KALICI DEĞİLDİR. Yük başlık ve gövde taşıdığı için, transaction sonradan geri
+        // alındığında kullanıcı ekranında "ödemeniz alındı / işleminiz onaylandı" yazan bir
+        // bildirim kalıyordu — karşılığı olmayan bir olayın metni. Anlık olay bu durumda İÇERİKSİZ
+        // gider: yalnız "bu konuyu tazele" der. İstemci veriyi HTTP'den okur; işlem geri alınmışsa
+        // görecek bir şey bulamaz, sonuç en fazla bir fazladan tazelemedir.
+        var committed = db.Database.CurrentTransaction is null;
         foreach (var recipient in targets)
         {
             await _realtime.PublishToUserAsync(tenantId, recipient, new RealtimeEvent(
                 "notification",
-                title,
-                body,
+                committed ? title : null,
+                committed ? body : null,
                 new[] { RealtimeTopics.Notifications },
                 new Dictionary<string, string> { ["type"] = type.ToString() }), ct);
         }

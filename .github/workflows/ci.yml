@@ -19,6 +19,27 @@ jobs:
   backend:
     name: Backend (.NET)
     runs-on: ubuntu-latest
+
+    # GERÇEK VERİTABANI OLMADAN BU İŞ ANLAMSIZDIR.
+    #
+    # SOMUT AÇIK: 78 test (transaction, SELECT … FOR UPDATE, MariaDB lehçesi) yalnızca gerçek bir
+    # sunucuyla çalışıyor; CI'da bağlantı dizesi TANIMLI OLMADIĞI için hepsi SESSİZCE atlanıyor,
+    # kapı yine de yeşil yanıyordu. Yani en pahalı hataların (çift tahsilat, kayıp güncelleme,
+    # MariaDB'nin reddettiği SQL) tek savunması hiç çalışmıyordu. MariaDB seçildi çünkü CANLI
+    # ortam MariaDB — lehçe farkları (takma adlı DELETE gibi) yalnız orada görünür.
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-test-root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -33,8 +54,46 @@ jobs:
       - name: Build
         run: dotnet build backend/GuzellikMerkeziYonetimi.slnx --no-restore --configuration Release --warnaserror
 
-      - name: Test
-        run: dotnet test backend/GuzellikMerkeziYonetimi.slnx --no-build --configuration Release --verbosity normal
+      # --blame-hang: TAKILMA DA KIRILMADIR. Bu paket geçmişte belirsiz biçimde takıldı ve hangi
+      # testin astığı görünmüyordu; artık takılan testin adı raporlanır. Süre cömert: tek bir
+      # migration testi dakikalar sürebiliyor, dar bir eşik yavaş koşuyu "hata" sanardı.
+      - name: Test (gerçek MariaDB ile)
+        env:
+          GUZELLIK_TEST_MYSQL: "server=127.0.0.1;port=3306;user=root;password=ci-test-root;AllowPublicKeyRetrieval=true;SslMode=Disabled;"
+          # Atlamayı KAPATIR: sunucuya erişilemezse testler atlanmaz, iş DÜŞER.
+          GUZELLIK_TEST_MYSQL_REQUIRED: "1"
+        run: |
+          dotnet test backend/GuzellikMerkeziYonetimi.slnx \
+            --no-build --configuration Release --verbosity normal \
+            --blame-hang --blame-hang-timeout 20m --blame-hang-dump-type none \
+            --logger "trx;LogFileName=backend-tests.trx" \
+            --results-directory backend/TestResults
+
+      # ATLANAN TEST = ÖRTÜLÜ BOŞLUK. Yukarıdaki REQUIRED bayrağı veritabanı testlerini korur;
+      # bu adım geri kalan her şey için aynı kuralı uygular: bir test [Skip] ile susturulduysa
+      # kapı bunu görünür kılar, sessizce yeşil yanmaz.
+      - name: Atlanan test var mı?
+        if: always()
+        run: |
+          trx=$(find backend/TestResults -name '*.trx' | head -1)
+          if [ -z "$trx" ]; then echo "HATA: test sonucu (.trx) bulunamadı."; exit 1; fi
+
+          # ÖLÇÜT total - executed. .trx'teki `notExecuted` sayacı atlanan testlerde bile 0
+          # kalıyor (yerelde doğrulandı: 3 test atlandı, notExecuted="0"); ona bakan bir kapı
+          # hiçbir zaman ateşlenmezdi. `executed`, ÇALIŞTIRILAN test sayısıdır — atlananlar
+          # buraya girmez, dolayısıyla fark güvenilirdir.
+          counters=$(grep -o '<Counters[^/]*/>' "$trx" | head -1)
+          total=$(echo "$counters" | grep -o 'total="[0-9]*"' | grep -o '[0-9]*')
+          executed=$(echo "$counters" | grep -o 'executed="[0-9]*"' | grep -o '[0-9]*' | head -1)
+          skipped=$(( ${total:-0} - ${executed:-0} ))
+          echo "Toplam: ${total:-0} · çalıştırılan: ${executed:-0} · atlanan: $skipped"
+
+          if [ "$skipped" -ne 0 ]; then
+            echo "HATA: $skipped test atlandı. Gerçek veritabanı testleri CI'da ATLANAMAZ;"
+            echo "atlanan test, doğrulanmamış kod demektir. Sebebi giderin ya da testi silin."
+            grep -o 'testName="[^"]*"' "$trx" | head -20 || true
+            exit 1
+          fi
 
       # UYGULANMIŞ MIGRATION'LAR DEĞİŞMEZDİR. Bir migration yayınlandıktan sonra gövdesi
       # değiştirilirse MigrationId aynı kaldığı için ESKİ kurulumlar yeni SQL'i HİÇ görmez:

@@ -54,7 +54,12 @@ public sealed class PendingOperation : Entity
     /// hesabı ele geçirilmiş bir personelin kuyrukta bekleyen isteği, parola sıfırlandıktan SONRA
     /// bile uygulanabilirdi. Onay anında damga değişmişse işlem uygulanmaz (bkz. ApprovalRequesterScope).
     /// </para>
-    /// <para>Eski kayıtlarda boştur; o kayıtlarda karşılaştırma yapılmaz (geriye uyumluluk).</para>
+    /// <para>
+    /// KOLON EKLENMEDEN ÖNCE OLUŞMUŞ KAYITLARDA BOŞTUR VE BOŞ OLMASI FAIL-CLOSED'DIR: damgası
+    /// bilinmeyen bir istek onaylanamaz, personelden yeniden göndermesi istenir. Bu kayıtlara
+    /// "bugünkü damga" yazmak korumayı tersine çevirirdi — iptal edilmiş bir yetki yeniden
+    /// geçerli görünürdü (bkz. migration <c>PendingApprovalStampBackfillRollback</c>).
+    /// </para>
     /// </summary>
     public DateTime? RequesterSecurityStampUtc { get; private set; }
 
@@ -104,6 +109,23 @@ public sealed class PendingOperation : Entity
         if (!allowed) throw new BusinessRuleException("Sadece bekleyen işlemler onaylanabilir.");
         Status = PendingOperationStatus.Processing;
         DecidedByUserId = decidedByUserId;
+        Touch();
+    }
+
+    /// <summary>
+    /// SAHİPLENMEYİ CANLI TUTAR (kalp atışı).
+    ///
+    /// <para>
+    /// "Bayat" ölçütü sahiplenme ANINDAN itibaren sayıldığı sürece, <see cref="ProcessingTimeout"/>
+    /// süresinden UZUN SÜREN ama hâlâ çalışan bir operasyon da bayat görünüyordu: yönetici onu
+    /// "uygulanmadı" diye kapatıp idempotency rezervasyonunu sildirebiliyor, işlem yeniden
+    /// onaylanınca AYNI finansal hareket ikinci kez oluşabiliyordu. Operasyon sürerken damga
+    /// düzenli olarak tazelenir; böylece "bayat" gerçekten "artık kimse yürütmüyor" demek olur.
+    /// </para>
+    /// </summary>
+    public void RenewClaim()
+    {
+        if (Status != PendingOperationStatus.Processing) return;
         Touch();
     }
 

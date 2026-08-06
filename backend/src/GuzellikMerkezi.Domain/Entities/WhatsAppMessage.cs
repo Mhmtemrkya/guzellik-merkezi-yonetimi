@@ -67,6 +67,25 @@ public sealed class WhatsAppMessage : Entity
     /// <summary>Meta webhook "delivered" (veya simülasyon) zamanı — kotayı ve kesinleşmeyi bu tetikler.</summary>
     public DateTime? DeliveredAtUtc { get; private set; }
 
+    /// <summary>
+    /// SAĞLAYICI KABUL ETTİ: <c>Queued</c> → <c>Sent</c> (simülasyonda <c>Simulated</c>).
+    ///
+    /// <para>
+    /// Kayıt artık gönderimden ÖNCE <c>Queued</c> olarak yazılıp commit ediliyor: sağlayıcı mesajı
+    /// kabul ettikten sonra süreç çökerse geriye "denendi, sonucu bilinmiyor" izi kalsın. Eskiden
+    /// satır yalnız gönderimden SONRA yazıldığı için böyle bir çöküş hiç iz bırakmıyor, işi yeniden
+    /// deneyen kuyruk aynı mesajı müşteriye İKİNCİ kez gönderiyordu.
+    /// </para>
+    /// </summary>
+    public void MarkSent(string? providerMessageId, bool simulated)
+    {
+        if (Status is not WhatsAppMessageStatus.Queued) return;
+        Status = simulated ? WhatsAppMessageStatus.Simulated : WhatsAppMessageStatus.Sent;
+        if (!string.IsNullOrWhiteSpace(providerMessageId)) ProviderMessageId = providerMessageId;
+        ErrorMessage = null;
+        if (simulated) DeliveredAtUtc = DateTime.UtcNow;
+    }
+
     /// <summary>Webhook teslim onayı: kesinleşmiş say. Zaten işlendiyse false döner (idempotent).</summary>
     public bool MarkDelivered()
     {

@@ -11,6 +11,8 @@ public static class BranchEndpoints
 {
     public static IEndpointRouteBuilder MapBranchEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — personel kendi şube kapsamını bilmek zorunda (navbar şube seçici, randevu formu).
+        // Okuma zararsızdır; YAZMA yolları personelde onay kapısına düşer (StaffApprovalGateMiddleware).
         var group = app.MapGroup("/api/admin/branches").WithTags("Branches").RequireAuthorization();
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser currentUser, IBranchService service, HttpContext http, CancellationToken ct) =>

@@ -2,6 +2,41 @@ using GuzellikMerkezi.Application.Common;
 
 namespace GuzellikMerkezi.Application.Features.WhatsApp;
 
+/// <summary>
+/// "BEST-EFFORT" GÖNDERİMİN KUYRUĞA VERDİĞİ CEVAP.
+///
+/// <para>
+/// Bu yollar eskiden <c>Task</c> döndürüp her hatayı yutuyordu: kalıcı iş kuyruğu handler'ı sorunsuz
+/// bittiği için işi BAŞARILI kapatıyor, sağlayıcının reddettiği ya da hiç gönderilemeyen KVKK
+/// isteği / bekleme teklifi / değerlendirme linki hiç yeniden denenmeden kayboluyordu. Sonucu
+/// döndürmek, "atlandı" ile "gönderilemedi" ayrımını kuyruğun görebileceği tek yer.
+/// </para>
+/// </summary>
+public enum WhatsAppDispatchOutcome
+{
+    /// <summary>Gönderildi (ya da simülasyonda gönderilmiş sayıldı) — iş tamamdır.</summary>
+    Sent,
+
+    /// <summary>
+    /// BİLEREK atlandı: kayıt/telefon yok, müşteri zaten onaylamış, özellik pakette yok, kota/kontör
+    /// bitmiş. Tekrar denemek aynı sonucu verir — iş başarılı kapanmalıdır.
+    /// </summary>
+    Skipped,
+
+    /// <summary>Gönderilemedi (sağlayıcı reddetti ya da hata fırlattı) — kuyruk YENİDEN DENEMELİ.</summary>
+    Failed,
+}
+
+/// <param name="Error">Yalnız <see cref="WhatsAppDispatchOutcome.Failed"/>'de dolu; dead-letter kaydında görünür.</param>
+public readonly record struct WhatsAppDispatchReport(WhatsAppDispatchOutcome Outcome, string? Error = null)
+{
+    public static readonly WhatsAppDispatchReport Sent = new(WhatsAppDispatchOutcome.Sent);
+    public static readonly WhatsAppDispatchReport Skipped = new(WhatsAppDispatchOutcome.Skipped);
+    public static WhatsAppDispatchReport Failed(string? error) => new(WhatsAppDispatchOutcome.Failed, error);
+
+    public bool ShouldRetry => Outcome == WhatsAppDispatchOutcome.Failed;
+}
+
 /// <summary>Kuruma özel WhatsApp hatırlatma + 2 yönlü onay (Meta Cloud API / dev'de simülasyon).</summary>
 public interface IWhatsAppService
 {
@@ -18,19 +53,19 @@ public interface IWhatsAppService
     Task<Result<ReminderResultDto>> SendTestMessageAsync(Guid tenantId, SendTestMessageRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Bekleme listesindeki müşteriye boşalan slot için "yer açıldı, ister misiniz? EVET/HAYIR" teklifi gönderir. Best-effort (feature/kota kapalıysa sessizce atlar).</summary>
-    Task SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default);
+    Task<WhatsAppDispatchReport> SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// KVKK açık rıza isteği gönderir. Müşteri "ONAYLIYORUM" yazarsa gelen mesaj webhook'unda
     /// onay otomatik işlenir (bkz. ProcessInboundMessageAsync → kvkk-consent).
     /// </summary>
-    Task SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default);
+    Task<WhatsAppDispatchReport> SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default);
 
     /// <summary>Bekleme teklifi kabul edilip randevu açılınca "randevunuz aktifleşti" mesajı gönderir. Best-effort.</summary>
-    Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
+    Task<WhatsAppDispatchReport> SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
 
     /// <summary>Randevu tamamlanınca müşteriye değerlendirme (personel + salon yıldızı) linkini gönderir. Best-effort.</summary>
-    Task SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken cancellationToken = default);
+    Task<WhatsAppDispatchReport> SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken cancellationToken = default);
 
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);

@@ -57,6 +57,23 @@ public static class RowLock
         // eksiye kayardı). Zincirin SONUNDA durur: bu yolu kullanan servis başka kilit almaz,
         // dolayısıyla mevcut sıraları bozmaz.
         "business_expenses",
+        // Abonelik tahsilatı: ödeme dönüşü hem tarayıcıdan hem webhook'tan AYNI ANDA gelebiliyor.
+        // İkisi de satırı "Pending" görüp aboneliği uzatıyor, iki fatura üretiyordu. Kilit kazananı
+        // seçer; bekleyen taraf satırı tazeleyip "zaten alınmıştı" cevabını verir. Zincirin sonunda
+        // durur — faturalama servisi başka satır kilidi almaz, mevcut sıraları bozmaz.
+        "subscription_payments",
+        // Kontör cüzdanı: bakiye/rezerve BİR TOPLAM olduğu için stok ve hediye çeki ile AYNI
+        // sınıftadır; ikisi kilitliyken bu tablo listede bile yoktu. Rezerve etme "kullanılabilir
+        // bakiye yeter mi?" diye okuyup sonra yazıyor: iki eşzamanlı gönderim aynı bakiyeyi görüp
+        // ikisi de rezerve edebiliyor (bakiyeden fazla taahhüt), teslim/iade yolları da birbirinin
+        // yazdığını ezebiliyordu. Zincirin sonunda durur — bu yolu kullanan servis başka satır
+        // kilidi almaz, mevcut sıraları bozmaz.
+        "tenant_messaging_wallets",
+        // Tek kullanımlık imza oturumu: jetonun "kullanılmış mı?" kontrolü ile imzanın yazılması
+        // arasında başka bir istek araya girip AYNI jetonla ikinci kez imzalayabiliyordu.
+        "customer_consent_forms",
+        // Değerlendirme jetonu: aynı gerekçe (tek kullanımlık, kontrol ile yazma ayrı adımlar).
+        "appointment_ratings",
     ];
 
     /// <summary>Tek bir satırı kilitler; satır yoksa false döner.</summary>

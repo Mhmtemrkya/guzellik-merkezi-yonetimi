@@ -10,6 +10,9 @@ public static class PendingOperationEndpoints
 {
     public static IEndpointRouteBuilder MapPendingOperationEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — onay KUYRUĞUNUN kendisi: personel kendi isteklerini görmek zorundadır
+        // (aksi hâlde gönderdiği işlemin durumunu izleyemez). Karara bağlama uçları uç gövdesinde
+        // rol/şube kapsamına tabidir; bu grup onay kapısından da MUAFTIR (özyineleme olurdu).
         var group = app.MapGroup("/api/admin/pending-operations").WithTags("PendingOperations").RequireAuthorization();
 
         group.MapGet("/", async (

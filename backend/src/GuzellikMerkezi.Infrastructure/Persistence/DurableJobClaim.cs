@@ -103,22 +103,48 @@ public static class DurableJobClaim
     /// hatası üretirdi; her vuruş kendi scope'unu (dolayısıyla kendi bağlantısını) kullanır.
     /// </para>
     /// </summary>
-    public static IAsyncDisposable KeepAlive(
+    /// <para>
+    /// KİRA KAYBI İŞİ DURDURUR: <see cref="JobLease.Lost"/> iptal jetonu tetiklenir. Eskiden bakıcı
+    /// sessizce sona eriyor, handler ÇALIŞMAYA DEVAM EDİYORDU — kirayı bu arada başka bir worker
+    /// almış oluyor ve aynı dış etki (WhatsApp mesajı, push) iki kez üretiliyordu.
+    /// </para>
+    public static JobLease KeepAlive(
         IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration) =>
-        new LeaseKeeper(scopeFactory, jobId, token, lockDuration);
+        new(scopeFactory, jobId, token, lockDuration);
 
-    private sealed class LeaseKeeper : IAsyncDisposable
+    /// <summary>Çalışan işin kirası: kaybedilirse <see cref="Lost"/> iptal edilir.</summary>
+    public sealed class JobLease : IAsyncDisposable
     {
         private readonly CancellationTokenSource _stop = new();
+        private readonly CancellationTokenSource _lostSource = new();
         private readonly Task _loop;
 
-        public LeaseKeeper(IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration)
+        /// <summary>
+        /// Kayıp bayrağı AYRI tutulur: <see cref="DisposeAsync"/> sonrası da okunabilmeli.
+        /// Sonuç yazma kararı dispose'dan SONRA verilir (kalp atışı önce durdurulur).
+        /// </summary>
+        private volatile bool _isLost;
+
+        internal JobLease(IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration)
         {
-            _loop = RunAsync(scopeFactory, jobId, token, lockDuration, _stop.Token);
+            _loop = RunAsync(scopeFactory, jobId, token, lockDuration, MarkLostAsync, _stop.Token);
+        }
+
+        /// <summary>Sahiplenme kaybedildiğinde iptal edilir — çalışan iş bu jetonu dinlemelidir.</summary>
+        public CancellationToken Lost => _lostSource.Token;
+
+        /// <summary>Sahiplenme kaybedildi mi (sonuç yazmadan önce kontrol edilir).</summary>
+        public bool IsLost => _isLost;
+
+        private async Task MarkLostAsync()
+        {
+            _isLost = true;
+            await _lostSource.CancelAsync();
         }
 
         private static async Task RunAsync(
-            IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration, CancellationToken ct)
+            IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration,
+            Func<Task> markLost, CancellationToken ct)
         {
             // Kira dolmadan ÖNCE vurulur: üçte bir aralık, gecikmelere karşı geniş pay bırakır.
             var interval = TimeSpan.FromMilliseconds(Math.Max(1000, lockDuration.TotalMilliseconds / 3));
@@ -141,8 +167,14 @@ public static class DurableJobClaim
                     {
                         using var scope = scopeFactory.CreateScope();
                         var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
-                        // false → sahiplenmeyi kaybettik; uzatmaya devam etmenin anlamı yok.
-                        if (!await HeartbeatAsync(db, jobId, token, lockDuration, ct)) return;
+                        // false → sahiplenmeyi KAYBETTİK. Yalnız uzatmayı bırakmak yetmez: işi
+                        // artık başka bir worker yürütüyor, bizim handler'ımız devam ederse dış
+                        // etki iki kez üretilir. Jeton iptal edilir, çalışan iş durdurulur.
+                        if (!await HeartbeatAsync(db, jobId, token, lockDuration, ct))
+                        {
+                            await markLost();
+                            return;
+                        }
                     }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested)
                     {
@@ -169,6 +201,7 @@ public static class DurableJobClaim
             await _stop.CancelAsync();
             try { await _loop; } catch { /* yukarıda yutuluyor */ }
             _stop.Dispose();
+            _lostSource.Dispose();
         }
     }
 

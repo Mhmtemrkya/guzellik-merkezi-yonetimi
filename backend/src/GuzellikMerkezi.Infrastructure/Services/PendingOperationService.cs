@@ -6,6 +6,8 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -21,7 +23,12 @@ public sealed class PendingOperationService : IPendingOperationService
     /// <summary>Onay replay'inin çalışacağı İSTEK SAHİBİ kapsamı (bkz. <see cref="IApprovalRequesterScope"/>).</summary>
     private readonly IApprovalRequesterScope? _requesterScope;
 
-    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit, IAppNotificationService notifications, IRealtimeNotifier realtime, IApprovalRequesterScope? requesterScope = null)
+    private readonly ILogger<PendingOperationService>? _logger;
+
+    /// <summary>Kalp atışı AYRI bir bağlamda çalışır (bkz. <see cref="RunClaimHeartbeatAsync"/>).</summary>
+    private readonly IServiceScopeFactory? _scopeFactory;
+
+    public PendingOperationService(GuzellikDbContext db, IApprovalDispatcher dispatcher, IApprovalReplayer replayer, IAuditLogger audit, IAppNotificationService notifications, IRealtimeNotifier realtime, IApprovalRequesterScope? requesterScope = null, ILogger<PendingOperationService>? logger = null, IServiceScopeFactory? scopeFactory = null)
     {
         _db = db;
         _dispatcher = dispatcher;
@@ -30,6 +37,8 @@ public sealed class PendingOperationService : IPendingOperationService
         _notifications = notifications;
         _realtime = realtime;
         _requesterScope = requesterScope;
+        _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
 
@@ -312,6 +321,78 @@ public sealed class PendingOperationService : IPendingOperationService
         return OutOfBranchScope(op, actorRole, actorBranchId) ? Error.NotFound("İşlem bulunamadı.") : null;
     }
 
+    /// <summary>
+    /// Kalp atışı aralığı. Zaman aşımının BELİRGİN ŞEKİLDE altında olmalı: tek bir atışın
+    /// kaçırılması kaydı bayat göstermemeli.
+    /// </summary>
+    private static TimeSpan ClaimHeartbeatInterval => TimeSpan.FromSeconds(
+        Math.Max(5, PendingOperation.ProcessingTimeout.TotalSeconds / 4));
+
+    /// <summary>
+    /// Operasyon sürerken sahiplenme damgasını tazeler.
+    ///
+    /// <para>
+    /// AYRI BAĞLAM: asıl akış <c>_db</c>'yi kullanıyor olabilir ve DbContext eşzamanlı kullanıma
+    /// kapalıdır. Scope üretilemiyorsa (birim testleri, elle kurulan servis) kalp atışı sessizce
+    /// devre dışı kalır — davranış eski hâline döner, ek bir kırılganlık üretmez.
+    /// </para>
+    /// <para>
+    /// HAM SQL: yalnız hâlâ Processing olan satırın damgası güncellenir. Taze scope'ta kurum/şube
+    /// bağlamı kurulu olmadığından EF sorgu süzgeçleriyle satırı bulamayabilirdik.
+    /// </para>
+    /// </summary>
+    private async Task RunClaimHeartbeatAsync(Guid tenantId, Guid id, CancellationToken ct)
+    {
+        if (_scopeFactory is null) return;
+
+        try
+        {
+            using var timer = new PeriodicTimer(ClaimHeartbeatInterval);
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+
+                if (db.Database.IsRelational())
+                {
+                    await db.Database.ExecuteSqlRawAsync(
+                        "UPDATE pending_operations SET UpdatedAtUtc = {0} WHERE Id = {1} AND TenantId = {2} AND Status = 'Processing'",
+                        new object[] { DateTime.UtcNow, id.ToString(), tenantId.ToString() }, ct);
+                    continue;
+                }
+
+                var op = await db.PendingOperations.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+                if (op is null) return;
+                op.RenewClaim();
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Beklenen: operasyon bitti, atış durduruldu.
+        }
+        catch (Exception ex)
+        {
+            // Atış yapılamazsa en kötü ihtimalle kayıt erken "bayat" görünür — eski davranış.
+            _logger?.LogWarning(ex, "Onay sahiplenmesi tazelenemedi (işlem {OperationId}).", id);
+        }
+    }
+
+    /// <summary>Kalp atışını durdurur ve bitmesini bekler; hatası asıl sonucu etkilemez.</summary>
+    private static async Task StopHeartbeatAsync(CancellationTokenSource cts, Task heartbeat)
+    {
+        try
+        {
+            await cts.CancelAsync();
+            await heartbeat;
+        }
+        catch
+        {
+            // Kalp atışı yan iştir; sonucu değiştirmez.
+        }
+    }
+
     /// <summary>Operasyon başarısızsa sahiplenmeyi bırakır — işlem yeniden denenebilir kalsın.</summary>
     private async Task ReleaseClaimAsync(Guid tenantId, Guid id, CancellationToken ct)
     {
@@ -412,6 +493,15 @@ public sealed class PendingOperationService : IPendingOperationService
         var (operationType, payloadJson) = claim.Value;
 
         // ---- 2) ASIL OPERASYON ----
+        //
+        // SAHİPLENME OPERASYON SÜRERKEN CANLI TUTULUR. "Bayat" ölçütü sahiplenme anından
+        // sayılıyordu: zaman aşımını aşan ama HÂLÂ ÇALIŞAN bir replay bayat görünüyor, yönetici onu
+        // "uygulanmadı" diye kapatıp idempotency anahtarını sildirebiliyordu — işlem yeniden
+        // onaylandığında aynı finansal hareket ikinci kez oluşabilirdi. Kalp atışı sürdükçe kayıt
+        // bayat sayılmaz; durduğunda (süreç çöktü / bağlantı gitti) zaman aşımı normal işler.
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var heartbeat = RunClaimHeartbeatAsync(tenantId, id, heartbeatCts.Token);
+
         Result<Guid?> dispatchResult;
         try
         {
@@ -421,12 +511,16 @@ public sealed class PendingOperationService : IPendingOperationService
         }
         catch (Exception ex)
         {
+            await StopHeartbeatAsync(heartbeatCts, heartbeat);
             // SONUÇ BİLİNMİYOR → sahiplenmeyi BIRAKMA. İşlem uygulanmış olabilir; Pending'e
             // döndürüp yeniden onaylatmak onu ikinci kez uygulama riski taşır. Zaman aşımından
             // sonra yeniden denenebilir ve o deneme idempotent anahtarla gider.
             return Result<PendingOperationDto>.Failure(Error.Conflict(
                 $"İşlemin sonucu doğrulanamadı: {ex.Message} Birkaç dakika sonra yeniden deneyin."));
         }
+
+        // Operasyon bitti: kalp atışı DURUR ki karar (Approved / Pending'e bırakma) ezilmesin.
+        await StopHeartbeatAsync(heartbeatCts, heartbeat);
 
         if (dispatchResult.IsFailure)
         {
@@ -443,30 +537,47 @@ public sealed class PendingOperationService : IPendingOperationService
         if (op is null) return Result<PendingOperationDto>.Failure(Error.NotFound("İşlem bulunamadı."));
         op.Approve(decidedByUserId, dispatchResult.Value);
         await _db.SaveChangesAsync(cancellationToken);
-        await _audit.LogAsync(tenantId, op.BranchId, "Approve", "PendingOperation", op.Id,
-            $"Onaylandı: {op.Title} ({op.OperationType}) · gönderen {op.RequestedByName}",
-            new { op.OperationType, op.Title, op.RequestedByName, op.ResultEntityId }, cancellationToken);
 
-        // KALICI bildirim: personel o an çevrimdışı olsa bile sonucu bildirim akışında (web + mobil
-        // feed + FCM push) görür. Anlık push yalnızca AÇIK ekranı hemen tazelemek içindir.
-        await _notifications.NotifyUserAsync(
-            tenantId, op.BranchId, op.RequestedByUserId,
-            AppNotificationType.ApprovalApproved, AppNotificationSeverity.Success,
-            "İşleminiz onaylandı",
-            op.Title,
-            data: new { route = "/approvals", id = op.Id.ToString() },
-            dedupeKey: $"pending-approved:{op.Id}",
-            ct: cancellationToken);
+        // ---- 3c) YAN İŞLER: SONUCU DEĞİŞTİREMEZLER ----
+        //
+        // Buradan sonrası KARAR VERİLDİKTEN VE KALICI OLDUKTAN sonra çalışır. Eskiden denetim
+        // kaydı, kalıcı bildirim ve anlık yayın çağrıları doğrudan zincire bağlıydı: bunlardan
+        // birinin fırlattığı beklenmedik bir hata (bağlantı kopması, scope oluşturulamaması)
+        // metottan dışarı sızıp kullanıcıya "onay başarısız" gösteriyordu. Oysa iş UYGULANMIŞ ve
+        // kayıt Approved olmuştu; yönetici gerçeğe aykırı hatayı görüp tekrar onaylamaya
+        // çalışıyor, listede ise "zaten karara bağlanmış" cevabını alıyordu.
+        try
+        {
+            await _audit.LogAsync(tenantId, op.BranchId, "Approve", "PendingOperation", op.Id,
+                $"Onaylandı: {op.Title} ({op.OperationType}) · gönderen {op.RequestedByName}",
+                new { op.OperationType, op.Title, op.RequestedByName, op.ResultEntityId }, cancellationToken);
 
-        var topics = TopicsFor(op);
-        await _realtime.PublishToUserAsync(tenantId, op.RequestedByUserId, new RealtimeEvent(
-            "approval.approved", "İşleminiz onaylandı", op.Title, topics,
-            new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
-        // Kurum genelinde de duyur: onaylanan işlem cariyi/seansı/randevuyu değiştirdi, açık
-        // olan diğer ekranlar (yönetici listesi, ikinci sekme) bayat kalmasın.
-        // SAF TAZELEME: başlık/mesaj/işlem id'si TAŞIMAZ — bu olay kurumdaki herkese gider.
-        await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
-            "approval.resolved", null, null, topics), cancellationToken);
+            // KALICI bildirim: personel o an çevrimdışı olsa bile sonucu bildirim akışında (web +
+            // mobil feed + FCM push) görür. Anlık push yalnızca AÇIK ekranı hemen tazelemek içindir.
+            await _notifications.NotifyUserAsync(
+                tenantId, op.BranchId, op.RequestedByUserId,
+                AppNotificationType.ApprovalApproved, AppNotificationSeverity.Success,
+                "İşleminiz onaylandı",
+                op.Title,
+                data: new { route = "/approvals", id = op.Id.ToString() },
+                dedupeKey: $"pending-approved:{op.Id}",
+                ct: cancellationToken);
+
+            var topics = TopicsFor(op);
+            await _realtime.PublishToUserAsync(tenantId, op.RequestedByUserId, new RealtimeEvent(
+                "approval.approved", "İşleminiz onaylandı", op.Title, topics,
+                new Dictionary<string, string> { ["id"] = op.Id.ToString() }), cancellationToken);
+            // Kurum genelinde de duyur: onaylanan işlem cariyi/seansı/randevuyu değiştirdi, açık
+            // olan diğer ekranlar (yönetici listesi, ikinci sekme) bayat kalmasın.
+            // SAF TAZELEME: başlık/mesaj/işlem id'si TAŞIMAZ — bu olay kurumdaki herkese gider.
+            await _realtime.PublishToTenantAsync(tenantId, new RealtimeEvent(
+                "approval.resolved", null, null, topics), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex,
+                "Onay kesinleşti ama yan işler tamamlanamadı (işlem {OperationId}).", op.Id);
+        }
 
         return Result<PendingOperationDto>.Success(op.ToDto());
     }

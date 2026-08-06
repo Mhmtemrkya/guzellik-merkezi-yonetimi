@@ -12,6 +12,8 @@ public static class BillingEndpoints
     {
         // Kurumun abonelik/ödeme uçları. ABONELİK KARARI KURUM YETKİLİSİNİNDİR: personel ve şube
         // yöneticisi kart ekleyemez, paket değiştiremez, fatura göremez (finansal veri).
+        // YETKİ: TÜM KURUM KULLANICILARI — abonelik/fatura özeti kurum yöneticisine aittir ve yetki uç gövdesinde
+        // kontrol edilir; ödeme başlatma yolları ayrıca servis katmanında reddedilir.
         var group = app.MapGroup("/api/admin/billing").WithTags("Billing").RequireAuthorization();
 
         group.MapGet("/", async (Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>

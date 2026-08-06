@@ -8,6 +8,8 @@ public static class CampaignEndpoints
 {
     public static IEndpointRouteBuilder MapCampaignEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — kampanya listesi satış ekranında fiyat hesabına girer.
+        // YAZMA yolları Services.Manage işlem iznine tabidir.
         var group = app.MapGroup("/api/admin/campaigns").WithTags("Campaigns").RequireAuthorization();
 
         group.MapGet("/", async (Guid? tenantId, bool? runningOnly, ICurrentUser currentUser, ICampaignService service, HttpContext http, CancellationToken ct) =>

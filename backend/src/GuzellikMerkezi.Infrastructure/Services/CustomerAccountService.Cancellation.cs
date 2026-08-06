@@ -349,11 +349,15 @@ public sealed partial class CustomerAccountService
         IEnumerable<Guid> productIds,
         IEnumerable<Guid> giftCardIds,
         IEnumerable<Guid> sessionIds,
-        CancellationToken ct)
+        CancellationToken ct,
+        IEnumerable<Guid>? staffMemberIds = null)
     {
         // Müşteri satırı: sadakat BAKİYESİ bir toplam olduğu için tek satır kilitlenemez; aynı
         // müşterinin iki işlemi burada serileşir ve puan eksiye düşemez.
         await RowLock.LockRowAsync(_db, "customers", customerId, ct);
+        // Personel satırı: randevu SLOT kapasitesi bu satırda serileşir (bkz. AppointmentService).
+        // Sıra RowLock.TableOrder ile aynıdır — customers'tan sonra, adisyonlar'dan önce.
+        if (staffMemberIds is not null) await RowLock.LockRowsAsync(_db, "staff_members", staffMemberIds, ct);
         await RowLock.LockRowsAsync(_db, "adisyonlar", adisyonIds, ct);
         await RowLock.LockRowsAsync(_db, "products", productIds, ct);
         await RowLock.LockRowsAsync(_db, "gift_cards", giftCardIds, ct);

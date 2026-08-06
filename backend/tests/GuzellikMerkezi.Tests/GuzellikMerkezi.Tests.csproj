@@ -21,6 +21,24 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      TEST PARALELLİĞİ SINIRLANDI (xunit.runner.json).
+
+      SOMUT SORUN: 20 test SINIFI gerçek veritabanı testi içeriyor (78 test) ve her test KENDİ
+      geçici şemasını kuruyor (~100 tablo DDL). xUnit varsayılanı "çekirdek sayısı kadar sınıfı
+      paralel koş" olduğundan 16 çekirdekli makinede 16 şema aynı anda yaratılıyor: MySQL DDL
+      fırtınası altında hiçbir test hang penceresinde tamamlanamıyor ve koşu "test ana işlemi
+      kilitlendi" diye DÜŞÜYOR. Belirti kararsızdı (bazen geçiyor, bazen sonlara doğru takılıyor)
+      ve her yeni gerçek-veritabanı testiyle kötüleşiyordu — teşhisi zor, sonucu ise doğrulanamayan
+      bir test paketiydi.
+
+      4 iş parçacığı: bellek içi testler hâlâ paralel koşar, DDL yükü ise sunucunun kaldırabileceği
+      seviyede kalır. Değer düşürülürse koşu uzar, yükseltilirse takılma geri gelir.
+    -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Application\GuzellikMerkezi.Application.csproj" />
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Domain\GuzellikMerkezi.Domain.csproj" />
     <ProjectReference Include="..\..\src\GuzellikMerkezi.Infrastructure\GuzellikMerkezi.Infrastructure.csproj" />

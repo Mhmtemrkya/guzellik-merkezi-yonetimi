@@ -1077,18 +1077,12 @@ public static class DatabaseBootstrap
             // onu o fişin ödemesi sanıp bağlıyor; fiş sonradan silindiğinde ALAKASIZ tahsilat da
             // kasadan siliniyordu. Bu yüzden adisyonun müşteri/cari kimliği de doğrulanır.
             var adisyonInfo = (await db.Adisyonlar.IgnoreQueryFilters()
-                    .Select(a => new { a.Id, a.CustomerId, a.CustomerAccountId, a.BranchId })
+                    .Select(a => new { a.Id, a.CustomerId, a.CustomerAccountId, a.BranchId, a.CreatedAtUtc })
                     .ToListAsync())
                 .GroupBy(a => "ADS-" + a.Id.ToString("N")[..12])
                 .Where(g => g.Count() == 1) // aynı önekte iki fiş varsa (astronomik) dokunma
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
             if (adisyonInfo.Count == 0) return;
-
-            // Tahsilat hangi cariye ait? Bağ ancak adisyonun carisi ile aynıysa kurulur.
-            var accountOwner = (await db.CustomerAccounts.IgnoreQueryFilters()
-                    .Select(a => new { a.Id, a.CustomerId })
-                    .ToListAsync())
-                .ToDictionary(a => a.Id, a => a.CustomerId);
 
             var linkedPayments = 0;
             foreach (var payment in await db.AccountPayments.IgnoreQueryFilters()
@@ -1096,17 +1090,24 @@ public static class DatabaseBootstrap
                          .ToListAsync())
             {
                 if (payment.Reference is not { } r || !adisyonInfo.TryGetValue(r.Trim(), out var adisyon)) continue;
-                // Adisyon bu cariye mi bağlı? Değilse en azından aynı müşterinin carisi mi?
-                var sameAccount = adisyon.CustomerAccountId == payment.CustomerAccountId;
-                var sameCustomer = accountOwner.TryGetValue(payment.CustomerAccountId, out var owner)
-                                   && owner == adisyon.CustomerId;
-                if (!sameAccount && !sameCustomer) continue;
+
+                // TAM CARİ EŞLEŞMESİ ZORUNLU. Eskiden "aynı MÜŞTERİNİN başka bir carisi" de kabul
+                // ediliyordu: müşteriye elle girilen BAĞIMSIZ bir tahsilata "ADS-…" biçimli bir
+                // açıklama yazmak yetiyor, o tahsilat fişin ödemesi sanılıyordu — fiş silinince
+                // alakasız para kasadan siliniyordu. Adisyonun ürettiği tahsilat HER ZAMAN
+                // adisyonun KENDİ carisine yazılır; başka cari eşleşmesi kanıt değildir.
+                if (adisyon.CustomerAccountId != payment.CustomerAccountId) continue;
+
+                // ZAMAN YÖNÜ: bir fişin tahsilatı fişten ÖNCE oluşturulmuş olamaz. (İş tarihi
+                // geriye alınabildiği için OccurredAtUtc değil, SATIR oluşturma anı kullanılır.)
+                if (payment.CreatedAtUtc < adisyon.CreatedAtUtc) continue;
+
                 payment.LinkToAdisyon(adisyon.Id);
                 linkedPayments++;
             }
 
-            // Stok hareketinde cari/müşteri kimliği yok; en azından fişin O ÜRÜNÜ gerçekten
-            // içerdiği doğrulanır (referans metnine tek başına güvenilmez).
+            // Stok hareketinde cari/müşteri kimliği yok; fişin O ÜRÜNÜ gerçekten içerdiği
+            // doğrulanır (referans metnine tek başına güvenilmez).
             var adisyonProducts = (await db.AdisyonItems.IgnoreQueryFilters()
                     .Where(i => i.Type == Domain.Enums.AdisyonItemType.Product && i.RefId != null)
                     .Select(i => new { i.AdisyonId, ProductId = i.RefId!.Value })
@@ -1121,6 +1122,15 @@ public static class DatabaseBootstrap
             {
                 if (movement.Reference is not { } r || !adisyonInfo.TryGetValue(r.Trim(), out var adisyon)) continue;
                 if (!adisyonProducts.TryGetValue(adisyon.Id, out var products) || !products.Contains(movement.ProductId)) continue;
+
+                // TÜR EŞLEŞMESİ: adisyon onayı yalnız SATIŞ hareketi üretir. Elle girilen giriş,
+                // sayım düzeltmesi ya da fire hareketi fişin ürettiği hareket DEĞİLDİR; bağlanırsa
+                // fiş silindiğinde yanlış hareket ters çevrilip stok maliyeti bozulurdu.
+                if (movement.Type != Domain.Enums.StockMovementType.Sale) continue;
+
+                // ZAMAN YÖNÜ: fişten önce oluşmuş bir hareket o fişin sonucu olamaz.
+                if (movement.CreatedAtUtc < adisyon.CreatedAtUtc) continue;
+
                 movement.LinkToAdisyon(adisyon.Id);
                 linkedMovements++;
             }
@@ -1147,6 +1157,13 @@ public static class DatabaseBootstrap
     /// DOKUNULMAZ — yanlış bağ yazmaktansa eski davranışta kalmak yeğdir.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// "Paket alındı ve AYNI ziyarette kullanıldı" durumunda seans satırı ile kullanım kalemi
+    /// aynı saniyelere düşer; satır yazım sırası garanti değildir. Bu küçük pay o meşru durumu
+    /// kapsar, sonradan (günler sonra) alınmış bir paketi kapsamaz.
+    /// </summary>
+    private static readonly TimeSpan PackageUsageClockGrace = TimeSpan.FromMinutes(5);
+
     public static async Task BackfillPackageSessionUsagesAsync(IServiceProvider services)
     {
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("PackageUsageBackfill");
@@ -1172,10 +1189,21 @@ public static class DatabaseBootstrap
             var added = 0;
             foreach (var row in items.Where(x => !linkedItemIds.Contains(x.Item.Id)))
             {
+                var customerId = row.CustomerId;
                 var serviceId = row.Item.RefId!.Value;
+
+                // SEANS, KULLANIMDAN ÖNCE VAR OLMUŞ OLMALI.
+                //
+                // SOMUT AÇIK: aday süzgeci yalnız (müşteri + hizmet + kullanılmış seans) bakıyordu,
+                // ZAMANA hiç bakmıyordu. Müşteri eski paketini bitirip AYNI hizmetten YENİ bir paket
+                // aldığında tek aday yeni paket oluyor ve ESKİ satışın kullanımı ona bağlanıyordu;
+                // o eski satış iptal edilince hak, hiç ilgisi olmayan yeni pakete iade ediliyordu.
+                // Kullanım kaydından sonra açılmış bir seans, o kullanımın kaynağı OLAMAZ.
+                var existedBefore = row.Item.CreatedAtUtc + PackageUsageClockGrace;
                 var candidates = await db.CustomerPackageSessions.IgnoreQueryFilters()
-                    .Where(x => !x.IsDeleted && x.TenantId == row.TenantId && x.CustomerId == row.CustomerId
-                                && x.ServiceDefinitionId == serviceId && x.UsedSessions > 0)
+                    .Where(x => !x.IsDeleted && x.TenantId == row.TenantId && x.CustomerId == customerId
+                                && x.ServiceDefinitionId == serviceId && x.UsedSessions > 0
+                                && x.CreatedAtUtc <= existedBefore)
                     .Select(x => x.Id)
                     .ToListAsync();
 

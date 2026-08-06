@@ -31,14 +31,6 @@ public sealed class StaffApprovalGateMiddleware
 
     public async Task InvokeAsync(HttpContext http, ICurrentUser currentUser, ITenantContext tenantContext, IPendingOperationService pendingOps)
     {
-        // Randevu durum güncelleme kapıdan muaftır (rutin operasyon) ama İŞLEM iznine tabidir.
-        if (IsStaffWrite(http, currentUser) && IsAppointmentStatusPath(http.Request.Path.Value ?? string.Empty)
-            && !Permissions.IsActionAllowed(currentUser.Permissions, Permissions.AppointmentsStatus))
-        {
-            await WriteForbiddenAsync(http, "Randevu durumunu güncelleme yetkiniz yok. Kurum yöneticinizden yetki isteyin.");
-            return;
-        }
-
         // İŞLEM (AKSİYON) İZNİ — REPLAY DE DAHİL.
         //
         // SOMUT AÇIK: kontrol ShouldGate'ten SONRA yapılıyordu ve ShouldGate, replay claim'i görünce
@@ -214,7 +206,27 @@ public sealed class StaffApprovalGateMiddleware
             if (HttpMethods.IsDelete(method) && !Has("/treatment-photos")) return Permissions.CustomersDelete;
             return Permissions.CustomersManage; // müşteri kartı + konsültasyon + tedavi günlüğü
         }
-        if (Is("/api/admin/appointments")) return Permissions.AppointmentsCreate;
+        if (Is("/api/admin/appointments"))
+        {
+            // OKUMA İŞLEM İZNİNE TABİ DEĞİLDİR. Bu eşleme YAZMA işlemlerinin yetki sınıfını verir;
+            // randevu SAYFASINI görme hakkı zaten uç grubundaki RequirePermission(Appointments)
+            // ile ayrıca kapıdan geçiyor. Ayrım yapılmadığı için, kendisine yalnız "durum
+            // güncelleme" yetkisi verilmiş personel randevu LİSTESİNİ bile açamıyordu (GET de
+            // Appointments.Create istiyordu) — verilen yetki fiilen kullanılamaz hâldeydi.
+            if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) return null;
+
+            // RANDEVU YOLU TEK, YETKİ SINIFI ÜÇ.
+            //
+            // SOMUT AÇIK: bütün randevu yazmaları için Appointments.Create isteniyordu. Yalnızca
+            // "durum güncelleme" (Tamamlandı/İptal/Gelmedi) yetkisi verilmiş personel, kendisine
+            // AÇIKÇA verilmiş bu işlemi yapamıyor, 403 alıyordu; aynı şekilde yalnız "yanlış
+            // tamamlamayı geri alma" yetkisi olan personel de kapıya takılıyordu. Yol artık işin
+            // gerçek yetki sınıfına eşlenir — kapının önündeki özel durum kontrolüne gerek kalmaz
+            // (ve replay yolunda da aynı kural işler).
+            if (IsAppointmentStatusPath(path)) return Permissions.AppointmentsStatus;
+            if (Has("/void-completion")) return Permissions.AppointmentsVoidCompletion;
+            return Permissions.AppointmentsCreate;
+        }
         // Bekleme kaydını randevuya çevirmek gerçek randevu açar → ayrı (daha dar) yetki.
         if (Is("/api/admin/waitlist"))
             return Has("/schedule") || Has("/book") ? Permissions.WaitlistConvert : Permissions.WaitlistManage;

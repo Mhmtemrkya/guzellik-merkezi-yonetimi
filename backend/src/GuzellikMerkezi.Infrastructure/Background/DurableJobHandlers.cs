@@ -15,6 +15,28 @@ public static class DurableJobTypes
     public const string SubscriptionRenewal = "billing.subscription-renewal";
 }
 
+/// <summary>
+/// GÖNDERİLEMEYEN MESAJ BAŞARILI İŞ DEĞİLDİR.
+///
+/// <para>
+/// Handler'lar gönderim yollarını çağırıp sonuca hiç bakmıyordu; o yollar da her hatayı yutuyordu.
+/// Sonuç: sağlayıcının reddettiği ya da hiç gönderilemeyen KVKK isteği, bekleme teklifi ve
+/// değerlendirme linki iş kuyruğunda "başarılı" damgalanıp SESSİZCE kayboluyordu — ne yeniden
+/// deneme, ne dead-letter, ne de görünür bir iz kalıyordu. Artık gerçek başarısızlık istisnaya
+/// çevrilir: kuyruk yeniden dener, denemeler tükenirse iş dead-letter'a düşer ve sistem
+/// sayfasında görünür. "Bilerek atlandı" (telefon yok, zaten onaylı, kota kapalı) başarıdır.
+/// </para>
+/// </summary>
+internal static class DurableJobDispatchGuard
+{
+    public static void EnsureDelivered(WhatsAppDispatchReport report, string jobType, Guid entityId)
+    {
+        if (!report.ShouldRetry) return;
+        throw new InvalidOperationException(
+            $"WhatsApp gönderimi başarısız ({jobType}, {entityId}): {report.Error ?? "sebep bildirilmedi"}");
+    }
+}
+
 public sealed record WaitlistOfferJob(Guid TenantId, Guid WaitlistId);
 public sealed record WaitlistActivatedJob(Guid TenantId, Guid AppointmentId);
 public sealed record PushSendJob(List<PushMessage> Messages);
@@ -69,7 +91,8 @@ public sealed class KvkkConsentJobHandler : IDurableJobHandler
     {
         var job = JsonSerializer.Deserialize<KvkkConsentJob>(payloadJson)
                   ?? throw new InvalidOperationException("KvkkConsent payload çözülemedi.");
-        await _whatsApp.SendKvkkConsentRequestAsync(job.TenantId, job.CustomerId, ct);
+        var report = await _whatsApp.SendKvkkConsentRequestAsync(job.TenantId, job.CustomerId, ct);
+        DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.CustomerId);
     }
 }
 
@@ -83,7 +106,8 @@ public sealed class WaitlistOfferJobHandler : IDurableJobHandler
     {
         var job = JsonSerializer.Deserialize<WaitlistOfferJob>(payloadJson)
                   ?? throw new InvalidOperationException("WaitlistOffer payload çözülemedi.");
-        await _whatsApp.SendWaitlistOfferAsync(job.TenantId, job.WaitlistId, ct);
+        var report = await _whatsApp.SendWaitlistOfferAsync(job.TenantId, job.WaitlistId, ct);
+        DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.WaitlistId);
     }
 }
 
@@ -97,7 +121,8 @@ public sealed class WaitlistActivatedJobHandler : IDurableJobHandler
     {
         var job = JsonSerializer.Deserialize<WaitlistActivatedJob>(payloadJson)
                   ?? throw new InvalidOperationException("WaitlistActivated payload çözülemedi.");
-        await _whatsApp.SendWaitlistActivatedAsync(job.TenantId, job.AppointmentId, ct);
+        var report = await _whatsApp.SendWaitlistActivatedAsync(job.TenantId, job.AppointmentId, ct);
+        DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.AppointmentId);
     }
 }
 
@@ -126,7 +151,8 @@ public sealed class RatingLinkJobHandler : IDurableJobHandler
             Domain.Entities.AppointmentRating.WhatsAppLinkLifetimeMinutes, ct);
         // Conflict = zaten puanlanmış → gönderilecek bir şey yok; diğer hatalarda da sessizce bit (best-effort).
         if (issued.IsFailure) return;
-        await _whatsApp.SendRatingLinkAsync(job.TenantId, job.AppointmentId, issued.Value!.Token, ct);
+        var report = await _whatsApp.SendRatingLinkAsync(job.TenantId, job.AppointmentId, issued.Value!.Token, ct);
+        DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.AppointmentId);
     }
 }
 
@@ -140,6 +166,15 @@ public sealed class PushSendJobHandler : IDurableJobHandler
     {
         var job = JsonSerializer.Deserialize<PushSendJob>(payloadJson)
                   ?? throw new InvalidOperationException("PushSend payload çözülemedi.");
-        if (job.Messages.Count > 0) await _push.SendAsync(job.Messages, ct);
+        if (job.Messages.Count == 0) return;
+
+        // HİÇ TESLİM EDİLEMEYEN PARTİ BAŞARILI DEĞİLDİR. Gönderilen sayısı yok sayılıyordu:
+        // FCM erişilemez olduğunda ya da erişim jetonu alınamadığında iş "başarılı" kapanıyor,
+        // bildirimler yeniden denenmeden kayboluyordu. Kısmi başarıda tekrar denemek, teslim
+        // edilmiş cihazlara MÜKERRER bildirim gönderirdi; bu yüzden yalnız TAMAMEN başarısız
+        // parti istisnaya çevrilir.
+        var sent = await _push.SendAsync(job.Messages, ct);
+        if (sent == 0)
+            throw new InvalidOperationException($"Push gönderimi başarısız: {job.Messages.Count} mesajın hiçbiri teslim edilemedi.");
     }
 }

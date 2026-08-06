@@ -859,6 +859,24 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                     .ToListAsync(cancellationToken))
                 .Select(x => (x.Type, x.RefId)));
         }
+        // CANLANDIRILACAK RANDEVULARIN PERSONEL SATIRLARI DA KİLİTLENİR.
+        //
+        // SOMUT AÇIK: aşağıdaki çakışma kontrolü ("bu saate başka randevu alınmış mı?") kilitsiz
+        // okuyordu. Randevu OLUŞTURMA yolu slot kapasitesini personel satırında serileştirir; bu
+        // yol o kilide hiç katılmadığı için kontrol ile Restore() arasına eşzamanlı bir randevu
+        // girebiliyor ve AYNI personel/saat için İKİ aktif randevu oluşuyordu. Kilit, kontrolü
+        // gerçekten bağlayıcı yapar. Guid listesiyle .Contains() bu sağlayıcıda çevrilemediği için
+        // personel kimlikleri tek tek okunur (liste küçüktür). [[project_mysql_query_gotchas]]
+        var restoreStaffIds = new List<Guid>();
+        foreach (var appointmentId in snapshot.CancelledAppointmentIds ?? [])
+        {
+            var staffId = await _db.Appointments.IgnoreQueryFilters()
+                .Where(a => a.TenantId == tenantId && a.Id == appointmentId)
+                .Select(a => a.StaffMemberId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (staffId != Guid.Empty) restoreStaffIds.Add(staffId);
+        }
+
         await LockSideEffectRowsAsync(
             archive.CustomerId, restoreAdisyonIds,
             restoreRefIds.Where(x => x.Type == AdisyonItemType.Product).Select(x => x.RefId),
@@ -866,7 +884,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             await _db.CustomerPackageSessions
                 .Where(x => x.TenantId == tenantId && x.CustomerId == archive.CustomerId)
                 .Select(x => x.Id).ToListAsync(cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            restoreStaffIds);
 
         var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot);
         var nowUtc = DateTime.UtcNow;

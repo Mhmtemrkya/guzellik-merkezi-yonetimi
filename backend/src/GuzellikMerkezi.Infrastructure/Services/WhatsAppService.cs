@@ -251,17 +251,27 @@ public sealed class WhatsAppService : IWhatsAppService
         return Result<IReadOnlyCollection<WhatsAppMessageDto>>.Success(rows);
     }
 
-    public async Task SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken ct = default)
+    /// <summary>
+    /// GÖNDERİM SONUCUNU ÇAĞIRANA (kuyruğa) BİLDİRİR.
+    ///
+    /// <para>
+    /// Bu yol eskiden her hatayı yutup normal dönüyordu; kalıcı iş kuyruğu bunu BAŞARI sayıp işi
+    /// kapatıyor, gönderilemeyen teklif hiç yeniden denenmeden kayboluyordu. Artık "bilerek
+    /// atlandı" ile "gönderilemedi" ayrılır; ikincisinde kuyruk yeniden dener, tükenirse
+    /// dead-letter'a düşer ve sistem sayfasında görünür.
+    /// </para>
+    /// </summary>
+    public async Task<WhatsAppDispatchReport> SendWaitlistOfferAsync(Guid tenantId, Guid waitlistEntryId, CancellationToken ct = default)
     {
         try
         {
             var entry = await _db.WaitlistEntries.IgnoreQueryFilters().AsNoTracking()
                 .FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Id == waitlistEntryId && !w.IsDeleted, ct);
-            if (entry is null || entry.PreferredStartUtc is not { } startUtc) return;
+            if (entry is null || entry.PreferredStartUtc is not { } startUtc) return WhatsAppDispatchReport.Skipped;
 
             var customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
                 .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == entry.CustomerId, ct);
-            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return;
+            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return WhatsAppDispatchReport.Skipped;
 
             var serviceName = entry.ServiceDefinitionId is { } sid
                 ? await _db.ServiceDefinitions.IgnoreQueryFilters().AsNoTracking().Where(s => s.Id == sid).Select(s => s.Name).FirstOrDefaultAsync(ct) ?? string.Empty
@@ -274,23 +284,40 @@ public sealed class WhatsAppService : IWhatsAppService
                 salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? string.Empty;
 
             var body = RenderSlotTemplate(WaitlistOfferTemplate, customer.FullName, startUtc, serviceName, salonName);
-            await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct);
+            return Report(await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Bekleme teklifi gönderilemedi: {Entry}", waitlistEntryId);
+            return WhatsAppDispatchReport.Failed(ex.Message);
         }
     }
 
-    public async Task SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
+    /// <summary>
+    /// Gönderim sonucunu kuyruğun anlayacağı üç durumdan birine çevirir.
+    /// ENGELLENEN gönderim (paket/kota/kontör) bir HATA DEĞİLDİR: tekrar denemek aynı duvara
+    /// çarpar, iş başarıyla kapanmalıdır. Sağlayıcının reddettiği gönderim ise yeniden denenir.
+    /// </summary>
+    private static WhatsAppDispatchReport Report(DispatchResult result)
+    {
+        if (result.Blocked) return WhatsAppDispatchReport.Skipped;
+        // Kayıt yok + engellenmemiş = gönderim hiç DENENMEDİ (telefon çözümlenemedi) → atlandı.
+        if (result.Message is null) return WhatsAppDispatchReport.Skipped;
+        return result.Success
+            ? WhatsAppDispatchReport.Sent
+            : WhatsAppDispatchReport.Failed(result.Error ?? "WhatsApp gönderimi başarısız.");
+    }
+
+    /// <inheritdoc cref="SendWaitlistOfferAsync" />
+    public async Task<WhatsAppDispatchReport> SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         try
         {
             var customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
                 .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId && !c.IsDeleted, ct);
-            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return;
+            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return WhatsAppDispatchReport.Skipped;
             // Zaten onaylıysa tekrar rahatsız etme.
-            if (customer.KvkkConsent) return;
+            if (customer.KvkkConsent) return WhatsAppDispatchReport.Skipped;
 
             var salonName = await SalonNameAsync(tenantId, customer.BranchId, ct);
             var firstName = FirstName(customer.FullName);
@@ -312,18 +339,19 @@ public sealed class WhatsAppService : IWhatsAppService
                 ? null
                 : new OutboundAttachment(pdf, $"KVKK-Aydinlatma-Metni-{Slugify(salonName)}.pdf");
 
-            await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id, waitlistEntryId: null,
+            return Report(await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id, waitlistEntryId: null,
                 customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: KvkkTemplateName, ct,
                 attachment,
                 // 24 saat penceresi kapalıysa Meta yalnızca onaylı şablon kabul eder.
                 settings => string.IsNullOrWhiteSpace(settings?.KvkkTemplateName)
                     ? null
                     : new TemplateFallback(settings.KvkkTemplateName!, settings.TemplateLanguageCode,
-                        new[] { firstName, salonName, link ?? string.Empty }));
+                        new[] { firstName, salonName, link ?? string.Empty })));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "KVKK onay isteği gönderilemedi: {Customer}", customerId);
+            return WhatsAppDispatchReport.Failed(ex.Message);
         }
     }
 
@@ -366,14 +394,15 @@ public sealed class WhatsAppService : IWhatsAppService
         return await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
     }
 
-    public async Task SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken ct = default)
+    /// <inheritdoc cref="SendWaitlistOfferAsync" />
+    public async Task<WhatsAppDispatchReport> SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken ct = default)
     {
         try
         {
             var appt = await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
                 .Include(a => a.Customer)
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == appointmentId, ct);
-            if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return;
+            if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return WhatsAppDispatchReport.Skipped;
 
             var salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
                 .Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
@@ -383,33 +412,36 @@ public sealed class WhatsAppService : IWhatsAppService
                 .Replace("{ad}", FirstName(appt.Customer.FullName))
                 .Replace("{salon}", salonName)
                 .Replace("{link}", link);
-            await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "rating-link", ct);
+            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "rating-link", ct));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Değerlendirme linki gönderilemedi: {Appointment}", appointmentId);
+            return WhatsAppDispatchReport.Failed(ex.Message);
         }
     }
 
-    public async Task SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
+    /// <inheritdoc cref="SendWaitlistOfferAsync" />
+    public async Task<WhatsAppDispatchReport> SendWaitlistActivatedAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
     {
         try
         {
             var appt = await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
                 .Include(a => a.Customer).Include(a => a.ServiceDefinition).Include(a => a.Branch)
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == appointmentId, ct);
-            if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return;
+            if (appt?.Customer is null || string.IsNullOrWhiteSpace(appt.Customer.Phone)) return WhatsAppDispatchReport.Skipped;
 
             var salonName = appt.Branch?.Name;
             if (string.IsNullOrWhiteSpace(salonName))
                 salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct);
             var body = RenderSlotTemplate(WaitlistActivatedTemplate, appt.Customer.FullName, appt.StartUtc,
                 appt.ServiceDefinition?.Name ?? string.Empty, salonName ?? string.Empty);
-            await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct);
+            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Aktifleşti mesajı gönderilemedi: {Appt}", appointmentId);
+            return WhatsAppDispatchReport.Failed(ex.Message);
         }
     }
 
@@ -439,6 +471,13 @@ public sealed class WhatsAppService : IWhatsAppService
     /// Engellenirse (kota/kontör/izin) mesaj gönderilmez; sonuç Blocked=true döner (reminder yolu kullanıcıya iletir,
     /// best-effort yollar yok sayar).
     /// </summary>
+    /// <summary>
+    /// Sonucu bilinmeyen (Queued kalmış) bir denemenin tekrar gönderimi bloklayacağı süre.
+    /// Kuyruk kirasından (5 dk) ve makul yeniden deneme aralıklarından belirgin şekilde uzun;
+    /// buna rağmen sonsuz değil ki eski bir kayıt gelecekteki meşru gönderimleri kilitlemesin.
+    /// </summary>
+    private static readonly TimeSpan UnknownOutcomeWindow = TimeSpan.FromMinutes(30);
+
     private async Task<DispatchResult> DispatchAsync(
         Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId, Guid? waitlistEntryId,
         string phone, string body, WhatsAppMessageCategory category, string? templateName, CancellationToken ct,
@@ -453,11 +492,74 @@ public sealed class WhatsAppService : IWhatsAppService
 
         var ctx = await ResolveSendContextAsync(tenantId, ct);
 
-        var decision = await _billing.ReserveAsync(tenantId, category, ctx.Live, ct);
-        if (!decision.Allowed)
+        // SONUCU BİLİNMEYEN ÖNCEKİ DENEME VARSA KÖRLEMESİNE TEKRAR GÖNDERİLMEZ.
+        //
+        // Aşağıda mesaj satırı gönderimden ÖNCE `Queued` olarak yazılıp commit ediliyor. Sağlayıcı
+        // mesajı kabul ettikten sonra süreç çökerse satır `Queued` kalır: gerçekten gidip gitmediği
+        // BİLİNMEZ. Kuyruk işi yeniden denediğinde eskiden aynı mesaj müşteriye ikinci kez
+        // gidiyordu; artık durum "bilinmiyor" olarak raporlanır, satır listede görünür kalır ve
+        // karar insana bırakılır. (Meta teslim webhook'u gelirse satır kendiliğinden Delivered'a
+        // geçer ve pencere kapanır.)
+        var inFlightSince = DateTime.UtcNow - UnknownOutcomeWindow;
+        var inFlight = await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId
+                           && m.Direction == WhatsAppMessageDirection.Outbound
+                           && m.Status == WhatsAppMessageStatus.Queued
+                           && m.TemplateName == templateName
+                           && m.AppointmentId == appointmentId
+                           && m.CustomerId == customerId
+                           && m.WaitlistEntryId == waitlistEntryId
+                           && m.CreatedAtUtc >= inFlightSince, ct);
+        if (inFlight)
         {
-            _logger.LogInformation("[WhatsApp] Gönderim engellendi ({Tenant}/{Category}): {Reason}", tenantId, category, decision.BlockReason);
-            return new DispatchResult(true, decision.BlockReason, null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+            _logger.LogWarning(
+                "[WhatsApp] Önceki denemenin sonucu bilinmiyor; tekrar gönderilmedi ({Tenant}/{Template}).",
+                tenantId, templateName);
+            return new DispatchResult(true,
+                "Önceki gönderim denemesinin sonucu bilinmiyor; mükerrer mesaj göndermemek için tekrar denenmedi.",
+                null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+        }
+
+        // ---- KONTÖR REZERVASYONU + "GÖNDERİLİYOR" İZİ: TEK ATOMİK ADIM ----
+        //
+        // DEĞİŞMEZ: cüzdanda rezerve görünen tutar, karşılığı olan mesaj satırlarının toplamına
+        // eşit olmalıdır. Rezervasyon ayrı, mesaj satırı ayrı commit edilseydi, aradaki bir hata
+        // KARŞILIĞI OLMAYAN bir rezervasyon bırakırdı: 48 saatlik süpürge yalnız MESAJ satırlarını
+        // taradığı için böyle bir tutar hiç iade edilmez, kurumun bakiyesinde sonsuza dek kilitli
+        // kalırdı. İkisi aynı transaction'da kalıcı olur.
+        //
+        // Transaction dış çağrıdan (Meta) ÖNCE kapanır: satır kilidini bir ağ çağrısı boyunca
+        // tutmak, tüm kurumun gönderimlerini yavaş bir sağlayıcının arkasında sıraya sokardı.
+        var writeTx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
+        BillingDecision decision;
+        WhatsAppMessage msg;
+        try
+        {
+            decision = await _billing.ReserveAsync(tenantId, category, ctx.Live, ct);
+            if (!decision.Allowed)
+            {
+                _logger.LogInformation("[WhatsApp] Gönderim engellendi ({Tenant}/{Category}): {Reason}", tenantId, category, decision.BlockReason);
+                return new DispatchResult(true, decision.BlockReason, null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+            }
+
+            // DIŞ ETKİDEN ÖNCE İZ: satır `Queued` yazılır — sağlayıcı mesajı kabul ettikten sonra
+            // süreç çökerse geriye "denendi, sonucu bilinmiyor" izi kalsın.
+            msg = new WhatsAppMessage(
+                tenantId, branchId, appointmentId, customerId, WhatsAppMessageDirection.Outbound,
+                toPhone, body, WhatsAppMessageStatus.Queued, templateName: templateName,
+                waitlistEntryId: waitlistEntryId,
+                category: decision.Category, billingSource: decision.Source, chargedAmountTry: decision.AmountTry);
+            _db.WhatsAppMessages.Add(msg);
+            await _db.SaveChangesAsync(ct);
+            if (writeTx is not null) await writeTx.CommitAsync(ct);
+        }
+        finally
+        {
+            // Commit edilmediyse rezervasyon da geri alınır (dispose → rollback).
+            if (writeTx is not null) await writeTx.DisposeAsync();
         }
 
         WhatsAppSendOutcome outcome;
@@ -482,19 +584,33 @@ public sealed class WhatsAppService : IWhatsAppService
             simulated = true;
         }
 
-        var status = !outcome.Success ? WhatsAppMessageStatus.Failed : simulated ? WhatsAppMessageStatus.Simulated : WhatsAppMessageStatus.Sent;
-        var msg = new WhatsAppMessage(
-            tenantId, branchId, appointmentId, customerId, WhatsAppMessageDirection.Outbound,
-            toPhone, body, status, templateName: templateName, providerMessageId: outcome.ProviderMessageId,
-            error: outcome.Error, waitlistEntryId: waitlistEntryId,
-            category: decision.Category, billingSource: decision.Source, chargedAmountTry: decision.AmountTry);
-        _db.WhatsAppMessages.Add(msg);
+        // ---- SONUCUN YAZILMASI + OLASI İADE: TEK ATOMİK ADIM ----
+        //
+        // İade cüzdanın rezerve tutarını düşürür; mesajın "başarısız" damgası ile aynı kayıtta
+        // kalmalıdır. Ayrı yazılsalardı biri olup diğeri olmayabilir ve rezerve tutar ile mesaj
+        // satırları arasındaki denklik bozulurdu. Transaction ayrıca cüzdan satır kilidinin
+        // (bkz. WhatsAppBillingService.GetOrCreateWalletAsync) gerçekten tutulmasını sağlar —
+        // kilit yalnız bir transaction içinde yaşar.
+        var resultTx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+        try
+        {
+            // Sonuç KESİNLEŞTİ: `Queued` satırı gerçek duruma çekilir.
+            if (outcome.Success) msg.MarkSent(outcome.ProviderMessageId, simulated);
+            else msg.MarkFailed(outcome.Error);
 
-        // Canlı gönderim ANINDA başarısızsa (Meta hata döndü) kontör rezervasyonunu geri al.
-        if (!outcome.Success)
-            await _billing.RefundInlineAsync(tenantId, msg, ct);
+            // Canlı gönderim ANINDA başarısızsa (Meta hata döndü) kontör rezervasyonunu geri al.
+            if (!outcome.Success)
+                await _billing.RefundInlineAsync(tenantId, msg, ct);
 
-        await _db.SaveChangesAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            if (resultTx is not null) await resultTx.CommitAsync(ct);
+        }
+        finally
+        {
+            if (resultTx is not null) await resultTx.DisposeAsync();
+        }
 
         var outPhone = IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone;
         return new DispatchResult(false, null, msg, outcome.Success, simulated, outPhone, body, outcome.ProviderMessageId, outcome.Error);

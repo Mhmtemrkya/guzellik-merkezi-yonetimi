@@ -14,6 +14,8 @@ public static class DeviceEndpoints
 {
     public static IEndpointRouteBuilder MapDeviceEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — personel kendi cihaz kaydını oluşturur (giriş cihaz kontrolü bunu gerektirir);
+        // yönetim işlemleri uç gövdesindeki rol kontrolüne tabidir.
         var group = app.MapGroup("/api/admin/devices").WithTags("Devices").RequireAuthorization();
 
         group.MapGet("/settings", async (Guid? tenantId, ICurrentUser cu, IDeviceService svc, HttpContext http, CancellationToken ct) =>

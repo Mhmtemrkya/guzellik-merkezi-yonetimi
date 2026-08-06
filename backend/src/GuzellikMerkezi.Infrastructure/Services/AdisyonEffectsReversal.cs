@@ -72,6 +72,23 @@ public sealed record ReapplyOutcome(int MissingSessions)
     public static readonly ReapplyOutcome Clean = new(0);
 }
 
+/// <summary>
+/// Adisyon yan etkilerinin geri alınması / yeniden uygulanması.
+///
+/// <para>
+/// <b>KİLİT ÇAĞIRANDA.</b> Bu gövde stok, hediye çeki ve paket seansı bakiyelerini değiştirir ama
+/// satır kilidini KENDİ ALMAZ: her zaman kilidi çoktan almış bir akıştan çağrılır
+/// (<c>AdisyonService.UndoApproveAsync</c> ile <c>CustomerAccountService</c> iptal/geri alma
+/// yolları; ikisi de <c>RowLock.TableOrder</c> sırasıyla products → gift_cards →
+/// customer_package_sessions kilitler). Kilidi burada tekrar almak sıralamayı bozma riski taşır.
+/// </para>
+/// <para>
+/// SÖZLEŞMEDİR, TESADÜF DEĞİL: bu sınıf ileride KİLİTSİZ bir yoldan çağrılırsa kayıp güncelleme
+/// korumasının tamamı sessizce delinir (iki eşzamanlı iptal aynı çeki iki kez iade edebilir).
+/// Yeni bir çağıran eklerken kilidin alındığından emin olun. Konvansiyon kapısı bu bildirimi arar
+/// (bkz. <c>BalanceMutationLockTests</c>); bildirim silinirse kapı sınıfı ihlal olarak raporlar.
+/// </para>
+/// </summary>
 public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
 {
     private readonly GuzellikDbContext _db;

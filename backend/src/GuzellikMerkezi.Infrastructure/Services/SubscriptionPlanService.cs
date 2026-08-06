@@ -128,21 +128,30 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
         if (plan is null) return Result.Failure(Error.NotFound("Paket bulunamadı."));
         if (!plan.IsActive) return Result.Failure(Error.Conflict("Pasif pakete atama yapılamaz."));
 
-        // ÖDEMESİZ ÜCRETLİ PAKET AÇILAMAZ. Bu uç kurum kullanıcısının kendi paketini seçmesi
-        // içindi ve tahsilat/ödeme entegrasyonu YOK: aktif bir Premium paketi seçen her kurum
-        // yöneticisi aboneliği bedavaya başlatabiliyordu (StartSubscription kurumu Aktif yapar,
-        // bitiş tarihini ileri atar). Ücretli geçiş platform tarafında yapılır; buradan yalnız
-        // ücretsiz paketler ve mevcut paketin yenilenmesi geçer.
+        // ÖDEMESİZ ÜCRETLİ PAKET AÇILAMAZ — YENİLEME DE AÇILAMAZ.
+        //
+        // Bu uç kurum kullanıcısının kendi paketini seçmesi içindir ve TAHSİLAT YAPMAZ:
+        // <see cref="Tenant.StartSubscription"/> kurumu Aktif yapıp bitiş tarihini ileri atar.
+        // Eski kural "farklı ücretli pakete geçiş yasak" idi; yani kurum yöneticisi MEVCUT ücretli
+        // paketini yeniden seçerek aboneliğini sınırsız kez BEDAVA uzatabiliyordu — süresi dolmak
+        // üzere olan her kurum bu uçla kendini ücretsiz yenileyebilirdi. Ücretli paketin hem
+        // geçişi hem YENİLENMESİ tahsilat yollarına aittir (checkout / saklı kart yenilemesi);
+        // buradan yalnız ücretsiz paketler geçer.
         if (selfService)
         {
             var isPaidPlan = plan.MonthlyPriceTRY > 0 || plan.YearlyPriceTRY > 0;
-            if (isPaidPlan && tenant.SubscriptionPlanId != plan.Id)
+            if (isPaidPlan)
             {
-                await _audit.LogAsync(tenantId, null, "PlanUpgradeRequested", "Tenant", tenantId,
-                    $"Kurum ücretli pakete geçiş talep etti: {plan.Name} ({period})",
-                    new { plan.Id, plan.Name, plan.PlanKey, Period = period.ToString() }, ct);
-                return Result.Failure(Error.Conflict(
-                    "Ücretli pakete geçiş platform onayı gerektirir. Talebiniz iletildi; ekibimiz sizinle iletişime geçecek."));
+                var isRenewal = tenant.SubscriptionPlanId == plan.Id;
+                await _audit.LogAsync(tenantId, null,
+                    isRenewal ? "PlanRenewalRequested" : "PlanUpgradeRequested", "Tenant", tenantId,
+                    isRenewal
+                        ? $"Kurum mevcut ücretli paketini yenilemek istedi: {plan.Name} ({period})"
+                        : $"Kurum ücretli pakete geçiş talep etti: {plan.Name} ({period})",
+                    new { plan.Id, plan.Name, plan.PlanKey, Period = period.ToString(), Renewal = isRenewal }, ct);
+                return Result.Failure(Error.Conflict(isRenewal
+                    ? "Ücretli aboneliğin uzatılması ödeme ile yapılır. Faturalama ekranından ödeme adımını tamamlayın."
+                    : "Ücretli pakete geçiş platform onayı gerektirir. Talebiniz iletildi; ekibimiz sizinle iletişime geçecek."));
             }
         }
         // Paket atama = ücretli aboneliği başlat/yenile: dönem (Aylık/Yıllık) ile bitiş tarihi hesaplanır,

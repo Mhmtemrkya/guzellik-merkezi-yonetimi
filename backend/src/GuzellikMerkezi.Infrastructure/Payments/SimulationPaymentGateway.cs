@@ -82,11 +82,21 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
 
     public Task<Result<ChargeResult>> ChargeStoredCardAsync(StoredCardChargeRequest request, CancellationToken ct = default) =>
         Task.FromResult(Result<ChargeResult>.Success(new ChargeResult(
-            true, request.ConversationId, $"sim-pay-{request.ConversationId}", request.AmountTry, null, null)));
+            true, request.ConversationId, $"sim-pay-{request.ConversationId}", request.AmountTry, null, null, "TRY")));
 
+    /// <summary>
+    /// DURUM TUTMAYAN SAĞLAYICI "ÖDENDİ" DİYEMEZ.
+    ///
+    /// <para>
+    /// Eskiden her sorguya <c>Succeeded=true</c> ve <c>tutar=0</c> dönüyordu: yanıtı kaybedilen bir
+    /// denemeyi çözmek için yapılan sorgu, hiç yapılmamış bir çekimi "başarılı" ilan edip aboneliği
+    /// uzatıyordu. Simülasyonun geçmiş kaydı yok; doğru cevap "bilmiyorum"dur.
+    /// </para>
+    /// </summary>
     public Task<Result<ChargeResult>> RetrievePaymentAsync(string conversationId, CancellationToken ct = default) =>
         Task.FromResult(Result<ChargeResult>.Success(new ChargeResult(
-            true, conversationId, $"sim-pay-{conversationId}", 0m, null, null)));
+            false, conversationId, null, 0m, "SIM_NO_HISTORY",
+            "Simülasyon sağlayıcısı geçmiş tahsilat kaydı tutmaz.", "TRY")));
 
     public Task<Result> RefundAsync(string providerPaymentId, decimal amount, CancellationToken ct = default) =>
         Task.FromResult(Result.Success());

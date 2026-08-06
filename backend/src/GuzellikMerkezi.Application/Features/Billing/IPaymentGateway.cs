@@ -110,4 +110,10 @@ public sealed record ChargeResult(
     string? ProviderPaymentId,
     decimal PaidAmountTry,
     string? ErrorCode,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    /// <summary>
+    /// Sağlayıcının DÖNDÜĞÜ para birimi — <see cref="CheckoutResult.Currency"/> ile aynı gerekçe.
+    /// Saklı kart yenilemesinde de tutar tek başına yetmez: başka birimde dönen bir sonuç
+    /// "aynı sayı" olduğu için ödenmiş sayılıp abonelik uzatılabilirdi.
+    /// </summary>
+    string? Currency = null);

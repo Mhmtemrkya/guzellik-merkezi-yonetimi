@@ -79,14 +79,41 @@ public sealed class GiftCardService : IGiftCardService
             : Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Hediye çeki/kupon kullanımı — KİLİT ALTINDA.
+    ///
+    /// <para>
+    /// SOMUT AÇIK: <c>gift_cards</c> zaten ortak kilit protokolündeydi ve adisyon onayı/iptali bu
+    /// satırı kilitliyordu; ama DOĞRUDAN kullanım ucu (bu metot) protokole hiç katılmıyordu. Kalan
+    /// bakiye kontrolü ile düşümü <see cref="GiftCard.Redeem"/> içinde yapılıyor, iki eşzamanlı
+    /// istek aynı bakiyeyi okuyup ikisi de geçebiliyordu: 100 ₺'lik çek iki kez 100 ₺ kullanılıp
+    /// kasadan 200 ₺'lik indirim çıkabilirdi. Aynı satırın bir yolu korumalı, diğeri açıktı.
+    /// </para>
+    /// </summary>
     public async Task<Result<GiftCardDto>> RedeemAsync(Guid tenantId, Guid id, RedeemGiftCardRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "gift_cards", id, cancellationToken);
+
         var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == id, cancellationToken);
         if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Kod bulunamadı."));
+        // Kilitten ÖNCE okunmuş olabilir (izleyicide bayat nesne) → kilit altında yeniden oku.
+        if (relational)
+        {
+            await _db.Entry(card).ReloadAsync(cancellationToken);
+            if (_db.Entry(card).State == EntityState.Detached)
+                return Result<GiftCardDto>.Failure(Error.NotFound("Kod bulunamadı."));
+        }
+
         try
         {
             card.Redeem(request.Amount, DateTime.UtcNow);
             await _db.SaveChangesAsync(cancellationToken);
+            if (tx is not null) await tx.CommitAsync(cancellationToken);
             await _audit.LogAsync(tenantId, card.BranchId, "Redeem", "GiftCard", card.Id, $"Kullanım: {card.Code}", null, cancellationToken);
             return Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
         }
@@ -96,19 +123,51 @@ public sealed class GiftCardService : IGiftCardService
         }
     }
 
+    /// <summary>
+    /// KİLİT HER İKİ TARAFTA DA ALINIR. Yalnız kullanım (Redeem) kilitlenseydi koruma yarım kalırdı:
+    /// aktiflik değişimi aynı satırı kilitsiz yazar ve "son yazan kazanır" ile kullanım sonucunu
+    /// ezebilirdi (ör. kullanım bakiyeyi düşürürken pasifleştirme bayat kopyayı geri yazar).
+    /// </summary>
     public async Task<Result<GiftCardDto>> SetActiveAsync(Guid tenantId, Guid id, SetGiftCardActiveRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "gift_cards", id, cancellationToken);
+
         var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == id, cancellationToken);
         if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Kod bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(card).ReloadAsync(cancellationToken);
+            if (_db.Entry(card).State == EntityState.Detached)
+                return Result<GiftCardDto>.Failure(Error.NotFound("Kod bulunamadı."));
+        }
+
         card.SetActive(request.Active);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
     }
 
+    /// <inheritdoc cref="SetActiveAsync" />
     public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "gift_cards", id, cancellationToken);
+
         var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == id, cancellationToken);
         if (card is null) return Result.Failure(Error.NotFound("Kod bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(card).ReloadAsync(cancellationToken);
+            if (_db.Entry(card).State == EntityState.Detached)
+                return Result.Failure(Error.NotFound("Kod bulunamadı."));
+        }
 
         // AÇIK FİŞTE KULLANILIYORSA SİLİNEMEZ. Kod, uygulandığı adisyon onaylanmadan silinince
         // indirim kalemi fişte kalıyor ama onayda karşılığı bulunamıyordu: müşteri o kadar az
@@ -128,6 +187,7 @@ public sealed class GiftCardService : IGiftCardService
 
         card.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result.Success();
     }
 

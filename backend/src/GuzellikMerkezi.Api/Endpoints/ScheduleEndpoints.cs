@@ -8,6 +8,8 @@ public static class ScheduleEndpoints
 {
     public static IEndpointRouteBuilder MapScheduleEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — personel kendi çizelgesini ve izinlerini görmek zorunda.
+        // YAZMA (izin ekleme, çalışma saati) personelde onay kapısına düşer.
         var group = app.MapGroup("/api/admin/schedule").WithTags("Schedule").RequireAuthorization();
 
         group.MapGet("/timeoff", async (Guid? tenantId, DateOnly fromDate, DateOnly toDate, ICurrentUser currentUser, IScheduleService service, HttpContext http, CancellationToken ct) =>

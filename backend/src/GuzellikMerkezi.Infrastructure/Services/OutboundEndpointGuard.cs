@@ -74,17 +74,50 @@ public static class OutboundEndpointGuard
     }
 
     /// <summary>SMTP host/port'unu doğrular; sorun varsa mesaj döner (null = geçerli).</summary>
-    public static string? ValidateSmtp(string? host, int port)
+    public static string? ValidateSmtp(string? host, int port) => ResolveSmtp(host, port, useTls: true).Error;
+
+    /// <param name="Error">null ise geçerli.</param>
+    /// <param name="ConnectHost">
+    /// Bağlantıda KULLANILMASI GEREKEN adres. TLS kapalıyken doğrulanmış IP literal'idir
+    /// (yeniden çözümleme olmaz); TLS açıkken host adının kendisidir (sertifika adı bağlar).
+    /// </param>
+    public readonly record struct SmtpEndpoint(string? Error, string? ConnectHost);
+
+    /// <summary>
+    /// SMTP UCUNU DOĞRULAR VE BAĞLANILACAK ADRESİ SABİTLER (DNS rebinding freni).
+    ///
+    /// <para>
+    /// SOMUT AÇIK: doğrulama host adını çözüp IP'yi denetliyor, bağlantı ise host ADINI istemciye
+    /// verip DNS'i YENİDEN çözdürüyordu. Aradaki pencerede kayıt iç bir adrese döndürülürse
+    /// (klasik DNS rebinding) doğrulamayı geçen ad, bağlantı anında 127.0.0.1 ya da özel ağa
+    /// gidiyordu. SMS/ödeme tarafındaki host allowlist'i SMTP'de yok — dolayısıyla bu kontrol
+    /// tek savunmaydı ve atlanabiliyordu.
+    /// </para>
+    /// <para>
+    /// ÇÖZÜM iki yollu, ikisi de yeniden çözümlemeyi anlamsız kılar:
+    /// <list type="bullet">
+    /// <item>TLS KAPALI → doğrulanan IP'ye doğrudan bağlanılır; çözülecek bir ad kalmaz.</item>
+    /// <item>TLS AÇIK → host adıyla bağlanılır ama bağı SERTİFİKA kurar: iç bir servise yönlenen
+    /// bağlantı, yapılandırılmış ad için geçerli sertifika sunamayacağı için el sıkışmada düşer.</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    public static SmtpEndpoint ResolveSmtp(string? host, int port, bool useTls)
     {
-        if (string.IsNullOrWhiteSpace(host)) return null;
+        if (string.IsNullOrWhiteSpace(host)) return new SmtpEndpoint(null, host);
 
         if (!SmtpPorts.Contains(port))
-            return $"İzin verilmeyen SMTP portu: {port}. İzinli: {string.Join(", ", SmtpPorts)}.";
+            return new SmtpEndpoint($"İzin verilmeyen SMTP portu: {port}. İzinli: {string.Join(", ", SmtpPorts)}.", null);
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
-            return "SMTP sunucu adı geçersiz.";
-        if (IsPrivateHost(host))
-            return "SMTP sunucusu özel/loopback bir adrese çözülüyor.";
-        return null;
+            return new SmtpEndpoint("SMTP sunucu adı geçersiz.", null);
+
+        var addresses = ResolveAddresses(host);
+        if (addresses.Length == 0 || addresses.Any(ip => !IsGloballyRoutable(ip)))
+            return new SmtpEndpoint("SMTP sunucusu özel/loopback bir adrese çözülüyor.", null);
+
+        // TLS açıkken ad korunur: sertifika doğrulaması adı bağlar (IP'ye bağlanmak geçerli
+        // sertifikaları da reddettirirdi). TLS kapalıyken bağ ancak adresi sabitleyerek kurulur.
+        return new SmtpEndpoint(null, useTls ? host : addresses[0].ToString());
     }
 
     /// <summary>
@@ -106,24 +139,29 @@ public static class OutboundEndpointGuard
     /// </summary>
     private static bool IsPrivateHost(string host)
     {
-        IPAddress[] addresses;
+        var addresses = ResolveAddresses(host);
+        // Hiç adres dönmediyse kanıt yok → reddet.
+        return addresses.Length == 0 || addresses.Any(ip => !IsGloballyRoutable(ip));
+    }
+
+    /// <summary>
+    /// Adı adreslere çözer. ÇÖZÜLEMEYEN AD GÜVENLİ DEĞİLDİR: ad sonradan (bağlantı anında) iç bir
+    /// adrese çözülebilir; "şimdi çözülemedi" bir güvence değildir → boş dizi = reddedilsin.
+    /// </summary>
+    private static IPAddress[] ResolveAddresses(string host)
+    {
         try
         {
-            addresses = IPAddress.TryParse(host, out var literal) ? [literal] : Dns.GetHostAddresses(host);
+            return IPAddress.TryParse(host, out var literal) ? [literal] : Dns.GetHostAddresses(host);
         }
         catch (SocketException)
         {
-            // ÇÖZÜLEMEYEN AD GÜVENLİ DEĞİLDİR. Ad sonradan (bağlantı anında) iç bir adrese
-            // çözülebilir; "şimdi çözülemedi" bir güvence değildir → fail-closed.
-            return true;
+            return [];
         }
         catch (ArgumentException)
         {
-            return true;
+            return [];
         }
-
-        // Hiç adres dönmediyse de kanıt yok → reddet.
-        return addresses.Length == 0 || addresses.Any(ip => !IsGloballyRoutable(ip));
     }
 
     /// <summary>

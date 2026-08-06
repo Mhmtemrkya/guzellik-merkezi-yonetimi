@@ -245,6 +245,26 @@ public sealed class NotificationService : INotificationService
             else log.MarkFailed(error ?? "Bilinmeyen hata");
             if (ok) { sent++; template.RecordSent(now); }
             else { failed++; }
+
+            // SONUÇ HEMEN KALICI OLUR (anahtarlı = otomatik gönderim).
+            //
+            // Sonuç eskiden döngü bittikten sonra TOPLU yazılıyordu: sağlayıcı mesajı kabul ettikten
+            // sonra süreç çökerse satır "Queued" kalıyor, bayat rezervasyon devralma penceresi
+            // açılınca aynı mesaj müşteriye TEKRAR gidiyordu. Anahtarsız (elle/kampanya) gönderimde
+            // eski toplu yazma korunur: orada tekrar zaten yöneticinin kararıdır ve satır başına
+            // yazma binlerce kişilik listede gereksiz maliyettir.
+            if (log.DedupeKey is not null)
+            {
+                try
+                {
+                    await _db.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateException)
+                {
+                    // Yazılamadıysa satır Queued kalır ve bayatlama yolundan kurtarılır;
+                    // kalan alıcıların gönderimi bu yüzden durmamalı.
+                }
+            }
         }
 
         await _db.SaveChangesAsync(ct);
@@ -296,15 +316,47 @@ public sealed class NotificationService : INotificationService
                 .FirstOrDefaultAsync(l => l.TenantId == log.TenantId && l.DedupeKey == log.DedupeKey, ct);
             if (existing is null || existing.Status != NotificationLogStatus.Queued) return null;
 
-            var age = DateTime.UtcNow - (existing.UpdatedAtUtc ?? existing.CreatedAtUtc);
-            if (age < StaleReservationTimeout) return null;
+            var staleBefore = DateTime.UtcNow - StaleReservationTimeout;
+            if ((existing.UpdatedAtUtc ?? existing.CreatedAtUtc) > staleBefore) return null;
 
-            // Devralındı: zaman damgası tazelenir ki iki tarama aynı bayat satırı birlikte almasın.
-            // Sonuç BU satıra yazılır — çağıranın elindeki (detached) nesneye değil.
+            // Devralma ATOMİK olmalı; sonuç BU satıra yazılır (çağıranın elindeki detached nesneye değil).
+            return await TryTakeOverStaleAsync(existing, staleBefore, ct) ? existing : null;
+        }
+    }
+
+    /// <summary>
+    /// BAYAT REZERVASYONU ATOMİK DEVRALIR.
+    ///
+    /// <para>
+    /// Devralma "oku → bayat mı? → damgayı tazele" biçimindeydi: iki tarama turu (ya da iki backend
+    /// örneği) aynı satırı aynı anda bayat görüp İKİSİ de devralıyor, müşteriye AYNI mesaj iki kez
+    /// gidiyordu — rezervasyonun tüm amacı buydu. Koşul artık tek bir UPDATE'in WHERE'inde: satırı
+    /// güncelleyebilen tek taraf işi üstlenir, kaybeden 0 satır etkiler ve hiç göndermez.
+    /// </para>
+    /// <para>
+    /// HAM SQL: <c>ExecuteUpdateAsync</c> DEĞİL — ürettiği takma adlı UPDATE'i canlı MariaDB
+    /// reddediyor (kodda yerleşik tuzak, bkz. <c>BackgroundJobMaintenance</c>). InMemory sağlayıcıda
+    /// (birim testleri) eşzamanlılık yoktur; orada izleyici üzerinden yazılır.
+    /// </para>
+    /// </summary>
+    private async Task<bool> TryTakeOverStaleAsync(NotificationLog existing, DateTime staleBefore, CancellationToken ct)
+    {
+        if (!_db.Database.IsRelational())
+        {
             existing.Touch();
             await _db.SaveChangesAsync(ct);
-            return existing;
+            return true;
         }
+
+        var affected = await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE `notification_logs` SET `UpdatedAtUtc` = {0} " +
+            "WHERE `Id` = {1} AND `Status` = 'Queued' AND COALESCE(`UpdatedAtUtc`, `CreatedAtUtc`) <= {2}",
+            new object[] { DateTime.UtcNow, existing.Id.ToString(), staleBefore }, ct);
+        if (affected == 0) return false;
+
+        // İzleyicideki nesne ham UPDATE'i görmez; sonraki yazmalar doğru sürümle gitsin.
+        await _db.Entry(existing).ReloadAsync(ct);
+        return true;
     }
 
     /// <summary>

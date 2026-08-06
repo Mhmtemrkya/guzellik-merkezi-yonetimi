@@ -236,10 +236,27 @@ public sealed class ConsentService : IConsentService
     // İmza oturumu (tablet)
     // =======================================================================
 
+    /// <summary>
+    /// Formu tablete gönderir. KİLİT HER İKİ TARAFTA DA ALINIR: yalnız <see cref="SignAsync"/>
+    /// kilitlenseydi koruma yarım kalırdı — yeni bir oturum açmak aynı satırı kilitsiz yazar ve
+    /// tam o anda tamamlanan bir imzayı ezerek imzalı formu "imza bekliyor"a döndürebilirdi.
+    /// </summary>
     public async Task<Result<ConsentFormDto>> StartSessionAsync(Guid tenantId, Guid id, StartConsentSessionRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "customer_consent_forms", id, cancellationToken);
+
         var form = await _db.CustomerConsentForms.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (form is null) return Result<ConsentFormDto>.Failure(Error.NotFound("Onam formu kaydı bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(form).ReloadAsync(cancellationToken);
+            if (_db.Entry(form).State == EntityState.Detached)
+                return Result<ConsentFormDto>.Failure(Error.NotFound("Onam formu kaydı bulunamadı."));
+        }
         if (form.IsSigned) return Result<ConsentFormDto>.Failure(Error.Conflict("Bu form zaten imzalanmış."));
 
         // Aynı tablete daha önce gönderilmiş bekleyen formlar taslağa çekilir; tablette
@@ -257,18 +274,36 @@ public sealed class ConsentService : IConsentService
         var lifetime = request.LifetimeMinutes is > 0 and <= 240 ? request.LifetimeMinutes!.Value : CustomerConsentForm.SessionLifetimeMinutes;
         form.StartSession(station, DateTime.UtcNow, lifetime);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, form.BranchId, "Update", "CustomerConsentForm", form.Id,
             $"Onam formu imzaya gönderildi ({(station.Length > 0 ? station : "tablet")}): {form.Title}",
             new { form.CustomerId, form.Title, Station = station }, cancellationToken);
         return Result<ConsentFormDto>.Success(ToFormDto(form));
     }
 
+    /// <inheritdoc cref="StartSessionAsync" />
     public async Task<Result> CancelSessionAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "customer_consent_forms", id, cancellationToken);
+
         var form = await _db.CustomerConsentForms.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (form is null) return Result.Failure(Error.NotFound("Onam formu kaydı bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(form).ReloadAsync(cancellationToken);
+            if (_db.Entry(form).State == EntityState.Detached)
+                return Result.Failure(Error.NotFound("Onam formu kaydı bulunamadı."));
+            // İmza tamamlanmışsa oturumu iptal etmek imzalı kaydı bozardı.
+            if (form.IsSigned) return Result.Failure(Error.Conflict("Bu form imzalanmış; oturumu iptal edilemez."));
+        }
+
         form.CancelSession();
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result.Success();
     }
 
@@ -294,10 +329,37 @@ public sealed class ConsentService : IConsentService
         return Result<ConsentFormDto>.Success(ToFormDto(form));
     }
 
+    /// <summary>
+    /// Tablet imzasını kaydeder — TEK KULLANIMLIK OTURUM KİLİT ALTINDA tüketilir.
+    ///
+    /// <para>
+    /// SOMUT AÇIK: jetonun geçerliliği <see cref="CustomerConsentForm.Sign"/> içinde kontrol edilip
+    /// hemen ardından yazılıyordu, arada kilit yoktu. Tablet "İmzala"ya iki kez basıldığında (ya da
+    /// ağ tekrarında) iki istek aynı kullanılmamış oturumu okuyup ikisi de imza yazabiliyordu:
+    /// aynı forma iki farklı imza/beyan düşer, hangisinin geçerli olduğu belirsizleşirdi. Onam
+    /// formu hukuki bir kayıttır; belirsizlik kabul edilemez.
+    /// </para>
+    /// </summary>
     public async Task<Result<ConsentFormDto>> SignAsync(Guid tenantId, Guid sessionToken, SignConsentFormRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
         var form = await _db.CustomerConsentForms.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.SessionToken == sessionToken, cancellationToken);
         if (form is null) return Result<ConsentFormDto>.Failure(Error.NotFound("İmza oturumu bulunamadı ya da kullanılmış."));
+
+        if (relational)
+        {
+            await RowLock.LockRowAsync(_db, "customer_consent_forms", form.Id, cancellationToken);
+            // Kilidi BEKLEYEN taraf, beklerken diğerinin yazdığı imzayı görmeli.
+            await _db.Entry(form).ReloadAsync(cancellationToken);
+            if (_db.Entry(form).State == EntityState.Detached)
+                return Result<ConsentFormDto>.Failure(Error.NotFound("İmza oturumu bulunamadı ya da kullanılmış."));
+            if (form.IsSigned)
+                return Result<ConsentFormDto>.Failure(Error.Conflict("Bu form az önce imzalandı."));
+        }
 
         // Zorunlu onay maddelerinin TAMAMI işaretlenmeden imza kabul edilmez.
         var required = Deserialize(form.CheckItemsJson);
@@ -343,6 +405,7 @@ public sealed class ConsentService : IConsentService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         await _audit.LogAsync(tenantId, form.BranchId, "Update", "CustomerConsentForm", form.Id,
             $"Onam formu imzalandı: {form.Title}", new { form.CustomerId, form.Title, form.SignedAtUtc }, cancellationToken);
         return Result<ConsentFormDto>.Success(ToFormDto(form));

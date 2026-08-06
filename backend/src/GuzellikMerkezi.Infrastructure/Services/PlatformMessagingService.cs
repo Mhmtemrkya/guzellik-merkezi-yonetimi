@@ -118,9 +118,14 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
                 IsBodyHtml = true,
             };
             msg.To.Add(toEmail);
-            var smtpError = OutboundEndpointGuard.ValidateSmtp(s.SmtpHost, s.SmtpPort);
-            if (smtpError is not null) return new MessagingTestResult(false, false, null, smtpError);
-            using var client = new SmtpClient(s.SmtpHost!, s.SmtpPort) { EnableSsl = s.SmtpUseSsl };
+
+            // DNS REBINDING FRENİ: doğrulama ile bağlantı AYNI adresi kullanmalı. Eskiden host adı
+            // doğrulanıp sonra istemciye ad olarak verildiği için DNS bağlantı anında yeniden
+            // çözülüyor ve aradaki pencerede iç bir adrese döndürülebiliyordu. TLS kapalıyken
+            // doğrulanmış IP'ye bağlanılır; TLS açıkken bağı sertifika kurar (bkz. ResolveSmtp).
+            var endpoint = OutboundEndpointGuard.ResolveSmtp(s.SmtpHost, s.SmtpPort, s.SmtpUseSsl);
+            if (endpoint.Error is not null) return new MessagingTestResult(false, false, null, endpoint.Error);
+            using var client = new SmtpClient(endpoint.ConnectHost!, s.SmtpPort) { EnableSsl = s.SmtpUseSsl };
             if (!string.IsNullOrWhiteSpace(s.SmtpUsername))
                 client.Credentials = new NetworkCredential(s.SmtpUsername, pw);
             await client.SendMailAsync(msg, ct);

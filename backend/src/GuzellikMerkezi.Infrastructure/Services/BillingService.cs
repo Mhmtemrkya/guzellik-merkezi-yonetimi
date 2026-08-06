@@ -166,14 +166,70 @@ public sealed class BillingService : IBillingService
     /// tutmayan bir dönüşle ücretli aboneliğin açılması demekti.
     /// </summary>
     private async Task<Result<CheckoutCompletedDto>> RejectMismatchedCallbackAsync(
-        SubscriptionPayment payment, string reason, DateTime nowUtc, CancellationToken ct)
+        SubscriptionPayment payment, string reason, DateTime nowUtc,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx, CancellationToken ct)
     {
         payment.MarkFailed("CallbackMismatch", reason, nowUtc);
         await _db.SaveChangesAsync(ct);
+        // RED DE BİR SONUÇTUR: kilit altındaki işlem commit edilmezse ödeme "Pending" kalır ve
+        // aynı sahte dönüş tekrar denenebilirdi.
+        if (tx is not null) await tx.CommitAsync(ct);
         _logger.LogError("Ödeme dönüşü değişmezlere uymadı ({PaymentId}): {Reason}", payment.Id, reason);
         await _audit.LogAsync(payment.TenantId, null, "PaymentRejected", "Subscription", payment.Id,
             $"Ödeme dönüşü reddedildi: {reason}", new { payment.ConversationId, payment.AmountTRY, payment.Provider }, ct);
         return Result<CheckoutCompletedDto>.Success(new CheckoutCompletedDto(false, reason, null, null));
+    }
+
+    /// <summary>
+    /// SAĞLAYICI SONUCUNU BEKLENEN KAYDA BAĞLAR — hem form dönüşünde hem saklı kart yenilemesinde.
+    ///
+    /// <para>
+    /// "Başarılı" bayrağı tek başına hiçbir şey ifade etmez: sonuç BİZİM açtığımız işlem anahtarına,
+    /// BİZİM beklediğimiz tutara ve para birimine ait olmalı, sağlayıcı ödeme kimliği bulunmalı ve
+    /// o kimlik başka bir kaydımıza yazılmamış olmalıdır. Otomatik yenileme bu kontrollerin
+    /// HİÇBİRİNİ yapmıyordu: 0,01 TL'lik ya da başka bir kuruma ait bir sonuç aboneliği uzatabilir,
+    /// aynı sağlayıcı ödemesi birden çok döneme sayılabilirdi.
+    /// </para>
+    ///
+    /// <returns>Uyumsuzluğun açıklaması; sonuç değişmezlere uyuyorsa <c>null</c>.</returns>
+    /// </summary>
+    private async Task<string?> DescribeOutcomeMismatchAsync(
+        SubscriptionPayment payment,
+        string expectedProvider,
+        string? returnedConversationId,
+        decimal paidAmountTry,
+        string? currency,
+        string? providerPaymentId,
+        CancellationToken ct)
+    {
+        if (!string.Equals(payment.Provider, expectedProvider, StringComparison.OrdinalIgnoreCase))
+            return $"Ödeme sağlayıcısı uyuşmuyor (beklenen {payment.Provider}, dönen {expectedProvider}).";
+
+        // İŞLEM ANAHTARI: sonucun BİZİM açtığımız denemeye ait olduğunun tek kanıtı.
+        if (!string.IsNullOrWhiteSpace(returnedConversationId)
+            && !string.Equals(returnedConversationId, payment.ConversationId, StringComparison.Ordinal))
+        {
+            return $"İşlem anahtarı uyuşmuyor (beklenen {payment.ConversationId}, dönen {returnedConversationId}).";
+        }
+
+        // Sağlayıcı birim bildirmiyorsa (boş) eski davranış korunur: bu üründe tüm akış TRY'dir.
+        if (!string.IsNullOrWhiteSpace(currency) && !string.Equals(currency, "TRY", StringComparison.OrdinalIgnoreCase))
+            return $"Ödeme para birimi uyuşmuyor (beklenen TRY, dönen {currency}).";
+
+        if (paidAmountTry != payment.AmountTRY)
+            return $"Ödeme tutarı uyuşmuyor (beklenen {payment.AmountTRY:N2} TL, dönen {paidAmountTry:N2} TL).";
+
+        if (string.IsNullOrWhiteSpace(providerPaymentId))
+            return "Sağlayıcı ödeme kimliği dönmedi; ödeme doğrulanamadı.";
+
+        // AYNI SAĞLAYICI ÖDEME KİMLİĞİ İKİNCİ BİR KAYDA YAZILAMAZ (replay koruması).
+        if (await _db.SubscriptionPayments.AsNoTracking()
+                .AnyAsync(p => p.Id != payment.Id && p.ProviderPaymentId == providerPaymentId, ct))
+        {
+            return "Bu sağlayıcı ödeme kimliği başka bir ödemeye ait; işlem uygulanmadı.";
+        }
+
+        return null;
     }
 
     public async Task<Result<CheckoutCompletedDto>> CompleteCheckoutAsync(string checkoutToken, CancellationToken ct = default)
@@ -188,12 +244,33 @@ public sealed class BillingService : IBillingService
         if (retrieved.IsFailure) return Result<CheckoutCompletedDto>.Failure(retrieved.Error);
 
         var result = retrieved.Value!;
+
+        // TEK KAZANAN: ÖDEME SATIRI KİLİTLENİR.
+        //
+        // Aynı ödeme İKİ YOLDAN birden gelir: kullanıcının tarayıcı dönüşü ve sağlayıcının
+        // webhook'u. "Status == Succeeded ise çık" kontrolü tek başına yalnız SIRAYLA gelen
+        // çağrılara karşı koruyordu; eşzamanlı iki çağrı satırı ikisi de "Pending" okuyup
+        // kontrollerden geçiyor, İKİ fatura üretip aboneliği İKİ KEZ uzatıyordu. Satır kilidi
+        // sıralamayı veritabanına yaptırır: bekleyen taraf kilidi aldığında satırı TAZELER ve
+        // "zaten alınmıştı" cevabını verir.
+        await using var tx = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
         var payment = await _db.SubscriptionPayments
             .FirstOrDefaultAsync(p => p.ConversationId == result.ConversationId, ct);
         if (payment is null)
         {
             _logger.LogError("Ödeme dönüşü eşleşmedi: {ConversationId}", result.ConversationId);
             return Result<CheckoutCompletedDto>.Failure(Error.NotFound("Ödeme kaydı bulunamadı."));
+        }
+
+        if (tx is not null)
+        {
+            await RowLock.LockRowAsync(_db, "subscription_payments", payment.Id, ct);
+            // Kilidi BEKLEYEN taraf, beklerken diğerinin yazdıklarını görmeli: takip edilen kopya
+            // kilitten önce okunduğu için bayattır.
+            await _db.Entry(payment).ReloadAsync(ct);
         }
 
         // İDEMPOTENT: kullanıcı dönüş sayfasını yenilerse ya da webhook aynı anda gelirse
@@ -211,6 +288,7 @@ public sealed class BillingService : IBillingService
         {
             payment.MarkFailed(result.ErrorCode, result.ErrorMessage, nowUtc);
             await _db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
             await _audit.LogAsync(payment.TenantId, null, "PaymentFailed", "Subscription", payment.Id,
                 $"Ödeme başarısız: {result.ErrorMessage}", new { result.ErrorCode }, ct);
             return Result<CheckoutCompletedDto>.Success(new CheckoutCompletedDto(
@@ -224,44 +302,11 @@ public sealed class BillingService : IBillingService
         // Somut sonuç: 0,01 TL'lik bir sonuç yüksek tutarlı bekleyen bir checkout'u "ödendi" yapıp
         // aboneliği başlatabiliyor; aynı sağlayıcı ödeme kimliği birden çok kayda yazılabiliyordu.
         // Bu kontroller ABONELİK BAŞLATILMADAN önce çalışır ve ödeme başarısız işaretlenir.
-        var expectedProvider = context.Value.Gateway.Provider;
-        if (!string.Equals(payment.Provider, expectedProvider, StringComparison.OrdinalIgnoreCase))
-        {
-            return await RejectMismatchedCallbackAsync(payment,
-                $"Ödeme sağlayıcısı uyuşmuyor (beklenen {payment.Provider}, dönen {expectedProvider}).", nowUtc, ct);
-        }
-
-        // PARA BİRİMİ DE DOĞRULANIR — tutar tek başına yetmez.
-        //
-        // İstek TRY gönderiyor ama SONUÇ başka bir birimde dönebilir; yalnız sayıya bakan kontrol
-        // "100 USD"yi "100 TL" sanıp aboneliği açardı. Sağlayıcı birim bildirmiyorsa (boş) eski
-        // davranış korunur: bu üründe tüm akış TRY'dir ve tutar zaten karşılaştırılmıştır.
-        if (!string.IsNullOrWhiteSpace(result.Currency)
-            && !string.Equals(result.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
-        {
-            return await RejectMismatchedCallbackAsync(payment,
-                $"Ödeme para birimi uyuşmuyor (beklenen TRY, dönen {result.Currency}).", nowUtc, ct);
-        }
-
-        if (result.PaidAmountTry != payment.AmountTRY)
-        {
-            return await RejectMismatchedCallbackAsync(payment,
-                $"Ödeme tutarı uyuşmuyor (beklenen {payment.AmountTRY:N2} TL, dönen {result.PaidAmountTry:N2} TL).", nowUtc, ct);
-        }
-
-        if (string.IsNullOrWhiteSpace(result.ProviderPaymentId))
-        {
-            return await RejectMismatchedCallbackAsync(payment,
-                "Sağlayıcı ödeme kimliği dönmedi; ödeme doğrulanamadı.", nowUtc, ct);
-        }
-
-        // AYNI SAĞLAYICI ÖDEME KİMLİĞİ İKİNCİ BİR KAYDA YAZILAMAZ (replay koruması).
-        if (await _db.SubscriptionPayments.AsNoTracking()
-                .AnyAsync(p => p.Id != payment.Id && p.ProviderPaymentId == result.ProviderPaymentId, ct))
-        {
-            return await RejectMismatchedCallbackAsync(payment,
-                "Bu sağlayıcı ödeme kimliği başka bir ödemeye ait; işlem uygulanmadı.", nowUtc, ct);
-        }
+        var mismatch = await DescribeOutcomeMismatchAsync(
+            payment, context.Value.Gateway.Provider, result.ConversationId,
+            result.PaidAmountTry, result.Currency, result.ProviderPaymentId, ct);
+        if (mismatch is not null)
+            return await RejectMismatchedCallbackAsync(payment, mismatch, nowUtc, tx, ct);
 
         var tenant = await _db.Tenants.Include(t => t.SubscriptionPlan).FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);
         if (tenant is null) return Result<CheckoutCompletedDto>.Failure(Error.NotFound("Kurum bulunamadı."));
@@ -280,6 +325,9 @@ public sealed class BillingService : IBillingService
 
         tenant.StartSubscription(plan, payment.Period, nowUtc);
         await _db.SaveChangesAsync(ct);
+        // PARA TARAFI ÖNCE KALICI OLUR: denetim kaydı ve önbellek tazeleme commit'ten sonra gelir,
+        // yan işler tahsilatı geri almaz.
+        if (tx is not null) await tx.CommitAsync(ct);
         _features.InvalidateTenant(tenant.Id);
 
         await _audit.LogAsync(tenant.Id, null, "SubscriptionActivated", "Subscription", payment.Id,
@@ -355,6 +403,25 @@ public sealed class BillingService : IBillingService
             var probe = await context.Value!.Gateway.RetrievePaymentAsync(pending.ConversationId, ct);
             if (probe.IsSuccess && probe.Value!.Succeeded)
             {
+                // SORGU SONUCU DA DEĞİŞMEZLERE BAĞLANIR: "başarılı" bayrağı, sonucun BİZİM
+                // denememize ve BİZİM tutarımıza ait olduğunu kanıtlamaz.
+                var probeMismatch = await DescribeOutcomeMismatchAsync(
+                    pending, context.Value.Gateway.Provider, probe.Value.ConversationId,
+                    probe.Value.PaidAmountTry, probe.Value.Currency, probe.Value.ProviderPaymentId, ct);
+                if (probeMismatch is not null)
+                {
+                    // İNSAN KARARI GEREKİR. Deneme bilerek PENDING bırakılır: "başarısız" deyip
+                    // yeniden çekmek, gerçekten çekilmiş olabilecek bir tutarı İKİNCİ kez çeker.
+                    _logger.LogError("Yenileme sorgusu değişmezlere uymadı ({PaymentId}): {Reason}",
+                        pending.Id, probeMismatch);
+                    await _audit.LogAsync(tenantId, null, "RenewalOutcomeMismatch", "Subscription", pending.Id,
+                        $"Önceki tahsilat denemesinin sonucu doğrulanamadı: {probeMismatch}",
+                        new { pending.ConversationId, pending.AmountTRY, pending.Provider }, ct);
+                    return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                        false, pending.AttemptNumber,
+                        "Önceki tahsilatın sonucu doğrulanamadı; işlem elle incelenmeli.", tenant.SubscriptionEndsAtUtc));
+                }
+
                 pending.MarkSucceeded(probe.Value.ProviderPaymentId, DateTime.UtcNow);
                 var recovered = await FinalizeRenewalAsync(tenant, plan, pending, probe.Value.ProviderPaymentId, ct);
                 return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
@@ -432,6 +499,29 @@ public sealed class BillingService : IBillingService
                 new { charge.Value.ErrorCode, attemptNumber }, ct);
             return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
                 false, attemptNumber, charge.Value.ErrorMessage ?? "Tahsilat yapılamadı.", tenant.SubscriptionEndsAtUtc));
+        }
+
+        // SAĞLAYICI "BAŞARILI" DEDİ — ŞİMDİ SONUCUN BİZE AİT OLDUĞU DOĞRULANIR.
+        //
+        // Otomatik yenileme, checkout dönüşünde yapılan hiçbir kontrolü yapmıyordu: dönen tutarın,
+        // para biriminin ve işlem anahtarının beklenenle ilişkisi sorulmuyor, sağlayıcı ödeme
+        // kimliğinin başka bir döneme yazılıp yazılmadığına bakılmıyordu. Yanlış eşleşen tek bir
+        // sonuç, ödenmemiş bir dönemi ödenmiş sayıp aboneliği uzatabilirdi.
+        var chargeMismatch = await DescribeOutcomeMismatchAsync(
+            payment, context.Value.Gateway.Provider, charge.Value.ConversationId,
+            charge.Value.PaidAmountTry, charge.Value.Currency, charge.Value.ProviderPaymentId, ct);
+        if (chargeMismatch is not null)
+        {
+            // Deneme PENDING bırakılır: sağlayıcı çekimi gerçekten yapmış olabilir. "Başarısız"
+            // demek bir sonraki turda ikinci bir çekim demektir; doğru davranış sorup çözmektir.
+            _logger.LogError("Yenileme tahsilatı değişmezlere uymadı ({PaymentId}): {Reason}",
+                payment.Id, chargeMismatch);
+            await _audit.LogAsync(tenantId, null, "RenewalOutcomeMismatch", "Subscription", payment.Id,
+                $"Yenileme tahsilatının sonucu doğrulanamadı: {chargeMismatch}",
+                new { payment.ConversationId, payment.AmountTRY, payment.Provider, attemptNumber }, ct);
+            return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                false, attemptNumber,
+                "Tahsilat sonucu doğrulanamadı; işlem elle incelenmeli.", tenant.SubscriptionEndsAtUtc));
         }
 
         payment.MarkSucceeded(charge.Value.ProviderPaymentId, now);

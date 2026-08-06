@@ -5,6 +5,7 @@ using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Middleware;
 using GuzellikMerkezi.Application;
 using GuzellikMerkezi.Infrastructure;
+using GuzellikMerkezi.Infrastructure.Payments;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -47,6 +48,10 @@ builder.Services.AddHostedService<DurableJobHostedService>();
 // RabbitMQ açıksa iş sinyali tüketicisi de çalışır (anında işleme; poller güvenlik ağı olarak kalır).
 if (builder.Configuration.GetValue<bool>("RabbitMq:Enabled"))
     builder.Services.AddHostedService<RabbitMqJobConsumerHostedService>();
+// Anlık kanal nöbetçisi: iptal edilmiş oturumların AÇIK soketlerini koparır (yetki yalnız
+// bağlanırken kontrol ediliyordu; WebSocket iptalden etkilenmiyordu).
+builder.Services.AddSingleton<GuzellikMerkezi.Api.Realtime.RealtimeConnectionRegistry>();
+builder.Services.AddHostedService<RealtimeSessionSentinel>();
 
 // GÜVENLİK: Herkese açık müşteri uçları için IP bazlı hız sınırı.
 // Şifresiz müşteri girişi (ad+telefon+doğum tarihi) brute-force denemesine ve
@@ -198,6 +203,10 @@ if (!app.Environment.IsDevelopment() && (seedDemoData || recreateOnStartup))
         "Database:SeedDemoData ve Database:RecreateOnStartup yalnız Development ortamında kullanılabilir. " +
         $"Geçerli ortam: {app.Environment.EnvironmentName}. Bu bayrakları kaldırın.");
 }
+
+// GÜVENLİK KAPISI: canlıda sahte ödeme sağlayıcısını açan eski kaçış kapısı kalmışsa uygulama açılmaz.
+// Ödeme akışı zaten fail-closed davranıyor; bu kontrol yanlış konfigürasyonu deploy anında görünür kılar.
+PaymentGatewayResolver.EnsureProductionPaymentConfiguration(app.Configuration, app.Environment.EnvironmentName);
 
 if (app.Environment.IsDevelopment())
 {

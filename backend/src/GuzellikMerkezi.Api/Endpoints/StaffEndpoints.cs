@@ -11,6 +11,8 @@ public static class StaffEndpoints
 {
     public static IEndpointRouteBuilder MapStaffEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — kapsam UÇTA daraltılır: personel rolündeki kullanıcı yalnız KENDİ kaydını
+        // okur (staffTenantUserId ile IStaffService'e taşınır), personel yönetimi uçları Staff'a 403 döner.
         var group = app.MapGroup("/api/admin/staff").WithTags("Staff").RequireAuthorization();
 
         group.MapGet("/", async (Guid? tenantId, int page, int pageSize, string? search, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>

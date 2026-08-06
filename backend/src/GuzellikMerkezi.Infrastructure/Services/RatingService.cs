@@ -19,8 +19,26 @@ public sealed class RatingService : IRatingService
 
     public RatingService(GuzellikDbContext db) => _db = db;
 
+    /// <summary>
+    /// Randevu için değerlendirme jetonu üretir (idempotent). ÜRETİM RANDEVU SATIRINDA SERİLEŞTİRİLİR.
+    ///
+    /// <para>
+    /// "Zaten puanlanmış mı / açık jeton var mı?" kontrolleri ile yeni satırın yazılması ayrı
+    /// adımlardı: iki eşzamanlı üretim (ör. tamamlama işi + elle QR) ikisi de "yok" görüp AYNI
+    /// randevuya İKİ geçerli jeton açabiliyordu — müşteri aynı randevuyu iki kez puanlayıp
+    /// ortalamayı çift etkileyebilirdi. Kilit RANDEVU satırındadır: jeton satırı henüz yokken
+    /// kilitlenecek bir kayıt da yoktur, dolayısıyla doğal serileştirme noktası randevudur.
+    /// Sıra RowLock.TableOrder ile uyumludur (appointments → appointment_ratings).
+    /// </para>
+    /// </summary>
     public async Task<Result<RatingTokenDto>> IssueAsync(Guid tenantId, Guid appointmentId, int? lifetimeMinutes = null, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var issueTx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "appointments", appointmentId, cancellationToken);
+
         var appt = await _db.Appointments.AsNoTracking()
             .Include(a => a.Customer)
             .Include(a => a.StaffMember)
@@ -59,6 +77,7 @@ public sealed class RatingService : IRatingService
             lifetimeMinutes ?? AppointmentRating.WhatsAppLinkLifetimeMinutes);
         _db.AppointmentRatings.Add(rating);
         await _db.SaveChangesAsync(cancellationToken);
+        if (issueTx is not null) await issueTx.CommitAsync(cancellationToken);
         return Result<RatingTokenDto>.Success(ToTokenDto(rating));
     }
 
@@ -76,11 +95,38 @@ public sealed class RatingService : IRatingService
         return Result<PublicRatingDto>.Success(ToPublicDto(rating));
     }
 
+    /// <summary>
+    /// Müşterinin puanını kaydeder — TEK KULLANIMLIK JETON KİLİT ALTINDA tüketilir.
+    ///
+    /// <para>
+    /// "Zaten puan verilmiş mi?" kontrolü ile puanın yazılması arasında kilit yoktu: linke iki kez
+    /// tıklanması (ya da ağ tekrarı) iki isteğin de kullanılmamış jetonu okuyup ikisinin de
+    /// yazmasına izin veriyordu. Personel/salon ortalaması bu satırlardan hesaplandığı için tek bir
+    /// müşteri ortalamayı iki oy ile etkileyebilirdi.
+    /// </para>
+    /// </summary>
     public async Task<Result<PublicRatingDto>> SubmitAsync(Guid token, SubmitRatingRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
         var rating = await _db.AppointmentRatings.IgnoreQueryFilters()
             .FirstOrDefaultAsync(r => r.Token == token && !r.IsDeleted, cancellationToken);
         if (rating is null) return Result<PublicRatingDto>.Failure(Error.NotFound("Puanlama bağlantısı bulunamadı."));
+
+        if (relational)
+        {
+            // SIRA: appointments → appointment_ratings (RowLock.TableOrder). Randevu kilidi
+            // üretim yolu (IssueAsync) ile bu yolu aynı sıraya sokar; ters sıra kilitlenme üretirdi.
+            await RowLock.LockRowAsync(_db, "appointments", rating.AppointmentId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointment_ratings", rating.Id, cancellationToken);
+            // Kilidi bekleyen taraf, beklerken diğerinin yazdığı puanı görmeli.
+            await _db.Entry(rating).ReloadAsync(cancellationToken);
+            if (_db.Entry(rating).State == EntityState.Detached)
+                return Result<PublicRatingDto>.Failure(Error.NotFound("Puanlama bağlantısı bulunamadı."));
+        }
 
         if (rating.Status == RatingStatus.Submitted)
             return Result<PublicRatingDto>.Failure(Error.Conflict("Bu randevu için zaten puan verilmiş."));
@@ -90,6 +136,7 @@ public sealed class RatingService : IRatingService
         {
             rating.MarkExpired();
             await _db.SaveChangesAsync(cancellationToken);
+            if (tx is not null) await tx.CommitAsync(cancellationToken);
             return Result<PublicRatingDto>.Failure(Error.Validation("Puanlama bağlantısının süresi dolmuştur."));
         }
 
@@ -112,6 +159,7 @@ public sealed class RatingService : IRatingService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
         return Result<PublicRatingDto>.Success(ToPublicDto(rating));
     }
 

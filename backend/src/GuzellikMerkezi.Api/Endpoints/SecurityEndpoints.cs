@@ -14,6 +14,8 @@ public static class SecurityEndpoints
 {
     public static IEndpointRouteBuilder MapSecurityEndpoints(this IEndpointRouteBuilder app)
     {
+        // YETKİ: TÜM KURUM KULLANICILARI — yetki kararı uç gövdesinde verilir: yönetim işlemleri yalnız kurum sahibi
+        // ve platform yöneticisine açıktır (bkz. aşağıdaki rol kontrolü).
         var group = app.MapGroup("/api/admin/security").WithTags("Security").RequireAuthorization();
 
         // Masaüstü uygulaması olay bildirir; kim gönderdiyse onun kimliğiyle loglanır.
