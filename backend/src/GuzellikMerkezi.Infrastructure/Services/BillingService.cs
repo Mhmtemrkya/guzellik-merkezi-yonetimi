@@ -160,6 +160,22 @@ public sealed class BillingService : IBillingService
             init.Value!.CheckoutToken, init.Value.CheckoutFormContent, init.Value.PaymentPageUrl, amount));
     }
 
+    /// <summary>
+    /// Değişmezlere UYMAYAN ödeme dönüşünü reddeder: ödeme başarısız işaretlenir, abonelik
+    /// BAŞLATILMAZ ve denetim kaydı yazılır. Sessizce "başarılı" saymak, tutarı/sağlayıcısı
+    /// tutmayan bir dönüşle ücretli aboneliğin açılması demekti.
+    /// </summary>
+    private async Task<Result<CheckoutCompletedDto>> RejectMismatchedCallbackAsync(
+        SubscriptionPayment payment, string reason, DateTime nowUtc, CancellationToken ct)
+    {
+        payment.MarkFailed("CallbackMismatch", reason, nowUtc);
+        await _db.SaveChangesAsync(ct);
+        _logger.LogError("Ödeme dönüşü değişmezlere uymadı ({PaymentId}): {Reason}", payment.Id, reason);
+        await _audit.LogAsync(payment.TenantId, null, "PaymentRejected", "Subscription", payment.Id,
+            $"Ödeme dönüşü reddedildi: {reason}", new { payment.ConversationId, payment.AmountTRY, payment.Provider }, ct);
+        return Result<CheckoutCompletedDto>.Success(new CheckoutCompletedDto(false, reason, null, null));
+    }
+
     public async Task<Result<CheckoutCompletedDto>> CompleteCheckoutAsync(string checkoutToken, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(checkoutToken))
@@ -199,6 +215,40 @@ public sealed class BillingService : IBillingService
                 $"Ödeme başarısız: {result.ErrorMessage}", new { result.ErrorCode }, ct);
             return Result<CheckoutCompletedDto>.Success(new CheckoutCompletedDto(
                 false, result.ErrorMessage ?? "Ödeme tamamlanamadı.", null, null));
+        }
+
+        // ---- ÖDEME DÖNÜŞÜ DEĞİŞMEZLERE BAĞLANIR ----
+        //
+        // Sonuç yalnız ConversationId ile eşleştirilip "başarılı" bayrağına güveniliyordu: dönüşte
+        // gelen TUTARIN, SAĞLAYICININ ve ödeme kimliğinin beklenenle ilişkisi hiç doğrulanmıyordu.
+        // Somut sonuç: 0,01 TL'lik bir sonuç yüksek tutarlı bekleyen bir checkout'u "ödendi" yapıp
+        // aboneliği başlatabiliyor; aynı sağlayıcı ödeme kimliği birden çok kayda yazılabiliyordu.
+        // Bu kontroller ABONELİK BAŞLATILMADAN önce çalışır ve ödeme başarısız işaretlenir.
+        var expectedProvider = context.Value.Gateway.Provider;
+        if (!string.Equals(payment.Provider, expectedProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            return await RejectMismatchedCallbackAsync(payment,
+                $"Ödeme sağlayıcısı uyuşmuyor (beklenen {payment.Provider}, dönen {expectedProvider}).", nowUtc, ct);
+        }
+
+        if (result.PaidAmountTry != payment.AmountTRY)
+        {
+            return await RejectMismatchedCallbackAsync(payment,
+                $"Ödeme tutarı uyuşmuyor (beklenen {payment.AmountTRY:N2} TL, dönen {result.PaidAmountTry:N2} TL).", nowUtc, ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(result.ProviderPaymentId))
+        {
+            return await RejectMismatchedCallbackAsync(payment,
+                "Sağlayıcı ödeme kimliği dönmedi; ödeme doğrulanamadı.", nowUtc, ct);
+        }
+
+        // AYNI SAĞLAYICI ÖDEME KİMLİĞİ İKİNCİ BİR KAYDA YAZILAMAZ (replay koruması).
+        if (await _db.SubscriptionPayments.AsNoTracking()
+                .AnyAsync(p => p.Id != payment.Id && p.ProviderPaymentId == result.ProviderPaymentId, ct))
+        {
+            return await RejectMismatchedCallbackAsync(payment,
+                "Bu sağlayıcı ödeme kimliği başka bir ödemeye ait; işlem uygulanmadı.", nowUtc, ct);
         }
 
         var tenant = await _db.Tenants.Include(t => t.SubscriptionPlan).FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);

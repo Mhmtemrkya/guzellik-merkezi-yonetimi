@@ -25,8 +25,21 @@ public interface ICurrentUser
     /// <summary>Personelin sayfa izinleri (JWT "permission" claim'lerinden). Yönetici rollerde anlamsızdır (tam erişim).</summary>
     IReadOnlyCollection<string> Permissions { get; }
 
-    /// <summary>Kullanıcının verilen izne sahip olup olmadığı (case-insensitive).</summary>
+    /// <summary>
+    /// HAM izin listesi kontrolü (case-insensitive) — ROL SEMANTİĞİ YOKTUR. Yönetici rollerde izin
+    /// listesi boş olduğundan bu metot onlar için daima false döner; yetki kararı için
+    /// <see cref="IsAllowed"/> kullanın.
+    /// </summary>
     bool HasPermission(string permission) =>
         !string.IsNullOrEmpty(permission)
         && Permissions.Any(p => string.Equals(p, permission, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// YETKİ KARARI — rol modeli + izin listesi birlikte (bkz. <see cref="GuzellikMerkezi.Domain.Permissions.IsGrantedTo"/>).
+    /// Çağrı yerleri "hangi izin" der; "hangi rol" kararı tek yerde durur. Payload'a bağlı bileşik
+    /// kontroller (ör. istek satış içeriyorsa adisyon izni de iste) bunu kullanmalıdır — aksi hâlde
+    /// kural yalnız bir rol için uygulanır ve diğer roller sessizce atlar.
+    /// </summary>
+    bool IsAllowed(string permissionKey) =>
+        GuzellikMerkezi.Domain.Permissions.IsGrantedTo(Role, IsPlatformAdmin, Permissions, permissionKey);
 }

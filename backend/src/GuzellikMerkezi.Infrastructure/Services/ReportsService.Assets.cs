@@ -17,7 +17,10 @@ public sealed partial class ReportsService
     // Müşteri analitiği
     // =======================================================================
 
-    public async Task<Result<CustomerReportDto>> GetCustomersAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<CustomerReportDto>> GetCustomersAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetCustomersCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<CustomerReportDto>> GetCustomersCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, granularity) = Normalize(range);
 
@@ -229,7 +232,10 @@ public sealed partial class ReportsService
     // Stok / ürün + hediye çeki
     // =======================================================================
 
-    public async Task<Result<InventoryReportDto>> GetInventoryAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<InventoryReportDto>> GetInventoryAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetInventoryCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<InventoryReportDto>> GetInventoryCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, granularity) = Normalize(range);
 

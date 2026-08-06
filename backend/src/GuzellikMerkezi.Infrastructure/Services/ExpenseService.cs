@@ -1,8 +1,10 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Expenses;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -107,7 +109,12 @@ public sealed class ExpenseService : IExpenseService
                 r.Reference,
                 r.IsApproved,
                 r.ApprovedAtUtc,
-                r.CreatedAtUtc))
+                r.CreatedAtUtc,
+                // Geçersiz kılınan gider LİSTEDE KALIR (kalıcı iz) ama toplamlara girmez;
+                // arayüz bu alanlarla "geçersiz" rozetini ve gerekçesini gösterir.
+                IsSystemGenerated: false,
+                VoidedAtUtc: r.VoidedAtUtc,
+                VoidReason: r.VoidReason))
             .Concat(refundRows)
             .OrderByDescending(r => r.OccurredAtUtc)
             .Skip(pageRequest.Skip)
@@ -239,10 +246,76 @@ public sealed class ExpenseService : IExpenseService
         return Result<BusinessExpenseDto>.Success(expense.ToDtoWithStaff(staffName));
     }
 
+    /// <inheritdoc />
+    public async Task<Result<BusinessExpenseDto>> VoidAsync(Guid tenantId, Guid id, VoidExpenseRequest request, CancellationToken cancellationToken = default)
+    {
+        // GERÇEKLEŞMİŞ BİR KASA ÇIKIŞINI GEÇERSİZ KILMAK AYRI BİR YETKİDİR (iade geçersiz kılmayla
+        // aynı sınıf): normal gider yetkisi olan personel geçmiş bir hareketi toplamlardan
+        // düşürememeli. Kurum sahibi ve platform yöneticisi dışındaki her rol açık izin ister.
+        var mayVoid = _currentUser.IsPlatformAdmin
+            || _currentUser.Role == UserRole.InstitutionOwner
+            || _currentUser.IsAllowed(Permissions.AccountingVoidExpense);
+        if (!mayVoid)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Unauthorized(
+                "Onaylanmış gideri geçersiz kılma yetkiniz yok. Yöneticinize başvurun."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Validation(
+                "Gideri geçersiz kılmak için gerekçe zorunludur (ör. 'yanlış girildi, para çıkmadı')."));
+        }
+
+        var expense = await _db.BusinessExpenses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (expense is null) return Result<BusinessExpenseDto>.Failure(Error.NotFound("Gider bulunamadı."));
+        if (!expense.IsApproved)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Validation(
+                "Onaylanmamış gider zaten muhasebe toplamlarına girmiyor; geçersiz kılmak yerine silebilirsiniz."));
+        }
+        if (expense.VoidedAtUtc is not null)
+            return Result<BusinessExpenseDto>.Failure(Error.Conflict("Bu gider zaten geçersiz kılınmış."));
+
+        try
+        {
+            expense.Void(request.Reason, _currentUser.UserId);
+        }
+        catch (DomainException ex)
+        {
+            return Result<BusinessExpenseDto>.Failure(Error.Validation(ex.Message));
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, expense.BranchId, "Void", "Expense", expense.Id,
+            $"Gider geçersiz kılındı: {expense.Category} · {expense.Amount:N2} · {expense.VoidReason}",
+            new { expense.Category, expense.Amount, expense.OccurredAtUtc, expense.VoidReason }, cancellationToken);
+
+        var staffName = expense.StaffMemberId.HasValue
+            ? await _db.StaffMembers.AsNoTracking().Where(s => s.Id == expense.StaffMemberId).Select(s => s.FullName).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        return Result<BusinessExpenseDto>.Success(expense.ToDtoWithStaff(staffName));
+    }
+
     public async Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
     {
         var expense = await _db.BusinessExpenses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (expense is null) return Result.Failure(Error.NotFound("Gider bulunamadı."));
+
+        // ONAYLANMIŞ GİDER SİLİNEMEZ — para fiilen çıkmıştır (geçersiz kılma için VoidAsync).
+        //
+        // Soft-delete kaydı global süzgeçle gizliyor; kasa akışı, kâr-zarar ve geçmiş dönem
+        // raporları o parayı bir daha GÖRMÜYORDU: onaylı 1.000 TL kira silinince net −1.000'den
+        // 0'a dönüyor, oysa para geri gelmedi. Geçmiş bir kasa hareketini yok etmek muhasebede
+        // düzeltme değil, kayıt kaybıdır. Yanlış girilen onaylı gider için ters kayıt (düzeltme
+        // hareketi) girilmeli; onay bekleyen kayıt ise hiçbir deftere girmediği için silinebilir.
+        if (expense.IsApproved)
+        {
+            return Result.Failure(Error.Conflict(
+                "Onaylanmış gider silinemez: para fiilen çıkmıştır ve geçmiş raporlardan kaldırılamaz. " +
+                "Yanlış girildiyse gideri gerekçesiyle GEÇERSİZ KILIN."));
+        }
+
         var snapshot = new { expense.Category, expense.Amount, expense.OccurredAtUtc };
         expense.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
@@ -256,9 +329,10 @@ public sealed class ExpenseService : IExpenseService
         // ONAYSIZ GİDER GERÇEKLEŞMİŞ SAYILMAZ: kasa akışı (CashFlowService), kâr-zarar ve rapor
         // servisleri IsApproved süzüyordu, yalnız bu özet süzmüyordu — aynı dönem için iki farklı
         // gider rakamı çıkıyor, özet onay bekleyen kalemler kadar fazla gösteriyordu.
+        // GEÇERSİZ KILINAN GİDER TOPLAMA GİRMEZ (kasa akışı ve raporlarla aynı kural).
         var query = _db.BusinessExpenses
             .AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.IsApproved);
+            .Where(x => x.TenantId == tenantId && x.IsApproved && x.VoidedAtUtc == null);
 
         if (filter.FromUtc.HasValue)
         {

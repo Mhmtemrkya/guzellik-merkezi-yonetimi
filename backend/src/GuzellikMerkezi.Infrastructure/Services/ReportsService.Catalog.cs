@@ -61,7 +61,10 @@ public sealed partial class ReportsService
         public decimal Amount;
     }
 
-    public async Task<Result<CatalogReportDto>> GetCatalogAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<CatalogReportDto>> GetCatalogAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetCatalogCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<CatalogReportDto>> GetCatalogCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, _) = Normalize(range);
 

@@ -256,20 +256,54 @@ public sealed class TenantService : ITenantService
             allCredentials.Count > 0 ? allCredentials : null));
     }
 
+    /// <summary>
+    /// KURUMUN KENDİ PROFİL/FİNANS GÜNCELLEMESİ — abonelik alanlarına dokunmaz.
+    ///
+    /// <para>
+    /// Kurum yöneticisinin ucu eskiden platform DTO'sunu (<c>UpdateTenantRequest</c>) alıyordu ve
+    /// aynı servis metodu paket/dönem/durumu da uyguluyordu: ödeme, callback ve platform onayı
+    /// olmadan ücretli plan aktive edilebiliyordu (bkz. <see cref="UpdateTenantProfileRequest"/>).
+    /// Bu metot yalnız profil ve finans ayarlarını yazar; abonelik değişimi PlatformAdmin'in
+    /// <see cref="UpdateAsync"/> ucundan ya da doğrulanmış billing sonucundan gelir.
+    /// </para>
+    /// </summary>
+    public async Task<Result<TenantDto>> UpdateProfileAsync(Guid id, UpdateTenantProfileRequest request, CancellationToken cancellationToken = default)
+    {
+        var tenant = await _db.Tenants.Include(x => x.Branches).Include(x => x.SubscriptionPlan).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (tenant is null) return Result<TenantDto>.Failure(Error.NotFound("Kurum bulunamadı."));
+
+        ApplyProfileAndFinance(tenant, request.Name, request.Domain, request.OwnerName, request.Phone,
+            request.TaxNumber, request.LegalName, request.TaxOffice, request.Email,
+            request.Currency, request.MaxInstallments, request.OverdueGraceDays);
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return Result<TenantDto>.Success(tenant.ToDto());
+    }
+
+    /// <summary>Profil + finans alanlarını uygular (iki güncelleme yolunun ortak gövdesi).</summary>
+    private static void ApplyProfileAndFinance(
+        Tenant tenant, string name, string? domain, string? ownerName, string? phone, string? taxNumber,
+        string? legalName, string? taxOffice, string? email, string? currency, int? maxInstallments, int? overdueGraceDays)
+    {
+        tenant.Rename(name);
+        tenant.SetProfile(domain, ownerName);
+        tenant.SetContact(phone, taxNumber);
+        tenant.SetProfileExtras(legalName ?? tenant.LegalName, taxOffice ?? tenant.TaxOffice, email ?? tenant.Email);
+        // Finans ayarları — opsiyonel: gönderilmezse mevcut değer korunur.
+        tenant.SetFinanceSettings(
+            currency ?? tenant.Currency,
+            maxInstallments ?? tenant.MaxInstallments,
+            overdueGraceDays ?? tenant.OverdueGraceDays);
+    }
+
     public async Task<Result<TenantDto>> UpdateAsync(Guid id, UpdateTenantRequest request, CancellationToken cancellationToken = default)
     {
         var tenant = await _db.Tenants.Include(x => x.Branches).Include(x => x.SubscriptionPlan).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (tenant is null) return Result<TenantDto>.Failure(Error.NotFound("Kurum bulunamadı."));
 
-        tenant.Rename(request.Name);
-        tenant.SetProfile(request.Domain, request.OwnerName);
-        tenant.SetContact(request.Phone, request.TaxNumber);
-        tenant.SetProfileExtras(request.LegalName ?? tenant.LegalName, request.TaxOffice ?? tenant.TaxOffice, request.Email ?? tenant.Email);
-        // Finans ayarları — opsiyonel: gönderilmezse mevcut değer korunur.
-        tenant.SetFinanceSettings(
-            request.Currency ?? tenant.Currency,
-            request.MaxInstallments ?? tenant.MaxInstallments,
-            request.OverdueGraceDays ?? tenant.OverdueGraceDays);
+        ApplyProfileAndFinance(tenant, request.Name, request.Domain, request.OwnerName, request.Phone,
+            request.TaxNumber, request.LegalName, request.TaxOffice, request.Email,
+            request.Currency, request.MaxInstallments, request.OverdueGraceDays);
 
         // Plan + dönem + durum — kurum oluşturma modalındaki dönem mantığıyla uyumlu.
         var now = DateTime.UtcNow;

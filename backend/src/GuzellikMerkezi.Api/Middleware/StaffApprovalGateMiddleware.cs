@@ -124,6 +124,11 @@ public sealed class StaffApprovalGateMiddleware
     private static bool IsStaffWrite(HttpContext http, ICurrentUser currentUser)
     {
         if (!currentUser.IsAuthenticated || currentUser.Role != UserRole.Staff) return false;
+        // ONAYLANMIŞ REPLAY YENİDEN TASLAĞA ALINMAZ. Replay artık isteği AÇAN personelin kapsamıyla
+        // (yani Staff rolüyle) çalışıyor; bu işaret olmasaydı kapı onaylanan isteği tekrar kuyruğa
+        // koyar ve işlem hiçbir zaman uygulanmazdı. Claim'i yalnız sunucunun kendi imzaladığı,
+        // kısa ömürlü kapsam token'ı taşır (bkz. IApprovalRequesterScope).
+        if (http.User?.HasClaim(c => c.Type == IApprovalReplayer.ReplayClaimType) == true) return false;
         var method = http.Request.Method;
         return HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
     }

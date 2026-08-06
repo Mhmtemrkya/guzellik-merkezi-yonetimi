@@ -78,6 +78,33 @@ public sealed record TenantAvailabilityDto(
 
 public sealed record TenantAvailabilityConflictDto(string Field, string? Value, string Message, string? SuggestedValue);
 
+/// <summary>
+/// KURUMUN KENDİ PROFİL GÜNCELLEMESİ — abonelik alanı TAŞIMAZ.
+///
+/// <para>
+/// Kurum yöneticisi <c>PUT /api/admin/tenant</c> ile <see cref="UpdateTenantRequest"/> gönderiyordu;
+/// o DTO <c>Plan</c>, <c>Status</c> ve <c>BillingPeriod</c> taşıdığı için servis
+/// <c>StartSubscription</c> / <c>AssignSubscriptionPlan</c> / <c>ResetTrialForNextOwnerLogin</c>
+/// yollarını çalıştırıyordu: ödeme sağlayıcısına, callback'e ve platform onayına HİÇ uğramadan
+/// ücretli paket aktive edilebiliyor, dönem değiştirilebiliyor, askıya alınmış kurum yeniden
+/// aktif/deneme yapılabiliyordu (<c>/upgrade</c> kapısı tamamen baypas). Abonelik yalnız
+/// doğrulanmış billing sonucu ya da PlatformAdmin komutuyla değişir.
+/// </para>
+/// </summary>
+public sealed record UpdateTenantProfileRequest(
+    string Name,
+    string? Domain,
+    string? OwnerName,
+    string? Phone,
+    string? TaxNumber,
+    string? Currency,
+    int? MaxInstallments,
+    int? OverdueGraceDays,
+    string? LegalName = null,
+    string? TaxOffice = null,
+    string? Email = null);
+
+/// <summary>PLATFORM YÖNETİCİSİNE ÖZEL tam güncelleme (abonelik alanları dâhil).</summary>
 public sealed record UpdateTenantRequest(
     string Name,
     string Plan,

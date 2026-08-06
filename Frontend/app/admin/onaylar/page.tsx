@@ -13,15 +13,18 @@ import { apiItems, guidOrUndefined, normalizePendingOperation, normalizeStaff } 
 import { exportApprovalsToExcel } from '@/lib/excel'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  AlertCircle, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Download,
+  AlertCircle, AlertTriangle, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Download,
   FileText, Hourglass, MoreVertical, Package, RefreshCcw, Sparkles, TrendingDown,
   TrendingUp, User, Users, Wallet, XCircle,
 } from 'lucide-react'
 import type { ApiPendingOperation, ApiStaff, PagedResult, PendingOperation, PendingOperationStatusKey } from '@/lib/types'
 
-type TabKey = 'all' | 'pending' | 'approved' | 'rejected'
+type TabKey = 'all' | 'pending' | 'stuck' | 'approved' | 'rejected'
+// "Takılanlar" AYRI SEKME: takılı kayıt Processing durumundadır, yani "Bekleyenler"de görünmez.
+// Ayrı sekme olmadan yalnız "Tümü" içinde kaybolur ve kimse çözmeye gelmezdi.
 const TABS: { key: TabKey; label: string; status?: PendingOperationStatusKey }[] = [
   { key: 'all', label: 'Tümü' }, { key: 'pending', label: 'Bekleyenler', status: 'Pending' },
+  { key: 'stuck', label: 'Takılanlar' },
   { key: 'approved', label: 'Onaylanmış', status: 'Approved' }, { key: 'rejected', label: 'Reddedilmiş', status: 'Rejected' },
 ]
 
@@ -152,6 +155,7 @@ function OnaylarPageInner() {
   }, [branches])
 
   const filtered = useMemo(() => {
+    if (tab === 'stuck') return all.filter((o) => o.isStuck)
     const st = TABS.find((t) => t.key === tab)?.status
     return st ? all.filter((o) => o.status === st) : all
   }, [all, tab])
@@ -215,6 +219,22 @@ function OnaylarPageInner() {
     catch (e) { setActionError(e instanceof Error ? e.message : 'Reddetme başarısız.') } finally { setBusyId(null) }
   }, [tenantId, refresh, reasonDrafts])
 
+  /**
+   * TAKILI İŞLEMİN ELLE ÇÖZÜMÜ. Sonucu doğrulanamayan bir onay kendi başına Processing'den
+   * çıkamaz; sistem hedefin gerçekten yazıp yazmadığını bilemez. Karar yöneticinindir:
+   * `applied` = hedef kayıt (tahsilat/satış/gider) bulundu mu?
+   */
+  const handleResolveStuck = useCallback(async (op: PendingOperation, applied: boolean) => {
+    const note = reasonDrafts[op.id]?.trim() || ''
+    if (note.length < 5) {
+      setActionError('Neyi kontrol ettiğinizi yazın (en az 5 karakter): bu karar denetim kaydına işlenir.')
+      return
+    }
+    setBusyId(op.id); setActionError(null)
+    try { await adminApi.resolveStuckPendingOperation(op.id, applied, note, tenantId); refresh() }
+    catch (e) { setActionError(e instanceof Error ? e.message : 'Elle çözüm başarısız.') } finally { setBusyId(null) }
+  }, [tenantId, refresh, reasonDrafts])
+
   const exportCsv = useCallback(async () => {
     await exportApprovalsToExcel(
       filtered.map((o) => {
@@ -269,12 +289,19 @@ function OnaylarPageInner() {
         {/* TABS */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
-            {TABS.map((t) => (
-              <button key={t.key} type="button" onClick={() => setTab(t.key)}
-                className={`rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white shadow-sm' : 'text-[#352432]/55 hover:bg-white'}`}>
-                {t.label}
-              </button>
-            ))}
+            {TABS.map((t) => {
+              // Takılı kayıt sayısı sekmede görünür: müdahale gerektiren tek durum budur.
+              const stuckCount = t.key === 'stuck' ? all.filter((o) => o.isStuck).length : 0
+              return (
+                <button key={t.key} type="button" onClick={() => setTab(t.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white shadow-sm' : 'text-[#352432]/55 hover:bg-white'}`}>
+                  {t.label}
+                  {stuckCount > 0 && (
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${tab === t.key ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-700'}`}>{stuckCount}</span>
+                  )}
+                </button>
+              )
+            })}
           </div>
           {tab !== 'pending' && (
             <button type="button" onClick={() => setTab('pending')}
@@ -367,7 +394,16 @@ function OnaylarPageInner() {
                       {(() => { const parts = op.requestedAtFormatted.split(/[ ]+/); return (<><div>{parts.slice(0, 3).join(' ') || op.requestedAtFormatted}</div><div className="font-mono text-[10px] text-[#352432]/40">{parts.slice(3).join(' ')}</div></>) })()}
                     </div>
                     {/* Durum */}
-                    <div><span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${statusBadge[op.status]}`}>{statusLabel[op.status]}</span></div>
+                    <div className="space-y-1">
+                      <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${statusBadge[op.status]}`}>{statusLabel[op.status]}</span>
+                      {/* TAKILDI: sonucu doğrulanamamış sahiplenme. Ayrı rozet olmadan kayıt
+                          sessizce "işleniyor" görünüp orada kalıyordu. */}
+                      {op.isStuck && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/50 bg-amber-50 px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-amber-700">
+                          <AlertTriangle className="h-3 w-3" /> Takıldı
+                        </span>
+                      )}
+                    </div>
                     {/* İşlemler */}
                     <div className="flex items-center justify-end gap-1.5">
                       {isPending ? (
@@ -381,6 +417,11 @@ function OnaylarPageInner() {
                             <XCircle className="h-3.5 w-3.5" /> Reddet
                           </button>
                         </>
+                      ) : op.isStuck ? (
+                        <button type="button" disabled={isBusy} onClick={() => setExpandedId(isExpanded ? null : op.id)}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-300/50 bg-amber-50 px-2.5 py-1.5 text-[10px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50">
+                          <AlertTriangle className="h-3.5 w-3.5" /> Elle çöz
+                        </button>
                       ) : op.rejectionReason ? <span className="truncate text-[10px] text-rose-600/70" title={op.rejectionReason}>{op.rejectionReason}</span> : <span className="text-[10px] text-[#352432]/35">karara bağlandı</span>}
                       <button type="button" onClick={() => setExpandedId(isExpanded ? null : op.id)}
                         className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 transition-colors hover:bg-[#fff4f8]/50"><MoreVertical className="h-3.5 w-3.5" /></button>
@@ -434,6 +475,39 @@ function OnaylarPageInner() {
                                 className="rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50">Reddet</button>
                             </div>
                           )}
+                          {/* TAKILI İŞLEM — ELLE ÇÖZÜM.
+                              Onay uygulanmaya başladı ama sonucu doğrulanamadı (bağlantı koptu,
+                              süreç çöktü). Sistem hedefin yazıp yazmadığını bilemez; her yeniden
+                              deneme "uygulanmış olabilir" diyerek durur. Çıkışı yönetici verir. */}
+                          {op.isStuck && (
+                            <div className="rounded-[12px] border border-amber-300/50 bg-amber-50/70 p-3">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                <div className="text-[12px] text-amber-900">
+                                  <div className="font-medium">Bu işlem takıldı — sonucu doğrulanamadı.</div>
+                                  <div className="mt-0.5 text-amber-800/85">
+                                    İşlem uygulanmaya başladı ancak tamamlandığı doğrulanamadı. Hedef kaydı
+                                    (tahsilat, satış, gider) kontrol edin ve gerçeği bildirin: yanlış bildirim
+                                    işlemin ikinci kez uygulanmasına ya da hiç uygulanmamasına yol açar.
+                                  </div>
+                                </div>
+                              </div>
+                              <label className="mt-2.5 block text-[10px] font-mono uppercase tracking-widest text-amber-700/80">Ne kontrol ettiniz? (zorunlu)</label>
+                              <input value={reasonDrafts[op.id] || ''} onChange={(e) => setReasonDrafts((p) => ({ ...p, [op.id]: e.target.value }))}
+                                placeholder="Örn: cari kartta 1.500 ₺ tahsilat göründü"
+                                className="mt-1.5 w-full rounded-[10px] border border-amber-300/60 bg-white px-3 py-2 text-[12px] text-[#352432] outline-none focus:border-amber-500" />
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <button type="button" disabled={isBusy} onClick={() => handleResolveStuck(op, true)}
+                                  className="rounded-[10px] border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50">
+                                  Kayıt oluşmuş — onaylandı olarak kapat
+                                </button>
+                                <button type="button" disabled={isBusy} onClick={() => handleResolveStuck(op, false)}
+                                  className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/75 transition-colors hover:bg-[#fff4f8]/60 disabled:opacity-50">
+                                  Kayıt yok — yeniden onaylanabilir yap
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -444,7 +518,11 @@ function OnaylarPageInner() {
             {!pageRows.length && !loading && (
               <div className="px-5 py-14 text-center">
                 <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-300/60" strokeWidth={1.4} />
-                <div className="mt-3 text-sm text-[#352432]/65">{tab === 'pending' ? 'Bekleyen onay yok. Tüm personel işlemleri karara bağlanmış.' : `${TABS.find((t) => t.key === tab)?.label} kapsamında kayıt yok.`}</div>
+                <div className="mt-3 text-sm text-[#352432]/65">{
+                  tab === 'pending' ? 'Bekleyen onay yok. Tüm personel işlemleri karara bağlanmış.'
+                    : tab === 'stuck' ? 'Takılan işlem yok — sonucu doğrulanamayan onay bulunmuyor.'
+                    : `${TABS.find((t) => t.key === tab)?.label} kapsamında kayıt yok.`
+                }</div>
               </div>
             )}
           </div>

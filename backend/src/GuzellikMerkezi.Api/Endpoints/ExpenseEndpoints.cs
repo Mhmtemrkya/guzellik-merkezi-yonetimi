@@ -80,6 +80,14 @@ public static class ExpenseEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.RevokeAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
         });
 
+        // GEÇERSİZ KILMA (void) — onaylanmış gider silinemez; ayrı yetki + zorunlu gerekçeyle
+        // toplamlardan düşer ama satır kalıcı iz olarak durur (bkz. IExpenseService.VoidAsync).
+        group.MapPost("/{id:guid}/void", async (Guid id, VoidExpenseRequest request, Guid? tenantId, ICurrentUser currentUser, IExpenseService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.VoidAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
+        });
+
         group.MapDelete("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IExpenseService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

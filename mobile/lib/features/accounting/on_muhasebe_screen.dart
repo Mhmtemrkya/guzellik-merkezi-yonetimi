@@ -133,6 +133,41 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         icon: const Icon(Icons.menu_book_rounded),
       );
 
+  /// Onaylanmış gideri geçersiz kılmak için ZORUNLU gerekçeyi sorar.
+  Future<String?> _askExpenseVoidReason() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gideri geçersiz kıl'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Onaylanmış gider silinemez. Kayıt iz olarak kalır, toplamlardan düşer.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Gerekçe (zorunlu)',
+                hintText: 'ör. yanlış girildi, para çıkmadı',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Geçersiz kıl'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _guard(Future<void> Function() task, String ok) async {
     try {
       await task();
@@ -1098,6 +1133,17 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
               child: const Icon(Icons.delete_rounded, color: Colors.white),
             ),
             confirmDismiss: (_) async {
+              // ONAYLANMIŞ GİDER SİLİNMEZ: gerekçeli void (web ile aynı kural). Silme, gerçekleşmiş
+              // kasa çıkışını raporlardan düşürüyordu; kayıt artık iz olarak kalıyor.
+              if (e['isApproved'] == true) {
+                final reason = await _askExpenseVoidReason();
+                if (reason == null || reason.trim().isEmpty) return false;
+                await _guard(
+                    () => widget.api.post(
+                        '/api/admin/expenses/${e['id']}/void', {'reason': reason.trim()}),
+                    'Gider geçersiz kılındı.');
+                return false;
+              }
               await _guard(
                   () => widget.api.delete('/api/admin/expenses/${e['id']}'),
                   'Gider silindi.');

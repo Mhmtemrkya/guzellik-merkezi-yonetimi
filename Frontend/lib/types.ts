@@ -1851,6 +1851,9 @@ export interface BusinessExpense {
   createdAt: string
   /** Sistem üretimi satır (müşteri iadesi) — düzenlenemez/silinemez. */
   isSystemGenerated: boolean
+  /** Dolu ise gider GEÇERSİZ KILINMIŞ: satır iz olarak durur, toplamlara girmez. */
+  voidedAt?: string | null
+  voidReason?: string | null
 }
 
 export interface ApiExpenseCategoryTotal {
@@ -2098,6 +2101,7 @@ export interface ApiPendingOperation {
   decidedByUserId?: string | null
   rejectionReason?: string | null
   resultEntityId?: string | null
+  isStuck?: boolean
 }
 
 export interface PendingOperation {
@@ -2117,6 +2121,11 @@ export interface PendingOperation {
   decidedAt: string | null
   rejectionReason: string
   resultEntityId: string | null
+  /**
+   * TAKILDI: işlem sahiplenilmiş ama sonucu doğrulanamadan zaman aşımına uğramış. Kayıt kendi
+   * başına Processing'den ÇIKAMAZ; yönetici hedefi kontrol edip "Elle çöz" ile kapatmalıdır.
+   */
+  isStuck: boolean
 }
 
 // ---------------------------------------------------------------------------

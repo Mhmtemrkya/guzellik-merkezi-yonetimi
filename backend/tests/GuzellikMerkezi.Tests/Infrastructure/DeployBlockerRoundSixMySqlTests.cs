@@ -214,7 +214,7 @@ public sealed class DeployBlockerRoundSixMySqlTests
 
     private sealed class ThrowingReplayer : IApprovalReplayer
     {
-        public Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        public Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, string requesterAccessToken, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Bu testte HttpReplay kullanılmaz.");
     }
 

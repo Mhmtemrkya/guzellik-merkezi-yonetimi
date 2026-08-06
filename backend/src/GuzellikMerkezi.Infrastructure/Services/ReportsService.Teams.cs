@@ -24,7 +24,10 @@ public sealed partial class ReportsService
     // Personel performansı
     // =======================================================================
 
-    public async Task<Result<StaffReportDto>> GetStaffAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<StaffReportDto>> GetStaffAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetStaffCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<StaffReportDto>> GetStaffCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, _) = Normalize(range);
 
@@ -193,7 +196,10 @@ public sealed partial class ReportsService
     // Şube karşılaştırması
     // =======================================================================
 
-    public async Task<Result<BranchReportDto>> GetBranchesAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<BranchReportDto>> GetBranchesAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetBranchesCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<BranchReportDto>> GetBranchesCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, granularity) = Normalize(range);
         var crossBranch = CanSeeAllBranches;

@@ -39,6 +39,44 @@ public sealed partial class ReportsService : IReportsService
         _currentUser = currentUser;
     }
 
+    /// <summary>
+    /// RAPOR YANITI TEK BİR ANLIK GÖRÜNTÜDEN ÜRETİLİR (M6).
+    ///
+    /// <para>
+    /// SOMUT AÇIK: bir rapor onlarca ayrı sorgu çalıştırır (tahsilat, gider, satış, randevu, arşiv,
+    /// stok…). Sorgular arasında başka bir kullanıcı tahsilat işler ya da satış iptal ederse, aynı
+    /// yanıtın metrikleri FARKLI commit anlarına ait olur: "gelir" yeni tahsilatı sayarken "net"
+    /// saymaz, iptal edilen satış bir kartta var diğerinde yok görünür. Rakamlar birbirini tutmaz
+    /// ve kimse hatanın nereden geldiğini bulamaz.
+    /// </para>
+    /// <para>
+    /// ÇÖZÜM: tüm okumalar REPEATABLE READ bir transaction içinde yapılır. InnoDB ilk okumada
+    /// tutarlı bir görüntü (snapshot) kurar ve transaction boyunca korur — sonraki tüm sorgular
+    /// AYNI ana bakar. Salt okunur olduğu için kilit tutulmaz, yazan işlemler engellenmez.
+    /// İlişkisel olmayan sağlayıcıda (InMemory testleri) transaction yoktur; davranış değişmez.
+    /// </para>
+    /// </summary>
+    private async Task<T> ReadSnapshotAsync<T>(Func<Task<T>> read, CancellationToken ct)
+    {
+        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null)
+            return await read();
+
+        await using var tx = await _db.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.RepeatableRead, ct);
+        try
+        {
+            var result = await read();
+            // Salt okunur: commit yalnız snapshot'ı serbest bırakır.
+            await tx.CommitAsync(ct);
+            return result;
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     // =======================================================================
     // Ortak yardımcılar
     // =======================================================================
@@ -228,7 +266,7 @@ public sealed partial class ReportsService : IReportsService
     {
         // Yalnız ONAYLI gider rapora girer (onay bekleyen personel kaydı gerçekleşmiş sayılmaz).
         var rows = await _db.BusinessExpenses.AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.IsApproved && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
+            .Where(e => e.TenantId == tenantId && e.IsApproved && e.VoidedAtUtc == null && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
             .Select(e => new { e.BranchId, e.Category, e.Amount, e.OccurredAtUtc })
             .ToListAsync(ct);
         var result = rows.Select(e => new ExpenseRow(e.BranchId, e.Category, e.Amount, e.OccurredAtUtc)).ToList();
@@ -341,7 +379,10 @@ public sealed partial class ReportsService : IReportsService
     // Genel Bakış
     // =======================================================================
 
-    public async Task<Result<ReportSummaryDto>> GetSummaryAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default)
+    public Task<Result<ReportSummaryDto>> GetSummaryAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetSummaryCoreAsync(tenantId, range, cancellationToken), cancellationToken);
+
+    private async Task<Result<ReportSummaryDto>> GetSummaryCoreAsync(Guid tenantId, ReportRangeRequest range, CancellationToken cancellationToken)
     {
         var (from, to, compareFrom, compareTo, granularity) = Normalize(range);
 
@@ -496,13 +537,50 @@ public sealed partial class ReportsService : IReportsService
             .SelectMany(a => a.Items.Select(i => new { i.Type, i.Quantity, i.UnitPrice, i.CoveredByPackage }))
             .ToListAsync(ct);
 
-        var revenueSources = adisyonItems
+        // İNDİRİM DAĞITILIR — dilimler NET ciroyu gösterir.
+        //
+        // Dilimler yalnız borç yazan kalemlerin BRÜT tutarını topluyordu; indirim kalemleri hiç
+        // dikkate alınmadığı için 100 TL hizmet − 20 TL indirim durumunda net 80 iken kaynak
+        // dilimi 100 gösteriyordu (aynı ekrandaki toplam ciroyla çelişen bir kırılım).
+        // İndirim, dilimlerin brüt payına göre DETERMİNİSTİK dağıtılır; yuvarlama artığı en büyük
+        // dilime yazılır, böylece dilimlerin toplamı net ciroya birebir eşit kalır.
+        var chargeItems = adisyonItems
             .Where(i => i.Type is AdisyonItemType.Service or AdisyonItemType.Product or AdisyonItemType.PackageSale or AdisyonItemType.Extra)
             .Where(i => !i.CoveredByPackage)
-            .GroupBy(i => i.Type)
-            .Select(g => new ReportSliceDto(g.Key.ToString(), ItemTypeLabel(g.Key), Round(g.Sum(x => x.Quantity * x.UnitPrice)), g.Count()))
-            .OrderByDescending(s => s.Amount)
             .ToList();
+        var totalDiscount = adisyonItems
+            .Where(i => i.Type == AdisyonItemType.Discount)
+            .Sum(i => Math.Abs(i.Quantity * i.UnitPrice));
+
+        var grossBySource = chargeItems
+            .GroupBy(i => i.Type)
+            .Select(g => new { Type = g.Key, Gross = g.Sum(x => x.Quantity * x.UnitPrice), Count = g.Count() })
+            .OrderByDescending(x => x.Gross)
+            .ToList();
+        var grossTotal = grossBySource.Sum(x => x.Gross);
+
+        var revenueSources = new List<ReportSliceDto>(grossBySource.Count);
+        if (grossTotal <= 0m || totalDiscount <= 0m)
+        {
+            revenueSources.AddRange(grossBySource.Select(x =>
+                new ReportSliceDto(x.Type.ToString(), ItemTypeLabel(x.Type), Round(x.Gross), x.Count)));
+        }
+        else
+        {
+            var appliedDiscount = 0m;
+            for (var index = 0; index < grossBySource.Count; index++)
+            {
+                var source = grossBySource[index];
+                // Son dilim kalan indirimin tamamını üstlenir → toplam tam olarak net ciroya eşitlenir.
+                var share = index == grossBySource.Count - 1
+                    ? totalDiscount - appliedDiscount
+                    : Round(totalDiscount * (source.Gross / grossTotal));
+                appliedDiscount += share;
+                revenueSources.Add(new ReportSliceDto(
+                    source.Type.ToString(), ItemTypeLabel(source.Type), Round(source.Gross - share), source.Count));
+            }
+        }
+        revenueSources = revenueSources.OrderByDescending(s => s.Amount).ToList();
 
         // Yoğunluk haritası — yerel gün/saat.
         var heatmap = appointments

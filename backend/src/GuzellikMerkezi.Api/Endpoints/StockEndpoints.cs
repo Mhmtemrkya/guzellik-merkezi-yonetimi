@@ -73,17 +73,23 @@ public static class StockEndpoints
 
         var movements = app.MapGroup("/api/admin/stock-movements").WithTags("Stock").RequireAuthorization().RequirePermission(Permissions.Stock);
 
+        // `limit` NULLABLE OLMALI. Minimal API'de non-nullable bir value-type query parametresi
+        // ZORUNLUDUR: göndermeyen istemci listeyi hiç göremez, 400 alır. Mobil "Stok Hareketleri"
+        // sayfası tam olarak buna takılıyordu (sayfa page/pageSize gönderiyor, limit göndermiyordu)
+        // ve hata yutulduğu için ekranda "kayıt yok" görünüyordu. Servis zaten aralık dışı değeri
+        // makul bir varsayılana çekiyor (bkz. StockService.ListMovementsAsync), dolayısıyla
+        // "verilmedi" durumunu ona devretmek güvenli.
         movements.MapGet("/", async (
             Guid? tenantId,
             Guid? productId,
-            int limit,
+            int? limit,
             ICurrentUser currentUser,
             IStockService service,
             HttpContext http,
             CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListMovementsAsync(resolvedTenantId, productId, limit, ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListMovementsAsync(resolvedTenantId, productId, limit ?? 0, ct)).ToHttpResult(http);
         });
 
         return app;

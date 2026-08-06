@@ -275,4 +275,116 @@ public sealed class IdempotencyMiddlewareMySqlTests
         Assert.Equal(1, applied.Value);
         Assert.Equal(1, await CustomerCountAsync(database, seed.TenantId));
     }
+
+    // ---------------------------------------------------------------- M7) anahtar isteğe bağlıdır
+
+    /// <summary>
+    /// ASIL İDDİA (M7): aynı anahtar BAŞKA bir uca gönderilirse eski yanıt oynatılmaz — istek
+    /// 409 <c>IdempotencyKeyReuse</c> ile açıkça reddedilir.
+    ///
+    /// <para>
+    /// Eskiden yalnız anahtara bakılıyordu: ikinci istek "zaten işlendi" sayılıp ilk isteğin
+    /// (alakasız) yanıtı geri veriliyor, YENİ mutasyon hiç uygulanmıyordu. Kullanıcı "kaydedildi"
+    /// görüyor, veritabanında hiçbir şey olmuyordu — sessiz veri kaybı.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task SameKey_DifferentEndpoint_IsRejectedInsteadOfSilentlySkipped()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        var key = $"outbox-{Guid.NewGuid():N}";
+        var applied = new Counter();
+        var middleware = new IdempotencyMiddleware(MutatingEndpoint(database, seed, applied));
+
+        await using (var db = database.NewContext())
+        {
+            var http = NewRequest(key, new MemoryStream());
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status200OK, http.Response.StatusCode);
+        }
+
+        // AYNI anahtar, BAŞKA uç.
+        await using (var db = database.NewContext())
+        {
+            var http = NewRequest(key, new MemoryStream());
+            http.Request.Path = "/api/admin/adisyonlar";
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status409Conflict, http.Response.StatusCode);
+            Assert.Equal("key-reuse", http.Response.Headers[IdempotencyMiddleware.StatusHeader].ToString());
+        }
+
+        // İkinci istek ÇALIŞMADI ve ilk yanıt da oynatılmadı.
+        Assert.Equal(1, applied.Value);
+        Assert.Equal(1, await CustomerCountAsync(database, seed.TenantId));
+    }
+
+    /// <summary>
+    /// AYNI iddia GÖVDE için: anahtar aynı ama içerik farklıysa istek reddedilir.
+    /// </summary>
+    [MySqlFact]
+    public async Task SameKey_DifferentBody_IsRejected()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        var key = $"outbox-{Guid.NewGuid():N}";
+        var applied = new Counter();
+        var middleware = new IdempotencyMiddleware(MutatingEndpoint(database, seed, applied));
+
+        await using (var db = database.NewContext())
+        {
+            var http = NewRequest(key, new MemoryStream());
+            http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"ad\":\"Ayse\"}"));
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status200OK, http.Response.StatusCode);
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var http = NewRequest(key, new MemoryStream());
+            http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"ad\":\"Fatma\"}"));
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status409Conflict, http.Response.StatusCode);
+        }
+
+        Assert.Equal(1, applied.Value);
+    }
+
+    /// <summary>
+    /// KARŞIT DURUM: AYNI istek (aynı uç, aynı gövde) tekrar geldiğinde eski davranış sürer —
+    /// endpoint yeniden çalışmaz, ilk yanıt aynen döner. Kural fazla geniş değildir.
+    /// </summary>
+    [MySqlFact]
+    public async Task SameKey_SameRequest_StillReplaysStoredResponse()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        var key = $"outbox-{Guid.NewGuid():N}";
+        var applied = new Counter();
+        var middleware = new IdempotencyMiddleware(MutatingEndpoint(database, seed, applied));
+
+        static HttpContext WithBody(DefaultHttpContext http)
+        {
+            http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"ad\":\"Ayse\"}"));
+            return http;
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var http = (DefaultHttpContext)WithBody(NewRequest(key, new MemoryStream()));
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status200OK, http.Response.StatusCode);
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var http = (DefaultHttpContext)WithBody(NewRequest(key, new MemoryStream()));
+            await middleware.InvokeAsync(http, Actor(seed), db);
+            Assert.Equal(StatusCodes.Status200OK, http.Response.StatusCode);
+            Assert.Equal("true", http.Response.Headers["Idempotency-Replayed"].ToString());
+        }
+
+        Assert.Equal(1, applied.Value);
+        Assert.Equal(1, await CustomerCountAsync(database, seed.TenantId));
+    }
 }

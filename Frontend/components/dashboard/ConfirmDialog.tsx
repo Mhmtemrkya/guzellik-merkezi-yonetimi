@@ -13,7 +13,14 @@ export interface ConfirmDialogProps {
   cancelLabel?: string
   destructive?: boolean
   icon?: LucideIcon
-  onConfirm: () => void | Promise<void>
+  /**
+   * Zorunlu gerekçe alanı. Verilirse metin kutusu gösterilir ve girilen değer
+   * `onConfirm`'e geçilir; boş/kısa girişte istek HİÇ atılmaz (sunucu da ayrıca doğrular).
+   */
+  reasonLabel?: string
+  reasonPlaceholder?: string
+  reasonMinLength?: number
+  onConfirm: (reason: string) => void | Promise<void>
 }
 
 export default function ConfirmDialog({
@@ -24,18 +31,28 @@ export default function ConfirmDialog({
   cancelLabel = 'Vazgeç',
   destructive = false,
   icon: Icon = AlertTriangle,
+  reasonLabel,
+  reasonPlaceholder,
+  reasonMinLength = 5,
   onConfirm,
 }: ConfirmDialogProps) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [reason, setReason] = useState('')
 
   const handleConfirm = async (): Promise<void> => {
+    const trimmed = reason.trim()
+    if (reasonLabel && trimmed.length < reasonMinLength) {
+      setError(`Gerekçeyi yazın (en az ${reasonMinLength} karakter).`)
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      await onConfirm()
+      await onConfirm(trimmed)
       setOpen(false)
+      setReason('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'İşlem tamamlanamadı.'
       setError(msg)
@@ -92,6 +109,19 @@ export default function ConfirmDialog({
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+
+          {reasonLabel && (
+            <div className="relative mt-4">
+              <label className="block text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.75]">{reasonLabel}</label>
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={reasonPlaceholder}
+                disabled={busy}
+                className="mt-1.5 w-full rounded-[14px] border border-[#ead8df]/[0.85] bg-white px-3 py-2 text-[12px] text-[#352432] outline-none transition-colors focus:border-[#c85776] disabled:opacity-60"
+              />
+            </div>
+          )}
 
           {error && (
             <motion.div

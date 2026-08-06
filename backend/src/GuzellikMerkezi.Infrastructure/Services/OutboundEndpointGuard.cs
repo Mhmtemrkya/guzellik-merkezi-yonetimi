@@ -88,41 +88,79 @@ public static class OutboundEndpointGuard
     }
 
     /// <summary>
-    /// Host loopback/özel/link-local bir adrese mi çözülüyor? DNS çözülemezse GÜVENSİZ sayılmaz
-    /// (dış dünyada erişilemeyen bir ad zaten bağlanamaz); çözülüyorsa aralık kontrol edilir.
+    /// Host GLOBAL olarak yönlendirilebilir bir adrese mi çözülüyor?
+    ///
+    /// <para>
+    /// KURAL TERSİNE ÇEVRİLDİ (fail-closed). Eskiden "bilinen özel aralıklar" listeleniyor, listede
+    /// olmayan her şey güvenli sayılıyordu; DNS çözülemediğinde de "güvenli" deniyordu. İki açık
+    /// vardı: (1) IPv6 tarafında yalnız link-local/site-local biliniyordu — ULA (fc00::/7),
+    /// belirsiz adres (::), multicast ve IPv4-eşlemeli metadata adresleri geçiyordu;
+    /// (2) çözülemeyen ad "güvenli" sayılıp bağlantı denemesine izin veriyordu.
+    /// Artık her adres AÇIKÇA global olduğunu kanıtlamak zorundadır; kanıtlayamayan reddedilir.
+    /// </para>
+    /// <para>
+    /// DNS REBINDING: doğrulama anında çözülen adres ile bağlantı anında kullanılan adres farklı
+    /// olabilir. Bu kapı tek başına yeterli değildir; asıl koruma HOST ALLOWLIST'idir (SMS/ödeme)
+    /// ve SMTP tarafında port kısıtıdır. Aşağıdaki kontrol savunmanın ikinci katmanıdır.
+    /// </para>
     /// </summary>
     private static bool IsPrivateHost(string host)
     {
+        IPAddress[] addresses;
         try
         {
-            var addresses = IPAddress.TryParse(host, out var literal)
-                ? [literal]
-                : Dns.GetHostAddresses(host);
-            return addresses.Any(IsPrivate);
+            addresses = IPAddress.TryParse(host, out var literal) ? [literal] : Dns.GetHostAddresses(host);
         }
         catch (SocketException)
         {
-            return false;
+            // ÇÖZÜLEMEYEN AD GÜVENLİ DEĞİLDİR. Ad sonradan (bağlantı anında) iç bir adrese
+            // çözülebilir; "şimdi çözülemedi" bir güvence değildir → fail-closed.
+            return true;
         }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+
+        // Hiç adres dönmediyse de kanıt yok → reddet.
+        return addresses.Length == 0 || addresses.Any(ip => !IsGloballyRoutable(ip));
     }
 
-    private static bool IsPrivate(IPAddress ip)
+    /// <summary>
+    /// Adres GERÇEKTEN dış dünyaya mı ait? Şüphe varsa <c>false</c> — yani reddedilir.
+    /// </summary>
+    private static bool IsGloballyRoutable(IPAddress ip)
     {
-        if (IPAddress.IsLoopback(ip)) return true;
+        if (IPAddress.IsLoopback(ip)) return false;
+        if (IPAddress.Any.Equals(ip) || IPAddress.IPv6Any.Equals(ip)) return false;   // 0.0.0.0 / ::
+
         if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv4MappedToIPv6 && IsPrivate(ip.MapToIPv4());
+        {
+            // IPv4-eşlemeli/uyumlu adresler IPv4 kurallarıyla değerlendirilir; aksi hâlde
+            // ::ffff:169.254.169.254 gibi bir yazımla metadata ucu geçerdi.
+            if (ip.IsIPv4MappedToIPv6) return IsGloballyRoutable(ip.MapToIPv4());
+            if (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast) return false;
+
+            var v6 = ip.GetAddressBytes();
+            if ((v6[0] & 0xFE) == 0xFC) return false;          // fc00::/7 — benzersiz yerel (ULA)
+            if (v6[0] == 0x20 && v6[1] == 0x01 && v6[2] == 0x00 && v6[3] == 0x00) return false; // 2001:0::/32 Teredo
+            if (v6[0] == 0x01 && v6[1] == 0x00 && v6[2] == 0x00 && v6[3] == 0x00) return false; // 100::/64 discard
+            return true;
+        }
 
         var b = ip.GetAddressBytes();
         return b[0] switch
         {
-            10 => true,                                     // 10.0.0.0/8
-            127 => true,                                    // loopback
-            0 => true,                                      // 0.0.0.0/8
-            172 => b[1] >= 16 && b[1] <= 31,                // 172.16.0.0/12
-            192 => b[1] == 168,                             // 192.168.0.0/16
-            169 => b[1] == 254,                             // link-local + bulut metadata
-            100 => b[1] >= 64 && b[1] <= 127,               // CGNAT 100.64.0.0/10
-            _ => false,
+            0 => false,                                     // 0.0.0.0/8
+            10 => false,                                    // özel
+            127 => false,                                   // loopback
+            169 => b[1] != 254,                             // 169.254.0.0/16 link-local + bulut metadata
+            172 => !(b[1] >= 16 && b[1] <= 31),             // 172.16.0.0/12
+            192 => !(b[1] == 168 || (b[1] == 0 && b[2] == 0)), // 192.168/16 + 192.0.0/24
+            100 => !(b[1] >= 64 && b[1] <= 127),            // CGNAT 100.64.0.0/10
+            198 => !(b[1] == 18 || b[1] == 19),             // 198.18.0.0/15 kıyas ağı
+            >= 224 => false,                                // multicast + ayrılmış (224+)
+            _ => true,
         };
     }
 }

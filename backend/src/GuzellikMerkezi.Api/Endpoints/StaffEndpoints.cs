@@ -23,7 +23,9 @@ public static class StaffEndpoints
         group.MapGet("/{id:guid}", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+            // KAPSAM LİSTE UCUYLA AYNI: personel yalnız KENDİ kaydını okuyabilir (bkz. IStaffService.GetAsync).
+            var staffTenantUserId = currentUser.Role == UserRole.Staff ? currentUser.UserId : null;
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetAsync(resolvedTenantId, id, ct, staffTenantUserId)).ToHttpResult(http);
         });
 
         group.MapPost("/", async (CreateStaffRequest request, Guid? tenantId, ICurrentUser currentUser, IStaffService service, HttpContext http, CancellationToken ct) =>

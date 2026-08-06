@@ -1380,6 +1380,7 @@ export function normalizePendingOperation(op: ApiPendingOperation | null | undef
     decidedAt: op?.decidedAtUtc || null,
     rejectionReason: op?.rejectionReason || '',
     resultEntityId: op?.resultEntityId || null,
+    isStuck: op?.isStuck === true,
   }
 }
 

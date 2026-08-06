@@ -8,7 +8,14 @@ public interface ITenantService
     Task<Result<TenantAvailabilityDto>> CheckAvailabilityAsync(string? name, string? slug, string? domain, string? ownerName, string? ownerEmail, CancellationToken cancellationToken = default);
     Task<Result<TenantDto>> GetAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<TenantWithCredentialsDto>> CreateAsync(CreateTenantRequest request, CancellationToken cancellationToken = default);
+    /// <summary>PLATFORM güncellemesi — abonelik (paket/dönem/durum) dâhil.</summary>
     Task<Result<TenantDto>> UpdateAsync(Guid id, UpdateTenantRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// KURUMUN KENDİ profil/finans güncellemesi. Abonelik alanlarına DOKUNMAZ
+    /// (bkz. <see cref="UpdateTenantProfileRequest"/>).
+    /// </summary>
+    Task<Result<TenantDto>> UpdateProfileAsync(Guid id, UpdateTenantProfileRequest request, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result> GrantAccessAsync(Guid tenantId, GrantTenantAccessRequest request, CancellationToken cancellationToken = default);
     /// <summary>Kurum yetkilisinin şifresini sıfırlar: yeni geçici şifre üretilir, ilk girişte değişim zorunlu olur, aktif oturumları düşer.</summary>

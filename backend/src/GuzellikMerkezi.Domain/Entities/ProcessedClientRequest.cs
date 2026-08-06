@@ -20,7 +20,8 @@ public sealed class ProcessedClientRequest : Entity
         string path,
         int statusCode,
         string? contentType,
-        string? responseBody)
+        string? responseBody,
+        string? requestFingerprint = null)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new DomainException("Idempotency anahtarı zorunlu.");
         TenantId = tenantId;
@@ -31,6 +32,7 @@ public sealed class ProcessedClientRequest : Entity
         StatusCode = statusCode;
         ContentType = contentType;
         ResponseBody = responseBody;
+        RequestFingerprint = requestFingerprint;
     }
 
     public Guid TenantId { get; private set; }
@@ -38,6 +40,23 @@ public sealed class ProcessedClientRequest : Entity
     public string IdempotencyKey { get; private set; } = string.Empty;
     public string Method { get; private set; } = string.Empty;
     public string Path { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// İSTEĞİN PARMAK İZİ — metot + yol + sorgu dizesi + gövdenin SHA-256'sı.
+    ///
+    /// <para>
+    /// Anahtar tek başına yetmez: idempotency anahtarı istemcinin ürettiği serbest bir dizedir.
+    /// Aynı anahtar BAŞKA bir uca ya da başka bir gövdeyle gönderilirse (istemci hatası, kuyruk
+    /// yeniden kullanımı, kötü niyet) sistem eski ve ALAKASIZ yanıtı geri oynatıyor, YENİ mutasyonu
+    /// sessizce atlıyordu — kullanıcı "kaydedildi" görüyor ama hiçbir şey yazılmamış oluyordu.
+    /// Parmak izi eşleşmezse istek 409 <c>IdempotencyKeyReuse</c> ile açıkça reddedilir.
+    /// </para>
+    /// <para>
+    /// Eski kayıtlarda (bu alan eklenmeden önce yazılanlar) <c>null</c>'dur; o kayıtlarda eski
+    /// davranış korunur — geçiş sırasında kimsenin akışı kırılmasın.
+    /// </para>
+    /// </summary>
+    public string? RequestFingerprint { get; private set; }
 
     /// <summary>Yanıt kodu. <c>0</c> = anahtar REZERVE edildi, istek hâlâ işleniyor (henüz yanıt yok).</summary>
     public int StatusCode { get; private set; }

@@ -59,6 +59,22 @@
     gider raporlarında görünür. Uygulanmazsa iptal ekranındaki iade alanı 500 verir.
 - [ ] **Adisyon satış tarihi migration'ı:** `AdisyonSaleDate` (`20260731132510`) — `adisyonlar.SaleDateUtc` (nullable).
   - Geriye uyumlu: boş kalan eski kayıtlar onay anını kullanmaya devam eder.
+- [ ] **Gider iptali migration'ı:** `ExpenseVoid` (`20260805222110`) — `business_expenses` tablosuna
+  `VoidedAtUtc`, `VoidedByUserId`, `VoidReason` ekler.
+  - Onaylanmış gider artık **silinemez**; gerçekleşmiş kasa çıkışının tek doğru geri alma yolu iptaldir
+    (`Accounting.VoidExpense` izni + zorunlu gerekçe). İptal edilen satır provenance için görünür kalır,
+    para toplamlarının HİÇBİRİNE girmez.
+  - Uygulanmazsa: gider listesi/özet uçları eksik kolon nedeniyle **500** verir.
+- [ ] ⚠️ **"Tam bir kez" sertleştirme migration'ı:** `ExactlyOnceHardening` (`20260805234343`).
+  - Üç değişiklik: (1) `background_jobs.LockToken`, (2) `processed_client_requests.RequestFingerprint`,
+    (3) `app_notifications` üzerinde **benzersiz** `(TenantId, RecipientUserId, DedupeKey)` indeksi
+    ve `notification_logs` üzerinde benzersiz `(TenantId, DedupeKey)`.
+  - **VERİ TEMİZLİĞİ İÇERİR:** benzersiz indeks kurulmadan önce mükerrer bildirim satırları silinir
+    (her üçlüden en eskisi korunur). Kayıp yok — silinenler aynı bildirimin kopyalarıdır. **Önce yedek al.**
+  - Neden: iş kuyruğu sahiplenmesi, idempotency anahtarı ve bildirim tekilleştirmesi şimdiye kadar
+    yalnız KODDA zorlanıyordu; iki backend örneği (ya da eşzamanlı iki istek) aynı işi/mesajı iki kez
+    yapabiliyordu. Artık kısıtlar veritabanında.
+  - Uygulanmazsa: bildirim/gönderim uçları eksik kolon nedeniyle **500** verir.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
@@ -147,6 +163,43 @@ Sıra:
       ⚠️ Ayar açık bırakılırsa ikinci açılış "beklenen sapma yok" diyerek **servisi başlatmaz** —
       bu kasıtlıdır: unutulan bir veri-yazma ayarı sessizce canlıda kalmamalı.
 7. [ ] İkinci açılışta **yeni mutasyon olmamalı** (log temiz, sapma sorgusu 0).
+
+### Yeni personel izinleri (deploy sonrası dağıtım)
+
+Derin denetim düzeltmeleriyle iki YENİ işlem izni eklendi. İkisi de **fail-closed**: mevcut personel
+bunlara sahip değildir, kimse istemeden yetki kazanmaz. Yönetici rolleri (kurum sahibi / şube yöneticisi)
+zaten tam yetkilidir — dağıtım yalnızca personel için gerekir.
+
+- [ ] `Accounting.VoidExpense` — **gider iptali**. Onaylanmış gider artık silinemez; gerçekleşmiş kasa
+      çıkışının geri alma yolu iptaldir. Bu izni vermezseniz personel gider iptali yapamaz (yönetici yapar).
+- [ ] `Appointments.VoidCompletion` — **yanlış tamamlamayı geri alma**. Tüketilen paket seansını müşteriye
+      iade eder; `Appointments.Status`'tan AYRI tutulur çünkü düzeltme yetkisidir.
+      Dağıtım: **Ayarlar → Personel → (personel) → Yetkiler**.
+
+### ⚠️ Açılış ve sağlık kontrolü davranışı DEĞİŞTİ
+
+Derin denetim düzeltmeleriyle üç davranış sıkılaştı. Deploy otomasyonunuz bunları biliyor olmalı:
+
+- [ ] **`/health/ready` artık şema paritesini de kontrol eder.** Uygulanmamış migration varsa
+      **503 `SchemaOutOfDate`** döner. Sıra artık şudur: **önce migration uygula → sonra örneği
+      trafiğe al.** Eskiden yeni binary eski şema üzerinde "hazır" deyip trafik alabiliyordu
+      (eksik kolona yazan uçlar 500 veriyordu). `/health` ve `/health/live` değişmedi — liveness
+      probe'unuz bunları kullanmalı, readiness probe'u `/health/ready`'yi.
+- [ ] **Migration kilidi alınamazsa uygulama BAŞLAMAZ.** Eskiden yalnız uyarı loglanıp devam
+      ediliyordu. 90 sn içinde kilit alınamazsa açılış hata ile durur; mesaj ne yapılacağını söyler
+      (`SELECT IS_USED_LOCK('beautyasist_migrations');`).
+- [ ] **Yarım kalmış migration teşhis edilir.** MariaDB'de DDL örtük commit ettiği için, DDL
+      uygulanıp geçmiş satırı yazılmadan çökme olursa eskiden her açılış "Duplicate column" ile
+      patlıyordu (kalıcı açılış kilidi). Artık `__migration_attempt` tablosundaki iz okunur ve
+      açılış **ne olduğunu + nasıl düzeltileceğini** söyleyen bir hatayla durur. Tablo otomatik
+      oluşur; elle bir şey yapmanız gerekmez.
+- [ ] **Migration kilidi artık veritabanına özeldir** (`beautyasist_mig_<hash>`). `GET_LOCK`
+      sunucu genelinde tek olduğu için sabit ad, aynı MariaDB sunucusundaki **canlı + staging**
+      kurulumlarının birbirinin açılışını kilitlemesine yol açıyordu. Kilit sahibini ararken
+      hata mesajındaki gerçek adı kullanın.
+- [ ] **Yeni CI kapısı:** `backend/tools/migration-manifest.sh verify`. Uygulanmış bir migration
+      dosyası sonradan değiştirilirse CI kırılır (geçmişte üç dosyada olmuş). Yeni migration
+      eklerken `generate` çalıştırıp `backend/migrations.sha256`'yı commit'e ekleyin.
 
 ### Altyapı
 - [ ] **HTTPS zorunlu.** Kopyalama butonları (`navigator.clipboard`) ve genel güvenlik secure-context gerektirir; HTTP'de mobil tarayıcıda kopyalama sessizce çalışmaz.

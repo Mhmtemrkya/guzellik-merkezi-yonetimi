@@ -58,6 +58,7 @@ import {
   PenLine,
   Plus,
   ReceiptText,
+  RotateCcw,
   StickyNote,
   Trash2,
   UserPlus,
@@ -383,6 +384,10 @@ function RandevularPageInner() {
   const [hoverDay, setHoverDay] = useState<number | null>(null)
   const { user } = useAuth()
   const isStaffUser = user?.role === 'Staff'
+  // Tamamlamayı geri alma AYRI yetkidir (Appointments.VoidCompletion): tüketilmiş paket seansını
+  // iade eder. Yönetici rolleri tam erişimlidir; personel yalnız izin verilmişse görür.
+  const canVoidCompletion =
+    !isStaffUser || (user?.permissions || []).some((p) => p.toLowerCase() === 'appointments.voidcompletion')
   const { selectedInstitutionId, selectedBranch, selectedInstitution } = useBranch()
   const tenantId = guidOrUndefined(selectedInstitutionId)
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
@@ -1748,6 +1753,33 @@ function RandevularPageInner() {
                                   </>
                                 )}
                               </>
+                            )}
+                            {/* YANLIŞ TAMAMLAMAYI GERİ AL. Tamamlanan randevu iptal/gelmedi
+                                yapılamaz (doğru: seans/finans etkisi üretilmiştir); yanlışlıkla
+                                tamamlanmış kayıt için tek düzeltme yolu budur. Tüketilen seans
+                                müşteriye iade edilir, randevu "Onaylandı"ya döner. */}
+                            {canVoidCompletion && r.rawStatus === 'Completed' && (
+                              <ConfirmDialog
+                                title="Tamamlamayı geri al"
+                                icon={RotateCcw}
+                                description={`${r.musteri} · ${r.time} randevusunun tamamlanması geri alınsın mı? Bu randevuda tüketilen paket seansı müşteriye iade edilir ve randevu "Onaylandı" durumuna döner. Tamamlama sırasında satış cariye işlendiyse önce satışı iptal etmeniz gerekir.`}
+                                confirmLabel="Geri al"
+                                reasonLabel="Geri alma gerekçesi (zorunlu)"
+                                reasonPlaceholder="Örn: yanlış randevu tamamlandı"
+                                onConfirm={async (reason) => {
+                                  await adminApi.voidAppointmentCompletion(r.id, reason, tenantId)
+                                  await reload()
+                                }}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    title="Tamamlamayı geri al"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                  </button>
+                                }
+                              />
                             )}
                             {!isStaffUser && (
                               <button

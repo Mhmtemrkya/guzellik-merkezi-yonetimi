@@ -64,6 +64,25 @@ public sealed class UpdateTenantRequestValidator : AbstractValidator<UpdateTenan
     }
 }
 
+/// <summary>Kurumun kendi profil güncellemesi — abonelik alanı YOKTUR (bkz. UpdateTenantProfileRequest).</summary>
+public sealed class UpdateTenantProfileRequestValidator : AbstractValidator<UpdateTenantProfileRequest>
+{
+    public UpdateTenantProfileRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(160);
+        RuleFor(x => x.Domain).MaximumLength(256);
+        RuleFor(x => x.OwnerName).MaximumLength(160);
+        RuleFor(x => x.Phone).MaximumLength(40);
+        RuleFor(x => x.TaxNumber).MaximumLength(64);
+        RuleFor(x => x.LegalName).MaximumLength(256);
+        RuleFor(x => x.TaxOffice).MaximumLength(128);
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.Currency).MaximumLength(6).When(x => !string.IsNullOrWhiteSpace(x.Currency));
+        RuleFor(x => x.MaxInstallments).InclusiveBetween(1, 36).When(x => x.MaxInstallments.HasValue);
+        RuleFor(x => x.OverdueGraceDays).InclusiveBetween(0, 60).When(x => x.OverdueGraceDays.HasValue);
+    }
+}
+
 public sealed class GrantTenantAccessRequestValidator : AbstractValidator<GrantTenantAccessRequest>
 {
     public GrantTenantAccessRequestValidator()

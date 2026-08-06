@@ -285,9 +285,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RecipientUserId");
 
-                    b.HasIndex("TenantId", "DedupeKey");
-
                     b.HasIndex("TenantId", "RecipientUserId", "CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "DedupeKey")
+                        .IsUnique();
 
                     b.ToTable("app_notifications", (string)null);
                 });
@@ -677,6 +678,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("varchar(1024)");
 
+                    b.Property<string>("LockToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<DateTime?>("LockedUntilUtc")
                         .HasColumnType("datetime(6)");
 
@@ -841,6 +846,16 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("VoidedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("VoidedByUserId")
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
@@ -2164,6 +2179,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("DedupeKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -2206,6 +2225,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasIndex("TemplateId");
 
                     b.HasIndex("TenantId", "CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "DedupeKey")
+                        .IsUnique();
 
                     b.ToTable("notification_logs", (string)null);
                 });
@@ -2638,6 +2660,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("ResponseBody")
                         .HasColumnType("LONGTEXT");

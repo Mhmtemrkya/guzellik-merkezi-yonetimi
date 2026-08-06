@@ -27,6 +27,9 @@ abstract final class Perm {
   static const customersTags = 'Customers.Tags';
   static const appointmentsCreate = 'Appointments.Create';
   static const appointmentsStatus = 'Appointments.Status';
+  /// Yanlış tamamlanan randevunun tamamlamasını geri alma. Durum güncellemeden AYRI yetki:
+  /// tüketilmiş paket seansını iade eder — düzeltme yetkisidir.
+  static const appointmentsVoidCompletion = 'Appointments.VoidCompletion';
   static const waitlistManage = 'Waitlist.Manage';
   /// Bekleme kaydını randevuya aktarma (gerçek randevu açar).
   static const waitlistConvert = 'Waitlist.Convert';
@@ -99,6 +102,9 @@ const Map<String, String> routePagePermissions = {
   '/sales': Perm.accounting,
   '/expenses': Perm.accounting,
   '/expense-categories': Perm.accounting,
+  // Prim ekranı bordro verisi gösterir (tutar, oran, ödenme durumu) — backend de artık muhasebe
+  // iznine bağladı; istemci menüsü aynı kapsamı yansıtmalı.
+  '/commissions': Perm.accounting,
   '/reports': Perm.reports,
   '/notifications': Perm.notifications,
   '/notification-logs': Perm.notifications,

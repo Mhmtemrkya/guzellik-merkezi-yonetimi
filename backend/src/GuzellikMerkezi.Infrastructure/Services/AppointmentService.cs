@@ -176,8 +176,11 @@ public sealed class AppointmentService : IAppointmentService
         // yalnız Appointments izin grubunda. Kontrol olmasaydı sadece randevu açma yetkisi olan
         // personel isteğe "sale" ekleyerek satış başlatabilirdi. Onay kapısında da aynı kural var
         // (StaffApprovalGateMiddleware) — burası servisin kendi kapısı, kapı atlanırsa da geçerli.
-        if (_currentUser.Role == UserRole.Staff
-            && !Permissions.IsActionAllowed(_currentUser.Permissions, Permissions.AccountingAdisyon))
+        //
+        // ROL LİTERALİ YOK: kontrol eskiden "Role == Staff && !IsActionAllowed(...)" diye yazılıydı,
+        // yani kural yalnız tek bir rol için uygulanıyordu. Karar artık tek noktada (bkz.
+        // ICurrentUser.IsAllowed → Permissions.IsGrantedTo); burada yalnız HANGİ İZİN gerektiği söylenir.
+        if (!_currentUser.IsAllowed(Permissions.AccountingAdisyon))
         {
             return Result<AppointmentDto>.Failure(Error.Forbidden(
                 "Randevuyla birlikte satış yapma (adisyon açma) yetkiniz yok. Randevuyu satışsız oluşturabilir ya da kurum yöneticinizden yetki isteyebilirsiniz."));
@@ -859,8 +862,8 @@ public sealed class AppointmentService : IAppointmentService
         // muaf tutulduğu için, ödeme içeren istek Accounting.Collect iznini ayrıca ister — aksi
         // hâlde tahsilat yetkisi olmayan personel isteğe payment ekleyip cariye/adisyona para
         // yazabilirdi (kapıyı da atlayarak).
-        if (payment is not null && _currentUser.Role == UserRole.Staff
-            && !Permissions.IsActionAllowed(_currentUser.Permissions, Permissions.AccountingCollect))
+        // ROL LİTERALİ YOK (bkz. CreateWithSaleAsync'teki aynı not): karar ICurrentUser.IsAllowed'da.
+        if (payment is not null && !_currentUser.IsAllowed(Permissions.AccountingCollect))
         {
             return Result<AppointmentDto>.Failure(Error.Forbidden(
                 "Tahsilat kaydı alma yetkiniz yok. Randevuyu ödemesiz tamamlayabilir ya da kurum yöneticinizden yetki isteyebilirsiniz."));
@@ -951,6 +954,22 @@ public sealed class AppointmentService : IAppointmentService
             var preferredAccountId = outcome.AutoApprovedAccountId
                                      ?? boundSaleAccountId
                                      ?? await BoundSaleAccountIdAsync(tenantId, id, cancellationToken);
+
+            // OTORİTER KONTROL ONAYDAN SONRA TEKRARLANIR — erken kontrol tek başına yetmez.
+            //
+            // Bağlı satış tamamlama anında HENÜZ AÇIKSA carisi yoktur; erken kontrol karşılaştıracak
+            // bir hedef bulamadığı için istemcinin gönderdiği ESKİ cari elemeden geçiyordu. Hemen
+            // ardından otomatik onay satışın carisini (B) yaratıyor, ama tahsilat istemcinin verdiği
+            // A'ya yazılıyordu: yeni satış ödenmemiş görünüyor, eski cari fazla tahsilat alıyordu.
+            // Cari onaydan SONRA belli olduğu için karşılaştırma da burada yapılır; uyuşmazlıkta
+            // transaction commit edilmez (randevu da tamamlanmaz).
+            if (payment.AccountId is { } chosenAccount && preferredAccountId is { } authoritative
+                && chosenAccount != authoritative)
+            {
+                return Result<AppointmentDto>.Failure(Error.Validation(
+                    "Bu randevunun tahsilatı kendi satışının cari hesabına yazılır; farklı bir cari seçilemez. " +
+                    "Başka bir satışın borcunu tahsil etmek için cari hesap ekranını kullanın."));
+            }
 
             // BAĞLI SATIŞ VARKEN "EN ESKİ BORÇLU CARİ" FALLBACK'İ KULLANILMAZ. Randevu bir satıştan
             // doğduysa ve o satışın carisi hâlâ çözülemiyorsa (beklenmedik durum), parayı rastgele
@@ -1088,6 +1107,161 @@ public sealed class AppointmentService : IAppointmentService
 
         var approved = await _adisyon.ApproveAsync(tenantId, adisyonId.Value, ct);
         return approved.IsFailure ? Result.Failure(approved.Error) : Result.Success();
+    }
+
+    /// <summary>
+    /// YANLIŞ TAMAMLAMANIN GERİ ALINMASI (M4) — tamamlamanın ÜRETTİĞİ etkilerin tersi, tek transaction.
+    ///
+    /// <para>
+    /// AÇIK: <c>Cancel</c> ve <c>MarkNoShow</c> tamamlanmış randevuyu reddediyor (doğru: tamamlama
+    /// seans/finans etkisi üretir), ama yanlış tamamlanan randevu için HİÇBİR çıkış yolu yoktu.
+    /// Personel "tamamlandı" deyip müşterinin paketinden seans düştüğünde, düzeltmenin tek yolu
+    /// veritabanına elle müdahaleydi.
+    /// </para>
+    /// <para>
+    /// TERS ETKİ GRAFİĞİ — tamamlama tam olarak şunları yapar: (1) durum Completed,
+    /// (2) bağlı paket seansından bir hak düşer (<c>SourceCustomerPackageSessionId</c> tüketilen
+    /// seansı gösterir), (3) "ilk randevuda işle" bekleyen satışı cariye işler, (4) /complete ucundan
+    /// gelindiyse tahsilat alır. Bu metot (1) ve (2)'yi tersine çevirir; (3)/(4) PARA hareketidir ve
+    /// tek geri alma yolu satış iptali / tahsilat düzeltmesidir — burada tekrar uygulanmaz, çünkü
+    /// aynı işi iki ayrı yerde yapmak (arşiv satırı, iade defteri, prim geri alımı) muhasebeyi bozar.
+    /// Para hâlâ ayaktaysa geri alma REDDEDİLİR ve doğru ekran adıyla söylenir.
+    /// </para>
+    /// <para>
+    /// KİLİT SIRASI (<see cref="RowLock.TableOrder"/>): customers → appointments →
+    /// customer_package_sessions — tamamlama akışıyla birebir aynı; ters sıra deadlock üretirdi.
+    /// </para>
+    /// </summary>
+    public async Task<Result<AppointmentDto>> VoidCompletionAsync(
+        Guid tenantId, Guid id, VoidAppointmentCompletionRequest request,
+        CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
+    {
+        // AYRI YETKİ: durum güncelleme (Appointments.Status) tamamlamayı geri almaya YETMEZ —
+        // tüketilmiş hakkı iade eden bir düzeltmedir. Rol literali yok: karar ICurrentUser'da.
+        if (!_currentUser.IsAllowed(Permissions.AppointmentsVoidCompletion))
+        {
+            return Result<AppointmentDto>.Failure(Error.Forbidden(
+                "Tamamlanmış randevuyu geri alma yetkiniz yok. Kurum yöneticinizden isteyebilirsiniz."));
+        }
+
+        var reason = request.Reason?.Trim() ?? string.Empty;
+        if (reason.Length < 5)
+        {
+            return Result<AppointmentDto>.Failure(Error.Validation(
+                "Geri alma gerekçesini yazın (en az 5 karakter): bu düzeltme denetim kaydına işlenir."));
+        }
+
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        var appointment = await ApplyStaffScope(_db.Appointments, staffTenantUserId)
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (appointment is null) return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+
+        if (relational)
+        {
+            await RowLock.LockRowAsync(_db, "customers", appointment.CustomerId, cancellationToken);
+            await RowLock.LockRowAsync(_db, "appointments", appointment.Id, cancellationToken);
+            await _db.Entry(appointment).ReloadAsync(cancellationToken);
+            if (_db.Entry(appointment).State == EntityState.Detached)
+                return Result<AppointmentDto>.Failure(Error.NotFound("Randevu bulunamadı."));
+        }
+
+        // Kilit altında TAZE durum: eşzamanlı ikinci geri alma isteği burada durur (idempotent değil,
+        // açıkça reddedilir — seans iki kez iade edilmemeli).
+        if (appointment.Status != AppointmentStatus.Completed)
+        {
+            return Result<AppointmentDto>.Failure(Error.Conflict(
+                "Bu randevu tamamlanmış durumda değil; geri alınacak bir tamamlama yok."));
+        }
+
+        // ---- PARA KAPISI ----
+        // Tamamlama bağlı satışı cariye işlediyse (AutoApproveOnFirstAppointment + artık Approved)
+        // ortada borç, kasaya giren peşinat, açılmış seanslar ve personel primi vardır. Bunları
+        // burada geri almak satış iptaliyle İKİNCİ bir geri alma yolu yaratırdı (arşiv satırı ve
+        // iade defteri tek kaynaktan yazılmalı). Sıra bellidir: önce satış iptali, sonra bu geri alma.
+        // Süzgeçler atlanır: aktif şube kapsamı yüzünden fiş "yok" sayılıp kapı sessizce açılmasın.
+        if (appointment.SourceAdisyonId is { } boundSaleId)
+        {
+            var sale = await _db.Adisyonlar.AsNoTracking().IgnoreQueryFilters()
+                .Where(a => a.TenantId == tenantId && a.Id == boundSaleId && !a.IsDeleted)
+                .Select(a => new { a.Status, a.AutoApproveOnFirstAppointment })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (sale is not null && sale.AutoApproveOnFirstAppointment && sale.Status == AdisyonStatus.Approved)
+            {
+                return Result<AppointmentDto>.Failure(Error.Conflict(
+                    "Bu randevu tamamlanınca satışı cariye işlendi. Önce satışı iptal edin " +
+                    "(Satışlar → İptal), sonra tamamlamayı geri alın — para hareketi yalnızca " +
+                    "satış iptali üzerinden düzeltilebilir."));
+            }
+        }
+
+        // ---- 1) TÜKETİLEN SEANSIN İADESİ ----
+        // Bağ, tamamlama anında GERÇEKTEN tüketilen seansı gösterir (Complete akışında
+        // LinkToPackageSession tüketimden SONRA çağrılır). Bağ yoksa seans düşülmemiştir.
+        Guid? restoredSessionId = null;
+        if (appointment.SourceCustomerPackageSessionId is { } consumedSessionId)
+        {
+            if (relational)
+                await RowLock.LockRowAsync(_db, "customer_package_sessions", consumedSessionId, cancellationToken);
+
+            var session = await _db.CustomerPackageSessions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == consumedSessionId, cancellationToken);
+
+            // Seans satırı yoksa (satış iptali onu kaldırmış) iade edilecek hak da yoktur; geri alma
+            // yine de sürer — randevunun "tamamlandı" durumu düzeltilmelidir.
+            if (session is not null && session.UsedSessions > 0)
+            {
+                session.RestoreOne();
+                restoredSessionId = session.Id;
+            }
+        }
+
+        // ---- 2) DURUM ----
+        appointment.VoidCompletion();
+        await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
+        // COMMIT SONRASI (best-effort): düzeltme artık kalıcı; buradaki hata kullanıcıya 500 dönmemeli.
+        try
+        {
+            await _audit.LogAsync(tenantId, appointment.BranchId, "VoidCompletion", "Appointment", appointment.Id,
+                $"Randevunun tamamlanması geri alındı (Tamamlandı → Onaylandı) · {reason}"
+                    + (restoredSessionId is not null ? " · paket seansı iade edildi" : string.Empty),
+                new { Reason = reason, RestoredSessionId = restoredSessionId, appointment.CustomerId, appointment.ServiceDefinitionId },
+                cancellationToken);
+
+            var customerName = await CustomerNameAsync(tenantId, appointment.CustomerId, cancellationToken);
+            await _notifications.NotifyRolesAsync(
+                tenantId, appointment.BranchId,
+                new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+                AppNotificationType.AppointmentUpdated, AppNotificationSeverity.Warning,
+                "Randevu tamamlaması geri alındı",
+                $"{customerName} · {appointment.StartUtc.AddHours(3):dd.MM.yyyy HH:mm} · {reason}",
+                data: new { route = "/appointments", id = appointment.Id.ToString() },
+                dedupeKey: $"appt-void-completion:{appointment.Id}",
+                ct: cancellationToken);
+
+            await NotifyAssignedStaffAsync(appointment, staffTenantUserId,
+                AppNotificationType.AppointmentUpdated, AppNotificationSeverity.Warning,
+                "Randevunun tamamlaması geri alındı",
+                "appt-staff-void-completion", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                await _audit.LogAsync(tenantId, appointment.BranchId, "AppointmentStatusSideEffectFailed",
+                    "Appointment", appointment.Id,
+                    $"Tamamlama geri alındı ancak yan işler tamamlanamadı: {ex.Message}", null, cancellationToken);
+            }
+            catch { /* denetim kaydı da yazılamadıysa yutulur — asıl düzeltme geçerli */ }
+        }
+
+        return Result<AppointmentDto>.Success(appointment.ToDto());
     }
 
     public async Task<Result<AppointmentDto>> ChangeStatusAsync(Guid tenantId, Guid id, ChangeAppointmentStatusRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
@@ -1267,8 +1441,29 @@ public sealed class AppointmentService : IAppointmentService
             // Müşteri ücretli randevu açıp arada paket satın alırsa hem ücret tahakkuk ediyor hem
             // paketten bir seans düşüyordu — aynı iş iki kez ödetiliyordu. Ücretsiz randevuda
             // (paketten karşılanan) fallback korunur: hak oluşturmada zaten doğrulanıyor.
-            var session = usable.FirstOrDefault(s => s.Id == appointment.SourceCustomerPackageSessionId)
-                          ?? (appointment.Price <= 0m ? usable.FirstOrDefault() : null);
+            // AÇIK SEÇİM BİR KOMUT SÖZLEŞMESİDİR — sessizce BAŞKA pakete kaymaz.
+            //
+            // Randevuya belirli bir seans bağlıysa (kullanıcı paket kırılımından seçti) ve o seans
+            // arada tükendiyse, kod "aynı hizmetten herhangi bir seans"a düşüyor ve provenance'ı da
+            // o pakete yazıyordu: müşteri B paketini seçmişken A paketinden düşülüyor, satış iptali
+            // ve kalan seans raporları yanlış pakete bakıyordu. Artık çakışma açıkça bildirilir;
+            // kullanıcı başka bir paket/seans seçer. Fallback YALNIZ hiç seçim yapılmamışsa çalışır.
+            CustomerPackageSession? session;
+            if (appointment.SourceCustomerPackageSessionId is { } selectedSessionId)
+            {
+                session = usable.FirstOrDefault(s => s.Id == selectedSessionId);
+                if (session is null)
+                {
+                    return new StatusChangeOutcome(Result<AppointmentDto>.Failure(Error.Conflict(
+                        "Randevuya bağlı paketin bu hizmet için kullanılabilir seansı kalmadı. " +
+                        "Randevuyu düzenleyip başka bir paket/seans seçin ya da ücretli olarak tamamlayın.")), null);
+                }
+            }
+            else
+            {
+                session = appointment.Price <= 0m ? usable.FirstOrDefault() : null;
+            }
+
             if (session is not null && session.TryConsume())
             {
                 appointment.LinkToPackageSession(session.Id);

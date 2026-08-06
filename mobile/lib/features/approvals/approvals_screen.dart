@@ -29,7 +29,9 @@ class ApprovalsScreen extends StatefulWidget {
   State<ApprovalsScreen> createState() => _ApprovalsScreenState();
 }
 
-enum _Tab { all, pending, approved, rejected }
+/// "Takılanlar" AYRI SEKME: takılı kayıt Processing durumundadır, yani "Bekleyenler"de
+/// görünmez. Ayrı sekme olmadan yalnız "Tümü" içinde kaybolur ve kimse çözmeye gelmezdi.
+enum _Tab { all, pending, stuck, approved, rejected }
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
   _Tab _tab = _Tab.pending;
@@ -148,6 +150,71 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     );
   }
 
+  /// TAKILI İŞLEMİN ELLE ÇÖZÜMÜ. Sonucu doğrulanamayan bir onay kendi başına Processing'den
+  /// çıkamaz; sistem hedefin gerçekten yazıp yazmadığını bilemez ve her tekrar denemesi
+  /// "uygulanmış olabilir" diyerek durur. Karar yöneticinindir: hedef kayıt bulundu mu?
+  Future<void> _resolveStuckOp(Map<String, dynamic> op, bool applied) async {
+    final controller = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(applied ? 'Kayıt oluşmuş' : 'Kayıt yok'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              applied
+                  ? 'İşlem hedefte gerçekten oluştuysa onaylandı olarak kapatılır ve bir daha uygulanmaz.'
+                  : 'Hiçbir kayıt oluşmadıysa işlem yeniden onaylanabilir duruma döner.',
+              style: const TextStyle(fontSize: 13, color: AppColors.muted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Ne kontrol ettiniz? (zorunlu)',
+                hintText: 'Örn: cari kartta 1.500 ₺ tahsilat göründü',
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kaydet'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final note = controller.text.trim();
+    if (note.length < 5) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Neyi kontrol ettiğinizi yazın (en az 5 karakter): bu karar denetim kaydına işlenir.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await _run(
+      () => widget.api.patch(
+        '/api/admin/pending-operations/${op['id']}/resolve-stuck',
+        {'applied': applied, 'note': note},
+      ),
+      applied ? 'İşlem onaylandı olarak kapatıldı.' : 'İşlem yeniden onaylanabilir.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppBackground(
@@ -227,11 +294,18 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     );
   }
 
+  /// TAKILDI: işlem sahiplenilmiş ama sonucu doğrulanamadan zaman aşımına uğramış (backend
+  /// hesaplar). Kayıt kendi başına Processing'den çıkamaz; yönetici hedefi kontrol edip
+  /// "Elle çöz" ile kapatmalıdır.
+  static bool _isStuck(Map<String, dynamic> op) => op['isStuck'] == true;
+
   List<Map<String, dynamic>> _filteredOps(List<Map<String, dynamic>> ops) {
     String? want;
     switch (_tab) {
       case _Tab.pending:
         want = 'pending';
+      case _Tab.stuck:
+        return ops.where(_isStuck).toList();
       case _Tab.approved:
         want = 'approved';
       case _Tab.rejected:
@@ -249,6 +323,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final items = <(_Tab, String, int)>[
       (_Tab.all, 'Tümü', ops.length),
       (_Tab.pending, 'Bekleyenler', countOf('pending')),
+      (_Tab.stuck, 'Takılanlar', ops.where(_isStuck).length),
       (_Tab.approved, 'Onaylanmış', countOf('approved')),
       (_Tab.rejected, 'Reddedilmiş', countOf('rejected')),
     ];
@@ -394,6 +469,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final id = '${op['id']}';
     final statusKey = _opStatusKey(op['status']);
     final pending = statusKey == 'pending';
+    final stuck = _isStuck(op);
     final typeKey = _opTypeKey(op['operationType']);
     final payload = _decodePayload(op);
     final (custName, custPhone) = _extractCustomer(op, payload);
@@ -460,6 +536,27 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                         ),
                       ),
                       _statusChip(statusKey),
+                      if (stuck) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: AppColors.warning.withValues(alpha: 0.4)),
+                          ),
+                          child: Text(
+                            'TAKILDI',
+                            style: TextStyle(
+                              color: AppColors.warning,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 4),
                       Icon(
                         expanded
@@ -504,6 +601,62 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                               AppColors.danger, () => _rejectOp(op)),
                         ),
                       ],
+                    ),
+                  ],
+                  // TAKILI İŞLEM: onay uygulanmaya başladı ama sonucu doğrulanamadı. Sistem
+                  // hedefin yazıp yazmadığını bilemez; her yeniden deneme durur. Çıkışı
+                  // yönetici verir — hedef kaydı kontrol edip gerçeği bildirerek.
+                  if (stuck) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: AppColors.warning.withValues(alpha: 0.35)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Bu işlem takıldı — sonucu doğrulanamadı.',
+                            style: TextStyle(
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Hedef kaydı (tahsilat, satış, gider) kontrol edip gerçeği bildirin: '
+                            'yanlış bildirim işlemin ikinci kez uygulanmasına ya da hiç '
+                            'uygulanmamasına yol açar.',
+                            style:
+                                TextStyle(fontSize: 12, color: AppColors.muted),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _btn(
+                                    'Kayıt oluşmuş',
+                                    Icons.check_rounded,
+                                    AppColors.success,
+                                    () => _resolveStuckOp(op, true)),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _btn(
+                                    'Kayıt yok',
+                                    Icons.refresh_rounded,
+                                    AppColors.muted,
+                                    () => _resolveStuckOp(op, false)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ],
@@ -670,7 +823,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               Text(
                 _tab == _Tab.pending
                     ? 'Bekleyen onay yok. Tüm işlemler karara bağlanmış.'
-                    : 'Bu kategoride işlem yok.',
+                    : _tab == _Tab.stuck
+                        ? 'Takılan işlem yok — sonucu doğrulanamayan onay bulunmuyor.'
+                        : 'Bu kategoride işlem yok.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.muted, fontSize: 13),
               ),

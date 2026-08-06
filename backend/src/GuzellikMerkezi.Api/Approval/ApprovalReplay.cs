@@ -35,8 +35,11 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
         _configuration = configuration;
     }
 
-    public async Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, CancellationToken cancellationToken = default)
+    public async Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, string requesterAccessToken, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(requesterAccessToken))
+            return Result<Guid?>.Failure(Error.Validation("Onay replay'i için istek sahibinin kapsamı üretilemedi."));
+
         ReplayPayload? p;
         try { p = JsonSerializer.Deserialize<ReplayPayload>(payloadJson, JsonOpts); }
         catch (JsonException) { return Result<Guid?>.Failure(Error.Validation("Onay payload'u çözümlenemedi.")); }
@@ -61,9 +64,12 @@ public sealed class HttpApprovalReplayer : IApprovalReplayer
             request.Content = new StringContent(p.Body, Encoding.UTF8, mediaType);
         }
 
-        // Onaylayan yöneticinin token'ı (mevcut /approve isteğinden) — replay onun adına çalışır.
-        var auth = _httpContextAccessor.HttpContext?.Request.Headers.Authorization.ToString();
-        if (!string.IsNullOrWhiteSpace(auth)) request.Headers.TryAddWithoutValidation("Authorization", auth);
+        // İSTEK SAHİBİNİN kapsamı (onaylayanın DEĞİL) — bkz. IApprovalReplayer.ReplayAsync notu.
+        // Onaylayanın token'ı kullanıldığında personelin isteği kurum sahibinin yetkisiyle
+        // çalışıyor, kapsam denetimleri yanlış kimlik üzerinde değerlendiriliyordu.
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {requesterAccessToken}");
+        // ŞUBE KAPSAMI İSTEĞİN KAYDEDİLDİĞİ ANDAN GELİR (değişmez): sonradan başka şubeye geçen
+        // personelin bekleyen isteği yeni şubesinde uygulanmamalı.
         if (!string.IsNullOrWhiteSpace(p.BranchId)) request.Headers.TryAddWithoutValidation("X-Branch-Id", p.BranchId);
         // TAM BİR KEZ UYGULAMA: hedef uç commit ettikten SONRA yanıt kaybolursa (bağlantı koptu,
         // zaman aşımı) tekrar denendiğinde iş ikinci kez yapılmamalı. IdempotencyMiddleware ilk

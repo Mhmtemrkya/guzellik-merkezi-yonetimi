@@ -54,7 +54,15 @@ public sealed record SendNotificationRequest(
     Guid TemplateId,
     IReadOnlyCollection<Guid>? CustomerIds,
     /// <summary>"all" | "active90" | "birthdayWeek" | "inactive30" — boşsa "all"</summary>
-    string? Audience);
+    string? Audience,
+    /// <summary>
+    /// OTOMATİK GÖNDERİMİN ZAMAN KOVASI (ör. <c>"20260806"</c> ya da <c>"2026"</c>).
+    /// Verilirse her müşteri için "şablon + müşteri + kova" anahtarı üretilir; sağlayıcıya
+    /// gitmeden ÖNCE rezerve edilir ve benzersiz indeks ikinci gönderimi eler (bkz.
+    /// <c>NotificationLog.DedupeKey</c>). ELLE gönderimde boştur: yönetici aynı mesajı bilerek
+    /// tekrar gönderebilmelidir.
+    /// </summary>
+    string? DedupeBucket = null);
 
 public sealed record SendNotificationResultDto(
     int Sent,

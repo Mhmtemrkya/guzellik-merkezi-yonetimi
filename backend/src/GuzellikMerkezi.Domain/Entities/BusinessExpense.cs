@@ -109,6 +109,34 @@ public sealed class BusinessExpense : Entity
         return approvalDropped;
     }
 
+    /// <summary>
+    /// GEÇERSİZ KILMA (void) — gerçekleşmiş sayılan bir giderin, aslında olmadığının kaydı.
+    ///
+    /// <para>
+    /// Onaylanmış gider SİLİNEMEZ (bkz. ExpenseService.DeleteAsync): soft-delete kaydı global
+    /// süzgeçle gizliyor, kasa akışı ve kâr-zarar o parayı bir daha görmüyordu — kim, ne zaman,
+    /// hangi gerekçeyle kaldırdı bilgisi de yoktu. Void bunun yerine KALICI iz bırakır: satır
+    /// durur, gerekçe ve sorumlu yazılır, tutar muhasebe toplamlarından bu kayıtla birlikte düşer.
+    /// </para>
+    /// </summary>
+    public void Void(string reason, Guid? voidedByUserId, DateTime? voidedAtUtc = null)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainException("Gideri geçersiz kılmak için gerekçe zorunludur.");
+        if (VoidedAtUtc is not null) throw new DomainException("Bu gider zaten geçersiz kılınmış.");
+
+        var at = voidedAtUtc ?? DateTime.UtcNow;
+        VoidedAtUtc = at.Kind == DateTimeKind.Utc ? at : DateTime.SpecifyKind(at, DateTimeKind.Utc);
+        VoidedByUserId = voidedByUserId;
+        VoidReason = reason.Trim();
+        Touch();
+    }
+
+    /// <summary>Geçersiz kılındıysa dolu — kayıt durur ama muhasebe toplamlarına girmez.</summary>
+    public DateTime? VoidedAtUtc { get; private set; }
+    public Guid? VoidedByUserId { get; private set; }
+    public string? VoidReason { get; private set; }
+
     public void Approve()
     {
         if (IsApproved) return;

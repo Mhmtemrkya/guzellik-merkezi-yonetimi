@@ -358,14 +358,25 @@ public sealed class WaitlistService : IWaitlistService
         // saati kontrolleri de CreateAsync içinde var, burada tekrarlanmaz.
         var appointments = _services.GetRequiredService<Application.Features.Appointments.IAppointmentService>();
 
-        // SEÇİLEN PAKET/SEANS KORUNUR. Randevu ekranında belirli bir seans seçilip slot dolu
-        // çıktığında seçim kayda yazılır; yer açıldığında randevu YİNE o seansa bağlanmalıdır —
-        // aksi hâlde aynı hizmeti içeren en eski paket tüketilir (kullanıcı B'yi seçmişken A'dan
-        // düşer). Seans bu arada tükendiyse kayıt kilitlenmesin diye otomatik seçime düşülür.
-        var chosenSessionId = entry.SourceCustomerPackageSessionId is { } stored
-            && await appointments.IsSessionStillBookableAsync(tenantId, entry.CustomerId, serviceId, stored, cancellationToken)
-                ? stored
-                : (Guid?)null;
+        // SEÇİLEN PAKET/SEANS KORUNUR — TÜKENDİYSE SESSİZCE BAŞKASINA GEÇİLMEZ.
+        //
+        // Randevu ekranında belirli bir seans seçilip slot dolu çıktığında seçim kayda yazılır;
+        // yer açıldığında randevu YİNE o seansa bağlanmalıdır. Seans arada tükendiğinde kod
+        // otomatik seçime düşüyordu: kullanıcı B paketini seçmişken A paketinden düşülüyor ve
+        // provenance A'ya yazılıyordu (açık seçim bir komut sözleşmesidir — bkz. AppointmentService).
+        // Artık çakışma bildirilir; kayıt bekleme listesinde kalır ve yönetici doğru paketle
+        // yeniden planlar.
+        Guid? chosenSessionId = null;
+        if (entry.SourceCustomerPackageSessionId is { } stored)
+        {
+            if (!await appointments.IsSessionStillBookableAsync(tenantId, entry.CustomerId, serviceId, stored, cancellationToken))
+            {
+                return Result<Guid?>.Failure(Error.Conflict(
+                    "Bekleme kaydına bağlı paketin bu hizmet için kullanılabilir seansı kalmadı. " +
+                    "Kaydı düzenleyip başka bir paket/seans seçin."));
+            }
+            chosenSessionId = stored;
+        }
 
         var appointmentRequest = new Application.Features.Appointments.CreateAppointmentRequest(
             branchId.Value, entry.CustomerId, staffId, serviceId, startUtc, endUtc, 0m,

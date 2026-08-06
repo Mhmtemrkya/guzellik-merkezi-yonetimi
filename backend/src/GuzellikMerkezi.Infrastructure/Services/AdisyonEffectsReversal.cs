@@ -1,6 +1,7 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -100,7 +101,7 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
 
         // 2) Sadakat puanı hareketleri — soft-delete.
         //    Kazanım geri alınırken müşteri o puanı harcamış olabilir; bakiyeyi eksiye düşürecek
-        //    kazanıma DOKUNULMAZ (puan bakiyesi negatif olamaz).
+        //    kazanım SİLİNMEZ, yerine açık bir ters kayıt (clawback) yazılır — aşağıya bakın.
         var loyalty = await _db.LoyaltyTransactions
             .Where(l => l.TenantId == tenantId && l.SourceType == "Adisyon" && l.SourceId == adisyon.Id)
             .ToListAsync(cancellationToken);
@@ -111,14 +112,34 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
                 .Where(l => l.TenantId == tenantId && l.CustomerId == adisyon.CustomerId)
                 .SumAsync(l => (int?)l.Points, cancellationToken) ?? 0;
 
-            // Küçük kazanımdan başla: bakiye yetmiyorsa mümkün olan en çoğu geri alınsın.
+            // Küçük kazanımdan başla: bakiye yetiyorsa kazanım satırı doğrudan geri alınır.
+            var clawbackPoints = 0;
             foreach (var row in loyalty.OrderBy(l => l.Points))
             {
-                if (balance - row.Points < 0) continue;
+                if (balance - row.Points < 0)
+                {
+                    // KAZANIM HARCANMIŞ — SESSİZCE KORUNMAZ.
+                    //
+                    // Eskiden bakiye yetmediğinde satır olduğu gibi bırakılıyordu: müşteri, iptal
+                    // edilen/iade edilen paradan kazandığı puanı başka bir satışta harcadıysa
+                    // faydayı KALICI olarak elinde tutuyordu (kurum iki kez zarar ediyordu).
+                    // Kazanımı silmek yerine AÇIK bir ters hareket (negatif yükümlülük) yazılır:
+                    // geçmiş harcama bozulmaz, bakiye borçlu tarafa geçer ve müşteri yeni puan
+                    // kazandıkça kapanır. Bakiye eksiye düşebilir — bu, gerçeğin kaydıdır.
+                    clawbackPoints += row.Points;
+                    continue;
+                }
                 balance -= row.Points;
                 reversedLoyalty.Add(row);
             }
             _db.LoyaltyTransactions.RemoveRange(reversedLoyalty);
+
+            if (clawbackPoints > 0)
+            {
+                _db.LoyaltyTransactions.Add(new LoyaltyTransaction(
+                    tenantId, adisyon.CustomerId, -clawbackPoints, "AdisyonCancelClawback", adisyon.Id,
+                    "İptal edilen satıştan kazanılıp harcanmış puanın geri alınması", nowUtc));
+            }
         }
 
         // 3) Ürün satışı → stoğu geri ekle + iade hareketi kaydet.
@@ -133,11 +154,23 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         }
 
         // 4) Hediye çeki / kupon kullanımını geri aç.
+        //
+        // SİLİNMİŞ KART SESSİZCE ATLANMAZ. Sorgu global süzgeçten geçtiği için soft-delete edilmiş
+        // kart null dönüyor, `card?.UndoRedeem(...)` hiçbir şey yapmıyordu: satış iptal ediliyor
+        // (indirim geri alınıyor) ama çekin harcanan bakiyesi geri gelmiyordu — müşteri parasını
+        // geri alıyor, çeki de kaybediyordu. Süzgeç atlanır, kart gerçekten yoksa iptal DURUR:
+        // yarım geri alma, hiç geri almamaktan kötüdür (çağıran transaction'da → hiçbir şey yazılmaz).
         foreach (var discount in adisyon.Items.Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue))
         {
-            var card = await _db.GiftCards
+            var card = await _db.GiftCards.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == discount.RefId!.Value, cancellationToken);
-            card?.UndoRedeem(discount.LineTotal);
+            if (card is null)
+            {
+                throw new DomainException(
+                    $"'{discount.Description}' indirimine bağlı hediye çeki/kupon bulunamadı; iptal durduruldu. " +
+                    "Kod kalıcı olarak silinmişse önce kaydı düzeltin.");
+            }
+            card.UndoRedeem(discount.LineTotal);
         }
 
         // 5) Paket kullanımı — bu adisyon BAŞKA bir paketin seansını tükettiyse geri kredile.
@@ -182,11 +215,18 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
         }
 
         // 4) Hediye çekini yeniden harca.
+        // Geri almada da AYNI kural: süzgeç atlanır, kart yoksa işlem durur — aksi hâlde satış
+        // canlanıyor ama kuponun bakiyesi düşmemiş kalıyordu (aynı kod ikinci kez harcanabilirdi).
         foreach (var discount in adisyon.Items.Where(i => i.Type == AdisyonItemType.Discount && i.RefId.HasValue))
         {
-            var card = await _db.GiftCards
+            var card = await _db.GiftCards.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == discount.RefId!.Value, cancellationToken);
-            card?.Redeem(discount.LineTotal, nowUtc);
+            if (card is null)
+            {
+                throw new DomainException(
+                    $"'{discount.Description}' indirimine bağlı hediye çeki/kupon bulunamadı; geri alma durduruldu.");
+            }
+            card.Redeem(discount.LineTotal, nowUtc);
         }
 
         // 5) Geri kredilenen paket seanslarını yeniden tüket — AYNI seans kaydından, aynı adette.

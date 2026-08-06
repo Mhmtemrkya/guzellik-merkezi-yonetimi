@@ -23,7 +23,16 @@ public sealed record BusinessExpenseDto(
     /// tutarları zaten sayıyordu ama liste göstermiyordu: aynı dönem için özet 1.000, satırlar 600
     /// diyordu. Satır artık listede de var; düzenlenemez/silinemez olduğu bu bayrakla ayırt edilir.
     /// </summary>
-    bool IsSystemGenerated = false);
+    bool IsSystemGenerated = false,
+    /// <summary>
+    /// Dolu ise gider GEÇERSİZ KILINMIŞTIR: satır kalıcı iz olarak durur ama kasa akışı,
+    /// kâr-zarar ve gider özeti bu tutarı SAYMAZ (bkz. BusinessExpense.Void).
+    /// </summary>
+    DateTime? VoidedAtUtc = null,
+    string? VoidReason = null);
+
+/// <summary>Onaylanmış gideri geçersiz kılma isteği — gerekçe ZORUNLUDUR (denetim izi).</summary>
+public sealed record VoidExpenseRequest(string Reason);
 
 public sealed record CreateExpenseRequest(
     Guid? BranchId,

@@ -42,6 +42,15 @@ public sealed class IdempotencyMiddleware
     private const string OutcomeUnknownBody =
         "{\"success\":false,\"error\":{\"code\":\"IdempotencyOutcomeUnknown\",\"message\":\"Bu isteğin sonucu doğrulanamadı (sunucu hatası ya da bağlantı kesintisi). İşlem uygulanmış olabilir; kaydı kontrol edin, gerekiyorsa yeni bir istek gönderin.\"}}";
 
+    private const string KeyReuseBody =
+        "{\"success\":false,\"error\":{\"code\":\"IdempotencyKeyReuse\",\"message\":\"Bu Idempotency-Key başka bir istek için kullanılmış. Aynı anahtarı farklı bir uç ya da farklı içerikle gönderemezsiniz; yeni istek için yeni bir anahtar üretin.\"}}";
+
+    /// <summary>
+    /// Gövde tamponlama eşiği: bu boyutu aşan istekler diske taşar (bellekte şişmez).
+    /// Fotoğraf/data-URL taşıyan uçlar için gereklidir.
+    /// </summary>
+    private const int BodyBufferThreshold = 64 * 1024;
+
     public IdempotencyMiddleware(RequestDelegate next) => _next = next;
 
     public async Task InvokeAsync(HttpContext http, ICurrentUser currentUser, GuzellikDbContext db)
@@ -66,12 +75,30 @@ public sealed class IdempotencyMiddleware
         // koruma ıskalanır ve iş İKİNCİ KEZ uygulanırdı. Bu anahtarlarda kapsam kurum düzeyidir.
         var scopeUserId = key.StartsWith("sys:", StringComparison.Ordinal) ? Guid.Empty : userId;
 
+        // İSTEĞİN PARMAK İZİ (metot + yol + sorgu + gövde). Anahtar istemcinin ürettiği serbest bir
+        // dizedir; tek başına "aynı istek" anlamına gelmez. Aşağıda saklanan kayıtla karşılaştırılır.
+        var fingerprint = await ComputeFingerprintAsync(http);
+
         var existing = await db.ProcessedClientRequests.AsNoTracking()
             .FirstOrDefaultAsync(
                 x => x.TenantId == tenantId && x.UserId == scopeUserId && x.IdempotencyKey == key,
                 http.RequestAborted);
         if (existing is not null)
         {
+            // ANAHTAR YENİDEN KULLANIMI AÇIKÇA REDDEDİLİR.
+            //
+            // Eskiden yalnız anahtara bakılıyordu: aynı anahtar BAŞKA bir uca ya da başka bir
+            // gövdeyle geldiğinde eski ve alakasız yanıt geri oynatılıyor, YENİ mutasyon sessizce
+            // atlanıyordu. Kullanıcı "kaydedildi" görüyor, hiçbir şey yazılmıyordu. Parmak izi
+            // eşleşmiyorsa istek 409 ile durur — sessiz atlama yerine görünür hata.
+            // Eski kayıtlarda alan boştur (geçiş); orada eski davranış korunur.
+            if (existing.RequestFingerprint is { Length: > 0 } stored
+                && !string.Equals(stored, fingerprint, StringComparison.Ordinal))
+            {
+                await WriteKeyReuseAsync(http);
+                return;
+            }
+
             // Tamamlanmış kayıt → ilk yanıt aynen döner.
             // Tamamlanmamış kayıt (StatusCode = 0) İSE ASLA "yanıt" olarak oynatılmaz: eskiden bu
             // ayrım yoktu ve durum kodu 0 olan bir rezervasyon yanıt sanılıp geçersiz yanıt üretiyordu.
@@ -86,7 +113,7 @@ public sealed class IdempotencyMiddleware
         // — iki ayrı tahsilat/mutasyon. Unique indeks (TenantId, UserId, IdempotencyKey) ikinci
         // insert'i eler; böylece işi yalnızca bir istek yapar.
         var reservation = new ProcessedClientRequest(
-            tenantId, scopeUserId, key, http.Request.Method, path, 0, null, null);
+            tenantId, scopeUserId, key, http.Request.Method, path, 0, null, null, fingerprint);
         db.ProcessedClientRequests.Add(reservation);
         try
         {
@@ -102,6 +129,14 @@ public sealed class IdempotencyMiddleware
                 .FirstOrDefaultAsync(
                     x => x.TenantId == tenantId && x.UserId == scopeUserId && x.IdempotencyKey == key,
                     http.RequestAborted);
+            // Yarışı kazanan BAŞKA bir istekse (aynı anahtar, farklı içerik) yanıtını oynatmak
+            // yanlış olurdu — yukarıdaki kuralın aynısı burada da uygulanır.
+            if (winner?.RequestFingerprint is { Length: > 0 } winnerPrint
+                && !string.Equals(winnerPrint, fingerprint, StringComparison.Ordinal))
+            {
+                await WriteKeyReuseAsync(http);
+                return;
+            }
             if (winner is not null && !winner.IsPending) await ReplayAsync(http, winner);
             else await WriteUnresolvedAsync(http, winner);
             return;
@@ -178,6 +213,42 @@ public sealed class IdempotencyMiddleware
     /// </summary>
     private static bool IsDefiniteRejection(Exception ex) =>
         ex is FluentValidation.ValidationException or DomainException;
+
+    /// <summary>
+    /// İsteğin KANONİK parmak izi: metot + yol + sorgu dizesi + gövde (SHA-256, hex).
+    ///
+    /// <para>
+    /// Gövde tamponlanır ve konum başa alınır — sonraki middleware/endpoint aynı gövdeyi normal
+    /// şekilde okur. Eşik üstü gövdeler diske taşar; fotoğraf/data-URL taşıyan uçlarda bellek şişmez.
+    /// </para>
+    /// </summary>
+    private static async Task<string> ComputeFingerprintAsync(HttpContext http)
+    {
+        http.Request.EnableBuffering(BodyBufferThreshold);
+
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var header = Encoding.UTF8.GetBytes(
+            $"{http.Request.Method}\n{http.Request.Path.Value}\n{http.Request.QueryString.Value}\n");
+        sha.TransformBlock(header, 0, header.Length, null, 0);
+
+        var buffer = new byte[8192];
+        int read;
+        while ((read = await http.Request.Body.ReadAsync(buffer, CancellationToken.None)) > 0)
+            sha.TransformBlock(buffer, 0, read, null, 0);
+        sha.TransformFinalBlock([], 0, 0);
+
+        http.Request.Body.Position = 0;
+        return Convert.ToHexString(sha.Hash!);
+    }
+
+    /// <summary>Aynı anahtarın FARKLI bir istek için kullanılması — sessiz atlama yerine 409.</summary>
+    private static async Task WriteKeyReuseAsync(HttpContext http)
+    {
+        http.Response.StatusCode = StatusCodes.Status409Conflict;
+        http.Response.ContentType = "application/json; charset=utf-8";
+        http.Response.Headers[StatusHeader] = "key-reuse";
+        await http.Response.WriteAsync(KeyReuseBody, http.RequestAborted);
+    }
 
     private static async Task ReplayAsync(HttpContext http, ProcessedClientRequest record)
     {

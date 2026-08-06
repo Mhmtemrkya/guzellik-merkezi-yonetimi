@@ -204,6 +204,31 @@ public sealed class Appointment : Entity
         Touch();
     }
 
+    /// <summary>
+    /// YANLIŞ TAMAMLAMANIN GERİ ALINMASI (void-completion).
+    ///
+    /// <para>
+    /// <see cref="Cancel"/> ve <see cref="MarkNoShow"/> tamamlanmış randevuyu bilerek reddeder:
+    /// tamamlama seans/prim/finans etkisi ürettiği için "durumu değiştir" ile geri alınamaz. Ama
+    /// yanlışlıkla tamamlanan randevu için HİÇBİR çıkış yolu yoktu — arayüz "durumu geri alın"
+    /// diyor, domain izin vermiyordu. Bu metot o kapıyı YETKİ + ters etki grafiğiyle birlikte açar
+    /// (bkz. <c>AppointmentService.VoidCompletionAsync</c>); tek başına çağrılmamalıdır.
+    /// </para>
+    /// <para>
+    /// HEDEF DURUM <see cref="AppointmentStatus.Confirmed"/>: tamamlama öncesi durum saklanmıyor
+    /// (Scheduled/Confirmed/InProgress olabilirdi) ve üçünün de anlamı "randevu duruyor,
+    /// tamamlanmadı"dır. Onaylı duruma dönmek bilgi kaybetmez; randevu buradan yeniden tamamlanabilir,
+    /// iptal edilebilir ya da gelmedi işaretlenebilir.
+    /// </para>
+    /// </summary>
+    public void VoidCompletion()
+    {
+        if (Status != AppointmentStatus.Completed)
+            throw new BusinessRuleException("Yalnızca tamamlanmış randevunun tamamlanması geri alınabilir.");
+        Status = AppointmentStatus.Confirmed;
+        Touch();
+    }
+
     public void Cancel(string reason)
     {
         if (Status == AppointmentStatus.Completed) throw new BusinessRuleException("Tamamlanan randevu iptal edilemez.");

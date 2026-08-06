@@ -23,10 +23,30 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
 
     private const string TokenPrefix = "sim_";
 
+    /// <summary>
+    /// Form anahtarını İMZALAYAN gizli anahtar.
+    ///
+    /// <para>
+    /// Anahtar eskiden yalnız <c>sim_{conversationId}_{kuruş}</c> idi: tahmin edilebilir bir işlem
+    /// kimliğiyle DIŞARIDAN üretilebiliyordu. Kullanıcı callback ucuna kendi ürettiği anahtarla
+    /// gelip ödeme yapmadan "başarılı" sonuç aldırabiliyordu (tutar denetimi eklenmiş olsa bile,
+    /// doğru tutarla üretilen sahte anahtar geçerdi). Artık anahtar sunucu sırrıyla imzalanır ve
+    /// imzasız/yanlış imzalı anahtar reddedilir.
+    /// </para>
+    /// </summary>
+    private readonly byte[] _signingKey;
+
+    public SimulationPaymentGateway(string signingSecret)
+    {
+        if (string.IsNullOrWhiteSpace(signingSecret))
+            throw new ArgumentException("Simülasyon ödeme anahtarı için imza sırrı gerekli.", nameof(signingSecret));
+        _signingKey = System.Text.Encoding.UTF8.GetBytes(signingSecret);
+    }
+
     public Task<Result<CheckoutInitResult>> InitCheckoutAsync(CheckoutInitRequest request, CancellationToken ct = default)
     {
         var cents = (long)Math.Round(request.AmountTry * 100, MidpointRounding.AwayFromZero);
-        var token = $"{TokenPrefix}{request.ConversationId}_{cents}";
+        var token = $"{TokenPrefix}{request.ConversationId}_{cents}_{Sign(request.ConversationId, cents)}";
         // Kullanıcı bu adrese gider; callback ucu sonucu işleyip panele geri döndürür.
         var url = $"{request.CallbackUrl}{(request.CallbackUrl.Contains('?') ? '&' : '?')}token={Uri.EscapeDataString(token)}";
         var html =
@@ -71,16 +91,40 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
     public Task<Result> RefundAsync(string providerPaymentId, decimal amount, CancellationToken ct = default) =>
         Task.FromResult(Result.Success());
 
-    private static bool TryParse(string token, out string conversationId, out decimal amount)
+    /// <summary>İşlem kimliği + tutarın kısaltılmış HMAC-SHA256 imzası (hex).</summary>
+    private string Sign(string conversationId, long cents)
+    {
+        using var hmac = new System.Security.Cryptography.HMACSHA256(_signingKey);
+        var payload = System.Text.Encoding.UTF8.GetBytes($"{conversationId}|{cents}");
+        return Convert.ToHexString(hmac.ComputeHash(payload))[..32].ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Anahtarı çözer ve İMZASINI DOĞRULAR. İmza sabit zamanlı karşılaştırılır; imzasız (eski
+    /// biçim) ya da yanlış imzalı anahtar geçersizdir — dışarıdan üretilen anahtar kabul edilmez.
+    /// </summary>
+    private bool TryParse(string token, out string conversationId, out decimal amount)
     {
         conversationId = string.Empty;
         amount = 0m;
         if (string.IsNullOrWhiteSpace(token) || !token.StartsWith(TokenPrefix, StringComparison.Ordinal)) return false;
-        var rest = token[TokenPrefix.Length..];
-        var split = rest.LastIndexOf('_');
-        if (split <= 0) return false;
-        conversationId = rest[..split];
-        if (!long.TryParse(rest[(split + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var cents)) return false;
+
+        var parts = token[TokenPrefix.Length..].Split('_');
+        if (parts.Length < 3) return false;                     // imza zorunlu
+
+        var signature = parts[^1];
+        if (!long.TryParse(parts[^2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var cents)) return false;
+        var id = string.Join('_', parts[..^2]);                 // işlem kimliği '_' içerebilir
+        if (id.Length == 0) return false;
+
+        var expected = Sign(id, cents);
+        if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(expected), System.Text.Encoding.UTF8.GetBytes(signature)))
+        {
+            return false;
+        }
+
+        conversationId = id;
         amount = cents / 100m;
         return true;
     }

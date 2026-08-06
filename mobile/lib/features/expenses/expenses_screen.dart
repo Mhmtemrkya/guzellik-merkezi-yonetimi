@@ -98,8 +98,61 @@ class ExpensesScreen extends StatelessWidget {
       onCreate: (body) => api.post('/api/admin/expenses/', body),
       onUpdate: (item, body) =>
           api.put('/api/admin/expenses/${item['id']}', body),
-      onDelete: (item) => api.delete('/api/admin/expenses/${item['id']}'),
+      // ONAYLANMIŞ GİDER SİLİNMEZ, GEREKÇEYLE GEÇERSİZ KILINIR (web ile aynı kural):
+      // silme onaylı kaydı gizliyor, gerçekleşmiş kasa çıkışı raporlardan düşüyordu.
+      onDelete: (item) => _removeExpense(context, api, item),
       decorateCreate: (body) => body['branchId'] = api.auth?.user?.branchId,
+    );
+  }
+
+  /// Onay bekleyen kayıt silinir; ONAYLANMIŞ kayıt yalnız gerekçeyle geçersiz kılınabilir.
+  static Future<void> _removeExpense(
+      BuildContext context, ApiClient api, Map<String, dynamic> item) async {
+    final id = '${item['id']}';
+    final approved = item['isApproved'] == true;
+    if (!approved) {
+      await api.delete('/api/admin/expenses/$id');
+      return;
+    }
+
+    final reason = await _askVoidReason(context);
+    if (reason == null || reason.trim().isEmpty) {
+      throw Exception('Geçersiz kılma iptal edildi: gerekçe zorunlu.');
+    }
+    await api.post('/api/admin/expenses/$id/void', {'reason': reason.trim()});
+  }
+
+  static Future<String?> _askVoidReason(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gideri geçersiz kıl'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Onaylanmış gider silinemez. Kayıt iz olarak kalır, toplamlardan düşer.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Gerekçe (zorunlu)',
+                hintText: 'ör. yanlış girildi, para çıkmadı',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Geçersiz kıl'),
+          ),
+        ],
+      ),
     );
   }
 }

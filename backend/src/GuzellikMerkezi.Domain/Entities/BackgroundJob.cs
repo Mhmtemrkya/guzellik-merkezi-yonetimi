@@ -31,13 +31,27 @@ public sealed class BackgroundJob : Entity
     public DateTime NextAttemptUtc { get; private set; }
     /// <summary>İşlenmekte olan satırın kilidi; süre dolarsa (worker öldü) yeniden alınabilir.</summary>
     public DateTime? LockedUntilUtc { get; private set; }
+
+    /// <summary>
+    /// SAHİPLENME JETONU — işi o an hangi worker'ın tuttuğunu söyler.
+    ///
+    /// <para>
+    /// Süre tek başına yetmez: uzun süren bir iş kilidi dolduğunda BAŞKA worker onu yeniden
+    /// alabilir; ilk worker sonradan bitirip "Succeeded" yazarsa ikinci worker'ın sahiplenmesini
+    /// EZER ve iş defterde tek başarı olarak görünürken gerçekte iki kez çalışmış olur. Jeton
+    /// sayesinde tamamlama/başarısızlık yazması "hâlâ ben mi tutuyorum?" koşuluna bağlanır.
+    /// </para>
+    /// </summary>
+    public string? LockToken { get; private set; }
+
     public string? LastError { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
 
-    public void MarkProcessing(TimeSpan lockDuration)
+    public void MarkProcessing(TimeSpan lockDuration, string? lockToken = null)
     {
         Status = "Processing";
         LockedUntilUtc = DateTime.UtcNow.Add(lockDuration);
+        LockToken = lockToken;
         Touch();
     }
 
@@ -46,6 +60,7 @@ public sealed class BackgroundJob : Entity
         Status = "Succeeded";
         CompletedAtUtc = DateTime.UtcNow;
         LockedUntilUtc = null;
+        LockToken = null;
         LastError = null;
         Touch();
     }
@@ -56,6 +71,7 @@ public sealed class BackgroundJob : Entity
         Attempts++;
         LastError = error.Length > 1000 ? error[..1000] : error;
         LockedUntilUtc = null;
+        LockToken = null;
         if (Attempts >= MaxAttempts)
         {
             Status = "Failed";
@@ -77,6 +93,7 @@ public sealed class BackgroundJob : Entity
         Attempts = 0;
         NextAttemptUtc = DateTime.UtcNow;
         LockedUntilUtc = null;
+        LockToken = null;
         CompletedAtUtc = null;
         Touch();
     }

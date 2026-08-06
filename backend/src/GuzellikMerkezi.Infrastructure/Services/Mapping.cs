@@ -132,7 +132,8 @@ internal static class Mapping
         op.DecidedAtUtc,
         op.DecidedByUserId,
         op.RejectionReason,
-        op.ResultEntityId);
+        op.ResultEntityId,
+        op.IsClaimStale(DateTime.UtcNow));
 
     public static BusinessExpenseDto ToDtoWithStaff(this BusinessExpense expense, string? staffName) => new(
         expense.Id,
@@ -149,7 +150,10 @@ internal static class Mapping
         expense.Reference,
         expense.IsApproved,
         expense.ApprovedAtUtc,
-        expense.CreatedAtUtc);
+        expense.CreatedAtUtc,
+        false,
+        expense.VoidedAtUtc,
+        expense.VoidReason);
 
     public static CustomerAccountDto ToDto(this CustomerAccount account, decimal appointmentRevenue = 0m, int completedCount = 0)
     {

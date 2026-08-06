@@ -155,10 +155,13 @@ export default function AyarlarPage() {
   interface TenantProfileValues { name?: string; legalName?: string; ownerName?: string; phone?: string; email?: string; domain?: string; taxNumber?: string; taxOffice?: string }
   interface TenantFinanceValues { currency?: string; maxInstallments?: number; overdueGraceDays?: number }
 
+  // ABONELİK ALANI GÖNDERİLMEZ. Bu uç eskiden plan/status/billingPeriod da kabul ediyordu ve
+  // kurum sahibi ödeme yapmadan paket/dönem/durum değiştirebiliyordu; backend artık profil+finans
+  // DTO'su bekliyor (abonelik yalnız /upgrade → doğrulanmış ödeme ya da platform üzerinden değişir).
   const updateTenantProfile = async (values: TenantProfileValues) => {
     if (!tenant) return
     await adminApi.updateCurrentTenant({
-      name: values.name || tenant.name, plan: tenant.plan, status: rawTenant?.status || 'Active',
+      name: values.name || tenant.name,
       domain: values.domain || null, ownerName: values.ownerName || null, phone: values.phone || null,
       taxNumber: values.taxNumber || null, currency: tenant.currency,
       maxInstallments: tenant.maxInstallments, overdueGraceDays: tenant.overdueGraceDays,
@@ -170,7 +173,7 @@ export default function AyarlarPage() {
   const updateTenantFinance = async (values: TenantFinanceValues) => {
     if (!tenant) return
     await adminApi.updateCurrentTenant({
-      name: tenant.name, plan: tenant.plan, status: rawTenant?.status || 'Active',
+      name: tenant.name,
       domain: tenant.domain, ownerName: tenant.ownerName, phone: tenant.phone || null, taxNumber: tenant.taxNumber || null,
       currency: (values.currency || tenant.currency).toUpperCase(),
       maxInstallments: Number(values.maxInstallments ?? tenant.maxInstallments),

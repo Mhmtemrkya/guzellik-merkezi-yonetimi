@@ -178,15 +178,38 @@ public sealed class NotificationService : INotificationService
         {
             var recipient = template.Channel == NotificationChannel.Email ? (c.Email ?? string.Empty) : (c.Phone ?? string.Empty);
             var body = RenderBody(template.Body, c);
+            // Otomatik gönderimin tekilleştirme anahtarı (H9). Elle gönderimde boştur.
+            var dedupeKey = string.IsNullOrWhiteSpace(req.DedupeBucket)
+                ? null
+                : $"{template.Id:N}:{c.Id:N}:{req.DedupeBucket}";
+
             if (string.IsNullOrWhiteSpace(recipient))
             {
                 skipped++;
                 var skipLog = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, "-", body,
-                    NotificationLogStatus.Failed, $"{(template.Channel == NotificationChannel.Email ? "E-posta" : "Telefon")} eksik.");
-                _db.NotificationLogs.Add(skipLog);
+                    NotificationLogStatus.Failed, $"{(template.Channel == NotificationChannel.Email ? "E-posta" : "Telefon")} eksik.",
+                    dedupeKey);
+                if (!await TryReserveAsync(skipLog, ct)) continue;
                 logsCreated.Add(skipLog);
                 continue;
             }
+
+            // KAYIT SAĞLAYICIDAN ÖNCE REZERVE EDİLİR (H9).
+            //
+            // Eskiden sıra tersti: önce SMS/e-posta gönderiliyor, log satırı en sonda toplu
+            // SaveChanges ile yazılıyordu. Sağlayıcı mesajı ilettikten SONRA süreç çökerse (ya da
+            // kayıt yazılamazsa) hiçbir iz kalmıyor, bir sonraki tarama tekilleştirmede "gönderilmemiş"
+            // görüp AYNI mesajı müşteriye TEKRAR gönderiyordu. Satır önce "Queued" olarak yazılıp
+            // COMMIT edilir; benzersiz indeks ikinci denemeyi eler (iki backend örneği dahil).
+            var log = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel,
+                recipient, body, NotificationLogStatus.Queued, null, dedupeKey);
+            if (!await TryReserveAsync(log, ct))
+            {
+                // Aynı anahtar başka bir tarama/örnek tarafından alınmış → mesaj zaten gidiyor.
+                skipped++;
+                continue;
+            }
+            logsCreated.Add(log);
 
             // GERÇEK gönderim: SMS/E-posta platform mesajlaşma servisinden gider (sağlayıcı yapılandırılmamışsa
             // simülasyon). Durum GERÇEK sonuca göre işaretlenir — başarısız gönderim artık "Sent" gösterilmez,
@@ -213,10 +236,9 @@ public sealed class NotificationService : INotificationService
                     break;
             }
 
-            var status = ok ? NotificationLogStatus.Sent : NotificationLogStatus.Failed;
-            var log = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, recipient, body, status, error);
-            _db.NotificationLogs.Add(log);
-            logsCreated.Add(log);
+            // Sonuç REZERVE EDİLMİŞ satıra yazılır — yeni satır açılmaz, mükerrer log oluşmaz.
+            if (ok) log.MarkSent();
+            else log.MarkFailed(error ?? "Bilinmeyen hata");
             if (ok) { sent++; template.RecordSent(now); }
             else { failed++; }
         }
@@ -229,6 +251,33 @@ public sealed class NotificationService : INotificationService
             l.CustomerId.HasValue && custDict.TryGetValue(l.CustomerId.Value, out var cn) ? cn : null)).ToArray();
 
         return Result<SendNotificationResultDto>.Success(new SendNotificationResultDto(sent, failed, skipped, logDtos));
+    }
+
+    /// <summary>
+    /// Log satırını KALICI olarak rezerve eder (sağlayıcı çağrısından önce). Benzersiz indeks
+    /// (TenantId, DedupeKey) çakışırsa false döner: aynı mesaj başka bir tarama/örnek tarafından
+    /// zaten üstlenilmiştir — ikinci kez GÖNDERİLMEZ.
+    /// </summary>
+    private async Task<bool> TryReserveAsync(NotificationLog log, CancellationToken ct)
+    {
+        _db.NotificationLogs.Add(log);
+
+        // ANAHTARSIZ (elle) GÖNDERİMDE SATIR SATIR YAZILMAZ. Rezervasyonun amacı OTOMATİK
+        // taramanın aynı mesajı tekrar göndermesini engellemektir; elle gönderimde tekrar zaten
+        // yöneticinin kararıdır. Binlerce kişilik bir kampanyada müşteri başına ayrı SaveChanges
+        // gereksiz maliyettir — o satırlar sonda toplu yazılır (eski davranış).
+        if (log.DedupeKey is null) return true;
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(log).State = EntityState.Detached;
+            return false;
+        }
     }
 
     private async Task<List<Customer>> ResolveAudienceAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct)

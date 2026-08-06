@@ -70,6 +70,14 @@ public static class AppointmentEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CompleteWithPaymentAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
         });
 
+        // YANLIŞ TAMAMLAMANIN GERİ ALINMASI. Onay kapısı açısından /status ile aynı sınıfta DEĞİLDİR:
+        // ayrı yetki (Appointments.VoidCompletion) ister ve personel isteği taslağa düşer.
+        group.MapPost("/{id:guid}/void-completion", async (Guid id, VoidAppointmentCompletionRequest request, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.VoidCompletionAsync(resolvedTenantId, id, request, ct, ResolveStaffTenantUserId(currentUser))).ToHttpResult(http);
+        });
+
         // Taslak randevu onayı (Draft → aktif) — kurum yöneticisi.
         group.MapPost("/{id:guid}/approve", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IAppointmentService service, HttpContext http, CancellationToken ct) =>
         {

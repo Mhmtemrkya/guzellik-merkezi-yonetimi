@@ -275,7 +275,9 @@ class AppRouter {
             subtitle: 'Ürün giriş/çıkış hareketleri.',
             icon: Icons.swap_vert_rounded,
             endpoint: '/api/admin/stock-movements/',
-            query: pageQuery,
+            // BU UÇ page/pageSize DEĞİL `limit` ALIR (bkz. StockEndpoints). Sayfa varsayılan
+            // pageQuery'yi gönderdiği için hareketler hiç gelmiyordu; stok ekranıyla aynı sınır.
+            query: () => pageQuery({'limit': 300}),
             titleKeys: const ['productName', 'type'],
             subtitleKeys: const ['reason', 'createdAtUtc', 'note'],
             trailingKeys: const ['quantity'],

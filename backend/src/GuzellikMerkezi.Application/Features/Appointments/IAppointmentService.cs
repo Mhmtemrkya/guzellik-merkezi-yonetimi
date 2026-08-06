@@ -41,6 +41,14 @@ public interface IAppointmentService
     /// uygulanmaz). Tahsilat verilmezse yalnız durum değişir.
     /// </summary>
     Task<Result<AppointmentDto>> CompleteWithPaymentAsync(Guid tenantId, Guid id, CompleteAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
+
+    /// <summary>
+    /// YANLIŞ TAMAMLAMAYI GERİ ALIR: tamamlamanın ürettiği etkiler TEK transaction'da tersine
+    /// çevrilir (tüketilen paket seansı iade edilir, durum "Onaylandı"ya döner). Tamamlama sırasında
+    /// satış cariye işlendiyse geri alma REDDEDİLİR — para hareketinin tek geri alma yolu satış
+    /// iptalidir (bkz. <c>VoidCompletionAsync</c>). Ayrı yetki ister: <c>Appointments.VoidCompletion</c>.
+    /// </summary>
+    Task<Result<AppointmentDto>> VoidCompletionAsync(Guid tenantId, Guid id, VoidAppointmentCompletionRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
     /// <summary>Kurum yöneticisi taslak randevuyu onaylar (Draft → Scheduled). Personel çağıramaz.</summary>
     Task<Result<AppointmentDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null);
     /// <summary>Kurum yöneticisi aksiyon kutusu: saati gelmiş randevular + onay bekleyen taslaklar.</summary>

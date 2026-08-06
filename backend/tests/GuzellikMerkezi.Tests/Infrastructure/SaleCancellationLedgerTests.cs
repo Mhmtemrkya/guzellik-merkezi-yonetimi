@@ -259,7 +259,7 @@ public sealed class SaleCancellationLedgerTests
     // =====================================================================================
 
     [Fact]
-    public async Task CancelSale_DoesNotPushLoyaltyBalanceNegative()
+    public async Task CancelSale_SpentLoyaltyEarn_BecomesClawbackNotSilentlyKept()
     {
         var options = NewOptions();
         var seed = await SeedAsync(options);
@@ -283,8 +283,17 @@ public sealed class SaleCancellationLedgerTests
 
         await using (var db = NewDb(options))
         {
-            var balance = await db.LoyaltyTransactions.SumAsync(l => l.Points);
-            Assert.True(balance >= 0, $"Sadakat bakiyesi negatife düştü: {balance}");
+            // KURAL DEĞİŞTİ (denetim M1): kazanım geri alınamıyorsa SESSİZCE KORUNMAZ.
+            //
+            // Eskiden bakiyeyi negatife düşürmemek için kazanım satırı olduğu gibi bırakılıyordu:
+            // müşteri, iptal edilen (parası iade edilen) satıştan kazandığı puanı çoktan harcamışsa
+            // faydayı kalıcı olarak elinde tutuyordu — kurum hem parayı iade ediyor hem puanı
+            // karşılıyordu. Artık açık bir ters kayıt yazılır; bakiye BORÇLU tarafa geçebilir ve
+            // müşteri yeni puan kazandıkça kapanır. Geçmiş harcama satırı bozulmaz.
+            var rows = await db.LoyaltyTransactions.ToListAsync();
+            Assert.Contains(rows, r => r.SourceType == "AdisyonCancelClawback" && r.Points == -100);
+            Assert.Contains(rows, r => r.Points == -90);        // geçmiş harcama duruyor
+            Assert.Equal(-90, rows.Sum(r => r.Points));         // 100 − 90 − 100 = −90 (borçlu bakiye)
         }
     }
 

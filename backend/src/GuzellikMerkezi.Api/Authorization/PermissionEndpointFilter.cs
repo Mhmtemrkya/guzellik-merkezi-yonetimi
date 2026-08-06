@@ -26,9 +26,6 @@ public sealed class PermissionEndpointFilter : IEndpointFilter
     {
         var user = context.HttpContext.RequestServices.GetRequiredService<ICurrentUser>();
 
-        // Yönetici roller + platform admin tam erişimli; yalnızca personel izne tabi.
-        if (user.Role != UserRole.Staff) return await next(context);
-
         // writeOnly: yalnız yazma metodlarını kısıtla (okuma sayfa izniyle serbest).
         if (_writeOnly)
         {
@@ -37,11 +34,11 @@ public sealed class PermissionEndpointFilter : IEndpointFilter
             if (!isWrite) return await next(context);
         }
 
-        // Noktalı anahtar = işlem izni (eski kayıtlar için geriye uyumlu kural), düz anahtar = sayfa izni.
-        var allowed = _permission.Contains('.')
-            ? GuzellikMerkezi.Domain.Permissions.IsActionAllowed(user.Permissions, _permission)
-            : user.HasPermission(_permission);
-        if (allowed) return await next(context);
+        // TEK KARAR NOKTASI: rol modeli (yönetici roller tam erişimli, personel izne tabi) ve
+        // noktalı/düz anahtar ayrımı ICurrentUser.IsAllowed → Permissions.IsGrantedTo içinde durur.
+        // Buradaki eski "Role != Staff → serbest" kestirmesi aynı kuralın ikinci bir kopyasıydı;
+        // servis tarafındaki bileşik kontrollerle ayrışabiliyordu.
+        if (user.IsAllowed(_permission)) return await next(context);
 
         return Results.Json(
             ApiResponse<object>.Fail("Forbidden", "Bu işlem için yetkiniz yok.", context.HttpContext.TraceIdentifier),

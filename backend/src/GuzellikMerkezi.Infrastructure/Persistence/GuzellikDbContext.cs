@@ -333,8 +333,13 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         log.Property(x => x.Body).IsRequired();
         log.Property(x => x.Channel).HasConversion<string>().HasMaxLength(20).IsRequired();
         log.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        log.Property(x => x.DedupeKey).HasMaxLength(200); // düz metin — tekilleştirme eşitliği için
         log.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         log.HasIndex(x => x.TemplateId);
+        // OTOMATİK GÖNDERİM TEKİLLEŞTİRMESİ VERİTABANINDA ZORLANIR (H9): satır sağlayıcı
+        // çağrısından ÖNCE yazılır, ikinci deneme buraya çarpar. NULL anahtarlı (elle) gönderimler
+        // kısıtlamaya girmez — yönetici aynı mesajı bilerek tekrar gönderebilmelidir.
+        log.HasIndex(x => new { x.TenantId, x.DedupeKey }).IsUnique();
         log.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         log.HasOne(x => x.Template).WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
         log.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.SetNull);
@@ -349,9 +354,14 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         n.Property(x => x.Type).HasConversion<string>().HasMaxLength(40).IsRequired();
         n.Property(x => x.Severity).HasConversion<string>().HasMaxLength(20).IsRequired();
         n.Property(x => x.DedupeKey).HasMaxLength(200); // düz metin — dedupe eşitlik sorgusu için
-        // Feed sorgusu: (TenantId, RecipientUserId, CreatedAtUtc DESC). Dedupe: DedupeKey.
+        // Feed sorgusu: (TenantId, RecipientUserId, CreatedAtUtc DESC).
         n.HasIndex(x => new { x.TenantId, x.RecipientUserId, x.CreatedAtUtc });
-        n.HasIndex(x => new { x.TenantId, x.DedupeKey });
+        // TEKİLLEŞTİRME VERİTABANINDA ZORLANIR (M5). Kod tarafındaki "önce sor, sonra yaz" kontrolü
+        // tek instance'ta yeterliydi; iki backend örneği (ya da iki eşzamanlı istek) aynı anda
+        // "yok" görüp İKİ bildirim yazabiliyordu — kullanıcı aynı olayı iki kez alıyordu.
+        // NULL DedupeKey'ler kısıtlamaya girmez (MySQL/MariaDB: unique indeks çok NULL'a izin verir),
+        // dolayısıyla anahtarsız bildirimler etkilenmez.
+        n.HasIndex(x => new { x.TenantId, x.RecipientUserId, x.DedupeKey }).IsUnique();
         n.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         n.HasOne(x => x.Recipient).WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
         n.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
@@ -926,6 +936,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         j.Property(x => x.Status).HasMaxLength(16).IsRequired();
         j.Property(x => x.PayloadJson).HasColumnType("LONGTEXT");
         j.Property(x => x.LastError).HasMaxLength(1024);
+        // Sahiplenme jetonu (H8): tamamlama/başarısızlık yazması "hâlâ ben mi tutuyorum?" koşuluna bağlanır.
+        j.Property(x => x.LockToken).HasMaxLength(64);
         // Worker poll sorgusu bu üçlüyü tarar.
         j.HasIndex(x => new { x.Status, x.NextAttemptUtc });
         j.HasQueryFilter(x => !x.IsDeleted);
@@ -939,6 +951,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         pcr.Property(x => x.Path).HasMaxLength(512).IsRequired();
         pcr.Property(x => x.ContentType).HasMaxLength(128);
         pcr.Property(x => x.ResponseBody).HasColumnType("LONGTEXT");
+        // İsteğin parmak izi (M7): aynı anahtarın FARKLI bir istek için kullanılması reddedilir.
+        pcr.Property(x => x.RequestFingerprint).HasMaxLength(64);
         // Aynı kullanıcı + anahtar bir kez işlenir; yarış durumunda ikinci insert unique'e takılır.
         pcr.HasIndex(x => new { x.TenantId, x.UserId, x.IdempotencyKey }).IsUnique();
         pcr.HasQueryFilter(x => !x.IsDeleted);
@@ -1270,6 +1284,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.PeriodLabel).HasMaxLength(40);
         builder.Property(x => x.Description).HasMaxLength(500);
         builder.Property(x => x.Reference).HasMaxLength(120);
+        builder.Property(x => x.VoidReason).HasMaxLength(500);
         builder.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
         builder.HasIndex(x => new { x.TenantId, x.Category });
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);

@@ -18,11 +18,18 @@ public sealed partial class ReportsService
     /// <summary>Aynı anda kıyaslanabilecek en fazla dönem — grafik ve yanıt boyutu freni.</summary>
     private const int MaxComparePeriods = 6;
 
-    public async Task<Result<CompareReportDto>> GetCompareAsync(
+    public Task<Result<CompareReportDto>> GetCompareAsync(
         Guid tenantId,
         IReadOnlyList<ComparePeriodRequest> periods,
         string? granularity,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ReadSnapshotAsync(() => GetCompareCoreAsync(tenantId, periods, granularity, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompareReportDto>> GetCompareCoreAsync(
+        Guid tenantId,
+        IReadOnlyList<ComparePeriodRequest> periods,
+        string? granularity,
+        CancellationToken cancellationToken)
     {
         if (periods.Count == 0)
         {

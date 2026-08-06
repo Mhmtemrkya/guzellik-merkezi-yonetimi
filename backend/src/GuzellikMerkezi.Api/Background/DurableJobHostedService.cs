@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -70,35 +71,94 @@ public sealed class DurableJobHostedService : BackgroundService
             return 0;
         }
 
-        foreach (var job in jobs) job.MarkProcessing(LockDuration);
-        await db.SaveChangesAsync(ct);
-
         var handlers = scope.ServiceProvider.GetServices<IDurableJobHandler>()
             .ToDictionary(h => h.JobType, StringComparer.OrdinalIgnoreCase);
 
+        var claimed = 0;
         foreach (var job in jobs)
         {
-            try
-            {
-                if (!handlers.TryGetValue(job.Type, out var handler))
-                    throw new InvalidOperationException($"'{job.Type}' için kayıtlı handler yok.");
-                await handler.ExecuteAsync(job.PayloadJson, ct);
-                job.MarkSucceeded();
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // Kapanış: kilit süresi dolunca iş yeniden alınacak; durumu değiştirme.
-                throw;
-            }
-            catch (Exception ex)
-            {
-                job.MarkFailedAttempt(ex.Message);
-                _logger.LogWarning(ex, "Kalıcı iş başarısız (type={Type}, attempt={Attempt}/{Max}).",
-                    job.Type, job.Attempts, job.MaxAttempts);
-            }
-            await db.SaveChangesAsync(ct);
+            // ATOMİK SAHİPLENME (bkz. DurableJobClaim). Eskiden okunan satırlar toplu Processing
+            // yapılıyordu: iki worker aynı Pending satırı okuyup İKİSİ de handler'ı çalıştırıyordu
+            // ve handler'lar dış dünyaya yazdığı için müşteriye çift WhatsApp/push gidiyordu.
+            var token = Guid.NewGuid().ToString("N");
+            if (!await DurableJobClaim.TryClaimAsync(db, job, token, LockDuration, ct)) continue;
+            claimed++;
+
+            await RunClaimedJobAsync(db, job, token, handlers, ct);
         }
-        return jobs.Count;
+        return claimed;
+    }
+
+    /// <summary>
+    /// Sahiplenilmiş işi yürütür ve sonucu JETONA KOŞULLU yazar. Ortak gövde: RabbitMQ yolu da
+    /// aynı protokolü kullanır, iki yol ayrışamaz.
+    /// </summary>
+    private async Task RunClaimedJobAsync(
+        GuzellikDbContext db, BackgroundJob job, string token,
+        IReadOnlyDictionary<string, IDurableJobHandler> handlers, CancellationToken ct)
+    {
+        // KİLİT KALP ATIŞI: iş uzun sürerse (yavaş Meta/SMTP çağrısı) kilit dolar ve başka worker
+        // işi yeniden alırdı. Süre dolmadan uzatılır; uzatılamazsa sahiplik kaybedilmiş demektir.
+        using var heartbeat = new CancellationTokenSource();
+        var heartbeatTask = HeartbeatLoopAsync(db, job.Id, token, heartbeat.Token);
+
+        bool succeeded;
+        string? error = null;
+        try
+        {
+            if (!handlers.TryGetValue(job.Type, out var handler))
+                throw new InvalidOperationException($"'{job.Type}' için kayıtlı handler yok.");
+            await handler.ExecuteAsync(job.PayloadJson, ct);
+            succeeded = true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Kapanış: kilit süresi dolunca iş yeniden alınacak; durumu değiştirme.
+            heartbeat.Cancel();
+            await heartbeatTask;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            succeeded = false;
+            error = ex.Message;
+            _logger.LogWarning(ex, "Kalıcı iş başarısız (type={Type}, attempt={Attempt}/{Max}).",
+                job.Type, job.Attempts + 1, job.MaxAttempts);
+        }
+
+        heartbeat.Cancel();
+        await heartbeatTask;
+
+        if (!await DurableJobClaim.TryCompleteAsync(db, job, token, succeeded, error, ct))
+        {
+            // Sahiplik kaybedildi: sonucu yazmak yeni sahibin durumunu ezerdi. İz bırakılır —
+            // bu, kilit süresinin iş için kısa kaldığının işaretidir.
+            _logger.LogWarning(
+                "Kalıcı iş sonucu yazılamadı, sahiplenme kaybedilmiş (id={JobId}, type={Type}). "
+                + "İş başka bir worker tarafından yeniden alındı.", job.Id, job.Type);
+        }
+    }
+
+    private static async Task HeartbeatLoopAsync(GuzellikDbContext db, Guid jobId, string token, CancellationToken ct)
+    {
+        var interval = TimeSpan.FromMilliseconds(LockDuration.TotalMilliseconds / 3);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(interval, ct);
+                if (ct.IsCancellationRequested) return;
+                if (!await DurableJobClaim.HeartbeatAsync(db, jobId, token, LockDuration, ct)) return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal sonlanma (iş bitti ya da kapanış).
+        }
+        catch
+        {
+            // Kalp atışı en iyi çabadır: hatası işi düşürmemeli.
+        }
     }
 
     /// <summary>

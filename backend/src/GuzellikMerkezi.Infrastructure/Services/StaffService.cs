@@ -86,10 +86,16 @@ public sealed class StaffService : IStaffService
         return Result<PagedResult<StaffDto>>.Success(new PagedResult<StaffDto>(items, total, request.SafePage, request.SafePageSize));
     }
 
-    public async Task<Result<StaffDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    public async Task<Result<StaffDto>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default, Guid? tenantUserId = null)
     {
         var staff = await _db.StaffMembers.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (staff is null) return Result<StaffDto>.Failure(Error.NotFound("Personel bulunamadı."));
+
+        // PERSONEL YALNIZ KENDİNİ OKUR. Liste ucu bu kapsamı uyguluyor, tekil GET uygulamıyordu:
+        // DTO e-posta, telefon, prim oranı ve İZİN LİSTESİ taşıdığı için kimliği bilen bir personel
+        // meslektaşının bilgilerini çekebiliyordu. "Yok" denir — var/yok bilgisi de sızmasın.
+        if (tenantUserId is { } requester && staff.TenantUserId != requester)
+            return Result<StaffDto>.Failure(Error.NotFound("Personel bulunamadı."));
         var (email, perms) = await GetCredentialsMetaAsync(tenantId, staff.TenantUserId, cancellationToken);
         var ratingMap = await LoadRatingMapAsync(tenantId, new List<Guid> { staff.Id }, cancellationToken);
         ratingMap.TryGetValue(staff.Id, out var ra);

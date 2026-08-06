@@ -423,8 +423,24 @@ function OnMuhasebePageInner() {
     catch (err) { setActionError(err instanceof Error ? err.message : 'Kayıt onaylanamadı.') }
   }
 
+  /**
+   * ONAYLANMIŞ GİDER SİLİNMEZ, GEÇERSİZ KILINIR.
+   *
+   * Silme onaylı kaydı gizliyordu: kasa akışı ve kâr-zarar gerçekleşmiş çıkışı bir daha
+   * görmüyor, kimin hangi gerekçeyle kaldırdığı da bilinmiyordu. Onaylı kayıtta backend artık
+   * gerekçeli void ister (ayrı yetki); onay bekleyen kayıt normal silinir.
+   */
   const deleteExpense = async (e: BusinessExpense) => {
     setActionError('')
+    if (e.isApproved) {
+      const reason = window.prompt(
+        'Onaylanmış gider silinemez. Geçersiz kılmak için gerekçe yazın (ör. "yanlış girildi, para çıkmadı"):',
+      )
+      if (!reason || !reason.trim()) return
+      try { await adminApi.voidExpense(e.id, reason.trim(), tenantId); await reload() }
+      catch (err) { setActionError(err instanceof Error ? err.message : 'Gider geçersiz kılınamadı.') }
+      return
+    }
     try { await adminApi.deleteExpense(e.id, tenantId); await reload() }
     catch (err) { setActionError(err instanceof Error ? err.message : 'Gider silinemedi.') }
   }

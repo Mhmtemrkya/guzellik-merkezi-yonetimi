@@ -131,7 +131,12 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
                 var toSend = targets.Where(id => !alreadySent.Contains(id)).Distinct().ToList();
                 if (toSend.Count == 0) continue;
 
-                var result = await notifications.SendAsync(tenantId, new SendNotificationRequest(template.Id, toSend, null), ct);
+                // ZAMAN KOVASI = tekilleştirme penceresinin başlangıcı. Yukarıdaki "zaten gönderildi"
+                // taraması hızlı ön eleme; ASIL güvence bu anahtardır: log satırı sağlayıcıya
+                // gitmeden önce yazılır ve benzersiz indeks ikinci gönderimi eler (bkz. H9).
+                var bucket = dedupeSince.ToString("yyyyMMddHHmm", System.Globalization.CultureInfo.InvariantCulture);
+                var result = await notifications.SendAsync(
+                    tenantId, new SendNotificationRequest(template.Id, toSend, null, bucket), ct);
                 if (result.IsSuccess && result.Value is not null)
                     totalSent += result.Value.Sent;
             }

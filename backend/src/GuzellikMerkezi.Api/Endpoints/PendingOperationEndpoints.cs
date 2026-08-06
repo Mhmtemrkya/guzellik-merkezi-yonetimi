@@ -71,6 +71,18 @@ public static class PendingOperationEndpoints
             return (await service.RejectAsync(resolvedTenantId, id, currentUser.UserId.Value, request, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
         });
 
+        // TAKILI İŞLEMİN ELLE ÇÖZÜMÜ. Sonucu doğrulanamamış (Processing'de kalmış) kayıtların TEK
+        // çıkışı budur; servis zaman aşımı + kilit + zorunlu not kapılarını uygular.
+        group.MapPatch("/{id:guid}/resolve-stuck", async (Guid id, ResolveStuckOperationRequest request, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
+        {
+            // GÜVENLİK: onay/ret ile aynı kapı — personel kendi işlemini "uygulandı" ilan edemez.
+            if (currentUser.Role == UserRole.Staff) return Results.Forbid();
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            if (!currentUser.UserId.HasValue) return EndpointHelpers.MissingTenant(http);
+            return (await service.ResolveStuckAsync(resolvedTenantId, id, currentUser.UserId.Value, request, currentUser.Role, currentUser.BranchId, ct)).ToHttpResult(http);
+        });
+
         group.MapPatch("/{id:guid}/cancel", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IPendingOperationService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

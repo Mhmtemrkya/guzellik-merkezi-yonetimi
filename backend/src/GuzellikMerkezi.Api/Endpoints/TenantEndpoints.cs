@@ -61,11 +61,13 @@ public static class TenantEndpoints
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetGuideResetAsync(t, ct)).ToHttpResult(http);
         });
 
-        adminGroup.MapPut("/", async (UpdateTenantRequest request, Guid? tenantId, ICurrentUser cu, ITenantService service, HttpContext http, CancellationToken ct) =>
+        // PROFİL/FİNANS — ABONELİK DEĞİL. Bu uç eskiden platform DTO'sunu alıyordu ve kurum sahibi
+        // paket/dönem/durumu ödeme olmadan değiştirebiliyordu (bkz. UpdateTenantProfileRequest).
+        adminGroup.MapPut("/", async (UpdateTenantProfileRequest request, Guid? tenantId, ICurrentUser cu, ITenantService service, HttpContext http, CancellationToken ct) =>
         {
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
-            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(t, request, ct)).ToHttpResult(http);
-        }).ValidatesRequest<UpdateTenantRequest>();
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateProfileAsync(t, request, ct)).ToHttpResult(http);
+        }).ValidatesRequest<UpdateTenantProfileRequest>();
 
         // --- Salon vitrini (public profil + galeri) — kurum yöneticisi kendi kurumunu yönetir. ---
         adminGroup.MapGet("/public-profile", async (Guid? tenantId, ICurrentUser cu, ITenantProfileService service, HttpContext http, CancellationToken ct) =>

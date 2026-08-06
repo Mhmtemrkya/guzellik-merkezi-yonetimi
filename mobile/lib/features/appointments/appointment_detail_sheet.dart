@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
@@ -150,6 +151,38 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     await _run(() async {
       await widget.api.delete('/api/admin/appointments/${appt['id']}');
     }, 'Randevu silindi.');
+  }
+
+  /// YANLIŞ TAMAMLAMAYI GERİ AL (web paritesi).
+  ///
+  /// Tamamlanan randevu iptal/gelmedi yapılamaz — doğru: tamamlama seans/finans etkisi üretir.
+  /// Yanlışlıkla tamamlanmış kayıt için tek düzeltme yolu budur: tüketilen paket seansı
+  /// müşteriye iade edilir ve randevu "Onaylandı"ya döner. Tamamlama satışı cariye işlemişse
+  /// backend reddeder; para hareketinin geri alma yolu satış iptalidir.
+  Future<void> _voidCompletion() async {
+    final reason = await _askReason(
+      'Tamamlamayı geri al',
+      'Geri alma gerekçesi (zorunlu)',
+    );
+    if (reason == null) return;
+    if (reason.trim().length < 5) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Geri alma gerekçesini yazın (en az 5 karakter): bu düzeltme denetim kaydına işlenir.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await _run(() async {
+      await widget.api.post(
+        '/api/admin/appointments/${appt['id']}/void-completion',
+        {'reason': reason.trim()},
+      );
+    }, 'Randevunun tamamlanması geri alındı.');
   }
 
   /// Müşteri koltukta — randevuyu "İşlemde" yap (çizelgede mor kart).
@@ -590,6 +623,37 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                   ),
                 ),
                 const SizedBox(height: 10),
+              ],
+              // YANLIŞ TAMAMLAMAYI GERİ AL — yalnız tamamlanmış randevuda ve ayrı yetkiyle.
+              if (status == 'Completed' &&
+                  (widget.api.auth?.user?.canAction(Perm.appointmentsVoidCompletion) ?? true)) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      backgroundColor: AppColors.warning.withValues(alpha: .08),
+                      foregroundColor: AppColors.warning,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                            color: AppColors.warning.withValues(alpha: .35)),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _voidCompletion,
+                    icon: const Icon(Icons.undo_rounded, size: 19),
+                    label: const Text('Tamamlamayı Geri Al',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Bu randevuda tüketilen paket seansı müşteriye iade edilir ve randevu '
+                  '"Onaylandı" durumuna döner. Tamamlama sırasında satış cariye işlendiyse '
+                  'önce satışı iptal etmeniz gerekir.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+                ),
+                const SizedBox(height: 12),
               ],
               Row(
                 children: [

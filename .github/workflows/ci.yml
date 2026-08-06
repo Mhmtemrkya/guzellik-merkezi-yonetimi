@@ -36,6 +36,14 @@ jobs:
       - name: Test
         run: dotnet test backend/GuzellikMerkeziYonetimi.slnx --no-build --configuration Release --verbosity normal
 
+      # UYGULANMIŞ MIGRATION'LAR DEĞİŞMEZDİR. Bir migration yayınlandıktan sonra gövdesi
+      # değiştirilirse MigrationId aynı kaldığı için ESKİ kurulumlar yeni SQL'i HİÇ görmez:
+      # aynı sürüm numarasıyla iki farklı şema ortaya çıkar. Düzeltme her zaman YENİ bir
+      # (forward-only) migration olmalıdır. Bu kapı geçmişte üç migration'da gerçekleşmiş
+      # sessiz değişikliği yakalar.
+      - name: Migration dosyaları değişmedi mi? (hash manifesti)
+        run: bash backend/tools/migration-manifest.sh verify
+
       # Şema değişikliği yapılıp migration eklenmeyi unutulmuş mu? (Bu projede ham SQL bootstrap yok,
       # şema YALNIZCA migration'larla geliyor — unutulan migration canlıda "unknown column" demek.)
       - name: Bekleyen model değişikliği yok mu?

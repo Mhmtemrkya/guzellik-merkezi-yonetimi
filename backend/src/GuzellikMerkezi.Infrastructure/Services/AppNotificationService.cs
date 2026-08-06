@@ -61,8 +61,8 @@ public sealed class AppNotificationService : IAppNotificationService
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            using var lease = LeaseContext();
+            var db = lease.Db;
 
             var candidates = await db.TenantUsers
                 .IgnoreQueryFilters()
@@ -111,14 +111,44 @@ public sealed class AppNotificationService : IAppNotificationService
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
-            await PublishInScopeAsync(db, tenantId, branchId, recipientIds, type, severity, title, body, data, dedupeKey, ct);
+            using var lease = LeaseContext();
+            await PublishInScopeAsync(lease.Db, tenantId, branchId, recipientIds, type, severity, title, body, data, dedupeKey, ct);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Bildirim üretilemedi ({Type}).", type);
         }
+    }
+
+    /// <summary>
+    /// BİLDİRİM HANGİ İŞLEM BİRİMİNE YAZILIR? (M8)
+    ///
+    /// <para>
+    /// Yayın normalde AYRI bir scope (ayrı DbContext, ayrı bağlantı) kullanır: çağıranın
+    /// unit-of-work'ünü kirletmemek ve bildirim hatasının asıl akışı düşürmemesi için. Ama çağıran
+    /// AÇIK BİR TRANSACTION içindeyse bu ayrım zarar veriyordu: bildirim ayrı bağlantıdan hemen
+    /// commit ediliyor, asıl işlem sonradan GERİ ALINSA bile kalıcı kalıyordu. Kullanıcı
+    /// "randevunuz tamamlandı" bildirimi alıyor, randevu ise hiç değişmemiş oluyordu.
+    /// </para>
+    /// <para>
+    /// Açık transaction varsa ÇAĞIRANIN bağlamına katılırız: bildirim asıl işlemle birlikte kalıcı
+    /// olur ya da onunla birlikte geri alınır. Yoksa eski davranış (ayrı scope) sürer.
+    /// </para>
+    /// </summary>
+    private ContextLease LeaseContext()
+    {
+        if (_db.Database.CurrentTransaction is not null) return new ContextLease(_db, null);
+        var scope = _scopeFactory.CreateScope();
+        return new ContextLease(scope.ServiceProvider.GetRequiredService<GuzellikDbContext>(), scope);
+    }
+
+    /// <summary>Ödünç alınan bağlam; yalnız KENDİ açtığı scope'u kapatır.</summary>
+    private readonly struct ContextLease : IDisposable
+    {
+        public ContextLease(GuzellikDbContext db, IServiceScope? scope) { Db = db; _scope = scope; }
+        private readonly IServiceScope? _scope;
+        public GuzellikDbContext Db { get; }
+        public void Dispose() => _scope?.Dispose();
     }
 
     private async Task PublishInScopeAsync(
@@ -145,11 +175,31 @@ public sealed class AppNotificationService : IAppNotificationService
         var rows = targets
             .Select(id => new AppNotification(tenantId, branchId, id, type, severity, title, body, dataJson, dedupeKey))
             .ToList();
+
+        // YAZMA, TEKİLLEŞTİRMENİN ZORLANDIĞI YERDİR (M5).
+        //
+        // Yukarıdaki "önce sor" kontrolü tek instance'ta yeterliydi; iki backend örneği ya da iki
+        // eşzamanlı çağrı aynı anda "yok" görüp İKİ bildirim yazabiliyordu. Artık benzersiz indeks
+        // (TenantId, RecipientUserId, DedupeKey) ikinciyi eler ve çakışma HATA DEĞİL, "zaten
+        // gönderilmiş" anlamına gelir. Toplu yazma çakışırsa satır satır yeniden denenir:
+        // çakışmayan alıcılar bildirimini alsın, çakışan sessizce atlansın.
         db.AppNotifications.AddRange(rows);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            foreach (var row in rows) db.Entry(row).State = EntityState.Detached;
+            targets = await InsertOneByOneAsync(db, rows, ct);
+            if (targets.Count == 0) return;
+        }
 
         // Satır yazıldıktan SONRA anlık haber ver: alıcı o an ekrandaysa zil sayacı ve akış
         // yoklamayı beklemeden güncellenir. Ulaşmazsa kayıp yok — satır veritabanında duruyor.
+        // NOT: anlık olay KALICI DEĞİLDİR ve yalnız "tazele" anlamı taşır. Açık bir transaction
+        // içinde erken gitmesi en fazla istemciye bir tazeleme fazlası yaptırır; kalıcı bildirim
+        // ise artık aynı transaction'a bağlıdır (bkz. LeaseContext) ve geri alınırsa o da gider.
         foreach (var recipient in targets)
         {
             await _realtime.PublishToUserAsync(tenantId, recipient, new RealtimeEvent(
@@ -161,6 +211,30 @@ public sealed class AppNotificationService : IAppNotificationService
         }
 
         await TrySendPushAsync(db, tenantId, targets, type, severity, title, body, data, ct);
+    }
+
+    /// <summary>
+    /// Toplu yazma benzersiz indekse takıldığında satır satır yazar; GERÇEKTEN yazılan alıcıları
+    /// döner. Çakışan satır "zaten gönderilmiş" demektir — hata değildir, atlanır.
+    /// </summary>
+    private static async Task<List<Guid>> InsertOneByOneAsync(
+        GuzellikDbContext db, IReadOnlyList<AppNotification> rows, CancellationToken ct)
+    {
+        var written = new List<Guid>();
+        foreach (var row in rows)
+        {
+            db.AppNotifications.Add(row);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                written.Add(row.RecipientUserId);
+            }
+            catch (DbUpdateException)
+            {
+                db.Entry(row).State = EntityState.Detached;
+            }
+        }
+        return written;
     }
 
     private async Task TrySendPushAsync(

@@ -11,5 +11,11 @@ public interface IExpenseService
     Task<Result<BusinessExpenseDto>> ApproveAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
     Task<Result<BusinessExpenseDto>> RevokeAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
     Task<Result> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// ONAYLANMIŞ gideri geçersiz kılar (silmez). Ayrı yetki + zorunlu gerekçe ister; satır kalıcı
+    /// iz olarak kalır ve muhasebe toplamlarından düşer (bkz. <see cref="BusinessExpenseDto.VoidedAtUtc"/>).
+    /// </summary>
+    Task<Result<BusinessExpenseDto>> VoidAsync(Guid tenantId, Guid id, VoidExpenseRequest request, CancellationToken cancellationToken = default);
     Task<Result<ExpenseSummaryDto>> SummaryAsync(Guid tenantId, ExpenseFilter filter, CancellationToken cancellationToken = default);
 }

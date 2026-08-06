@@ -47,7 +47,7 @@ public sealed class ApprovalClaimMySqlTests
         private readonly HashSet<string> _appliedKeys = new();
         private int _responsesLost;
 
-        public async Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, CancellationToken cancellationToken = default)
+        public async Task<Result<Guid?>> ReplayAsync(string payloadJson, string idempotencyKey, string requesterAccessToken, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _calls);
             Assert.False(string.IsNullOrWhiteSpace(idempotencyKey), "Replay KARARLI idempotency anahtarı almalı.");
@@ -75,7 +75,9 @@ public sealed class ApprovalClaimMySqlTests
 
     private static PendingOperationService NewService(GuzellikDbContext db, IApprovalReplayer replayer) =>
         new(db, new ThrowingDispatcher(), replayer, new NoopAuditLogger(),
-            new NoopAppNotificationService(), new NoopRealtimeNotifier());
+            new NoopAppNotificationService(), new NoopRealtimeNotifier(),
+            // Replay isteği AÇAN personelin kapsamıyla çalışır; kapsam üretilemezse onay hiç uygulanmaz.
+            new ApprovalRequesterScope(db, TestTokens.Create()));
 
     private sealed class ThrowingDispatcher : IApprovalDispatcher
     {

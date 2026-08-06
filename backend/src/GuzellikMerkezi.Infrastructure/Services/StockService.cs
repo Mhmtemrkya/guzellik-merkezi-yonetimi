@@ -148,6 +148,22 @@ public sealed class StockService : IStockService
         var product = await _db.Products.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, cancellationToken);
         if (product is null) return Result.Failure(Error.NotFound("Ürün bulunamadı."));
         var snapshot = new { product.Name, product.Barcode, product.CurrentStock };
+
+        // STOKLU ÜRÜN HAREKETSİZ SİLİNEMEZ.
+        //
+        // Soft-delete ürünü global süzgeçle gizliyordu: envanter değeri (adet × maliyet) tek
+        // hamlede yok oluyor, stok defterinde bunu açıklayan HİÇBİR hareket bulunmuyordu —
+        // 10 × 100 TL'lik ürün silindiğinde envanter özeti 1.000 TL düşüyor ama nereye gittiği
+        // yazmıyordu. Bakiye önce bir çıkış hareketiyle (fire/zayiat) sıfırlanmalı; böylece
+        // stok defteri ile envanter değeri tutarlı kalır.
+        if (product.CurrentStock > 0)
+        {
+            return Result.Failure(Error.Conflict(
+                $"Bu üründen stokta {product.CurrentStock:0.##} adet var. Önce fire/zayiat çıkışı " +
+                "girip bakiyeyi sıfırlayın, sonra ürünü silin — aksi hâlde envanter değeri " +
+                "hareketsiz kaybolur."));
+        }
+
         product.SoftDelete();
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, product.BranchId, "Delete", "Product", product.Id,
@@ -217,10 +233,42 @@ public sealed class StockService : IStockService
         return Result<IReadOnlyCollection<StockMovementDto>>.Success(items);
     }
 
+    /// <summary>
+    /// Stok hareketi ekler ve ürün bakiyesini AYNI transaction'da günceller.
+    ///
+    /// <para>
+    /// KAYIP GÜNCELLEME (lost update) SOMUT AÇIK: bakiye "oku → bellekte hesapla → yaz" biçiminde
+    /// güncelleniyordu. Stok 5 iken iki eşzamanlı 3'lük çıkış ikisi de 5'i okuyor, ikisi de 2 yazıyordu:
+    /// ÜRÜN 2 GÖRÜNÜYOR ama hareket defteri −6 diyor (gerçek bakiye −1 olmalıydı). Defter ile bakiye
+    /// ayrışıyor, envanter değeri ve kritik stok uyarısı yanlış hesaplanıyordu. Üstelik "negatif olamaz"
+    /// domain kuralı da atlanıyordu: iki istek de kendi okumasına göre kuralı sağlıyordu.
+    /// </para>
+    /// <para>
+    /// ÇÖZÜM ortak protokoldür (bkz. <see cref="RowLock"/>): READ COMMITTED transaction → ürün satırını
+    /// KİLİTLE → kilit altında TAZE oku → deltayı uygula → hareket satırıyla birlikte TEK SaveChanges.
+    /// İkinci istek kilidi bekler, güncellenmiş bakiyeyi görür ve kuralı gerçek değere göre uygular.
+    /// </para>
+    /// </summary>
     public async Task<Result<StockMovementDto>> AddMovementAsync(Guid tenantId, Guid productId, CreateStockMovementRequest request, CancellationToken cancellationToken = default)
     {
+        var relational = _db.Database.IsRelational();
+        // Dış bir transaction varsa (adisyon onayı ürün satışını da yazar) ONA KATILIRIZ; kilit +
+        // taze okuma yine yapılır — koruma transaction'ın sahibi olmaya bağlı değildir.
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "products", productId, cancellationToken);
+
         var product = await _db.Products.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == productId, cancellationToken);
         if (product is null) return Result<StockMovementDto>.Failure(Error.NotFound("Ürün bulunamadı."));
+        // Kilitten ÖNCE okunmuş olabilir (izleyicide duran bayat nesne) → kilit altında yeniden oku.
+        if (relational)
+        {
+            await _db.Entry(product).ReloadAsync(cancellationToken);
+            if (_db.Entry(product).State == EntityState.Detached)
+                return Result<StockMovementDto>.Failure(Error.NotFound("Ürün bulunamadı."));
+        }
 
         var occurredAt = request.OccurredAtUtc ?? DateTime.UtcNow;
         if (occurredAt.Kind != DateTimeKind.Utc) occurredAt = DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc);
@@ -255,8 +303,11 @@ public sealed class StockService : IStockService
             return Result<StockMovementDto>.Failure(Error.Validation(ex.Message));
         }
 
+        // BAKİYE + HAREKET TEK YAZMADA: biri yazılıp diğeri düşerse defter ile bakiye kalıcı olarak ayrışırdı.
         _db.StockMovements.Add(movement);
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
         await _audit.LogAsync(tenantId, product.BranchId, "StockMovement", "Product", product.Id,
             $"{movement.Type}: {product.Name} · {movement.Quantity}",
             new { movement.Type, movement.Quantity, movement.Reference, MovementId = movement.Id }, cancellationToken);

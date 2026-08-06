@@ -60,7 +60,30 @@ builder.Services.AddRateLimiter(options =>
         await context.HttpContext.Response.WriteAsync(
             """{"success":false,"data":null,"error":{"code":"TooManyRequests","message":"Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip tekrar deneyin."}}""", ct);
     };
-    static string ClientIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    /// <summary>
+    /// HIZ SINIRI BÖLÜMLEME ANAHTARI.
+    ///
+    /// <para>
+    /// SOMUT AÇIK: BFF (Next.js proxy) varsayılan olarak <c>X-Forwarded-For</c>'u SİLER — istemci
+    /// sahte IP göndererek sınırı aşmasın diye (doğru bir fail-closed tercih). Ama sonuç olarak
+    /// backend TÜM kullanıcıları tek bir IP'de (proxy) görüyordu: tek bir istemci login/OTP
+    /// kotasını doldurup SİTENİN TAMAMINI 429'a düşürebiliyordu.
+    /// </para>
+    /// <para>
+    /// ÇÖZÜM: proxy, istemci başına sahtelenemez bir bölümleme anahtarı üretir (HttpOnly çerez →
+    /// <c>X-Client-Partition</c>, proxy her istekte ÜZERİNE YAZAR). Bu başlığa yalnız GÜVENİLEN
+    /// proxy'den (loopback) geldiğinde itibar edilir; doğrudan gelen isteklerde yok sayılır ve IP'ye
+    /// düşülür. Böylece istemciler ayrışır, sahtecilik yolu açılmaz.
+    /// </para>
+    /// </summary>
+    static string ClientIp(HttpContext http)
+    {
+        var ip = http.Connection.RemoteIpAddress;
+        var partition = http.Request.Headers["X-Client-Partition"].ToString();
+        if (partition.Length is > 0 and <= 64 && ip is not null && System.Net.IPAddress.IsLoopback(ip))
+            return $"p:{partition}";
+        return ip?.ToString() ?? "unknown";
+    }
     // Müşteri giriş/kayıt: 5 dakikada en fazla 10 deneme (IP başına).
     options.AddPolicy("customer-auth", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));

@@ -1,3 +1,5 @@
+using GuzellikMerkezi.Domain.Enums;
+
 namespace GuzellikMerkezi.Domain;
 
 /// <summary>
@@ -34,6 +36,11 @@ public static class Permissions
     public const string CustomersTags = "Customers.Tags";
     public const string AppointmentsCreate = "Appointments.Create";
     public const string AppointmentsStatus = "Appointments.Status";
+    /// <summary>
+    /// Yanlış tamamlanan randevunun TAMAMLAMASINI geri alma. Durum güncellemeden AYRI yetki:
+    /// tüketilmiş seansı geri verir ve verilmiş sayılan hizmeti geri çeker — düzeltme yetkisidir.
+    /// </summary>
+    public const string AppointmentsVoidCompletion = "Appointments.VoidCompletion";
     public const string WaitlistManage = "Waitlist.Manage";
     /// <summary>Bekleme kaydını randevuya çevirme — gerçek randevu açar, ayrı yetki.</summary>
     public const string WaitlistConvert = "Waitlist.Convert";
@@ -56,6 +63,12 @@ public static class Permissions
     /// Ayrı izin: normal cari/tahsilat yetkisiyle geçmiş bir kasa hareketi yok edilememeli.
     /// </summary>
     public const string AccountingVoidRefund = "Accounting.VoidRefund";
+
+    /// <summary>
+    /// ONAYLANMIŞ bir gideri geçersiz kılma (void). Normal gider yetkisiyle geçmiş bir kasa
+    /// çıkışının muhasebe toplamlarından düşürülmesi engellenir — iade geçersiz kılmayla aynı sınıf.
+    /// </summary>
+    public const string AccountingVoidExpense = "Accounting.VoidExpense";
     public const string NotificationsSend = "Notifications.Send";
     public const string NotificationsTemplates = "Notifications.Templates";
 
@@ -75,6 +88,7 @@ public static class Permissions
         {
             new(AppointmentsCreate, "Randevu oluşturma / düzenleme"),
             new(AppointmentsStatus, "Durum güncelleme (Tamamlandı / İptal / Gelmedi)"),
+            new(AppointmentsVoidCompletion, "Yanlış tamamlamayı geri alma (seansı iade eder)"),
         }),
         new(Waitlist, "Bekleme Listesi", "Dolu güne talep listesini görme", new PermissionAction[]
         {
@@ -111,6 +125,7 @@ public static class Permissions
             new(AccountingCollect, "Tahsilat kaydı alma"),
             new(AccountingExpenses, "Gider girişi"),
             new(AccountingVoidRefund, "Yapılmış para iadesini geçersiz kılma"),
+            new(AccountingVoidExpense, "Onaylanmış gideri geçersiz kılma"),
         }),
         new(Reports, "Raporlar", "Finans, müşteri, personel ve hizmet raporlarını görme (PDF/Excel)", Array.Empty<PermissionAction>()),
         new(Notifications, "Bildirimler", "Mesaj şablonları ve gönderim geçmişini görme", new PermissionAction[]
@@ -141,6 +156,37 @@ public static class Permissions
         // Eski format: sayfa izni var ama sayfanın hiçbir işlem anahtarı atanmamış → tam yetkili say.
         var pagePrefix = pageKey + ".";
         return !granted.Any(p => p.StartsWith(pagePrefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// TEK YETKİLENDİRME KARAR NOKTASI — "bu rol + bu izin listesi, şu izne sahip mi?"
+    ///
+    /// <para>
+    /// Kural iki yerde ayrı ayrı yazılıydı: uçlarda <c>PermissionEndpointFilter</c> ("Staff değilse
+    /// serbest"), servislerde ise elle yazılmış <c>Role == Staff &amp;&amp; !IsActionAllowed(...)</c>
+    /// koşulları. Rol literalinin çağrı yerlerine dağılması iki sorun üretiyordu: (1) payload'a bağlı
+    /// (ör. "istek satış içeriyorsa adisyon izni de iste") kontroller yalnız Staff yolunda uygulanıyor,
+    /// başka roller sessizce atlıyordu; (2) rol modeli değişirse her çağrı yerinin ayrı düzeltilmesi
+    /// gerekiyordu. ASP.NET Core'un yetkilendirme rehberi de kararı tek bir requirement/handler'da
+    /// toplamayı önerir; çağrı yerleri yalnız "hangi izin" der, "hangi rol" demez.
+    /// </para>
+    /// <para>
+    /// ROL MODELİ (burada, bir kez): platform yöneticisi ve kurum yönetici rolleri tam erişimlidir;
+    /// yalnız PERSONEL sayfa/işlem iznine tabidir. Yönetici rollerin JWT'sinde "permission" claim'i
+    /// bulunmaz (bkz. <c>ICurrentUser.Permissions</c>), bu yüzden onları izin listesine bakarak
+    /// değerlendirmek herkesi kilitlerdi.
+    /// </para>
+    /// </summary>
+    public static bool IsGrantedTo(UserRole? role, bool isPlatformAdmin, IReadOnlyCollection<string> granted, string permissionKey)
+    {
+        if (string.IsNullOrEmpty(permissionKey)) return true;
+        if (isPlatformAdmin) return true;
+        if (role is null) return false;
+        if (role != UserRole.Staff) return true;   // kurum sahibi / şube yöneticisi: tam erişim
+
+        return permissionKey.Contains('.')
+            ? IsActionAllowed(granted, permissionKey)
+            : granted.Any(p => string.Equals(p, permissionKey, StringComparison.OrdinalIgnoreCase));
     }
 }
 

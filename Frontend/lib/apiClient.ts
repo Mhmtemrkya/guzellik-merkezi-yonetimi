@@ -1020,6 +1020,13 @@ export const adminApi = {
   changeAppointmentNotes: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/appointments/${id}/notes`, { method: 'PATCH', query: { tenantId }, body }),
   /**
+   * YANLIŞ TAMAMLAMAYI GERİ ALIR: tüketilen paket seansı müşteriye iade edilir ve randevu
+   * "Onaylandı"ya döner. Ayrı yetki ister (Appointments.VoidCompletion). Tamamlama satışı cariye
+   * işlemişse backend reddeder — para hareketinin geri alma yolu satış iptalidir.
+   */
+  voidAppointmentCompletion: <T = unknown>(id: string, reason: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/appointments/${id}/void-completion`, { method: 'POST', query: { tenantId }, body: { reason } }),
+  /**
    * Randevuyu tamamlar ve (verilirse) tahsilatı AYNI transaction'da alır.
    * Ayrı ayrı çağırmak "randevu tamamlandı, para alınmadı" durumunu mümkün kılıyordu:
    * idempotency anahtarı tekrarı güvenli kılar ama atomikliği sağlamaz.
@@ -1247,6 +1254,9 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/expenses/${id}`, { method: 'PUT', query: { tenantId }, body }),
   approveExpense: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/expenses/${id}/approve`, { method: 'PATCH', query: { tenantId } }),
+  // Onaylanmış gider SİLİNMEZ; gerekçesiyle geçersiz kılınır (kayıt iz olarak kalır).
+  voidExpense: <T = unknown>(id: string, reason: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/expenses/${id}/void`, { method: 'POST', query: { tenantId }, body: { reason } }),
   deleteExpense: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/expenses/${id}`, { method: 'DELETE', query: { tenantId } }),
 
@@ -1312,6 +1322,12 @@ export const adminApi = {
     apiRequest<T>(`/api/admin/pending-operations/${id}/reject`, { method: 'PATCH', query: { tenantId }, body: { reason: reason || null } }),
   cancelPendingOperation: (id: string, tenantId?: string): Promise<unknown> =>
     apiRequest<unknown>(`/api/admin/pending-operations/${id}/cancel`, { method: 'PATCH', query: { tenantId } }),
+  /**
+   * TAKILI işlemi insan kararıyla kapatır. `applied` = yönetici hedef kaydı kontrol etti ve işlem
+   * GERÇEKTEN oluştu mu? true → onaylandı kapatılır (iş tekrarlanmaz), false → yeniden onaylanabilir.
+   */
+  resolveStuckPendingOperation: <T = unknown>(id: string, applied: boolean, note: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/pending-operations/${id}/resolve-stuck`, { method: 'PATCH', query: { tenantId }, body: { applied, note } }),
 
   // Notifications — SMS / WhatsApp / E-posta şablonları + gönderim logları
   notificationTemplates: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>

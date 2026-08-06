@@ -61,33 +61,45 @@ public sealed class CommissionService : ICommissionService
         var staff = await _db.StaffMembers.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == staffMemberId, cancellationToken);
         if (staff is null) return Result.Failure(Error.NotFound("Personel bulunamadı."));
 
+        // PRİM ÖDEMESİ ATOMİK VE EŞZAMANLILIĞA DAYANIKLI OLMALI.
+        //
+        // Eski akış iki ayrı yazma yapıyordu: önce toplu `ExecuteUpdate` ile primler "ödendi"
+        // işaretleniyor (kendi başına COMMIT eder), sonra gider ekleniyordu. İki hata sınıfı vardı:
+        //   (1) gider insert'i patlarsa primler ÖDENDİ kalıyor ama kasada karşılığı olmuyordu
+        //       (personel bir daha ödenemez, para da çıkmamış görünür);
+        //   (2) iki eşzamanlı çağrı aynı ödenmemiş kümeyi okuyup İKİ maaş gideri oluşturabiliyordu
+        //       (ikinci update 0 satır etkilese de dönen sayı hiç kontrol edilmiyordu).
+        // Çözüm: personel satırının kilidi (aynı personelin ödemeleri serileşir) + kilit ALTINDA
+        // taze okuma + tek transaction + tek SaveChanges.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "staff_members", staffMemberId, cancellationToken);
+
         var query = _db.StaffCommissions.Where(c => c.TenantId == tenantId && c.StaffMemberId == staffMemberId && !c.IsPaid);
         if (fromUtc.HasValue) { var f = Normalize(fromUtc.Value); query = query.Where(c => c.EarnedAtUtc >= f); }
         if (toUtc.HasValue) { var t = Normalize(toUtc.Value); query = query.Where(c => c.EarnedAtUtc < t); }
 
-        var unpaid = await query.Select(c => new { c.Id, c.Amount }).ToListAsync(cancellationToken);
+        // Kilit altında TAZE okuma: ikinci eşzamanlı çağrı burada boş küme görür ve durur.
+        var unpaid = await query.ToListAsync(cancellationToken);
         if (unpaid.Count == 0) return Result.Failure(Error.Validation("Ödenecek prim yok."));
+
         var total = unpaid.Sum(c => c.Amount);
         var nowUtc = DateTime.UtcNow;
+        foreach (var commission in unpaid) commission.MarkPaid(nowUtc);
 
-        // Primleri ödenmiş işaretle (bulk).
-        await _db.StaffCommissions
-            .Where(c => c.TenantId == tenantId && c.StaffMemberId == staffMemberId && !c.IsPaid
-                     && (!fromUtc.HasValue || c.EarnedAtUtc >= Normalize(fromUtc.Value))
-                     && (!toUtc.HasValue || c.EarnedAtUtc < Normalize(toUtc.Value)))
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.IsPaid, true)
-                .SetProperty(c => c.PaidAtUtc, (DateTime?)nowUtc)
-                .SetProperty(c => c.UpdatedAtUtc, (DateTime?)nowUtc), cancellationToken);
-
-        // Kasaya gider olarak yansıt (Salary kategorisi).
+        // Kasaya gider olarak yansıt (Salary kategorisi) — AYNI transaction, AYNI SaveChanges.
         var expense = new BusinessExpense(
             tenantId, staff.BranchId, ExpenseCategory.Salary, total, nowUtc,
             ExpensePaymentMethod.Cash, $"Prim ödemesi: {staff.FullName}", staffMemberId,
             periodLabel: $"{nowUtc:yyyy-MM}", reference: "PRIM");
         expense.Approve();
         _db.BusinessExpenses.Add(expense);
+
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         await _audit.LogAsync(tenantId, staff.BranchId, "PayCommission", "StaffCommission", staffMemberId,
             $"Prim ödendi: {staff.FullName} · {total:N2}", new { staffMemberId, total, unpaid.Count }, cancellationToken);

@@ -113,6 +113,8 @@ public static class DependencyInjection
         services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IStockService, StockService>();
         services.AddScoped<IApprovalDispatcher, ApprovalDispatcher>();
+        // Onay replay'i isteği AÇAN personelin kapsamıyla çalışır (onaylayanın yetkisiyle değil).
+        services.AddScoped<IApprovalRequesterScope, ApprovalRequesterScope>();
         services.AddScoped<IPendingOperationService, PendingOperationService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();

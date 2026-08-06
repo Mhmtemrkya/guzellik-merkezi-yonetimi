@@ -142,7 +142,7 @@ internal sealed class PlainPasswordHasher : IPasswordHasher
 /// <summary>Sabit jeton üretir; testler jetonun içeriğiyle değil, hangi kaydın seçildiğiyle ilgilenir.</summary>
 internal sealed class StubTokenService : ITokenService
 {
-    public string CreateAccessToken(GuzellikMerkezi.Application.Features.Auth.UserProfileDto profile, DateTime expiresAtUtc) => "access-token";
+    public string CreateAccessToken(GuzellikMerkezi.Application.Features.Auth.UserProfileDto profile, DateTime expiresAtUtc, IReadOnlyDictionary<string, string>? extraClaims = null) => "access-token";
     public string CreateRefreshToken() => Guid.NewGuid().ToString("N");
     public string HashRefreshToken(string refreshToken) => refreshToken;
 }
@@ -164,6 +164,24 @@ internal static class TestSearchIndex
                 ["Encryption:MasterKeyBase64"] = Convert.ToBase64String(new byte[32]),
             })
             .Build());
+}
+
+/// <summary>
+/// Gerçek JWT üreticisi (sabit test anahtarıyla). Onay replay'i isteği AÇAN personelin kapsamıyla
+/// çalıştığı için testlerin token'ı gerçekten üretip claim'lerini okuyabilmesi gerekir.
+/// </summary>
+internal static class TestTokens
+{
+    public static ITokenService Create() =>
+        new GuzellikMerkezi.Infrastructure.Security.JwtTokenService(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Jwt:SigningKey"] = new string('k', 64),
+                    ["Jwt:Issuer"] = "qa",
+                    ["Jwt:Audience"] = "qa",
+                })
+                .Build());
 }
 
 /// <summary>Anlık bildirim yayını testlerde bir yan etki değildir — sessizce yutulur.</summary>

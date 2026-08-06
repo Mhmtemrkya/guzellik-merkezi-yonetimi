@@ -58,6 +58,22 @@ public sealed class PendingOperation : Entity
     public Guid? ResultEntityId { get; private set; }
 
     /// <summary>
+    /// Sahiplenmenin bayat sayılacağı süre. TEK KAYNAK: hem yeniden sahiplenme (ApproveAsync), hem
+    /// "takıldı" rozeti (DTO), hem de elle çözüm kapısı bunu kullanır. Ayrı ayrı tanımlansaydı biri
+    /// diğerinden önce açılır ve elle çözüm SÜRMEKTE OLAN bir replay'in üzerine yazabilirdi.
+    /// </summary>
+    public static readonly TimeSpan ProcessingTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// İşlem TAKILDI mı: sahiplenilmiş ama zaman aşımını geçmiş. Sonucu bilinmeyen bir replay
+    /// (bağlantı koptu / süreç çöktü) kaydı Processing'de bırakır; bu bayrak onu hem yeniden
+    /// denemeye hem de elle çözüme açar.
+    /// </summary>
+    public bool IsClaimStale(DateTime nowUtc) =>
+        Status == PendingOperationStatus.Processing
+        && (UpdatedAtUtc ?? RequestedAtUtc) <= nowUtc - ProcessingTimeout;
+
+    /// <summary>
     /// İşlemi SAHİPLENİR (Pending → Processing). Kilit altında çağrılıp hemen commit edilmelidir:
     /// asıl operasyon ayrı bir bağlantıda (HTTP replay) çalıştığı için tek koruma budur.
     /// </summary>

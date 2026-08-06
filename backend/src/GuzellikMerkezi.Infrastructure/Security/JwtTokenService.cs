@@ -23,7 +23,7 @@ public sealed class JwtTokenService : ITokenService
         _signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
     }
 
-    public string CreateAccessToken(UserProfileDto profile, DateTime expiresAtUtc)
+    public string CreateAccessToken(UserProfileDto profile, DateTime expiresAtUtc, IReadOnlyDictionary<string, string>? extraClaims = null)
     {
         var claims = new List<Claim>
         {
@@ -48,6 +48,10 @@ public sealed class JwtTokenService : ITokenService
         if (profile.BranchId.HasValue) claims.Add(new Claim("branch_id", profile.BranchId.Value.ToString()));
         if (profile.CustomerId.HasValue) claims.Add(new Claim("customer_id", profile.CustomerId.Value.ToString()));
         foreach (var permission in profile.Permissions) claims.Add(new Claim("permission", permission));
+        if (extraClaims is not null)
+        {
+            foreach (var (type, value) in extraClaims) claims.Add(new Claim(type, value));
+        }
 
         var credentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(_issuer, _audience, claims, expires: expiresAtUtc, signingCredentials: credentials);

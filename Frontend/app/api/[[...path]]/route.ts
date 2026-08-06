@@ -121,6 +121,9 @@ const untrustedForwardingHeaders = new Set([
   'x-real-ip',
   'cf-connecting-ip',
   'true-client-ip',
+  // Bölümleme anahtarını YALNIZ bu proxy belirler; istemcinin gönderdiği asla iletilmez.
+  // (Sabit aşağıda tanımlı — burada düz metin, çünkü bu blok modül başında değerlendiriliyor.)
+  'x-client-partition',
 ])
 
 /**
@@ -144,6 +147,21 @@ function copyRequestHeaders(request: NextRequest): Headers {
     headers.set(key, value)
   })
   return headers
+}
+
+/**
+ * Bu tarayıcının bölümleme anahtarını okur; yoksa üretir. `issued` dolu dönerse yanıtla birlikte
+ * çerez yazılmalıdır (yalnız ilk istekte).
+ */
+function resolveClientPartition(request: NextRequest): { value: string; issued: string | null } {
+  const existing =
+    request.cookies.get(CLIENT_PARTITION_COOKIE)?.value ??
+    request.cookies.get(CLIENT_PARTITION_COOKIE.replace('__Host-', ''))?.value
+  // Çerez içeriği istemci tarafından değiştirilebilir (HttpOnly yazmayı engeller, ama kullanıcı
+  // tarayıcı araçlarıyla silebilir) → biçimi doğrula, uydurma uzun değerler kova şişirmesin.
+  if (existing && /^[0-9a-f]{32}$/.test(existing)) return { value: existing, issued: null }
+  const fresh = crypto.randomUUID().replace(/-/g, '')
+  return { value: fresh, issued: fresh }
 }
 
 function copyResponseHeaders(upstreamResponse: Response): Headers {
@@ -174,6 +192,22 @@ async function resolvePath(params: RouteParams | Promise<RouteParams> | undefine
  * çereze yazılır; yenileme/çıkış isteklerinde gövdeye çerezden geri konur. Tarayıcıdaki JavaScript
  * refresh token'ı hiç görmez. Backend sözleşmesi değişmez → mobil/masaüstü istemciler etkilenmez.
  */
+/**
+ * HIZ SINIRI BÖLÜMLEME ÇEREZİ.
+ *
+ * Bu proxy istemcinin `X-Forwarded-For` başlığını varsayılan olarak SİLER (sahte IP ile sınırı
+ * aşmasın diye). Sonuç olarak backend herkesi tek bir IP'de (proxy) görüyor ve TEK bir istemci
+ * login/OTP kotasını doldurup SİTENİN TAMAMINI 429'a düşürebiliyordu. Burada tarayıcı başına
+ * sahtelenemez bir anahtar üretilir: HttpOnly çerezde tutulur, backend'e `X-Client-Partition`
+ * olarak ÜZERİNE YAZILARAK gider (istemcinin gönderdiği değer asla iletilmez).
+ *
+ * Bu bir kimlik değildir, yalnızca kova ayracıdır; çerezi silen yeni bir kova alır — tıpkı IP
+ * değiştirmek gibi. Bu yüzden backend'de IP tabanlı kaba sınır da yerinde kalır.
+ */
+const CLIENT_PARTITION_COOKIE = '__Host-ba-cid'
+const CLIENT_PARTITION_HEADER = 'x-client-partition'
+const CLIENT_PARTITION_MAX_AGE = 60 * 60 * 24 * 365
+
 const REFRESH_COOKIE = '__Host-ba-refresh'
 const REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 gün (müşteri portalı refresh ömrü)
 
@@ -238,6 +272,10 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
   let body = method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer()
   const headers = copyRequestHeaders(request)
 
+  // Hız sınırı kovası: backend tüm istemcileri proxy IP'sinde birleştirmesin (bkz. sabitin notu).
+  const partition = resolveClientPartition(request)
+  headers.set(CLIENT_PARTITION_HEADER, partition.value)
+
   if (TOKEN_CONSUMING_PATHS.has(upstreamPath)) {
     body = await injectRefreshTokenFromCookie(request, body)
     if (body) headers.set('content-length', String(body.byteLength))
@@ -285,6 +323,21 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
         statusText: upstreamResponse.statusText,
         headers: responseHeaders,
       })
+
+      // Bölümleme çerezi ilk istekte yazılır. HttpOnly: sayfa betiği okuyup değiştiremez;
+      // SameSite=Lax: normal gezinmede taşınır. Kimlik taşımaz, yalnız kova ayracıdır.
+      if (partition.issued) {
+        const partitionSecure = sourceUrl.protocol === 'https:'
+        response.cookies.set({
+          name: partitionSecure ? CLIENT_PARTITION_COOKIE : CLIENT_PARTITION_COOKIE.replace('__Host-', ''),
+          value: partition.issued,
+          httpOnly: true,
+          secure: partitionSecure,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: CLIENT_PARTITION_MAX_AGE,
+        })
+      }
 
       if (issuedRefreshToken) {
         // __Host- öneki: Secure + Path=/ + Domain yok zorunlu. HTTP'de (yerel geliştirme) tarayıcı

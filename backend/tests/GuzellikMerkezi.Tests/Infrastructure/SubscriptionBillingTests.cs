@@ -326,12 +326,15 @@ public sealed class SubscriptionBillingTests
         public bool IsEncrypted(string? value) => false;
     }
 
+    /// <summary>Simülasyon form anahtarını imzalayan test sırrı (üretimde sunucu sırrı kullanılır).</summary>
+    private const string SimulationSigningSecret = "qa-simulation-signing-secret";
+
     /// <summary>Her zaman simülasyon sağlayıcısını döner (gerçek çekim yok).</summary>
     private sealed class SimulationGatewayResolver : IPaymentGatewayResolver
     {
         public Task<Result<PaymentGatewayContext>> ResolveAsync(CancellationToken ct = default) =>
             Task.FromResult(Result<PaymentGatewayContext>.Success(
-                new PaymentGatewayContext(new SimulationPaymentGateway(), "https://panel.test/admin/paket")));
+                new PaymentGatewayContext(new SimulationPaymentGateway(SimulationSigningSecret), "https://panel.test/admin/paket")));
     }
 
     /// <summary>Ödeme altyapısı kapalı — gerçek çözücünün ayar yokken verdiği cevabın aynısı.</summary>

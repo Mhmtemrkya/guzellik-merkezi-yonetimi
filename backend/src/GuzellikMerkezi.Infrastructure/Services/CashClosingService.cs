@@ -20,13 +20,17 @@ public sealed class CashClosingService : ICashClosingService
     private readonly IFeatureService _features;
     private readonly IAppNotificationService _notifications;
 
-    public CashClosingService(GuzellikDbContext db, ICashFlowService cashFlow, IAuditLogger audit, IFeatureService features, IAppNotificationService notifications)
+    /// <summary>İsteğin ETKİN şube kapsamı — kapanışın şubesi buradan gelir, gövdeden değil.</summary>
+    private readonly ITenantContext? _tenantContext;
+
+    public CashClosingService(GuzellikDbContext db, ICashFlowService cashFlow, IAuditLogger audit, IFeatureService features, IAppNotificationService notifications, ITenantContext? tenantContext = null)
     {
         _db = db;
         _cashFlow = cashFlow;
         _audit = audit;
         _features = features;
         _notifications = notifications;
+        _tenantContext = tenantContext;
     }
 
     private const string FeatureDeniedMessage = "Gün sonu kasa kapanışı özelliği paketinizde yok. Üst pakete geçerek kullanabilirsiniz.";
@@ -48,7 +52,10 @@ public sealed class CashClosingService : ICashClosingService
 
     public async Task<Result<CashClosingPreviewDto>> GetPreviewAsync(Guid tenantId, DateOnly businessDate, DateTime fromUtc, DateTime toUtc, decimal? openingBalance, CancellationToken cancellationToken = default)
     {
-        var (cashIncome, cashExpense) = await CashTotalsAsync(tenantId, fromUtc, toUtc, cancellationToken);
+        // ÖNİZLEMEDE DE HATA YUTULMAZ: ekranda 0/0 göstermek kullanıcıyı yanlış sayıma yönlendirir.
+        var totals = await CashTotalsAsync(tenantId, fromUtc, toUtc, cancellationToken);
+        if (totals.IsFailure) return Result<CashClosingPreviewDto>.Failure(totals.Error);
+        var (cashIncome, cashExpense) = totals.Value;
         var closings = await _db.CashRegisterClosings.AsNoTracking().Where(c => c.TenantId == tenantId).ToListAsync(cancellationToken);
 
         var suggestedOpening = openingBalance
@@ -65,7 +72,24 @@ public sealed class CashClosingService : ICashClosingService
     {
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.FinanceCashClosing, cancellationToken))
             return Result<CashClosingDto>.Failure(Error.Conflict(FeatureDeniedMessage));
-        var (cashIncome, cashExpense) = await CashTotalsAsync(tenantId, request.FromUtc, request.ToUtc, cancellationToken);
+        var totals = await CashTotalsAsync(tenantId, request.FromUtc, request.ToUtc, cancellationToken);
+        if (totals.IsFailure) return Result<CashClosingDto>.Failure(totals.Error);
+        var (cashIncome, cashExpense) = totals.Value;
+
+        // KAPANIŞIN ŞUBESİ HESABIN KAPSAMIYLA AYNI OLMALI.
+        //
+        // Şube gövdeden geliyordu, tutarlar ise isteğin ETKİN kapsamından (aktif şube süzgeci)
+        // hesaplanıyor: kurum genelinde çalışan bir kullanıcı gövdeye Şube A yazarak KURUM
+        // toplamını A'nın kapanışına yazdırabiliyordu (A=1.000, B=2.000 iken A'ya 3.000).
+        // Kapanış artık hesabın yapıldığı kapsamı taşır: şube süzgeci varsa o şube, yoksa
+        // kurum geneli (şubesiz) kayıt.
+        var effectiveBranchId = _tenantContext?.BranchId;
+        if (effectiveBranchId is not null && request.BranchId is not null && request.BranchId != effectiveBranchId)
+        {
+            await _audit.LogAsync(tenantId, effectiveBranchId, "BranchScopeOverride", "CashRegisterClosing", null,
+                "Kasa kapanışı isteğinde başka şube gönderildi; hesabın yapıldığı şubeye sabitlendi.",
+                new { RequestedBranchId = request.BranchId, EffectiveBranchId = effectiveBranchId }, cancellationToken);
+        }
 
         // Gün başına tek kapanış — varsa güncelle (yeniden say), yoksa oluştur.
         var existing = await _db.CashRegisterClosings
@@ -74,7 +98,7 @@ public sealed class CashClosingService : ICashClosingService
         CashRegisterClosing closing;
         if (existing is null)
         {
-            closing = new CashRegisterClosing(tenantId, request.BranchId, request.BusinessDate,
+            closing = new CashRegisterClosing(tenantId, effectiveBranchId, request.BusinessDate,
                 request.OpeningBalance, cashIncome, cashExpense, request.CountedCash, request.Note);
             _db.CashRegisterClosings.Add(closing);
         }
@@ -113,13 +137,25 @@ public sealed class CashClosingService : ICashClosingService
         return Result.Success();
     }
 
-    // Verilen aralıktaki NAKİT tahsilat ve gideri (cashflow özetinden, method='cash').
-    private async Task<(decimal Income, decimal Expense)> CashTotalsAsync(Guid tenantId, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken)
+    /// <summary>
+    /// Verilen aralıktaki NAKİT tahsilat ve gideri (cashflow özetinden, method='cash').
+    ///
+    /// <para>
+    /// HATA YUTULMAZ. Eskiden cashflow başarısız olduğunda sessizce <c>(0, 0)</c> dönülüyordu:
+    /// kapanış kaydı KALICI olarak "0 gelir / 0 gider" yazılıyor, gün sonu farkı tamamen yanlış
+    /// hesaplanıyordu. Kasa kapanışı muhasebe kaydıdır; hesaplanamıyorsa yazılmamalıdır.
+    /// </para>
+    /// </summary>
+    private async Task<Result<(decimal Income, decimal Expense)>> CashTotalsAsync(Guid tenantId, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken)
     {
         var summary = await _cashFlow.SummaryAsync(tenantId, new CashFlowFilter(fromUtc, toUtc), cancellationToken);
-        if (summary.IsFailure || summary.Value is null) return (0m, 0m);
+        if (summary.IsFailure)
+            return Result<(decimal, decimal)>.Failure(summary.Error);
+        if (summary.Value is null)
+            return Result<(decimal, decimal)>.Failure(Error.Conflict("Kasa hareketleri hesaplanamadı; kapanış kaydedilmedi."));
+
         var cash = summary.Value.ByMethod.FirstOrDefault(m => m.Method == "cash");
-        return (cash?.IncomeAmount ?? 0m, cash?.ExpenseAmount ?? 0m);
+        return Result<(decimal, decimal)>.Success((cash?.IncomeAmount ?? 0m, cash?.ExpenseAmount ?? 0m));
     }
 
     private static CashClosingDto ToDto(CashRegisterClosing c) => new(

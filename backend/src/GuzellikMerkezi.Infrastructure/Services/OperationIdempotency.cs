@@ -171,4 +171,39 @@ public static class OperationIdempotency
             // En kötü durumda satır "çözülmemiş" kalır; yalnız o anahtarın tekrarını bloklar.
         }
     }
+
+    /// <summary>
+    /// ELLE ÇÖZÜM (dead-letter çıkışı). Sonucu belirsiz kalan bir rezervasyon otomatik olarak
+    /// ÇÖZÜLEMEZ: sistem hedefin commit edip etmediğini bilemez, bu yüzden her tekrar denemesi
+    /// sonsuza dek "uygulanmış olabilir" der ve işlem takılı kalır. Çıkış yolu bir İNSAN kararıdır:
+    /// yetkili kaydı kontrol eder ve gerçeği bildirir.
+    /// <para>
+    /// <paramref name="applied"/> = true → anahtar TAMAMLANMIŞ damgalanır; sonraki denemeler işi
+    /// tekrarlamaz. false → rezervasyon silinir ve işlem dürüst bir tekrara açılır.
+    /// </para>
+    /// <para>
+    /// ÇELİŞKİ KORUMASI: kayıt zaten "uygulandı" diyorsa (StatusCode &lt;&gt; 0) ve yetkili
+    /// "uygulanmadı" derse <c>false</c> döner — defter insandan daha güvenilirdir; anahtarı silip
+    /// işi ikinci kez uygulatmak muhasebeyi bozardı.
+    /// </para>
+    /// </summary>
+    /// <returns>Çözüm uygulanabildiyse true; defterle çelişiyorsa false.</returns>
+    public static async Task<bool> ResolveUnknownAsync(
+        GuzellikDbContext db, Guid tenantId, string key, bool applied, CancellationToken ct)
+    {
+        var row = await FindAsync(db, tenantId, key, ct);
+        // Hiç rezervasyon yok: HttpReplay isteği hedefe hiç ulaşmamış olabilir. Çözecek bir şey yok.
+        if (row is null) return true;
+
+        if (!row.IsPending) return applied;   // defter "uygulandı" diyor → yalnız bu karar geçerli
+
+        if (applied)
+        {
+            await CompleteAsync(db, row.Id, null);
+            return true;
+        }
+
+        await ReleaseAsync(db, row.Id);
+        return true;
+    }
 }

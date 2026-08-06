@@ -54,6 +54,15 @@ public sealed record ChangeAppointmentStatusRequest(AppointmentStatus Status, st
 public sealed record CompleteAppointmentRequest(string? Reason, CompleteAppointmentPaymentDto? Payment);
 
 /// <summary>
+/// Yanlış tamamlanan randevunun tamamlamasını geri alma isteği.
+/// </summary>
+/// <param name="Reason">
+/// Neden geri alındığı — ZORUNLU. Tüketilmiş seansı iade eden ve verilmiş sayılan hizmeti geri
+/// çeken bir düzeltmedir; gerekçesi denetim kaydında kalıcı durur.
+/// </param>
+public sealed record VoidAppointmentCompletionRequest(string Reason);
+
+/// <summary>
 /// Randevu tamamlanırken alınacak tahsilat. <paramref name="AccountId"/> verilmezse müşterinin
 /// borcu olan en eski carisi seçilir; cari yoksa açık adisyon üzerinden tahsil edilir.
 /// </summary>

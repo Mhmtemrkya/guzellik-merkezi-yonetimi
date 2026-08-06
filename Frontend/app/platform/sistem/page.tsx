@@ -318,7 +318,13 @@ export default function PlatformSistemPage() {
   const { data, loading, error } = useApiQuery<HealthData>(
     async () => ({
       live: (await healthApi.live()) as HealthData['live'],
-      ready: (await healthApi.ready()) as HealthData['ready'],
+      // READINESS ARTIK ŞEMA PARİTESİNE DE BAKAR: uygulanmamış migration varsa 503 döner.
+      // Bu sayfa tam da o durumu teşhis etmek için var — isteği düşürüp sayfayı komple hataya
+      // sokmak yerine hatayı DURUM OLARAK gösteririz.
+      ready: (await healthApi.ready().catch((e: unknown) => ({
+        status: 'hazır değil',
+        detail: e instanceof Error ? e.message : 'Readiness kontrolü başarısız.',
+      }))) as HealthData['ready'],
       system: await platformApi.systemSettings<ApiSystemSettings>().catch(() => null),
       queue: await platformApi.queueStatus<ApiQueueStatus>().catch(() => null),
     }),
@@ -346,7 +352,9 @@ export default function PlatformSistemPage() {
     },
     {
       title: `Health ready: ${readyStatus || (loading ? 'yükleniyor' : 'bilinmiyor')}`,
-      description: 'Readiness endpoint’i servis bağımlılıklarının hazır olup olmadığını gösterir.',
+      description: typeof data?.ready?.detail === 'string'
+        ? String(data.ready.detail)
+        : 'Readiness endpoint’i veritabanı bağlantısını ve şema paritesini (uygulanmamış migration) gösterir.',
       meta: 'Ready',
       href: '/platform/sistem',
     },

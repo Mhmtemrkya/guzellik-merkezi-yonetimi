@@ -121,7 +121,7 @@ public static class DatabaseBootstrap
     /// </summary>
     private static async Task ApplyPendingMigrationsAsync(GuzellikDbContext db, string[] pending, ILogger? logger)
     {
-        const string LockName = "beautyasist_migrations";
+        var lockName = MigrationLockName(db);
 
         var migrationsAssembly = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsAssembly>();
         var sqlGenerator = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>();
@@ -134,10 +134,19 @@ public static class DatabaseBootstrap
         var modelInitializer = db.GetService<IModelRuntimeInitializer>();
         var productVersion = typeof(DbContext).Assembly.GetName().Version?.ToString(3) ?? "10.0.0";
 
-        if (!await TryAcquireMigrationLockAsync(db, LockName))
+        // KİLİT ALINAMAZSA AÇILIŞ DURUR (fail-closed).
+        //
+        // Eskiden yalnızca uyarı loglanıp devam ediliyordu: yeni binary, ESKİ ŞEMA üzerinde trafik
+        // kabul ediyordu. Sonuç sessiz ve tehlikelidir — eksik kolona yazan uçlar 500 verir,
+        // beklenen kısıtlar yoktur, veri yanlış yazılabilir. 90 saniye bekleyip kilit hâlâ
+        // alınamıyorsa doğru davranış hizmete BAŞLAMAMAKTIR: operatör durumu görür ve düzeltir.
+        if (!await TryAcquireMigrationLockAsync(db, lockName))
         {
-            logger?.LogWarning("Migration kilidi alınamadı (başka bir örnek uyguluyor olabilir); bu açılışta migration uygulanmadı.");
-            return;
+            throw new InvalidOperationException(
+                "Migration kilidi alınamadı (90 sn). Başka bir örnek migration uyguluyor olabilir ya da " +
+                "kilit sahibi bir oturum takılmış olabilir. Şema durumu bilinmediği için uygulama " +
+                $"BAŞLATILMADI — birkaç dakika sonra yeniden deneyin; sürerse veritabanında " +
+                $"`SELECT IS_USED_LOCK('{lockName}');` ile kilit sahibini kontrol edin.");
         }
 
         try
@@ -147,11 +156,35 @@ public static class DatabaseBootstrap
             if (pending.Length == 0) return;
 
             await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript());
+            await EnsureMigrationAttemptTableAsync(db);
+
+            // YARIM KALMIŞ MIGRATION VARSA AÇILIŞ DURUR.
+            //
+            // MariaDB'de DDL ÖRTÜK COMMIT üretir: `ALTER TABLE` uygulandıktan sonra, geçmiş satırı
+            // yazılmadan süreç ölürse şema değişmiş ama migration "bekliyor" görünür. Bir sonraki
+            // açılış aynı DDL'i tekrar çalıştırır ve "Duplicate column" ile PATLAR — üstelik her
+            // açılışta, yani kalıcı bir açılış kilidi (brick) oluşur. Otomatik onarım güvenli
+            // değildir (hangi komutların geçtiği bilinmiyor); doğru davranış operatöre NE OLDUĞUNU
+            // ve NE YAPACAĞINI net söylemektir.
+            var abandoned = await ReadMigrationAttemptAsync(db);
+            if (abandoned is { } stuck && pending.Contains(stuck))
+            {
+                throw new InvalidOperationException(
+                    $"Önceki açılışta '{stuck}' migration'ı YARIDA KALDI (şema değişmiş olabilir ama " +
+                    "geçmişe yazılmadı). Otomatik devam etmek aynı DDL'i tekrar çalıştırıp kalıcı " +
+                    "açılış hatası üretir. Yapılacak: şemayı kontrol edin; migration GERÇEKTEN " +
+                    $"uygulanmışsa `INSERT INTO __EFMigrationsHistory VALUES ('{stuck}', '{productVersion}');` " +
+                    "yazıp `DELETE FROM __migration_attempt;` çalıştırın; uygulanmamışsa yalnızca " +
+                    "`DELETE FROM __migration_attempt;` yeterlidir.");
+            }
 
             foreach (var migrationId in pending)
             {
                 if (!migrationsAssembly.Migrations.TryGetValue(migrationId, out var migrationType))
                     throw new InvalidOperationException($"Migration bulunamadı: {migrationId}");
+
+                // DDL'DEN ÖNCE İZ BIRAK: çökme penceresinde hangi migration'ın yarıda kaldığı bilinsin.
+                await WriteMigrationAttemptAsync(db, migrationId);
 
                 var migration = migrationsAssembly.CreateMigration(migrationType, db.Database.ProviderName!);
                 var targetModel = migration.TargetModel is { } m ? modelInitializer.Initialize(m) : null;
@@ -160,27 +193,91 @@ public static class DatabaseBootstrap
 
                 await db.Database.ExecuteSqlRawAsync(
                     history.GetInsertScript(new Microsoft.EntityFrameworkCore.Migrations.HistoryRow(migrationId, productVersion)));
+                await ClearMigrationAttemptAsync(db);
                 logger?.LogInformation("Migration uygulandı: {Migration}", migrationId);
             }
         }
         finally
         {
-            await ReleaseMigrationLockAsync(db, LockName);
+            await ReleaseMigrationLockAsync(db, lockName);
         }
     }
+
+    /// <summary>
+    /// MIGRATION KİLİDİNİN ADI — VERİTABANINA ÖZELDİR.
+    ///
+    /// <para>
+    /// <c>GET_LOCK</c> SUNUCU GENELİNDE tektir, veritabanı başına değil. Sabit bir ad kullanmak,
+    /// aynı MariaDB sunucusundaki AYRI kurulumların (canlı + staging, ya da çok kiracılı barındırma)
+    /// birbirinin açılışını kilitlemesi demekti: biri migration uygularken diğeri 90 sn bekleyip
+    /// hata ile durur. Kilit korumak istediği şeyin — TEK BİR ŞEMANIN — adıyla anılmalıdır.
+    /// </para>
+    /// <para>
+    /// Ad kısaltılır: MySQL kilit adları 64 karakterle sınırlıdır ve veritabanı adı uzun olabilir.
+    /// SHA-256'nın ilk 16 hex hanesi çakışma için fazlasıyla yeterlidir.
+    /// </para>
+    /// </summary>
+    public static string MigrationLockName(GuzellikDbContext db)
+    {
+        var database = db.Database.GetDbConnection().Database ?? string.Empty;
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(database));
+        return $"beautyasist_mig_{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// YARIM KALAN MIGRATION İZİ. Tek satırlı küçük bir tablo: DDL'den ÖNCE yazılır, geçmiş satırı
+    /// yazıldıktan SONRA silinir. Aradaki çökme bu satırla teşhis edilir (bkz. ApplyPendingMigrationsAsync).
+    /// </summary>
+    private static Task EnsureMigrationAttemptTableAsync(GuzellikDbContext db) =>
+        db.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS `__migration_attempt` (" +
+            "`MigrationId` VARCHAR(150) NOT NULL, `StartedAtUtc` DATETIME(6) NOT NULL, " +
+            "PRIMARY KEY (`MigrationId`)) CHARACTER SET utf8mb4;");
+
+    private static async Task<string?> ReadMigrationAttemptAsync(GuzellikDbContext db)
+    {
+        var rows = await db.Database
+            .SqlQueryRaw<string>("SELECT `MigrationId` AS Value FROM `__migration_attempt` LIMIT 1")
+            .ToListAsync();
+        return rows.FirstOrDefault();
+    }
+
+    private static async Task WriteMigrationAttemptAsync(GuzellikDbContext db, string migrationId)
+    {
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM `__migration_attempt`");
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO `__migration_attempt` (`MigrationId`, `StartedAtUtc`) VALUES ({0}, {1})",
+            migrationId, DateTime.UtcNow);
+    }
+
+    private static Task ClearMigrationAttemptAsync(GuzellikDbContext db) =>
+        db.Database.ExecuteSqlRawAsync("DELETE FROM `__migration_attempt`");
 
     /// <summary>
     /// Adlandırılmış kilit alır. <c>GET_LOCK</c> 1 (alındı), 0 (zaman aşımı) ya da NULL (hata)
     /// döner — NULL'u <c>long</c>'a çevirmeye çalışmak sağlayıcıdaki hatanın ta kendisiydi;
     /// burada açıkça "alınamadı" sayılır. İlişkisel olmayan sağlayıcıda kilit yoktur (true döner).
     /// </summary>
+    /// <summary>Kilit için beklenecek süre (saniye).</summary>
+    private const int MigrationLockWaitSeconds = 90;
+
     private static async Task<bool> TryAcquireMigrationLockAsync(GuzellikDbContext db, string lockName)
     {
         if (!db.Database.IsRelational()) return true;
         var conn = db.Database.GetDbConnection();
         if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT GET_LOCK(@n, 90);";
+        cmd.CommandText = $"SELECT GET_LOCK(@n, {MigrationLockWaitSeconds});";
+
+        // KOMUT ZAMAN AŞIMI, BEKLEME SÜRESİNDEN UZUN OLMALI.
+        //
+        // Sürücünün varsayılan komut zaman aşımı 30 saniyedir; GET_LOCK 90 saniye beklerken komut
+        // ÖNCE zaman aşımına uğruyordu. Sonuç iki yönden kötüydü: (1) kilit gerçekten meşgulken
+        // "alınamadı" yerine anlaşılmaz bir sürücü hatası düşüyor, operatör sebebi göremiyordu;
+        // (2) MySql.Data zaman aşımını YAN BİR BAĞLANTIDAN kill ederek uyguladığı için, kilit
+        // beklerken bu ikinci bağlantı da bloklanıp süreci tamamen kilitleyebiliyordu.
+        cmd.CommandTimeout = MigrationLockWaitSeconds + 30;
+
         var p = cmd.CreateParameter();
         p.ParameterName = "@n";
         p.Value = lockName;
@@ -897,15 +994,55 @@ public static class DatabaseBootstrap
             catch (DbUpdateException ex)
             {
                 // Yarisi baska bir ornek kazandi; veri zaten dogru -> sessizce gec.
-                logger.LogInformation(ex, "Peşinat taşıma yarışı başka bir örnek tarafından tamamlandı.");
+                // KAPSAM YİNE DE DOĞRULANIR: yarışı kaybettiğimizi VARSAYMAK yetmez, diğer örnek
+                // gerçekten tamamlamış olmalı (aksi hâlde eksik peşinatla trafik açılırdı).
+                logger.LogInformation(ex, "Peşinat taşıma yarışı başka bir örnek tarafından tamamlandı; kapsam doğrulanıyor.");
+                db.ChangeTracker.Clear();
+                await EnsureDepositCoverageAsync(db, logger);
                 return;
             }
             logger.LogInformation("{Count} peşinat gerçek tahsilat hareketine taşındı.", added);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Peşinat taşıma işi tamamlanamadı; peşinatlar kasa defterinde görünmeyebilir.");
+            // FAIL-OPEN DEĞİL: peşinat taşınamadıysa cari "tahsil edilmiş" sayarken kasa/rapor o
+            // parayı görmez — uygulama bu durumda trafik ALMAMALI. İş veri-only ve idempotenttir;
+            // hata gerçek bir sorunun (şema, bağlantı, veri) işaretidir ve açılışı durdurmalıdır.
+            logger.LogError(ex, "Peşinat taşıma işi tamamlanamadı; açılış durduruluyor (peşinatlar kasa defterinde eksik kalırdı).");
+            throw;
         }
+    }
+
+    /// <summary>
+    /// Taşınmamış peşinat KALDI MI? Yarış sonrası çağrılır: "diğer örnek hallettiyse" varsayımı
+    /// doğrulanır. Eksik varsa istisna atılır — açılış durur.
+    /// </summary>
+    private static async Task EnsureDepositCoverageAsync(GuzellikDbContext db, ILogger logger)
+    {
+        var accountIds = (await db.CustomerAccounts.IgnoreQueryFilters()
+            .Where(a => !a.IsDeleted && a.DepositAmount > 0m)
+            .Select(a => a.Id)
+            .ToListAsync()).ToHashSet();
+        if (accountIds.Count == 0) return;
+
+        // Kapsam ölçütü ana döngüyle AYNI olmalı: deterministik Id ya da "Peşinat" referansı.
+        // Sıradan bir tahsilat satırını "peşinat taşındı" saymak eksikliği gizlerdi.
+        var covered = (await db.AccountPayments.IgnoreQueryFilters()
+                .Where(x => db.CustomerAccounts.IgnoreQueryFilters()
+                    .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
+                .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
+                .ToListAsync())
+            .Where(x => x.Id == x.CustomerAccountId
+                        || string.Equals(x.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.CustomerAccountId)
+            .ToHashSet();
+
+        var missing = accountIds.Count(id => !covered.Contains(id));
+        if (missing == 0) return;
+
+        logger.LogError("{Count} carinin peşinatı hâlâ tahsilat hareketine taşınmamış.", missing);
+        throw new InvalidOperationException(
+            $"{missing} carinin peşinatı tahsilat hareketine taşınamadı; uygulama eksik kasa defteriyle açılmamalı.");
     }
 
     /// <summary>

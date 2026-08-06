@@ -88,28 +88,36 @@ public sealed class RabbitMqJobConsumerHostedService : BackgroundService
         if (!connection.IsOpen) throw new InvalidOperationException("RabbitMQ bağlantısı kapandı.");
     }
 
-    /// <summary>Sinyali gelen tek işi işler — DurableJobHostedService ile aynı durum makinesi.</summary>
+    /// <summary>
+    /// Sinyali gelen tek işi işler — DurableJobHostedService ile AYNI sahiplenme protokolü.
+    ///
+    /// <para>
+    /// Bu yol ile DB poller aynı satır için yarışabilir (broker sinyali ile poll turu çakışır).
+    /// Sahiplenme koşullu tek UPDATE olduğu için yalnız biri kazanır; kaybeden hiç çalışmaz.
+    /// Eskiden ikisi de okuyup ikisi de handler'ı çalıştırabiliyordu — handler dış dünyaya
+    /// yazdığından (WhatsApp, push) müşteriye çift mesaj gidiyordu.
+    /// </para>
+    /// </summary>
     private async Task ProcessJobAsync(Guid jobId, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
-        var now = DateTime.UtcNow;
-        var job = await db.BackgroundJobs.FirstOrDefaultAsync(
-            j => j.Id == jobId &&
-                 ((j.Status == "Pending" && j.NextAttemptUtc <= now)
-                  || (j.Status == "Processing" && j.LockedUntilUtc != null && j.LockedUntilUtc < now)), ct);
-        if (job is null) return; // poller almış ya da bitmiş — mesaj güvenle yutulur
+        var job = await db.BackgroundJobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null) return; // satır yok (temizlenmiş) — mesaj güvenle yutulur
 
-        job.MarkProcessing(LockDuration);
-        await db.SaveChangesAsync(ct);
+        var token = Guid.NewGuid().ToString("N");
+        if (!await DurableJobClaim.TryClaimAsync(db, job, token, LockDuration, ct))
+            return; // poller almış ya da bitmiş — mesaj güvenle yutulur
 
+        bool succeeded;
+        string? error = null;
         try
         {
             var handler = scope.ServiceProvider.GetServices<IDurableJobHandler>()
                 .FirstOrDefault(h => string.Equals(h.JobType, job.Type, StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException($"'{job.Type}' için kayıtlı handler yok.");
             await handler.ExecuteAsync(job.PayloadJson, ct);
-            job.MarkSucceeded();
+            succeeded = true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -117,10 +125,17 @@ public sealed class RabbitMqJobConsumerHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            job.MarkFailedAttempt(ex.Message);
+            succeeded = false;
+            error = ex.Message;
             _logger.LogWarning(ex, "Kalıcı iş başarısız (RabbitMQ yolu, type={Type}, attempt={Attempt}/{Max}).",
-                job.Type, job.Attempts, job.MaxAttempts);
+                job.Type, job.Attempts + 1, job.MaxAttempts);
         }
-        await db.SaveChangesAsync(ct);
+
+        if (!await DurableJobClaim.TryCompleteAsync(db, job, token, succeeded, error, ct))
+        {
+            _logger.LogWarning(
+                "Kalıcı iş sonucu yazılamadı, sahiplenme kaybedilmiş (RabbitMQ yolu, id={JobId}, type={Type}).",
+                job.Id, job.Type);
+        }
     }
 }
