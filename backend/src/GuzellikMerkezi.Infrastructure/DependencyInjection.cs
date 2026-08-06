@@ -83,7 +83,9 @@ public static class DependencyInjection
 
             var connectionString = configuration.GetConnectionString("DefaultConnection")
                 ?? "server=localhost;port=3306;database=guzellik_merkezi_dev;user=root;password=change-me;";
-            options.UseMySQL(connectionString);
+            // Bağlantı karakter seti utf8mb4 olmalı; sunucu varsayılanı utf8mb3/latin1 ise Türkçe
+            // harfler sessizce kayboluyordu (bkz. MySqlConnectionStrings).
+            options.UseMySQL(MySqlConnectionStrings.EnsureUtf8Mb4(connectionString));
         });
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<GuzellikDbContext>());

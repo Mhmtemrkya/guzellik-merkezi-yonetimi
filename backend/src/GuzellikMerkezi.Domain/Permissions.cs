@@ -182,7 +182,22 @@ public static class Permissions
         if (string.IsNullOrEmpty(permissionKey)) return true;
         if (isPlatformAdmin) return true;
         if (role is null) return false;
-        if (role != UserRole.Staff) return true;   // kurum sahibi / şube yöneticisi: tam erişim
+        // KURUM SAHİBİ / ŞUBE YÖNETİCİSİ: TAM ERİŞİM — BU BİLİNÇLİ BİR TASARIM KARARIDIR.
+        //
+        // Denetimlerde "BranchManager granular izni atlıyor" diye iki kez işaretlendi; kayda
+        // geçiyoruz: ince yetki listesi bu üründe YALNIZ personel (Staff) için vardır. İzin listesi
+        // (TenantUser.Permissions) yalnızca Staff hesabı açılırken/güncellenirken atanır
+        // (bkz. StaffService.SetPermissions çağrıları); yönetici rollerine hiç liste yazılmaz.
+        // Dolayısıyla burada "atlanan" bir kısıt yoktur — kısıt hiç tanımlanmamıştır.
+        //
+        // Bileşik kuralların (ör. "satışlı randevu ayrıca Accounting.Adisyon ister") amacı
+        // BİLEŞİMLE YETKİ YÜKSELTMEYİ engellemektir; yönetici rolünde yükseltilecek bir şey yoktur,
+        // muhasebe erişimi zaten rolün parçasıdır. Yöneticiyi burada kısıtlamak, sahip olması
+        // gereken işlevleri kapatmak olurdu.
+        //
+        // Yönetici rollerini gerçekten kısıtlamak istenirse doğru yol bu satırı değiştirmek değil,
+        // o roller için de bir izin listesi TANIMLAMAK ve atamaktır (ürün kararı).
+        if (role != UserRole.Staff) return true;
 
         return permissionKey.Contains('.')
             ? IsActionAllowed(granted, permissionKey)

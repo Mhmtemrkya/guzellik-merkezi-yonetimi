@@ -19,8 +19,10 @@ public sealed class PendingOperation : Entity
         PendingOperationType operationType,
         string title,
         string summary,
-        string payloadJson)
+        string payloadJson,
+        DateTime? requesterSecurityStampUtc = null)
     {
+        RequesterSecurityStampUtc = requesterSecurityStampUtc;
         TenantId = tenantId;
         BranchId = branchId;
         RequestedByUserId = requestedByUserId;
@@ -41,6 +43,20 @@ public sealed class PendingOperation : Entity
     public Guid RequestedByUserId { get; private set; }
     public TenantUser? RequestedBy { get; private set; }
     public string RequestedByName { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// İSTEK GÖNDERİLDİĞİ ANDAKİ GÜVENLİK DAMGASI.
+    ///
+    /// <para>
+    /// Damga; parola değişimi, zorunlu çıkış ya da yetki değişimi gibi "bu kullanıcının tüm
+    /// oturumlarını düşür" olaylarında tazelenir. Onay replay'i istek sahibi adına YENİ ve kısa
+    /// ömürlü bir token üretir; damga karşılaştırılmazsa bu token iptal olayını sessizce atlar —
+    /// hesabı ele geçirilmiş bir personelin kuyrukta bekleyen isteği, parola sıfırlandıktan SONRA
+    /// bile uygulanabilirdi. Onay anında damga değişmişse işlem uygulanmaz (bkz. ApprovalRequesterScope).
+    /// </para>
+    /// <para>Eski kayıtlarda boştur; o kayıtlarda karşılaştırma yapılmaz (geriye uyumluluk).</para>
+    /// </summary>
+    public DateTime? RequesterSecurityStampUtc { get; private set; }
 
     public PendingOperationType OperationType { get; private set; }
     public string Title { get; private set; } = string.Empty;

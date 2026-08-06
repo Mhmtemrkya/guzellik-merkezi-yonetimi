@@ -697,6 +697,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Adisyon silme/ters kayıt bu kolondan arar; indekssiz tam tablo taraması transaction'ı
         // ve satır kilitlerini gereksiz uzatıyordu.
         payBuilder.HasIndex(x => x.SourceAdisyonId);
+        // Randevu bağı: tamamlaması geri alınmak istenen randevunun tahsilatı buradan bulunur.
+        payBuilder.HasIndex(x => x.SourceAppointmentId);
         payBuilder.HasQueryFilter(x => !x.IsDeleted);
 
         var sessionBuilder = modelBuilder.Entity<CustomerPackageSession>();
@@ -943,6 +945,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         j.HasQueryFilter(x => !x.IsDeleted);
 
         // Idempotent istek kayıtları — masaüstü çevrimdışı kuyruğunun tekrar oynatma güvencesi.
+        // İptal düzeltmesi (ters kayıt) → asıl gider bağı. Silme davranışı yok: satır kalıcı defterdir.
+        modelBuilder.Entity<BusinessExpense>()
+            .HasIndex(x => x.ReversalOfExpenseId);
+
         var pcr = modelBuilder.Entity<ProcessedClientRequest>();
         pcr.ToTable("processed_client_requests");
         pcr.HasKey(x => x.Id);

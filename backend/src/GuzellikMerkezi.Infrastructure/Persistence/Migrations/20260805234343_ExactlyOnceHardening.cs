@@ -54,12 +54,17 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
             //
             // Alt sorgu ARA TABLOYA sarılır: MySQL/MariaDB silinen tablodan doğrudan SELECT
             // yapılmasına izin vermez ("You can't specify target table for update in FROM clause").
+            //
+            // SONDAKİ NOKTALI VİRGÜL ZORUNLUDUR. `dotnet ef migrations script` ham SQL'i AYNEN
+            // basar; sonlandırıcı yoksa bir sonraki ifade (CREATE UNIQUE INDEX) buna yapışır ve
+            // MariaDB tek ifade sanıp 1064 verir. Uygulama içi çalıştırıcı komutları tek tek
+            // yürüttüğü için bu hatayı GÖSTERMEZ — bozulan yalnızca script yoluyla yapılan deploy'dur.
             migrationBuilder.Sql(
                 "DELETE FROM `app_notifications` WHERE `DedupeKey` IS NOT NULL AND `Id` NOT IN (" +
                 "  SELECT `keep` FROM (" +
                 "    SELECT MIN(`Id`) AS `keep` FROM `app_notifications` WHERE `DedupeKey` IS NOT NULL" +
                 "    GROUP BY `TenantId`, `RecipientUserId`, `DedupeKey`" +
-                "  ) AS `t`)");
+                "  ) AS `t`);");
 
             migrationBuilder.CreateIndex(
                 name: "IX_app_notifications_TenantId_RecipientUserId_DedupeKey",

@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GuzellikMerkezi.Infrastructure.Persistence;
 
@@ -85,6 +86,71 @@ public static class DurableJobClaim
             "WHERE `Id` = {2} AND `LockToken` = {3} AND `Status` = 'Processing'",
             new object[] { now.Add(lockDuration), now, jobId.ToString(), lockToken }, ct);
         return affected > 0;
+    }
+
+    /// <summary>
+    /// KİRA BAKICISI — iş çalışırken kilidi periyodik uzatır.
+    ///
+    /// <para>
+    /// ORTAK YARDIMCI: kalp atışı eskiden yalnız DB poller'da vardı; RabbitMQ tüketicisi 5 dakikalık
+    /// kirayı hiç uzatmıyordu. Uzun süren bir iş (yavaş Meta/SMTP çağrısı) sürerken kira doluyor,
+    /// DB poller işi "bayat" sayıp YENİDEN çalıştırıyordu — müşteriye çift mesaj. İki yolun
+    /// ayrışmaması için tek gövde burada durur.
+    /// </para>
+    /// <para>
+    /// KENDİ SCOPE'UNU AÇAR: kalp atışı işle EŞZAMANLI çalışır ve <c>DbContext</c> iş parçacığı
+    /// güvenli değildir. Çağıranın bağlamını paylaşmak "second operation started on this context"
+    /// hatası üretirdi; her vuruş kendi scope'unu (dolayısıyla kendi bağlantısını) kullanır.
+    /// </para>
+    /// </summary>
+    public static IAsyncDisposable KeepAlive(
+        IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration) =>
+        new LeaseKeeper(scopeFactory, jobId, token, lockDuration);
+
+    private sealed class LeaseKeeper : IAsyncDisposable
+    {
+        private readonly CancellationTokenSource _stop = new();
+        private readonly Task _loop;
+
+        public LeaseKeeper(IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration)
+        {
+            _loop = RunAsync(scopeFactory, jobId, token, lockDuration, _stop.Token);
+        }
+
+        private static async Task RunAsync(
+            IServiceScopeFactory scopeFactory, Guid jobId, string token, TimeSpan lockDuration, CancellationToken ct)
+        {
+            // Kira dolmadan ÖNCE vurulur: üçte bir aralık, gecikmelere karşı geniş pay bırakır.
+            var interval = TimeSpan.FromMilliseconds(Math.Max(1000, lockDuration.TotalMilliseconds / 3));
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(interval, ct);
+                    if (ct.IsCancellationRequested) return;
+
+                    using var scope = scopeFactory.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+                    // false → sahiplenmeyi kaybettik; uzatmaya devam etmenin anlamı yok.
+                    if (!await HeartbeatAsync(db, jobId, token, lockDuration, ct)) return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal sonlanma (iş bitti ya da kapanış).
+            }
+            catch
+            {
+                // Kalp atışı EN İYİ ÇABADIR: hatası çalışan işi düşürmemeli.
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _stop.CancelAsync();
+            try { await _loop; } catch { /* yukarıda yutuluyor */ }
+            _stop.Dispose();
+        }
     }
 
     /// <summary>

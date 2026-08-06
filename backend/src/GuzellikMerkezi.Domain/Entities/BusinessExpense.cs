@@ -11,6 +11,41 @@ public sealed class BusinessExpense : Entity
 {
     private BusinessExpense() { }
 
+    /// <summary>
+    /// GEÇERSİZ KILINAN GİDERİN KARŞI KAYDI (ters hareket).
+    ///
+    /// <para>
+    /// SOMUT AÇIK: iptal yalnızca damga koyuyor ve okuma yolları geçersiz satırı SÜZÜYORDU. Bu,
+    /// GERÇEKLEŞMİŞ bir kasa çıkışını geçmişten silmek demekti: geçen ayın kârı bugün değişiyor,
+    /// o güne ait kasa kapanışı artık defterle tutmuyordu. Muhasebede kapanmış dönem yeniden
+    /// yazılmaz; düzeltme, YAPILDIĞI döneme ters kayıt olarak girer.
+    /// </para>
+    /// <para>
+    /// Karşı kayıt NEGATİF tutarlıdır: mevcut tüm toplamlar (kasa akışı, kâr-zarar, rapor) hiçbir
+    /// değişiklik gerektirmeden doğru neti üretir — her okuma yerine "iptali süz" kuralı eklemek
+    /// zorunda kalsaydık biri unutulur ve rakamlar yine ayrışırdı.
+    /// </para>
+    /// </summary>
+    public static BusinessExpense CreateReversal(BusinessExpense original, DateTime atUtc, string reason)
+    {
+        var reversal = new BusinessExpense
+        {
+            TenantId = original.TenantId,
+            BranchId = original.BranchId,
+            Category = original.Category,
+            Amount = -original.Amount,          // SetAmount atlanır: ters kayıt bilinçli olarak negatiftir
+            PaymentMethod = original.PaymentMethod,
+            StaffMemberId = original.StaffMemberId,
+            PeriodLabel = original.PeriodLabel,
+            Reference = original.Reference,
+            Description = $"İPTAL DÜZELTMESİ · {original.Description ?? original.Category.ToString()} · {reason}",
+            ReversalOfExpenseId = original.Id,
+            IsApproved = true,                  // düzeltme gerçekleşmiştir; onay beklemez
+        };
+        reversal.SetOccurredAt(atUtc);          // düzeltme YAPILDIĞI döneme yazılır
+        return reversal;
+    }
+
     public BusinessExpense(
         Guid tenantId,
         Guid? branchId,
@@ -132,8 +167,20 @@ public sealed class BusinessExpense : Entity
         Touch();
     }
 
-    /// <summary>Geçersiz kılındıysa dolu — kayıt durur ama muhasebe toplamlarına girmez.</summary>
+    /// <summary>
+    /// Geçersiz kılındıysa dolu. Satır ve TUTARI yerinde kalır (gerçekleşmiş kasa çıkışıdır);
+    /// etkisini iptal eden ayrı bir ters kayıt yazılır (bkz. <see cref="CreateReversal"/>).
+    /// </summary>
     public DateTime? VoidedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Bu satır bir İPTAL DÜZELTMESİ ise, düzelttiği asıl giderin kimliği. Ters kayıtlar negatif
+    /// tutarlıdır ve iptalin YAPILDIĞI döneme yazılır.
+    /// </summary>
+    public Guid? ReversalOfExpenseId { get; private set; }
+
+    /// <summary>Bu satır bir ters kayıt mı?</summary>
+    public bool IsReversal => ReversalOfExpenseId is not null;
     public Guid? VoidedByUserId { get; private set; }
     public string? VoidReason { get; private set; }
 

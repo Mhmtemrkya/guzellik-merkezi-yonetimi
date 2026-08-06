@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Domain.Exceptions;
 namespace GuzellikMerkezi.Domain.Entities;
 
 /// <summary>
@@ -113,10 +114,27 @@ public sealed class PlatformIntegrationSettings : Entity
 
     /// <param name="apiKeyEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
     /// <param name="secretKeyEnc">null = mevcut korunur.</param>
+    /// <summary>Tanınan ödeme sağlayıcıları. Yeni sağlayıcı eklenirken buraya AÇIKÇA yazılır.</summary>
+    public static readonly IReadOnlyList<string> KnownPaymentProviders = ["Simulation", "Iyzico"];
+
     public void UpdatePayments(bool enabled, string? provider, string? apiKeyEnc, string? secretKeyEnc, string? baseUrl, string? returnUrl)
     {
         PaymentsEnabled = enabled;
-        PaymentProvider = string.IsNullOrWhiteSpace(provider) ? "Simulation" : provider.Trim();
+
+        // SAĞLAYICI ADI KAYIT ANINDA DOĞRULANIR.
+        //
+        // Serbest metin kabul edilirken bir yazım hatası ("Iyzıco", "iyzipay") çözümleyicide
+        // "Iyzico değil" sayılıp SESSİZCE simülasyona düşüyordu: üretimde para çekilmeden abonelik
+        // "ödendi" oluyordu. Hata artık ayarların kaydedildiği anda, anlaşılır biçimde verilir.
+        var normalized = string.IsNullOrWhiteSpace(provider) ? "Simulation" : provider.Trim();
+        var known = KnownPaymentProviders.FirstOrDefault(p => string.Equals(p, normalized, StringComparison.OrdinalIgnoreCase));
+        if (known is null)
+        {
+            throw new DomainException(
+                $"Tanınmayan ödeme sağlayıcısı: '{normalized}'. Geçerli değerler: {string.Join(", ", KnownPaymentProviders)}.");
+        }
+        // Kanonik yazımla saklanır — büyük/küçük harf farkları aşağı akışta karşılaştırmaları bozmasın.
+        PaymentProvider = known;
         if (apiKeyEnc is not null) IyzicoApiKeyEncrypted = apiKeyEnc;
         if (secretKeyEnc is not null) IyzicoSecretKeyEncrypted = secretKeyEnc;
         IyzicoBaseUrl = Clean(baseUrl);

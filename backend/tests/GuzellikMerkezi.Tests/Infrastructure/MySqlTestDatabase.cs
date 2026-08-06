@@ -47,7 +47,13 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
 
         try
         {
-            var builder = new MySqlConnectionStringBuilder(raw) { Database = string.Empty, ConnectionTimeout = 3 };
+            // Testler UYGULAMA İLE AYNI bağlantı kurallarını kullanmalı; aksi hâlde karakter seti
+            // gibi bir kusur yalnız bazı makinelerde görünür (bkz. MySqlConnectionStrings).
+            var builder = new MySqlConnectionStringBuilder(MySqlConnectionStrings.EnsureUtf8Mb4(raw))
+            {
+                Database = string.Empty,
+                ConnectionTimeout = 3,
+            };
             using var connection = new MySqlConnection(builder.ConnectionString);
             connection.Open();
             return builder.ConnectionString;
@@ -66,6 +72,9 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
         _database = database;
         _connectionString = connectionString;
     }
+
+    /// <summary>Ham bağlantı dizesi — EF dışı yollar (deploy betiği çalıştırma) için.</summary>
+    public string ConnectionString => _connectionString;
 
     /// <summary>
     /// BOŞ bir şema oluşturur; model UYGULANMAZ. Migration zincirinin kendisini test etmek için:

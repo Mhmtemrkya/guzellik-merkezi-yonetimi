@@ -39,18 +39,30 @@ public sealed class StaffApprovalGateMiddleware
             return;
         }
 
-        if (!ShouldGate(http, currentUser))
+        // İŞLEM (AKSİYON) İZNİ — REPLAY DE DAHİL.
+        //
+        // SOMUT AÇIK: kontrol ShouldGate'ten SONRA yapılıyordu ve ShouldGate, replay claim'i görünce
+        // false dönüyordu. Sonuç yetki AKLAMASIydı: personel yetkisi varken istek gönderir, yönetici
+        // yetkiyi geri alır, sonra bekleyen isteği onaylar → replay kapıya hiç uğramadan çalışır ve
+        // ARTIK OLMAYAN yetkiyle iş uygulanırdı (ör. geri alınmış "tahsilat alma" izniyle para
+        // işlenmesi). Onay "bu işi yap" demektir, "yetki denetimini atla" demek değildir.
+        //
+        // Kontrol artık kapının EN BAŞINDA, replay'den bağımsız yapılır. Replay token'ı istek
+        // sahibinin GÜNCEL izinleriyle üretildiği için (bkz. IApprovalRequesterScope) geri alınmış
+        // izin burada gerçekten yakalanır.
+        var requiredAction = RequiredAction(http.Request.Method, http.Request.Path.Value ?? string.Empty);
+        if (requiredAction is not null
+            && currentUser.IsAuthenticated
+            && currentUser.Role == UserRole.Staff
+            && !Permissions.IsActionAllowed(currentUser.Permissions, requiredAction))
         {
-            await _next(http);
+            await WriteForbiddenAsync(http, "Bu işlem için yetkiniz yok. Kurum yöneticinizden yetki isteyin.");
             return;
         }
 
-        // İşlem (aksiyon) izni: yönetici bu personel için ilgili aksiyonu kapattıysa
-        // istek taslağa bile alınmaz — doğrudan 403 döner (sayfayı görmek ≠ işlemi yapmak).
-        var requiredAction = RequiredAction(http.Request.Method, http.Request.Path.Value ?? string.Empty);
-        if (requiredAction is not null && !Permissions.IsActionAllowed(currentUser.Permissions, requiredAction))
+        if (!ShouldGate(http, currentUser))
         {
-            await WriteForbiddenAsync(http, "Bu işlem için yetkiniz yok. Kurum yöneticinizden yetki isteyin.");
+            await _next(http);
             return;
         }
 

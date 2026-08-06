@@ -1310,7 +1310,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // Tahsilatı kaydet (sadece INSERT). Taksit planına dokunulmaz — "ödenen/kalan",
         // okuma anında AllocatePayments ile tahsilatların vade sırasına dağıtılmasıyla hesaplanır.
         // Böylece eksik ödeme ilgili taksiti kısmen, fazla ödeme birden çok taksiti kapatır.
-        var payment = new AccountPayment(id, request.Amount, request.Method, request.Reference, occurredAt, request.SourceAdisyonId);
+        var payment = new AccountPayment(id, request.Amount, request.Method, request.Reference, occurredAt, request.SourceAdisyonId, request.SourceAppointmentId);
         _db.AccountPayments.Add(payment);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, null, "RegisterPayment", "AccountPayment", payment.Id,

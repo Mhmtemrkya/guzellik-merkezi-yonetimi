@@ -109,6 +109,13 @@ public sealed class RabbitMqJobConsumerHostedService : BackgroundService
         if (!await DurableJobClaim.TryClaimAsync(db, job, token, LockDuration, ct))
             return; // poller almış ya da bitmiş — mesaj güvenle yutulur
 
+        // KİLİT KALP ATIŞI — DB poller ile AYNI ortak yardımcı.
+        //
+        // SOMUT AÇIK: bu yol 5 dakikalık kirayı hiç uzatmıyordu. Uzun süren bir iş (yavaş Meta/SMTP
+        // çağrısı) sürerken kira doluyor, DB poller işi "bayat" sayıp YENİDEN çalıştırıyordu —
+        // handler dış dünyaya yazdığı için müşteriye çift mesaj gidiyordu.
+        var heartbeat = DurableJobClaim.KeepAlive(_scopeFactory, job.Id, token, LockDuration);
+
         bool succeeded;
         string? error = null;
         try
@@ -121,6 +128,7 @@ public sealed class RabbitMqJobConsumerHostedService : BackgroundService
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            await heartbeat.DisposeAsync();
             throw;
         }
         catch (Exception ex)
@@ -130,6 +138,8 @@ public sealed class RabbitMqJobConsumerHostedService : BackgroundService
             _logger.LogWarning(ex, "Kalıcı iş başarısız (RabbitMQ yolu, type={Type}, attempt={Attempt}/{Max}).",
                 job.Type, job.Attempts + 1, job.MaxAttempts);
         }
+
+        await heartbeat.DisposeAsync();
 
         if (!await DurableJobClaim.TryCompleteAsync(db, job, token, succeeded, error, ct))
         {

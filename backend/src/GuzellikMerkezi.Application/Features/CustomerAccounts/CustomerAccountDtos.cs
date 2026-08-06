@@ -220,7 +220,7 @@ public sealed record RescheduleAccountRequest(int InstallmentCount, DateOnly Fir
 /// mümkün: çağıran bu bayrağı açıkça set eder.
 /// </para>
 /// </summary>
-public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null, bool AllowOverpayment = false);
+public sealed record RegisterAccountPaymentRequest(decimal Amount, string? Method, string? Reference, DateTime? OccurredAtUtc, Guid? SourceAdisyonId = null, bool AllowOverpayment = false, Guid? SourceAppointmentId = null);
 
 public sealed record CustomerPackageSessionDto(
     Guid Id,

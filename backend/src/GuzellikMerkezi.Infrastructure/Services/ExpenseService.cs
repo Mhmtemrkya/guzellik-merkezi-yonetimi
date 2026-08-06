@@ -110,8 +110,10 @@ public sealed class ExpenseService : IExpenseService
                 r.IsApproved,
                 r.ApprovedAtUtc,
                 r.CreatedAtUtc,
-                // Geçersiz kılınan gider LİSTEDE KALIR (kalıcı iz) ama toplamlara girmez;
-                // arayüz bu alanlarla "geçersiz" rozetini ve gerekçesini gösterir.
+                // Geçersiz kılınan gider LİSTEDE VE TOPLAMDA KALIR — gerçekleşmiş kasa çıkışıdır.
+                // Etkisini, iptalin yapıldığı güne yazılan NEGATİF tutarlı ters kayıt siler
+                // (bkz. BusinessExpense.CreateReversal). Arayüz bu alanlarla "geçersiz" rozetini
+                // ve gerekçesini gösterir; ters kayıt da ayrı bir satır olarak görünür.
                 IsSystemGenerated: false,
                 VoidedAtUtc: r.VoidedAtUtc,
                 VoidReason: r.VoidReason))
@@ -286,10 +288,21 @@ public sealed class ExpenseService : IExpenseService
             return Result<BusinessExpenseDto>.Failure(Error.Validation(ex.Message));
         }
 
+        // KARŞI KAYIT — geçmiş dönem yeniden yazılmaz.
+        //
+        // Asıl satır tutarıyla birlikte yerinde kalır (gerçekleşmiş kasa çıkışıdır); etkisini
+        // iptal eden NEGATİF tutarlı ters kayıt, iptalin YAPILDIĞI güne yazılır. Böylece kapanmış
+        // bir ayın kârı bugün değişmez ve o güne ait kasa kapanışı defterle tutmaya devam eder.
+        // İkisi AYNI SaveChanges'te yazılır: biri olup diğeri olmazsa defter kalıcı olarak şişerdi.
+        var reversal = BusinessExpense.CreateReversal(expense, expense.VoidedAtUtc!.Value, expense.VoidReason!);
+        _db.BusinessExpenses.Add(reversal);
+
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, expense.BranchId, "Void", "Expense", expense.Id,
-            $"Gider geçersiz kılındı: {expense.Category} · {expense.Amount:N2} · {expense.VoidReason}",
-            new { expense.Category, expense.Amount, expense.OccurredAtUtc, expense.VoidReason }, cancellationToken);
+            $"Gider geçersiz kılındı: {expense.Category} · {expense.Amount:N2} · {expense.VoidReason} " +
+            $"· ters kayıt {reversal.Id}",
+            new { expense.Category, expense.Amount, expense.OccurredAtUtc, expense.VoidReason, ReversalId = reversal.Id },
+            cancellationToken);
 
         var staffName = expense.StaffMemberId.HasValue
             ? await _db.StaffMembers.AsNoTracking().Where(s => s.Id == expense.StaffMemberId).Select(s => s.FullName).FirstOrDefaultAsync(cancellationToken)
@@ -332,7 +345,7 @@ public sealed class ExpenseService : IExpenseService
         // GEÇERSİZ KILINAN GİDER TOPLAMA GİRMEZ (kasa akışı ve raporlarla aynı kural).
         var query = _db.BusinessExpenses
             .AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.IsApproved && x.VoidedAtUtc == null);
+            .Where(x => x.TenantId == tenantId && x.IsApproved);
 
         if (filter.FromUtc.HasValue)
         {

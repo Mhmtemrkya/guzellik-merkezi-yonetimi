@@ -1,5 +1,8 @@
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using MySql.Data.MySqlClient;
 
 namespace GuzellikMerkezi.Tests.Infrastructure;
 
@@ -17,6 +20,123 @@ namespace GuzellikMerkezi.Tests.Infrastructure;
 /// </summary>
 public sealed class AuditRoundSevenPhase5Tests
 {
+    /// <summary>
+    /// ASIL İDDİA: `dotnet ef migrations script` ile üretilen betik, GERÇEK bir MariaDB'de baştan
+    /// sona çalışır.
+    ///
+    /// <para>
+    /// NEDEN AYRI BİR TEST: canlıya çıkış betik yoluyla yapılır, uygulama içi çalıştırıcıyla değil.
+    /// İkisi AYNI SQL'i üretmez sayılmaz — uygulama içi yol komutları TEK TEK yürütür, betik yolu
+    /// ise hepsini tek dosyada arka arkaya koyar. Bu fark yüzünden ham SQL'in sonundaki eksik
+    /// noktalı virgül uygulama içi testlerde GÖRÜNMÜYOR ama betikte bir sonraki ifadeye yapışıp
+    /// MariaDB'de 1064 veriyordu — production-clone provası tam burada düşmüştü.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task MigrationScript_RunsEndToEndOnRealDatabase()
+    {
+        await using var database = await MySqlTestDatabase.CreateEmptyAsync();
+
+        string script;
+        await using (var db = database.NewContext())
+            script = db.GetService<IMigrator>().GenerateScript();
+
+        // Betiği DEPLOY'DAKİ GİBİ çalıştır: çok ifadeli dosya, `;` ayracıyla.
+        await using var connection = new MySqlConnection(database.ConnectionString);
+        await connection.OpenAsync();
+        var runner = new MySqlScript(connection, script);
+        runner.Execute();
+
+        await using (var check = database.NewContext())
+        {
+            Assert.Empty(await check.Database.GetPendingMigrationsAsync());
+            var applied = (await check.Database.GetAppliedMigrationsAsync()).ToList();
+            Assert.NotEmpty(applied);
+            // Şema gerçekten kuruldu: son turda eklenen kolonlar sorgulanabilmeli.
+            Assert.Equal(0, await check.BackgroundJobs.IgnoreQueryFilters().CountAsync(j => j.LockToken != null));
+            Assert.Equal(0, await check.NotificationLogs.IgnoreQueryFilters().CountAsync(l => l.DedupeKey != null));
+        }
+    }
+
+    /// <summary>
+    /// Aynı iddianın UCUZ ve HIZLI hâli: üretilen betikte ham SQL ifadeleri sonlandırılmış mı?
+    /// Veritabanı gerektirmez, her CI koşusunda çalışır ve hatayı saniyeler içinde yakalar.
+    /// </summary>
+    [Fact]
+    public void MigrationScript_EveryStatementIsTerminated()
+    {
+        var options = new DbContextOptionsBuilder<GuzellikDbContext>()
+            .UseMySQL("server=localhost;database=script_only;user=root;password=x")
+            .Options;
+        using var db = new GuzellikDbContext(options, null, new TestCurrentUser(), null, null, TestSearchIndex.Create());
+        var script = db.GetService<IMigrator>().GenerateScript();
+
+        // İfade başlangıcı sayılan anahtar kelimeler; her biri kendinden ÖNCEKİ ifadenin
+        // sonlandırılmış olmasını gerektirir.
+        string[] starters = ["CREATE ", "ALTER ", "DROP ", "INSERT ", "UPDATE ", "DELETE ", "CALL "];
+
+        var lines = script.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        string? previousNonEmpty = null;
+        var unterminated = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith("--", StringComparison.Ordinal)) continue;
+
+            var startsStatement = starters.Any(s => trimmed.StartsWith(s, StringComparison.OrdinalIgnoreCase));
+            if (startsStatement && previousNonEmpty is { } prev
+                && !prev.EndsWith(';') && !prev.EndsWith("BEGIN", StringComparison.OrdinalIgnoreCase))
+            {
+                unterminated.Add($"'{prev}' → '{trimmed}'");
+            }
+            previousNonEmpty = trimmed;
+        }
+
+        Assert.True(unterminated.Count == 0,
+            "Sonlandırılmamış SQL ifadesi var (betik yolunda MariaDB 1064 verir):\n"
+            + string.Join("\n", unterminated));
+    }
+
+    /// <summary>
+    /// ASIL İDDİA: Türkçe'ye özgü harfler veritabanına gidip GERİ DÖNDÜĞÜNDE aynı kalır.
+    ///
+    /// <para>
+    /// Bağlantı karakter seti hiçbir yerde zorlanmıyordu; sunucu varsayılanı utf8mb3/latin1 olan
+    /// kurulumlarda "Cilt Bakımı" sessizce "Cilt Bakimi" oluyordu (ı, ş, ğ, İ kayboluyor).
+    /// Geliştirme makinesinde (MySQL 8, varsayılan utf8mb4) hata hiç görünmüyor, canlıda müşteri
+    /// ve hizmet adları KALICI olarak bozuluyordu. Artık bağlantı utf8mb4'e sabitlenir.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task TurkishCharacters_SurviveRoundTrip()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        const string tricky = "Cilt Bakımı · Ağda · Şeyma · İpek · Öz · Ünlü · ğüşiöç";
+        Guid serviceId;
+
+        await using (var db = database.NewContext())
+        {
+            var tenant = new GuzellikMerkezi.Domain.Entities.Tenant("Türkçe QA", $"tr-{Guid.NewGuid():N}"[..20], "Premium",
+                GuzellikMerkezi.Domain.Enums.TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var service = new GuzellikMerkezi.Domain.Entities.ServiceDefinition(tenant.Id, branch.Id, tricky, 60, 1250m, "Cilt");
+            db.ServiceDefinitions.Add(service);
+            await db.SaveChangesAsync();
+            serviceId = service.Id;
+        }
+
+        await using (var check = database.NewContext())
+        {
+            var name = await check.ServiceDefinitions.AsNoTracking()
+                .Where(s => s.Id == serviceId).Select(s => s.Name).SingleAsync();
+            Assert.Equal(tricky, name);
+        }
+    }
+
     /// <summary>
     /// ASIL İDDİA: yarıda kalmış migration izi varken açılış SESSİZCE DEVAM ETMEZ. Hata mesajı
     /// hangi migration'ın takıldığını ve operatörün ne yapacağını söyler.

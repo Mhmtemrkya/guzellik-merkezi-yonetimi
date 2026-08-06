@@ -22,6 +22,14 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
     /// <summary>iyzico test ortamı — anahtar girilip base URL boş bırakılırsa buraya düşülür.</summary>
     private const string SandboxBaseUrl = "https://sandbox-api.iyzipay.com";
 
+    /// <summary>Simülasyonun AÇIKÇA seçilmesi gereken adı.</summary>
+    private const string SimulationProvider = "Simulation";
+    private const string IyzicoProvider = "Iyzico";
+
+    /// <summary>Simülasyon üretimde çalışabilir mi (varsayılan: HAYIR).</summary>
+    private readonly bool _allowSimulationInProduction;
+    private readonly bool _isProduction;
+
     public PaymentGatewayResolver(
         GuzellikDbContext db,
         IEncryptionService encryption,
@@ -38,6 +46,14 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
         _simulationSigningSecret = configuration["Payments:SimulationSigningKey"]
                                    ?? configuration["Jwt:SigningKey"]
                                    ?? string.Empty;
+
+        var env = configuration["ASPNETCORE_ENVIRONMENT"]
+                  ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                  ?? "Production";
+        _isProduction = !string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(env, "Staging", StringComparison.OrdinalIgnoreCase);
+        _allowSimulationInProduction =
+            bool.TryParse(configuration["Payments:AllowSimulationInProduction"], out var allow) && allow;
     }
 
     public async Task<Result<PaymentGatewayContext>> ResolveAsync(CancellationToken ct = default)
@@ -49,11 +65,34 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
                 "Ödeme altyapısı henüz etkin değil. Platform yöneticisi ödeme ayarlarını tamamlamalı."));
         }
 
-        // Simülasyon: anahtar aranmaz, gerçek çekim yapılmaz (akışı uçtan uca denemek için).
-        if (!string.Equals(settings.PaymentProvider, "Iyzico", StringComparison.OrdinalIgnoreCase))
+        // SAĞLAYICI ADI ALLOWLIST'TEN GEÇER — TANIMSIZ AD SİMÜLASYONA DÜŞMEZ.
+        //
+        // SOMUT AÇIK: kural "Iyzico değilse simülasyon" idi. Yani bir yazım hatası ("Iyzıco",
+        // "iyzipay"), yeni bir sağlayıcı adı ya da boş bir değer üretimde SESSİZCE sahte ödeme
+        // döndürüyordu: para çekilmeden abonelik "ödendi" sayılıyor, kurum ücretsiz açılıyordu.
+        // Simülasyon artık AÇIKÇA seçilmek zorunda; tanınmayan her ad hata verir.
+        var provider = (settings.PaymentProvider ?? string.Empty).Trim();
+
+        if (string.Equals(provider, SimulationProvider, StringComparison.OrdinalIgnoreCase))
         {
+            // ÜRETİMDE SİMÜLASYON KAPALI: açıkça seçilmiş olsa bile gerçek para bekleyen bir
+            // ortamda sahte başarı üretmemeli. Bilinçli istisna için açık bayrak gerekir.
+            if (_isProduction && !_allowSimulationInProduction)
+            {
+                _logger.LogError("Üretimde simülasyon ödeme sağlayıcısı seçili; ödeme akışı durduruldu.");
+                return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                    "Ödeme sağlayıcısı 'Simulation' olarak ayarlı; canlı ortamda gerçek ödeme sağlayıcısı seçilmelidir."));
+            }
+
             return Result<PaymentGatewayContext>.Success(
                 new PaymentGatewayContext(new SimulationPaymentGateway(_simulationSigningSecret), settings.PaymentsReturnUrl));
+        }
+
+        if (!string.Equals(provider, IyzicoProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogError("Tanınmayan ödeme sağlayıcısı: {Provider}. Ödeme akışı durduruldu.", provider);
+            return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                $"Tanınmayan ödeme sağlayıcısı: '{provider}'. Geçerli değerler: {IyzicoProvider}, {SimulationProvider}."));
         }
 
         var apiKey = _encryption.Decrypt(settings.IyzicoApiKeyEncrypted);

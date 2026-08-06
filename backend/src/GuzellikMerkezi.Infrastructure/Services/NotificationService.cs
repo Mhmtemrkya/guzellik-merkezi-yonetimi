@@ -189,8 +189,9 @@ public sealed class NotificationService : INotificationService
                 var skipLog = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel, "-", body,
                     NotificationLogStatus.Failed, $"{(template.Channel == NotificationChannel.Email ? "E-posta" : "Telefon")} eksik.",
                     dedupeKey);
-                if (!await TryReserveAsync(skipLog, ct)) continue;
-                logsCreated.Add(skipLog);
+                var reservedSkip = await TryReserveAsync(skipLog, ct);
+                if (reservedSkip is null) continue;
+                logsCreated.Add(reservedSkip);
                 continue;
             }
 
@@ -203,12 +204,15 @@ public sealed class NotificationService : INotificationService
             // COMMIT edilir; benzersiz indeks ikinci denemeyi eler (iki backend örneği dahil).
             var log = new NotificationLog(tenantId, c.BranchId, template.Id, c.Id, template.Channel,
                 recipient, body, NotificationLogStatus.Queued, null, dedupeKey);
-            if (!await TryReserveAsync(log, ct))
+            var reserved = await TryReserveAsync(log, ct);
+            if (reserved is null)
             {
                 // Aynı anahtar başka bir tarama/örnek tarafından alınmış → mesaj zaten gidiyor.
                 skipped++;
                 continue;
             }
+            // Bayat rezervasyon devralınmış olabilir; sonuç DEVRALINAN satıra yazılır.
+            log = reserved;
             logsCreated.Add(log);
 
             // GERÇEK gönderim: SMS/E-posta platform mesajlaşma servisinden gider (sağlayıcı yapılandırılmamışsa
@@ -258,7 +262,8 @@ public sealed class NotificationService : INotificationService
     /// (TenantId, DedupeKey) çakışırsa false döner: aynı mesaj başka bir tarama/örnek tarafından
     /// zaten üstlenilmiştir — ikinci kez GÖNDERİLMEZ.
     /// </summary>
-    private async Task<bool> TryReserveAsync(NotificationLog log, CancellationToken ct)
+    /// <returns>Kullanılacak satır; null ise mesaj GÖNDERİLMEMELİ (başkası üstlenmiş).</returns>
+    private async Task<NotificationLog?> TryReserveAsync(NotificationLog log, CancellationToken ct)
     {
         _db.NotificationLogs.Add(log);
 
@@ -266,19 +271,47 @@ public sealed class NotificationService : INotificationService
         // taramanın aynı mesajı tekrar göndermesini engellemektir; elle gönderimde tekrar zaten
         // yöneticinin kararıdır. Binlerce kişilik bir kampanyada müşteri başına ayrı SaveChanges
         // gereksiz maliyettir — o satırlar sonda toplu yazılır (eski davranış).
-        if (log.DedupeKey is null) return true;
+        if (log.DedupeKey is null) return log;
 
         try
         {
             await _db.SaveChangesAsync(ct);
-            return true;
+            return log;
         }
         catch (DbUpdateException)
         {
             _db.Entry(log).State = EntityState.Detached;
-            return false;
+
+            // TAKILI REZERVASYON KALICI BASTIRMA YAPMAZ.
+            //
+            // SOMUT AÇIK: satır "Queued" olarak yazılıp commit edildikten SONRA süreç çökerse
+            // (ya da sağlayıcı çağrısı hiç başlamazsa) kayıt sonsuza dek Queued kalıyordu. Benzersiz
+            // anahtar yüzünden sonraki her tarama "zaten gönderilmiş" sayıp mesajı bir daha HİÇ
+            // göndermiyordu: müşteri hatırlatmasını hiç almıyor, hiçbir yerde de hata görünmüyordu.
+            //
+            // Terminal durumdaki satır (Sent/Failed) gerçekten "işlendi" demektir ve bastırır.
+            // Queued satır ise ancak BAYATLADIYSA devralınır: yaşayan bir gönderim varsa
+            // (birkaç saniyelik pencere) ona dokunulmaz, çift mesaj üretilmez.
+            var existing = await _db.NotificationLogs
+                .FirstOrDefaultAsync(l => l.TenantId == log.TenantId && l.DedupeKey == log.DedupeKey, ct);
+            if (existing is null || existing.Status != NotificationLogStatus.Queued) return null;
+
+            var age = DateTime.UtcNow - (existing.UpdatedAtUtc ?? existing.CreatedAtUtc);
+            if (age < StaleReservationTimeout) return null;
+
+            // Devralındı: zaman damgası tazelenir ki iki tarama aynı bayat satırı birlikte almasın.
+            // Sonuç BU satıra yazılır — çağıranın elindeki (detached) nesneye değil.
+            existing.Touch();
+            await _db.SaveChangesAsync(ct);
+            return existing;
         }
     }
+
+    /// <summary>
+    /// "Queued" bir rezervasyonun terk edilmiş sayılacağı süre. Gerçek gönderim saniyeler sürer;
+    /// bu eşik yalnız çökme/yeniden başlatma sonrası kalan satırları kurtarmak içindir.
+    /// </summary>
+    private static readonly TimeSpan StaleReservationTimeout = TimeSpan.FromMinutes(15);
 
     private async Task<List<Customer>> ResolveAudienceAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct)
     {

@@ -478,7 +478,14 @@ public sealed partial class ReportsService
         ? _db.Appointments.AsNoTracking().IgnoreQueryFilters().Where(a => !a.IsDeleted && a.TenantId == tenantId)
         : _db.Appointments.AsNoTracking().Where(a => a.TenantId == tenantId);
 
-    /// <summary>Rapor gideri = yalnız ONAYLI gider; onay bekleyen personel kaydı henüz gerçekleşmemiştir.</summary>
+    /// <summary>
+    /// Rapor gideri = yalnız ONAYLI gider; onay bekleyen personel kaydı henüz gerçekleşmemiştir.
+    /// <para>
+    /// GEÇERSİZ KILINAN GİDER SÜZÜLMEZ: gerçekleşmiş kasa çıkışı kendi döneminde kalır, etkisini
+    /// iptalin yapıldığı güne yazılan negatif tutarlı ters kayıt siler. Böylece "her rapor kendi
+    /// süzgecini koymalı" tuzağı ortadan kalkar — toplam doğal olarak neti verir.
+    /// </para>
+    /// </summary>
     private IQueryable<BusinessExpense> ExpenseQuery(Guid tenantId, bool crossBranch) => crossBranch
         ? _db.BusinessExpenses.AsNoTracking().IgnoreQueryFilters().Where(e => !e.IsDeleted && e.TenantId == tenantId && e.IsApproved)
         : _db.BusinessExpenses.AsNoTracking().Where(e => e.TenantId == tenantId && e.IsApproved);

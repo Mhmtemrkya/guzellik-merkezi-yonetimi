@@ -21,6 +21,12 @@ public interface IApprovalRequesterScope
 {
     /// <param name="operationBranchId">İsteğin kaydedildiği (değişmez) şube kapsamı.</param>
     /// <param name="operationId">Replay işaretlemesi için bekleyen işlem kimliği.</param>
+    /// <param name="requesterSecurityStampUtc">
+    /// İstek gönderilirken kaydedilen güvenlik damgası. Onay anındaki damga bundan FARKLIYSA
+    /// aradan bir iptal olayı (parola sıfırlama, zorunlu çıkış, yetki değişimi) geçmiş demektir ve
+    /// işlem uygulanmaz. Eski kayıtlarda <c>null</c>'dur; o durumda karşılaştırma yapılmaz.
+    /// </param>
     Task<Result<string>> CreateAccessTokenAsync(
-        Guid tenantId, Guid requesterUserId, Guid? operationBranchId, Guid operationId, CancellationToken cancellationToken = default);
+        Guid tenantId, Guid requesterUserId, Guid? operationBranchId, Guid operationId,
+        DateTime? requesterSecurityStampUtc = null, CancellationToken cancellationToken = default);
 }

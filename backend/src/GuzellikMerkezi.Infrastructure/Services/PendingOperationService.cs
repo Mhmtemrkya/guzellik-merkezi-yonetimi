@@ -113,6 +113,18 @@ public sealed class PendingOperationService : IPendingOperationService
 
     public async Task<Result<PendingOperationDto>> CreateAsync(Guid tenantId, Guid? branchId, Guid requestedByUserId, string requestedByName, CreatePendingOperationRequest request, CancellationToken cancellationToken = default)
     {
+        // İstek sahibinin O ANDAKİ güvenlik damgası saklanır: onay anında damga değişmişse
+        // (parola sıfırlama / zorunlu çıkış / yetki değişimi) işlem UYGULANMAZ.
+        //
+        // DAMGASI OLMAYAN KULLANICI İÇİN SENTINEL YAZILIR (MinValue). Doğrudan null yazılsaydı
+        // "hiç oturum iptali yaşamamış kullanıcı" ile "bu kolon eklenmeden önce oluşmuş eski kayıt"
+        // ayırt edilemezdi; ilk grup için karşılaştırma atlanır ve İSTEKTEN SONRA yapılan bir parola
+        // sıfırlaması yakalanmazdı. Sentinel sayesinde sonradan gelen gerçek damga ondan farklı olur.
+        var requesterStamp = await _db.TenantUsers.AsNoTracking().IgnoreQueryFilters()
+            .Where(u => u.Id == requestedByUserId && u.TenantId == tenantId)
+            .Select(u => u.SecurityStampUtc)
+            .FirstOrDefaultAsync(cancellationToken) ?? DateTime.MinValue;
+
         var op = new PendingOperation(
             tenantId,
             branchId,
@@ -121,7 +133,8 @@ public sealed class PendingOperationService : IPendingOperationService
             request.OperationType,
             request.Title,
             request.Summary ?? string.Empty,
-            request.PayloadJson);
+            request.PayloadJson,
+            requesterStamp);
         _db.PendingOperations.Add(op);
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, branchId, "Submit", "PendingOperation", op.Id,
@@ -370,7 +383,7 @@ public sealed class PendingOperationService : IPendingOperationService
         // kayıt Processing'de kalmaz, hiçbir mutasyon olmaz ve yönetici gerçek sebebi görür.
         var meta = await _db.PendingOperations.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == id)
-            .Select(x => new { x.OperationType, x.RequestedByUserId, x.BranchId, x.Status })
+            .Select(x => new { x.OperationType, x.RequestedByUserId, x.BranchId, x.Status, x.RequesterSecurityStampUtc })
             .FirstOrDefaultAsync(cancellationToken);
         if (meta is null) return Result<PendingOperationDto>.Failure(Error.NotFound("İşlem bulunamadı."));
 
@@ -383,7 +396,7 @@ public sealed class PendingOperationService : IPendingOperationService
                     "Onay replay'i için istek sahibi kapsamı yapılandırılmamış; işlem uygulanmadı."));
             }
             var requesterScope = await _requesterScope.CreateAccessTokenAsync(
-                tenantId, meta.RequestedByUserId, meta.BranchId, id, cancellationToken);
+                tenantId, meta.RequestedByUserId, meta.BranchId, id, meta.RequesterSecurityStampUtc, cancellationToken);
             if (requesterScope.IsFailure) return Result<PendingOperationDto>.Failure(requesterScope.Error);
             requesterAccessToken = requesterScope.Value;
         }

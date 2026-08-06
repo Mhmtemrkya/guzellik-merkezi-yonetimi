@@ -958,8 +958,11 @@ public static class DatabaseBootstrap
             //      ekleyip geliri şişirir (dev ortamında bir kez yaşandı).
             // Reference ŞİFRELİ olduğu için karşılaştırma bellekte yapılır.
             var accountIds = accounts.Select(a => a.Id).ToHashSet();
+            // SİLİNMİŞ TAHSİLAT "KAPSANDI" SAYILMAZ. IgnoreQueryFilters soft-delete süzgecini de
+            // kapatıyor: silinmiş bir peşinat satırı kapsam sayılıyor, cari fiilen peşinatsız
+            // kalıyor ve uygulama EKSİK kasa defteriyle açılıyordu.
             var covered = (await db.AccountPayments.IgnoreQueryFilters()
-                    .Where(x => db.CustomerAccounts.IgnoreQueryFilters()
+                    .Where(x => !x.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
                         .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
                     .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
                     .ToListAsync())
@@ -1027,8 +1030,9 @@ public static class DatabaseBootstrap
 
         // Kapsam ölçütü ana döngüyle AYNI olmalı: deterministik Id ya da "Peşinat" referansı.
         // Sıradan bir tahsilat satırını "peşinat taşındı" saymak eksikliği gizlerdi.
+        // Silinmiş tahsilat kapsam sayılmaz (bkz. ana döngüdeki aynı not).
         var covered = (await db.AccountPayments.IgnoreQueryFilters()
-                .Where(x => db.CustomerAccounts.IgnoreQueryFilters()
+                .Where(x => !x.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
                     .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
                 .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
                 .ToListAsync())

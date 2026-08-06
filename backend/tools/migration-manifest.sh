@@ -27,9 +27,15 @@ list_files() {
     -printf '%P\n' | sort
 }
 
+# SATIR SONU FARKLARI ÖZETİ DEĞİŞTİRMEZ.
+#
+# Depoda `core.autocrlf` etkinken Windows çalışma kopyasında dosyalar CRLF, Linux CI
+# checkout'unda LF olur. Ham bayt özeti alınırsa manifest, üretildiği işletim sistemi dışında
+# HER ZAMAN uyuşmaz — kapı kendi commit'inde bile düşer (bu gerçekten yaşandı). Özet alınmadan
+# önce CR'ler atılır: karşılaştırılan şey dosyanın İÇERİĞİdir, nasıl saklandığı değil.
 compute() {
   while IFS= read -r rel; do
-    printf '%s  %s\n' "$(sha256sum "$MIGRATIONS/$rel" | cut -d' ' -f1)" "$rel"
+    printf '%s  %s\n' "$(tr -d '\r' < "$MIGRATIONS/$rel" | sha256sum | cut -d' ' -f1)" "$rel"
   done < <(list_files)
 }
 

@@ -23,6 +23,21 @@
 ## ✅ Deploy ÖNCESİ zorunlu adımlar
 
 ### Veritabanı
+
+> ⚠️ **MIGRATION'LARI ARTIK UYGULAMANIN KENDİSİ UYGULAR — `dotnet ef` DEĞİL.**
+>
+> ```bash
+> ./GuzellikMerkezi.Api --migrate-only    # 0 = başarılı, 1 = DURDUR (deploy'a devam etme)
+> ```
+>
+> Neden: `dotnet ef database update` ve boru hattına verilen SQL betiği, uygulamanın kendi
+> korumalarını **kullanmaz** — veritabanına özel `GET_LOCK` (iki örneğin aynı anda migrate
+> etmesini engeller) ve `__migration_attempt` izi (DDL uygulanıp geçmiş yazılmadan çökmeyi
+> teşhis eder) devre dışı kalır. Aynı binary ile çalıştırmak hem bu korumaları verir hem de
+> sunucuda EF CLI gerektirmez. Sıra: **`--migrate-only` → 0 döndüyse servisi yeni sürüme al.**
+>
+> Aşağıdaki migration listesi *ne değiştiğini* anlatır; hepsi bu tek komutla uygulanır.
+
 - [ ] **Encryption kolon migration'ını uygula:** `WidenEncryptedColumns` (`20260621214008`).
   - Schema prod'da otomatik migrate OLMAZ (sadece Development'ta). Elle uygula:
     - `dotnet ef database update -p backend/src/GuzellikMerkezi.Infrastructure -s backend/src/GuzellikMerkezi.Api`
@@ -65,6 +80,14 @@
     (`Accounting.VoidExpense` izni + zorunlu gerekçe). İptal edilen satır provenance için görünür kalır,
     para toplamlarının HİÇBİRİNE girmez.
   - Uygulanmazsa: gider listesi/özet uçları eksik kolon nedeniyle **500** verir.
+- [ ] **Onay damgası + gider ters kaydı + tahsilat-randevu bağı:** `ApprovalStampExpenseReversalPaymentLink`.
+  - `pending_operations.RequesterSecurityStampUtc` — onay replay'i, istekten sonra parola sıfırlama /
+    zorunlu çıkış olduysa uygulanmaz.
+  - `business_expenses.ReversalOfExpenseId` — **gider iptali artık geçmişi silmiyor**: asıl satır kendi
+    döneminde kalır, iptalin yapıldığı güne negatif tutarlı ters kayıt yazılır. Kapanmış ayın kârı ve
+    o güne ait kasa kapanışı değişmez.
+  - `account_payments.SourceAppointmentId` — randevu tahsilatının provenance'ı; tamamlaması geri
+    alınmak istenen randevunun parası artık bulunabiliyor (önce tahsilat düzeltilmeden geri alınamaz).
 - [ ] ⚠️ **"Tam bir kez" sertleştirme migration'ı:** `ExactlyOnceHardening` (`20260805234343`).
   - Üç değişiklik: (1) `background_jobs.LockToken`, (2) `processed_client_requests.RequestFingerprint`,
     (3) `app_notifications` üzerinde **benzersiz** `(TenantId, RecipientUserId, DedupeKey)` indeksi

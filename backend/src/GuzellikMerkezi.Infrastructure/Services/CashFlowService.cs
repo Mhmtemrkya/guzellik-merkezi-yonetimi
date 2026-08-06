@@ -73,7 +73,7 @@ public sealed class CashFlowService : ICashFlowService
         // aylık raporlar henüz onaylanmamış parayı GERÇEKLEŞMİŞ gider gibi düşüyordu.
         var expenseRows = await _db.BusinessExpenses
             .AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.IsApproved && e.VoidedAtUtc == null && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
+            .Where(e => e.TenantId == tenantId && e.IsApproved && e.OccurredAtUtc >= from && e.OccurredAtUtc < to)
             .Select(e => new
             {
                 e.Id,
@@ -251,7 +251,7 @@ public sealed class CashFlowService : ICashFlowService
         // GİDER — işletme giderleri (maaş/kira/prim ödemeleri dahil).
         // Yalnız onaylı gider — bkz. SummaryAsync'teki gerekçe.
         var expenseRows = await _db.BusinessExpenses.AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.IsApproved && e.VoidedAtUtc == null && e.OccurredAtUtc >= fromUtc)
+            .Where(e => e.TenantId == tenantId && e.IsApproved && e.OccurredAtUtc >= fromUtc)
             .Select(e => new { e.Amount, e.OccurredAtUtc })
             .ToListAsync(cancellationToken);
         var expenseByMonth = expenseRows

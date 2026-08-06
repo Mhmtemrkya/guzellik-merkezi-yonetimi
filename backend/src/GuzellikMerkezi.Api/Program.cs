@@ -84,6 +84,29 @@ builder.Services.AddRateLimiter(options =>
             return $"p:{partition}";
         return ip?.ToString() ?? "unknown";
     }
+
+    /// <summary>Soket adresi — istemcinin DEĞİŞTİREMEYECEĞİ tek anahtar (çerez silmek etkilemez).</summary>
+    static string SocketIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    // IP TAVANI — BÖLÜMLEME ANAHTARININ ÜSTÜNDE İKİNCİ KATMAN.
+    //
+    // SOMUT AÇIK: bölümleme anahtarı tarayıcı çerezinden gelir; kullanıcı çerezi silerek HER
+    // SEFERİNDE yeni bir kova alabilir, yani login/OTP sınırı fiilen sınırsız hâle gelirdi.
+    // (Kova anahtarı yine gerekli: onsuz TÜM kullanıcılar proxy IP'sinde tek kovada birleşiyor ve
+    // tek istemci siteyi 429'a düşürebiliyordu.) İki katman birlikte doğru davranışı verir:
+    // ince kova adil paylaşım sağlar, KABA TAVAN ise kaçışı engeller.
+    //
+    // Tavan yalnız kimlik doğrulama/OTP yollarına uygulanır: yönetici panelinin normal kullanımı
+    // (aynı NAT arkasındaki bir salonun tüm personeli) yanlışlıkla kısılmasın.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+    {
+        var path = http.Request.Path.Value ?? string.Empty;
+        var isAuthPath = path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase);
+        if (!isAuthPath) return RateLimitPartition.GetNoLimiter("none");
+
+        return RateLimitPartition.GetFixedWindowLimiter($"ip:{SocketIp(http)}",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 });
+    });
     // Müşteri giriş/kayıt: 5 dakikada en fazla 10 deneme (IP başına).
     options.AddPolicy("customer-auth", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
@@ -101,6 +124,36 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+// ŞEMA GÜNCELLEME KOMUTU — CANLI DEPLOY'UN DESTEKLENEN YOLU.
+//
+// SOMUT AÇIK: canlıda migration'lar `dotnet ef database update` ya da boru hattına verilen bir
+// SQL betiğiyle uygulanıyordu. Bu yolların hiçbiri uygulamanın kendi korumalarını kullanmıyor:
+// veritabanına özel GET_LOCK (iki örneğin aynı anda migrate etmesini engeller) ve
+// `__migration_attempt` izi (DDL uygulanıp geçmiş yazılmadan çökmeyi teşhis eder) devre dışı
+// kalıyordu. Deploy betiği artık uygulamayı `--migrate-only` ile çağırır: aynı binary, aynı
+// korumalar, sunucuda EF CLI gerekmez.
+//
+//   ./GuzellikMerkezi.Api --migrate-only      → migration'ları uygular, çıkar (0 = başarılı)
+if (args.Contains("--migrate-only", StringComparer.OrdinalIgnoreCase))
+{
+    using var migrationScope = app.Services.CreateScope();
+    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+    var migrationLogger = migrationScope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Migration");
+    try
+    {
+        await DatabaseBootstrap.MigrateDatabaseAsync(migrationDb, migrationLogger);
+        migrationLogger.LogInformation("Şema güncel. Uygulama başlatılmadı (--migrate-only).");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        // Sıfırdan farklı çıkış kodu: deploy betiği burada DURMALI, servisi yeni sürüme almamalı.
+        migrationLogger.LogError(ex, "Migration uygulanamadı; deploy durduruldu.");
+        return 1;
+    }
+}
 
 // GÜVENLİK: Varsayılan/zayıf JWT imzalama ve şifreleme anahtarları üretimde KESİNLİKLE reddedilir
 // (kaynak koddaki bu değerlerle token sahteciliği / PII çözme mümkün olurdu). Üretim dışında uyarı verilir.
@@ -311,5 +364,6 @@ app.MapPlatformWhatsAppEndpoints();
 app.MapPlatformOpsEndpoints();
 
 app.Run();
+return 0;
 
 public partial class Program { }

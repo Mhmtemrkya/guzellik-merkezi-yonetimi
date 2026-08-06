@@ -97,10 +97,9 @@ public sealed class DurableJobHostedService : BackgroundService
         GuzellikDbContext db, BackgroundJob job, string token,
         IReadOnlyDictionary<string, IDurableJobHandler> handlers, CancellationToken ct)
     {
-        // KİLİT KALP ATIŞI: iş uzun sürerse (yavaş Meta/SMTP çağrısı) kilit dolar ve başka worker
-        // işi yeniden alırdı. Süre dolmadan uzatılır; uzatılamazsa sahiplik kaybedilmiş demektir.
-        using var heartbeat = new CancellationTokenSource();
-        var heartbeatTask = HeartbeatLoopAsync(db, job.Id, token, heartbeat.Token);
+        // KİLİT KALP ATIŞI (ortak yardımcı — RabbitMQ yolu da aynısını kullanır, ayrışamazlar).
+        // Kendi scope'unda çalışır: DbContext iş parçacığı güvenli değildir.
+        var heartbeat = DurableJobClaim.KeepAlive(_scopeFactory, job.Id, token, LockDuration);
 
         bool succeeded;
         string? error = null;
@@ -114,8 +113,7 @@ public sealed class DurableJobHostedService : BackgroundService
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Kapanış: kilit süresi dolunca iş yeniden alınacak; durumu değiştirme.
-            heartbeat.Cancel();
-            await heartbeatTask;
+            await heartbeat.DisposeAsync();
             throw;
         }
         catch (Exception ex)
@@ -126,8 +124,9 @@ public sealed class DurableJobHostedService : BackgroundService
                 job.Type, job.Attempts + 1, job.MaxAttempts);
         }
 
-        heartbeat.Cancel();
-        await heartbeatTask;
+        // Sonucu yazmadan ÖNCE kalp atışı durdurulur: aksi hâlde kirayı uzatan bir vuruş ile
+        // tamamlama yazması yarışabilirdi.
+        await heartbeat.DisposeAsync();
 
         if (!await DurableJobClaim.TryCompleteAsync(db, job, token, succeeded, error, ct))
         {
@@ -139,27 +138,6 @@ public sealed class DurableJobHostedService : BackgroundService
         }
     }
 
-    private static async Task HeartbeatLoopAsync(GuzellikDbContext db, Guid jobId, string token, CancellationToken ct)
-    {
-        var interval = TimeSpan.FromMilliseconds(LockDuration.TotalMilliseconds / 3);
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(interval, ct);
-                if (ct.IsCancellationRequested) return;
-                if (!await DurableJobClaim.HeartbeatAsync(db, jobId, token, LockDuration, ct)) return;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal sonlanma (iş bitti ya da kapanış).
-        }
-        catch
-        {
-            // Kalp atışı en iyi çabadır: hatası işi düşürmemeli.
-        }
-    }
 
     /// <summary>
     /// Başarılı işleri 7 gün sonra temizler (tablo şişmesin); saatte bir dener.

@@ -376,7 +376,8 @@ public sealed class AccountPayment : Entity
 {
     private AccountPayment() { }
 
-    public AccountPayment(Guid accountId, decimal amount, string? method, string? reference, DateTime occurredAtUtc, Guid? sourceAdisyonId = null)
+    public AccountPayment(Guid accountId, decimal amount, string? method, string? reference, DateTime occurredAtUtc,
+        Guid? sourceAdisyonId = null, Guid? sourceAppointmentId = null)
     {
         CustomerAccountId = accountId;
         Amount = amount;
@@ -384,6 +385,7 @@ public sealed class AccountPayment : Entity
         Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim();
         OccurredAtUtc = occurredAtUtc;
         SourceAdisyonId = sourceAdisyonId;
+        SourceAppointmentId = sourceAppointmentId;
     }
 
     public Guid CustomerAccountId { get; private set; }
@@ -405,6 +407,18 @@ public sealed class AccountPayment : Entity
     /// bulunamıyor, para kasada kalıyordu. Deterministik kolon bu sınıf hatasını bitirir.
     /// </summary>
     public Guid? SourceAdisyonId { get; private set; }
+
+    /// <summary>
+    /// Bu tahsilatı doğuran RANDEVU (randevu tamamlama + tahsilat atomik ucu).
+    ///
+    /// <para>
+    /// Bağ olmadan, tamamlaması geri alınan bir randevunun parası ORTADA KALIYORDU: müşteri
+    /// ödemişti, hizmet "yapılmadı"ya döndü ama tahsilatı bulup düzeltmenin hiçbir yolu yoktu
+    /// (Reference şifreli olduğu için aranamaz). Artık geri alma bu bağı görüp işlemi durdurur ve
+    /// operatöre önce tahsilatı düzeltmesini söyler.
+    /// </para>
+    /// </summary>
+    public Guid? SourceAppointmentId { get; private set; }
 
     /// <summary>
     /// Peşinat tahsilatını AÇAR ve Id'sini carinin Id'sine sabitler.

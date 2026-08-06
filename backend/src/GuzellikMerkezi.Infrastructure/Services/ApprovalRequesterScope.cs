@@ -25,7 +25,8 @@ public sealed class ApprovalRequesterScope : IApprovalRequesterScope
     }
 
     public async Task<Result<string>> CreateAccessTokenAsync(
-        Guid tenantId, Guid requesterUserId, Guid? operationBranchId, Guid operationId, CancellationToken cancellationToken = default)
+        Guid tenantId, Guid requesterUserId, Guid? operationBranchId, Guid operationId,
+        DateTime? requesterSecurityStampUtc = null, CancellationToken cancellationToken = default)
     {
         // Global süzgeçler atlanır: onay anında aktif şube kapsamı onaylayanınkidir, istek sahibinin
         // kaydı başka şubede olabilir ve "yok" sayılması sessiz bir başarısızlık üretirdi.
@@ -39,6 +40,23 @@ public sealed class ApprovalRequesterScope : IApprovalRequesterScope
             return Result<string>.Failure(Error.Conflict("İsteği gönderen kullanıcı bulunamadı; onay uygulanamaz."));
         if (!requester.IsActive)
             return Result<string>.Failure(Error.Conflict("İsteği gönderen kullanıcının erişimi kapatılmış; onay uygulanamaz."));
+
+        // GÜVENLİK DAMGASI DEĞİŞMİŞSE UYGULANMAZ.
+        //
+        // Damga; parola değişimi, zorunlu çıkış ve yetki değişimi gibi "bu kullanıcının tüm
+        // oturumlarını düşür" olaylarında tazelenir. Replay burada YENİ bir token ürettiği için,
+        // damga karşılaştırılmazsa bu iptal olayı sessizce atlanırdı: hesabı ele geçirilmiş bir
+        // personelin kuyrukta bekleyen isteği, parola sıfırlandıktan SONRA bile uygulanabilirdi.
+        // Kayıtlı değer sentinel (MinValue) olabilir: "istek anında hiç oturum iptali yaşanmamıştı".
+        // Karşılaştırma bu yüzden aynı sentinel'e normalize edilir; sonradan yapılan gerçek bir
+        // iptal (parola sıfırlama) MinValue'dan farklı olacağı için yakalanır.
+        if (requesterSecurityStampUtc is { } stampedAt
+            && (requester.SecurityStampUtc ?? DateTime.MinValue) != stampedAt)
+        {
+            return Result<string>.Failure(Error.Conflict(
+                "İsteği gönderen kullanıcının oturum güvenliği istekten sonra değişmiş (parola sıfırlama, " +
+                "zorunlu çıkış ya da yetki değişimi). Onay uygulanmadı; istek yeniden oluşturulmalı."));
+        }
 
         // ŞUBE KAPSAMI DEĞİŞMİŞSE UYGULANMAZ: istek hangi şubede açıldıysa orada geçerlidir.
         // Personel başka şubeye alındıysa bekleyen istek yeni şubede uygulanmamalı.

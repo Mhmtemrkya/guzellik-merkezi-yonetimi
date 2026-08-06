@@ -72,10 +72,6 @@ public sealed class CashClosingService : ICashClosingService
     {
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.FinanceCashClosing, cancellationToken))
             return Result<CashClosingDto>.Failure(Error.Conflict(FeatureDeniedMessage));
-        var totals = await CashTotalsAsync(tenantId, request.FromUtc, request.ToUtc, cancellationToken);
-        if (totals.IsFailure) return Result<CashClosingDto>.Failure(totals.Error);
-        var (cashIncome, cashExpense) = totals.Value;
-
         // KAPANIŞIN ŞUBESİ HESABIN KAPSAMIYLA AYNI OLMALI.
         //
         // Şube gövdeden geliyordu, tutarlar ise isteğin ETKİN kapsamından (aktif şube süzgeci)
@@ -84,6 +80,20 @@ public sealed class CashClosingService : ICashClosingService
         // Kapanış artık hesabın yapıldığı kapsamı taşır: şube süzgeci varsa o şube, yoksa
         // kurum geneli (şubesiz) kayıt.
         var effectiveBranchId = _tenantContext?.BranchId;
+
+        // ŞUBE İSTENDİ AMA KAPSAM KURUM GENELİ → REDDEDİLİR.
+        //
+        // Bu durumda tutarlar TÜM şubelerin toplamıdır; onu bir şubenin kapanışı diye kaydetmek
+        // o şubenin kasasını olduğundan büyük gösterir ve fark hesabını kalıcı olarak bozar.
+        // Eskiden sessizce kurum geneli kayıt yazılıyor, kullanıcı şube kapanışı yaptığını
+        // sanıyordu. Doğru davranış: önce şube seçilsin.
+        if (effectiveBranchId is null && request.BranchId is not null)
+        {
+            return Result<CashClosingDto>.Failure(Error.Validation(
+                "Şube kapanışı için önce o şubeye geçin. Kurum geneli kapsamda hesaplanan tutarlar " +
+                "tüm şubelerin toplamıdır; tek bir şubenin kapanışına yazılamaz."));
+        }
+
         if (effectiveBranchId is not null && request.BranchId is not null && request.BranchId != effectiveBranchId)
         {
             await _audit.LogAsync(tenantId, effectiveBranchId, "BranchScopeOverride", "CashRegisterClosing", null,
@@ -91,9 +101,34 @@ public sealed class CashClosingService : ICashClosingService
                 new { RequestedBranchId = request.BranchId, EffectiveBranchId = effectiveBranchId }, cancellationToken);
         }
 
-        // Gün başına tek kapanış — varsa güncelle (yeniden say), yoksa oluştur.
-        var existing = await _db.CashRegisterClosings
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.BusinessDate == request.BusinessDate, cancellationToken);
+        // EŞZAMANLI İKİ KAPANIŞ TEK KARARA İNDİRGENİR.
+        //
+        // "Varsa güncelle, yoksa oluştur" kilitsizdi: aynı gün için iki istek birlikte "yok" görüp
+        // İKİ kapanış satırı yazabiliyordu (gün sonu raporunda çift fark, çift bildirim). Kurum
+        // satırı kilitlenir — kilit sırasında (RowLock.TableOrder) tenants en üsttedir, mevcut
+        // protokollerle çakışmaz.
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
+
+        // Tutarlar KİLİT ALTINDA hesaplanır: kilidi bekleyen ikinci istek, birincinin yazdığı
+        // hareketleri de görür ve "yeniden say" gerçekten güncel değeri üretir.
+        var totals = await CashTotalsAsync(tenantId, request.FromUtc, request.ToUtc, cancellationToken);
+        if (totals.IsFailure) return Result<CashClosingDto>.Failure(totals.Error);
+        var (cashIncome, cashExpense) = totals.Value;
+
+        // GÜN + ŞUBE BAŞINA tek kapanış.
+        //
+        // Arama şubeyi HİÇ dikkate almıyordu: iki şubeli bir kurumda B şubesinin kapanışı,
+        // A şubesinin aynı güne ait satırını buluyor ve B'nin tutarlarıyla ÜZERİNE YAZIYORDU —
+        // A'nın kapanışı sessizce kayboluyordu.
+        var existing = await _db.CashRegisterClosings.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId
+                                   && !c.IsDeleted
+                                   && c.BranchId == effectiveBranchId
+                                   && c.BusinessDate == request.BusinessDate, cancellationToken);
 
         CashRegisterClosing closing;
         if (existing is null)
@@ -109,6 +144,8 @@ public sealed class CashClosingService : ICashClosingService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
         await _audit.LogAsync(tenantId, closing.BranchId, existing is null ? "Create" : "Update", "CashRegisterClosing", closing.Id,
             $"Gün sonu kasa kapanışı {closing.BusinessDate:yyyy-MM-dd} · fark {closing.Difference:0.##}", null, cancellationToken);
 

@@ -18,7 +18,7 @@ public sealed class GuzellikDbContextDesignTimeFactory : IDesignTimeDbContextFac
         var connectionString = Environment.GetEnvironmentVariable("GM_CONNECTIONSTRING")
             ?? "server=localhost;port=3306;database=guzellik_merkezi_dev;user=root;password=change-me;";
         var options = new DbContextOptionsBuilder<GuzellikDbContext>()
-            .UseMySQL(connectionString)
+            .UseMySQL(MySqlConnectionStrings.EnsureUtf8Mb4(connectionString))
             .Options;
         return new GuzellikDbContext(options);
     }

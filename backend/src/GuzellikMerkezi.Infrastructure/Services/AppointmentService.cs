@@ -984,7 +984,7 @@ public sealed class AppointmentService : IAppointmentService
             }
 
             var collected = await CollectOnCompleteAsync(
-                tenantId, customerId, payment, preferredAccountId, cancellationToken);
+                tenantId, customerId, payment, preferredAccountId, id, cancellationToken);
             // Tahsilat başarısızsa TAMAMLAMA DA geri alınır: transaction commit edilmez ve
             // ertelenen yan etkiler HİÇ çalışmaz.
             if (collected.IsFailure) return Result<AppointmentDto>.Failure(collected.Error);
@@ -1044,7 +1044,8 @@ public sealed class AppointmentService : IAppointmentService
     /// </para>
     /// </summary>
     private async Task<Result> CollectOnCompleteAsync(
-        Guid tenantId, Guid customerId, CompleteAppointmentPaymentDto payment, Guid? preferredAccountId, CancellationToken ct)
+        Guid tenantId, Guid customerId, CompleteAppointmentPaymentDto payment, Guid? preferredAccountId,
+        Guid appointmentId, CancellationToken ct)
     {
         var occurredAt = payment.OccurredAtUtc ?? DateTime.UtcNow;
         var reference = string.IsNullOrWhiteSpace(payment.Reference) ? "Randevu tahsilatı" : payment.Reference;
@@ -1083,8 +1084,11 @@ public sealed class AppointmentService : IAppointmentService
 
         if (accountId is { } target)
         {
+            // RANDEVU BAĞI YAZILIR: tamamlaması geri alınmak istendiğinde bu tahsilatın varlığı
+            // görülebilsin. Bağ olmadan para ortada kalıyordu (Reference şifreli → aranamaz).
             var paid = await _accounts.RegisterPaymentAsync(tenantId, target,
-                new RegisterAccountPaymentRequest(payment.Amount, payment.Method, reference, occurredAt), ct);
+                new RegisterAccountPaymentRequest(payment.Amount, payment.Method, reference, occurredAt,
+                    SourceAppointmentId: appointmentId), ct);
             return paid.IsFailure ? Result.Failure(paid.Error) : Result.Success();
         }
 
@@ -1197,6 +1201,24 @@ public sealed class AppointmentService : IAppointmentService
                     "(Satışlar → İptal), sonra tamamlamayı geri alın — para hareketi yalnızca " +
                     "satış iptali üzerinden düzeltilebilir."));
             }
+        }
+
+        // BU RANDEVUNUN TAHSİLATI VARSA GERİ ALMA DURUR.
+        //
+        // SOMUT AÇIK: yukarıdaki kapı yalnız BAĞLI SATIŞA bakıyordu. Satışa bağlanmamış ama
+        // /complete ucundan PARASI ALINMIŞ bir randevu geri alınabiliyordu: müşteri ödemiş,
+        // hizmet "yapılmadı"ya dönüyor ve tahsilat cari kartta sahipsiz kalıyordu. Kimse onu
+        // bu randevuyla ilişkilendiremediği için de düzeltilemiyordu.
+        // Bağ artık tahsilat satırında (AccountPayment.SourceAppointmentId) duruyor.
+        var linkedPayment = await _db.AccountPayments.AsNoTracking().IgnoreQueryFilters()
+            .Where(p => p.SourceAppointmentId == appointment.Id && !p.IsDeleted)
+            .Select(p => new { p.Amount, p.CustomerAccountId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (linkedPayment is not null)
+        {
+            return Result<AppointmentDto>.Failure(Error.Conflict(
+                $"Bu randevuda {linkedPayment.Amount:N2} ₺ tahsilat alınmış. Tamamlamayı geri almadan önce " +
+                "cari hesap ekranından tahsilatı düzeltin (iade/silme) — aksi hâlde para sahipsiz kalır."));
         }
 
         // ---- 1) TÜKETİLEN SEANSIN İADESİ ----
