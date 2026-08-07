@@ -679,6 +679,12 @@ export const platformApi = {
     apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/approve`, { method: 'POST', body: {} }),
   rejectWaPurchase: <T = unknown>(id: string, note?: string): Promise<T> =>
     apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/reject`, { method: 'POST', body: { note } }),
+  /**
+   * Takılan KARTLI talebi sağlayıcıya sorarak çözer. Kartlı talep elle onaylanamaz (tahsilatsız
+   * kontör yüklenmesin); tek çıkış budur ve yalnız doğrulanmış başarı bakiyeyi artırır.
+   */
+  reconcileWaPurchase: <T = unknown>(id: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/reconcile`, { method: 'POST', body: {} }),
 
   // Platform-wide usage summary
   platformUsage: <T = unknown>(): Promise<T> =>

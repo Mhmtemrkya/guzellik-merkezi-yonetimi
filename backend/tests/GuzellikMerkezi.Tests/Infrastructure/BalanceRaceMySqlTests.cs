@@ -282,4 +282,101 @@ public sealed class BalanceRaceMySqlTests
                 .Where(t => t.TenantId == seed.TenantId && t.Type == WalletTransactionType.TopUp).ToListAsync());
         }
     }
+
+    /// <summary>
+    /// AYNI DIŞ ÖDEME İKİ DEFTERE BİRDEN YAZILAMAZ — EŞZAMANLI HÂLDE.
+    ///
+    /// <para>
+    /// Para iki deftere giriyor: abonelik tahsilatı ve WhatsApp kontörü. Her iki akış da "bu ödeme
+    /// kimliği başka yerde kullanılmış mı?" diye SORUP sonra yazıyordu. Bu kontrol-sonra-yazdır:
+    /// eşzamanlı iki callback, diğeri henüz commit etmediği için ikisi de "yok" cevabını alır ve
+    /// aynı dış ödeme İKİ deftere birden işlenir — kurum bir kez ödeyip hem abonelik hem kontör alır.
+    /// </para>
+    /// <para>
+    /// Garanti <c>provider_payment_claims</c> üzerindeki benzersiz kısıttır. InMemory sağlayıcı
+    /// benzersiz indeksi ZORLAMADIĞI için bu senaryo yalnız gerçek MariaDB'de üretilebilir.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task ConcurrentSubscriptionAndCreditCallback_SamePaymentId_OnlyOneLedgerWins()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+
+        await using (var db = database.NewContext())
+        {
+            db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+            db.SubscriptionPlans.Add(new SubscriptionPlan("race-basic", "Yarış", 500m, 1, 3, 500, 300, 100));
+            await db.SaveChangesAsync();
+        }
+
+        // Kontör tarafı: kartla checkout açılır.
+        string creditConversation;
+        await using (var db = database.NewContext())
+        {
+            var billing = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance,
+                new PaymentTestDoubles.SimulationResolver(), new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
+            Assert.True((await billing.StartCreditCheckoutAsync(
+                seed.TenantId, new TopUpRequest(null, 500m), "https://panel.test/api/payments/credit-callback", null)).IsSuccess);
+            creditConversation = (await db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().SingleAsync()).ConversationId!;
+        }
+
+        // Abonelik tarafı: AYNI conversationId ile bekleyen bir tahsilat kaydı kurulur; simülasyon
+        // sağlayıcısı ödeme kimliğini conversationId'den türettiği için ikisi AYNI dış ödemeye bakar.
+        await using (var db = database.NewContext())
+        {
+            var planId = (await db.SubscriptionPlans.AsNoTracking().FirstAsync()).Id;
+            db.SubscriptionPayments.Add(new SubscriptionPayment(
+                seed.TenantId, planId, BillingPeriod.Monthly, 500m, "Simulation", creditConversation, 1));
+            await db.SaveChangesAsync();
+        }
+
+        var gateway = new SimulationPaymentGateway(PaymentTestDoubles.SigningSecret);
+        var init = await gateway.InitCheckoutAsync(new CheckoutInitRequest(
+            creditConversation, 500m, "test", "buyer", "Ad", "Soyad", "a@b.c", "0555", "1", "Adres", "İstanbul",
+            "127.0.0.1", "https://panel.test/api/payments/credit-callback"));
+        var token = init.Value!.CheckoutToken;
+
+        async Task<bool> CreditAsync()
+        {
+            await using var db = database.NewContext();
+            var billing = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance,
+                new PaymentTestDoubles.SimulationResolver(), new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
+            var r = await billing.CompleteCreditCheckoutAsync(token);
+            return r.IsSuccess && r.Value!.Succeeded;
+        }
+
+        async Task<bool> SubscriptionAsync()
+        {
+            await using var db = database.NewContext();
+            var billing = new BillingService(db, new PaymentTestDoubles.SimulationResolver(), new PassthroughEncryption(),
+                new NoopAuditLogger(), new AllowAllFeatureService(), new TestCurrentUser(UserRole.InstitutionOwner),
+                NullLogger<BillingService>.Instance);
+            var r = await billing.CompleteCheckoutAsync(token);
+            return r.IsSuccess && r.Value!.Succeeded;
+        }
+
+        var results = await Task.WhenAll(CreditAsync(), SubscriptionAsync());
+
+        // TEK KAZANAN. Hangisinin kazandığı önemli değil; ikisinin birden kazanması para kaybıdır.
+        Assert.Equal(1, results.Count(x => x));
+
+        await using var check = database.NewContext();
+        Assert.Single(await check.ProviderPaymentClaims.AsNoTracking().ToListAsync());
+
+        var topUps = await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.TenantId == seed.TenantId && t.Type == WalletTransactionType.TopUp).ToListAsync();
+        var activated = await check.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(t => t.Id == seed.TenantId && t.SubscriptionEndsAtUtc != null);
+        // Ödeme ya kontöre ya aboneliğe gitti — ikisine birden DEĞİL.
+        Assert.False(topUps.Count > 0 && activated, "Aynı dış ödeme hem kontöre hem aboneliğe yazıldı.");
+    }
+
+    /// <summary>Şifreleme yerine kimlik dönüşümü — testte gerçek anahtar yönetimi gerekmez.</summary>
+    private sealed class PassthroughEncryption : GuzellikMerkezi.Application.Abstractions.IEncryptionService
+    {
+        public string? Encrypt(string? plaintext) => plaintext;
+        public string? Decrypt(string? ciphertext) => ciphertext;
+        public bool IsEncrypted(string? value) => false;
+    }
 }

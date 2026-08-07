@@ -100,7 +100,21 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
 
         // status=success YALNIZCA "sorgu çalıştı" demektir; ödemenin kendisi paymentStatus'tadır.
         // İkisini karıştırmak, başarısız ödemeyi başarılı sanıp aboneliği açardı.
-        var paid = IsSuccess(json) && string.Equals(Str(json, "paymentStatus"), "SUCCESS", StringComparison.OrdinalIgnoreCase);
+        var queryRan = IsSuccess(json);
+        var paymentStatus = Str(json, "paymentStatus");
+        var paid = queryRan && string.Equals(paymentStatus, "SUCCESS", StringComparison.OrdinalIgnoreCase);
+
+        // SONUCUN KESİNLİĞİ. iyzico paymentStatus yalnız SUCCESS/FAILURE döndürmez; INIT_THREEDS,
+        // CALLBACK_THREEDS, BKM_POS_SELECTED, PENDING_CREDIT gibi ARA durumlar da vardır. Bunlar
+        // "reddedildi" DEĞİLDİR — müşteri akışın ortasındadır ve ödeme birazdan geçebilir.
+        // Sorgunun kendisi çalışmadıysa (status != success) sonuç hakkında hiçbir şey bilmiyoruz.
+        var outcome = !queryRan
+            ? PaymentOutcome.Unresolved
+            : paid
+                ? PaymentOutcome.Succeeded
+                : string.Equals(paymentStatus, "FAILURE", StringComparison.OrdinalIgnoreCase)
+                    ? PaymentOutcome.Declined
+                    : PaymentOutcome.Unresolved;
 
         return Result<CheckoutResult>.Success(new CheckoutResult(
             paid,
@@ -115,7 +129,8 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
             Str(json, "cardBankName"),
             paid ? null : Str(json, "errorCode"),
             paid ? null : ErrorText(json, "Ödeme tamamlanamadı."),
-            Str(json, "currency")));
+            Str(json, "currency"),
+            outcome));
     }
 
     public async Task<Result<ChargeResult>> ChargeStoredCardAsync(StoredCardChargeRequest request, CancellationToken ct = default)
@@ -170,11 +185,22 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
         if (response.IsFailure) return Result<ChargeResult>.Failure(response.Error);
 
         var json = response.Value!;
-        var ok = IsSuccess(json) && string.Equals(Str(json, "paymentStatus"), "SUCCESS", StringComparison.OrdinalIgnoreCase);
+        var queryRan = IsSuccess(json);
+        var paymentStatus = Str(json, "paymentStatus");
+        var ok = queryRan && string.Equals(paymentStatus, "SUCCESS", StringComparison.OrdinalIgnoreCase);
+        // Ara durumlar (3DS akışı sürüyor) RED DEĞİLDİR — bkz. RetrieveCheckoutAsync'teki aynı eşleme.
+        var outcome = !queryRan
+            ? PaymentOutcome.Unresolved
+            : ok
+                ? PaymentOutcome.Succeeded
+                : string.Equals(paymentStatus, "FAILURE", StringComparison.OrdinalIgnoreCase)
+                    ? PaymentOutcome.Declined
+                    : PaymentOutcome.Unresolved;
         return Result<ChargeResult>.Success(new ChargeResult(
             ok, conversationId, Str(json, "paymentId"), Decimal(json, "paidPrice"),
             ok ? null : Str(json, "errorCode"), ok ? null : ErrorText(json, "Tahsilat bulunamadı."),
-            Str(json, "currency")));
+            Str(json, "currency"),
+            outcome));
     }
 
     public async Task<Result> RefundAsync(string providerPaymentId, decimal amount, CancellationToken ct = default)

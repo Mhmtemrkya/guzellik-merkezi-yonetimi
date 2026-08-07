@@ -91,7 +91,30 @@ public sealed record CheckoutResult(
     /// başka bir birimde dönebilir ve "100" değeri 100 TL sanılıp abonelik açılabilirdi.
     /// Boş bırakılırsa (eski/sahte sağlayıcı) doğrulama atlanmaz — çağıran TRY bekler.
     /// </summary>
-    string? Currency = null);
+    string? Currency = null,
+    /// <summary>
+    /// Sonucun KESİNLİĞİ. <see cref="Succeeded"/> yalnız "başarılı mı" der; "başarısız" ile
+    /// "HENÜZ BELLİ DEĞİL" arasındaki farkı taşımaz ve bu fark parayı ilgilendirir: 3DS'in
+    /// ortasında sorulan bir checkout "başarısız" değil BELİRSİZdir. Belirsizi kalıcı başarısız
+    /// saymak, sonradan ödemesi geçen müşterinin kaydını kapatıp parayı karşılıksız bırakır.
+    /// <para>Varsayılan <see cref="PaymentOutcome.Unresolved"/>: bilgi vermeyen sağlayıcı
+    /// "reddetti" sayılmaz (güvenli taraf).</para>
+    /// </summary>
+    PaymentOutcome Outcome = PaymentOutcome.Unresolved);
+
+/// <summary>Sağlayıcı sonucunun kesinliği — bkz. <see cref="CheckoutResult.Outcome"/>.</summary>
+public enum PaymentOutcome
+{
+    /// <summary>Sonuç henüz belli değil (3DS ortası, ağ hatası, geçmiş tutmayan sağlayıcı).
+    /// Kayıt AÇIK kalır ve sonraki dönüşte yeniden değerlendirilir.</summary>
+    Unresolved = 0,
+
+    /// <summary>Tahsilat gerçekleşti.</summary>
+    Succeeded = 1,
+
+    /// <summary>Sağlayıcı KESİN olarak reddetti. Yalnız bu durum kaydı kalıcı kapatır.</summary>
+    Declined = 2,
+}
 
 public sealed record StoredCardChargeRequest(
     string ConversationId,
@@ -121,4 +144,9 @@ public sealed record ChargeResult(
     /// Saklı kart yenilemesinde de tutar tek başına yetmez: başka birimde dönen bir sonuç
     /// "aynı sayı" olduğu için ödenmiş sayılıp abonelik uzatılabilirdi.
     /// </summary>
-    string? Currency = null);
+    string? Currency = null,
+    /// <summary>
+    /// Sonucun kesinliği — <see cref="CheckoutResult.Outcome"/> ile aynı gerekçe. Sorgu yolunda
+    /// ayrıca önemli: geçmiş tutmayan bir sağlayıcı "bilmiyorum" der, bu RED DEĞİLDİR.
+    /// </summary>
+    PaymentOutcome Outcome = PaymentOutcome.Unresolved);

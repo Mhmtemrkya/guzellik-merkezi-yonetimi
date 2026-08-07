@@ -79,7 +79,22 @@ public sealed class WhatsAppCreditPurchase : Entity
         Touch();
     }
 
-    /// <summary>Kart tahsilatı başarısız/uyumsuz. Bakiye artmaz; sebep Note'ta taşınır.</summary>
+    /// <summary>
+    /// Sonuç henüz kesinleşmedi (3DS ortası, ağ hatası, geçmiş tutmayan sağlayıcı).
+    /// Talep PENDING KALIR — kapatılırsa, müşteri ödemeyi hemen ardından tamamladığında kayıt
+    /// yeniden değerlendirilemez ve para karşılıksız kalırdı. Yalnız gerekçe not edilir.
+    /// </summary>
+    public void MarkPaymentUnresolved(string? reason, DateTime nowUtc)
+    {
+        if (Status != CreditPurchaseStatus.Pending) return; // karara bağlanmış kaydı geri açmayız
+        Note = string.IsNullOrWhiteSpace(reason)
+            ? "Ödeme sonucu henüz kesinleşmedi."
+            : reason.Trim();
+        ProcessedAtUtc = nowUtc;   // "en son ne zaman soruldu" izi
+        Touch();
+    }
+
+    /// <summary>Kart tahsilatı KESİN olarak reddedildi/uyumsuz. Bakiye artmaz; sebep Note'ta taşınır.</summary>
     public void MarkPaymentFailed(string? errorCode, string? errorMessage, DateTime nowUtc)
     {
         if (Status is CreditPurchaseStatus.Approved)
@@ -91,8 +106,27 @@ public sealed class WhatsAppCreditPurchase : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Kart ödemesiyle açılmış talep mi? Bu kayıtlar İNSAN ONAYINA KAPALIDIR — sonuçlarını
+    /// yalnız doğrulanmış sağlayıcı dönüşü belirler.
+    /// </summary>
+    public bool IsCardCheckout => ConversationId is not null;
+
+    /// <summary>
+    /// ELLE ONAY — yalnız havale/elden ödeme talepleri için.
+    ///
+    /// <para>
+    /// SOMUT AÇIK (denetimde yakalandı): kartla ödeme akışı da PENDING bir talep açıyor ve bu
+    /// satır platform onay kuyruğuna düşüyordu. Yönetici onu havale talebi sanıp onayladığında
+    /// <b>hiç tahsilat yapılmadan</b> cüzdana kontör yükleniyordu — kurum ödeme formunu açıp
+    /// kapatmakla bedava kontör alabilirdi. Sonraki gerçek callback de kaydı "zaten alınmış"
+    /// görüp sessizce geçiyordu. Kapı hem burada hem serviste (çift savunma).
+    /// </para>
+    /// </summary>
     public void Approve(Guid? processedByUserId)
     {
+        if (IsCardCheckout)
+            throw new DomainException("Kartla ödeme talebi elle onaylanamaz; sonucu ödeme sağlayıcısı belirler.");
         if (Status != CreditPurchaseStatus.Pending) throw new DomainException("Yalnızca bekleyen talep onaylanabilir.");
         Status = CreditPurchaseStatus.Approved;
         ProcessedByUserId = processedByUserId;
@@ -100,8 +134,12 @@ public sealed class WhatsAppCreditPurchase : Entity
         Touch();
     }
 
+    /// <summary>ELLE RED — onayla aynı gerekçe: kartlı talebi insan kapatamaz. Kapatsaydı,
+    /// müşteri ödemeyi sonradan tamamladığında kayıt yeniden değerlendirilemezdi.</summary>
     public void Reject(Guid? processedByUserId, string? note)
     {
+        if (IsCardCheckout)
+            throw new DomainException("Kartla ödeme talebi elle reddedilemez; sonucu ödeme sağlayıcısı belirler.");
         if (Status != CreditPurchaseStatus.Pending) throw new DomainException("Yalnızca bekleyen talep reddedilebilir.");
         Status = CreditPurchaseStatus.Rejected;
         ProcessedByUserId = processedByUserId;

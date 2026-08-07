@@ -64,6 +64,12 @@ public static class PlatformWhatsAppEndpoints
         g.MapPost("/purchases/{id:guid}/reject", async (Guid id, RejectPurchaseRequest req, ICurrentUser u, IWhatsAppBillingService b, HttpContext http, CancellationToken ct) =>
             (await b.RejectPurchaseAsync(id, u.UserId, req.Note, ct)).ToHttpResult(http));
 
+        // TAKILAN KARTLI TALEP İÇİN TEK ÇIKIŞ: sağlayıcıya sor.
+        // approve/reject kartlı taleplerde 409 döner (tahsilatsız kontör yüklenmesin); bu uç
+        // ödemeyi sağlayıcıya YENİDEN SORAR ve yalnız doğrulanmış başarı bakiyeyi artırır.
+        g.MapPost("/purchases/{id:guid}/reconcile", async (Guid id, IWhatsAppBillingService b, HttpContext http, CancellationToken ct) =>
+            (await b.ReconcileCreditPurchaseAsync(id, ct)).ToHttpResult(http));
+
         return app;
     }
 }

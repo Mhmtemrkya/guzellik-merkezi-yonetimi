@@ -52,6 +52,17 @@ public interface IWhatsAppBillingService
     /// <summary>Sağlayıcı dönüşünü doğrular ve başarılıysa cüzdana bakiyeyi TEK KEZ yükler.</summary>
     Task<Result<CreditCheckoutCompletedDto>> CompleteCreditCheckoutAsync(string checkoutToken, CancellationToken ct = default);
 
+    /// <summary>
+    /// TAKILAN KARTLI TALEBİ SAĞLAYICIYA SORARAK ÇÖZER (platform yöneticisi).
+    /// <para>
+    /// Kartlı talep elle onaylanamaz — onaylanabilseydi tahsilat olmadan kontör yüklenirdi. Ama
+    /// sonucu belirsiz kalan (3DS ortasında kopan, callback'i kaybolan) bir talebin de bir çıkışı
+    /// olmalı. Buradaki çıkış KÖR ONAY DEĞİL: ödeme sağlayıcıya yeniden sorulur ve yalnız
+    /// doğrulanmış başarı bakiyeyi artırır.
+    /// </para>
+    /// </summary>
+    Task<Result<CreditCheckoutCompletedDto>> ReconcileCreditPurchaseAsync(Guid purchaseId, CancellationToken ct = default);
+
     // --- Platform tarafı: kontör satın alma onay kuyruğu ---
     Task<Result<IReadOnlyCollection<CreditPurchaseDto>>> GetPurchasesAsync(bool onlyPending, CancellationToken ct = default);
     Task<Result<CreditPurchaseDto>> ApprovePurchaseAsync(Guid purchaseId, Guid? processedByUserId, CancellationToken ct = default);

@@ -319,6 +319,20 @@ public sealed class BillingService : IBillingService
         if (mismatch is not null)
             return await RejectMismatchedCallbackAsync(payment, mismatch, nowUtc, tx, ct);
 
+        // ATOMİK SAHİPLİK — para hareketinden ÖNCE, kart saklamadan bile önce.
+        //
+        // Yukarıdaki çapraz tablo sorgusu KONTROL-SONRA-YAZ'dır ve eşzamanlı bir kontör
+        // callback'ine karşı bağlayıcı değildir: ikisi de diğerini "henüz commit etmemiş"
+        // görüp aynı dış ödemeyi kendi defterine yazabilir. Benzersiz kısıt burada tek kazananı
+        // seçer (bkz. ProviderPaymentClaim).
+        if (!await ProviderPaymentClaims.TryClaimAsync(
+                _db, context.Value.Gateway.Provider, result.ProviderPaymentId!,
+                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct))
+        {
+            return await RejectMismatchedCallbackAsync(
+                payment, "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; abonelik başlatılmadı.", nowUtc, tx, ct);
+        }
+
         var tenant = await _db.Tenants.Include(t => t.SubscriptionPlan).FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);
         if (tenant is null) return Result<CheckoutCompletedDto>.Failure(Error.NotFound("Kurum bulunamadı."));
 
@@ -530,6 +544,23 @@ public sealed class BillingService : IBillingService
             await _audit.LogAsync(tenantId, null, "RenewalOutcomeMismatch", "Subscription", payment.Id,
                 $"Yenileme tahsilatının sonucu doğrulanamadı: {chargeMismatch}",
                 new { payment.ConversationId, payment.AmountTRY, payment.Provider, attemptNumber }, ct);
+            return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                false, attemptNumber,
+                "Tahsilat sonucu doğrulanamadı; işlem elle incelenmeli.", tenant.SubscriptionEndsAtUtc));
+        }
+
+        // Sahiplik yenileme yolunda da alınır: bu tahsilat da bir dış ödeme kimliği tüketir ve
+        // kontör defteriyle aynı havuzu paylaşır (bkz. ProviderPaymentClaim).
+        if (!await ProviderPaymentClaims.TryClaimAsync(
+                _db, context.Value.Gateway.Provider, charge.Value.ProviderPaymentId!,
+                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct))
+        {
+            // Çekim GERÇEKLEŞMİŞ olabilir; "başarısız" demek bir sonraki turda ikinci çekim demektir.
+            // Deneme PENDING bırakılır ve elle incelemeye düşer (mismatch yolundaki gerekçenin aynısı).
+            _logger.LogError("Yenileme tahsilatı sahiplenilemedi ({PaymentId}); ödeme kimliği başka defterde.", payment.Id);
+            await _audit.LogAsync(tenantId, null, "RenewalOutcomeMismatch", "Subscription", payment.Id,
+                "Yenileme tahsilatının ödeme kimliği başka bir deftere ait; işlem uygulanmadı.",
+                new { payment.ConversationId, charge.Value.ProviderPaymentId, attemptNumber }, ct);
             return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
                 false, attemptNumber,
                 "Tahsilat sonucu doğrulanamadı; işlem elle incelenmeli.", tenant.SubscriptionEndsAtUtc));

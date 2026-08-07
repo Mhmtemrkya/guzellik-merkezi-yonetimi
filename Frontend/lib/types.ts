@@ -1502,6 +1502,8 @@ export interface ApiCreditPurchase {
   note?: string | null
   createdAtUtc: string
   processedAtUtc?: string | null
+  /** Kartla ödeme talebiyse sağlayıcı adı; havale talebinde null. Elle onay YALNIZ null olanlarda. */
+  provider?: string | null
 }
 
 export interface ApiWhatsAppPricingRule {

@@ -250,6 +250,103 @@ public sealed class WhatsAppCreditCheckoutTests
         }
     }
 
+    /// <summary>
+    /// KARTLI TALEP ELLE ONAYLANAMAZ (denetim blocker'ı).
+    ///
+    /// <para>
+    /// Kart akışı da PENDING bir talep açar. Bu satır platform onay kuyruğuna düşüp yönetici
+    /// tarafından havale talebi sanılırsa, <b>hiç tahsilat yapılmadan</b> cüzdana kontör yüklenirdi:
+    /// kurum ödeme formunu açıp kapatmakla bedava kontör alabilirdi.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ApprovePurchase_OnCardCheckout_IsRejected_AndWalletUntouched()
+    {
+        var options = NewOptions();
+        var tenantId = await SeedTenantAsync(options);
+        var (purchaseId, _) = await StartAsync(options, tenantId, 400m);
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewService(db).ApprovePurchaseAsync(purchaseId, Guid.NewGuid());
+            Assert.True(approved.IsFailure, "Kartlı talep elle onaylanabildi — tahsilatsız kontör yüklenir.");
+            Assert.Contains("kartla ödeme", approved.Error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Reddetmek de yasak: kapatılırsa müşteri ödemeyi sonradan tamamladığında çözülemez.
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RejectPurchaseAsync(purchaseId, Guid.NewGuid(), "olmaz")).IsFailure);
+
+        Assert.Equal(0m, await BalanceAsync(options, tenantId));
+        await using (var check = NewDb(options))
+        {
+            Assert.Equal(CreditPurchaseStatus.Pending,
+                (await check.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().SingleAsync()).Status);
+            Assert.Empty(await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking().ToListAsync());
+        }
+    }
+
+    /// <summary>Kartlı talep platform ONAY KUYRUĞUNDA görünmemeli (yanlışlıkla onaylama baskısı yaratmasın).</summary>
+    [Fact]
+    public async Task PendingQueue_ExcludesCardCheckouts_ButFullListShowsThem()
+    {
+        var options = NewOptions();
+        var tenantId = await SeedTenantAsync(options);
+        await StartAsync(options, tenantId, 400m);                     // kartlı
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RequestPurchaseAsync(tenantId, new TopUpRequest(null, 150m), null)).IsSuccess); // havale
+
+        await using var check = NewDb(options);
+        var queue = await NewService(check).GetPurchasesAsync(onlyPending: true);
+        Assert.True(queue.IsSuccess);
+        Assert.Single(queue.Value!);                                    // yalnız havale talebi
+        Assert.Null(queue.Value!.Single().Provider);
+
+        // Takılan kartlı talep platformdan GÖRÜLEBİLİR kalmalı.
+        var all = await NewService(check).GetPurchasesAsync(onlyPending: false);
+        Assert.Equal(2, all.Value!.Count);
+    }
+
+    /// <summary>
+    /// BELİRSİZ SONUÇ TALEBİ KAPATMAZ (denetim blocker'ı).
+    ///
+    /// <para>
+    /// 3DS'in ortasında sorulan bir checkout "reddedildi" değil BELİRSİZdir. Kalıcı Failed
+    /// yazılırsa, müşteri ödemeyi hemen ardından tamamladığında kayıt yeniden değerlendirilemez
+    /// ve para karşılıksız kalır. Burada belirsizlik simülasyonun geçmiş tutmayan sorgu yoluyla
+    /// üretilir (Outcome = Unresolved).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Reconcile_WhenProviderHasNoAnswer_LeavesPurchasePending_AndLaterSuccessCredits()
+    {
+        var options = NewOptions();
+        var tenantId = await SeedTenantAsync(options);
+        var (purchaseId, conversationId) = await StartAsync(options, tenantId, 275m);
+
+        // Sağlayıcı "bilmiyorum" diyor → talep AÇIK kalmalı, bakiye artmamalı.
+        await using (var db = NewDb(options))
+        {
+            var probe = await NewService(db).ReconcileCreditPurchaseAsync(purchaseId);
+            Assert.True(probe.IsSuccess);
+            Assert.False(probe.Value!.Succeeded);
+        }
+
+        Assert.Equal(0m, await BalanceAsync(options, tenantId));
+        await using (var check = NewDb(options))
+            Assert.Equal(CreditPurchaseStatus.Pending,
+                (await check.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().SingleAsync()).Status);
+
+        // Müşteri ödemeyi sonradan tamamlıyor → AYNI kayıt çözülebilmeli.
+        await using (var db = NewDb(options))
+        {
+            var done = await NewService(db).CompleteCreditCheckoutAsync(await SimulationTokenAsync(conversationId, 275m));
+            Assert.True(done.Value!.Succeeded, done.Value.Message);
+        }
+
+        Assert.Equal(275m, await BalanceAsync(options, tenantId));
+    }
+
     /// <summary>Ödeme altyapısı kapalıyken form açılmamalı ve ortada bekleyen talep kalmamalı.</summary>
     [Fact]
     public async Task Start_WhenGatewayDisabled_DoesNotCreatePurchase()

@@ -60,9 +60,12 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
     {
         if (!TryParse(checkoutToken, out var conversationId, out var amount))
         {
+            // KESİN RED: anahtar imzasız/bozuk. Bu bir belirsizlik değil, geçersiz istektir —
+            // beklemede bırakmak kaydı sonsuza kadar açık tutardı.
             return Task.FromResult(Result<CheckoutResult>.Success(new CheckoutResult(
                 false, string.Empty, null, 0m, null, null, null, null, null, null,
-                "SIM_BAD_TOKEN", "Simülasyon form anahtarı çözümlenemedi.")));
+                "SIM_BAD_TOKEN", "Simülasyon form anahtarı çözümlenemedi.",
+                Outcome: PaymentOutcome.Declined)));
         }
 
         return Task.FromResult(Result<CheckoutResult>.Success(new CheckoutResult(
@@ -77,7 +80,8 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
             "Bonus",
             "Simülasyon Bankası",
             null,
-            null)));
+            null,
+            Outcome: PaymentOutcome.Succeeded)));
     }
 
     public Task<Result<ChargeResult>> ChargeStoredCardAsync(StoredCardChargeRequest request, CancellationToken ct = default) =>

@@ -98,20 +98,25 @@
     yalnız KODDA zorlanıyordu; iki backend örneği (ya da eşzamanlı iki istek) aynı işi/mesajı iki kez
     yapabiliyordu. Artık kısıtlar veritabanında.
   - Uygulanmazsa: bildirim/gönderim uçları eksik kolon nedeniyle **500** verir.
-- [ ] ⚠️ **ÖDEME/KONTÖR MIGRATION ZİNCİRİ — SIRAYLA (bir halka atlanırsa sonraki "tablo yok" ile patlar):**
-  1. `AddWhatsAppBillingAndConnection` (`20260722135855`) — WhatsApp kontör altyapısı:
-     `tenant_messaging_wallets`, `wallet_transactions`, `whatsapp_credit_packages`,
-     `whatsapp_credit_purchases`, `whatsapp_pricing_rules`, `whatsapp_billing_settings`.
-     **Bu migration canlıda UYGULANMAMIŞTI** — zincirin tabanı, önce bu gelmeli.
-  2. `SubscriptionPayments` (`20260802194135`) — abonelik tahsilatı: `tenant_payment_methods`
-     (şifreli cardUserKey/cardToken) + `subscription_payments` (deneme defteri, `ConversationId`
-     benzersiz). Uygulanmazsa `/api/admin/billing/*` uçları **500** verir.
-  3. `WhatsAppCreditCardPayment` (`20260807111050`) — kontörün kartla alınabilmesi:
+- [ ] ⚠️ **ÖDEME/KONTÖR MIGRATION'LARI.** Zincirin ilk iki halkası **canlıda ZATEN UYGULI**
+  (7 Ağu 2026 deploy denetiminde production geçmişi doğrulandı — bu notun önceki sürümü
+  "uygulanmamıştı" diyordu, YANLIŞTI):
+  - ✅ `AddWhatsAppBillingAndConnection` (`20260722135855`) — kontör altyapısı, **uygulandı**.
+  - ✅ `SubscriptionPayments` (`20260802194135`) — abonelik tahsilatı, **uygulandı**.
+
+  Uygulanacak olanlar (sırayla):
+  1. `WhatsAppCreditCardPayment` (`20260807111050`) — kontörün kartla alınabilmesi:
      `whatsapp_credit_purchases` tablosuna `Provider`, `ConversationId` (**benzersiz**),
-     `ProviderPaymentId`, `PaidAtUtc`. Kolonların hepsi nullable, geriye dönük veri **etkilenmez**
-     (havale yoluyla açılmış eski talepler bu alanları boş taşımaya devam eder).
-  - Doğrulama: `SHOW COLUMNS FROM whatsapp_credit_purchases LIKE 'ConversationId';` bir satır dönmeli
-    ve `SHOW INDEX FROM whatsapp_credit_purchases WHERE Key_name LIKE '%ConversationId%';` `Non_unique=0` olmalı.
+     `ProviderPaymentId`, `PaidAtUtc`. Hepsi nullable → mevcut havale talepleri **etkilenmez**.
+  2. `ProviderPaymentClaims` — `provider_payment_claims` tablosu, `(Provider, ProviderPaymentId)`
+     üzerinde **benzersiz** indeks. Bir dış ödemenin yalnız BİR deftere (abonelik ya da kontör)
+     yazılabilmesini veritabanı seviyesinde garanti eder; uygulamadaki sorgu yalnız hızlı yoldur
+     ve eşzamanlı iki callback'e karşı bağlayıcı değildir.
+  - Doğrulama:
+    `SHOW INDEX FROM whatsapp_credit_purchases WHERE Key_name LIKE '%ConversationId%';` → `Non_unique=0`
+    `SHOW INDEX FROM provider_payment_claims WHERE Key_name LIKE '%ProviderPaymentId%';` → `Non_unique=0`
+  - ⚠️ Yeni migration eklendiğinde **manifest de yenilenmeli**, yoksa CI kapısı düşer:
+    `./backend/tools/migration-manifest.sh generate` → `migrations.sha256` commit'e dahil edilmeli.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
@@ -163,9 +168,18 @@ yükü en hafif seviyede.
   anahtarının sağlayıcıya SORULARAK doğrulanmasına dayanır). Proxy/WAF bunları engellememeli:
   - `POST|GET /api/payments/callback` — abonelik
   - `POST|GET /api/payments/credit-callback` — WhatsApp kontörü
-- [ ] **Kontör satın alma iki yolludur:** kartla (anında yüklenir) ve havale/talep (platform admin
-  onaylayınca yüklenir). Havale yolu kaldırılmadı; `whatsapp_billing_settings.AutoApproveTopUps`
-  açıksa talep anında onaylanır — **canlıda bunu açık bırakma**, kartsız bedava kontör demektir.
+- [ ] **Kontör satın alma iki yolludur:** kartla (tahsilat doğrulanınca yüklenir) ve havale/talep
+  (platform admin onaylayınca yüklenir). `whatsapp_billing_settings.AutoApproveTopUps` açıksa
+  talep anında onaylanır — **canlıda bunu açık bırakma**, kartsız bedava kontör demektir.
+  - 🔒 **Kartlı talep ELLE ONAYLANAMAZ.** Platform onay kuyruğu yalnız havale taleplerini gösterir;
+    kartlı bir talebe approve/reject denenirse 409 döner (hem serviste hem varlıkta kapı var).
+    Bu bilinçli: kartlı talep de PENDING açılır ve elle onaylanabilseydi **hiç tahsilat yapılmadan**
+    kontör yüklenirdi (kurum ödeme formunu açıp kapatmakla bedava kontör alırdı).
+  - Takılan kartlı talebin tek çıkışı **"sağlayıcıya sor"**dur:
+    `POST /api/platform/whatsapp/purchases/{id}/reconcile` — ödemeyi iyzico'ya yeniden sorar,
+    yalnız doğrulanmış başarı bakiyeyi artırır. Kör onay değildir.
+  - Sonucu **belirsiz** kalan ödeme (3DS ortasında kopan) talebi KAPATMAZ; kayıt açık kalır ve
+    sonraki callback ya da reconcile ile çözülür. Yalnız sağlayıcının KESİN reddi kaydı kapatır.
 - [ ] Doğrulama (sandbox): kontör satın al → ödeme sayfası → dönüş → cüzdan bakiyesi **bir kez** artmalı,
   `wallet_transactions`'ta **tek** `TopUp` satırı olmalı. Dönüş sayfasını yenilemek bakiyeyi artırmamalı.
 

@@ -462,15 +462,36 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         }
 
         var nowUtc = DateTime.UtcNow;
-        if (!result.Succeeded)
+
+        // BELİRSİZ SONUÇ KAYDI KAPATMAZ (denetim bulgusu).
+        //
+        // SOMUT AÇIK: her başarısız-olmayan sonuç kalıcı Failed yazılıyordu. Oysa 3DS'in ortasında
+        // sorulan bir checkout "reddedildi" değil BELİRSİZdir. Müşteri ödemeyi hemen ardından
+        // tamamladığında kayıt Failed olduğu için sonraki callback onu yeniden değerlendiremiyor,
+        // para çekilmiş olmasına rağmen kontör yüklenmiyordu. Artık yalnız KESİN RED kapatır;
+        // belirsiz sonuç talebi PENDING bırakır ve sonraki dönüş (ya da "Sağlayıcıdan sor")
+        // aynı kaydı çözebilir.
+        if (result.Outcome != PaymentOutcome.Succeeded)
         {
-            purchase.MarkPaymentFailed(result.ErrorCode, result.ErrorMessage, nowUtc);
+            var declined = result.Outcome == PaymentOutcome.Declined;
+            if (declined) purchase.MarkPaymentFailed(result.ErrorCode, result.ErrorMessage, nowUtc);
+            else purchase.MarkPaymentUnresolved(result.ErrorMessage, nowUtc);
+
             await _db.SaveChangesAsync(ct);
             if (tx is not null) await tx.CommitAsync(ct);
-            await _audit.LogAsync(purchase.TenantId, null, "CreditPaymentFailed", "WhatsAppCredit", purchase.Id,
-                $"Kontör ödemesi başarısız: {result.ErrorMessage}", new { result.ErrorCode }, ct);
+            await _audit.LogAsync(purchase.TenantId, null,
+                declined ? "CreditPaymentFailed" : "CreditPaymentUnresolved", "WhatsAppCredit", purchase.Id,
+                declined
+                    ? $"Kontör ödemesi reddedildi: {result.ErrorMessage}"
+                    : $"Kontör ödemesinin sonucu belirsiz, talep açık bırakıldı: {result.ErrorMessage}",
+                new { result.ErrorCode, Outcome = result.Outcome.ToString() }, ct);
+
             return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
-                false, result.ErrorMessage ?? "Ödeme tamamlanamadı.", null, null));
+                false,
+                declined
+                    ? (result.ErrorMessage ?? "Ödeme reddedildi.")
+                    : "Ödemenizin sonucu henüz kesinleşmedi. Tahsilat geçerse kontörünüz otomatik yüklenir.",
+                null, null));
         }
 
         var mismatch = await DescribeCreditMismatchAsync(
@@ -489,9 +510,123 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(false, mismatch, null, null));
         }
 
+        // Sahiplik + onay + bakiye ORTAK metotta: çözümleme yolu da aynısını uygular.
+        var applied = await ApplyVerifiedCreditAsync(
+            purchase, context.Value.Gateway.Provider, result.ProviderPaymentId, nowUtc, tx, ct);
+        if (applied.IsSuccess && applied.Value!.Succeeded)
+        {
+            await _audit.LogAsync(purchase.TenantId, null, "CreditPurchased", "WhatsAppCredit", purchase.Id,
+                $"Kontör yüklendi: {purchase.PackageName} · {purchase.PriceTry:N2} TL → ₺{purchase.GrantsTry:N2}",
+                new { purchase.PackageName, purchase.PriceTry, purchase.GrantsTry }, ct);
+        }
+        return applied;
+    }
+
+    public async Task<Result<CreditCheckoutCompletedDto>> ReconcileCreditPurchaseAsync(Guid purchaseId, CancellationToken ct = default)
+    {
+        var context = await _gateways.ResolveAsync(ct);
+        if (context.IsFailure) return Result<CreditCheckoutCompletedDto>.Failure(context.Error);
+
+        await using var tx = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
+        var purchase = await _db.WhatsAppCreditPurchases.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.Id == purchaseId && !p.IsDeleted, ct);
+        if (purchase is null) return Result<CreditCheckoutCompletedDto>.Failure(Error.NotFound("Kontör talebi bulunamadı."));
+        if (!purchase.IsCardCheckout)
+            return Result<CreditCheckoutCompletedDto>.Failure(Error.Conflict("Bu talep kartla ödeme talebi değil."));
+
+        if (tx is not null)
+        {
+            await RowLock.LockRowAsync(_db, "whatsapp_credit_purchases", purchase.Id, ct);
+            await _db.Entry(purchase).ReloadAsync(ct);
+        }
+
+        if (purchase.Status == CreditPurchaseStatus.Approved)
+        {
+            var already = await BuildWalletDtoAsync(purchase.TenantId, ct);
+            return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
+                true, "Ödeme zaten alınmıştı.", purchase.GrantsTry, already.BalanceTry));
+        }
+        if (purchase.Status != CreditPurchaseStatus.Pending)
+        {
+            return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
+                false, purchase.Note ?? "Bu kontör talebi zaten kapatılmış.", null, null));
+        }
+
+        // SAĞLAYICIYA SORULUR — kör onay yok. Sonuç "bilmiyorum" ise talep açık kalır.
+        var probe = await context.Value!.Gateway.RetrievePaymentAsync(purchase.ConversationId!, ct);
+        if (probe.IsFailure) return Result<CreditCheckoutCompletedDto>.Failure(probe.Error);
+
+        var nowUtc = DateTime.UtcNow;
+        if (probe.Value!.Outcome != PaymentOutcome.Succeeded)
+        {
+            var declined = probe.Value.Outcome == PaymentOutcome.Declined;
+            if (declined) purchase.MarkPaymentFailed(probe.Value.ErrorCode, probe.Value.ErrorMessage, nowUtc);
+            else purchase.MarkPaymentUnresolved(probe.Value.ErrorMessage, nowUtc);
+            await _db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
+            await _audit.LogAsync(purchase.TenantId, null, "CreditReconcileAttempted", "WhatsAppCredit", purchase.Id,
+                $"Kontör ödemesi sağlayıcıya soruldu: {probe.Value.Outcome}", new { probe.Value.ErrorCode }, ct);
+            return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
+                false,
+                declined
+                    ? (probe.Value.ErrorMessage ?? "Sağlayıcı ödemeyi reddetti.")
+                    : "Sağlayıcı bu ödeme için kesin sonuç vermedi; talep açık bırakıldı.",
+                null, null));
+        }
+
+        var mismatch = await DescribeCreditMismatchAsync(
+            purchase, context.Value.Gateway.Provider, probe.Value.ConversationId,
+            probe.Value.PaidAmountTry, probe.Value.Currency, probe.Value.ProviderPaymentId, ct);
+        if (mismatch is not null)
+        {
+            purchase.MarkPaymentFailed("ReconcileMismatch", mismatch, nowUtc);
+            await _db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
+            await _audit.LogAsync(purchase.TenantId, null, "CreditPaymentRejected", "WhatsAppCredit", purchase.Id,
+                $"Kontör çözümlemesi reddedildi: {mismatch}", new { purchase.ConversationId }, ct);
+            return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(false, mismatch, null, null));
+        }
+
+        var applied = await ApplyVerifiedCreditAsync(
+            purchase, context.Value.Gateway.Provider, probe.Value.ProviderPaymentId, nowUtc, tx, ct);
+        await _audit.LogAsync(purchase.TenantId, null, "CreditReconciled", "WhatsAppCredit", purchase.Id,
+            $"Kontör sağlayıcı sorgusuyla çözüldü: {purchase.PackageName} · {purchase.PriceTry:N2} TL", null, ct);
+        return applied;
+    }
+
+    /// <summary>
+    /// DOĞRULANMIŞ TAHSİLATI UYGULAR — sahiplik + onay damgası + bakiye, tek kayıtta.
+    /// Callback ve çözümleme yolları BU metodu paylaşır: iki ayrı kopya olsaydı biri düzeltilip
+    /// diğeri unutulurdu (bu depoda aynı sınıf hata iki kez yaşandı).
+    /// </summary>
+    private async Task<Result<CreditCheckoutCompletedDto>> ApplyVerifiedCreditAsync(
+        WhatsAppCreditPurchase purchase, string provider, string? providerPaymentId, DateTime nowUtc,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx, CancellationToken ct)
+    {
+        // ATOMİK SAHİPLİK — para hareketinden ÖNCE. Üstteki çapraz tablo sorgusu
+        // KONTROL-SONRA-YAZ'dır ve eşzamanlı bir abonelik callback'ine karşı bağlayıcı değildir;
+        // garanti benzersiz indekstedir (bkz. ProviderPaymentClaim).
+        var claimed = await ProviderPaymentClaims.TryClaimAsync(
+            _db, provider, providerPaymentId!, ProviderPaymentClaim.WhatsAppCreditLedger,
+            purchase.Id, purchase.TenantId, ct);
+        if (!claimed)
+        {
+            const string reason = "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; kontör yüklenmedi.";
+            purchase.MarkPaymentFailed("ClaimConflict", reason, nowUtc);
+            await _db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
+            _logger.LogError("Kontör ödemesi sahiplenilemedi ({PurchaseId}); ödeme kimliği başka defterde.", purchase.Id);
+            await _audit.LogAsync(purchase.TenantId, null, "CreditPaymentRejected", "WhatsAppCredit", purchase.Id,
+                reason, new { purchase.ConversationId, providerPaymentId }, ct);
+            return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(false, reason, null, null));
+        }
+
         // ONAY DAMGASI İLE BAKİYE ARTIŞI AYNI KAYITTA: biri olup diğeri olmazsa ya para alınıp
         // kontör yüklenmez ya da aynı tahsilat ikinci kez yüklenebilir.
-        purchase.MarkPaidAndApprove(result.ProviderPaymentId, nowUtc);
+        purchase.MarkPaidAndApprove(providerPaymentId, nowUtc);
         await CreditWalletAsync(purchase.TenantId, purchase.GrantsTry,
             $"Kontör: {purchase.PackageName}", purchase.CreditPackageId, purchase.RequestedByUserId, ct);
         await _db.SaveChangesAsync(ct);
@@ -499,10 +634,6 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         if (tx is not null) await tx.CommitAsync(ct);
 
         var wallet = await BuildWalletDtoAsync(purchase.TenantId, ct);
-        await _audit.LogAsync(purchase.TenantId, null, "CreditPurchased", "WhatsAppCredit", purchase.Id,
-            $"Kontör yüklendi: {purchase.PackageName} · {purchase.PriceTry:N2} TL → ₺{purchase.GrantsTry:N2}",
-            new { purchase.PackageName, purchase.PriceTry, purchase.GrantsTry }, ct);
-
         return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
             true, "Ödeme alındı, kontörünüz yüklendi.", purchase.GrantsTry, wallet.BalanceTry));
     }
@@ -510,7 +641,12 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     public async Task<Result<IReadOnlyCollection<CreditPurchaseDto>>> GetPurchasesAsync(bool onlyPending, CancellationToken ct = default)
     {
         var q = _db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().Where(p => !p.IsDeleted);
-        if (onlyPending) q = q.Where(p => p.Status == CreditPurchaseStatus.Pending);
+        // ONAY KUYRUĞU YALNIZ HAVALE TALEPLERİDİR. Kartlı talepler de PENDING açılır ama insan
+        // onayına kapalıdır (bkz. WhatsAppCreditPurchase.Approve); kuyrukta görünmeleri yöneticiyi
+        // "bu neden onaylanmıyor?" diye uğraştırır ve yanlışlıkla onaylama baskısı yaratır.
+        // Tüm liste (onlyPending=false) hepsini göstermeye devam eder — takılan kartlı talep
+        // platformdan GÖRÜLEBİLİR kalmalı.
+        if (onlyPending) q = q.Where(p => p.Status == CreditPurchaseStatus.Pending && p.ConversationId == null);
         var rows = await q.OrderByDescending(p => p.CreatedAtUtc).Take(200).ToListAsync(ct);
         // NOT: MySql.EntityFrameworkCore Guid listesi .Contains()'i sunucuda çeviremez → tüm kurum adlarını
         // (platform seviyesinde az sayıda) çekip bellekte eşleştir.
@@ -525,6 +661,14 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     {
         var purchase = await _db.WhatsAppCreditPurchases.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == purchaseId && !p.IsDeleted, ct);
         if (purchase is null) return Result<CreditPurchaseDto>.Failure(Error.NotFound("Kontör talebi bulunamadı."));
+        // KARTLI TALEP ELLE ONAYLANAMAZ (denetim bulgusu): tahsilat yapılmadan kontör yüklenirdi.
+        // Varlıkta da aynı kapı var; burada 409 ile nazik hata döner, orada istisna.
+        if (purchase.IsCardCheckout)
+        {
+            return Result<CreditPurchaseDto>.Failure(Error.Conflict(
+                "Bu talep kartla ödeme için açıldı; elle onaylanamaz. Sonucu ödeme sağlayıcısı belirler — " +
+                "ödeme takıldıysa 'Sağlayıcıdan sor' ile sonucu doğrulatın."));
+        }
         if (purchase.Status != CreditPurchaseStatus.Pending) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
         // Talebin "onaylandı" damgası ile bakiyenin artması AYNI kayıtta olmalı: biri olup diğeri
@@ -544,6 +688,13 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     {
         var purchase = await _db.WhatsAppCreditPurchases.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == purchaseId && !p.IsDeleted, ct);
         if (purchase is null) return Result<CreditPurchaseDto>.Failure(Error.NotFound("Kontör talebi bulunamadı."));
+        // Onayla aynı gerekçe: kartlı talebi insan kapatırsa, müşteri ödemeyi sonradan tamamladığında
+        // kayıt yeniden değerlendirilemez ve para karşılıksız kalır.
+        if (purchase.IsCardCheckout)
+        {
+            return Result<CreditPurchaseDto>.Failure(Error.Conflict(
+                "Bu talep kartla ödeme için açıldı; elle reddedilemez. Sonucu ödeme sağlayıcısı belirler."));
+        }
         if (purchase.Status != CreditPurchaseStatus.Pending) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
         purchase.Reject(processedByUserId, note);

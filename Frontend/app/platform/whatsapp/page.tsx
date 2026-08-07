@@ -8,7 +8,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { platformApi } from '@/lib/apiClient'
 import {
   MessageCircle, PhoneCall, ShieldCheck, Clock3, Check, X, Loader2, Plus, PenLine, Trash2,
-  Wallet, Tag, Package, Settings2, Send, AlertTriangle,
+  Wallet, Tag, Package, Settings2, Send, AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import type {
   ApiWhatsAppConnection, ApiCreditPurchase, ApiWhatsAppPricingRule, ApiCreditPackage,
@@ -209,24 +209,81 @@ function PurchasesTab() {
     () => platformApi.waPurchases<ApiCreditPurchase>(false), [refreshKey], { initialData: [] })
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  const [actionMsg, setActionMsg] = useState('')
+
   const act = async (id: string, approve: boolean) => {
     setBusyId(id)
+    setActionMsg('')
     try {
       if (approve) await platformApi.approveWaPurchase(id)
       else await platformApi.rejectWaPurchase(id, 'Reddedildi')
       setRefreshKey((k) => k + 1)
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : 'İşlem tamamlanamadı.')
+    } finally { setBusyId(null) }
+  }
+
+  /** Takılan kartlı talebi sağlayıcıya sorar — kör onay değil. */
+  const reconcile = async (id: string) => {
+    setBusyId(id)
+    setActionMsg('')
+    try {
+      const res = await platformApi.reconcileWaPurchase<{ succeeded?: boolean; message?: string }>(id)
+      setActionMsg(res?.message ?? 'Sağlayıcıya soruldu.')
+      setRefreshKey((k) => k + 1)
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : 'Sorgulanamadı.')
     } finally { setBusyId(null) }
   }
 
   const rows = data ?? []
-  const pending = rows.filter((r) => r.status === 'Pending')
+  // KARTLI TALEP ELLE ONAYLANAMAZ. Backend 409 döndürüyor; düğmeyi göstermek kullanıcıyı
+  // tıklayıp hata yemeye davet ederdi. Kartlı bekleyenler AYRI listede, tek eylemleri
+  // "Sağlayıcıya sor". (Ayrım: provider dolu = kart akışı.)
+  const pending = rows.filter((r) => r.status === 'Pending' && !r.provider)
+  const cardPending = rows.filter((r) => r.status === 'Pending' && !!r.provider)
   const others = rows.filter((r) => r.status !== 'Pending')
 
   return (
     <div className="space-y-4">
       <ApiStateNotice loading={loading} error={error} />
+      {actionMsg && (
+        <div className="rounded-[12px] border border-[#ecd9e1] bg-white px-4 py-2.5 text-[11.5px] text-[#3f2d36]">{actionMsg}</div>
+      )}
+
+      {/* KARTLA ÖDEME BEKLEYENLER — elle onay YOK, yalnız sağlayıcıya sorma. */}
+      {cardPending.length > 0 && (
+        <div>
+          <div className="mb-2 text-[12px] font-semibold text-[#3f2d36]">
+            Kartla ödeme bekleyenler
+            <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-700">{cardPending.length}</span>
+          </div>
+          <div className="space-y-2">
+            {cardPending.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-sky-200 bg-sky-50/50 px-4 py-3">
+                <div>
+                  <div className="text-[12.5px] font-semibold text-[#3f2d36]">{p.tenantName ?? 'Kurum'}</div>
+                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · {money(p.priceTry)} · {p.provider}</div>
+                  <div className="text-[10px] text-[#9a7d88]">
+                    {new Date(p.createdAtUtc).toLocaleString('tr-TR')}
+                    {p.note && <> · {p.note}</>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10.5px] text-[#6c5661]">Elle onaylanamaz — sonucu sağlayıcı belirler.</span>
+                  <button type="button" disabled={busyId === p.id} onClick={() => reconcile(p.id)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50">
+                    {busyId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Sağlayıcıya sor
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
-        <div className="mb-2 text-[12px] font-semibold text-[#3f2d36]">Onay bekleyenler {pending.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">{pending.length}</span>}</div>
+        <div className="mb-2 text-[12px] font-semibold text-[#3f2d36]">Onay bekleyenler (havale) {pending.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">{pending.length}</span>}</div>
         {pending.length === 0 ? (
           <div className="rounded-[14px] border border-[#ecd9e1] bg-white px-4 py-6 text-center text-[12px] text-[#9a7d88]">Bekleyen kontör talebi yok.</div>
         ) : (

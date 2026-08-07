@@ -88,6 +88,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<TenantMessagingWallet> TenantMessagingWallets => Set<TenantMessagingWallet>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<WhatsAppCreditPurchase> WhatsAppCreditPurchases => Set<WhatsAppCreditPurchase>();
+    public DbSet<ProviderPaymentClaim> ProviderPaymentClaims => Set<ProviderPaymentClaim>();
     public DbSet<PlatformIntegrationSettings> PlatformIntegrationSettings => Set<PlatformIntegrationSettings>();
     public DbSet<PlatformSystemSettings> PlatformSystemSettings => Set<PlatformSystemSettings>();
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
@@ -1088,6 +1089,19 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Tekrar oynatma kontrolü bu kolondan arar; indekssiz tam tablo taraması kilidi uzatırdı.
         cpu.HasIndex(x => x.ProviderPaymentId);
         cpu.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        // DIŞ ÖDEME SAHİPLİĞİ — bkz. ProviderPaymentClaim. Benzersizlik burada ZORLANIR;
+        // servislerdeki "başka deftere yazılmış mı?" sorgusu yalnız hızlı yol + iyi hata mesajıdır.
+        var claim = modelBuilder.Entity<ProviderPaymentClaim>();
+        claim.ToTable("provider_payment_claims");
+        claim.HasKey(x => x.Id);
+        claim.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+        claim.Property(x => x.ProviderPaymentId).HasMaxLength(64).IsRequired();
+        claim.Property(x => x.Ledger).HasMaxLength(32).IsRequired();
+        claim.HasIndex(x => new { x.Provider, x.ProviderPaymentId }).IsUnique();
+        // Sorgu filtresi YOK: bu tablo tenant kapsamının DIŞINDA çalışır — sahiplik global olmalı,
+        // aksi hâlde başka bir kurumun tükettiği ödeme kimliği "boş" görünürdü. Soft-delete de yok:
+        // sahiplik geri alınamaz, aksi hâlde silinen bir satır kimliği yeniden kullanılabilir hâle gelirdi.
     }
 
     private void ConfigureConsultationForm(ModelBuilder modelBuilder)
