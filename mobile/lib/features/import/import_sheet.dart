@@ -252,12 +252,17 @@ class _ImportSheetState extends State<ImportSheet> {
           key: chunk,
         });
         if (res is Map) {
-          res.forEach((k, v) {
-            if (k == 'errors' && v is List) {
+          // ANAHTAR AÇIKÇA METNE ÇEVRİLİR. `res is Map` daralması `Map<dynamic, dynamic>` verir;
+          // anahtar `dynamic` olduğu için `acc[k]` örtük bir dönüşüme dayanıyordu. JSON anahtarları
+          // pratikte hep metin olduğundan çalışma anında sorun çıkmıyordu, ama tip güvenliği
+          // analizden sessizce kaçıyordu (strict-casts bunu hata olarak yakalar).
+          res.forEach((dynamic k, dynamic v) {
+            final key = '$k';
+            if (key == 'errors' && v is List) {
               final errs = acc['errors'] as List;
               if (errs.length < 20) errs.addAll(v.take(20 - errs.length));
             } else if (v is num) {
-              acc[k] = (acc[k] as num? ?? 0) + v;
+              acc[key] = (acc[key] as num? ?? 0) + v;
             }
           });
         }
