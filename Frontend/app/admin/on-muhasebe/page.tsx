@@ -10,6 +10,9 @@ import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
 import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
 import InstallmentCollectionDialog from '@/components/dashboard/InstallmentCollectionDialog'
 import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
+import CariSalesWorkspace from '@/components/dashboard/CariSalesWorkspace'
+import ModalPortal from '@/components/dashboard/ModalPortal'
+import CustomerPicker, { type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CancelledSalesModal, { type CancelledTab } from '@/components/dashboard/CancelledSalesModal'
 import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import AdisyonReceiptModal from '@/components/dashboard/AdisyonReceiptModal'
@@ -24,16 +27,16 @@ import { adminApi, fetchAllPaged, ApiClientError } from '@/lib/apiClient'
 import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAdisyon,
-  normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeStaff,
+  normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeService, normalizeStaff,
 } from '@/lib/apiMappers'
 import {
   Ban, Banknote, Boxes, Briefcase, Building2, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
-  CreditCard, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
+  CreditCard, History, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
   Trash2, TrendingDown, TrendingUp, Undo2, Users, Wallet, Wrench, Zap,
 } from 'lucide-react'
 import type {
   Adisyon, ApiAdisyon, ApiAppointment, ApiBusinessExpense, ApiCustomExpenseCategory, ApiCustomer,
-  ApiCustomerAccount, ApiServicePackage, ApiStaff, BusinessExpense, CustomerAccount, CustomExpenseCategory,
+  ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, BusinessExpense, CustomerAccount, CustomExpenseCategory,
   ExpensePaymentMethodKey,
 } from '@/lib/types'
 
@@ -144,10 +147,12 @@ function OnMuhasebePageInner() {
     accounts: ApiCustomerAccount[]; expenses: ApiBusinessExpense[]; adisyonlar: ApiAdisyon[]
     appts: ApiAppointment[]; customers: ApiCustomer[]; packages: ApiServicePackage[]
     staff: ApiStaff[]; expenseCats: ApiCustomExpenseCategory[]; cancelled: unknown[]
+    // Geçmiş satış dialogu paketin yanında TEKİL HİZMET de seçtiriyor.
+    services: ApiService[]
   }>(
     async () => {
-      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [] }
-      const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, cancelled] = await Promise.all([
+      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] }
+      const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, cancelled, services] = await Promise.all([
         adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -159,16 +164,18 @@ function OnMuhasebePageInner() {
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
         // İptal edilen satışlar canlı cari listesinde YOK — arşivden ayrı çekilir.
         adminApi.listCancelledSales<unknown[]>(undefined, tenantId).catch(() => [] as unknown[]),
+        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
       ])
       return {
         accounts: apiItems(accounts), expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
         appts: apiItems(appts), customers, packages: apiItems(packages),
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
         cancelled: Array.isArray(cancelled) ? cancelled : [],
+        services: apiItems(services),
       }
     },
     [tenantId, monthStart.toISOString()],
-    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [] } },
+    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] } },
   )
 
   const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
@@ -179,6 +186,30 @@ function OnMuhasebePageInner() {
   const customerSearch = useMemo(() => customerSearchProvider(tenantId), [tenantId])
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
   const staff = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
+  const services = useMemo(() => (data?.services || []).map((s, i) => normalizeService(s, i)), [data])
+
+  // --- CARİ → SATIŞ ÇALIŞMA ALANI (satış listesi / geçmiş satış / iptal) ---
+  // Bu üçü şimdiye kadar yalnız müşteri kartındaydı; ön muhasebeden çalışan kişi borcunu gördüğü
+  // satışı iptal etmek için müşteriler sayfasına gidip müşteriyi yeniden bulmak zorundaydı.
+  const [salesCustomer, setSalesCustomer] = useState<{ id: string; name: string } | null>(null)
+  const [salesPickerOpen, setSalesPickerOpen] = useState(false)
+  const [pickerValue, setPickerValue] = useState('')
+  const searchCustomers = useMemo(() => customerSearchProvider(tenantId), [tenantId])
+
+  const salesStaffOptions = useMemo(() => staff.map((s) => ({ id: s.id, name: s.name })), [staff])
+  const salesPackageOptions = useMemo(
+    () => packages.map((p) => ({
+      id: p.id, name: p.name, price: p.totalPrice, cat: p.category, sub: p.subCategory,
+      meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans`,
+    })),
+    [packages],
+  )
+  const salesServiceOptions = useMemo(
+    () => services.map((s) => ({
+      id: s.id, name: s.name, price: s.price, cat: s.group, sub: s.subGroup, meta: formatTL(s.price),
+    })),
+    [services],
+  )
   const customExpenseCats = useMemo<CustomExpenseCategory[]>(() => (data?.expenseCats || []).map((c, i) => normalizeCustomCategory(c, i)), [data])
 
   // Sayfa verisi her yenilendiğinde (ör. adisyon onayı sonrası reload) artar; seans kartını taze çekmeye zorlar.
@@ -523,6 +554,17 @@ function OnMuhasebePageInner() {
       )
     }
     return (
+      <div className="flex flex-wrap items-center gap-2">
+        {/* GEÇMİŞ SATIŞ BURADAN DA GİRİLİR. Önceden yalnız müşteri kartında vardı; ön muhasebede
+            çalışan kişi yazılıma geçmeden önceki bir satışı girmek için müşteriler sayfasına
+            gitmek zorundaydı. Müşteri seçilince aynı satış çalışma alanı açılır. */}
+        <button
+          type="button"
+          onClick={() => { setPickerValue(''); setSalesPickerOpen(true) }}
+          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-white px-3.5 py-2 text-[11px] font-medium text-[#c85776] hover:bg-[#fff4f8]"
+        >
+          <History className="h-3.5 w-3.5" /> Geçmiş Satış
+        </button>
       <NewAccountDialog
         packages={packages}
         onSearchCustomers={customerSearch}
@@ -536,6 +578,7 @@ function OnMuhasebePageInner() {
         }}
         trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><CreditCard className="h-3.5 w-3.5" /> Yeni Cari</button>}
       />
+      </div>
     )
   })()
 
@@ -1094,9 +1137,21 @@ function OnMuhasebePageInner() {
                           <Banknote className="h-3.5 w-3.5" /> {isInstallment ? 'Genel tahsilat' : 'Tahsilat al'}
                         </button>
                       )}
+                      {/* SATIŞLAR: bu müşterinin tüm satışları + geçmiş satış ekleme + İPTAL.
+                          Detay modali PARANIN görünümüdür (ekstre/taksit/tahsilat); satışın
+                          kendisini yönetmek için ayrı kapı gerekiyordu. */}
+                      {a.customerId && (
+                        <button
+                          type="button"
+                          onClick={() => setSalesCustomer({ id: a.customerId!, name: a.customerName || a.name })}
+                          className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                        >
+                          <Package className="h-3.5 w-3.5 text-[#c85776]" /> Satışlar
+                        </button>
+                      )}
                       <button
                         type="button" onClick={() => openAccount(a.id)}
-                        className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                        className={`inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0] ${a.customerId ? '' : 'ml-auto'}`}
                       >
                         Detay <ChevronRight className="h-3.5 w-3.5" />
                       </button>
@@ -1112,6 +1167,59 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* ---- Modallar ---- */}
+            {/* SATIŞ ÇALIŞMA ALANI — müşteri kartındaki panellerin AYNISI (iki ayrı liste değil).
+                Veri müşteri başına taze çekilir; sayfanın cari listesi 500 ile sınırlı ve
+                iptalleri dışlıyor, oysa panelin "İptal" sekmesi onları göstermek zorunda. */}
+            {salesCustomer && (
+              <CariSalesWorkspace
+                open
+                customerId={salesCustomer.id}
+                customerName={salesCustomer.name}
+                tenantId={tenantId}
+                branchId={branchId}
+                staffOptions={salesStaffOptions}
+                packageOptions={salesPackageOptions}
+                serviceOptions={salesServiceOptions}
+                onClose={() => setSalesCustomer(null)}
+                onChanged={async () => { await reload() }}
+              />
+            )}
+
+            {/* Geçmiş satış için önce müşteri seçilir (cari listesinde olmayan müşteri de olabilir —
+                sunucu araması kullanılır, 12 bin+ müşteride liste çekmek doğru değil). */}
+            {salesPickerOpen && (
+              <ModalPortal>
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                  <button type="button" aria-label="Kapat" onClick={() => setSalesPickerOpen(false)}
+                    className="absolute inset-0 cursor-default bg-[#2a141f]/50 backdrop-blur-[3px]" />
+                  <div role="dialog" aria-modal="true" aria-label="Geçmiş satış için müşteri seç"
+                    className="relative z-10 w-full max-w-[440px] rounded-[20px] border border-[#ead8df] bg-white p-5 shadow-[0_40px_120px_-50px_rgba(90,40,60,0.65)]">
+                    <div className="text-[14px] font-semibold text-[#352432]">Geçmiş satış · müşteri seç</div>
+                    <p className="mt-1 text-[11.5px] text-[#705a66]">
+                      Yazılıma geçmeden önce yapılmış bir satışı kaydedeceksin. Müşteriyi seç, satış
+                      penceresi açılsın.
+                    </p>
+                    <div className="mt-3">
+                      <CustomerPicker
+                        items={[]}
+                        value={pickerValue}
+                        onSearch={searchCustomers}
+                        onChange={setPickerValue}
+                        onSelectItem={(item: CustomerPickerItem) => {
+                          setSalesPickerOpen(false)
+                          setSalesCustomer({ id: item.id, name: item.name })
+                        }}
+                      />
+                    </div>
+                    <button type="button" onClick={() => setSalesPickerOpen(false)}
+                      className="mt-4 w-full rounded-[11px] border border-[#ead8df] px-3 py-2 text-[12px] font-semibold text-[#705a66] hover:bg-[#fff4f8]">
+                      Vazgeç
+                    </button>
+                  </div>
+                </div>
+              </ModalPortal>
+            )}
+
             <AccountDetailModal
               account={selAccount}
               open={accountDetailOpen}

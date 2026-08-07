@@ -15,6 +15,8 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../appointments/calendar_theme.dart';
+// Cari satırından açılan satış sheet'i — müşteri kartındakiyle AYNI bileşen.
+import '../customers/customer_sales_panel.dart';
 import 'account_installments.dart';
 import 'adisyon_detail_sheet.dart';
 import 'collection_sheet.dart';
@@ -963,6 +965,15 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                   ),
                 ),
               const SizedBox(width: 6),
+              // SATIŞLAR: bu müşterinin tüm satışları + geçmiş satış ekleme + İPTAL.
+              // Detay sayfası PARANIN görünümüdür (ekstre/taksit/tahsilat); satışın kendisini
+              // yönetmek için ayrı kapı gerekiyordu — daha önce kullanıcı müşteri kartına
+              // yönlendiriliyordu (aşağıdaki bilgi metni de bu yüzden vardı).
+              IconButton(
+                onPressed: () => _openCustomerSales(a),
+                tooltip: 'Satışlar',
+                icon: const Icon(Icons.inventory_2_outlined),
+              ),
               IconButton(
                 onPressed: () => _openAccountDetail(a),
                 tooltip: 'Detay',
@@ -1000,6 +1011,42 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       }
       _reload();
     }
+  }
+
+  /// CARİ → MÜŞTERİNİN SATIŞLARI. Müşteri kartındaki sheet'in AYNISI açılır (iki ayrı liste
+  /// değil). Hesaplar müşteri başına TAZE çekilir: ekrandaki cari listesi sayfalı ve iptalleri
+  /// dışlıyor, oysa sheet'in "İptal" sekmesi onları göstermek zorunda.
+  Future<void> _openCustomerSales(Map<String, dynamic> account) async {
+    final customerId = '${account['customerId'] ?? ''}';
+    if (customerId.isEmpty) return;
+    final name = '${account['customerName'] ?? account['name'] ?? 'Müşteri'}';
+
+    List<Map<String, dynamic>> accounts = const [];
+    try {
+      final res = await widget.api.get('/api/admin/accounts/',
+          query: {'page': 1, 'pageSize': 200, 'customerId': customerId});
+      accounts = apiItems(res).where((x) => '${x['customerId']}' == customerId).toList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Satışlar alınamadı: $e')));
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CustomerSalesSheet(
+        api: widget.api,
+        customerId: customerId,
+        customerName: name,
+        accounts: accounts,
+        onChanged: () async => _reload(),
+      ),
+    );
   }
 
   Future<void> _openAccountDetail(Map<String, dynamic> account) async {
@@ -1712,7 +1759,7 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
             const Padding(
               padding: EdgeInsets.only(top: 10),
               child: Text(
-                'Satışı sonlandırmak için müşteri kartındaki Satışlar bölümünden '
+                'Satışı sonlandırmak için cari satırındaki "Satışlar" düğmesinden '
                 '"Satışı iptal et"i kullanın — iade ve seans iadesi orada doğru işlenir.',
                 style: TextStyle(fontSize: 11.5, color: AppColors.muted),
               ),
