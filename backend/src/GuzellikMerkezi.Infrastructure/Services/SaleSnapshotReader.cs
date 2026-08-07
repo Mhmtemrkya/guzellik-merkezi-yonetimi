@@ -110,9 +110,27 @@ internal static class SaleSnapshotReader
     /// sil zincirinde silme, tahsilatları bu kimlikle aradığı için geri yüklenmiş satırı bulamıyor ve
     /// para kasada kalıyordu. Eski yedeklerde alan yok → null (davranış değişmez).
     /// </param>
+    /// <param name="SourceAppointmentId">
+    /// Tahsilatı doğuran RANDEVU — <see cref="AccountPayment.SourceAppointmentId"/> ile aynı bağ.
+    /// <para>
+    /// AYNI SINIF HATA, BİR ALAN SONRA: yukarıdaki adisyon bağı yedeğe eklenmişti ama randevu bağı
+    /// eklenmedi. İptal, canlı tahsilat satırlarını cascade ile SİLER; geri alma satırları yalnız bu
+    /// yedekten kurar. Alan taşınmayınca "randevu tamamla + tahsil et → satışı iptal et → iptali geri
+    /// al" zincirinin sonunda tahsilat geri geliyor ama bağı null oluyordu. İki somut sonucu vardı:
+    /// (1) "Tamamlamayı geri al" kapısı (<c>AppointmentService.VoidCompletionAsync</c>) parayı
+    /// göremediği için randevuyu geri alıyor, tahsilat cari kartta SAHİPSİZ kalıyordu;
+    /// (2) bağı boşalan satır, aynı adisyona düşen SONRAKİ bir randevu tamamlamasının geriye dönük
+    /// eşleştirmesine yakalanıp YANLIŞ randevuya bağlanabiliyordu.
+    /// </para>
+    /// <para>
+    /// Kolonun FK'si yoktur (yalnız indeks — bkz. <c>GuzellikDbContext</c>), bu yüzden randevu satırı
+    /// arada silinmiş olsa bile geri yazmak güvenlidir: bağ askıda kalır, kapı sorgusu eşleşmez ve
+    /// akış doğru şekilde eski davranışına düşer. Eski yedeklerde alan yok → null.
+    /// </para>
+    /// </param>
     public sealed record SnapshotPayment(
         Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc, DateTime CreatedAtUtc,
-        Guid? SourceAdisyonId = null);
+        Guid? SourceAdisyonId = null, Guid? SourceAppointmentId = null);
 
     public sealed record SnapshotSession(
         Guid Id, Guid ServicePackageId, Guid ServiceDefinitionId, int TotalSessions, int UsedSessions,
@@ -146,7 +164,7 @@ internal static class SaleSnapshotReader
                 .Select(i => new SnapshotInstallment(i.Id, i.No, i.DueDate, i.Amount, i.Status.ToString(), Utc(i.PaidAtUtc), Utc(i.CreatedAtUtc)))
                 .ToList(),
             account.Payments
-                .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc), p.SourceAdisyonId))
+                .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc), p.SourceAdisyonId, p.SourceAppointmentId))
                 .ToList(),
             sessions
                 .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc)))

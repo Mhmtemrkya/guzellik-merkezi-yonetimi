@@ -65,9 +65,13 @@ public sealed partial class CustomerAccountService
         var payments = new List<AccountPayment>(snapshot.Payments.Count);
         foreach (var p in snapshot.Payments)
         {
-            // Kaynak adisyon bağı da geri kurulur: yoksa bu satışın adisyonu sonradan silindiğinde
-            // tahsilat bulunamıyor ve para kasada kalıyordu (eski yedeklerde alan null gelir).
-            var payment = new AccountPayment(accountId, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), p.SourceAdisyonId);
+            // KAYNAK BAĞLARININ İKİSİ DE GERİ KURULUR (adisyon + randevu). Bağsız geri yüklenen
+            // tahsilat iki yerde birden bozuluyordu: bu satışın adisyonu sonradan silindiğinde
+            // bulunamayıp para kasada kalıyor, randevu bağı boş kaldığında ise tamamlaması geri
+            // alınan randevunun parası sahipsiz kalıyordu. Eski yedeklerde alanlar null gelir →
+            // davranış değişmez. (bkz. SaleSnapshotReader.SnapshotPayment)
+            var payment = new AccountPayment(
+                accountId, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), p.SourceAdisyonId, p.SourceAppointmentId);
             _db.AccountPayments.Add(payment);
             _db.Entry(payment).Property(x => x.Id).CurrentValue = p.Id;
             payments.Add(payment);
