@@ -133,6 +133,13 @@ jobs:
         working-directory: Frontend
         run: npm run typecheck
 
+      # Frontend'de HİÇ test yoktu: para biçimleme, UTC tarih çözümleme ve personel yetki kuralı
+      # gibi hatası SESSİZ olan mantık hiçbir kapıdan geçmiyordu. Özellikle yetki kuralı backend
+      # ile İKİ YERDE yazılı olduğu için sapmaya açık — testler kuralın ayrıntılarını sabitler.
+      - name: Test
+        working-directory: Frontend
+        run: npm run test
+
       - name: Build
         working-directory: Frontend
         # Build sırasında API'ye gidilmez; yalnızca derleme/prerender doğrulanır.

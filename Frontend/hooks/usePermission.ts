@@ -2,15 +2,16 @@
 
 import { useCallback, useMemo } from 'react'
 import { useAuth } from '@/components/dashboard/AuthContext'
+import { hasActionAccess, hasPageAccess, normalizePermissions } from '@/lib/permissions'
 
 /**
  * İki seviyeli personel yetkisi — backend `Permissions.IsActionAllowed` (Domain/Permissions.cs)
- * kuralının birebir istemci kopyası. Yalnızca Staff rolü kısıtlanır; kurum sahibi / şube yöneticisi /
+ * kuralının istemci karşılığı. Yalnızca Staff rolü kısıtlanır; kurum sahibi / şube yöneticisi /
  * platform admin her zaman tam yetkilidir.
  *
- * Geriye uyumluluk kuralı (backend ile aynı): işlem anahtarı doğrudan verilmemişse, personelin
- * SAYFA izni varsa ve o sayfaya ait HİÇBİR işlem anahtarı atanmamışsa (eski format kayıt) izinli
- * sayılır. En az bir işlem anahtarı atanmışsa yönetici bilinçli kısıtlamış demektir → reddedilir.
+ * KARAR BU DOSYADA DEĞİL: kural `lib/permissions.ts` içinde saf fonksiyonlar olarak durur ve
+ * testlenir. Aynı iş kuralı backend + frontend'de iki kez yazıldığı için sapmaya açıktır; hook'un
+ * içine gömülü hâlde test edilemiyordu (React bağlamı gerekiyordu) ve sessizce kayabilirdi.
  *
  * NOT: Butonu gizlemek güvenlik sınırı DEĞİLDİR — backend endpoint filtresi + onay kapısı asıl
  * korumadır. Buradaki amaç personelin yapamayacağı işlemi hiç görmemesi.
@@ -24,30 +25,15 @@ export function usePermission(): {
 } {
   const { user } = useAuth()
   const isStaff = user?.role === 'Staff'
-  const granted = useMemo(() => (user?.permissions ?? []).map((p) => p.toLowerCase()), [user?.permissions])
+  const granted = useMemo(() => normalizePermissions(user?.permissions), [user?.permissions])
 
   const hasPage = useCallback(
-    (pageKey: string): boolean => {
-      if (!isStaff) return true
-      return granted.includes(pageKey.toLowerCase())
-    },
+    (pageKey: string): boolean => hasPageAccess(isStaff, granted, pageKey),
     [isStaff, granted],
   )
 
   const can = useCallback(
-    (actionKey: string): boolean => {
-      if (!isStaff) return true
-      if (!actionKey) return true
-      const key = actionKey.toLowerCase()
-      if (granted.includes(key)) return true
-
-      const dot = key.indexOf('.')
-      if (dot <= 0) return false
-      const pageKey = key.slice(0, dot)
-      if (!granted.includes(pageKey)) return false
-      // Eski format: sayfa izni var ama sayfanın hiçbir işlem anahtarı atanmamış → tam yetkili say.
-      return !granted.some((p) => p.startsWith(`${pageKey}.`))
-    },
+    (actionKey: string): boolean => hasActionAccess(isStaff, granted, actionKey),
     [isStaff, granted],
   )
 
