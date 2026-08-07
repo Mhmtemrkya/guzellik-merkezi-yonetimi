@@ -2049,7 +2049,12 @@ class _StatsBar extends StatelessWidget {
     final total = appointments.length;
     final done = countOf(['completed']);
     final waiting = countOf(['scheduled', 'confirmed', 'draft']);
-    final cancelled = countOf(['cancelled', 'noshow']);
+    // İPTAL ile GELMEDİ AYRI SAYILIR (web'deki "Kayıp randevu" kartıyla aynı ayrım).
+    // Eskiden ikisi tek rakamda toplanıyordu; oysa iptal önceden haber verilmiş — saat
+    // başkasına satılabilir —, gelmedi ise habersiz kaybedilmiş saattir. Yöneticinin
+    // aksiyonu da farklı: biri bekleme listesi, diğeri müşteriyle konuşma.
+    final cancelled = countOf(['cancelled']);
+    final noShow = countOf(['noshow']);
     // TEK SATIR ÖZET. Eskiden dört ayrı kart (ikon + rakam + etiket, ~90px) vardı ve
     // ekranın dibinde takvimden yer çalıyordu. Aynı dört sayı burada tek satırda,
     // FAB'ın altında kalmayacak biçimde sağda boşluk bırakılarak veriliyor.
@@ -2085,6 +2090,12 @@ class _StatsBar extends StatelessWidget {
               color: const Color(0xFFF5A623),
               value: cancelled,
               label: 'iptal',
+            ),
+            const SizedBox(width: 14),
+            _StatPill(
+              color: const Color(0xFFE05252),
+              value: noShow,
+              label: 'gelmedi',
             ),
             // FAB genişliği kadar boşluk: son rakam kayan butonun altında kalmasın.
             const SizedBox(width: 170),

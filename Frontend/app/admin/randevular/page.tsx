@@ -46,6 +46,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarPlus,
+  CalendarX2,
   CheckCircle2,
   FileText,
   Mail,
@@ -106,7 +107,7 @@ const scopeMeta: Record<ScopeKey, { label: string; description: string }> = {
   today: { label: 'Bugün', description: 'Sadece bugünkü randevular' },
   week: { label: 'Bu Hafta', description: 'Bu hafta içindeki randevular' },
   month: { label: 'Bu Ay', description: 'Mevcut ayın randevuları' },
-  pending: { label: 'Bekleyenler', description: 'Status = Bekliyor olan tüm randevular' },
+  pending: { label: 'Bekleyenler', description: 'Bu ay içindeki bekleyen randevular' },
 }
 
 interface BadgeMeta {
@@ -260,6 +261,7 @@ function MetricStat({
   icon: Icon,
   label,
   value,
+  hint,
   spark,
   id,
   index = 0,
@@ -267,6 +269,8 @@ function MetricStat({
   icon: LucideIcon
   label: string
   value: ReactNode
+  /** Rakamın altındaki kırılım satırı (ör. "3 gelmedi · 5 iptal"). Verilmezse hiç çizilmez. */
+  hint?: ReactNode
   spark: number[]
   id: string
   index?: number
@@ -289,10 +293,11 @@ function MetricStat({
           <div className="mt-1 text-[28px] font-semibold leading-none tracking-tight text-[#241923] tabular-nums">
             {value}
           </div>
+          {hint && <div className="mt-1.5 text-[11px] font-medium text-[#8a7480]">{hint}</div>}
         </div>
         {/* SİNYAL YOKSA GRAFİK YOK. Seri gerçek veriden geliyor ama ayın tamamı tek güne
-            yığıldığında dört kart da aynı şekli çiziyordu (düz çizgi + sonda ani sıçrama) —
-            "Tahmini ciro" ile "Bekleyen" aynı eğri. Uydurma grafik izlenimi veriyordu.
+            yığıldığında dört kart da aynı şekli çiziyordu (düz çizgi + sonda ani sıçrama) ve
+            iki ayrı metrik birebir aynı eğriyi veriyordu — uydurma grafik izlenimi.
             En az iki farklı dolu kova yoksa çizmiyoruz. */}
         {spark.filter((v) => v > 0).length >= 2 && <SparkArea values={spark} id={id} />}
       </div>
@@ -590,6 +595,20 @@ function RandevularPageInner() {
     [data, apiLookups],
   )
 
+  const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
+  /**
+   * SAYIMLARIN AY KAPSAMI. `appointments` bilerek aydan ±7 gün geniştir (gün modalı seçilen
+   * tarihin haftasını gösteriyor, ay sınırındaki komşu günler de lazım). Ham liste sayıldığı
+   * sürece bu pay metriklere sızıyordu: "Bu ay toplam" 14 güne kadar fazla okuyor, sparkline
+   * ayın gününe göre kova açtığı için 29 Temmuz ile 29 Ağustos aynı kovaya düşüyordu.
+   * Süzgeç yerel gün anahtarının (`r.date`) ay öneki üzerinden yapılır; Date'e çevirip
+   * karşılaştırmak dosyanın başında iki kez uyarılan UTC kaymasını geri getirir.
+   */
+  const monthAppointments = useMemo<Appointment[]>(
+    () => appointments.filter((r) => r.date.startsWith(`${monthKey}-`)),
+    [appointments, monthKey],
+  )
+
   const allPackages = useMemo<ServicePackage[]>(
     () => apiItems(data?.packagesResult).map((p, i) => normalizePackage(p, i)).filter((p) => p.isActive),
     [data],
@@ -638,6 +657,10 @@ function RandevularPageInner() {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekStart.getDate() + 7)
 
+  // SEKMELER ÜSTTEKİ KARTLARLA AYNI KÜMEYİ SÜZER. `appointments` bilerek aydan ±7 gün geniştir
+  // (bkz. monthAppointments); "Bu Ay" ve "Bekleyenler" bu ham listeden süzülürse aşağıdaki satır
+  // sayısı yukarıdaki karttan farklı çıkıyordu. Bugün/Bu Hafta zaten kendi tarih penceresini
+  // uyguluyor — onlar ay sınırını aşabilir, doğrusu da bu.
   const scopedAppointments: Appointment[] = useMemo(() => {
     switch (scope) {
       case 'today':
@@ -648,12 +671,12 @@ function RandevularPageInner() {
           return d >= weekStart && d < weekEnd
         })
       case 'pending':
-        return appointments.filter((r) => r.status === 'bekliyor')
+        return monthAppointments.filter((r) => r.status === 'bekliyor')
       default:
-        return appointments
+        return monthAppointments
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointments, scope, todayIso])
+  }, [appointments, monthAppointments, scope, todayIso])
 
   const monthDays = Array.from({ length: range.days }, (_, i) => i + 1)
   // Bugünün ay/gün indeksi — gösterilen ay bugünü içeriyorsa highlight için kullanılır.
@@ -670,7 +693,6 @@ function RandevularPageInner() {
 
   const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1).getDay()
   const mondayPad = (firstDay + 6) % 7
-  const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
 
   // Önceki ay gün sayısı — boş weekPad yerine gerçek geçmiş ay günleri (muted gösterilir)
   const prevMonthDays = new Date(monthDate.getFullYear(), monthDate.getMonth(), 0).getDate()
@@ -940,18 +962,26 @@ function RandevularPageInner() {
     [noteEditingId, appointments],
   )
 
-  const monthlyTotal = appointments.length
-  const completed = appointments.filter((r) => r.status === 'tamamlandi').length
-  const pendingCount = appointments.filter((r) => r.status === 'bekliyor').length
-  // Tahmini ciro: randevu fiyatı 0 taşır (satış adisyon katmanında) → hizmetin katalog fiyatına düş.
-  // İptal edilenler hariç tüm randevular (tamamlanan + bekleyen + işlemde …) tahmine dahil.
-  const estimatedAmount = (r: (typeof appointments)[number]): number => {
-    if (r.status === 'iptal') return 0
-    const p = Number(r.price || 0)
-    if (p > 0) return p
-    return r.serviceDefinitionId ? Number(servicePrices[r.serviceDefinitionId] || 0) : 0
-  }
-  const totalRevenue = appointments.reduce((sum, r) => sum + estimatedAmount(r), 0)
+  const monthlyTotal = monthAppointments.length
+  const completed = monthAppointments.filter((r) => r.status === 'tamamlandi').length
+  const pendingCount = monthAppointments.filter((r) => r.status === 'bekliyor').length
+
+  /* DÖRDÜNCÜ KART: "Tahmini ciro" KALDIRILDI, YERİNE KAYIP RANDEVU.
+     Eski kart randevu fiyatı 0 gelince hizmetin katalog fiyatını topluyordu. Ama 0 fiyatlı
+     randevu neredeyse her zaman PAKET SEANSIDIR ve parası paket satışında zaten tahsil
+     edilmiştir — kart bir daha kasaya girmeyecek tutarı "ciro" diye gösteriyor, gerçek ciroyu
+     (Cari Hesaplar / Raporlar) şişkin gösteriyordu. Randevu defteri paranın yeri değil.
+     Yerine ayın sonucunu TAMAMLAYAN gerçek sayı kondu — dört kart artık bir bütün:
+     Toplam = Tamamlanan + Bekleyen + Kayıp. Oranın paydası ekranda, uydurma bir kapasite
+     varsayımı yok; sayılar doğrudan randevu durumundan geliyor.
+     'iptal' anahtarı Cancelled ile NoShow'u birleştirir (apiMappers.appointmentStatusKey);
+     ham durum ikisini ayırır, böylece "gelmedi" arayüzde ilk kez görünür oluyor — iptal
+     kurumun/müşterinin önceden haber verdiği, gelmedi ise habersiz kaybedilen saattir.
+     rawStatus normalize EDİLMEDEN saklanır ("NoShow"), karşılaştırmadan önce küçültülmeli. */
+  const lostAppointments = monthAppointments.filter((r) => r.status === 'iptal')
+  const noShowCount = lostAppointments.filter((r) => String(r.rawStatus || '').toLowerCase() === 'noshow').length
+  const cancelledCount = lostAppointments.length - noShowCount
+  const lostRate = monthlyTotal ? Math.round((lostAppointments.length / monthlyTotal) * 100) : 0
 
   // Metrik kartlarındaki sparkline'lar için ay içi günlük seriler (~10 noktaya gruplanır)
   const sparkSeries = useMemo(() => {
@@ -959,26 +989,30 @@ function RandevularPageInner() {
     const total: number[] = Array(days).fill(0)
     const done: number[] = Array(days).fill(0)
     const pending: number[] = Array(days).fill(0)
-    const revenue: number[] = Array(days).fill(0)
-    appointments.forEach((r) => {
+    const lost: number[] = Array(days).fill(0)
+    monthAppointments.forEach((r) => {
       const day = Number(r.date?.slice(8, 10))
       if (!day || day < 1 || day > days) return
       total[day - 1] += 1
-      revenue[day - 1] += estimatedAmount(r)
       if (r.status === 'tamamlandi') done[day - 1] += 1
       if (r.status === 'bekliyor') pending[day - 1] += 1
+      if (r.status === 'iptal') lost[day - 1] += 1
     })
+    // KOVALAR EŞİT UZUNLUKTA DEĞİL: 31 günlük ayda size=4 çıkar, son kovaya yalnız 3 gün düşer.
+    // Toplam alınırsa bu kova yapısal olarak alçak kalıyor ve SparkArea değerleri max'a göre
+    // ölçeklediği için grafik, veride olmayan bir "ay sonu düşüşü" çiziyordu. Toplam yerine
+    // GÜNLÜK ORTALAMA alınır: eğri aynı şekli korur ama kovanın kaç gün taşıdığından etkilenmez.
     const bucket = (values: number[]): number[] => {
       const size = Math.ceil(values.length / 10)
       const out: number[] = []
       for (let i = 0; i < values.length; i += size) {
-        out.push(values.slice(i, i + size).reduce((sum, v) => sum + v, 0))
+        const slice = values.slice(i, i + size)
+        out.push(slice.reduce((sum, v) => sum + v, 0) / slice.length)
       }
       return out
     }
-    return { total: bucket(total), done: bucket(done), pending: bucket(pending), revenue: bucket(revenue) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointments, range.days])
+    return { total: bucket(total), done: bucket(done), pending: bucket(pending), lost: bucket(lost) }
+  }, [monthAppointments, range.days])
 
   // Hızlı müşteri kaydı — topbar'daki "Yeni Müşteri" ve randevu modalındaki buton aynı akışı kullanır.
   // Oluşan müşteri döndürülür (randevu modalı otomatik seçer); Staff onaya düştüyse null döner.
@@ -1174,11 +1208,23 @@ function RandevularPageInner() {
           />
           <MetricStat
             index={3}
-            id="ciro"
-            label="Tahmini ciro"
-            value={<AnimatedNumber value={totalRevenue} format={(n) => formatTL(Math.round(n))} />}
-            icon={Wallet}
-            spark={sparkSeries.revenue}
+            id="kayip"
+            label="Kayıp randevu"
+            value={
+              <span className="flex items-baseline gap-2">
+                <AnimatedNumber value={lostAppointments.length} />
+                {monthlyTotal > 0 && (
+                  <span className="text-[13px] font-semibold text-[#a15568]">%{lostRate}</span>
+                )}
+              </span>
+            }
+            hint={
+              lostAppointments.length > 0
+                ? `${noShowCount} gelmedi · ${cancelledCount} iptal`
+                : undefined
+            }
+            icon={CalendarX2}
+            spark={sparkSeries.lost}
           />
         </div>
 
@@ -1218,12 +1264,9 @@ function RandevularPageInner() {
                 </motion.div>
                 {/* Ay özeti — mono/uppercase yerine düz okunur metin; sayılar vurgulu. */}
                 <div className="mt-1.5 text-[12px] text-[#705a66]">
-                  <span className="font-semibold text-[#241923]">{appointments.length}</span> randevu
+                  <span className="font-semibold text-[#241923]">{monthlyTotal}</span> randevu
                   <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
-                  <span className="font-semibold text-[#241923]">
-                    {appointments.filter((r) => r.status === 'tamamlandi').length}
-                  </span>{' '}
-                  tamamlandı
+                  <span className="font-semibold text-[#241923]">{completed}</span> tamamlandı
                 </div>
               </div>
             </div>
