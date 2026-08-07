@@ -342,12 +342,17 @@ function SplitStatement() {
           <Reveal key={it.title} delay={i * 90}>
             <article className="group relative h-[440px] overflow-hidden rounded-[22px] sm:h-[520px]">
               <div className="absolute inset-0">
+                {/* Süre, kısayol yardımcısıyla değil açık CSS özelliğiyle veriliyor: Tailwind 3.4'te
+                    kısayol hem transition hem animation süresiyle eşleşiyor ve build "ambiguous"
+                    uyarısı veriyor. Açık özellik aynı CSS'i üretir, belirsizlik kalmaz.
+                    NOT: uyarıyı tetikleyen sözdizimi bu yoruma YAZILMAZ — Tailwind ham dosya
+                    metnini tarar, yorumdaki örnek bile sınıf sanılıp uyarıyı geri getirir. */}
                 <Image
                   src={it.src}
                   alt={it.alt}
                   fill
                   sizes="(max-width: 1024px) 100vw, 50vw"
-                  className="object-cover object-center transition-transform duration-[1200ms] group-hover:scale-[1.05]"
+                  className="object-cover object-center transition-transform [transition-duration:1200ms] group-hover:scale-[1.05]"
                 />
               </div>
               {/* Örtü yalnız ALT ÜÇTE BİRDE yoğunlaşır: metin okunur kalır, fotoğrafın üst

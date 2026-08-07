@@ -787,10 +787,16 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
         İçeriğe geç
       </a>
 
-      {/* DESKTOP SIDEBAR */}
+      {/* DESKTOP SIDEBAR
+          Yumuşatma eğrisi, kısayol yardımcısıyla değil açık CSS özelliğiyle veriliyor: Tailwind
+          3.4'te kısayol hem transition hem animation timing-function ile eşleşiyor ve build
+          "ambiguous" uyarısı veriyor. Açık özellik aynı CSS'i üretir. Süre yerleşik ölçekten
+          geldiği için (300) belirsiz değil, dokunulmadı.
+          NOT: uyarıyı tetikleyen sözdizimi bu yoruma YAZILMAZ — Tailwind ham dosya metnini tarar,
+          yorumdaki örnek bile sınıf sanılıp uyarıyı geri getirir. */}
       <aside
         style={{ background: C.porcelain }}
-        className={`relative hidden h-screen shrink-0 flex-col transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:sticky lg:top-0 lg:z-30 lg:flex ${
+        className={`relative hidden h-screen shrink-0 flex-col transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] lg:sticky lg:top-0 lg:z-30 lg:flex ${
           collapsed ? 'w-[78px]' : 'w-[272px]'
         }`}
       >
