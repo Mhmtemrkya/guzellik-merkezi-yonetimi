@@ -395,7 +395,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 22),
                       // Paket raporundan AYRI blok: tekil hizmet satışları burada sayılır.
-                      _ServiceReportCard(report: data.serviceReport),
+                      _ServiceReportCard(
+                        report: data.serviceReport,
+                        api: widget.api,
+                      ),
                       const SizedBox(height: 22),
                       _InstallmentChartCard(report: data.report),
                       const SizedBox(height: 22),
@@ -1652,11 +1655,24 @@ class _DashCard extends StatelessWidget {
     required this.title,
     required this.child,
     this.onTap,
+    this.subtitle,
+    this.filter,
+    this.busy = false,
   });
   final IconData icon;
   final String title;
   final Widget child;
   final VoidCallback? onTap;
+
+  /// Başlığın altındaki dönem etiketi (ör. "Ağustos 2026" / "1 Ağu – 7 Ağu").
+  final String? subtitle;
+
+  /// Başlığın altına yerleşen süzgeç şeridi (dönem çipleri + özel tarih).
+  final Widget? filter;
+
+  /// Dönem sorgusu sürerken içerik soluklaşır — eski rakam ekranda kalır ama
+  /// "bu henüz tazelenmedi" görünür olur (web'deki opacity-60 davranışının aynısı).
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -1682,12 +1698,23 @@ class _DashCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14.5,
+                          ),
+                        ),
+                        if (subtitle != null)
+                          Text(
+                            subtitle!,
+                            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                          ),
+                      ],
                     ),
                   ),
                   if (onTap != null)
@@ -1698,8 +1725,16 @@ class _DashCard extends StatelessWidget {
                     ),
                 ],
               ),
+              if (filter != null) ...[
+                const SizedBox(height: 10),
+                filter!,
+              ],
               const SizedBox(height: 14),
-              child,
+              AnimatedOpacity(
+                opacity: busy ? 0.55 : 1,
+                duration: const Duration(milliseconds: 180),
+                child: child,
+              ),
             ],
           ),
         ),
@@ -1822,10 +1857,231 @@ class _QuickActions extends StatelessWidget {
 }
 
 /// Paket/ön muhasebe özeti (web 'Paket Raporu' KPI'ları).
-class _PackageReportCard extends StatelessWidget {
+/// Rapor dönemi — web'deki RangePeriod'un karşılığı.
+enum _ReportPeriod { daily, weekly, monthly, yearly }
+
+/// Kullanıcının seçtiği serbest tarih aralığı (iki uç da DAHİL).
+class _CustomRange {
+  const _CustomRange(this.from, this.to);
+  final DateTime from;
+  final DateTime to;
+}
+
+/// Rapor penceresi: `[from, to)` yarı açık aralık + kartta gösterilecek etiket.
+///
+/// Sınırlar web'deki `periodWindow` ile BİREBİR aynı olmalı, yoksa aynı kurum aynı dönemde
+/// web'de ve mobilde farklı rakam görür. Hesap YEREL tarihle yapılır, uca giderken UTC'ye
+/// çevrilir — yerel gece yarısını UTC gece yarısı sanmak Türkiye'de günü 3 saat kaydırır.
+({String fromIso, String toIso, String label}) _reportWindow(
+  _ReportPeriod period,
+  _CustomRange? custom,
+) {
+  const monthsShort = [
+    'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+    'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
+  ];
+  const monthsLong = [
+    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+  ];
+  String day(DateTime d) => '${d.day} ${monthsShort[d.month - 1]}';
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final tomorrow = today.add(const Duration(days: 1));
+
+  if (custom != null) {
+    // Bitiş günü DAHİL: kullanıcı "1–7 Ağustos" derken 7'yi de kastediyor.
+    final endExclusive = DateTime(custom.to.year, custom.to.month, custom.to.day)
+        .add(const Duration(days: 1));
+    final start = DateTime(custom.from.year, custom.from.month, custom.from.day);
+    final label = start == DateTime(custom.to.year, custom.to.month, custom.to.day)
+        ? day(start)
+        : '${day(start)} – ${day(custom.to)}';
+    return (
+      fromIso: start.toUtc().toIso8601String(),
+      toIso: endExclusive.toUtc().toIso8601String(),
+      label: label,
+    );
+  }
+
+  late DateTime start;
+  late String label;
+  switch (period) {
+    case _ReportPeriod.daily:
+      start = today;
+      label = 'Bugün · ${day(today)}';
+    case _ReportPeriod.weekly:
+      start = today.subtract(const Duration(days: 6));
+      label = '${day(start)} – ${day(today)}';
+    case _ReportPeriod.monthly:
+      start = DateTime(today.year, today.month, 1);
+      label = '${monthsLong[today.month - 1]} ${today.year}';
+    case _ReportPeriod.yearly:
+      start = DateTime(today.year, 1, 1);
+      label = '${today.year}';
+  }
+  return (
+    fromIso: start.toUtc().toIso8601String(),
+    toIso: tomorrow.toUtc().toIso8601String(),
+    label: label,
+  );
+}
+
+/// Dönem çipleri + "Özel tarih" — web'deki PeriodTabs & DateRangeFilter ikilisinin karşılığı.
+/// Çipe basınca özel aralık düşer, özel aralık seçilince çip vurgusu kalkar (ikisi aynı anda
+/// uygulanmaz — hangisinin geçerli olduğu ekrandan okunabilmeli).
+class _ReportPeriodBar extends StatelessWidget {
+  const _ReportPeriodBar({
+    required this.period,
+    required this.custom,
+    required this.options,
+    required this.onPeriod,
+    required this.onCustom,
+  });
+
+  final _ReportPeriod period;
+  final _CustomRange? custom;
+  final List<(_ReportPeriod, String)> options;
+  final ValueChanged<_ReportPeriod> onPeriod;
+  final ValueChanged<_CustomRange?> onCustom;
+
+  Future<void> _pick(BuildContext context) async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: custom == null ? null : DateTimeRange(start: custom!.from, end: custom!.to),
+      // `locale:` GEÇİLMEZ: uygulama zaten tr_TR ve delegeleri kayıtlı (app.dart), seçici
+      // ağaçtan miras alır. Açıkça geçmek, delege çözümlenemezse çalışma anında patlayan
+      // gereksiz bir kırılma noktası olurdu.
+      helpText: 'Tarih aralığı seç',
+      saveText: 'Uygula',
+    );
+    if (picked != null) onCustom(_CustomRange(picked.start, picked.end));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = custom != null;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (key, label) in options) ...[
+            _chip(
+              label: label,
+              selected: period == key && !active,
+              onTap: () => onPeriod(key),
+            ),
+            const SizedBox(width: 6),
+          ],
+          _chip(
+            label: active
+                ? _reportWindow(period, custom).label
+                : 'Özel tarih',
+            selected: active,
+            icon: Icons.date_range_rounded,
+            onTap: () => _pick(context),
+            onClear: active ? () => onCustom(null) : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    IconData? icon,
+    VoidCallback? onClear,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: selected ? Colors.white : AppColors.muted),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.muted,
+              ),
+            ),
+            if (onClear != null) ...[
+              const SizedBox(width: 5),
+              GestureDetector(
+                onTap: onClear,
+                child: Icon(Icons.close_rounded, size: 13, color: selected ? Colors.white : AppColors.muted),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PackageReportCard extends StatefulWidget {
   const _PackageReportCard({required this.report, required this.api});
   final Map<String, dynamic> report;
   final ApiClient api;
+
+  @override
+  State<_PackageReportCard> createState() => _PackageReportCardState();
+}
+
+class _PackageReportCardState extends State<_PackageReportCard> {
+  // Web ile aynı varsayılan: aylık.
+  _ReportPeriod _period = _ReportPeriod.monthly;
+  _CustomRange? _custom;
+  Map<String, dynamic>? _scoped;
+  bool _busy = false;
+
+  ApiClient get api => widget.api;
+
+  /// Dönem raporu gelene kadar EBEVEYNİN genel raporu gösterilir (web'deki
+  /// "henüz yüklenmediyse genel rapora düş" davranışının aynısı) — kart boş yanıp sönmez.
+  Map<String, dynamic> get report => _scoped ?? widget.report;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final w = _reportWindow(_period, _custom);
+    setState(() => _busy = true);
+    try {
+      final res = await api.get('/api/admin/accounts/report', query: {
+        'months': 6,
+        'fromUtc': w.fromIso,
+        'toUtc': w.toIso,
+      });
+      if (!mounted) return;
+      setState(() => _scoped = res is Map ? res.cast<String, dynamic>() : null);
+    } catch (_) {
+      // Sessizce ebeveyn verisinde kal: rapor kartı, dönem sorgusu düştü diye pano çökertmemeli.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1892,6 +2148,20 @@ class _PackageReportCard extends StatelessWidget {
     return _DashCard(
       icon: Icons.workspaces_rounded,
       title: 'Paket Raporu',
+      subtitle: _reportWindow(_period, _custom).label,
+      busy: _busy,
+      filter: _ReportPeriodBar(
+        period: _period,
+        custom: _custom,
+        // Web PACKAGE_PERIOD_OPTIONS ile aynı üçlü.
+        options: const [
+          (_ReportPeriod.daily, 'Gün'),
+          (_ReportPeriod.monthly, 'Ay'),
+          (_ReportPeriod.yearly, 'Yıl'),
+        ],
+        onPeriod: (p) { setState(() { _period = p; _custom = null; }); _load(); },
+        onCustom: (c) { setState(() => _custom = c); _load(); },
+      ),
       // Kart tıklanınca kategori/hizmet ve müşteri kırılımı açılır (web 'Satış Detayı').
       onTap: (categories.isEmpty && customers.isEmpty)
           ? null
@@ -1998,9 +2268,47 @@ class _PackageReportCard extends StatelessWidget {
 /// Buradaki sayım HİZMETtir, paket değil: tekil (paketsiz) hizmet satışları ve paket
 /// içindeki hizmetler birlikte sayılır. Paket kartları ise yalnız gerçek paketleri sayar —
 /// bir hizmet satışı paket sayacını ARTIRMAZ.
-class _ServiceReportCard extends StatelessWidget {
-  const _ServiceReportCard({required this.report});
+class _ServiceReportCard extends StatefulWidget {
+  const _ServiceReportCard({required this.report, required this.api});
   final Map<String, dynamic> report;
+  final ApiClient api;
+
+  @override
+  State<_ServiceReportCard> createState() => _ServiceReportCardState();
+}
+
+class _ServiceReportCardState extends State<_ServiceReportCard> {
+  // Hizmet raporunun dönemi paketinkinden AYRIDIR (web'de de öyle): ikisi farklı
+  // tarihlerde incelenebilmeli.
+  _ReportPeriod _period = _ReportPeriod.monthly;
+  _CustomRange? _custom;
+  Map<String, dynamic>? _scoped;
+  bool _busy = false;
+
+  Map<String, dynamic> get report => _scoped ?? widget.report;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final w = _reportWindow(_period, _custom);
+    setState(() => _busy = true);
+    try {
+      final res = await widget.api.get('/api/admin/accounts/service-report', query: {
+        'fromUtc': w.fromIso,
+        'toUtc': w.toIso,
+      });
+      if (!mounted) return;
+      setState(() => _scoped = res is Map ? res.cast<String, dynamic>() : null);
+    } catch (_) {
+      // Ebeveyn verisinde kal (bkz. paket kartındaki aynı gerekçe).
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2055,6 +2363,21 @@ class _ServiceReportCard extends StatelessWidget {
     return _DashCard(
       icon: Icons.spa_rounded,
       title: 'Hizmet Raporu',
+      subtitle: _reportWindow(_period, _custom).label,
+      busy: _busy,
+      filter: _ReportPeriodBar(
+        period: _period,
+        custom: _custom,
+        // Web FULL_PERIOD_OPTIONS ile aynı dörtlü (hizmette hafta da var).
+        options: const [
+          (_ReportPeriod.daily, 'Gün'),
+          (_ReportPeriod.weekly, 'Hafta'),
+          (_ReportPeriod.monthly, 'Ay'),
+          (_ReportPeriod.yearly, 'Yıl'),
+        ],
+        onPeriod: (p) { setState(() { _period = p; _custom = null; }); _load(); },
+        onCustom: (c) { setState(() => _custom = c); _load(); },
+      ),
       child: AdaptiveStatGrid(
         phoneCols: 3,
         height: 92,
