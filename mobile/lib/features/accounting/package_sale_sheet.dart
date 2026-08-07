@@ -8,21 +8,64 @@ import '../consent/consent_sale_notice.dart';
 import '../customers/customer_picker.dart';
 import 'adisyon_detail_sheet.dart';
 
+/// Satışa eklenen ek kalemin türü — adisyon kartındaki kalem türlerinin satış alt kümesi.
+enum _ExtraKind { service, package, product }
+
+/// Satışa eklenmiş ek kalem (henüz kaydedilmedi — yalnız bellekte).
+///
+/// Adisyon BİLEREK önceden açılmaz: kullanıcı vazgeçerse ortada kalem toplamış açık bir fiş
+/// kalırdı ve hizmet/paket fişleri "ilk randevuda otomatik işlenir" bayrağını taşıdığı için o
+/// hayalet fiş müşterinin ilk randevusunda sessizce cariye borç yazardı.
+class _SaleExtra {
+  const _SaleExtra({
+    required this.kind,
+    required this.refId,
+    required this.name,
+    required this.unitPrice,
+    required this.quantity,
+    this.staffId,
+  });
+
+  final _ExtraKind kind;
+  final String refId;
+  final String name;
+  final double unitPrice;
+  final int quantity;
+  final String? staffId;
+
+  double get lineTotal => unitPrice * quantity;
+}
+
+const _extraKindLabels = <_ExtraKind, String>{
+  _ExtraKind.service: 'Hizmet',
+  _ExtraKind.package: 'Paket',
+  _ExtraKind.product: 'Ürün',
+};
+
+const _extraKindIcons = <_ExtraKind, IconData>{
+  _ExtraKind.service: Icons.auto_awesome_rounded,
+  _ExtraKind.package: Icons.inventory_rounded,
+  _ExtraKind.product: Icons.shopping_bag_rounded,
+};
+
 /// Web `PackageSaleDialog`'un mobil karşılığı.
 ///
 /// - Varsayılan mod paket satışı; [serviceSale] hizmet, [productSale] ürün satışıdır.
 /// - [customerId] verilirse müşteri sabittir (ör. randevu formundan);
 ///   verilmezse müşteri listeden seçilir (menüdeki Satış sayfası).
 ///
-/// Akış web ile birebir: katalog kategori + alt kategori + aramayla bulunur, açık adisyon
-/// bulunur/açılır (taksit planı adisyona yazılır), satış kalemi eklenir, peşinat varsa
-/// Payment kalemi eklenir.
+/// Akış web ile birebir: katalog kategori + alt kategori + aramayla bulunur, satışa EK hizmet /
+/// paket / ürün eklenebilir, "Satışı kaydet" ile iş biter.
 ///
-/// ÜRÜN SATIŞI FARKLIDIR (web ile aynı kural):
-///  • Randevuya bağlı olmadığı için "ilk randevuda işle" ertelemesine GİRMEZ — anında onaylanır,
-///    cariye borç yazılır ve stoktan düşer.
-///  • Geçmişe dönük SATIŞ TARİHİ girilebilir; cari kaydı ve peşinat tahsilatı o güne yazılır.
-///  • Stok kontrolü yapılır (satılabilir = salePrice > 0 ve stok > 0).
+/// **ADİSYON KARTI KENDİLİĞİNDEN AÇILMAZ** (kullanıcı talebi: süreç uzuyordu). Ne olacağını
+/// kullanıcıya sormak yerine TAHSİLAT belirler:
+///  • **Peşinat alındıysa** → kaydedilir kaydedilmez onaylanır: cari borç, peşinat kasaya, seans/stok.
+///  • **Alınmadıysa** → satış açık kalır, müşteri ilk randevusunu tamamlayınca otomatik işlenir.
+///  • **Fişte ürün varsa** erteleme mümkün değildir → peşinatsız da olsa hemen onaylanır.
+///
+/// ERTELEME YALNIZ ÜRÜNSÜZ FİŞTE MÜMKÜNDÜR: bekleyen satış stok ayırmaz; fişteki ürün beklerken
+/// tükenirse ilk randevunun otomatik onayı stok kontrolüne takılır ve randevunun tamamlanması
+/// topluca başarısız olur (bkz. AppointmentService — onay başarısızsa tamamlama da başarısızdır).
 class PackageSaleSheet extends StatefulWidget {
   const PackageSaleSheet({
     required this.api,
@@ -69,11 +112,40 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   final downPayment = TextEditingController();
   final notes = TextEditingController();
 
+  // ---- Ek kalemler + kaydetme şekli ----
+  final List<_SaleExtra> _extras = [];
+
+  /// Açık ek kalem formunun türü; null = form kapalı.
+  _ExtraKind? _extraKind;
+  String? _extraRefId;
+  int _extraQty = 1;
+  String? _extraStaffId;
+  final _extraPrice = TextEditingController();
+  String _extraError = '';
+
   bool get _isProduct => widget.productSale;
   bool get _isService => !_isProduct && widget.serviceSale;
 
-  /// Ürün randevuya bağlı olmadığından ertelemeye girmez — anında cariye işlenir.
-  bool get _deferToFirstAppointment => !_isProduct;
+  /// Fişte ürün var mı? (ana satış ya da ek kalem) — erteleme kararının tek ölçütü.
+  bool get _hasProductItem =>
+      _isProduct || _extras.any((e) => e.kind == _ExtraKind.product);
+
+  /// Ürünsüz fiş "ilk randevu tamamlanınca otomatik işle" ile bekleyebilir.
+  bool get _canDefer => !_hasProductItem;
+
+  /// Fişte SEANS üreten kalem (hizmet/paket satışı) var mı? "Ürün satışı değil" ile aynı şey
+  /// DEĞİLDİR: ürün satışına ürün ek kalemi eklenince fiş hâlâ tamamen üründür — ayrım yapılmazsa
+  /// kullanıcıya "seanslar tanımlanır" denip hiç seans açılmaz.
+  bool get _hasSessionItem =>
+      !_isProduct || _extras.any((e) => e.kind != _ExtraKind.product);
+
+  /// Personelin onayı anında işlemez — yöneticinin Onaylar sayfasına düşer (bkz. _submit).
+  bool get _isStaffUser => widget.api.auth?.user?.isStaff == true;
+
+  /// KAYDEDİNCE NE OLACAK — kullanıcıya sorulmaz, tahsilattan türetilir (kullanıcı kuralı):
+  /// peşinat alındıysa satış hemen cariye işlenir; alınmadıysa ilk randevuya ertelenir. Ürünlü fiş
+  /// ertelenemediği için peşinatsız da olsa hemen işlenir. Her hâlde adisyon kartı AÇILMAZ.
+  bool get _approveNow => _downPaymentValue > 0 || !_canDefer;
 
   @override
   void initState() {
@@ -84,38 +156,47 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     loading = _loadLookups();
   }
 
+  /// İstek düşerse boş liste — tek bir katalogun (ör. pakete dahil olmayan ürün modülü)
+  /// erişilemez olması satış ekranını komple kırmasın (web'deki `.catch(() => ({items:[]}))`).
+  Future<dynamic> _safeGet(String path, {Map<String, dynamic>? query}) async {
+    try {
+      return await widget.api.get(path, query: query);
+    } catch (_) {
+      return const {'items': <dynamic>[]};
+    }
+  }
+
   Future<void> _loadLookups() async {
     customerId = widget.customerId;
+    // KATALOGLARIN TAMAMI HER MODDA ÇEKİLİR: ek kalem seçicisi paket satışında da hizmet/ürün
+    // listesine ihtiyaç duyar (eskiden yalnız satılan türün listesi geliyordu).
     final values = await Future.wait([
-      _isProduct
-          ? widget.api.get('/api/admin/products/', query: {'page': 1, 'pageSize': 300})
-          : _isService
-              ? widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 300})
-              : widget.api.get('/api/admin/packages/', query: {'page': 1, 'pageSize': 300}),
-      widget.api.get('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
-      widget.api.get('/api/admin/service-categories/'),
+      _safeGet('/api/admin/packages/', query: {'page': 1, 'pageSize': 200}),
+      _safeGet('/api/admin/services/', query: {'page': 1, 'pageSize': 300}),
+      _safeGet('/api/admin/products/', query: {'page': 1, 'pageSize': 500}),
+      _safeGet('/api/admin/staff/', query: {'page': 1, 'pageSize': 200}),
+      _safeGet('/api/admin/service-categories/'),
     ]);
     // Kategori pill sırası: backend SortOrder'a göre gelir, ad listesini o sırayla al.
-    categoryOrder = apiItems(values[2]).map((c) => '${c['name'] ?? ''}').toList();
-    final catalog = apiItems(
-      values[0],
-    ).where((p) => p['isActive'] != false).toList(growable: false);
+    categoryOrder = apiItems(values[4]).map((c) => '${c['name'] ?? ''}').toList();
+    packages = apiItems(values[0]).where((p) => p['isActive'] != false).toList(growable: false);
+    services = apiItems(values[1]).where((s) => s['isActive'] != false).toList(growable: false);
+    // Satılabilir ürün: satış fiyatı tanımlı VE stokta var (web ile aynı süzgeç).
+    products = apiItems(values[2])
+        .where((p) =>
+            p['isActive'] != false &&
+            ((p['salePrice'] as num?)?.toDouble() ?? 0) > 0 &&
+            ((p['currentStock'] as num?)?.toDouble() ?? 0) > 0)
+        .toList(growable: false);
+    staff = apiItems(values[3]);
+    // Satılan türün ilk kaydı ön-seçili gelsin (eski davranış).
     if (_isProduct) {
-      // Satılabilir ürün: satış fiyatı tanımlı VE stokta var (web ile aynı süzgeç).
-      products = catalog
-          .where((p) =>
-              ((p['salePrice'] as num?)?.toDouble() ?? 0) > 0 &&
-              ((p['currentStock'] as num?)?.toDouble() ?? 0) > 0)
-          .toList(growable: false);
       productId = products.isEmpty ? null : '${products.first['id']}';
     } else if (_isService) {
-      services = catalog;
       serviceId = services.isEmpty ? null : '${services.first['id']}';
     } else {
-      packages = catalog;
       packageId = packages.isEmpty ? null : '${packages.first['id']}';
     }
-    staff = apiItems(values[1]);
     // Sınırsız müşteri ölçeği: liste çekilmez; seçim CustomerSelectField'dan gelir
     // ve `customers` yalnızca seçilen kaydı tutar.
   }
@@ -125,6 +206,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     price.dispose();
     downPayment.dispose();
     notes.dispose();
+    _extraPrice.dispose();
     super.dispose();
   }
 
@@ -158,7 +240,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
   int get _qty => (_isService || _isProduct) ? quantity : 1;
 
-  double get _total => _unitPrice * _qty;
+  double get _mainTotal => _unitPrice * _qty;
+  double get _extrasTotal => _extras.fold<double>(0, (sum, e) => sum + e.lineTotal);
+  double get _total => _mainTotal + _extrasTotal;
 
   String get _customerLabel {
     if (widget.customerName != null && widget.customerName!.isNotEmpty) {
@@ -172,7 +256,15 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     return '';
   }
 
+  /// Peşinat alanı hizmet satışında gizlidir (web ile aynı kullanıcı kuralı) — ama o kural fişin
+  /// YALNIZCA hizmetten ibaret olduğu döneme aitti; paket/ürün ek kalemi girince alan açılır.
+  bool get _showDownPayment => !_isService || _extras.isNotEmpty;
+
+  /// DEĞER DE ALANLA BİRLİKTE SIFIRLANIR: kullanıcı peşinat yazıp sonra ek kalemi kaldırırsa alan
+  /// gizlenir ama denetleyicideki metin kalırdı. Peşinat artık satışın cariye NE ZAMAN işleneceğini
+  /// belirlediği için, görünmeyen bir tutar satışı sessizce "hemen işle" yoluna sokardı.
   double get _downPaymentValue {
+    if (!_showDownPayment) return 0;
     final raw = downPayment.text.trim().replaceAll(',', '.');
     if (raw.isEmpty) return 0;
     return double.tryParse(raw) ?? 0;
@@ -187,6 +279,54 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   /// Stok gösteriminde "3.0 adet" yerine "3 adet".
   static String _trimQty(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  Map<String, dynamic>? _findById(List<Map<String, dynamic>> list, String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final item in list) {
+      if ('${item['id']}' == id) return item;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _extraCatalog(_ExtraKind kind) => switch (kind) {
+        _ExtraKind.service => services,
+        _ExtraKind.package => packages,
+        _ExtraKind.product => products,
+      };
+
+  double _extraBasePrice(_ExtraKind kind, String? refId) {
+    final item = _findById(_extraCatalog(kind), refId);
+    if (item == null) return 0;
+    return switch (kind) {
+      _ExtraKind.service => (item['price'] as num?)?.toDouble() ?? 0,
+      _ExtraKind.package => (item['totalPrice'] as num?)?.toDouble() ?? 0,
+      _ExtraKind.product => (item['salePrice'] as num?)?.toDouble() ?? 0,
+    };
+  }
+
+  /// Fişteki TÜM ürün kalemleri (ana satış + ek kalemler) için toplam stok kontrolü.
+  /// Backend de stoğu ürün bazında TOPLAYARAK denetler (AdisyonService.ApproveCoreAsync);
+  /// istemci aynı ölçütü kullanmazsa kullanıcı hatayı ancak onay anında görürdü.
+  String _stockError({_SaleExtra? candidate}) {
+    final need = <String, int>{};
+    if (_isProduct && _selectedId != null) need[_selectedId!] = _qty;
+    for (final e in [..._extras, ?candidate]) {
+      if (e.kind == _ExtraKind.product) {
+        need[e.refId] = (need[e.refId] ?? 0) + e.quantity;
+      }
+    }
+    for (final entry in need.entries) {
+      final p = _findById(products, entry.key);
+      if (p == null) {
+        return 'Fişteki ürünlerden biri listede bulunamadı — kalemi kaldırıp yeniden ekleyin.';
+      }
+      final stock = (p['currentStock'] as num?)?.toDouble() ?? 0;
+      if (entry.value > stock) {
+        return '${p['name']} için stok yetersiz — istenen ${entry.value}, mevcut ${_trimQty(stock)} ${valueOf(p, const ['unit'], fallback: 'adet')}.';
+      }
+    }
+    return '';
+  }
 
   Future<void> _pickDueDate() async {
     final picked = await showDatePicker(
@@ -216,6 +356,62 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _closeExtraForm() {
+    setState(() {
+      _extraKind = null;
+      _extraRefId = null;
+      _extraQty = 1;
+      _extraStaffId = null;
+      _extraPrice.clear();
+      _extraError = '';
+    });
+  }
+
+  void _addExtra() {
+    final kind = _extraKind;
+    if (kind == null) return;
+    final item = _findById(_extraCatalog(kind), _extraRefId);
+    if (item == null) {
+      setState(() => _extraError = '${_extraKindLabels[kind]} seçin');
+      return;
+    }
+    final raw = _extraPrice.text.trim().replaceAll(',', '.');
+    final unit = raw.isEmpty
+        ? _extraBasePrice(kind, _extraRefId)
+        : (double.tryParse(raw) ?? _extraBasePrice(kind, _extraRefId));
+    if (unit <= 0) {
+      setState(() => _extraError = 'Birim fiyat pozitif olmalı');
+      return;
+    }
+    final candidate = _SaleExtra(
+      kind: kind,
+      refId: '${item['id']}',
+      name: valueOf(item, const ['name']),
+      unitPrice: unit,
+      quantity: _extraQty < 1 ? 1 : _extraQty,
+      staffId: _extraStaffId,
+    );
+    final stockMsg = _stockError(candidate: candidate);
+    if (stockMsg.isNotEmpty) {
+      setState(() => _extraError = stockMsg);
+      return;
+    }
+    setState(() => _extras.add(candidate));
+    _closeExtraForm();
+  }
+
+  Future<void> _openAdisyonCard(String adisyonId) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
+    );
+  }
+
+  /// Satışı kaydeder — tek tuş. Peşinat varsa (ya da fişte ürün varsa) fiş hemen onaylanır;
+  /// yoksa açık kalıp ilk randevuya ertelenir. Adisyon kartı hiçbir hâlde kendiliğinden açılmaz.
   Future<void> _submit() async {
     final cid = customerId;
     if (cid == null || cid.isEmpty) return _snack('Müşteri seçin.');
@@ -228,9 +424,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
               : 'Paket seçin.');
     }
     if (_unitPrice <= 0) return _snack('Satış fiyatı pozitif olmalı.');
-    if (_isProduct && _qty > _stock) {
-      return _snack('Yetersiz stok — kullanılabilir ${_trimQty(_stock)} $_unitLabel');
-    }
+    final stockMsg = _stockError();
+    if (stockMsg.isNotEmpty) return _snack(stockMsg);
     final total = _total;
     final pay = _downPaymentValue;
     if (pay < 0 || pay > total) {
@@ -243,9 +438,24 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       }
     }
 
+    final approveNow = _approveNow;
+    // ERTELEME BAYRAĞI: ürünsüz fiş + (peşinatsız satış YA DA personelin onay isteği).
+    //
+    // Personelde bayrak "onayla" yolunda da AÇIK kalır çünkü personelin onayı anında işlemez,
+    // yöneticinin Onaylar sayfasında bekler; o beklerken müşteri randevusuna gelebilir. Bayrak
+    // kapalı olsaydı randevu, seansı henüz açılmamış bir satışla tamamlanır — hizmet bedelsiz
+    // verilmiş, satış ortada kalmış olurdu. Hangisi önce gerçekleşirse satışı o işler; ikincisi
+    // "yalnızca açık adisyon onaylanabilir" ile durur, çift kayıt oluşmaz.
+    //
+    // Yönetici rollerinde onay SENKRON işler; başarısız olursa fiş açık kalır ama bayrak KAPALIDIR:
+    // hata gösterilen bir satış, kimse farkında değilken ilk randevuda sessizce işlenmemelidir.
+    final willDefer = _canDefer && (!approveNow || _isStaffUser);
+
     setState(() => saving = true);
+    String? createdId;
+    var phase = 'build';
     try {
-      // 1) Açık adisyonu bul/aç + taksit planını yaz (peşin = 0).
+      // 1) Adisyonu aç + taksit planını yaz (peşin = 0).
       final adisyon = await widget.api.post('/api/admin/adisyonlar/', {
         'customerId': cid,
         'customerAccountId': null,
@@ -254,18 +464,14 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         'firstDueDate': installment ? _isoDate(firstDueDate) : null,
         // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
         'forceNew': true,
-        // Faz 2: hizmet/paket cariye şimdi işlenmez; ilk randevu tamamlanınca otomatik onaylanır.
-        // Ürün randevuya bağlı olmadığından bu ertelemeye girmez.
-        'autoApproveOnFirstAppointment': _deferToFirstAppointment,
+        'autoApproveOnFirstAppointment': willDefer,
         // Geçmişe dönük satış tarihi (yalnız ürün). Günün ortasına sabitlenir ki saat dilimi
         // kayması tarihi bir gün öne/arkaya almasın.
         'saleDateUtc': _isProduct
             ? DateTime.utc(saleDate.year, saleDate.month, saleDate.day, 12).toIso8601String()
             : null,
       });
-      final adisyonMap = adisyon is Map
-          ? adisyon.cast<String, dynamic>()
-          : null;
+      final adisyonMap = adisyon is Map ? adisyon.cast<String, dynamic>() : null;
       final adisyonId = adisyonMap?['id']?.toString();
       if (adisyonMap == null || adisyonId == null || adisyonId.isEmpty) {
         // Staff onay kapısı: istek taslağa düşmüş olabilir.
@@ -275,8 +481,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         }
         return;
       }
+      createdId = adisyonId;
 
-      // 2) Satış kalemi — onayda cariye borç (+ paketse seans bakiyesi, üründe stok düşümü).
+      // 2) Ana satış kalemi — onayda cariye borç (+ paketse seans bakiyesi, üründe stok düşümü).
       await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
         'type': _isProduct
             ? 'Product'
@@ -293,16 +500,35 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         'coveredByPackage': false,
       });
 
+      // 2b) Ek kalemler — ana satışla aynı fişe, aynı kurallarla yazılır.
+      for (final e in _extras) {
+        await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
+          'type': switch (e.kind) {
+            _ExtraKind.service => 'Service',
+            _ExtraKind.package => 'PackageSale',
+            _ExtraKind.product => 'Product',
+          },
+          'refId': e.refId,
+          'description': e.kind == _ExtraKind.package ? 'Paket satışı: ${e.name}' : e.name,
+          'quantity': e.quantity,
+          'unitPrice': e.unitPrice,
+          'staffMemberId': e.staffId ?? staffId,
+          'coveredByPackage': false,
+        });
+      }
+
       // 3) Peşinat alındıysa tahsilat kalemi.
       if (pay > 0) {
         await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
           'type': 'Payment',
           'refId': null,
-          'description': _isProduct
-              ? 'Ürün peşinatı: ${selected['name']}'
-              : _isService
-                  ? 'Peşinat: ${selected['name']}'
-                  : 'Paket peşinatı: ${selected['name']}',
+          'description': _extras.isNotEmpty
+              ? 'Satış peşinatı'
+              : _isProduct
+                  ? 'Ürün peşinatı: ${selected['name']}'
+                  : _isService
+                      ? 'Peşinat: ${selected['name']}'
+                      : 'Paket peşinatı: ${selected['name']}',
           'quantity': 1,
           'unitPrice': pay,
           'staffMemberId': null,
@@ -310,45 +536,319 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         });
       }
 
-      // 3b) ÜRÜN: erteleme yok — hemen onayla (cariye borç + peşinat kasaya + stok düşümü).
-      //     Onay yetkisi olmayan personelde istek onay kapısına düşer; satış açık adisyon kalır.
-      if (_isProduct) {
-        var approved = true;
-        try {
-          await widget.api.post('/api/admin/adisyonlar/$adisyonId/approve', const {});
-        } catch (_) {
-          approved = false;
-        }
+      if (approveNow) {
+        phase = 'approve';
+        // PERSONELDE DE ÇAĞRILIR: onay kapısı isteği yakalayıp yöneticinin Onaylar sayfasına
+        // düşürür (200 + pendingApproval döner, hata fırlatmaz).
+        final result = await widget.api.post('/api/admin/adisyonlar/$adisyonId/approve', const {});
+        final pending = result is Map && result['pendingApproval'] == true;
         if (mounted) {
           Navigator.pop(context, true);
-          _snack(approved
-              ? 'Ürün satışı tamamlandı · cariye işlendi, stoktan düşüldü.'
-              : 'Satış oluşturuldu · yönetici onayına düştü.');
+          _snack(pending
+              ? 'Satış oluşturuldu · yönetici onayına düştü.'
+              : _hasProductItem
+                  ? 'Satış tamamlandı · cariye işlendi, stoktan düşüldü.'
+                  : 'Satış tamamlandı · cariye işlendi.');
         }
         return;
       }
 
-      // 4) Faz 2: onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu tamamlayınca
-      //    backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar).
-      //    Kullanıcı isteği: bilgi modalı yerine ADİSYON KARTI açılır — peşinat/kalemler orada
-      //    görülür-eklenir; cariye işleme yine ilk randevu tamamlanınca otomatik olur.
+      // 4) Peşinat alınmadı → satış AÇIK kalır ve ilk randevuya ertelenir. Adisyon kartı AÇILMAZ
+      //    (kullanıcı talebi: süreç uzuyordu); kart gerekirse müşteri kartından açılır.
       if (mounted) {
-        setState(() => saving = false);
-        // Kart, satış sheet'inin üstünde açılır; kart kapanınca satış sheet'i de kapanır.
-        await showModalBottomSheet<bool>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => AdisyonDetailSheet(api: widget.api, adisyonId: adisyonId),
-        );
-        if (mounted) Navigator.pop(context, true);
+        Navigator.pop(context, true);
+        _snack('Satış kaydedildi · ilk randevu tamamlanınca cariye işlenecek.');
       }
     } catch (e) {
+      if (phase == 'approve' && createdId != null) {
+        // FİŞ EKSİKSİZ — SİLİNMEZ. Yalnız onay adımı düştü; kullanıcı karttan tekrar onaylayabilir.
+        if (mounted) {
+          setState(() => saving = false);
+          _snack('Satış kaydedildi ancak cariye işlenemedi: $e — karttan onaylayın.');
+          await _openAdisyonCard(createdId);
+          if (mounted) Navigator.pop(context, true);
+        }
+        return;
+      }
+      // YARIM FİŞ BIRAKILMAZ: kalemleri eksik kalmış açık adisyon Ön Muhasebe'de gerçek bir satış
+      // gibi durur, hizmet/paket fişiyse ilk randevuda otomatik cariye işlenirdi. İptal edilen fiş
+      // hiçbir sorguya (açık adisyon / bekleyen satış) girmez.
+      if (createdId != null) {
+        try {
+          await widget.api.post('/api/admin/adisyonlar/$createdId/cancel', const {});
+        } catch (_) {
+          // İptal de düşerse elde edilecek bir şey yok; asıl hata kullanıcıya gösterilir.
+        }
+      }
       if (mounted) _snack('$e');
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // EK KALEM BÖLÜMÜ
+  // ---------------------------------------------------------------------------
+  Widget _buildExtrasSection() {
+    final kinds = <_ExtraKind>[
+      _ExtraKind.service,
+      _ExtraKind.package,
+      if (products.isNotEmpty) _ExtraKind.product,
+    ];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.add_circle_outline_rounded, size: 16, color: AppColors.primaryDark),
+              const SizedBox(width: 6),
+              Text(
+                _extras.isEmpty ? 'Ek kalem' : 'Ek kalem (${_extras.length})',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Bu satışa ek hizmet, paket veya ürün ekleyebilirsin; tutar toplama eklenir.',
+            style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final k in kinds)
+                ChoiceChip(
+                  selected: _extraKind == k,
+                  avatar: Icon(_extraKindIcons[k], size: 16),
+                  label: Text(_extraKindLabels[k]!),
+                  onSelected: saving
+                      ? null
+                      : (_) {
+                          if (_extraKind == k) {
+                            _closeExtraForm();
+                          } else {
+                            setState(() {
+                              _extraKind = k;
+                              _extraRefId = null;
+                              _extraQty = 1;
+                              _extraStaffId = staffId;
+                              _extraPrice.clear();
+                              _extraError = '';
+                            });
+                          }
+                        },
+                ),
+            ],
+          ),
+          if (_extraKind != null) ...[
+            const SizedBox(height: 10),
+            if (_extraError.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _extraError,
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.danger),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            CatalogPickerField(
+              label: '${_extraKindLabels[_extraKind]} seç',
+              items: _extraCatalog(_extraKind!),
+              selectedId: _extraRefId,
+              clearable: true,
+              priceKeys: switch (_extraKind!) {
+                _ExtraKind.service => const ['price'],
+                _ExtraKind.package => const ['totalPrice'],
+                _ExtraKind.product => const ['salePrice'],
+              },
+              subCategoryKey: _extraKind == _ExtraKind.product ? 'brand' : 'subCategory',
+              onChanged: (id) => setState(() {
+                _extraRefId = id;
+                _extraPrice.clear();
+                _extraError = '';
+              }),
+              categoryOrder: _extraKind == _ExtraKind.product ? const [] : categoryOrder,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _extraPrice,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Birim fiyat (₺)',
+                      hintText: _extraBasePrice(_extraKind!, _extraRefId) > 0
+                          ? _extraBasePrice(_extraKind!, _extraRefId).toStringAsFixed(0)
+                          : null,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.outlined(
+                  onPressed: _extraQty > 1 ? () => setState(() => _extraQty--) : null,
+                  icon: const Icon(Icons.remove_rounded),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('$_extraQty', style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                IconButton.outlined(
+                  onPressed: () => setState(() => _extraQty++),
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: _extraStaffId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Satışı yapan (opsiyonel)'),
+              items: [
+                const DropdownMenuItem<String>(value: null, child: Text('— Seçilmedi —')),
+                ...staff.map(
+                  (s) => DropdownMenuItem(
+                    value: '${s['id']}',
+                    child: Text(valueOf(s, const ['fullName'])),
+                  ),
+                ),
+              ],
+              onChanged: (value) => setState(() => _extraStaffId = value),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                OutlinedButton(
+                  style: AppButtons.inline(),
+                  onPressed: saving ? null : _closeExtraForm,
+                  child: const Text('Vazgeç'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonal(
+                    style: AppButtons.inline(),
+                    onPressed: saving ? null : _addExtra,
+                    child: const Text('Satışa ekle'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (_extras.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final e in _extras)
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(_extraKindIcons[e.kind], size: 16, color: AppColors.primaryDark),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            e.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            '${_extraKindLabels[e.kind]}${e.quantity > 1 ? ' · ${e.quantity} × ₺${e.unitPrice.toStringAsFixed(0)}' : ''}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '₺${e.lineTotal.toStringAsFixed(0)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: saving ? null : () => setState(() => _extras.remove(e)),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      color: AppColors.danger,
+                      tooltip: 'Ek kalemi kaldır',
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // KAYDEDİNCE NE OLACAK — sorulmaz, tahsilattan türetilir
+  // ---------------------------------------------------------------------------
+  Widget _buildOutcomeNotice() {
+    final approve = _approveNow;
+    final String text;
+    if (approve && _isStaffUser) {
+      text = 'Kaydedince onay isteği yöneticine gider. Onaylandığında tutar cariye borç yazılır'
+          '${_downPaymentValue > 0 ? ', peşinat kasaya girer' : ''}'
+          '${_hasProductItem ? ', ürünler stoktan düşer' : ''}'
+          '${_hasSessionItem ? ' ve seanslar tanımlanır.' : '.'}';
+    } else if (approve) {
+      text = '${_downPaymentValue > 0 ? 'Peşinat alındığı için' : 'Fişte ürün olduğu için'} satış '
+          'kaydedilir kaydedilmez cariye işlenir: tutar borç'
+          '${_downPaymentValue > 0 ? ', peşinat kasaya gelir' : ''}'
+          '${_hasProductItem ? ', ürünler stoktan düşer' : ''}'
+          '${_hasSessionItem ? ' ve seanslar tanımlanır.' : '.'} Adisyon kartı açılmaz.';
+    } else {
+      text = 'Peşinat alınmadı — satış cariye şimdi işlenmez. Müşteri ilk randevusunu tamamladığında '
+          'tutar otomatik cariye borç yazılır ve '
+          '${_isService ? 'hizmet seansı' : 'paket seansları'} tanımlanır. Randevu şimdiden '
+          'verilebilir; adisyon kartı açılmaz.';
+    }
+    final color = approve ? AppColors.success : AppColors.primaryDark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            approve ? Icons.verified_rounded : Icons.event_available_rounded,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 11.5, color: color, height: 1.35)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -378,8 +878,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
               child: Center(child: Text('${snapshot.error}')),
             );
           }
-          // Web modal paritesi: içerik kayar, "kaydet ve onayla" butonu altta
-          // sabit kalır (uzun formda bile her zaman görünür — kesilmez).
+          // Web modal paritesi: içerik kayar, "kaydet" butonu altta sabit kalır
+          // (uzun formda bile her zaman görünür — kesilmez).
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -402,13 +902,15 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                       Text(
                         () {
                           final prefix = widget.customerId != null ? '$_customerLabel · ' : '';
-                          if (_isProduct) {
-                            return '${prefix}Kaydedilince cariye işlenir ve stoktan düşer';
+                          if (_approveNow) {
+                            return _isStaffUser
+                                ? '${prefix}kaydedilince yönetici onayına gider'
+                                : '${prefix}kaydedilince cariye işlenir'
+                                    '${_hasProductItem ? ' ve stoktan düşer' : ''}';
                           }
-                          final seans = _isService ? '' : ' ve seans bakiyesine';
-                          return widget.customerId != null
-                              ? '${prefix}ilk randevu tamamlanınca cariye$seans işlenir'
-                              : 'İlk randevu tamamlanınca cariye$seans işlenir';
+                          // Buraya yalnız ertelenebilir fişte düşülür (_approveNow false ise
+                          // _canDefer zorunlu olarak true'dur).
+                          return '${prefix}ilk randevu tamamlanınca cariye işlenir';
                         }(),
                         style: const TextStyle(
                           fontSize: 12,
@@ -571,20 +1073,23 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                               onChanged: (_) => setState(() {}),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: downPayment,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: const InputDecoration(
-                                labelText: 'Peşinat (₺)',
+                          // Peşinat alanı hizmet satışında gizlidir (bkz. _showDownPayment).
+                          if (_showDownPayment) ...[
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: downPayment,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Peşinat (₺)',
+                                ),
+                                onChanged: (_) => setState(() {}),
                               ),
-                              onChanged: (_) => setState(() {}),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -663,12 +1168,49 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                         maxLines: 2,
                         decoration: const InputDecoration(labelText: 'Not'),
                       ),
+
+                      // EK KALEMLER — adisyon kartındaki "kalem ekle" ile aynı mantık.
+                      const SizedBox(height: 14),
+                      _buildExtrasSection(),
+
+                      // KAYDEDİNCE NE OLACAK — peşinat varsa cariye, yoksa ilk randevuya.
+                      const SizedBox(height: 14),
+                      _buildOutcomeNotice(),
                       const SizedBox(height: 4),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 14),
+              // Tutar özeti — ek kalemler toplamı değiştirdiği için butonun hemen üstünde.
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, size: 15, color: AppColors.primaryDark),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _extrasTotal > 0
+                            ? 'Satış ₺${_mainTotal.toStringAsFixed(0)} + ek ₺${_extrasTotal.toStringAsFixed(0)}'
+                            : 'Adisyona yazılacak',
+                        style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+                      ),
+                    ),
+                    Text(
+                      '₺${_total.toStringAsFixed(0)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -676,9 +1218,11 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                   child: Text(
                     saving
                         ? 'Kaydediliyor...'
-                        : _isProduct
-                            ? 'Satışı tamamla · cariye işle'
-                            : 'Satışı kaydet · adisyonu aç',
+                        : _approveNow
+                            ? (_isStaffUser
+                                ? 'Satışı kaydet · onaya gönder'
+                                : 'Satışı kaydet · cariye işle')
+                            : 'Satışı kaydet',
                   ),
                 ),
               ),

@@ -1,20 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Box,
+  Boxes,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   Loader2,
   Package,
+  Plus,
   ReceiptText,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
+  Trash2,
   Wallet,
+  X,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
@@ -35,12 +39,52 @@ const inputCls =
 
 type SaleStep = 'form' | 'confirm' | 'done'
 
+/** Onay adımında satışa eklenen ek kalemin türü — adisyon kartındaki kalem türlerinin satış alt kümesi. */
+type ExtraKind = 'service' | 'package' | 'product'
+
+/**
+ * Onay adımında satışa eklenen ek kalem (henüz kaydedilmedi — yalnız bellekte).
+ *
+ * <p>Adisyon BİLEREK önceden açılmaz: kullanıcı onaydan vazgeçerse ortada kalem toplamış açık bir
+ * fiş kalırdı ve hizmet/paket fişleri "ilk randevuda otomatik işlenir" bayrağını taşıdığı için o
+ * hayalet fiş müşterinin ilk randevusunda sessizce cariye borç yazardı. Bütün kalemler tek akışta,
+ * "kaydet" anında yazılır.</p>
+ */
+interface SaleExtra {
+  key: string
+  kind: ExtraKind
+  refId: string
+  name: string
+  unitPrice: number
+  quantity: number
+  /** Prim + "kim sattı" — boş bırakılabilir (ana satıştaki personel alanıyla aynı kural). */
+  staffMemberId: string
+}
+
+const extraKindLabels: Record<ExtraKind, string> = { service: 'Hizmet', package: 'Paket', product: 'Ürün' }
+const extraKindIcons: Record<ExtraKind, typeof Sparkles> = { service: Sparkles, package: Boxes, product: Box }
+const extraKindTones: Record<ExtraKind, string> = {
+  service: 'border-sky-300/50 bg-sky-50 text-sky-700',
+  package: 'border-fuchsia-300/50 bg-fuchsia-50 text-fuchsia-700',
+  product: 'border-violet-300/50 bg-violet-50 text-violet-700',
+}
+
 /**
  * Paket / Hizmet / Ürün Satışı modalı — salon yazılımı standardı akış:
- * satış fiş (adisyon) üzerinden yapılır. Modal içinde satış hazırlanır, "Onayla ve tamamla"
- * adımında adisyon açılır + onaylanır → tutar cariye borç yazılır, paket/hizmetse seans bakiyesi
- * müşteriye tanımlanır (randevuda hemen kullanılabilir), peşinat kasaya düşer. Onay yetkisi olmayan
- * personelde satış yönetici onayına bırakılır.
+ * satış fiş (adisyon) üzerinden yapılır. Modal içinde satış hazırlanır, onay adımında adisyon
+ * kartındaki gibi EK hizmet/paket/ürün eklenebilir, "Satışı kaydet" ile iş biter.
+ *
+ * <p><b>ADİSYON KARTI KENDİLİĞİNDEN AÇILMAZ</b> (kullanıcı talebi: süreç uzuyordu). Ne olacağını
+ * kullanıcıya sormak yerine TAHSİLAT belirler:</p>
+ * <ul>
+ *   <li><b>Peşinat alındıysa</b> → satış kaydedilir kaydedilmez onaylanır: cariye borç, peşinat
+ *       kasaya, seans/stok o an işlenir.</li>
+ *   <li><b>Alınmadıysa</b> → satış açık kalır ve müşteri ilk randevusunu tamamladığında otomatik
+ *       cariye işlenir (eski Faz 2 davranışı).</li>
+ *   <li><b>Fişte ürün varsa</b> erteleme mümkün değildir (stok rezerve edilmez) → peşinat olmasa da
+ *       hemen onaylanır.</li>
+ * </ul>
+ * <p>Onay yetkisi olmayan personelde onay isteği yöneticiye gider.</p>
  */
 export default function PackageSaleDialog({
   tenantId,
@@ -53,7 +97,6 @@ export default function PackageSaleDialog({
   triggerLabel,
   triggerClassName,
   stayOnPage,
-  openCardAfterSale = true,
 }: {
   tenantId?: string
   /** Müşteri kartından açılırsa müşteri sabitlenir. */
@@ -72,20 +115,12 @@ export default function PackageSaleDialog({
   triggerClassName?: string
   /** true ise satış sonrası müşteri kartına yönlendirme yapılmaz (ör. randevu modalı içinden satış). */
   stayOnPage?: boolean
-  /**
-   * true (varsayılan): satış AÇIK adisyon olarak kaydedilir ve adisyon kartı açılır (Ön Muhasebe gibi) —
-   * kullanıcı içeride ödeme/peşinat alıp onaylar. false: eski davranış (anında onayla → cariye işle).
-   */
-  openCardAfterSale?: boolean
 }) {
   const canAdisyon = useFeature('billing.adisyon')
   const canProducts = useFeature('stock.products')
   const router = useRouter()
   const isProductSale = Boolean(productSale)
   const isServiceSale = !isProductSale && (Boolean(presetService) || Boolean(serviceSale))
-  // Faz 2: hizmet/paket satışı cariye ŞİMDİ işlenmez; müşteri ilk randevusunu tamamlayınca backend
-  // otomatik işler (peşinat dâhil). Ürün satışı randevuya bağlı olmadığından bu ertelemeye girmez.
-  const deferToFirstAppointment = !isProductSale
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<SaleStep>('form')
   const [busy, setBusy] = useState(false)
@@ -94,12 +129,10 @@ export default function PackageSaleDialog({
   const [pendingApproval, setPendingApproval] = useState(false)
   const { user } = useAuth()
   const isStaffUser = user?.role === 'Staff'
-  // Faz 2: satış "ilk randevu tamamlanınca işlenecek" moduyla kaydedildiyse done ekranı bilgi modalı gösterir.
-  const [deferred, setDeferred] = useState(false)
 
   const [customerId, setCustomerId] = useState('')
   const [customerName, setCustomerName] = useState('')
-  // Satış sonrası açılan adisyon kartı (openCardAfterSale) — Ön Muhasebe'deki gibi açık adisyon.
+  // Satış sonrası açılan adisyon kartı — Ön Muhasebe'deki gibi açık adisyon.
   const [cardCustomer, setCardCustomer] = useState<{ id: string; name: string } | null>(null)
   const [packageId, setPackageId] = useState('')
   const [serviceId, setServiceId] = useState('')
@@ -116,10 +149,39 @@ export default function PackageSaleDialog({
   /**
    * SATIŞ TARİHİ — geçmişe dönük giriş için (ör. ürün dün satıldı, bugün kaydediliyor).
    * Cariye bu tarih yazılır ve peşinat tahsilatı da bu güne düşer; boş/bugün ise eski davranış.
-   * Yalnız ürün satışında gösterilir: hizmet/paket satışı ilk randevu tamamlanınca işlendiği için
-   * kullanıcının verdiği tarih orada anlamını yitirir.
+   * Yalnız ürün satışında gösterilir: hizmet/paket satışı ertelenebildiği için orada kullanıcının
+   * verdiği tarih anlamını yitirir.
    */
   const [saleDate, setSaleDate] = useState('')
+
+  /** Satış açık kaldı: ilk randevu tamamlanınca otomatik cariye işlenecek (done ekranı bunu yazar). */
+  const [deferred, setDeferred] = useState(false)
+
+  // ---- ONAY ADIMI: ek kalemler ----
+  const [extras, setExtras] = useState<SaleExtra[]>([])
+  const extraSeq = useRef(0)
+  /** Açık ek kalem formunun türü; null = form kapalı. */
+  const [extraKind, setExtraKind] = useState<ExtraKind | null>(null)
+  const [extraRefId, setExtraRefId] = useState('')
+  const [extraPrice, setExtraPrice] = useState<number | ''>('')
+  const [extraQty, setExtraQty] = useState(1)
+  const [extraStaffId, setExtraStaffId] = useState('')
+  const [extraError, setExtraError] = useState('')
+  /**
+   * Fiş yazıldı ama ONAY başarısız oldu — fişin içeriği eksiksizdir, silinmez. Kullanıcı adisyon
+   * kartından tekrar onaylar. Doluyken "kaydet" tuşları kapanır: ikinci deneme aynı satışı ikinci
+   * kez yazardı.
+   */
+  const [savedAdisyonId, setSavedAdisyonId] = useState('')
+
+  const clearExtraForm = (): void => {
+    setExtraKind(null)
+    setExtraRefId('')
+    setExtraPrice('')
+    setExtraQty(1)
+    setExtraStaffId('')
+    setExtraError('')
+  }
 
   // Ön-seçimler modal her açılışta tazelensin
   useEffect(() => {
@@ -132,6 +194,9 @@ export default function PackageSaleDialog({
       setPackageId(presetPackageId || '')
       setServiceId(presetService?.id || '')
       setProductId('')
+      setExtras([])
+      setSavedAdisyonId('')
+      clearExtraForm()
       // İlk taksit vadesi varsayılan: bir ay sonrası.
       const d = new Date()
       d.setMonth(d.getMonth() + 1)
@@ -144,18 +209,18 @@ export default function PackageSaleDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  /**
+   * KATALOGLARIN TAMAMI HER MODDA ÇEKİLİR. Eskiden yalnız satılan türün listesi geliyordu (paket
+   * satışında hizmet/ürün listesi boştu); onay adımındaki "ek kalem" seçici o modlarda boş liste
+   * gösterirdi. Müşteri listesi çekilmez — sınırsız müşteri ölçeğinde seçim sunucu aramasıyla yapılır.
+   */
   const { data } = useApiQuery<{ customers: ApiCustomer[]; packages: ApiServicePackage[]; services: ApiService[]; products: ApiProduct[]; staff: ApiStaff[]; cats: ApiCustomServiceCategory[] }>(
     async () => {
       if (!open) return { customers: [], packages: [], services: [], products: [], staff: [], cats: [] }
-      // Sınırsız müşteri ölçeği: müşteri listesi çekilmez — seçim sunucu aramasıyla yapılır.
       const [packages, services, products, staff, cats] = await Promise.all([
-        isServiceSale || isProductSale
-          ? Promise.resolve({ items: [] })
-          : adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
-        isServiceSale && !presetService
-          ? adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] }))
-          : Promise.resolve({ items: [] }),
-        isProductSale
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
+        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
+        canProducts
           ? adminApi.products<ApiProduct>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] }))
           : Promise.resolve({ items: [] }),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
@@ -170,7 +235,7 @@ export default function PackageSaleDialog({
         cats: Array.isArray(cats) ? cats : [],
       }
     },
-    [open, tenantId, presetCustomer?.id, isServiceSale, isProductSale],
+    [open, tenantId, canProducts],
     { initialData: { customers: [], packages: [], services: [], products: [], staff: [], cats: [] } },
   )
 
@@ -195,7 +260,7 @@ export default function PackageSaleDialog({
     [data, presetCustomer?.branchId],
   )
 
-  // Kategori/alt-kategori/arama ile süzülebilir seçici verisi (paket + hizmet).
+  // Kategori/alt-kategori/arama ile süzülebilir seçici verisi (paket + hizmet + ürün).
   const packagePickerItems = useMemo<PickerItem[]>(
     () => packages.map((p) => ({
       id: p.id,
@@ -219,6 +284,17 @@ export default function PackageSaleDialog({
     })),
     [services],
   )
+  const productPickerItems = useMemo<PickerItem[]>(
+    () => products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.salePrice,
+      cat: p.categoryLabel || '',
+      sub: p.brand || '',
+      meta: `${formatTL(p.salePrice)} · stok ${p.currentStock} ${p.unit}`,
+    })),
+    [products],
+  )
 
   const selectedPackage = packages.find((p) => p.id === packageId)
   // Hizmet satışında: sabit gelen hizmet ya da listeden seçilen.
@@ -234,16 +310,52 @@ export default function PackageSaleDialog({
       : Number(selectedPackage?.totalPrice || 0)
   const unitPrice = price === '' ? basePrice : Number(price)
   const qty = isProductSale || isServiceSale ? Math.max(1, quantity) : 1
-  const total = Math.round(unitPrice * qty * 100) / 100
+  const mainTotal = Math.round(unitPrice * qty * 100) / 100
+  const extrasTotal = Math.round(extras.reduce((sum, e) => sum + e.unitPrice * e.quantity, 0) * 100) / 100
+  const total = Math.round((mainTotal + extrasTotal) * 100) / 100
   const isInstallment = payMode === 'taksit'
   const perInstallment = isInstallment && installmentCount > 0 ? Math.round((total / installmentCount) * 100) / 100 : 0
-  const pay = Number(downPayment) || 0
+  /**
+   * Peşinat alanı hizmet satışında gizlidir (kullanıcı talebi) — AMA o kural fişin YALNIZCA
+   * hizmetten ibaret olduğu döneme aitti; paket/ürün ek kalemi girince alan açılır.
+   *
+   * <p>DEĞER DE ALANLA BİRLİKTE SIFIRLANIR: kullanıcı peşinat yazıp sonra ek kalemi kaldırırsa alan
+   * gizlenir ama state'teki tutar kalırdı. Peşinat artık satışın cariye NE ZAMAN işleneceğini
+   * belirlediği için, görünmeyen bir tutar satışı sessizce "hemen işle" yoluna sokardı.</p>
+   */
+  const showDownPayment = !isServiceSale || extras.length > 0
+  const pay = showDownPayment ? Number(downPayment) || 0 : 0
+
+  /**
+   * ERTELEME (ilk randevuda otomatik cariye işleme) YALNIZ ÜRÜNSÜZ FİŞTE MÜMKÜNDÜR.
+   *
+   * <p>Erteleme stok REZERVE ETMEZ. Fişte ürün varken beklerken o stok başka yerde satılırsa, ilk
+   * randevu tamamlanırken çalışan otomatik onay stok kontrolüne takılır ve <em>randevunun
+   * tamamlanması</em> topluca başarısız olur (bkz. AppointmentService — onay başarısızsa tamamlama
+   * da başarısızdır). Ürün içeren fiş bu yüzden peşinat olmasa da hemen onaylanır; ertelenmez.</p>
+   */
+  const hasProductItem = isProductSale || extras.some((e) => e.kind === 'product')
+  const canDefer = !hasProductItem
+  /**
+   * Fişte SEANS üreten kalem (hizmet ya da paket satışı) var mı? "Ürün satışı değil" ile aynı şey
+   * DEĞİLDİR: ürün satışına ürün ek kalemi eklenince fiş hâlâ tamamen üründür. Ayrım yapılmazsa
+   * kullanıcıya "hizmet/paket seansları tanımlandı" denip hiç seans açılmamış olur.
+   */
+  const hasSessionItem = !isProductSale || extras.some((e) => e.kind !== 'product')
+
+  /**
+   * KAYDEDİNCE NE OLACAK — kullanıcıya sorulmaz, tahsilattan türetilir (kullanıcı kuralı):
+   * peşinat alındıysa satış hemen cariye işlenir; alınmadıysa ilk randevuya ertelenir. Ürünlü fiş
+   * ertelenemediği için peşinatsız da olsa hemen işlenir. Her hâlde adisyon kartı AÇILMAZ.
+   */
+  const approveNow = pay > 0 || !canDefer
 
   if (!canAdisyon || (isProductSale && !canProducts)) return null
 
   const reset = () => {
     setStep('form')
     setPendingApproval(false)
+    setDeferred(false)
     setServiceId(presetService?.id || '')
     setProductId('')
     setPrice('')
@@ -253,6 +365,9 @@ export default function PackageSaleDialog({
     setNotes('')
     setPayMode('pesin')
     setInstallmentCount(3)
+    setExtras([])
+    setSavedAdisyonId('')
+    clearExtraForm()
     setError('')
   }
 
@@ -263,6 +378,28 @@ export default function PackageSaleDialog({
       ? selectedService?.name
       : selectedPackage?.name
 
+  /**
+   * Fişteki TÜM ürün kalemleri (ana satış + ek kalemler) için toplam stok kontrolü.
+   * Aynı ürün hem ana satışta hem ek kalemde olabilir; backend de stoğu ürün bazında TOPLAYARAK
+   * denetler (AdisyonService.ApproveCoreAsync) — istemci tarafı aynı ölçütü kullanmazsa kullanıcı
+   * hatayı ancak onay anında görürdü.
+   */
+  const stockError = (candidate?: SaleExtra): string => {
+    const need = new Map<string, number>()
+    if (isProductSale && selectedProduct) need.set(selectedProduct.id, qty)
+    for (const e of [...extras, ...(candidate ? [candidate] : [])]) {
+      if (e.kind === 'product') need.set(e.refId, (need.get(e.refId) || 0) + e.quantity)
+    }
+    for (const [pid, wanted] of need) {
+      const p = products.find((x) => x.id === pid)
+      if (!p) return 'Fişteki ürünlerden biri listede bulunamadı — kalemi kaldırıp yeniden ekleyin.'
+      if (wanted > p.currentStock) {
+        return `${p.name} için stok yetersiz — istenen ${wanted}, mevcut ${p.currentStock} ${p.unit}.`
+      }
+    }
+    return ''
+  }
+
   // Form doğrulama → onay önizlemesine geç (henüz backend çağrısı yok).
   const goToConfirm = () => {
     const cid = presetCustomer?.id || customerId
@@ -271,9 +408,8 @@ export default function PackageSaleDialog({
     if (isServiceSale && !selectedService) return setError('Hizmet seçin')
     if (isProductSale && !selectedProduct) return setError('Ürün seçin')
     if (unitPrice <= 0) return setError('Satış fiyatı pozitif olmalı')
-    if (isProductSale && qty > Number(selectedProduct!.currentStock || 0)) {
-      return setError(`Yetersiz stok — kullanılabilir ${selectedProduct!.currentStock} ${selectedProduct!.unit}`)
-    }
+    const stockMsg = stockError()
+    if (stockMsg) return setError(stockMsg)
     if (pay < 0 || pay > total) return setError('Peşinat 0 ile toplam tutar arasında olmalı')
     if (isInstallment) {
       if (installmentCount < 1) return setError('Taksit sayısı en az 1 olmalı')
@@ -284,14 +420,93 @@ export default function PackageSaleDialog({
     setStep('confirm')
   }
 
-  // Onayla ve tamamla: adisyon aç + kalemleri ekle + onayla (tek akış).
-  const confirmAndApprove = async () => {
+  // ---- Ek kalem ekleme (onay adımı) ----
+  const extraBasePrice = (kind: ExtraKind, refId: string): number =>
+    kind === 'service'
+      ? Number(services.find((s) => s.id === refId)?.price || 0)
+      : kind === 'package'
+        ? Number(packages.find((p) => p.id === refId)?.totalPrice || 0)
+        : Number(products.find((p) => p.id === refId)?.salePrice || 0)
+
+  const extraName = (kind: ExtraKind, refId: string): string =>
+    (kind === 'service'
+      ? services.find((s) => s.id === refId)?.name
+      : kind === 'package'
+        ? packages.find((p) => p.id === refId)?.name
+        : products.find((p) => p.id === refId)?.name) || ''
+
+  const addExtra = () => {
+    if (!extraKind) return
+    if (!extraRefId) return setExtraError(`${extraKindLabels[extraKind]} seçin`)
+    const name = extraName(extraKind, extraRefId)
+    if (!name) return setExtraError('Seçim listede bulunamadı — tekrar seçin')
+    const unit = extraPrice === '' ? extraBasePrice(extraKind, extraRefId) : Number(extraPrice)
+    if (!(unit > 0)) return setExtraError('Birim fiyat pozitif olmalı')
+    const q = Math.max(1, Number(extraQty) || 1)
+    const candidate: SaleExtra = {
+      key: `x${++extraSeq.current}`,
+      kind: extraKind,
+      refId: extraRefId,
+      name,
+      unitPrice: Math.round(unit * 100) / 100,
+      quantity: q,
+      staffMemberId: extraStaffId,
+    }
+    const stockMsg = stockError(candidate)
+    if (stockMsg) return setExtraError(stockMsg)
+    setExtras((list) => [...list, candidate])
+    clearExtraForm()
+    setError('')
+  }
+
+  const removeExtra = (key: string) => {
+    setExtras((list) => list.filter((e) => e.key !== key))
+    setError('')
+  }
+
+  /**
+   * SATIŞI KAYDET — tek tuş, tek akış: adisyon aç → ana satış kalemi → ek kalemler → peşinat →
+   * (peşinat/ürün varsa) onayla. Adisyon kartı açılmaz; sonuç done ekranında yazılır.
+   */
+  const submitSale = async () => {
     const cid = presetCustomer?.id || customerId
-    if (!cid) return
+    if (!cid || savedAdisyonId) return
+
+    // SON DOĞRULAMA: bu adımda ek kalem eklendiği için tutar formdaki hâlinden büyük olabilir.
+    const stockMsg = stockError()
+    if (stockMsg) return setError(stockMsg)
+    if (pay > total) return setError('Peşinat toplam tutarı aşıyor — ek kalemleri ya da peşinatı düzenleyin')
+    if (isInstallment && pay >= total) return setError('Peşinat tutarın tamamını karşılıyor — peşin seçin')
+
+    /**
+     * ERTELEME BAYRAĞI.
+     *
+     * <p>Kural: ürünsüz fiş + (peşinatsız satış YA DA personelin onay isteği). Personelde bayrak
+     * "onayla" yolunda da AÇIK kalır çünkü personelin onayı anında işlemez, yöneticinin Onaylar
+     * sayfasında bekler; o beklerken müşteri randevusuna gelebilir. Bayrak kapalı olsaydı randevu,
+     * seansı henüz açılmamış bir satışla tamamlanır — hizmet bedelsiz verilmiş, satış ortada kalmış
+     * olurdu. Hangisi önce gerçekleşirse satışı o işler; ikincisi "yalnızca açık adisyon
+     * onaylanabilir" ile durur, çift kayıt oluşmaz.</p>
+     *
+     * <p>Yönetici rollerinde onay SENKRON işler; başarısız olursa fiş açık kalır ama bayrak
+     * KAPALIDIR — hata gösterilen bir satış, kimse farkında değilken ilk randevuda sessizce
+     * cariye işlenmemelidir.</p>
+     */
+    const willDefer = canDefer && (!approveNow || isStaffUser)
+
     setBusy(true)
     setError('')
+    let createdId = ''
+    let phase: 'build' | 'approve' = 'build'
+    const safeDone = async () => {
+      try {
+        if (onDone) await onDone()
+      } catch {
+        // Liste tazeleme hatası satışı etkilemez.
+      }
+    }
     try {
-      // 1) Açık adisyonu bul/aç + taksit planını yaz (peşin = 0). Onayda cariye taksitli işlenir.
+      // 1) Adisyonu aç + taksit planını yaz (peşin = 0). Onayda cariye taksitli işlenir.
       const adisyon = await adminApi.createAdisyon<ApiAdisyon>(
         {
           customerId: cid,
@@ -304,16 +519,16 @@ export default function PackageSaleDialog({
           saleDateUtc: isProductSale && saleDate ? new Date(`${saleDate}T12:00:00`).toISOString() : null,
           // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
           forceNew: true,
-          // Faz 2: hizmet/paket satışı ilk randevu tamamlanınca otomatik onaylanır (ürün hariç).
-          autoApproveOnFirstAppointment: deferToFirstAppointment,
+          autoApproveOnFirstAppointment: willDefer,
         },
         tenantId,
       )
       if (!adisyon?.id) throw new Error('Adisyon açılamadı')
+      createdId = adisyon.id
 
-      // 2) Satış kalemi — onayda cariye borç (+ paket/hizmetse müşteriye seans bakiyesi).
+      // 2) Ana satış kalemi — onayda cariye borç (+ paket/hizmetse seans bakiyesi, üründe stok).
       await adminApi.addAdisyonItem(
-        adisyon.id,
+        createdId,
         isProductSale
           ? {
               type: 'Product',
@@ -346,18 +561,37 @@ export default function PackageSaleDialog({
         tenantId,
       )
 
+      // 2b) Ek kalemler — ana satışla aynı fişe, aynı kurallarla yazılır.
+      for (const e of extras) {
+        await adminApi.addAdisyonItem(
+          createdId,
+          {
+            type: e.kind === 'product' ? 'Product' : e.kind === 'package' ? 'PackageSale' : 'Service',
+            refId: e.refId,
+            description: e.kind === 'package' ? `Paket satışı: ${e.name}` : e.name,
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            staffMemberId: e.staffMemberId || staffMemberId || null,
+            coveredByPackage: false,
+          },
+          tenantId,
+        )
+      }
+
       // 3) Peşinat alındıysa tahsilat kalemi — onayda cariye ödeme + kasaya gelir.
       if (pay > 0) {
         await adminApi.addAdisyonItem(
-          adisyon.id,
+          createdId,
           {
             type: 'Payment',
             refId: null,
-            description: isProductSale
-              ? `Ürün peşinatı: ${selectedProduct!.name}`
-              : isServiceSale
-                ? `Peşinat: ${selectedService!.name}`
-                : `Paket peşinatı: ${selectedPackage!.name}`,
+            description: extras.length > 0
+              ? 'Satış peşinatı'
+              : isProductSale
+                ? `Ürün peşinatı: ${selectedProduct!.name}`
+                : isServiceSale
+                  ? `Peşinat: ${selectedService!.name}`
+                  : `Paket peşinatı: ${selectedPackage!.name}`,
             quantity: 1,
             unitPrice: pay,
             staffMemberId: null,
@@ -367,38 +601,37 @@ export default function PackageSaleDialog({
         )
       }
 
-      // 4) Davranış:
-      //  - Faz 2 (hizmet/paket): onaylama YOK — satış AÇIK adisyon olarak kalır; müşteri ilk randevusunu
-      //    tamamlayınca backend otomatik onaylar (cariye borç + peşinat kasaya + seanslar).
-      //    Kullanıcı isteği: bilgi modalıyla kapanmak yerine ADİSYON KARTI açılır — peşinat/ek kalem
-      //    orada görülür-eklenir; cariye işleme yine ilk randevu tamamlanınca otomatik olur.
-      //  - Ürün + openCardAfterSale: satış açık kalır, adisyon kartı açılır (elle onay).
-      //  - Ürün + !openCardAfterSale: anında onayla → cariye işle + stok düş.
-      if (deferToFirstAppointment) {
-        setDeferred(true)
-        if (onDone) await onDone()
-        setOpen(false)
-        setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
-      } else if (openCardAfterSale) {
-        setOpen(false)
-        setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
+      if (approveNow) {
+        phase = 'approve'
+        // PERSONELDE DE ÇAĞRILIR: onay kapısı isteği yakalayıp yöneticinin Onaylar sayfasına
+        // düşürür (200 + pendingApproval döner, hata fırlatmaz). Eskiden istek hiç atılmadığı için
+        // satış "onaya gitti" sanılıyor ama Onaylar sayfasında görünmüyordu.
+        await adminApi.approveAdisyon(createdId, tenantId)
+        setPendingApproval(isStaffUser)
+        setDeferred(false)
       } else {
-        if (isStaffUser) {
-          // Personelde /approve zaten 403 döner — boşuna istek atma, doğrudan "onay bekliyor" göster.
-          setPendingApproval(true)
-        } else {
-          try {
-            await adminApi.approveAdisyon(adisyon.id, tenantId)
-            setPendingApproval(false)
-          } catch {
-            setPendingApproval(true)
-          }
-        }
-        if (onDone) await onDone()
-        setStep('done')
+        setPendingApproval(false)
+        setDeferred(true)
       }
+      // Adisyon kartı AÇILMAZ (kullanıcı talebi: süreç uzuyordu). Fiş açık kaldıysa (erteleme ya da
+      // personelin onay bekleyen isteği) done ekranında isteğe bağlı "Adisyon kartını aç" düğmesi var.
+      await safeDone()
+      setStep('done')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Satış kaydedilemedi')
+      const msg = e instanceof Error ? e.message : 'Satış kaydedilemedi'
+      if (phase === 'approve') {
+        // FİŞ EKSİKSİZ — SİLİNMEZ. Yalnız onay adımı düştü; kullanıcı adisyon kartından tekrar
+        // onaylayabilir. Buradan silmek girilen bütün kalemleri sebepsiz yok ederdi.
+        setSavedAdisyonId(createdId)
+        setError(`Satış kaydedildi ancak cariye işlenemedi: ${msg} — adisyon kartından tekrar onaylayabilirsiniz.`)
+        await safeDone()
+      } else {
+        // YARIM FİŞ BIRAKILMAZ: kalemleri eksik kalmış açık adisyon Ön Muhasebe'de gerçek bir satış
+        // gibi durur, hizmet/paket fişiyse ilk randevuda otomatik cariye işlenirdi. İptal edilen fiş
+        // hiçbir sorguya (açık adisyon / bekleyen satış) girmez.
+        if (createdId) await adminApi.cancelAdisyon(createdId, tenantId).catch(() => undefined)
+        setError(msg)
+      }
     } finally {
       setBusy(false)
     }
@@ -411,8 +644,19 @@ export default function PackageSaleDialog({
     if (!stayOnPage && cid) router.push(`/admin/musteriler?customer=${cid}&sale=1`)
   }
 
+  const openSavedCard = () => {
+    const cid = presetCustomer?.id || customerId
+    setOpen(false)
+    setCardCustomer({ id: cid, name: presetCustomer?.name || customerName || '' })
+  }
+
   const TriggerIcon = isProductSale ? Box : isServiceSale ? ShoppingBag : Package
   const title = isProductSale ? 'Ürün Satışı' : isServiceSale ? 'Hizmet Satışı' : 'Paket Satışı'
+  const extraKinds: ExtraKind[] = canProducts ? ['service', 'package', 'product'] : ['service', 'package']
+  const extraPickerItems = extraKind === 'service' ? servicePickerItems : extraKind === 'package' ? packagePickerItems : productPickerItems
+  const extraUnitPreview = extraKind && extraRefId
+    ? (extraPrice === '' ? extraBasePrice(extraKind, extraRefId) : Number(extraPrice)) * Math.max(1, Number(extraQty) || 1)
+    : 0
 
   return (
     <>
@@ -484,10 +728,8 @@ export default function PackageSaleDialog({
                 </DialogTitle>
                 <DialogDescription className="mt-0.5 text-[11px] text-[#352432]/50">
                   {step === 'confirm'
-                    ? (deferToFirstAppointment
-                        ? 'Kaydedilince satış açılır; ilk randevu tamamlanınca cariye işlenir.'
-                        : 'Onaylayınca satış cariye işlenir ve stoktan düşer.')
-                    : `Satış adisyona düşer; onaylayınca ${isProductSale ? 'cariye işlenir ve stoktan düşer.' : `cariye${isServiceSale ? '' : ' + seans bakiyesine'} işlenir.`}`}
+                    ? 'Ek hizmet, paket veya ürün ekleyebilirsiniz. Kaydedince adisyon kartı açılmaz.'
+                    : `Satış adisyona düşer; peşinat alındıysa kaydedince cariye işlenir${isProductSale ? ' ve stoktan düşer.' : isServiceSale ? '.' : ' + seans bakiyesi tanımlanır.'}`}
                 </DialogDescription>
               </div>
             </motion.div>
@@ -505,32 +747,56 @@ export default function PackageSaleDialog({
                 {deferred ? <CalendarDays className="h-8 w-8" /> : pendingApproval ? <ReceiptText className="h-8 w-8" /> : <CheckCircle2 className="h-8 w-8" />}
               </motion.span>
               <h4 className="mt-4 font-display text-xl tracking-tight text-[#352432]">
-                {deferred ? 'Satış kaydedildi · ilk randevuda işlenecek' : pendingApproval ? 'Satış oluşturuldu · onay bekliyor' : 'Satış tamamlandı'}
+                {deferred
+                  ? 'Satış kaydedildi · ilk randevuda işlenecek'
+                  : pendingApproval
+                    ? 'Satış oluşturuldu · onay bekliyor'
+                    : 'Satış tamamlandı · cariye işlendi'}
               </h4>
               <p className="mx-auto mt-1.5 max-w-sm text-[12px] text-[#352432]/55">
                 {deferred ? (
                   <>
-                    Satış açık adisyon olarak kaydedildi. Tutar cariye <strong className="font-semibold text-[#352432]/75">şimdi işlenmedi</strong>;
-                    {pay > 0 ? ' peşinat dâhil' : ''} müşteri ilk randevusunu tamamladığında otomatik olarak cariye işlenip
-                    {isServiceSale ? ' hizmet seansı tanımlanacak' : ' paket seansları tanımlanacak'}.
+                    Peşinat alınmadığı için tutar cariye <strong className="font-semibold text-[#352432]/75">şimdi işlenmedi</strong>.
+                    Müşteri ilk randevusunu tamamladığında otomatik olarak cariye işlenip
+                    {isServiceSale ? ' hizmet seansı' : ' paket seansları'} tanımlanacak — randevu şimdiden verilebilir.
                   </>
                 ) : pendingApproval ? (
-                  <>Adisyon açıldı; kurum yöneticisi onayladığında tutar cariye işlenecek{isProductSale ? ' ve ürün stoktan düşecek' : isServiceSale ? ' ve hizmet seansı tanımlanacak' : ' ve paket seansları tanımlanacak'}.</>
+                  <>
+                    Onay isteği kurum yöneticisinin Onaylar sayfasına düştü. Onaylandığında tutar cariye işlenecek
+                    {hasProductItem ? ', ürünler stoktan düşecek' : ''}
+                    {hasSessionItem ? ' ve satılan hizmet/paket seansları tanımlanacak.' : '.'}
+                    {canDefer ? ' Yönetici onaylamadan müşteri ilk randevusunu tamamlarsa satış o an otomatik işlenir.' : ''}
+                  </>
                 ) : (
                   <>
                     Tutar cariye borç olarak yazıldı
                     {pay > 0 ? ', peşinat kasaya gelir düştü' : ''}
-                    {isProductSale ? ' ve ürün stoktan düşüldü.' : isServiceSale ? '. Hizmet seansı tanımlandı — randevu vermeye hazır.' : '. Paket seansları tanımlandı — randevu vermeye hazır.'}
+                    {hasProductItem ? ', ürünler stoktan düşüldü' : ''}
+                    {hasSessionItem ? '. Satılan hizmet/paket seansları tanımlandı — randevu vermeye hazır.' : '.'}
                   </>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={finishAndClose}
-                className="mt-6 rounded-[12px] bg-[#c85776] px-6 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
-              >
-                {stayOnPage ? 'Tamam' : 'Müşteri kartına git'}
-              </button>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={finishAndClose}
+                  className="rounded-[12px] bg-[#c85776] px-6 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  {stayOnPage ? 'Tamam' : 'Müşteri kartına git'}
+                </button>
+                {/* Fiş HÂLÂ AÇIKSA (erteleme ya da personelin bekleyen onayı) kart isteğe bağlı
+                    açılır — akışı uzatmaz, isteyen tıklar. Onaylanmış satışta kart açmak yanıltıcı
+                    olurdu: kartta yalnız AÇIK adisyon görünür, bu fiş orada olmaz. */}
+                {(deferred || pendingApproval) && (
+                  <button
+                    type="button"
+                    onClick={openSavedCard}
+                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                  >
+                    <ReceiptText className="h-4 w-4" /> Adisyon kartını aç
+                  </button>
+                )}
+              </div>
             </div>
           ) : step === 'confirm' ? (
             /* ONAY ÖNİZLEME */
@@ -554,7 +820,7 @@ export default function PackageSaleDialog({
                     </div>
                     <div className="mt-0.5 truncate font-display text-lg tracking-tight text-[#352432]">{soldName}</div>
                     <div className="mt-0.5 text-[11px] text-[#352432]/50">
-                      {presetCustomer?.name || 'Müşteri'} · {qty > 1 ? `${qty} adet · ` : ''}birim {formatTL(unitPrice)}
+                      {presetCustomer?.name || customerName || 'Müşteri'} · {qty > 1 ? `${qty} adet · ` : ''}birim {formatTL(unitPrice)}
                     </div>
                     {/* Geçmişe dönük satışta tarih onayda da görünsün — yanlış tarih fark edilsin. */}
                     {isProductSale && saleDate && (
@@ -580,10 +846,170 @@ export default function PackageSaleDialog({
                 )}
               </div>
 
+              {/* ---------- EK KALEMLER (adisyon kartındaki "Kalem ekle" ile aynı mantık) ---------- */}
+              <div className="rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">
+                    <Plus className="h-3.5 w-3.5" /> Ek kalem
+                    {extras.length > 0 && (
+                      <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[10px] font-semibold text-[#b14d6c]">{extras.length}</span>
+                    )}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {extraKinds.map((k) => {
+                      const Icon = extraKindIcons[k]
+                      const on = extraKind === k
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          disabled={busy || !!savedAdisyonId}
+                          onClick={() => {
+                            if (on) return clearExtraForm()
+                            setExtraKind(k)
+                            setExtraRefId('')
+                            setExtraPrice('')
+                            setExtraQty(1)
+                            setExtraStaffId(staffMemberId)
+                            setExtraError('')
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-colors disabled:opacity-40 ${
+                            on ? extraKindTones[k] : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-[#fff4f8]'
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5" /> {extraKindLabels[k]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {extraKind && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 space-y-2.5 rounded-[13px] border border-[#ead8df]/70 bg-white p-3">
+                        {extraError && (
+                          <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11.5px] text-rose-700">{extraError}</div>
+                        )}
+                        <div>
+                          <div className={labelCls}>{extraKindLabels[extraKind]} seç</div>
+                          <CatalogPicker
+                            items={extraPickerItems}
+                            value={extraRefId}
+                            onChange={(id) => { setExtraRefId(id); setExtraPrice(''); setExtraError('') }}
+                            accent={extraKind === 'product' ? 'violet' : 'rose'}
+                            emptyText={`${extraKindLabels[extraKind]} bulunamadı.`}
+                            clearable
+                            categoryOrder={extraKind === 'product' ? undefined : categoryOrder}
+                          />
+                        </div>
+                        <div className="grid gap-2.5 sm:grid-cols-3">
+                          <label className={labelCls}>
+                            Birim fiyat
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={extraPrice === '' ? (extraRefId ? extraBasePrice(extraKind, extraRefId) || '' : '') : extraPrice}
+                              onChange={(e) => setExtraPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                              className={inputCls}
+                            />
+                          </label>
+                          <label className={labelCls}>
+                            Adet
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={extraQty}
+                              onChange={(e) => setExtraQty(Math.max(1, Number(e.target.value) || 1))}
+                              className={inputCls}
+                            />
+                          </label>
+                          <label className={labelCls}>
+                            Satışı yapan (ops.)
+                            <select value={extraStaffId} onChange={(e) => setExtraStaffId(e.target.value)} className={inputCls}>
+                              <option value="">Seçilmedi</option>
+                              {staff.map((s) => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={clearExtraForm}
+                            className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[11.5px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                          >
+                            <X className="h-3.5 w-3.5" /> Vazgeç
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addExtra}
+                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-[11px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2 text-[11.5px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef]"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Satışa ekle
+                            {extraUnitPreview > 0 && (
+                              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#4a3a44]">{formatTL(extraUnitPreview)}</span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {extras.length > 0 && (
+                  <div className="mt-3 overflow-hidden rounded-[13px] border border-[#f0e0e6] bg-white">
+                    {extras.map((e, idx) => {
+                      const Icon = extraKindIcons[e.kind]
+                      return (
+                        <div key={e.key} className={`flex items-center gap-2.5 px-3 py-2.5 ${idx > 0 ? 'border-t border-[#f6ebef]' : ''}`}>
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] border ${extraKindTones[e.kind]}`}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12.5px] font-medium text-[#352432]">{e.name}</span>
+                            <span className="block truncate text-[10px] text-[#705a66]">
+                              {extraKindLabels[e.kind]}
+                              {e.quantity > 1 ? ` · ${e.quantity} × ${formatTL(e.unitPrice)}` : ''}
+                              {e.staffMemberId ? ` · ${staff.find((s) => s.id === e.staffMemberId)?.name || ''}` : ''}
+                            </span>
+                          </span>
+                          <span className="shrink-0 font-display text-[14px] tabular-nums text-[#352432]">
+                            {formatTL(Math.round(e.unitPrice * e.quantity * 100) / 100)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={busy || !!savedAdisyonId}
+                            onClick={() => removeExtra(e.key)}
+                            className="shrink-0 rounded-md p-1 text-[#c2a8b4] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                            aria-label="Ek kalemi kaldır"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <div className="rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">Adisyona yazılacak</div>
                   <div className="mt-1 font-display text-xl tabular-nums text-[#352432]">Borç {formatTL(total)}</div>
+                  {extrasTotal > 0 && (
+                    <div className="text-[11px] text-[#8a7480]">
+                      Satış {formatTL(mainTotal)} + ek kalem {formatTL(extrasTotal)}
+                    </div>
+                  )}
                   {pay > 0 && <div className="text-[11px] text-emerald-700">Tahsilat {formatTL(pay)}</div>}
                 </div>
                 <div className="rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-3">
@@ -597,20 +1023,49 @@ export default function PackageSaleDialog({
                 </div>
               </div>
 
-              {deferToFirstAppointment ? (
-                <div className="flex items-start gap-2 rounded-[12px] border border-sky-200/70 bg-sky-50/70 px-3.5 py-2.5 text-[11.5px] leading-snug text-sky-800">
-                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
+              {/* Hizmet satışında peşinat alanı formda gizlidir; ek kalem eklenince açılır ama
+                  kullanıcı onay adımında olduğu için görmez — nereye döneceği yazılır. */}
+              {isServiceSale && extras.length > 0 && pay === 0 && (
+                <div className="flex items-start gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-[#b14d6c]">
+                  <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                   <span>
-                    Bu satış cariye <strong className="font-semibold">şimdi işlenmez</strong>. Müşteri ilk randevusunu tamamladığında
-                    {pay > 0 ? ' (peşinat dâhil)' : ''} tutar otomatik cariye borç yazılır
-                    {isServiceSale ? ' ve hizmet seansı tanımlanır' : ' ve paket seansları tanımlanır'}. Seansları kullanmak için randevu şimdiden verilebilir.
+                    Ek kalem eklendiği için <strong className="font-semibold">peşinat alanı açıldı</strong>. Tahsilat
+                    alacaksanız Düzenle’ye dönüp girin — peşinat girilen satış kaydedilir kaydedilmez cariye işlenir.
                   </span>
                 </div>
-              ) : (
+              )}
+
+              {/* ---------- KAYDEDİNCE NE OLACAK — sorulmaz, tahsilattan türetilir ---------- */}
+              {approveNow ? (
                 <div className="flex items-start gap-2 rounded-[12px] border border-emerald-200/60 bg-emerald-50/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-emerald-800">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
                   <span>
-                    Onaylayınca tutar cariye borç yazılır{pay > 0 ? ', peşinat kasaya gelir düşer' : ''} ve ürün stoktan düşülür.
+                    {isStaffUser ? (
+                      <>
+                        <strong className="font-semibold">Kaydedince onay isteği yöneticinize gider.</strong> Onaylandığında
+                        tutar cariye borç yazılır{pay > 0 ? ', peşinat kasaya girer' : ''}
+                        {hasProductItem ? ', ürünler stoktan düşer' : ''}
+                        {hasSessionItem ? ' ve seanslar tanımlanır.' : '.'}
+                      </>
+                    ) : (
+                      <>
+                        {pay > 0 ? 'Peşinat alındığı için ' : 'Fişte ürün olduğu için '}
+                        <strong className="font-semibold">satış kaydedilir kaydedilmez cariye işlenir</strong>: tutar borç
+                        {pay > 0 ? ', peşinat kasaya gelir' : ''}
+                        {hasProductItem ? ', ürünler stoktan düşer' : ''}
+                        {hasSessionItem ? ' ve seanslar tanımlanır.' : '.'} Adisyon kartı açılmaz.
+                      </>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-[12px] border border-sky-200/70 bg-sky-50/70 px-3.5 py-2.5 text-[11.5px] leading-snug text-sky-800">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
+                  <span>
+                    Peşinat alınmadı — satış cariye <strong className="font-semibold">şimdi işlenmez</strong>. Müşteri ilk
+                    randevusunu tamamladığında tutar otomatik cariye borç yazılır ve
+                    {isServiceSale ? ' hizmet seansı' : ' paket seansları'} tanımlanır. Seansları kullanmak için randevu
+                    şimdiden verilebilir; adisyon kartı açılmaz.
                   </span>
                 </div>
               )}
@@ -755,8 +1210,8 @@ export default function PackageSaleDialog({
                     />
                   </label>
                 )}
-                {/* Hizmet satışında peşinat alınmaz (kullanıcı talebi); paket/ürün satışında kalır. */}
-                {!isServiceSale && (
+                {/* Görünürlük kuralı ve gerekçesi için bkz. showDownPayment. */}
+                {showDownPayment && (
                   <label className={labelCls}>
                     Peşinat (ops.)
                     <input
@@ -774,8 +1229,8 @@ export default function PackageSaleDialog({
 
               {/* Ödeme planı: peşin ya da taksit — taksit cariye onayda kurulur */}
               <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
-                {/* SATIŞ TARİHİ — yalnız üründe. Hizmet/paket satışı ilk randevu tamamlanınca
-                    cariye işlendiği için orada kullanıcının verdiği tarih anlamını yitirir. */}
+                {/* SATIŞ TARİHİ — yalnız üründe. Hizmet/paket satışı ertelenebildiği için orada
+                    kullanıcının verdiği tarih anlamını yitirir. */}
                 {isProductSale && (
                   <div className="mb-4">
                     <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
@@ -903,27 +1358,42 @@ export default function PackageSaleDialog({
           )}
           {step === 'confirm' && (
             <footer className="relative flex shrink-0 items-center gap-2.5 border-t border-[#ead8df]/[0.70] px-6 py-4 sm:px-7">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => { setError(''); setStep('form') }}
-                className="inline-flex items-center gap-1.5 rounded-[14px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
-              >
-                <ChevronLeft className="h-4 w-4" /> Düzenle
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={confirmAndApprove}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {busy
-                  ? (deferToFirstAppointment || openCardAfterSale ? 'Kaydediliyor…' : 'Onaylanıyor…')
-                  : deferToFirstAppointment
-                    ? 'Satışı kaydet'
-                    : (openCardAfterSale ? 'Satışı kaydet · adisyonu aç' : 'Onayla ve tamamla')}
-              </button>
+              {savedAdisyonId ? (
+                // Onay düştü ama fiş yazıldı: tek çıkış yolu kartı açmaktır (tekrar kaydetmek
+                // aynı satışı ikinci kez yazardı).
+                <button
+                  type="button"
+                  onClick={openSavedCard}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  <ReceiptText className="h-4 w-4" /> Adisyon kartını aç
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => { setError(''); clearExtraForm(); setStep('form') }}
+                    className="inline-flex items-center gap-1.5 rounded-[14px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={submitSale}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    {busy
+                      ? 'Kaydediliyor…'
+                      : approveNow
+                        ? (isStaffUser ? 'Satışı kaydet · onaya gönder' : 'Satışı kaydet · cariye işle')
+                        : 'Satışı kaydet'}
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] tabular-nums">{formatTL(total)}</span>
+                  </button>
+                </>
+              )}
             </footer>
           )}
         </div>
