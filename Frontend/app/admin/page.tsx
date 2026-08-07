@@ -27,6 +27,7 @@ import {
   BarChart3,
   Boxes,
   Calendar,
+  CalendarRange,
   CalendarPlus,
   CheckCircle2,
   ChevronDown,
@@ -463,10 +464,13 @@ function PeriodTabs({
   value,
   onChange,
   options,
+  dimmed = false,
 }: {
   value: RangePeriod
   onChange: (value: RangePeriod) => void
   options: { key: RangePeriod; label: string }[]
+  /** Özel tarih aralığı devredeyken seçili çip vurgusu kalkar — hangisinin geçerli olduğu belli olsun. */
+  dimmed?: boolean
 }) {
   return (
     <div className="inline-flex shrink-0 items-center rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
@@ -476,7 +480,7 @@ function PeriodTabs({
           type="button"
           onClick={() => onChange(option.key)}
           className={`rounded-full px-2 py-[3px] text-[10px] font-semibold leading-none transition-colors ${
-            value === option.key
+            value === option.key && !dimmed
               ? 'bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a] shadow-sm'
               : 'text-[#9a8590] hover:text-[#7a6570]'
           }`}
@@ -486,6 +490,140 @@ function PeriodTabs({
       ))}
     </div>
   )
+}
+
+/** Kullanıcının seçtiği serbest tarih aralığı (yerel gün anahtarları, ikisi de DAHİL). */
+interface CustomRange { from: string; to: string }
+
+/**
+ * ÖZEL TARİH ARALIĞI — dönem çiplerinin (Günlük/Aylık/Yıllık) yanında durur ve seçilince
+ * onların yerine geçer.
+ *
+ * <p>Neden ayrı bir durum, neden `RangePeriod`'a 'custom' eklenmedi: o tip yalnız rapor
+ * penceresini değil mini grafik kovalarını (buildPeriodBuckets) ve taksit takvimini de
+ * sürüklüyor. Oralara anlamı olmayan bir değer sızdırmak, bugün görünmeyen yerlerde sessizce
+ * yanlış kova üretirdi. Serbest aralık YALNIZ rapor sorgusunu etkiler.</p>
+ */
+function DateRangeFilter({
+  value,
+  onChange,
+}: {
+  value: CustomRange | null
+  onChange: (value: CustomRange | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [from, setFrom] = useState(value?.from ?? '')
+  const [to, setTo] = useState(value?.to ?? '')
+
+  const apply = () => {
+    if (!from || !to) return
+    // Ters seçim kullanıcı hatasıdır, hata mesajı değil düzeltme hak eder.
+    const [a, b] = from <= to ? [from, to] : [to, from]
+    onChange({ from: a, to: b })
+    setFrom(a)
+    setTo(b)
+    setOpen(false)
+  }
+
+  const clear = () => {
+    onChange(null)
+    setFrom('')
+    setTo('')
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-[4px] text-[10px] font-semibold leading-none transition-colors ${
+          value
+            ? 'border-[#e7a7bd] bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a]'
+            : 'border-[#efe1e7] bg-[#fff8fa] text-[#9a8590] hover:text-[#7a6570]'
+        }`}
+      >
+        <CalendarRange className="h-3 w-3" strokeWidth={1.9} />
+        {value ? `${trDay(value.from)} – ${trDay(value.to)}` : 'Özel tarih'}
+      </button>
+
+      {open && (
+        <>
+          {/* Dışarı tıklayınca kapansın; panel bunun ÜSTÜNDE durur. */}
+          <button type="button" aria-label="Kapat" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-50 mt-1.5 w-[248px] rounded-[14px] border border-[#efe1e7] bg-white p-3 shadow-[0_20px_50px_-25px_rgba(142,63,91,0.5)]">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#9a8590]">Tarih aralığı</div>
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-medium text-[#705a66]">Başlangıç</span>
+                <input
+                  type="date"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-full rounded-lg border border-[#efe1e7] bg-[#fffafc] px-2 py-1.5 text-[11px] text-[#4a3a44] outline-none focus:border-[#e7a7bd]"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-medium text-[#705a66]">Bitiş</span>
+                <input
+                  type="date"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="w-full rounded-lg border border-[#efe1e7] bg-[#fffafc] px-2 py-1.5 text-[11px] text-[#4a3a44] outline-none focus:border-[#e7a7bd]"
+                />
+              </label>
+            </div>
+            <div className="mt-2.5 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={apply}
+                disabled={!from || !to}
+                className="flex-1 rounded-lg bg-[#8e3f5b] px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#7a3350] disabled:opacity-45"
+              >
+                Uygula
+              </button>
+              {value && (
+                <button
+                  type="button"
+                  onClick={clear}
+                  className="rounded-lg border border-[#efe1e7] px-2 py-1.5 text-[11px] font-semibold text-[#9a8590] hover:text-[#7a2f4a]"
+                >
+                  Temizle
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-[10px] leading-snug text-[#9a8590]">Seçilen iki tarih de dahildir.</p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** 2026-08-07 → "7 Ağu" (çip etiketinde yer kazanır). */
+function trDay(key: string): string {
+  const [y, m, d] = key.split('-').map(Number)
+  if (!y || !m || !d) return key
+  return `${d} ${MONTHS_TR_SHORT[m - 1]}`
+}
+
+/**
+ * Serbest aralığın rapor penceresi. Bitiş günü DAHİL olmalı: kullanıcı "1–7 Ağustos" derken
+ * 7 Ağustos'u da kastediyor, oysa uçlar [başlangıç, bitiş) yarı açık aralık bekliyor → +1 gün.
+ * Yerel gece yarısından ISO'ya çevrilir; `new Date('...T00:00:00')` yerel okunur, dosyanın
+ * geri kalanındaki dönüşümle aynı eksende kalır (UTC kayması yok).
+ */
+function customWindowIso(range: CustomRange): { fromIso: string; toIso: string; label: string } {
+  const start = new Date(`${range.from}T00:00:00`)
+  const endExclusive = new Date(`${range.to}T00:00:00`)
+  endExclusive.setDate(endExclusive.getDate() + 1)
+  return {
+    fromIso: start.toISOString(),
+    toIso: endExclusive.toISOString(),
+    label: range.from === range.to ? trDay(range.from) : `${trDay(range.from)} – ${trDay(range.to)}`,
+  }
 }
 
 const listContainer: Variants = {
@@ -1336,11 +1474,15 @@ export default function AdminDashboard() {
   const [chartRange, setChartRange] = useState<RangePeriod>('weekly')
   // Paket Raporu KPI kartları dönem filtresi (günlük/aylık/yıllık) — varsayılan aylık.
   const [packagePeriod, setPackagePeriod] = useState<RangePeriod>('monthly')
+  // Özel tarih aralığı: doluysa dönem çipinin YERİNE geçer (ikisi aynı anda uygulanmaz —
+  // "Aylık + 3–9 Ağustos" diye bir pencere yok, kullanıcı hangisini seçtiyse o kazanır).
+  const [packageCustom, setPackageCustom] = useState<CustomRange | null>(null)
   // Paket Raporu kategori süzgeci — dönem çipiyle BİRLİKTE çalışır ('' = tüm kategoriler).
   const [packageCategory, setPackageCategory] = useState('')
   const [packageSubCategory, setPackageSubCategory] = useState('')
   // Hizmet Raporu kendi dönemi ve kendi (hizmet) kategorisiyle çalışır — paketle karışmaz.
   const [servicePeriod, setServicePeriod] = useState<RangePeriod>('monthly')
+  const [serviceCustom, setServiceCustom] = useState<CustomRange | null>(null)
   const [serviceCategory, setServiceCategory] = useState('')
   const [serviceSubCategory, setServiceSubCategory] = useState('')
   // Satış Detayı > Kategori Kırılımı kendi dönemine sahiptir (KPI'ları ve taksit grafiğini etkilemez).
@@ -1423,7 +1565,6 @@ export default function AdminDashboard() {
   )
 
   // Paket Raporu dönem penceresi: yerel sınırlar ISO'ya çevrilir (CreatedAtUtc ile doğru karşılaştırılır).
-  const packageWindowLabel = periodWindow(packagePeriod, dayStart).label
   const pkgToday = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate())
   const pkgToDate = new Date(pkgToday)
   pkgToDate.setDate(pkgToDate.getDate() + 1)
@@ -1433,8 +1574,11 @@ export default function AdminDashboard() {
       : packagePeriod === 'yearly'
         ? new Date(pkgToday.getFullYear(), 0, 1)
         : new Date(pkgToday.getFullYear(), pkgToday.getMonth(), 1)
-  const pkgFromIso = pkgFromDate.toISOString()
-  const pkgToIso = pkgToDate.toISOString()
+  // Özel aralık seçiliyse dönem çipinin penceresi kullanılmaz.
+  const pkgCustomWindow = packageCustom ? customWindowIso(packageCustom) : null
+  const pkgFromIso = pkgCustomWindow?.fromIso ?? pkgFromDate.toISOString()
+  const pkgToIso = pkgCustomWindow?.toIso ?? pkgToDate.toISOString()
+  const packageWindowLabel = pkgCustomWindow?.label ?? periodWindow(packagePeriod, dayStart).label
 
   // Paket Raporu kartları için döneme göre süzülmüş ayrı rapor (Tahsilat Oranı + takvim genel kalır).
   // Kategori seçiliyse aynı sorguya eklenir → dönem + kategori birlikte uygulanır.
@@ -1459,9 +1603,12 @@ export default function AdminDashboard() {
   )
 
   // --- Hizmet Raporu: paket raporundan TAMAMEN AYRI (kendi dönemi + kendi kategorisi) ---------
-  const svcWindow = periodWindow(servicePeriod, dayStart)
-  const svcFromIso = new Date(`${svcWindow.startKey}T00:00:00`).toISOString()
-  const svcToIso = new Date(`${svcWindow.endKey}T00:00:00`).toISOString()
+  // Özel aralığı da ayrıdır: paketle hizmet farklı tarihlerde incelenebilmeli.
+  const svcPeriodWindow = periodWindow(servicePeriod, dayStart)
+  const svcCustomWindow = serviceCustom ? customWindowIso(serviceCustom) : null
+  const svcFromIso = svcCustomWindow?.fromIso ?? new Date(`${svcPeriodWindow.startKey}T00:00:00`).toISOString()
+  const svcToIso = svcCustomWindow?.toIso ?? new Date(`${svcPeriodWindow.endKey}T00:00:00`).toISOString()
+  const svcWindowLabel = svcCustomWindow?.label ?? svcPeriodWindow.label
   const { data: serviceReportData, loading: serviceReportLoading } = useApiQuery<ApiServiceReport>(
     () => adminApi
       .serviceReport<ApiServiceReport>(tenantId, svcFromIso, svcToIso, serviceCategory || undefined, serviceSubCategory || undefined)
@@ -1877,8 +2024,15 @@ export default function AdminDashboard() {
             <SectionCard
               title="Paket Raporu"
               action={
-                <div className="flex items-center gap-2">
-                  <PeriodTabs value={packagePeriod} onChange={setPackagePeriod} options={PACKAGE_PERIOD_OPTIONS} />
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {/* Çip seçilince özel aralık düşer: ikisi aynı anda uygulanmaz. */}
+                  <PeriodTabs
+                    value={packagePeriod}
+                    onChange={(p) => { setPackagePeriod(p); setPackageCustom(null) }}
+                    options={PACKAGE_PERIOD_OPTIONS}
+                    dimmed={packageCustom !== null}
+                  />
+                  <DateRangeFilter value={packageCustom} onChange={setPackageCustom} />
                   <Link href="/admin/on-muhasebe" className="hidden items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62] sm:inline-flex">
                     Ön muhasebe <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
@@ -1947,7 +2101,7 @@ export default function AdminDashboard() {
                       <div>
                         <div className="text-[13px] font-semibold text-[#4a3a44]">Hizmet Raporu</div>
                         <div className="text-[10px] text-[#705a66]">
-                          {svcWindow.label}
+                          {svcWindowLabel}
                           {serviceCategory && ` · ${serviceCategory}${serviceSubCategory ? ` / ${serviceSubCategory}` : ''}`}
                         </div>
                       </div>
@@ -1961,7 +2115,13 @@ export default function AdminDashboard() {
                         onChange={setServiceCategory}
                         onSubChange={setServiceSubCategory}
                       />
-                      <PeriodTabs value={servicePeriod} onChange={setServicePeriod} options={FULL_PERIOD_OPTIONS} />
+                      <PeriodTabs
+                        value={servicePeriod}
+                        onChange={(p) => { setServicePeriod(p); setServiceCustom(null) }}
+                        options={FULL_PERIOD_OPTIONS}
+                        dimmed={serviceCustom !== null}
+                      />
+                      <DateRangeFilter value={serviceCustom} onChange={setServiceCustom} />
                     </div>
                   </div>
                   {/* Paket ızgarasıyla aynı kural (bkz. globals.css .kpi-auto-grid). */}
