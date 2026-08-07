@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
@@ -95,7 +96,31 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
     }
   }
 
-  Future<void> _buyCredit(Map<String, dynamic> pkg) async {
+  /// KARTLA KONTÖR ALMA — abonelikteki paket satın almanın birebir aynı mekanizması:
+  /// ödeme sayfası HARİCİ tarayıcıda açılır (bkz. paket_screen). Bakiye burada artmaz;
+  /// sunucudaki callback ucu tahsilatı doğruladığında artar.
+  Future<void> _buyCreditByCard(Map<String, dynamic> pkg) async {
+    try {
+      final started = await widget.api.post('/api/admin/whatsapp/wallet/checkout', {'creditPackageId': pkg['id']});
+      final url = started is Map ? '${started['redirectUrl'] ?? ''}' : '';
+      if (url.isEmpty || !await launchUrlString(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Ödeme sayfası açılamadı. Lütfen tekrar deneyin.')));
+        }
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Ödeme sayfası açıldı. Ödemeyi tamamladıktan sonra sayfayı aşağı çekip yenile.')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  /// Havale yolu: bakiye platform onayından sonra eklenir (kaldırılmadı, bilinçli tercih).
+  Future<void> _requestCredit(Map<String, dynamic> pkg) async {
     try {
       await widget.api.post('/api/admin/whatsapp/wallet/topup', {'creditPackageId': pkg['id']});
       if (mounted) {
@@ -106,6 +131,40 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
+  }
+
+  /// Paket kartına dokununca ödeme yolunu sorar — web'deki Kartla öde / Havale seçiminin karşılığı.
+  Future<void> _buyCredit(Map<String, dynamic> pkg) async {
+    final byCard = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('Nasıl ödemek istersiniz?',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.credit_card),
+              title: const Text('Kartla öde'),
+              subtitle: const Text('Kontör ödeme onaylanır onaylanmaz yüklenir.'),
+              onTap: () => Navigator.pop(ctx, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Havale / talep oluştur'),
+              subtitle: const Text('BeautyAsist onayından sonra bakiyenize eklenir.'),
+              onTap: () => Navigator.pop(ctx, false),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (byCard == null) return;
+    await (byCard ? _buyCreditByCard(pkg) : _requestCredit(pkg));
   }
 
   @override
@@ -272,7 +331,9 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
           for (final pkg in packages) _packageCard(pkg),
           const Padding(
             padding: EdgeInsets.all(6),
-            child: Text('Kontör talepleriniz BeautyAsist onayından sonra bakiyenize eklenir.',
+            child: Text(
+                'Kartla ödemede kontör anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
+                'Kart bilgileriniz bizde saklanmaz.',
                 style: TextStyle(fontSize: 11, color: AppColors.muted)),
           ),
         ],

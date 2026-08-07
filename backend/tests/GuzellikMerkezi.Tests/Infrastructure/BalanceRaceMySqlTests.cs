@@ -1,6 +1,9 @@
+using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.GiftCards;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Payments;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -127,7 +130,9 @@ public sealed class BalanceRaceMySqlTests
         async Task<bool> ReserveAsync()
         {
             await using var db = database.NewContext();
-            var service = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance);
+            // Ödeme çözücüsü bu testte kullanılmaz (doğrudan cüzdan yolu) → kapalı ikiz yeterli.
+            var service = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance,
+                new PaymentTestDoubles.DisabledResolver(), new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
             // Doğrudan cüzdan yolu: fiyat/kota kurallarına değil, KİLİDE bakıyoruz.
             return await TryReserveDirectlyAsync(service, db, seed.TenantId, 10m);
         }
@@ -217,5 +222,64 @@ public sealed class BalanceRaceMySqlTests
 
         Assert.Single(rows);                                    // TEK jeton satırı
         Assert.All(tokens, t => Assert.True(t is null || t == rows[0].Token));
+    }
+
+    /// <summary>
+    /// KARTLA KONTÖRDE ÇİFT YÜKLEME. Ödeme dönüşü hem kullanıcının tarayıcısından hem sağlayıcıdan
+    /// AYNI ANDA gelebilir. "Zaten onaylı mı?" kontrolü tek başına yalnız SIRAYLA gelen çağrılara
+    /// karşı korur: eşzamanlı iki çağrı talebi ikisi de "Pending" okur, ikisi de değişmez
+    /// kontrollerinden geçer ve cüzdana İKİ KEZ yükleme yapar — kurum bir kez ödeyip iki kat kontör
+    /// alırdı. Kilit sıralamayı veritabanına yaptırır. InMemory'de üretilemez.
+    /// </summary>
+    [MySqlFact]
+    public async Task ConcurrentCreditCallback_CreditsWalletExactlyOnce()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+
+        await using (var db = database.NewContext())
+        {
+            db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+            await db.SaveChangesAsync();
+        }
+
+        WhatsAppBillingService NewBilling(GuzellikDbContext db) =>
+            new(db, NullLogger<WhatsAppBillingService>.Instance, new PaymentTestDoubles.SimulationResolver(),
+                new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
+
+        string conversationId;
+        await using (var db = database.NewContext())
+        {
+            var started = await NewBilling(db).StartCreditCheckoutAsync(
+                seed.TenantId, new TopUpRequest(null, 400m), "https://panel.test/api/payments/credit-callback", null);
+            Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+            conversationId = (await db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().SingleAsync()).ConversationId!;
+        }
+
+        var gateway = new SimulationPaymentGateway(PaymentTestDoubles.SigningSecret);
+        var init = await gateway.InitCheckoutAsync(new CheckoutInitRequest(
+            conversationId, 400m, "test", "buyer", "Ad", "Soyad", "a@b.c", "0555", "1", "Adres", "İstanbul",
+            "127.0.0.1", "https://panel.test/api/payments/credit-callback"));
+        var token = init.Value!.CheckoutToken;
+
+        async Task<bool> CompleteAsync()
+        {
+            await using var db = database.NewContext();
+            var result = await NewBilling(db).CompleteCreditCheckoutAsync(token);
+            return result.IsSuccess && result.Value!.Succeeded;
+        }
+
+        var results = await Task.WhenAll(CompleteAsync(), CompleteAsync());
+        Assert.All(results, Assert.True);   // ikisi de kullanıcıya "tamam" der
+
+        await using (var check = database.NewContext())
+        {
+            // ...ama para TEK KEZ yüklenir.
+            var wallet = await check.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking()
+                .SingleAsync(w => w.TenantId == seed.TenantId);
+            Assert.Equal(400m, wallet.BalanceTry);
+            Assert.Single(await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking()
+                .Where(t => t.TenantId == seed.TenantId && t.Type == WalletTransactionType.TopUp).ToListAsync());
+        }
     }
 }

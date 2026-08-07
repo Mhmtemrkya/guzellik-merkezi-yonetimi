@@ -1,4 +1,7 @@
 using GuzellikMerkezi.Application.Common;
+// Kartla kontör alma, abonelikle AYNI ödeme sözleşmesini kullanır (CheckoutStartedDto):
+// ikinci bir "checkout başlatıldı" tipi üretmek, iki akışın sessizce ayrışmasına yol açardı.
+using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 
@@ -38,6 +41,16 @@ public interface IWhatsAppBillingService
     /// <summary>Kurum ek kontör satın alma talebi oluşturur. Otomatik onay kapalıysa PENDING kalır (platform onaylar).</summary>
     Task<Result<CreditPurchaseDto>> RequestPurchaseAsync(Guid tenantId, TopUpRequest request, Guid? requestedByUserId, CancellationToken ct = default);
     Task<Result<IReadOnlyCollection<CreditPurchaseDto>>> GetTenantPurchasesAsync(Guid tenantId, int take, CancellationToken ct = default);
+
+    /// <summary>
+    /// KARTLA KONTÖR ALMA — iyzico Ortak Ödeme Sayfası açar (tek seferlik, taksitsiz, kart saklamasız).
+    /// Talep PENDING açılır; bakiye YALNIZ <see cref="CompleteCreditCheckoutAsync"/> sağlayıcıdan
+    /// başarılı sonucu doğruladığında artar — form başlatmak ödeme sayılmaz.
+    /// </summary>
+    Task<Result<CheckoutStartedDto>> StartCreditCheckoutAsync(Guid tenantId, TopUpRequest request, string callbackUrl, Guid? requestedByUserId, CancellationToken ct = default);
+
+    /// <summary>Sağlayıcı dönüşünü doğrular ve başarılıysa cüzdana bakiyeyi TEK KEZ yükler.</summary>
+    Task<Result<CreditCheckoutCompletedDto>> CompleteCreditCheckoutAsync(string checkoutToken, CancellationToken ct = default);
 
     // --- Platform tarafı: kontör satın alma onay kuyruğu ---
     Task<Result<IReadOnlyCollection<CreditPurchaseDto>>> GetPurchasesAsync(bool onlyPending, CancellationToken ct = default);

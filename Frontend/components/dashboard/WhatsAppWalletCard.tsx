@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Wallet, Loader2, Check, Clock3, AlertTriangle, Sparkles, TrendingUp, Plus, X } from 'lucide-react'
+import { Wallet, Loader2, Check, Clock3, AlertTriangle, Sparkles, TrendingUp, Plus, X, CreditCard } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import type { ApiMessagingWallet, ApiCreditPackage, ApiCreditPurchase } from '@/lib/types'
@@ -24,16 +24,36 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
   const [customAmount, setCustomAmount] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
   const [justRequested, setJustRequested] = useState(false)
+  const [payError, setPayError] = useState('')
+  /** Kartla öde (varsayılan) ↔ havale talebi. Havale yolu KALDIRILMADI: kurumların bir kısmı
+      hâlâ havale/fatura ile ödüyor ve platformun her yüklemeyi denetlemesi bilinçli bir tercih. */
+  const [payByCard, setPayByCard] = useState(true)
+
+  const bodyFor = (pkg?: ApiCreditPackage) =>
+    pkg ? { creditPackageId: pkg.id } : { amountTry: Number(customAmount) }
 
   const buy = async (pkg?: ApiCreditPackage) => {
-    const body = pkg ? { creditPackageId: pkg.id } : { amountTry: Number(customAmount) }
+    const body = bodyFor(pkg)
     if (!pkg && (!Number.isFinite(body.amountTry) || (body.amountTry ?? 0) <= 0)) return
     setBuyingId(pkg?.id ?? 'custom')
+    setPayError('')
     try {
+      if (payByCard) {
+        // Ödeme sayfasına gidilir; bakiye dönüşte (callback doğrulandığında) artar.
+        const started = await adminApi.startWhatsappTopUpCheckout<{ redirectUrl?: string; formContent?: string }>(body, tenantId)
+        if (started?.redirectUrl) {
+          window.location.href = started.redirectUrl
+          return
+        }
+        setPayError('Ödeme sayfası açılamadı. Lütfen tekrar deneyin.')
+        return
+      }
       await adminApi.requestWhatsappTopUp(body, tenantId)
       setJustRequested(true); setCustomAmount(''); setCustomOpen(false)
       await Promise.all([reload(), reloadPurchases()])
       setTimeout(() => setJustRequested(false), 4000)
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : 'İşlem tamamlanamadı.')
     } finally { setBuyingId(null) }
   }
 
@@ -121,6 +141,12 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
         </div>
       )}
 
+      {payError && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {payError}
+        </div>
+      )}
+
       {/* Satın alınabilir paketler */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -128,6 +154,26 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
           <button type="button" onClick={() => setCustomOpen((v) => !v)} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#b14d6c] hover:underline">
             {customOpen ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />} Özel tutar
           </button>
+        </div>
+
+        {/* Ödeme yolu seçimi — kartla anında, havalede onay beklenir. */}
+        <div className="flex items-center gap-1 rounded-xl border border-[#ead8df] bg-[#fffafb] p-1">
+          {([true, false] as const).map((card) => (
+            <button
+              key={String(card)}
+              type="button"
+              onClick={() => { setPayByCard(card); setPayError('') }}
+              className={`flex-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                payByCard === card ? 'bg-[#8e3f5b] text-white' : 'text-[#352432]/60 hover:text-[#8e3f5b]'
+              }`}
+            >
+              {card ? (
+                <span className="inline-flex items-center gap-1"><CreditCard className="h-3.5 w-3.5" /> Kartla öde</span>
+              ) : (
+                <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> Havale / talep</span>
+              )}
+            </button>
+          ))}
         </div>
 
         {customOpen && (
@@ -140,7 +186,7 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
               className="min-w-0 flex-1 rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
             />
             <button type="button" disabled={buyingId === 'custom' || !customAmount} onClick={() => buy()} className="inline-flex items-center gap-1 rounded-lg bg-[#8e3f5b] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50">
-              {buyingId === 'custom' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Talep et'}
+              {buyingId === 'custom' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : payByCard ? 'Öde' : 'Talep et'}
             </button>
           </div>
         )}
@@ -161,13 +207,15 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
               )}
               <span className="mt-1 text-[10px] text-[#352432]/50">≈ {pkg.estimatedUtilityMessages.toLocaleString('tr-TR')} mesaj</span>
               <span className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#b14d6c] group-hover:underline">
-                {buyingId === pkg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Talep et
+                {buyingId === pkg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : payByCard ? <CreditCard className="h-3 w-3" /> : <Plus className="h-3 w-3" />} {payByCard ? 'Kartla al' : 'Talep et'}
               </span>
             </button>
           ))}
         </div>
         <p className="text-[10px] leading-snug text-[#352432]/45">
-          Kontör talepleriniz BeautyAsist onayından sonra bakiyenize eklenir. Ödeme ve fatura için sizinle iletişime geçilir.
+          {payByCard
+            ? 'Güvenli ödeme sayfasına yönlendirilirsiniz. Kontörünüz ödeme onaylandığı anda bakiyenize eklenir; kart bilgileriniz bizde saklanmaz.'
+            : 'Kontör talepleriniz BeautyAsist onayından sonra bakiyenize eklenir. Ödeme ve fatura için sizinle iletişime geçilir.'}
         </p>
       </div>
     </div>

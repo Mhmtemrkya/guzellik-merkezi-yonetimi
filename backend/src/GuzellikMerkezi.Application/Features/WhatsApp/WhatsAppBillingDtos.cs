@@ -75,7 +75,14 @@ public sealed record CreditPurchaseDto(
     CreditPurchaseStatus Status,
     string? Note,
     DateTime CreatedAtUtc,
-    DateTime? ProcessedAtUtc);
+    DateTime? ProcessedAtUtc,
+    /// <summary>Kartla ödendiyse sağlayıcı adı; havale talebinde null (platform kuyruğunda ayırt etmek için).</summary>
+    string? Provider = null);
+
+/// <param name="Succeeded">Tahsilat doğrulandı ve bakiye yüklendi mi.</param>
+/// <param name="NewBalanceTry">Yükleme sonrası cüzdan bakiyesi (başarısızsa null).</param>
+public sealed record CreditCheckoutCompletedDto(
+    bool Succeeded, string? Message, decimal? GrantedTry, decimal? NewBalanceTry);
 
 // --- Platform tarafı DTO'lar ---
 

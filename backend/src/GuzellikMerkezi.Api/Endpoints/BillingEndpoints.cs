@@ -2,6 +2,9 @@ using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
+// Kontör dönüşü de bu dosyadaki public /api/payments grubunda barınır (aynı sağlayıcı, aynı
+// yönlendirme kuralı); yalnız işi yapan servis farklıdır.
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -61,11 +64,24 @@ public static class BillingEndpoints
         callback.MapGet("/callback", (HttpContext http, IBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
             HandleCallbackAsync(http, svc, resolver, ct));
 
+        // KONTÖR DÖNÜŞÜ AYRI YOLDA.
+        //
+        // Ödeme anahtarı hangi deftere ait olduğunu SÖYLEMEZ; öğrenmek için sağlayıcıya sormak
+        // gerekir. Tek uçtan yönlendirmek, güvenilmez bir anahtarla yapılan bu sorguyu
+        // yönlendirmeden ÖNCE'ye koyar ve sonucu kazanan servise elden taşımayı gerektirirdi.
+        // Dönüş adresini biz belirlediğimiz için ayrı yol bedavaya aynı işi yapar; üstteki
+        // ÇALIŞAN abonelik yolu da hiç ellenmemiş olur.
+        callback.MapPost("/credit-callback", (HttpContext http, IWhatsAppBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
+            HandleCreditCallbackAsync(http, svc, resolver, ct));
+
+        callback.MapGet("/credit-callback", (HttpContext http, IWhatsAppBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
+            HandleCreditCallbackAsync(http, svc, resolver, ct));
+
         return app;
     }
 
-    private static async Task<IResult> HandleCallbackAsync(
-        HttpContext http, IBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct)
+    /// <summary>Sağlayıcı dönüşünden ödeme anahtarını çıkarır (form ya da sorgu dizesi).</summary>
+    private static async Task<string> ReadCallbackTokenAsync(HttpContext http, CancellationToken ct)
     {
         string? token = null;
         if (http.Request.HasFormContentType)
@@ -74,13 +90,13 @@ public static class BillingEndpoints
             token = form["token"].ToString();
         }
         if (string.IsNullOrWhiteSpace(token)) token = http.Request.Query["token"].ToString();
+        return token ?? string.Empty;
+    }
 
-        var result = await svc.CompleteCheckoutAsync(token ?? string.Empty, ct);
-        var succeeded = result.IsSuccess && result.Value!.Succeeded;
-        var message = result.IsSuccess ? result.Value!.Message : result.Error.Message;
-
-        // Kullanıcıyı panele geri gönder. Dönüş adresi tanımlı değilse (ör. yerel geliştirme)
-        // JSON döndür — sessizce boş sayfa göstermek hatayı gizlerdi.
+    /// <summary>Kullanıcıyı panele döndürür; dönüş adresi yoksa JSON verir (hatayı gizleme).</summary>
+    private static async Task<IResult> RedirectAfterPaymentAsync(
+        HttpContext http, IPaymentGatewayResolver resolver, bool succeeded, string? message, string? extraQuery, CancellationToken ct)
+    {
         var context = await resolver.ResolveAsync(ct);
         var returnUrl = context.IsSuccess ? context.Value!.ReturnUrl : null;
         if (string.IsNullOrWhiteSpace(returnUrl))
@@ -90,8 +106,29 @@ public static class BillingEndpoints
 
         var separator = returnUrl!.Contains('?') ? '&' : '?';
         var target = $"{returnUrl}{separator}payment={(succeeded ? "success" : "failed")}" +
-                     $"&message={Uri.EscapeDataString(message ?? string.Empty)}";
+                     $"&message={Uri.EscapeDataString(message ?? string.Empty)}{extraQuery}";
         return Results.Redirect(target);
+    }
+
+    private static async Task<IResult> HandleCreditCallbackAsync(
+        HttpContext http, IWhatsAppBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct)
+    {
+        var token = await ReadCallbackTokenAsync(http, ct);
+        var result = await svc.CompleteCreditCheckoutAsync(token, ct);
+        var succeeded = result.IsSuccess && result.Value!.Succeeded;
+        var message = result.IsSuccess ? result.Value!.Message : result.Error.Message;
+        // Panel dönüşte kontör sekmesini açsın: abonelik dönüşüyle karışmasın.
+        return await RedirectAfterPaymentAsync(http, resolver, succeeded, message, "&scope=whatsapp", ct);
+    }
+
+    private static async Task<IResult> HandleCallbackAsync(
+        HttpContext http, IBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct)
+    {
+        var token = await ReadCallbackTokenAsync(http, ct);
+        var result = await svc.CompleteCheckoutAsync(token, ct);
+        var succeeded = result.IsSuccess && result.Value!.Succeeded;
+        var message = result.IsSuccess ? result.Value!.Message : result.Error.Message;
+        return await RedirectAfterPaymentAsync(http, resolver, succeeded, message, extraQuery: null, ct);
     }
 
     /// <summary>Abonelik/ödeme yalnızca kurum yetkilisinde (ve platform yöneticisinde).</summary>

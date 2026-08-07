@@ -229,6 +229,17 @@ public sealed class BillingService : IBillingService
             return "Bu sağlayıcı ödeme kimliği başka bir ödemeye ait; işlem uygulanmadı.";
         }
 
+        // ÇAPRAZ TABLO: para artık İKİ deftere giriyor (abonelik + WhatsApp kontörü) ve ikisi de
+        // aynı iyzico hesabından besleniyor. Kontrol yalnız kendi tablosuna bakarsa, kontör
+        // yüklemesinde tüketilmiş bir ödeme kimliği burada ikinci kez "abonelik ödendi" diye
+        // sayılabilirdi. İki tablo arasında derleme zamanı bağı yok; kontrolün iki yönlü olması
+        // ELLE korunmak zorunda (kontör tarafındaki eşi: WhatsAppBillingService).
+        if (await _db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(p => p.ProviderPaymentId == providerPaymentId, ct))
+        {
+            return "Bu sağlayıcı ödeme kimliği bir kontör yüklemesine ait; işlem uygulanmadı.";
+        }
+
         return null;
     }
 

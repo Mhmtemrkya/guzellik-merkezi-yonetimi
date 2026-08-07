@@ -59,7 +59,12 @@ public sealed record CheckoutInitRequest(
     string BuyerIp,
     string CallbackUrl,
     string? CardUserKey = null,
-    bool RegisterCard = true);
+    bool RegisterCard = true,
+    /// <summary>
+    /// iyzico ödeme grubu. Abonelik için SUBSCRIPTION, tek seferlik satın alma (kontör) için PRODUCT.
+    /// Sondaki opsiyonel parametre: abonelik çağrı yeri hiç değişmesin.
+    /// </summary>
+    string PaymentGroup = "SUBSCRIPTION");
 
 /// <param name="CheckoutFormContent">Sayfaya gömülecek HTML/JS parçası (iyzico form script'i).</param>
 /// <param name="PaymentPageUrl">Yönlendirme tercih edilirse kullanılacak barındırılan sayfa adresi.</param>

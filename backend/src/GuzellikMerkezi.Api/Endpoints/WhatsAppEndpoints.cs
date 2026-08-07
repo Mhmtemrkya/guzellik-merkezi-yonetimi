@@ -64,6 +64,16 @@ public static class WhatsAppEndpoints
             return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await billing.GetTenantPurchasesAsync(tid, take ?? 20, ct)).ToHttpResult(http);
         });
 
+        // KARTLA KONTÖR ALMA: ödeme formunu başlatır. Bakiye BURADA artmaz — yalnız sağlayıcı
+        // dönüşü doğrulandığında artar (bkz. /api/payments/credit-callback).
+        group.MapPost("/wallet/checkout", async (TopUpRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            if (tid == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            var callbackUrl = $"{http.Request.Scheme}://{http.Request.Host}/api/payments/credit-callback";
+            return (await billing.StartCreditCheckoutAsync(tid, request, callbackUrl, currentUser.UserId, ct)).ToHttpResult(http);
+        });
+
         // --- Webhook (anonim; Meta çağırır, /api/admin dışında → onay kapısı/auth uygulanmaz) ---
         var hook = app.MapGroup("/api/whatsapp").WithTags("WhatsApp");
 

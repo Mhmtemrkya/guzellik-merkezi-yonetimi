@@ -62,6 +62,12 @@ public static class RowLock
         // seçer; bekleyen taraf satırı tazeleyip "zaten alınmıştı" cevabını verir. Zincirin sonunda
         // durur — faturalama servisi başka satır kilidi almaz, mevcut sıraları bozmaz.
         "subscription_payments",
+        // Kartla kontör alma: abonelik tahsilatının birebir aynı sorunu. Ödeme dönüşü hem
+        // tarayıcıdan hem sağlayıcıdan AYNI ANDA gelebilir; ikisi de talebi "Pending" görüp
+        // cüzdana İKİ KEZ yükleme yapardı. Kilit kazananı seçer, bekleyen taraf "zaten alınmıştı"
+        // der. Cüzdandan ÖNCE durmak ZORUNDA: tahsilat akışı önce bu satırı kilitler, sonra
+        // GetOrCreateWalletAsync tenant_messaging_wallets'ı kilitler — ters sıra deadlock üretirdi.
+        "whatsapp_credit_purchases",
         // Kontör cüzdanı: bakiye/rezerve BİR TOPLAM olduğu için stok ve hediye çeki ile AYNI
         // sınıftadır; ikisi kilitliyken bu tablo listede bile yoktu. Rezerve etme "kullanılabilir
         // bakiye yeter mi?" diye okuyup sonra yazıyor: iki eşzamanlı gönderim aynı bakiyeyi görüp

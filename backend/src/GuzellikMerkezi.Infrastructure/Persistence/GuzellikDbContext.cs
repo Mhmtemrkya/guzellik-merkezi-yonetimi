@@ -1076,8 +1076,17 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cpu.Property(x => x.PriceTry).HasPrecision(18, 2);
         cpu.Property(x => x.GrantsTry).HasPrecision(18, 2);
         cpu.Property(x => x.Note).HasMaxLength(256);
+        cpu.Property(x => x.Provider).HasMaxLength(32);
+        cpu.Property(x => x.ConversationId).HasMaxLength(64);
+        cpu.Property(x => x.ProviderPaymentId).HasMaxLength(64);
         cpu.HasIndex(x => new { x.Status, x.CreatedAtUtc });
         cpu.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        // İşlem anahtarı benzersiz (abonelik ödemelerindeki kuralın aynısı): aynı anahtarla ikinci
+        // bir talep açılamaz. Havale talepleri null taşır; MySQL benzersiz indekste çoklu NULL'a
+        // izin verdiği için elle yükleme yolu etkilenmez.
+        cpu.HasIndex(x => x.ConversationId).IsUnique();
+        // Tekrar oynatma kontrolü bu kolondan arar; indekssiz tam tablo taraması kilidi uzatırdı.
+        cpu.HasIndex(x => x.ProviderPaymentId);
         cpu.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 

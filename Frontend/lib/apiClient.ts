@@ -917,9 +917,15 @@ export const adminApi = {
     apiRequest<T>('/api/admin/whatsapp/wallet', { query: { tenantId } }),
   whatsappWalletTransactions: <T = unknown>(tenantId?: string, take?: number): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/wallet/transactions', { query: { tenantId, take } }),
-  /** Ek kontör satın alma talebi oluşturur (platform onayına düşer). */
+  /** Ek kontör satın alma talebi oluşturur (havale yolu — platform onayına düşer). */
   requestWhatsappTopUp: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/whatsapp/wallet/topup', { method: 'POST', query: { tenantId }, body }),
+  /**
+   * Kartla kontör alma: ödeme formunu başlatır (abonelikteki /billing/checkout ile aynı sözleşme).
+   * Bakiye BURADA artmaz — sağlayıcı dönüşü doğrulandığında artar.
+   */
+  startWhatsappTopUpCheckout: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/whatsapp/wallet/checkout', { method: 'POST', query: { tenantId }, body }),
   whatsappPurchases: <T = unknown>(tenantId?: string, take?: number): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/wallet/purchases', { query: { tenantId, take } }),
   staff: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>

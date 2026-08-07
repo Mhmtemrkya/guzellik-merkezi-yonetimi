@@ -60,9 +60,9 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
             ["paidPrice"] = price,
             ["currency"] = "TRY",
             ["basketId"] = request.ConversationId,
-            ["paymentGroup"] = "SUBSCRIPTION",
+            ["paymentGroup"] = request.PaymentGroup,
             ["callbackUrl"] = request.CallbackUrl,
-            // Abonelikte taksit yok: tek çekim.
+            // Abonelikte de kontörde de taksit yok: tek çekim.
             ["enabledInstallments"] = new[] { 1 },
             // Kartın saklanması bu iki alana bağlı; cüzdan anahtarı varsa yeni kart ONA eklenir,
             // yoksa iyzico yeni bir cüzdan açıp cardUserKey döner.

@@ -81,7 +81,13 @@ public enum WhatsAppConnectionStatus
 public enum CreditPurchaseStatus
 {
     Pending = 0,   // kurum talep etti, platform onayı bekleniyor
-    Approved = 1,  // platform onayladı → bakiye eklendi
+    Approved = 1,  // platform onayladı ya da kart ödemesi başarılı → bakiye eklendi
     Rejected = 2,  // platform reddetti
     Cancelled = 3, // kurum vazgeçti
+    /// <summary>
+    /// Kart ödemesi başarısız/reddedildi. <see cref="Rejected"/>'dan AYRI tutulur: "platform hayır
+    /// dedi" ile "banka çekemedi" operatör için farklı şeylerdir ve sonraki aksiyon da farklıdır
+    /// (biri kurumla konuşma, diğeri kartı yenileme). Sebep Note alanında taşınır.
+    /// </summary>
+    Failed = 4,
 }
