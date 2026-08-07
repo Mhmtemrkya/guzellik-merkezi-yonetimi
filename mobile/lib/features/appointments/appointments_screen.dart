@@ -7,6 +7,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/async_list_page.dart';
+import '../../shared/widgets/period_selector.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../customers/customer_picker.dart';
 import 'appointment_detail_sheet.dart';
@@ -43,6 +44,27 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   late Future<_DayData> _future;
   _DayData? _lastData;
 
+  /// ÖZET ŞERİDİNİN KENDİ DÖNEMİ (Gün · Ay · Yıl · Özel) — web'deki üst özet kartının
+  /// başındaki süzgecin karşılığı. Takvim görünümünü (_view) DEĞİŞTİRMEZ: kullanıcı gün
+  /// takviminde kalırken alttaki rakamları yıla çevirebilsin diye ayrı tutulur.
+  PeriodKind _statKind = PeriodKind.day;
+  DateTimeRange? _statCustom;
+
+  /// Özet dönemi takvimin çektiği pencerenin DIŞINDAYSA (ör. gün görünümünde "Yıl" özeti)
+  /// o dönem ayrıca çekilir; içindeyse zaten elimizdeki liste süzülür.
+  Future<List<Map<String, dynamic>>>? _statsFuture;
+
+  /// Özet dönemi her zaman ekranda seçili tarihe çapalanır: "Gün" seçili günü, "Ay"/"Yıl"
+  /// gezilen ayı/yılı özetler (web'de de çapa takvimdeki seçili gün ve gezilen aydır).
+  PeriodValue get _statPeriod =>
+      PeriodValue(kind: _statKind, anchor: _selectedDate, custom: _statCustom);
+
+  bool get _statCovered {
+    final (viewFrom, viewTo) = _rangeFor(_view, _selectedDate);
+    final r = _statPeriod.localRange();
+    return !r.start.isBefore(viewFrom) && !r.end.isAfter(viewTo);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +74,62 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   void _reload() {
     _future = _load()..then((d) {
       if (mounted) _lastData = d;
+    });
+    _reloadStats();
+  }
+
+  void _reloadStats() {
+    _statsFuture = _statCovered ? null : _loadStats();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadStats() async {
+    final r = _statPeriod.localRange();
+    final res = await widget.api.getAllPaged(
+      '/api/admin/appointments/',
+      query: {
+        'fromUtc': r.start.toUtc().toIso8601String(),
+        // Backend toUtc'yi KAPSAYICI (<=) uyguluyor; sınırdaki randevu iki dönemde birden
+        // sayılmasın diye bitiş 1 ms geri alınır (web'deki kuralın aynısı).
+        'toUtc': r.end
+            .subtract(const Duration(milliseconds: 1))
+            .toUtc()
+            .toIso8601String(),
+      },
+      pageSize: 500,
+    );
+    return apiItems(res);
+  }
+
+  void _setStatKind(PeriodKind kind) {
+    if (kind == _statKind) return;
+    setState(() {
+      _statKind = kind;
+      _reloadStats();
+    });
+  }
+
+  Future<void> _pickStatCustom() async {
+    final now = DateTime.now();
+    final first = DateTime(now.year - 3);
+    final last = DateTime(now.year + 1, 12, 31);
+    final current = _statPeriod.localRange();
+    // Seçici başlangıcı O ANDA görünen aralıktır; sınırların dışına taşarsa kırpılır
+    // (showDateRangePicker aralık dışı bir başlangıçta assert atar).
+    var start = current.start.isBefore(first) ? first : current.start;
+    var end = current.end.subtract(const Duration(days: 1));
+    if (end.isAfter(last)) end = last;
+    if (end.isBefore(start)) end = start;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: first,
+      lastDate: last,
+      initialDateRange: _statCustom ?? DateTimeRange(start: start, end: end),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _statCustom = picked;
+      _statKind = PeriodKind.custom;
+      _reloadStats();
     });
   }
 
@@ -382,22 +460,73 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                 },
               ),
             ),
-            FutureBuilder<_DayData>(
-              future: _future,
-              builder: (context, snapshot) => _StatsBar(
-                appointments: snapshot.data == null
-                    ? const []
-                    : _filteredAppointments(snapshot.data!),
-              ),
-            ),
+            _buildStatsBar(),
           ],
         ),
       ),
     );
   }
 
-  List<Map<String, dynamic>> _filteredAppointments(_DayData data) {
-    return data.appointments.where((a) {
+  /// Alt özet şeridi. Sayılar kendi döneminden gelir: dönem takvimin çektiği pencerenin
+  /// içindeyse aynı listeden süzülür (ikinci istek yok), dışındaysa ayrı çekilir.
+  Widget _buildStatsBar() {
+    final period = _statPeriod;
+    if (_statCovered) {
+      return FutureBuilder<_DayData>(
+        future: _future,
+        builder: (context, snapshot) => _StatsBar(
+          period: period,
+          onKind: _setStatKind,
+          onPickCustom: _pickStatCustom,
+          loading: snapshot.connectionState != ConnectionState.done,
+          failed: snapshot.hasError,
+          appointments: snapshot.data == null
+              ? const []
+              : _inPeriod(_filteredAppointments(snapshot.data!), period),
+        ),
+      );
+    }
+    // `??=` bir emniyet kemeridir: dönem kapsam dışına çıktığı halde bir yol _reloadStats'ı
+    // atlarsa şerit boş rakam + sonsuz spinner'da kalırdı; burada tembel olarak başlatılır.
+    final future = _statsFuture ??= _loadStats();
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: future,
+      builder: (context, snapshot) => _StatsBar(
+        period: period,
+        onKind: _setStatKind,
+        onPickCustom: _pickStatCustom,
+        loading: snapshot.connectionState != ConnectionState.done,
+        // İstek düşerse rakamlar sıfır kalır; sıfır burada "hiç randevu yok" diye okunur —
+        // yani işletme hakkında YANLIŞ bir cümle. Hata açıkça yazılır.
+        failed: snapshot.hasError,
+        appointments: snapshot.data == null
+            ? const []
+            : _inPeriod(_applyFilters(snapshot.data!), period),
+      ),
+    );
+  }
+
+  /// Satırları özet dönemine göre YEREL günden süzer. UTC anına göre karşılaştırmak
+  /// Türkiye'de (UTC+3) gece yarısı çevresindeki randevuları komşu döneme kaydırırdı.
+  List<Map<String, dynamic>> _inPeriod(
+    List<Map<String, dynamic>> rows,
+    PeriodValue period,
+  ) {
+    final r = period.localRange();
+    return rows.where((a) {
+      final start = parseUtcToLocal(a['startUtc']);
+      if (start == null) return false;
+      final day = DateUtils.dateOnly(start);
+      return !day.isBefore(r.start) && day.isBefore(r.end);
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _filteredAppointments(_DayData data) =>
+      _applyFilters(data.appointments);
+
+  /// Personel ve "iptalleri göster" süzgeçleri — takvim de özet şeridi de aynı kuralı kullanır.
+  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> rows) {
+    return rows.where((a) {
       if (_selectedStaffId != null &&
           '${a['staffMemberId']}' != _selectedStaffId) {
         return false;
@@ -2038,8 +2167,29 @@ class _Ev {
 // Stats bar
 // ---------------------------------------------------------------------------
 class _StatsBar extends StatelessWidget {
-  const _StatsBar({required this.appointments});
+  const _StatsBar({
+    required this.appointments,
+    required this.period,
+    required this.onKind,
+    required this.onPickCustom,
+    required this.loading,
+    required this.failed,
+  });
   final List<Map<String, dynamic>> appointments;
+  final PeriodValue period;
+  final ValueChanged<PeriodKind> onKind;
+  final VoidCallback onPickCustom;
+  final bool loading;
+
+  /// Dönem çekilemedi: aşağıdaki sıfırlar veri DEĞİL, eksik veridir.
+  final bool failed;
+
+  static const _kinds = <(PeriodKind, String)>[
+    (PeriodKind.day, 'Gün'),
+    (PeriodKind.month, 'Ay'),
+    (PeriodKind.year, 'Yıl'),
+    (PeriodKind.custom, 'Özel'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -2064,46 +2214,144 @@ class _StatsBar extends StatelessWidget {
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _StatPill(
-              color: AppColors.primary,
-              value: total,
-              label: 'randevu',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ÖZETİN KENDİ DÖNEMİ — üstteki Gün/Hafta/Ay sekmeleri TAKVİMİ, buradaki çipler
+          // yalnız aşağıdaki rakamları yönetir. "Özet" öneki ikisini birbirine karıştırmasın diye.
+          // Satır kaydırılabilir: dar telefonda/büyük yazı tipinde taşma çizgileri çıkmasın.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const Text(
+                  'Özet',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                for (final it in _kinds)
+                  _PeriodChip(
+                    label: it.$2,
+                    selected: period.kind == it.$1,
+                    onTap: () => it.$1 == PeriodKind.custom
+                        ? onPickCustom()
+                        : onKind(it.$1),
+                  ),
+                if (loading)
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (!loading && failed)
+                  const Text(
+                    'Dönem yüklenemedi — sayılar eksik',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFE05252),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: 14),
-            _StatPill(
-              color: const Color(0xFF3CCB6E),
-              value: done,
-              label: 'tamamlandı',
+          ),
+          const SizedBox(height: 6),
+          // Dönem etiketi rakamlarla AYNI satırda kayar: ekranın dibindeki bu şerit takvimden
+          // yer çalmasın diye üçüncü bir satır açılmadı (şeridin tamamı ~2 satır kalır).
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Text(
+                  period.label(),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text('·', style: TextStyle(color: AppColors.muted)),
+                const SizedBox(width: 10),
+                _StatPill(
+                  color: AppColors.primary,
+                  value: total,
+                  label: 'randevu',
+                ),
+                const SizedBox(width: 14),
+                _StatPill(
+                  color: const Color(0xFF3CCB6E),
+                  value: done,
+                  label: 'tamamlandı',
+                ),
+                const SizedBox(width: 14),
+                _StatPill(
+                  color: const Color(0xFF4A86E8),
+                  value: waiting,
+                  label: 'bekleyen',
+                ),
+                const SizedBox(width: 14),
+                _StatPill(
+                  color: const Color(0xFFF5A623),
+                  value: cancelled,
+                  label: 'iptal',
+                ),
+                const SizedBox(width: 14),
+                _StatPill(
+                  color: const Color(0xFFE05252),
+                  value: noShow,
+                  label: 'gelmedi',
+                ),
+                // FAB genişliği kadar boşluk: son rakam kayan butonun altında kalmasın.
+                const SizedBox(width: 170),
+              ],
             ),
-            const SizedBox(width: 14),
-            _StatPill(
-              color: const Color(0xFF4A86E8),
-              value: waiting,
-              label: 'bekleyen',
-            ),
-            const SizedBox(width: 14),
-            _StatPill(
-              color: const Color(0xFFF5A623),
-              value: cancelled,
-              label: 'iptal',
-            ),
-            const SizedBox(width: 14),
-            _StatPill(
-              color: const Color(0xFFE05252),
-              value: noShow,
-              label: 'gelmedi',
-            ),
-            // FAB genişliği kadar boşluk: son rakam kayan butonun altında kalmasın.
-            const SizedBox(width: 170),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// Özet şeridindeki dönem çipi. Tema düğmesi DEĞİL: tema minimumSize'ı satır içinde
+/// düğmeyi sonsuz genişliğe zorluyor (yazı harf harf sarılıyor), o yüzden dokunma
+/// hedefi elle kuruluyor.
+class _PeriodChip extends StatelessWidget {
+  const _PeriodChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.primary : Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: selected ? Colors.white : AppColors.ink,
+        ),
+      ),
+    ),
+  );
 }
 
 class _StatPill extends StatelessWidget {

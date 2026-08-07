@@ -41,11 +41,13 @@ import {
   normalizeStaffTimeOff,
   normalizeWaitlistEntry,
 } from '@/lib/apiMappers'
+import { describeRange, describeRangeShort, fromDateInput } from '@/lib/reportRanges'
 import {
   Activity,
   Calendar,
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   CheckCircle2,
   FileText,
   Mail,
@@ -221,28 +223,135 @@ function AvatarBubble({ name }: { name: string }) {
   )
 }
 
+/** Üst özet kartının dönemi. Kartın kendi süzgecidir; takvimi/listeyi etkilemez. */
+type BandPreset = 'day' | 'month' | 'year' | 'custom'
+
+const bandPresetLabels: Record<BandPreset, string> = {
+  day: 'Gün',
+  month: 'Ay',
+  year: 'Yıl',
+  custom: 'Özel',
+}
+
+interface BandRange {
+  /** Dahil — yerel gün anahtarı (YYYY-AA-GG). */
+  fromIso: string
+  /** HARİÇ — yerel gün anahtarı (yarı açık aralık: [fromIso, toIso)). */
+  toIso: string
+  /** Kartın başlığı: "7 Ağustos Cuma" · "Ağustos 2026" · "2026" · "01 Tem — 09 Ağu". */
+  label: string
+  /** Başlığın altındaki tam aralık metni. */
+  hint: string
+}
+
+/** Yerel gün anahtarına gün ekler (ay/yıl taşmasını Date halleder, saat ekseni hiç kullanılmaz). */
+function addIsoDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return isoDateOnly(new Date(y || 1970, (m || 1) - 1, (d || 1) + days))
+}
+
 /**
- * GÜN ÖZETİ BANDI — sayfanın en üstünde, tam genişlikte tek şerit.
+ * Kartın aralığını çözer.
+ *
+ * <p><code>reportRanges.resolvePeriod</code> BİLEREK kullanılmadı: o her zaman "bugün + offset"
+ * ekseninde çalışır, bu sayfanın çapası ise takvimde SEÇİLİ GÜN ve GEZİLEN AY'dır. Mayıs'a gidip
+ * "Ay" seçilince kart Mayıs'ı, takvimde 12'ye tıklanınca "Gün" kartı 12'yi göstermeli.</p>
+ *
+ * <p>Hesap baştan sona yerel gün anahtarı (YYYY-AA-GG) üzerinden yapılır; randevu satırlarının
+ * <code>date</code> alanı da yerel gündür. Date/UTC eksenine geçmek dosyanın başında iki kez
+ * uyarılan gün kaymasını geri getirir.</p>
+ */
+function resolveBandRange(
+  preset: BandPreset,
+  selectedDateIso: string,
+  monthDate: Date,
+  custom: { from: string; to: string },
+): BandRange {
+  const describe = (fromIso: string, toIso: string): string => {
+    const from = fromDateInput(fromIso)
+    const to = fromDateInput(toIso)
+    return from && to ? describeRange({ from, to }) : ''
+  }
+
+  if (preset === 'month') {
+    const fromIso = isoDateOnly(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1))
+    const toIso = isoDateOnly(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))
+    return { fromIso, toIso, label: monthLabel(fromIso), hint: describe(fromIso, toIso) }
+  }
+
+  if (preset === 'year') {
+    const year = monthDate.getFullYear()
+    const fromIso = isoDateOnly(new Date(year, 0, 1))
+    const toIso = isoDateOnly(new Date(year + 1, 0, 1))
+    return { fromIso, toIso, label: `${year}`, hint: describe(fromIso, toIso) }
+  }
+
+  if (preset === 'custom') {
+    // Kutulardaki BİTİŞ dahildir; iç aralık yarı açık olduğu için bir gün ileri alınır.
+    // Bitiş başlangıcın önüne çekilirse aralık tek güne düşer — ters/boş pencere üretilmez.
+    const fromIso = custom.from
+    const endIso = custom.to < custom.from ? custom.from : custom.to
+    const toIso = addIsoDays(endIso, 1)
+    const from = fromDateInput(fromIso)
+    const to = fromDateInput(toIso)
+    return {
+      fromIso,
+      toIso,
+      label: from && to ? describeRangeShort({ from, to }) : 'Özel aralık',
+      hint: describe(fromIso, toIso),
+    }
+  }
+
+  const toIso = addIsoDays(selectedDateIso, 1)
+  return {
+    fromIso: selectedDateIso,
+    toIso,
+    label: dayTitle(selectedDateIso),
+    hint: describe(selectedDateIso, toIso),
+  }
+}
+
+/**
+ * DÖNEM ÖZETİ BANDI — sayfanın en üstünde, tam genişlikte tek şerit.
  *
  * <p>Öncesinde burada AY kapsamlı dört ayrı kart (sparkline'lı) vardı ve gün özeti takvimin
  * ALTINDA dar bir sütunda duruyordu: aynı statü sayıları iki farklı kapsamda iki kez okunuyordu.
  * Kartlar kaldırıldı, gün özeti yukarı alındı. Dar sütun için tasarlanmış dikey yığın tam
- * genişlikte çok boş duracağı için düzen yataya çevrildi: solda tarih + büyük rakam + tutar,
+ * genişlikte çok boş duracağı için düzen yataya çevrildi: solda büyük rakam + tutar,
  * sağda statü kırılımı, altta oran şeridi.</p>
+ *
+ * <p>Kartın BAŞINDA kendi dönem süzgeci vardır: Gün · Ay · Yıl · Özel. Süzgeç YALNIZ bu kartı
+ * yönetir — takvim ve alttaki liste kendi kapsamlarında kalır; böylece "bugün ne var" ile
+ * "bu yıl ne oldu" aynı ekranda, yer değiştirmeden okunur.</p>
  */
-function DaySummaryBand({
-  label,
+function PeriodSummaryBand({
+  preset,
+  onPresetChange,
+  custom,
+  onCustomChange,
+  range,
   total,
   counts,
   totalAmount,
   segments,
+  loading,
+  error,
 }: {
-  label: string
+  preset: BandPreset
+  onPresetChange: (next: BandPreset) => void
+  /** Özel aralık kutuları — bitiş DAHİL okunur (kullanıcı "9 Ağustos'a kadar" der). */
+  custom: { from: string; to: string }
+  onCustomChange: (next: { from: string; to: string }) => void
+  range: BandRange
   total: number
   counts: Record<AppointmentStatusKey, number>
   totalAmount: number
   segments: { key: AppointmentStatusKey; tone: StatusTone; count: number; pct: number }[]
+  loading: boolean
+  /** Dolu ise dönem çekilemedi: aşağıdaki sıfırlar veri DEĞİL, eksik veridir. */
+  error: string
 }) {
+  const presets: BandPreset[] = ['day', 'month', 'year', 'custom']
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -252,17 +361,109 @@ function DaySummaryBand({
     >
       <span aria-hidden className="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
 
+      {/* --- KARTIN BAŞI: dönem etiketi + Gün/Ay/Yıl/Özel süzgeci --- */}
+      <div className="relative mb-5 flex flex-col gap-3 border-b border-[#f3e4ea] pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+            <Calendar className="h-4 w-4" strokeWidth={1.7} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold tracking-tight text-[#241923]">{range.label}</div>
+            <div className="truncate text-[11px] font-medium text-[#8a7480]">{range.hint}</div>
+          </div>
+          <AnimatePresence>
+            {loading && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f0d9e2] bg-[#fff1f6] px-2.5 py-1 text-[10.5px] font-semibold text-[#a34a62]"
+              >
+                <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#c05277]" />
+                Dönem yükleniyor
+              </motion.span>
+            )}
+            {!loading && error && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                title={error}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10.5px] font-semibold text-rose-700"
+              >
+                <XCircle className="h-3 w-3" strokeWidth={2.1} />
+                Dönem yüklenemedi — sayılar eksik
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPresetChange(p)}
+                className={`relative rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
+                  preset === p ? 'text-white' : 'text-[#705a66] hover:text-[#a34a62]'
+                }`}
+              >
+                {preset === p && (
+                  <motion.span
+                    // Rapor çubuğundaki pille AYNI layoutId kullanılamaz: aynı id iki ayrı
+                    // bileşende yaşarsa Framer pili ekranlar arasında uçurur.
+                    layoutId="randevu-ozet-donem-pill"
+                    className="absolute inset-0 rounded-full bg-[#c05277] shadow-[0_10px_22px_-16px_rgba(192,82,119,0.9)]"
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <span className="relative">{bandPresetLabels[p]}</span>
+              </button>
+            ))}
+          </div>
+
+          <AnimatePresence initial={false}>
+            {preset === 'custom' && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                className="inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-[#efe1e7] bg-white px-2.5 py-1.5"
+              >
+                <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[#c05277]" strokeWidth={1.8} />
+                <input
+                  type="date"
+                  aria-label="Başlangıç tarihi"
+                  value={custom.from}
+                  max={custom.to}
+                  onChange={(e) => {
+                    if (e.target.value) onCustomChange({ ...custom, from: e.target.value })
+                  }}
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                />
+                <span className="text-[11px] text-[#a3576f]">→</span>
+                <input
+                  type="date"
+                  aria-label="Bitiş tarihi"
+                  value={custom.to}
+                  min={custom.from}
+                  onChange={(e) => {
+                    if (e.target.value) onCustomChange({ ...custom, to: e.target.value })
+                  }}
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
       <div className="relative flex flex-col gap-5 xl:flex-row xl:items-center xl:gap-8">
-        {/* Sol: tarih + gün toplamı + tutar */}
+        {/* Sol: dönem toplamı + tutar */}
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5 xl:flex-col xl:items-start xl:gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
-                <Calendar className="h-4 w-4" strokeWidth={1.7} />
-              </span>
-              <span className="text-[13px] font-semibold tracking-tight text-[#c85776]">{label}</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5">
               <span className="font-display text-[38px] font-bold leading-none tracking-tight text-[#241923] tabular-nums">
                 <AnimatedNumber value={total} />
               </span>
@@ -392,6 +593,14 @@ function RandevularPageInner() {
   const today = new Date()
   const [monthDate, setMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDay, setSelectedDay] = useState<number>(today.getDate())
+  // ÜST ÖZET KARTININ DÖNEM SÜZGECİ. `null` = kullanıcı henüz seçim yapmadı; kart o zaman sol
+  // menüden gelen kapsamı (?scope=) izler, böylece "Bugün / Bu hafta / Bekleyenler" bağlantıları
+  // eskisi gibi çalışır. Kullanıcı bir pile bastığı anda seçim yapışır ve kapsam değişse de kalır.
+  const [bandPreset, setBandPreset] = useState<BandPreset | null>(null)
+  const [bandCustom, setBandCustom] = useState<{ from: string; to: string }>(() => ({
+    from: isoDateOnly(new Date(today.getFullYear(), today.getMonth(), 1)),
+    to: isoDateOnly(today),
+  }))
   const [actionError, setActionError] = useState<string>('')
   // Editor dialog state
   const [createOpen, setCreateOpen] = useState(false)
@@ -763,6 +972,85 @@ function RandevularPageInner() {
           ? 'Tüm bekleyenler'
           : dayTitle(selectedDate)
 
+  // ---------------------------------------------------------------------------
+  // ÜST ÖZET KARTININ DÖNEMİ (Gün · Ay · Yıl · Özel)
+  // ---------------------------------------------------------------------------
+  /**
+   * Kullanıcı süzgece dokunmadıysa kart sol menüden gelen kapsamı gösterir: Bugün → gün,
+   * Bu hafta → o haftanın aralığı, Bu ay → takvimde seçili gün (kartın eski davranışı),
+   * Bekleyenler → ay. "Bekleyenler"de kart AYIN TAMAMINI özetler, alttaki liste yalnız
+   * bekleyenleri listeler; rozet listenin kapsamını, kart da kendi dönemini yazdığı için
+   * ikisi karışmaz.
+   */
+  const scopeBandPreset: BandPreset = scope === 'week' ? 'custom' : scope === 'pending' ? 'month' : 'day'
+  const effectiveBandPreset: BandPreset = bandPreset ?? scopeBandPreset
+  // "Bugün" kapsamında çapa BUGÜNdür: takvimden başka bir gün seçilmiş olsa bile kart, listenin
+  // gösterdiği günü özetlemeli.
+  const bandAnchorIso = bandPreset === null && scope === 'today' ? todayIso : selectedDate
+  const effectiveBandCustom =
+    bandPreset === null && scope === 'week'
+      ? { from: isoDateOnly(weekStart), to: addIsoDays(isoDateOnly(weekStart), 6) }
+      : bandCustom
+  const bandRange = resolveBandRange(effectiveBandPreset, bandAnchorIso, monthDate, effectiveBandCustom)
+
+  /**
+   * Yüklü veri penceresi aydan ±7 gün geniştir (bkz. fetchStart/fetchEnd). Kartın aralığı bunun
+   * DIŞINA taşıyorsa (Yıl ya da geniş bir özel aralık) o dönem ayrıca çekilir; içindeyse zaten
+   * elimizdeki liste süzülür — ikinci istek atılmaz. Sayım tek kod yolundan geçtiği için "Gün" ile
+   * "Yıl" arasında statü eşlemesi ayrışamaz.
+   */
+  const loadedFromIso = isoDateOnly(fetchStart)
+  const loadedToIso = isoDateOnly(fetchEnd)
+  const bandNeedsFetch = bandRange.fromIso < loadedFromIso || bandRange.toIso > loadedToIso
+
+  // HATA MUTLAKA GÖSTERİLİR: istek düşerse useApiQuery veriyi başlangıç değerine ([]) çeker,
+  // kart da "0 randevu / hepsi 0" gösterirdi — bu, işletme hakkında YANLIŞ bir cümledir
+  // ("2026'da hiç randevu yok"). Sıfırlar bu kartta gerçek boşluktan ayırt edilemez.
+  const { data: bandData, loading: bandLoading, error: bandError } = useApiQuery<ApiAppointment[]>(
+    async () => {
+      const from = fromDateInput(bandRange.fromIso)
+      const to = fromDateInput(bandRange.toIso)
+      if (!from || !to) return []
+      // Bitiş 1 ms geri alınır: backend toUtc'yi KAPSAYICI (<=) uyguluyor, sınırdaki randevu iki
+      // dönemde birden sayılmasın (ana sorgudaki kuralın aynısı).
+      return fetchAllPaged<ApiAppointment>(
+        (page, pageSize) =>
+          adminApi.appointments<ApiAppointment>({
+            tenantId,
+            fromUtc: from.toISOString(),
+            toUtc: new Date(to.getTime() - 1).toISOString(),
+            page,
+            pageSize,
+          }),
+        500,
+      )
+    },
+    [tenantId, bandRange.fromIso, bandRange.toIso, bandNeedsFetch],
+    { initialData: [], enabled: bandNeedsFetch },
+  )
+
+  const bandAppointments = useMemo<Appointment[]>(() => {
+    const source = bandNeedsFetch
+      ? (bandData || []).map((a, i) => normalizeAppointment(a, apiLookups, i))
+      : appointments
+    // Süzgeç yerel gün anahtarı üzerinden: `r.date` de yerel gündür, ISO metinleri sözlük
+    // sırasında karşılaştırılabilir. Date'e çevirmek UTC kaymasını geri getirir.
+    return source.filter((r) => r.date >= bandRange.fromIso && r.date < bandRange.toIso)
+  }, [bandNeedsFetch, bandData, apiLookups, appointments, bandRange.fromIso, bandRange.toIso])
+
+  const changeBandPreset = (next: BandPreset): void => {
+    // "Özel"e geçerken kutular O ANDA görünen aralıkla dolar: kullanıcı sıfırdan tarih yazmak
+    // yerine mevcut pencereyi kenarından esnetir.
+    if (next === 'custom') setBandCustom({ from: bandRange.fromIso, to: addIsoDays(bandRange.toIso, -1) })
+    setBandPreset(next)
+  }
+
+  const changeBandCustom = (next: { from: string; to: string }): void => {
+    setBandCustom(next)
+    // Kapsamdan türetilmiş aralık düzenlenirse seçim kullanıcının olur.
+    setBandPreset('custom')
+  }
+
   const moveMonth = (delta: number): void => {
     setMonthDate((current) => {
       const next = new Date(current.getFullYear(), current.getMonth() + delta, 1)
@@ -1024,20 +1312,20 @@ function RandevularPageInner() {
   }
 
   // Gün özeti kartı: durum dağılımı, toplam tutar ve yüzdelik segmentler
-  const dayCounts: Record<AppointmentStatusKey, number> = {
-    tamamlandi: selectedAppointments.filter((r) => r.status === 'tamamlandi').length,
-    devam: selectedAppointments.filter((r) => r.status === 'devam').length,
-    bekliyor: selectedAppointments.filter((r) => r.status === 'bekliyor').length,
-    taslak: selectedAppointments.filter((r) => r.status === 'taslak').length,
-    iptal: selectedAppointments.filter((r) => r.status === 'iptal').length,
-    islemde: selectedAppointments.filter((r) => r.status === 'islemde').length,
+  const bandCounts: Record<AppointmentStatusKey, number> = {
+    tamamlandi: bandAppointments.filter((r) => r.status === 'tamamlandi').length,
+    devam: bandAppointments.filter((r) => r.status === 'devam').length,
+    bekliyor: bandAppointments.filter((r) => r.status === 'bekliyor').length,
+    taslak: bandAppointments.filter((r) => r.status === 'taslak').length,
+    iptal: bandAppointments.filter((r) => r.status === 'iptal').length,
+    islemde: bandAppointments.filter((r) => r.status === 'islemde').length,
   }
-  const dayTotalAmount = selectedAppointments.reduce((sum, r) => sum + Number(r.price || 0), 0)
-  const daySegments = statusToneOrder
+  const bandTotalAmount = bandAppointments.reduce((sum, r) => sum + Number(r.price || 0), 0)
+  const bandSegments = statusToneOrder
     .map((key) => ({
       key,
-      count: dayCounts[key],
-      pct: selectedAppointments.length ? Math.round((dayCounts[key] / selectedAppointments.length) * 100) : 0,
+      count: bandCounts[key],
+      pct: bandAppointments.length ? Math.round((bandCounts[key] / bandAppointments.length) * 100) : 0,
       tone: statusTone[key],
     }))
     .filter((segment) => segment.count > 0)
@@ -1164,17 +1452,24 @@ function RandevularPageInner() {
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{staffActionMsg}</div>
         )}
 
-        {/* GÜN ÖZETİ — sayfanın en üstünde, tam genişlikte tek bant.
+        {/* DÖNEM ÖZETİ — sayfanın en üstünde, tam genişlikte tek bant.
             Eskiden burada AY kapsamlı dört kart (Bu ay toplam / Tamamlanan / Bekleyen / Kayıp)
             vardı ve gün özeti takvimin ALTINDA, dar bir sütunda duruyordu. İkisi aynı sayıları
             iki farklı kapsamda tekrarlıyordu; kullanıcı mükerrerliği kaldırıp gün özetini üste
-            istedi. Ayın toplamı/tamamlananı hâlâ takvim başlığındaki satırda duruyor. */}
-        <DaySummaryBand
-          label={listHeaderLabel}
-          total={selectedAppointments.length}
-          counts={dayCounts}
-          totalAmount={dayTotalAmount}
-          segments={daySegments}
+            istedi. Artık kartın başında kendi dönem süzgeci var (Gün · Ay · Yıl · Özel); süzgeç
+            takvimi ve alttaki listeyi DEĞİŞTİRMEZ, yalnız bu kartın sayılarını yönetir. */}
+        <PeriodSummaryBand
+          preset={effectiveBandPreset}
+          onPresetChange={changeBandPreset}
+          custom={effectiveBandCustom}
+          onCustomChange={changeBandCustom}
+          range={bandRange}
+          total={bandAppointments.length}
+          counts={bandCounts}
+          totalAmount={bandTotalAmount}
+          segments={bandSegments}
+          loading={bandNeedsFetch && bandLoading}
+          error={bandNeedsFetch ? bandError : ''}
         />
 
         {showCalendar && (
@@ -1542,9 +1837,15 @@ function RandevularPageInner() {
                   <Calendar className="h-4 w-4" strokeWidth={1.7} />
                 </span>
                 <div>
-                  {/* Alt satır KALDIRILDI: tarih ve kayıt sayısı sayfanın üstündeki gün özeti
-                      bandında zaten duruyor, burada tekrarı mükerrerdi. */}
+                  {/* Alt satır GERİ GELDİ: üstteki bant artık kendi dönemini gösterebiliyor
+                      (ör. "2026"), dolayısıyla bu listenin hangi günü/kapsamı listelediğini
+                      söyleyen tek yer burası. Mükerrerlik gerekçesi ortadan kalktı. */}
                   <h2 className="text-[15px] font-semibold tracking-tight text-[#241923]">Randevu çizelgesi</h2>
+                  <p className="mt-0.5 text-[11.5px] text-[#8a7480]">
+                    {listHeaderLabel}
+                    <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
+                    <span className="font-semibold text-[#241923]">{selectedAppointments.length}</span> kayıt
+                  </p>
                 </div>
               </div>
             </div>
