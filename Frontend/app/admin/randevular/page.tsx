@@ -46,7 +46,6 @@ import {
   Calendar,
   CalendarDays,
   CalendarPlus,
-  CalendarX2,
   CheckCircle2,
   FileText,
   Mail,
@@ -222,84 +221,116 @@ function AvatarBubble({ name }: { name: string }) {
   )
 }
 
-function SparkArea({ values, id }: { values: number[]; id: string }) {
-  const max = Math.max(1, ...values)
-  const W = 110
-  const H = 52
-  const pts = values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * (W - 10) + 5
-    const y = H - 9 - (value / max) * (H - 20)
-    return [Number(x.toFixed(1)), Number(y.toFixed(1))] as const
-  })
-  const line = pts.map(([x, y]) => `${x},${y}`).join(' ')
-  const area = `5,${H - 5} ${line} ${W - 5},${H - 5}`
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-[52px] w-[110px] shrink-0" aria-hidden>
-      <defs>
-        <linearGradient id={`spark-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ef6f94" stopOpacity="0.32" />
-          <stop offset="100%" stopColor="#ef6f94" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill={`url(#spark-${id})`} />
-      <polyline
-        points={line}
-        fill="none"
-        stroke="#d65f83"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {pts.map(([x, y], index) => (
-        <circle key={`${x}-${index}`} cx={x} cy={y} r="2" fill="#fff" stroke="#d65f83" strokeWidth="1.1" />
-      ))}
-    </svg>
-  )
-}
-
-function MetricStat({
-  icon: Icon,
+/**
+ * GÜN ÖZETİ BANDI — sayfanın en üstünde, tam genişlikte tek şerit.
+ *
+ * <p>Öncesinde burada AY kapsamlı dört ayrı kart (sparkline'lı) vardı ve gün özeti takvimin
+ * ALTINDA dar bir sütunda duruyordu: aynı statü sayıları iki farklı kapsamda iki kez okunuyordu.
+ * Kartlar kaldırıldı, gün özeti yukarı alındı. Dar sütun için tasarlanmış dikey yığın tam
+ * genişlikte çok boş duracağı için düzen yataya çevrildi: solda tarih + büyük rakam + tutar,
+ * sağda statü kırılımı, altta oran şeridi.</p>
+ */
+function DaySummaryBand({
   label,
-  value,
-  hint,
-  spark,
-  id,
-  index = 0,
+  total,
+  counts,
+  totalAmount,
+  segments,
 }: {
-  icon: LucideIcon
   label: string
-  value: ReactNode
-  /** Rakamın altındaki kırılım satırı (ör. "3 gelmedi · 5 iptal"). Verilmezse hiç çizilmez. */
-  hint?: ReactNode
-  spark: number[]
-  id: string
-  index?: number
+  total: number
+  counts: Record<AppointmentStatusKey, number>
+  totalAmount: number
+  segments: { key: AppointmentStatusKey; tone: StatusTone; count: number; pct: number }[]
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.44, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className={`${metricCardShell} p-5`}
     >
-      <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-[#ffdce8]/40 blur-3xl" />
-      <div className="relative flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <span className="grid h-10 w-10 place-items-center rounded-[13px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
-            <Icon className="h-[17px] w-[17px]" strokeWidth={1.7} />
-          </span>
-          <div className="mt-3 text-[12px] font-medium text-[#8a7480]">{label}</div>
-          <div className="mt-1 text-[28px] font-semibold leading-none tracking-tight text-[#241923] tabular-nums">
-            {value}
+      <span aria-hidden className="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
+
+      <div className="relative flex flex-col gap-5 xl:flex-row xl:items-center xl:gap-8">
+        {/* Sol: tarih + gün toplamı + tutar */}
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5 xl:flex-col xl:items-start xl:gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+                <Calendar className="h-4 w-4" strokeWidth={1.7} />
+              </span>
+              <span className="text-[13px] font-semibold tracking-tight text-[#c85776]">{label}</span>
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-display text-[38px] font-bold leading-none tracking-tight text-[#241923] tabular-nums">
+                <AnimatedNumber value={total} />
+              </span>
+              <span className="text-[15px] font-semibold text-[#241923]">randevu</span>
+            </div>
           </div>
-          {hint && <div className="mt-1.5 text-[11px] font-medium text-[#8a7480]">{hint}</div>}
+
+          <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[#f3e4ea] bg-[#fff8fa] px-3.5 py-2.5 sm:min-w-[190px]">
+            <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
+              <Wallet className="h-3.5 w-3.5 text-[#c85776]" strokeWidth={1.7} />
+              Toplam Tutar
+            </span>
+            <span className="text-[17px] font-semibold tracking-tight text-[#241923] tabular-nums">
+              <AnimatedNumber value={totalAmount} format={(n) => formatTL(Math.round(n))} />
+            </span>
+          </div>
         </div>
-        {/* SİNYAL YOKSA GRAFİK YOK. Seri gerçek veriden geliyor ama ayın tamamı tek güne
-            yığıldığında dört kart da aynı şekli çiziyordu (düz çizgi + sonda ani sıçrama) ve
-            iki ayrı metrik birebir aynı eğriyi veriyordu — uydurma grafik izlenimi.
-            En az iki farklı dolu kova yoksa çizmiyoruz. */}
-        {spark.filter((v) => v > 0).length >= 2 && <SparkArea values={spark} id={id} />}
+
+        {/* Sağ: statü kırılımı + oran şeridi */}
+        <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
+            {statusToneOrder.map((key) => {
+              const tone = statusTone[key]
+              return (
+                <div key={key} className="sm:border-l sm:border-[#f3e4ea] sm:pl-3 sm:first:border-0 sm:first:pl-0">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+                    {tone.label}
+                  </div>
+                  <div className="mt-1.5 text-[22px] font-semibold leading-none tracking-tight text-[#241923] tabular-nums">
+                    <AnimatedNumber value={counts[key]} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-4 flex h-2 w-full gap-1">
+            {segments.length ? (
+              segments.map((segment) => (
+                <motion.span
+                  key={segment.key}
+                  initial={{ scaleX: 0, opacity: 0 }}
+                  animate={{ scaleX: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ width: `${segment.pct}%`, transformOrigin: 'left' }}
+                  className={`h-full rounded-full bg-gradient-to-r ${segment.tone.bar}`}
+                />
+              ))
+            ) : (
+              <span className="h-full w-full rounded-full bg-[#f6ecf0]" />
+            )}
+          </div>
+
+          {segments.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {segments.map((segment) => (
+                <span
+                  key={segment.key}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${segment.tone.pill}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${segment.tone.dot}`} />
+                  {segment.tone.label} %{segment.pct}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   )
@@ -962,57 +993,9 @@ function RandevularPageInner() {
     [noteEditingId, appointments],
   )
 
+  // Takvim başlığındaki ay özeti satırı bu ikisini kullanır (üstteki bant GÜN kapsamlıdır).
   const monthlyTotal = monthAppointments.length
   const completed = monthAppointments.filter((r) => r.status === 'tamamlandi').length
-  const pendingCount = monthAppointments.filter((r) => r.status === 'bekliyor').length
-
-  /* DÖRDÜNCÜ KART: "Tahmini ciro" KALDIRILDI, YERİNE KAYIP RANDEVU.
-     Eski kart randevu fiyatı 0 gelince hizmetin katalog fiyatını topluyordu. Ama 0 fiyatlı
-     randevu neredeyse her zaman PAKET SEANSIDIR ve parası paket satışında zaten tahsil
-     edilmiştir — kart bir daha kasaya girmeyecek tutarı "ciro" diye gösteriyor, gerçek ciroyu
-     (Cari Hesaplar / Raporlar) şişkin gösteriyordu. Randevu defteri paranın yeri değil.
-     Yerine ayın sonucunu TAMAMLAYAN gerçek sayı kondu — dört kart artık bir bütün:
-     Toplam = Tamamlanan + Bekleyen + Kayıp. Oranın paydası ekranda, uydurma bir kapasite
-     varsayımı yok; sayılar doğrudan randevu durumundan geliyor.
-     'iptal' anahtarı Cancelled ile NoShow'u birleştirir (apiMappers.appointmentStatusKey);
-     ham durum ikisini ayırır, böylece "gelmedi" arayüzde ilk kez görünür oluyor — iptal
-     kurumun/müşterinin önceden haber verdiği, gelmedi ise habersiz kaybedilen saattir.
-     rawStatus normalize EDİLMEDEN saklanır ("NoShow"), karşılaştırmadan önce küçültülmeli. */
-  const lostAppointments = monthAppointments.filter((r) => r.status === 'iptal')
-  const noShowCount = lostAppointments.filter((r) => String(r.rawStatus || '').toLowerCase() === 'noshow').length
-  const cancelledCount = lostAppointments.length - noShowCount
-  const lostRate = monthlyTotal ? Math.round((lostAppointments.length / monthlyTotal) * 100) : 0
-
-  // Metrik kartlarındaki sparkline'lar için ay içi günlük seriler (~10 noktaya gruplanır)
-  const sparkSeries = useMemo(() => {
-    const days = range.days
-    const total: number[] = Array(days).fill(0)
-    const done: number[] = Array(days).fill(0)
-    const pending: number[] = Array(days).fill(0)
-    const lost: number[] = Array(days).fill(0)
-    monthAppointments.forEach((r) => {
-      const day = Number(r.date?.slice(8, 10))
-      if (!day || day < 1 || day > days) return
-      total[day - 1] += 1
-      if (r.status === 'tamamlandi') done[day - 1] += 1
-      if (r.status === 'bekliyor') pending[day - 1] += 1
-      if (r.status === 'iptal') lost[day - 1] += 1
-    })
-    // KOVALAR EŞİT UZUNLUKTA DEĞİL: 31 günlük ayda size=4 çıkar, son kovaya yalnız 3 gün düşer.
-    // Toplam alınırsa bu kova yapısal olarak alçak kalıyor ve SparkArea değerleri max'a göre
-    // ölçeklediği için grafik, veride olmayan bir "ay sonu düşüşü" çiziyordu. Toplam yerine
-    // GÜNLÜK ORTALAMA alınır: eğri aynı şekli korur ama kovanın kaç gün taşıdığından etkilenmez.
-    const bucket = (values: number[]): number[] => {
-      const size = Math.ceil(values.length / 10)
-      const out: number[] = []
-      for (let i = 0; i < values.length; i += size) {
-        const slice = values.slice(i, i + size)
-        out.push(slice.reduce((sum, v) => sum + v, 0) / slice.length)
-      }
-      return out
-    }
-    return { total: bucket(total), done: bucket(done), pending: bucket(pending), lost: bucket(lost) }
-  }, [monthAppointments, range.days])
 
   // Hızlı müşteri kaydı — topbar'daki "Yeni Müşteri" ve randevu modalındaki buton aynı akışı kullanır.
   // Oluşan müşteri döndürülür (randevu modalı otomatik seçer); Staff onaya düştüyse null döner.
@@ -1181,52 +1164,18 @@ function RandevularPageInner() {
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{staffActionMsg}</div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricStat
-            index={0}
-            id="toplam"
-            label="Bu ay toplam"
-            value={<AnimatedNumber value={monthlyTotal} />}
-            icon={Calendar}
-            spark={sparkSeries.total}
-          />
-          <MetricStat
-            index={1}
-            id="tamamlanan"
-            label="Tamamlanan"
-            value={<AnimatedNumber value={completed} />}
-            icon={CheckCircle2}
-            spark={sparkSeries.done}
-          />
-          <MetricStat
-            index={2}
-            id="bekleyen"
-            label="Bekleyen"
-            value={<AnimatedNumber value={pendingCount} />}
-            icon={Clock}
-            spark={sparkSeries.pending}
-          />
-          <MetricStat
-            index={3}
-            id="kayip"
-            label="Kayıp randevu"
-            value={
-              <span className="flex items-baseline gap-2">
-                <AnimatedNumber value={lostAppointments.length} />
-                {monthlyTotal > 0 && (
-                  <span className="text-[13px] font-semibold text-[#a15568]">%{lostRate}</span>
-                )}
-              </span>
-            }
-            hint={
-              lostAppointments.length > 0
-                ? `${noShowCount} gelmedi · ${cancelledCount} iptal`
-                : undefined
-            }
-            icon={CalendarX2}
-            spark={sparkSeries.lost}
-          />
-        </div>
+        {/* GÜN ÖZETİ — sayfanın en üstünde, tam genişlikte tek bant.
+            Eskiden burada AY kapsamlı dört kart (Bu ay toplam / Tamamlanan / Bekleyen / Kayıp)
+            vardı ve gün özeti takvimin ALTINDA, dar bir sütunda duruyordu. İkisi aynı sayıları
+            iki farklı kapsamda tekrarlıyordu; kullanıcı mükerrerliği kaldırıp gün özetini üste
+            istedi. Ayın toplamı/tamamlananı hâlâ takvim başlığındaki satırda duruyor. */}
+        <DaySummaryBand
+          label={listHeaderLabel}
+          total={selectedAppointments.length}
+          counts={dayCounts}
+          totalAmount={dayTotalAmount}
+          segments={daySegments}
+        />
 
         {showCalendar && (
         <motion.section
@@ -1575,89 +1524,7 @@ function RandevularPageInner() {
         </motion.section>
         )}
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.3fr)]">
-          {/* GÜN ÖZETİ — durum dağılımı, toplam tutar ve yüzdelik segment barı */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="relative overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white/94 p-6 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]"
-          >
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-[#ffdce8]/45 blur-3xl"
-            />
-            <div className="relative flex items-center gap-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
-                <Calendar className="h-4 w-4" strokeWidth={1.7} />
-              </span>
-              <div className="text-[14px] font-semibold tracking-tight text-[#c85776]">{listHeaderLabel}</div>
-            </div>
-
-            <div className="relative mt-5 flex items-baseline gap-2">
-              <span className="font-display text-[44px] font-bold leading-none tracking-tight text-[#241923] tabular-nums">
-                <AnimatedNumber value={selectedAppointments.length} />
-              </span>
-              <span className="text-[18px] font-semibold text-[#241923]">randevu</span>
-            </div>
-
-            <div className="relative mt-7 grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-4">
-              {statusToneOrder.map((key) => {
-                const tone = statusTone[key]
-                return (
-                  <div key={key} className="sm:border-l sm:border-[#f3e4ea] sm:pl-3 sm:first:border-0 sm:first:pl-0">
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
-                      {tone.label}
-                    </div>
-                    <div className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-[#241923] tabular-nums">
-                      <AnimatedNumber value={dayCounts[key]} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="relative mt-7 flex items-center justify-between gap-3 rounded-[16px] border border-[#f3e4ea] bg-[#fff8fa] px-4 py-3">
-              <span className="flex items-center gap-2 text-[12px] font-medium text-[#8a7480]">
-                <Wallet className="h-3.5 w-3.5 text-[#c85776]" strokeWidth={1.7} />
-                Toplam Tutar
-              </span>
-              <span className="text-[20px] font-semibold tracking-tight text-[#241923] tabular-nums">
-                <AnimatedNumber value={dayTotalAmount} format={(n) => formatTL(Math.round(n))} />
-              </span>
-            </div>
-
-            <div className="relative mt-5 flex h-2.5 w-full gap-1">
-              {daySegments.length ? (
-                daySegments.map((segment) => (
-                  <motion.span
-                    key={segment.key}
-                    initial={{ scaleX: 0, opacity: 0 }}
-                    animate={{ scaleX: 1, opacity: 1 }}
-                    transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                    style={{ width: `${segment.pct}%`, transformOrigin: 'left' }}
-                    className={`h-full rounded-full bg-gradient-to-r ${segment.tone.bar}`}
-                  />
-                ))
-              ) : (
-                <span className="h-full w-full rounded-full bg-[#f6ecf0]" />
-              )}
-            </div>
-
-            <div className="relative mt-4 flex flex-wrap items-center gap-2">
-              {daySegments.map((segment) => (
-                <span
-                  key={segment.key}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${segment.tone.pill}`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${segment.tone.dot}`} />
-                  {segment.tone.label} %{segment.pct}
-                </span>
-              ))}
-            </div>
-          </motion.div>
-
+        <section className="grid gap-5">
           {/* RANDEVU ÇİZELGESİ — zaman çizgili, avatarlı tablo */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -1675,10 +1542,9 @@ function RandevularPageInner() {
                   <Calendar className="h-4 w-4" strokeWidth={1.7} />
                 </span>
                 <div>
+                  {/* Alt satır KALDIRILDI: tarih ve kayıt sayısı sayfanın üstündeki gün özeti
+                      bandında zaten duruyor, burada tekrarı mükerrerdi. */}
                   <h2 className="text-[15px] font-semibold tracking-tight text-[#241923]">Randevu çizelgesi</h2>
-                  <div className="text-[11px] text-[#8a7480]">
-                    {listHeaderLabel} · {selectedAppointments.length} kayıt
-                  </div>
                 </div>
               </div>
             </div>
