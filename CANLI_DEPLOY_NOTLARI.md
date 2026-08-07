@@ -98,6 +98,20 @@
     yalnız KODDA zorlanıyordu; iki backend örneği (ya da eşzamanlı iki istek) aynı işi/mesajı iki kez
     yapabiliyordu. Artık kısıtlar veritabanında.
   - Uygulanmazsa: bildirim/gönderim uçları eksik kolon nedeniyle **500** verir.
+- [ ] ⚠️ **ÖDEME/KONTÖR MIGRATION ZİNCİRİ — SIRAYLA (bir halka atlanırsa sonraki "tablo yok" ile patlar):**
+  1. `AddWhatsAppBillingAndConnection` (`20260722135855`) — WhatsApp kontör altyapısı:
+     `tenant_messaging_wallets`, `wallet_transactions`, `whatsapp_credit_packages`,
+     `whatsapp_credit_purchases`, `whatsapp_pricing_rules`, `whatsapp_billing_settings`.
+     **Bu migration canlıda UYGULANMAMIŞTI** — zincirin tabanı, önce bu gelmeli.
+  2. `SubscriptionPayments` (`20260802194135`) — abonelik tahsilatı: `tenant_payment_methods`
+     (şifreli cardUserKey/cardToken) + `subscription_payments` (deneme defteri, `ConversationId`
+     benzersiz). Uygulanmazsa `/api/admin/billing/*` uçları **500** verir.
+  3. `WhatsAppCreditCardPayment` (`20260807111050`) — kontörün kartla alınabilmesi:
+     `whatsapp_credit_purchases` tablosuna `Provider`, `ConversationId` (**benzersiz**),
+     `ProviderPaymentId`, `PaidAtUtc`. Kolonların hepsi nullable, geriye dönük veri **etkilenmez**
+     (havale yoluyla açılmış eski talepler bu alanları boş taşımaya devam eder).
+  - Doğrulama: `SHOW COLUMNS FROM whatsapp_credit_purchases LIKE 'ConversationId';` bir satır dönmeli
+    ve `SHOW INDEX FROM whatsapp_credit_purchases WHERE Key_name LIKE '%ConversationId%';` `Non_unique=0` olmalı.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
@@ -115,6 +129,45 @@
 - [ ] **`WhatsApp__AppSecret`** = Meta App Secret (env). WhatsApp webhook imza doğrulaması için. **Tanımsızsa canlıda gelen webhook'lar işlenmez** (fail-closed) — gerçek 2 yönlü hatırlatma kullanılıyorsa mutlaka ver. (Meta App Dashboard → Settings → Basic → App Secret.)
 - [ ] **Reverse proxy arkasındaysan gerçek istemci IP'sini aç:** aynı sunucudaki nginx/IIS için ek ayar gerekmez; **cloud LB için** `ForwardedHeaders__TrustAll=true` (LB dış `X-Forwarded-For`'u ezmeli) **veya** `ForwardedHeaders__KnownProxies__0=<lb-ip>`. Yoksa login rate-limit ve audit/güvenlik logları proxy IP'sini görür (tüm kullanıcılar tek kovaya düşer).
 - [ ] **`App__PublicBaseUrl`** = panelin herkese açık adresi (örn. `https://panel.beautyasist.com`). KVKK onay mesajındaki "Metnin tamamı" linki buradan üretilir (`{PublicBaseUrl}/kvkk/{slug}`). **Tanımsızsa mesaja link konmaz** — PDF eki yine gider, sadece link satırı çıkmaz (kırık link göndermektense hiç göndermemek tercih edildi).
+
+### 💳 Ödeme sağlayıcısı (iyzico) — abonelik + WhatsApp kontörü
+
+> Anahtarlar **env değil**, panelden girilir: **Platform → Sistem Ayarları → Ödeme**
+> (`PlatformIntegrationSettings`, şifreli saklanır). Anahtar verilene kadar **simülasyon**
+> sağlayıcısı çalışır — gerçek çekim yapmaz.
+
+**Kullanılan entegrasyon (iyzico başvurusunda beyan edilecek):**
+| Aşama | Yöntem | Uç |
+|---|---|---|
+| İlk ödeme (abonelik) ve kontör alımı | **Ortak Ödeme Sayfası (Checkout Form)** | `/payment/iyzipos/checkoutform/initialize/auth/ecom` |
+| Sonuç doğrulama | Checkout Form detay | `/payment/iyzipos/checkoutform/auth/ecom/detail` |
+| Abonelik yenilemeleri | **Non-3DS + Kart Saklama** | `/payment/auth` (`cardUserKey`+`cardToken`) |
+
+Ürün **iyzico Sanal POS**'tur: Pazaryeri (Marketplace) **değil**, "Pay with iyzico" **değil**,
+iyzico'nun kendi **Abonelik ürünü değil** (yenileme takvimi bizde). Kimlik doğrulama **IYZWSv2
+(HMAC-SHA256)**. Kart verisi hiçbir zaman sunucumuza gelmez (form iyzico'da barındırılır) → PCI
+yükü en hafif seviyede.
+
+- [ ] ⛔ **NON-3DS YETKİSİ ALINMADAN CANLIYA ÇIKMA.** iyzico'da bu yetki **varsayılan kapalıdır** ve
+  risk değerlendirmesiyle ayrıca talep edilir. Verilmezse hata **sinsi** olur: ilk ödemeler (3DS'li
+  Checkout Form) sorunsuz geçer, sistem çalışıyor görünür — ama **saklı karttan yapılan tüm otomatik
+  yenilemeler başarısız olur** ve kurumlar 3 denemeden sonra **askıya alınır**. Başvuruda işi
+  "saklı kartla tekrarlayan tahsilat / abonelik" olarak açıkça belirt.
+- [ ] **Sağlayıcı seçimi + anahtarlar:** `PaymentProvider = "Iyzico"`, apiKey/secretKey,
+  `BaseUrl` = sandbox `https://sandbox-api.iyzipay.com` / canlı `https://api.iyzipay.com`.
+  Her ikisi de `OutboundEndpointGuard` allowlist'inde (SSRF koruması) — başka bir host verilirse istek reddedilir.
+  ⚠️ iyzico seçiliyken anahtar eksikse sistem **sessizce simülasyona düşmez**, akış hata verir (bilerek).
+- [ ] **Dönüş adresi (ReturnUrl)** panelde tanımlı olmalı — ödeme sonrası kullanıcı buraya döner.
+  Boşsa callback JSON döndürür (kullanıcı boş sayfa görür, hata gizlenmesin diye bilinçli).
+- [ ] **Callback uçları herkese açık olmalı** (kimlik doğrulaması yok, güvenlik tahmin edilemez form
+  anahtarının sağlayıcıya SORULARAK doğrulanmasına dayanır). Proxy/WAF bunları engellememeli:
+  - `POST|GET /api/payments/callback` — abonelik
+  - `POST|GET /api/payments/credit-callback` — WhatsApp kontörü
+- [ ] **Kontör satın alma iki yolludur:** kartla (anında yüklenir) ve havale/talep (platform admin
+  onaylayınca yüklenir). Havale yolu kaldırılmadı; `whatsapp_billing_settings.AutoApproveTopUps`
+  açıksa talep anında onaylanır — **canlıda bunu açık bırakma**, kartsız bedava kontör demektir.
+- [ ] Doğrulama (sandbox): kontör satın al → ödeme sayfası → dönüş → cüzdan bakiyesi **bir kez** artmalı,
+  `wallet_transactions`'ta **tek** `TopUp` satırı olmalı. Dönüş sayfasını yenilemek bakiyeyi artırmamalı.
 
 ### Frontend env
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api/proxy` (değişmemeli).
@@ -267,6 +320,19 @@ Pentest/güvenlik denetimi sonrası kapatılan açıklar:
   için fark edilmemiş). Onarıldı + kritik akış testleri eklendi: tenant/şube izolasyonu (query filter), iki seviyeli
   personel yetkisi, blind index arama. 18 → **45 test**. `.github/workflows/ci.yml` ile her push/PR'da backend
   (build --warnaserror + test + bekleyen migration kontrolü), web (typecheck + build) ve mobil (analyze + test) çalışıyor.
+
+- **Para provenance'ı — 7 Ağu 2026:** Satış iptali canlı satırları siler, geri alma yalnız arşiv
+  snapshot'ından kurar. `AccountPayment.SourceAppointmentId` snapshot'ta **taşınmıyordu**: "randevu
+  tamamla + tahsil et → satışı iptal et → iptali geri al" sonunda tahsilat bağsız dönüyor, tamamlamayı
+  geri alma kapısı parayı göremiyor ve tahsilat cari kartta **sahipsiz** kalıyordu. Snapshot şeması +
+  geri yükleme düzeltildi (MariaDB regresyon testi eklendi). Ek migration **gerekmez** — kolon zaten
+  `ApprovalStampExpenseReversalPaymentLink` ile gelmişti, kayıp yalnız arşiv/geri-yükleme yolundaydı.
+- **Çapraz tablo tekrar-oynatma (replay) — 7 Ağu 2026:** Kontör kartla alınabilir olunca para **iki**
+  deftere girmeye başladı (`subscription_payments` + `whatsapp_credit_purchases`), ikisi de aynı iyzico
+  hesabından besleniyor. Tekrar-oynatma kontrolü yalnız kendi tablosuna baktığı için **aynı iyzico
+  ödemesi hem aboneliğe hem kontöre sayılabiliyordu**. Kontrol iki tarafa da, çift yönlü eklendi.
+  ⚠️ **Kalıcı kural:** yeni bir para defteri eklenirse bu kontrol de genişletilmeli — tablolar arasında
+  derleme zamanı bağı yok, elle korunmak zorunda.
 
 ## ⏳ Hâlâ AÇIK (dedike çalışma gerektirir — bkz. kritikbulgular.md)
 
