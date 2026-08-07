@@ -327,7 +327,7 @@ public sealed class AppointmentService : IAppointmentService
 
     public async Task<Result<AppointmentDto>> CreateAsync(Guid tenantId, CreateAppointmentRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
-        var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);
+        var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Appointments, cancellationToken);
         if (limit.IsFailure) return Result<AppointmentDto>.Failure(limit.Error);
 
         // ŞUBE KAPSAMI GÖVDEDEN GELMEZ (bkz. PinnedBranchId). Sabitlenmiş rolde istemcinin

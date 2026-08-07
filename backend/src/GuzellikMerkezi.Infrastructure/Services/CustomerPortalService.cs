@@ -245,7 +245,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
         var (ok, tenantId) = await AuthorizeBranchAsync(identity, request.BranchId, cancellationToken);
         if (!ok) return Result<PortalAppointmentDto>.Failure(Error.NotFound("Şube bulunamadı."));
 
-        var limit = await _usage.CheckLimitAsync(tenantId, "appointments", cancellationToken);
+        var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Appointments, cancellationToken);
         if (limit.IsFailure) return Result<PortalAppointmentDto>.Failure(limit.Error);
 
         var branch = await _db.Branches.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(b => b.Id == request.BranchId, cancellationToken);

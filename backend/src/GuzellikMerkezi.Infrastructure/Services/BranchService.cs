@@ -51,7 +51,7 @@ public sealed class BranchService : IBranchService
 
     public async Task<Result<BranchDto>> CreateAsync(Guid tenantId, UpsertBranchRequest request, CancellationToken cancellationToken = default)
     {
-        var limit = await _usage.CheckLimitAsync(tenantId, "branches", cancellationToken);
+        var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Branches, cancellationToken);
         if (limit.IsFailure) return Result<BranchDto>.Failure(limit.Error);
 
         var tenant = await _db.Tenants.Include(x => x.Branches).FirstOrDefaultAsync(x => x.Id == tenantId, cancellationToken);

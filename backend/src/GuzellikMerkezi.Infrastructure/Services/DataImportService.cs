@@ -43,7 +43,7 @@ public sealed class DataImportService : IDataImportService
         // ---- MÜŞTERİLER --------------------------------------------------------
         if (request.Customers is { Count: > 0 })
         {
-            var limit = await _usage.CheckLimitAsync(tenantId, "customers", cancellationToken);
+            var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Customers, cancellationToken);
             if (limit.IsFailure) return Result<BulkImportResultDto>.Failure(limit.Error);
 
             // Şifreli kolonlarda SQL karşılaştırması çalışmaz — mevcutlar belleğe alınıp
@@ -251,7 +251,7 @@ public sealed class DataImportService : IDataImportService
         // ---- PERSONEL ----------------------------------------------------------
         if (request.Staff is { Count: > 0 })
         {
-            var limit = await _usage.CheckLimitAsync(tenantId, "staff", cancellationToken);
+            var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Staff, cancellationToken);
             if (limit.IsFailure) return Result<BulkImportResultDto>.Failure(limit.Error);
 
             // Ad şifreli olduğundan SQL'de karşılaştırılamaz — mevcutlar belleğe alınıp çözülmüş

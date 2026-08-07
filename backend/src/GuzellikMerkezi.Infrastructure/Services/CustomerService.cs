@@ -729,7 +729,7 @@ FROM (
 
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
-        var limit = await _usage.CheckLimitAsync(tenantId, "customers", cancellationToken);
+        var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Customers, cancellationToken);
         if (limit.IsFailure) return Result<CustomerDto>.Failure(limit.Error);
 
         if (!await _db.Branches.AnyAsync(x => x.TenantId == tenantId && x.Id == request.BranchId, cancellationToken))

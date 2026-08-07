@@ -1,6 +1,31 @@
 namespace GuzellikMerkezi.Application.Features.Usage;
 
 /// <summary>
+/// PAKET LİMİTİ METRİK ANAHTARLARI — TEK KAYNAK.
+///
+/// <para>
+/// Anahtarlar çağrı yerlerine serbest metin olarak dağılmıştı ve limit kontrolü, eşleşmeyen
+/// anahtarda SESSİZCE "sınır yok" diyordu: bir yazım hatası ya da metriğin yeniden adlandırılması
+/// o paket limitini tamamen devre dışı bırakır, hiçbir yerde de iz bırakmazdı. Sabitler burada
+/// toplanır; <c>CheckLimitAsync</c> bilinmeyen anahtarda artık fail-fast yapar.
+/// </para>
+/// </summary>
+public static class UsageMetricKeys
+{
+    public const string Branches = "branches";
+    public const string Staff = "staff";
+    public const string Customers = "customers";
+    public const string Appointments = "appointments";
+    public const string Sms = "sms";
+    public const string WhatsApp = "whatsapp";
+    public const string Email = "email";
+
+    /// <summary>Üretilen metriklerin tamamı — kapı ve doğrulama bu listeyi kullanır.</summary>
+    public static readonly string[] All =
+        [Branches, Staff, Customers, Appointments, Sms, WhatsApp, Email];
+}
+
+/// <summary>
 /// Bir metrikin gerçek kullanımı vs paket limiti. -1 limit = sınırsız.
 /// </summary>
 public sealed record UsageMetric(string Key, string Label, int Used, int Limit)

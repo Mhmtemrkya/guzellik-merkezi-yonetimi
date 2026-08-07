@@ -104,7 +104,7 @@ public sealed class StaffService : IStaffService
 
     public async Task<Result<StaffWithCredentialsDto>> CreateAsync(Guid tenantId, CreateStaffRequest request, CancellationToken cancellationToken = default)
     {
-        var limit = await _usage.CheckLimitAsync(tenantId, "staff", cancellationToken);
+        var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Staff, cancellationToken);
         if (limit.IsFailure) return Result<StaffWithCredentialsDto>.Failure(limit.Error);
 
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, cancellationToken);

@@ -156,12 +156,12 @@ public sealed class NotificationService : INotificationService
         // Aylık kota kontrolü — gönderim ÖNCESİ. SMS ve E-posta metrelidir (kota dolmuşsa 409 döner).
         if (template.Channel == NotificationChannel.Sms)
         {
-            var limit = await _usage.CheckLimitAsync(tenantId, "sms", ct);
+            var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Sms, ct);
             if (limit.IsFailure) return Result<SendNotificationResultDto>.Failure(limit.Error);
         }
         else if (template.Channel == NotificationChannel.Email)
         {
-            var limit = await _usage.CheckLimitAsync(tenantId, "email", ct);
+            var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Email, ct);
             if (limit.IsFailure) return Result<SendNotificationResultDto>.Failure(limit.Error);
         }
 

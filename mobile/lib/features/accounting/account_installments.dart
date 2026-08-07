@@ -37,7 +37,15 @@ class AccountInstallment {
   final bool cancelled;
   final bool overdue;
 
-  double get remaining => (amount - paidAmount) < 0 ? 0 : amount - paidAmount;
+  /// Kalan borç — KURAL BACKEND İLE AYNI OLMALI (`AccountInstallment.RemainingAmount`):
+  /// iptal edilmiş taksitin kalanı SIFIRDIR.
+  ///
+  /// Burada `cancelled` yok sayılıyordu: tahsilat dağıtımı iptal edilmişleri zaten süzdüğü için
+  /// para hareketi doğruydu, ama LİSTE satırı iptal edilmiş bir taksiti "Kalan X ₺" diye
+  /// gösteriyordu — aynı kayıt webde kapalı, mobilde açık borç görünüyordu. Aynı iş kuralının iki
+  /// yerde ayrı yazılması tam olarak bu sapmayı üretir (bkz. web-mobil parite kuralı).
+  double get remaining =>
+      cancelled ? 0 : ((amount - paidAmount) < 0 ? 0 : amount - paidAmount);
   bool get isPaid => remaining <= 0.005;
   bool get isPartial => !isPaid && paidAmount > 0.005;
 }

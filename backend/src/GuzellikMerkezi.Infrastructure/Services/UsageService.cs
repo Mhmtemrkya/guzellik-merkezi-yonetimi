@@ -139,7 +139,21 @@ public sealed class UsageService : IUsageService
 
         var metrics = await CalculateMetricsAsync(tenant, ct);
         var metric = metrics.FirstOrDefault(m => string.Equals(m.Key, metricKey, StringComparison.OrdinalIgnoreCase));
-        if (metric is null) return Result.Success(); // Bilinmeyen metrik — kısıtlama yok.
+
+        // BİLİNMEYEN METRİK ANAHTARI = PROGRAMLAMA HATASI, "sınır yok" DEĞİL.
+        //
+        // SOMUT AÇIK: eşleşmeyen anahtar sessizce Success dönüyordu — yani bir yazım hatası ya da
+        // metriğin yeniden adlandırılması, o limitin HİÇ uygulanmadığı anlamına geliyordu ve
+        // hiçbir yerde iz bırakmıyordu. Paket sınırı bu şekilde delinirse fark edilmesi neredeyse
+        // imkânsızdır (kimse "limit çalışmıyor" diye bakmaz). Metrikler koşulsuz üretildiği için
+        // eşleşmeme yalnız çağıranın yanlış anahtar vermesiyle oluşur → fail-fast doğrudur.
+        // Anahtarlar UsageMetricKeys'te toplanmıştır; konvansiyon kapısı çağrı yerlerini denetler.
+        if (metric is null)
+        {
+            throw new InvalidOperationException(
+                $"Bilinmeyen kullanım metriği: '{metricKey}'. Limit kontrolü sessizce atlanamaz — " +
+                $"geçerli anahtarlar: {string.Join(", ", metrics.Select(m => m.Key))}.");
+        }
         if (metric.IsUnlimited) return Result.Success();
         if (metric.Used < metric.Limit) return Result.Success();
 
@@ -188,12 +202,12 @@ public sealed class UsageService : IUsageService
         int appointmentCount, int smsCount, int whatsAppCount, int emailCount)
         => new[]
         {
-            new UsageMetric("branches", "Şube",            branchCount,     plan?.MaxBranches ?? 1),
-            new UsageMetric("staff",    "Personel",        staffCount,      plan?.MaxStaff ?? 5),
-            new UsageMetric("customers","Müşteri",         customerCount,   plan?.MaxCustomers ?? 500),
-            new UsageMetric("appointments","Aylık randevu",appointmentCount,plan?.MaxMonthlyAppointments ?? 500),
-            new UsageMetric("sms",      "Aylık SMS",       smsCount,        plan?.MaxMonthlySmsCount ?? 0),
-            new UsageMetric("whatsapp", "Aylık WhatsApp",  whatsAppCount,   plan?.MaxMonthlyWhatsAppCount ?? 0),
-            new UsageMetric("email",    "Aylık E-posta",   emailCount,      plan?.MaxMonthlyEmailCount ?? 0),
+            new UsageMetric(UsageMetricKeys.Branches, "Şube",            branchCount,     plan?.MaxBranches ?? 1),
+            new UsageMetric(UsageMetricKeys.Staff,    "Personel",        staffCount,      plan?.MaxStaff ?? 5),
+            new UsageMetric(UsageMetricKeys.Customers,"Müşteri",         customerCount,   plan?.MaxCustomers ?? 500),
+            new UsageMetric(UsageMetricKeys.Appointments,"Aylık randevu",appointmentCount,plan?.MaxMonthlyAppointments ?? 500),
+            new UsageMetric(UsageMetricKeys.Sms,      "Aylık SMS",       smsCount,        plan?.MaxMonthlySmsCount ?? 0),
+            new UsageMetric(UsageMetricKeys.WhatsApp, "Aylık WhatsApp",  whatsAppCount,   plan?.MaxMonthlyWhatsAppCount ?? 0),
+            new UsageMetric(UsageMetricKeys.Email,    "Aylık E-posta",   emailCount,      plan?.MaxMonthlyEmailCount ?? 0),
         };
 }
