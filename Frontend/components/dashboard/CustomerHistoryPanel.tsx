@@ -291,7 +291,12 @@ export default function CustomerHistoryPanel({
         desc: ap.islem || 'Hizmet',
         appliedBy: ap.personel || null,
         soldBy: (ap.serviceDefinitionId && soldByService.get(ap.serviceDefinitionId)) || null,
-        trailing: Number(ap.price || 0) > 0 ? formatTL(Number(ap.price)) : 'Hizmet hakkı',
+        // Ücretsiz iş bir HAKTAN karşılanmıştır; "Hizmet hakkı" hepsine aynı adı veriyordu.
+        // Bağı ÇÖZÜLEMEYEN kayıt (satışı iptal edilmiş paket → seans satırı silinmiş) buraya
+        // düşer ve aslında paketten kullanılmıştır: kaynağı doğru yaz.
+        trailing: Number(ap.price || 0) > 0
+          ? formatTL(Number(ap.price))
+          : ap.sourceSessionId ? 'Paketten kullanım' : 'Hizmet hakkı',
         tone: 'plain',
       })
     }

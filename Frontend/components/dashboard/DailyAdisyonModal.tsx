@@ -21,12 +21,9 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { normalizeDailyAdisyon } from '@/lib/apiMappers'
-import { formatTL } from '@/lib/apiMappers'
+import { adisyonItemTypeLabel, formatTL } from '@/lib/apiMappers'
 import type { ApiDailyAdisyon, AdisyonItemTypeKey, DailyAdisyonRow } from '@/lib/types'
 
-const TYPE_LABELS: Record<AdisyonItemTypeKey, string> = {
-  Service: 'Hizmet', Product: 'Ürün', PackageUse: 'Paketten', Extra: 'Ek', Payment: 'Tahsilat', Discount: 'İndirim', PackageSale: 'Paket Satışı',
-}
 const TYPE_TONES: Record<AdisyonItemTypeKey, string> = {
   Service: 'border-sky-200 bg-sky-50 text-sky-700',
   Product: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -162,7 +159,7 @@ export default function DailyAdisyonModal({
       await exportDailyAdisyonToExcel(
         filteredRows.map((r) => ({
           time: r.occurredAtUtc ? timeFmt.format(new Date(r.occurredAtUtc)) : '',
-          typeLabel: TYPE_LABELS[r.type],
+          typeLabel: adisyonItemTypeLabel(r.type, r.coveredByPackage),
           type: r.type,
           description: r.description,
           customerName: r.customerName || '',
@@ -222,7 +219,7 @@ export default function DailyAdisyonModal({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as AdisyonItemTypeKey | '')} className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
                 <option value="">İşlem Türü: Tümü</option>
-                {typeOptions.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                {typeOptions.map((t) => <option key={t} value={t}>{adisyonItemTypeLabel(t)}</option>)}
               </select>
               <select value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
                 <option value="">Personel: Tümü</option>
@@ -354,7 +351,7 @@ function TableRow({ row }: { row: DailyAdisyonRow }) {
     <div className="grid grid-cols-[64px_20px_110px_minmax(0,1fr)_110px_120px] items-center gap-2 border-b border-[#f6ecf1] px-4 py-2.5 transition-colors last:border-b-0 hover:bg-[#fff8fa] max-sm:grid-cols-[52px_minmax(0,1fr)_90px]">
       <span className="font-mono text-[11.5px] font-semibold tabular-nums text-[#5d4a56]">{time}</span>
       <span className={`relative z-10 h-2.5 w-2.5 justify-self-center rounded-full border-2 border-white shadow-[0_0_0_2px_#f0dbe4] max-sm:hidden ${TYPE_DOTS[row.type]}`} />
-      <span className={`w-fit rounded-[7px] border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide max-sm:hidden ${TYPE_TONES[row.type]}`}>{TYPE_LABELS[row.type]}</span>
+      <span className={`w-fit rounded-[7px] border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide max-sm:hidden ${TYPE_TONES[row.type]}`}>{adisyonItemTypeLabel(row.type, row.coveredByPackage)}</span>
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold text-[#241923]">{row.description}</div>
         <div className="truncate text-[11px] text-[#8a7480]">

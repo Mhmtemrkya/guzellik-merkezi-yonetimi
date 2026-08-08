@@ -638,8 +638,8 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
   Widget _itemRow(Map<String, dynamic> it) {
     final line = (it['lineTotal'] as num?)?.toDouble() ?? 0;
     // Fişteki kalem dili burada da geçerli: türün ikonu + tonu.
-    final v = adisyonItemVisual(it['type']);
     final covered = it['coveredByPackage'] == true;
+    final v = adisyonItemVisual(it['type'], coveredByPackage: covered);
     final staff = '${it['staffName'] ?? ''}'.trim();
     return Container(
       margin: const EdgeInsets.only(bottom: 6),

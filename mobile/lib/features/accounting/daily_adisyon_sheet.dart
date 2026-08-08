@@ -29,9 +29,22 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
   String _search = '';
 
   // Enum (int) → etiket. Backend'de global string converter yok → tip integer gelir.
+  /// Tür SEÇİCİ/FİLTRE adları (kalem yok → satış adı). Satır etiketi `_rowTypeLabel` ile
+  /// kalemin kendi durumundan yazılır: paketten karşılanan hizmet SATIŞ DEĞİLDİR.
   static const _typeLabels = {
-    0: 'Hizmet', 1: 'Ürün', 2: 'Paketten', 3: 'Ek', 4: 'Tahsilat', 5: 'İndirim', 6: 'Paket satışı',
+    0: 'Hizmet satışı', 1: 'Ürün satışı', 2: 'Paketten', 3: 'Ek', 4: 'Tahsilat',
+    5: 'İndirim', 6: 'Paket satışı',
   };
+
+  /// Satırın etiketi: paketten karşılanan hizmet/ürün "satış" diye anılmaz (web paritesi).
+  static String _rowTypeLabel(Map<String, dynamic> r) {
+    final type = (r['type'] as num?)?.toInt() ?? 3;
+    if (r['coveredByPackage'] == true) {
+      if (type == 0) return 'Hizmet';
+      if (type == 1) return 'Ürün';
+    }
+    return _typeLabels[type] ?? 'Kalem';
+  }
 
   @override
   void initState() {
@@ -116,7 +129,7 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
         final at = parseUtcToLocal(r['occurredAtUtc']);
         return [
           at == null ? '' : CalendarText.hm(at),
-          _typeLabels[(r['type'] as num?)?.toInt() ?? 3] ?? 'İşlem',
+          _rowTypeLabel(r),
           valueOf(r, const ['description'], fallback: ''),
           valueOf(r, const ['customerName'], fallback: ''),
           valueOf(r, const ['staffName'], fallback: ''),
@@ -501,7 +514,7 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(color: dot.withValues(alpha: .12), borderRadius: BorderRadius.circular(6)),
-                            child: Text(_typeLabels[type] ?? 'Kalem', style: TextStyle(fontSize: 9, color: dot, fontWeight: FontWeight.w700)),
+                            child: Text(_rowTypeLabel(r), style: TextStyle(fontSize: 9, color: dot, fontWeight: FontWeight.w700)),
                           ),
                           const SizedBox(width: 6),
                           Expanded(child: Text('${r['description'] ?? '—'}', maxLines: 1, overflow: TextOverflow.ellipsis,

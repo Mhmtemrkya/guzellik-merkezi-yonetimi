@@ -1688,6 +1688,7 @@ export interface ApiDailyAdisyonRow {
   staffName?: string | null
   adisyonStatus?: AdisyonStatusKey | string | number
   method?: string | null
+  coveredByPackage?: boolean
 }
 
 export interface ApiDailyAdisyon {
@@ -1715,6 +1716,8 @@ export interface DailyAdisyonRow {
   staffName: string | null
   adisyonStatus: AdisyonStatusKey
   method: string | null
+  /** Paketten karşılandı mı — etiket "Hizmet satışı" ↔ "Hizmet" ayrımını buradan yapar. */
+  coveredByPackage: boolean
 }
 
 export interface DailyAdisyon {

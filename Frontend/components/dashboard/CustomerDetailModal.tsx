@@ -711,7 +711,10 @@ export default function CustomerDetailModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 8 }}
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 my-auto flex max-h-[96dvh] w-full max-w-[1440px] flex-col overflow-hidden rounded-[20px] border border-[#ead8df] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.6)] sm:rounded-[26px] lg:h-[92dvh]"
+            /* Genişlik 1440 → 1760: bu turda KPI şeridi 6 karta çıkınca başlıkta ad/soyad ile
+               kartlar aynı satırda yarışmaya başladı ve uzun isimler kırpılıyordu. Geniş
+               ekranda ikisi de tam sığar; dar ekranda zaten alt alta iner (xl:flex-row). */
+            className="relative z-10 my-auto flex max-h-[96dvh] w-full max-w-[1760px] flex-col overflow-hidden rounded-[20px] border border-[#ead8df] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.6)] sm:rounded-[26px] lg:h-[92dvh]"
           >
             {/* HEADER */}
             <header className="relative shrink-0 overflow-hidden border-b border-[#ead8df] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 pb-0 pt-3.5 sm:px-6 sm:pt-4">
@@ -738,7 +741,10 @@ export default function CustomerDetailModal({
                   </label>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="max-w-full truncate font-display text-xl leading-tight tracking-tight text-[#352432] sm:text-2xl">{customer.name}</h2>
+                      {/* AD KIRPILMAZ: uzun ad-soyad "Ayşe Nur Yıldırımoğ…" gibi kesiliyordu.
+                          `truncate` yerine sarma — yer darsa ikinci satıra iner, kimlik hep
+                          tam okunur (rozetler zaten flex-wrap ile alta geçiyor). */}
+                      <h2 className="min-w-0 font-display text-xl leading-tight tracking-tight text-[#352432] sm:text-2xl" title={customer.name}>{customer.name}</h2>
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${active90 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#ead8df] bg-white text-[#705a66]'}`}>
                         {active90 ? 'Aktif Müşteri' : 'Pasif'}
                       </span>
@@ -815,7 +821,9 @@ export default function CustomerDetailModal({
                       <Tag
                         key={k.label}
                         {...(k.onClick ? { type: 'button' as const, onClick: k.onClick, title: 'Ayrıntıya git' } : {})}
-                        className={`min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 text-left xl:min-w-[104px] ${
+                        /* Modal genişlediği için asgari genişlik eski değerine döndü: 104px'te
+                           uzun tutarlar (₺123.456) kırpılıyordu. */
+                        className={`min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 text-left xl:min-w-[118px] ${
                           k.onClick ? 'cursor-pointer transition-colors hover:border-[#efbfd0] hover:bg-white' : ''
                         }`}
                       >

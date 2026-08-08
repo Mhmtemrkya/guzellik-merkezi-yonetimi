@@ -7,21 +7,27 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { adisyonItemTypeLabel, apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiProduct, ApiService, ApiServicePackage, ApiStaff, AdisyonItemTypeKey } from '@/lib/types'
 import {
   Banknote, Boxes, CalendarDays, CheckCircle2, ChevronDown, Gift, Package, Percent,
   Plus, ReceiptText, Sparkles, Star, Ticket, Trash2, X,
 } from 'lucide-react'
 
-const TYPE_LABELS: Record<AdisyonItemTypeKey, string> = {
-  Service: 'Hizmet',
-  Product: 'Ürün',
+/**
+ * "Kalem ekle" seçicisindeki tür adları. Etiketler ORTAK çeviriciden gelir (bkz.
+ * `adisyonItemTypeLabel`); burada kalem henüz eklenmediği için "paketten karşılanma" bilgisi
+ * yoktur — seçici satış adını gösterir, listede satır kendi durumuna göre etiketlenir.
+ * PackageUse burada "Paketten kullan" (eylem), listede "Paketten" (durum) okunur.
+ */
+const TYPE_PICKER_LABELS: Record<AdisyonItemTypeKey, string> = {
+  Service: adisyonItemTypeLabel('Service'),
+  Product: adisyonItemTypeLabel('Product'),
   PackageUse: 'Paketten kullan',
-  Extra: 'Ek kalem',
-  Payment: 'Tahsilat',
-  Discount: 'İndirim',
-  PackageSale: 'Paket satışı',
+  Extra: adisyonItemTypeLabel('Extra'),
+  Payment: adisyonItemTypeLabel('Payment'),
+  Discount: adisyonItemTypeLabel('Discount'),
+  PackageSale: adisyonItemTypeLabel('PackageSale'),
 }
 
 const TYPE_TONES: Record<AdisyonItemTypeKey, string> = {
@@ -469,7 +475,7 @@ export default function AdisyonPanel({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12.5px] font-medium text-[#352432]">{it.description}</span>
                       <span className="block truncate text-[10px] text-[#705a66]">
-                        {TYPE_LABELS[it.type]}
+                        {adisyonItemTypeLabel(it.type, it.coveredByPackage)}
                         {it.quantity > 1 ? ` · ${it.quantity} adet × ${formatTL(it.unitPrice)}` : ''}
                         {it.staffName ? ` · ${it.staffName}` : ''}
                       </span>
@@ -638,7 +644,7 @@ export default function AdisyonPanel({
             <div className="mt-3 rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3">
               <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Kalem ekle</div>
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(TYPE_LABELS) as AdisyonItemTypeKey[]).map((t) => {
+                {(Object.keys(TYPE_PICKER_LABELS) as AdisyonItemTypeKey[]).map((t) => {
                   const Icon = TYPE_ICONS[t]
                   const on = form.type === t
                   return (
@@ -650,7 +656,7 @@ export default function AdisyonPanel({
                         on ? `${TYPE_TONES[t]} ring-1 ring-current/20` : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-white'
                       }`}
                     >
-                      <Icon className="h-3.5 w-3.5" /> {TYPE_LABELS[t]}
+                      <Icon className="h-3.5 w-3.5" /> {TYPE_PICKER_LABELS[t]}
                     </button>
                   )
                 })}

@@ -33,14 +33,21 @@ String adisyonItemTypeKey(dynamic rawType) {
 }
 
 /// Kalem türünün görünümü: etiket + ikon + zemin/mürekkep.
+///
+/// [coveredByPackage] verilirse hizmet/ürün SATIŞ olarak adlandırılır ("Hizmet satışı"):
+/// "Paket satışı" açıkça satış derken diğer ikisi yalnız "Hizmet"/"Ürün" yazıyor ve aynı fişte
+/// hangisinin satış olduğu okunmuyordu. PAKETTEN karşılanan hizmet satış DEĞİLDİR (müşteri onu
+/// daha önce ödedi) — orada eski ad korunur, yoksa aynı iş iki kez satılmış gibi okunurdu.
+/// Kural backend'in `Adisyon.IsSaleItem` tanımıyla ve web `adisyonItemTypeLabel` ile aynıdır.
 ({String label, IconData icon, Color bg, Color ink}) adisyonItemVisual(
-  dynamic rawType,
-) {
+  dynamic rawType, {
+  bool coveredByPackage = false,
+}) {
   final key = adisyonItemTypeKey(rawType);
   switch (key) {
     case 'Product':
       return (
-        label: 'Ürün',
+        label: coveredByPackage ? 'Ürün' : 'Ürün satışı',
         icon: Icons.inventory_2_rounded,
         bg: const Color(0xFFF3EDFF),
         ink: const Color(0xFF6B45C0),
@@ -82,7 +89,7 @@ String adisyonItemTypeKey(dynamic rawType) {
       );
     default:
       return (
-        label: 'Hizmet',
+        label: coveredByPackage ? 'Hizmet' : 'Hizmet satışı',
         icon: Icons.auto_awesome_rounded,
         bg: const Color(0xFFE7F3FF),
         ink: const Color(0xFF2F6BA6),
@@ -461,8 +468,8 @@ class _AdisyonReceiptSheetState extends State<AdisyonReceiptSheet> {
   );
 
   Widget _itemRow(Map<String, dynamic> it, {required bool first}) {
-    final v = adisyonItemVisual(it['type']);
     final covered = it['coveredByPackage'] == true;
+    final v = adisyonItemVisual(it['type'], coveredByPackage: covered);
     final line = (it['lineTotal'] as num?)?.toDouble() ?? 0;
     final qty = (it['quantity'] as num?)?.toDouble() ?? 1;
     final staff = '${it['staffName'] ?? ''}'.trim();

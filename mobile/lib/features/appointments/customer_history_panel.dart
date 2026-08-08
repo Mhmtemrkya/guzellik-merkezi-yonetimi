@@ -327,7 +327,15 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         desc: valueOf(a, const ['serviceName'], fallback: 'Hizmet'),
         appliedBy: valueOf(a, const ['staffName'], fallback: ''),
         soldBy: sellers[sid],
-        amount: price > 0 ? _money.format(price) : 'Hizmet hakkı',
+        // Ücretsiz iş bir HAKTAN karşılanmıştır; "Hizmet hakkı" hepsine aynı adı veriyordu.
+        // Bağı ÇÖZÜLEMEYEN kayıt (satışı iptal edilmiş paket → seans satırı silinmiş) buraya
+        // düşer ve aslında paketten kullanılmıştır: kaynağı doğru yaz (web paritesi).
+        amount: price > 0
+            ? _money.format(price)
+            : ('${a['sourceCustomerPackageSessionId'] ?? ''}'.isEmpty ||
+                    '${a['sourceCustomerPackageSessionId']}' == 'null'
+                ? 'Hizmet hakkı'
+                : 'Paketten kullanım'),
       ));
     }
     // Adisyonda salonda verilen hizmetler (randevusuz ek işlem dahil).
@@ -341,6 +349,7 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         final staffName = valueOf(it, const ['staffName'], fallback: '');
         rows.add(_Row(
           at: _itemAt(ad, it),
+          // Bu dal paketten karşılananları zaten eliyor → satış adı doğru.
           tag: adisyonItemVisual(it['type']).label,
           desc: valueOf(it, const ['description'], fallback: 'İşlem'),
           appliedBy: staffName,

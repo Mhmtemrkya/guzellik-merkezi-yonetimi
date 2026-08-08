@@ -7,23 +7,13 @@ import {
   Plus, ReceiptText, Sparkles, Ticket, User, XCircle,
 } from 'lucide-react'
 import type { Adisyon, AdisyonItemTypeKey } from '@/lib/types'
-import { formatTL } from '@/lib/apiMappers'
+import { adisyonItemTypeLabel, formatTL } from '@/lib/apiMappers'
 
 // ---------------------------------------------------------------------------
 // ONAYLANMIŞ / İPTAL EDİLMİŞ ADİSYON FİŞİ
 // Açık adisyon düzenlenebilir olduğu için AdisyonModal (AdisyonPanel) ile açılır;
 // kapanmış adisyon ise değiştirilemez — burada okunur bir "fiş" olarak gösterilir.
 // ---------------------------------------------------------------------------
-
-const TYPE_LABELS: Record<AdisyonItemTypeKey, string> = {
-  Service: 'Hizmet',
-  Product: 'Ürün',
-  PackageUse: 'Paketten',
-  Extra: 'Ek kalem',
-  Payment: 'Tahsilat',
-  Discount: 'İndirim',
-  PackageSale: 'Paket satışı',
-}
 
 const TYPE_TONES: Record<AdisyonItemTypeKey, string> = {
   Service: 'border-sky-300/40 bg-sky-50 text-sky-700',
@@ -149,7 +139,7 @@ export default function AdisyonReceiptModal({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12.5px] font-medium text-[#352432]">{it.description}</span>
                     <span className="block truncate text-[10px] text-[#705a66]">
-                      {TYPE_LABELS[it.type]}
+                      {adisyonItemTypeLabel(it.type, it.coveredByPackage)}
                       {it.quantity > 1 ? ` · ${it.quantity} adet × ${formatTL(it.unitPrice)}` : ''}
                       {it.staffName ? ` · ${it.staffName}` : ''}
                     </span>

@@ -753,6 +753,31 @@ function normalizeAdisyonItemType(type: string | null | undefined): AdisyonItemT
   return ADISYON_ITEM_TYPES.includes(key as AdisyonItemTypeKey) ? (key as AdisyonItemTypeKey) : 'Extra'
 }
 
+/**
+ * Adisyon kalem türünün ekranda görünen adı.
+ *
+ * "Paket satışı" açıkça SATIŞ derken hizmet/ürün yalnızca "Hizmet"/"Ürün" yazıyordu; aynı fişte
+ * üç satır yan yana durunca hangisinin satış olduğu okunmuyordu. Kural, backend'in satış tanımıyla
+ * (`Adisyon.IsSaleItem`) aynı: Service/Product **paketten karşılanmıyorsa** satıştır.
+ * PAKETTEN karşılanan hizmet satış DEĞİLDİR (müşteri onu daha önce ödedi) — orada "Hizmet" kalır,
+ * yoksa aynı iş iki kez satılmış gibi okunurdu.
+ *
+ * Tek yerde durur: dört ekran (adisyon paneli, fiş, işlem defteri, günlük adisyon) kendi
+ * kopyasını tutuyordu ve biri değişince diğerleri geride kalıyordu.
+ */
+export function adisyonItemTypeLabel(type: AdisyonItemTypeKey, coveredByPackage = false): string {
+  switch (type) {
+    case 'Service': return coveredByPackage ? 'Hizmet' : 'Hizmet satışı'
+    case 'Product': return coveredByPackage ? 'Ürün' : 'Ürün satışı'
+    case 'PackageSale': return 'Paket satışı'
+    case 'PackageUse': return 'Paketten'
+    case 'Extra': return 'Ek kalem'
+    case 'Payment': return 'Tahsilat'
+    case 'Discount': return 'İndirim'
+    default: return type
+  }
+}
+
 export function normalizeAdisyon(a: ApiAdisyon | null | undefined): Adisyon {
   const items: AdisyonItem[] = (a?.items || []).map((it, i) => ({
     id: it.id || `adisyon-item-${i}`,
@@ -801,6 +826,7 @@ export function normalizeDailyAdisyon(d: ApiDailyAdisyon | null | undefined): Da
     staffName: r.staffName ?? null,
     adisyonStatus: normalizeAdisyonStatus(typeof r.adisyonStatus === 'number' ? String(r.adisyonStatus) : r.adisyonStatus),
     method: r.method ?? null,
+    coveredByPackage: r.coveredByPackage ?? false,
   }))
   return {
     fromUtc: d?.fromUtc || '',

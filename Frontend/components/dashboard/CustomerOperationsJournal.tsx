@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, normalizeAdisyon } from '@/lib/apiMappers'
+import { adisyonItemTypeLabel, apiItems, formatTL, normalizeAdisyon } from '@/lib/apiMappers'
 import type { Appointment, ApiAdisyon, CustomerAccount, AdisyonItemTypeKey } from '@/lib/types'
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, CreditCard, Scissors, User } from 'lucide-react'
 
@@ -13,16 +13,21 @@ type RowKind = AdisyonItemTypeKey | 'Session'
 
 const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
 
-/** İşlem tipi → etiket + renk tonu. "hangi işlem yapıldı" sütununun rozeti. */
-const OP_META: Record<RowKind, { label: string; tone: string }> = {
-  Service: { label: 'Hizmet', tone: 'border-sky-300/40 bg-sky-50 text-sky-700' },
-  Product: { label: 'Ürün', tone: 'border-violet-300/40 bg-violet-50 text-violet-700' },
-  PackageUse: { label: 'Paketten', tone: 'border-amber-300/40 bg-amber-50 text-amber-700' },
-  Extra: { label: 'Ek kalem', tone: 'border-slate-300/40 bg-slate-50 text-slate-700' },
-  Payment: { label: 'Tahsilat', tone: 'border-emerald-300/40 bg-emerald-50 text-emerald-700' },
-  Discount: { label: 'İndirim', tone: 'border-rose-300/40 bg-rose-50 text-rose-700' },
-  PackageSale: { label: 'Paket satışı', tone: 'border-fuchsia-300/40 bg-fuchsia-50 text-fuchsia-700' },
-  Session: { label: 'Seans', tone: 'border-teal-300/40 bg-teal-50 text-teal-700' },
+/** İşlem tipi → renk tonu. Etiket ORTAK çeviriciden gelir (bkz. `adisyonItemTypeLabel`). */
+const OP_TONES: Record<RowKind, string> = {
+  Service: 'border-sky-300/40 bg-sky-50 text-sky-700',
+  Product: 'border-violet-300/40 bg-violet-50 text-violet-700',
+  PackageUse: 'border-amber-300/40 bg-amber-50 text-amber-700',
+  Extra: 'border-slate-300/40 bg-slate-50 text-slate-700',
+  Payment: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
+  Discount: 'border-rose-300/40 bg-rose-50 text-rose-700',
+  PackageSale: 'border-fuchsia-300/40 bg-fuchsia-50 text-fuchsia-700',
+  Session: 'border-teal-300/40 bg-teal-50 text-teal-700',
+}
+
+/** Randevu satırı ("Seans") adisyon kalemi değildir; gerisi ortak çeviriciye gider. */
+function opLabel(kind: RowKind, covered: boolean): string {
+  return kind === 'Session' ? 'Seans' : adisyonItemTypeLabel(kind, covered)
 }
 
 interface JournalRow {
@@ -232,11 +237,11 @@ export default function CustomerOperationsJournal({
           </div>
         ) : (
           rows.map((r, i) => {
-            const meta = OP_META[r.kind]
+            const tone = OP_TONES[r.kind]
             return (
               <div key={i} className="flex items-center justify-between gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] font-mono uppercase ${meta.tone}`}>{meta.label}</span>
+                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] font-mono uppercase ${tone}`}>{opLabel(r.kind, r.covered)}</span>
                   <div className="min-w-0">
                     <div className="truncate text-[12px] text-[#352432]">{r.desc}</div>
                     <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wide text-[#352432]/40">

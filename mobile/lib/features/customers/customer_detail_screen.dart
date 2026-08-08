@@ -401,12 +401,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // AD KIRPILMAZ (web paritesi): uzun ad-soyad tek satıra sığmayınca
+                    // "Ayşe Nur Yıldırımoğ…" gibi kesiliyordu; iki satıra kadar sarar.
                     Text(
                       _name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 19,
+                        height: 1.15,
                         fontWeight: FontWeight.w800,
                         color: AppColors.ink,
                         letterSpacing: -.4,

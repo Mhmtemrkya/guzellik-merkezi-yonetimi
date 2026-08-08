@@ -1270,7 +1270,8 @@ public sealed class AdisyonService : IAdisyonService
                 x.Item.StaffMemberId,
                 x.Item.StaffMemberId.HasValue && staffMap.TryGetValue(x.Item.StaffMemberId.Value, out var sn) ? sn : null,
                 x.Status,
-                null))
+                null,
+                x.Item.CoveredByPackage))
             .ToList();
 
         // TAHSİLAT satırları — gerçek AccountPayment'lar (adisyon peşinatı + doğrudan cari tahsilat),

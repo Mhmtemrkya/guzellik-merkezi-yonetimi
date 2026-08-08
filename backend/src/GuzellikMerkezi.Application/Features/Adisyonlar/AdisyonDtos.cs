@@ -88,7 +88,13 @@ public sealed record DailyAdisyonRowDto(
     Guid? StaffMemberId,
     string? StaffName,
     AdisyonStatus AdisyonStatus,
-    string? Method = null);
+    string? Method = null,
+    /// <summary>
+    /// Kalem paketten mi karşılandı? Etiket bunu bilmeden yazılamaz: paketten karşılanan hizmet
+    /// SATIŞ DEĞİLDİR (müşteri onu daha önce ödedi) — "Hizmet satışı" demek aynı işi iki kez
+    /// satılmış gibi gösterirdi. Aynı ayrım <c>Adisyon.IsSaleItem</c> kuralında da geçerlidir.
+    /// </summary>
+    bool CoveredByPackage = false);
 
 /// <summary>Bir günün adisyon aktivitesi: kime ne yapıldı (saatli), kim yaptı, tahsilatlar ve gün toplamları.</summary>
 public sealed record DailyAdisyonDto(
