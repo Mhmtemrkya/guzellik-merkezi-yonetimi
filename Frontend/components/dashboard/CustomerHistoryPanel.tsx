@@ -88,13 +88,31 @@ export default function CustomerHistoryPanel({
   const canAdisyon = useFeature('billing.adisyon')
   const [tab, setTab] = useState<TabKey>('sessions')
 
-  const { data, loading } = useApiQuery<{ appts: ApiAppointment[]; adisyonlar: ApiAdisyon[] }>(
+  /**
+   * SEANS/PAKET VERİSİ PROP'A BIRAKILMAZ — panel eksikse kendisi çeker.
+   *
+   * "Seanslar" sekmesi bir randevunun paketten mi karşılandığını `packageServiceIds` kümesiyle
+   * ayırt eder; bu küme `sessions`'tan kurulur. Müşteri kartı bu prop'ları HİÇ geçmiyordu:
+   * küme boş kalıyor, TAMAMLANMIŞ HER randevu eleniyor ve müşteri paketinden seans kullanmış
+   * olsa bile sekme "Paketten henüz seans kullanılmamış" diyordu (randevu modalinde prop'lar
+   * geçildiği için aynı panel orada doğru çalışıyordu — hata yalnız müşteri kartında görünürdü).
+   * Panelin kendi verisini garanti etmesi, bu sınıf hatanın yeni çağıranlarda tekrarını önler.
+   */
+  const needsOwnSessions = sessions.length === 0
+  const needsOwnPackages = packages.length === 0
+
+  const { data, loading } = useApiQuery<{
+    appts: ApiAppointment[]
+    adisyonlar: ApiAdisyon[]
+    sessions: ApiCustomerPackageSession[]
+    packages: ServicePackage[]
+  }>(
     async () => {
-      if (!customerId) return { appts: [], adisyonlar: [] }
+      if (!customerId) return { appts: [], adisyonlar: [], sessions: [], packages: [] }
       // SAYFALAR SONUNA KADAR: tek sayfa 200 kayıtla sınırlıydı — uzun süreli müşteride
       // geçmişin eski kısmı sessizce eksik görünüyordu (sunucu süzgeci sayesinde yalnız bu
       // müşterinin kayıtları okunur, maliyet düşük).
-      const [appts, adisyonlar] = await Promise.all([
+      const [appts, adisyonlar, ownSessions, ownPackages] = await Promise.all([
         fetchAllPaged<ApiAppointment>((page, pageSize) =>
           adminApi.appointments<ApiAppointment>({ tenantId, customerId, page, pageSize }), 200,
         ).catch(() => [] as ApiAppointment[]),
@@ -103,12 +121,27 @@ export default function CustomerHistoryPanel({
               adminApi.adisyonlar<ApiAdisyon>({ tenantId, customerId, page, pageSize }), 200,
             ).catch(() => [] as ApiAdisyon[])
           : Promise.resolve([] as ApiAdisyon[]),
+        needsOwnSessions
+          ? adminApi.customerSessions<ApiCustomerPackageSession>(customerId, tenantId)
+              .then((rows) => (Array.isArray(rows) ? rows : []))
+              .catch(() => [] as ApiCustomerPackageSession[])
+          : Promise.resolve([] as ApiCustomerPackageSession[]),
+        // Paket adı yalnız başlıkta kullanılır; alınamazsa "Paket" yazılır, sekme yine çalışır.
+        needsOwnPackages
+          ? fetchAllPaged<ServicePackage>((page, pageSize) =>
+              adminApi.packages<ServicePackage>({ tenantId, page, pageSize }), 200,
+            ).catch(() => [] as ServicePackage[])
+          : Promise.resolve([] as ServicePackage[]),
       ])
-      return { appts, adisyonlar }
+      return { appts, adisyonlar, sessions: ownSessions, packages: ownPackages }
     },
-    [customerId, tenantId, canAdisyon, refreshKey],
-    { initialData: { appts: [], adisyonlar: [] } },
+    [customerId, tenantId, canAdisyon, refreshKey, needsOwnSessions, needsOwnPackages],
+    { initialData: { appts: [], adisyonlar: [], sessions: [], packages: [] } },
   )
+
+  /** Prop verilmişse o kullanılır (çağıran zaten çekmiştir), yoksa panelin kendi çektiği. */
+  const effectiveSessions = needsOwnSessions ? (data?.sessions || []) : sessions
+  const effectivePackages = needsOwnPackages ? (data?.packages || []) : packages
 
   const appointments = useMemo(
     () => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)),
@@ -126,11 +159,11 @@ export default function CustomerHistoryPanel({
       string,
       { packageId: string; name: string; rows: { serviceDefinitionId: string; serviceName: string; remaining: number; total: number }[] }
     >()
-    for (const s of sessions) {
+    for (const s of effectiveSessions) {
       const pid = s.servicePackageId
       const sid = s.serviceDefinitionId
       if (!pid || pid === EMPTY_GUID || !sid) continue
-      const entry = map.get(pid) ?? { packageId: pid, name: packages.find((p) => p.id === pid)?.name || 'Paket', rows: [] }
+      const entry = map.get(pid) ?? { packageId: pid, name: effectivePackages.find((p) => p.id === pid)?.name || 'Paket', rows: [] }
       const row = entry.rows.find((r) => r.serviceDefinitionId === sid)
       if (row) {
         row.remaining += s.remainingSessions ?? 0
@@ -146,30 +179,54 @@ export default function CustomerHistoryPanel({
       map.set(pid, entry)
     }
     return Array.from(map.values())
-  }, [sessions, packages])
+  }, [effectiveSessions, effectivePackages])
 
-  /** Paketten karşılanan hizmetler — bir işin hangi sekmeye ait olduğunu bu küme belirler. */
+  /** Paketten karşılanan hizmetler — SEZGİSEL ayrım (aşağıdaki kesin bağ yoksa kullanılır). */
   const packageServiceIds = useMemo(() => {
     const set = new Set<string>()
-    for (const s of sessions) {
+    for (const s of effectiveSessions) {
       if (s.servicePackageId && s.servicePackageId !== EMPTY_GUID && s.serviceDefinitionId) {
         set.add(s.serviceDefinitionId)
       }
     }
     return set
-  }, [sessions])
+  }, [effectiveSessions])
+
+  /** PAKETE ait seans kayıtlarının kimlikleri — randevunun bağlı olduğu seansı sınıflandırır. */
+  const packageSessionIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of effectiveSessions) {
+      if (s.id && s.servicePackageId && s.servicePackageId !== EMPTY_GUID) set.add(s.id)
+    }
+    return set
+  }, [effectiveSessions])
+
+  /**
+   * Bir randevu PAKETTEN mi karşılandı?
+   *
+   * KESİN CEVAP randevunun bağlı olduğu seans kaydıdır (`sourceSessionId`) — sunucu bunu
+   * tamamlamada GERÇEKTEN düşülen seansla yazar. Sezgi ("hizmet herhangi bir pakette geçiyor")
+   * müşteri aynı hizmeti hem paketten hem tekil satın aldığında yanılıyordu: tekil haktan
+   * yapılan iş "Seanslar"a, paketten yapılan iş "İşlemler"e düşebiliyordu.
+   * Bağı olmayan ESKİ kayıtlar için sezgi korunur.
+   */
+  const isFromPackage = useMemo(() => (ap: { price: number; serviceDefinitionId?: string; sourceSessionId?: string | null }): boolean => {
+    if (Number(ap.price || 0) > 0) return false // ücretli randevu seans TÜKETMEZ
+    if (ap.sourceSessionId) return packageSessionIds.has(ap.sourceSessionId)
+    return Boolean(ap.serviceDefinitionId) && packageServiceIds.has(ap.serviceDefinitionId!)
+  }, [packageSessionIds, packageServiceIds])
 
   /** Hizmet → o hizmeti satan personel (satışın carisinden). "Kim verdi" sorusunun cevabı. */
   const soldByService = useMemo(() => {
     const accountById = new Map(accounts.map((a) => [a.id, a]))
     const map = new Map<string, string>()
-    for (const s of sessions) {
+    for (const s of effectiveSessions) {
       if (!s.serviceDefinitionId || !s.customerAccountId) continue
       const seller = accountById.get(s.customerAccountId)?.soldByStaffName
       if (seller && !map.has(s.serviceDefinitionId)) map.set(s.serviceDefinitionId, seller)
     }
     return map
-  }, [sessions, accounts])
+  }, [effectiveSessions, accounts])
 
   const apptTs = (ap: { date: string; time: string }): number =>
     Date.parse(`${ap.date}T${ap.time || '00:00'}:00`) || Date.parse(ap.date || '') || 0
@@ -180,8 +237,7 @@ export default function CustomerHistoryPanel({
     for (const ap of appointments) {
       if (ap.status !== 'tamamlandi') continue
       // ÜCRETLİ randevu seans TÜKETMEZ; paket defterine girmez (İşlemler'de görünür).
-      if (Number(ap.price || 0) > 0) continue
-      if (ap.serviceDefinitionId && !packageServiceIds.has(ap.serviceDefinitionId)) continue
+      if (!isFromPackage(ap)) continue
       rows.push({
         key: `ap-${ap.id}`,
         ts: apptTs(ap),
@@ -208,15 +264,15 @@ export default function CustomerHistoryPanel({
       }
     }
     return rows.sort((x, y) => y.ts - x.ts)
-  }, [appointments, adisyonlar, packageServiceIds])
+  }, [appointments, adisyonlar, isFromPackage])
 
   /** HİZMETTEN yaptırılanlar: tekil hizmet satışına/ücretli randevuya dayanan işler. */
   const operationRows = useMemo<HistoryRow[]>(() => {
     const rows: HistoryRow[] = []
     for (const ap of appointments) {
       if (ap.status !== 'tamamlandi') continue
-      const fromPackage = Number(ap.price || 0) <= 0 && Boolean(ap.serviceDefinitionId) && packageServiceIds.has(ap.serviceDefinitionId!)
-      if (fromPackage) continue
+      // İki sekme AYNI yargıyı kullanır: bir iş ya buraya ya Seanslar'a düşer, ikisine birden değil.
+      if (isFromPackage(ap)) continue
       rows.push({
         key: `apop-${ap.id}`,
         ts: apptTs(ap),
@@ -245,7 +301,7 @@ export default function CustomerHistoryPanel({
       }
     }
     return rows.sort((x, y) => y.ts - x.ts)
-  }, [appointments, adisyonlar, packageServiceIds, soldByService])
+  }, [appointments, adisyonlar, isFromPackage, soldByService])
 
   /**
    * Ödeme listesi carilerin TAHSİLAT satırlarından kurulur (adisyondaki ödeme kalemi onayda

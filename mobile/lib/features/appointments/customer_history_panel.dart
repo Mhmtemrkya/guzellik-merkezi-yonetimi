@@ -86,6 +86,9 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   bool _loading = false;
   List<Map<String, dynamic>> _appts = const [];
   List<Map<String, dynamic>> _adisyonlar = const [];
+  /// Çağıran seans/paket vermediğinde panelin kendi çektiği veri (bkz. `_needsOwnSessions`).
+  List<Map<String, dynamic>> _ownSessions = const [];
+  List<Map<String, dynamic>> _ownPackages = const [];
 
   @override
   void initState() {
@@ -100,6 +103,24 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       _load();
     }
   }
+
+  /*
+   * SEANS/PAKET VERİSİ PROP'A BIRAKILMAZ — panel eksikse kendisi çeker (web paritesi).
+   *
+   * "Seanslar" sekmesi bir randevunun paketten mi karşılandığını `_packageServiceIds` kümesiyle
+   * ayırt eder; bu küme `sessions`'tan kurulur. Müşteri kartı bu parametreleri HİÇ geçmiyordu:
+   * küme boş kalıyor, TAMAMLANMIŞ HER randevu eleniyor ve müşteri paketinden seans kullanmış olsa
+   * bile sekme "Paketten henüz seans kullanılmamış" diyordu (randevu formunda parametreler
+   * geçildiği için aynı panel orada doğru çalışıyordu — hata yalnız müşteri kartında görünürdü).
+   */
+  bool get _needsOwnSessions => widget.sessions.isEmpty;
+  bool get _needsOwnPackages => widget.packages.isEmpty;
+
+  /// Parametre verilmişse o kullanılır (çağıran zaten çekmiştir), yoksa panelin kendi çektiği.
+  List<Map<String, dynamic>> get _effectiveSessions =>
+      _needsOwnSessions ? _ownSessions : widget.sessions;
+  List<Map<String, dynamic>> get _effectivePackages =>
+      _needsOwnPackages ? _ownPackages : widget.packages;
 
   Future<void> _load() async {
     final cid = widget.customerId;
@@ -118,6 +139,15 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         widget.api
             .getAllPaged('/api/admin/adisyonlar/', query: {'customerId': cid}, pageSize: 200)
             .catchError((_) => const <String, dynamic>{}),
+        if (_needsOwnSessions)
+          widget.api
+              .get('/api/admin/accounts/sessions/$cid')
+              .catchError((_) => const <dynamic>[]),
+        // Paket adı yalnız başlıkta kullanılır; alınamazsa "Paket" yazılır, sekme yine çalışır.
+        if (_needsOwnPackages)
+          widget.api
+              .getAllPaged('/api/admin/packages/', pageSize: 200)
+              .catchError((_) => const <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {
@@ -125,6 +155,10 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         // İptal edilmiş adisyon geçmişte yaşanmış sayılmaz.
         _adisyonlar =
             apiItems(res[1]).where((a) => '${a['status']}' != 'Cancelled').toList();
+        // Koşullu eklendikleri için indeksleri kaymaz: seans varsa 2, paket ondan sonra gelir.
+        var next = 2;
+        if (_needsOwnSessions) _ownSessions = apiItems(res[next++]);
+        if (_needsOwnPackages) _ownPackages = apiItems(res[next]);
       });
     } catch (_) {
       if (mounted) setState(() { _appts = const []; _adisyonlar = const []; });
@@ -141,12 +175,12 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   /// Paketten gelen seans satırları, pakete göre gruplanmış (kalan bakiye görünümü).
   List<Map<String, dynamic>> get _packageGroups {
     final map = <String, Map<String, dynamic>>{};
-    for (final s in widget.sessions) {
+    for (final s in _effectiveSessions) {
       final pid = '${s['servicePackageId']}';
       final sid = '${s['serviceDefinitionId']}';
       if (pid.isEmpty || pid == 'null' || pid == _emptyGuid) continue;
       if (sid.isEmpty || sid == 'null') continue;
-      final pkg = widget.packages.firstWhere((p) => '${p['id']}' == pid,
+      final pkg = _effectivePackages.firstWhere((p) => '${p['id']}' == pid,
           orElse: () => const <String, dynamic>{});
       final entry = map[pid] ??= {
         'packageId': pid,
@@ -173,10 +207,10 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
     return map.values.toList();
   }
 
-  /// Paketten karşılanan hizmetler — bir işin hangi sekmeye ait olduğunu bu küme belirler.
+  /// Paketten karşılanan hizmetler — SEZGİSEL ayrım (aşağıdaki kesin bağ yoksa kullanılır).
   Set<String> get _packageServiceIds {
     final set = <String>{};
-    for (final s in widget.sessions) {
+    for (final s in _effectiveSessions) {
       final pid = '${s['servicePackageId']}';
       final sid = '${s['serviceDefinitionId']}';
       if (pid.isEmpty || pid == 'null' || pid == _emptyGuid) continue;
@@ -184,6 +218,33 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       set.add(sid);
     }
     return set;
+  }
+
+  /// PAKETE ait seans kayıtlarının kimlikleri — randevunun bağlı olduğu seansı sınıflandırır.
+  Set<String> get _packageSessionIds {
+    final set = <String>{};
+    for (final s in _effectiveSessions) {
+      final pid = '${s['servicePackageId']}';
+      final id = '${s['id'] ?? ''}';
+      if (id.isEmpty || id == 'null') continue;
+      if (pid.isEmpty || pid == 'null' || pid == _emptyGuid) continue;
+      set.add(id);
+    }
+    return set;
+  }
+
+  /// Bir randevu PAKETTEN mi karşılandı?
+  ///
+  /// KESİN CEVAP randevunun bağlı olduğu seans kaydıdır (`sourceCustomerPackageSessionId`) —
+  /// sunucu bunu tamamlamada GERÇEKTEN düşülen seansla yazar. Sezgi ("hizmet herhangi bir
+  /// pakette geçiyor") müşteri aynı hizmeti hem paketten hem tekil satın aldığında yanılıyordu.
+  /// Bağı olmayan ESKİ kayıtlar için sezgi korunur (web paritesi).
+  bool _isFromPackage(Map<String, dynamic> a) {
+    if (((a['price'] as num?)?.toDouble() ?? 0) > 0) return false; // ücretli randevu tüketmez
+    final link = '${a['sourceCustomerPackageSessionId'] ?? ''}';
+    if (link.isNotEmpty && link != 'null') return _packageSessionIds.contains(link);
+    final sid = '${a['serviceDefinitionId'] ?? ''}';
+    return sid.isNotEmpty && sid != 'null' && _packageServiceIds.contains(sid);
   }
 
   /// Hizmet → o hizmeti satan personel (satışın carisinden). "Kim verdi" sorusunun cevabı.
@@ -194,7 +255,7 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       if (seller.isNotEmpty) byAccount['${a['id']}'] = seller;
     }
     final map = <String, String>{};
-    for (final s in widget.sessions) {
+    for (final s in _effectiveSessions) {
       final sid = '${s['serviceDefinitionId']}';
       final seller = byAccount['${s['customerAccountId']}'];
       if (sid.isEmpty || sid == 'null' || seller == null) continue;
@@ -205,14 +266,11 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
 
   /// PAKETTEN kullanılan seanslar: tamamlanmış ücretsiz randevular + adisyon "Paketten" kalemleri.
   List<_Row> get _sessionRows {
-    final fromPackage = _packageServiceIds;
     final rows = <_Row>[];
     for (final a in _appts) {
       if ('${a['status']}' != 'Completed') continue;
       // ÜCRETLİ randevu seans TÜKETMEZ; paket defterine girmez (İşlemler'de görünür).
-      if (((a['price'] as num?)?.toDouble() ?? 0) > 0) continue;
-      final sid = '${a['serviceDefinitionId']}';
-      if (sid.isNotEmpty && sid != 'null' && !fromPackage.contains(sid)) continue;
+      if (!_isFromPackage(a)) continue;
       rows.add(_Row(
         at: parseUtcToLocal(a['startUtc']),
         tag: 'Randevu',
@@ -239,15 +297,14 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
 
   /// HİZMETTEN yaptırılanlar: tekil hizmet satışına/ücretli randevuya dayanan işler.
   List<_Row> get _operationRows {
-    final fromPackage = _packageServiceIds;
     final sellers = _soldByService;
     final rows = <_Row>[];
     for (final a in _appts) {
       if ('${a['status']}' != 'Completed') continue;
       final price = (a['price'] as num?)?.toDouble() ?? 0;
       final sid = '${a['serviceDefinitionId']}';
-      final covered = price <= 0 && sid.isNotEmpty && sid != 'null' && fromPackage.contains(sid);
-      if (covered) continue;
+      // İki sekme AYNI yargıyı kullanır: bir iş ya buraya ya Seanslar'a düşer, ikisine birden değil.
+      if (_isFromPackage(a)) continue;
       rows.add(_Row(
         at: parseUtcToLocal(a['startUtc']),
         tag: 'Randevu',

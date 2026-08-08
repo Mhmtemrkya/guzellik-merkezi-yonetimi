@@ -2308,6 +2308,8 @@ export interface ApiAppointment {
   customerPhone?: string | null
   customerIsVip?: boolean
   number?: number | null
+  /** Randevunun düştüğü seans kaydı — paketten mi karşılandığının KESİN cevabı (eski kayıtta null). */
+  sourceCustomerPackageSessionId?: string | null
 }
 
 export interface AppointmentLookups {
@@ -2339,6 +2341,8 @@ export interface Appointment {
   customerPhone?: string
   isVip?: boolean
   number?: number | null
+  /** Randevunun düştüğü seans kaydı — paketten mi karşılandığının KESİN cevabı (eski kayıtta null). */
+  sourceSessionId?: string | null
 }
 
 // ---------------------------------------------------------------------------

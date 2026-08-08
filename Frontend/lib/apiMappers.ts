@@ -1679,6 +1679,7 @@ export function normalizeAppointment(
     customerPhone: appointment?.customerPhone || customer?.phone || undefined,
     isVip: appointment?.customerIsVip ?? customer?.isVip ?? false,
     number: appointment?.number ?? null,
+    sourceSessionId: appointment?.sourceCustomerPackageSessionId ?? null,
   }
 }
 

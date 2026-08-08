@@ -23,7 +23,15 @@ public sealed record AppointmentDto(
     bool IsOnline = false,
     string? CustomerPhone = null,
     bool CustomerIsVip = false,
-    int? Number = null);
+    int? Number = null,
+    /// <summary>
+    /// Randevunun düştüğü seans kaydı (paket ya da tekil hizmet satışı). Müşteri geçmişi
+    /// panelinde "bu iş paketten mi karşılandı" sorusunun KESİN cevabıdır: istemci bunu
+    /// bilmediği için "hizmet herhangi bir pakette geçiyor mu" sezgisine düşüyordu ve müşteri
+    /// aynı hizmeti hem paketten hem tekil satın aldığında iş yanlış sekmede görünüyordu.
+    /// Tamamlamada GERÇEKTEN tüketilen seansla düzeltilir; eski kayıtlarda null.
+    /// </summary>
+    Guid? SourceCustomerPackageSessionId = null);
 /// <param name="SourceCustomerPackageSessionId">
 /// Randevunun HANGİ satın alınmış seans bakiyesinden karşılanacağı. Arayüz paket kırılımında
 /// belirli bir satır seçtirdiği için bu bilgi sunucuya taşınmalıdır: aksi hâlde backend aynı

@@ -121,7 +121,10 @@ public sealed class AppointmentService : IAppointmentService
                 x.IsOnline,
                 x.Customer != null ? x.Customer.Phone : null,
                 x.Customer != null && x.Customer.IsVip,
-                x.Number))
+                x.Number,
+                // Müşteri geçmişi paneli LİSTE ucundan okur: burada atlanırsa alan sessizce
+                // null gelir ve panel yine sezgisel ayrıma düşerdi (ToDto yetmez).
+                x.SourceCustomerPackageSessionId))
             .ToArrayAsync(cancellationToken);
         if (IsStaffViewer)
         {
@@ -1771,7 +1774,8 @@ public sealed class AppointmentService : IAppointmentService
         x.IsOnline,
         x.Customer != null ? x.Customer.Phone : null,
         x.Customer != null && x.Customer.IsVip,
-        x.Number);
+        x.Number,
+        x.SourceCustomerPackageSessionId);
 
     public async Task<Result<AppointmentDto>> ChangeNotesAsync(Guid tenantId, Guid id, ChangeAppointmentNotesRequest request, CancellationToken cancellationToken = default, Guid? staffTenantUserId = null)
     {
