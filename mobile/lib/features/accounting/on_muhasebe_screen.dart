@@ -18,7 +18,9 @@ import '../../shared/widgets/period_selector.dart';
 import '../appointments/calendar_theme.dart';
 // Cari satırından açılan satış sheet'i — müşteri kartındakiyle AYNI bileşen.
 import '../customers/customer_sales_panel.dart';
+import 'account_grouping.dart';
 import 'account_installments.dart';
+import 'customer_ledger_sheet.dart';
 import 'adisyon_detail_sheet.dart';
 import 'collection_sheet.dart';
 import 'expense_form_sheet.dart';
@@ -73,9 +75,11 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
 
   Future<_AccData> _load() async {
     final results = await Future.wait([
+      // TÜM cariler sayfa sayfa: liste MÜŞTERİ BAZINDA gruplanıyor, tek sayfalık (500) çekimde
+      // müşterinin bazı satışları listeye hiç girmez ve grup toplamı sessizce eksik çıkardı.
       widget.api
-          .get('/api/admin/accounts/', query: {'page': 1, 'pageSize': 500})
-          .catchError((_) => const <dynamic>[]),
+          .getAllPaged('/api/admin/accounts/', pageSize: 500)
+          .catchError((_) => const <String, dynamic>{}),
       widget.api.get('/api/admin/expenses/', query: {
         'fromUtc': _rangeStart.toUtc().toIso8601String(),
         'toUtc': _rangeEnd.toUtc().toIso8601String(),
@@ -822,163 +826,178 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           _empty(_accountQuery.isEmpty
               ? 'Bu kapsamda cari hesap yok.'
               : 'Aramaya uyan cari hesap yok.'),
-        for (final a in filtered) _accountCard(a),
+        // MÜŞTERİ BAZINDA GRUPLAMA (web paritesi): aynı müşterinin birden çok satışı TEK
+        // satırda toplanır; satıra dokununca müşterinin cari defteri (tam ekran) açılır.
+        // Süzgeç önce hesap düzeyinde uygulanır (çipler hesap sayar), sonra gruplanır.
+        for (final g in _groupsOf(filtered)) _customerRow(g),
       ],
     );
   }
 
-  Widget _accountCard(Map<String, dynamic> a) {
-    final insts = parseInstallments(a).where((i) => !i.cancelled).toList();
-    final isInstallment = insts.length > 1;
-    final remaining = numberOf(a, const ['remainingAmount']);
-    final total = numberOf(a, const ['totalAmount']);
-    final paid = numberOf(a, const ['paidAmount']);
-    final isOpen = remaining > 0.005;
-    final overdue = insts.any((i) => i.overdue);
-    final pct = total > 0 ? (paid / total).clamp(0.0, 1.0) : 0.0;
-    final paidCount = insts.where((i) => i.isPaid).length;
-    final nextDue = valueOf(a, const ['nextDueDate'], fallback: '');
+  /// Süzülmüş hesapları müşteriye göre gruplar + listeleme sırasını verir.
+  List<CustomerAccountGroup> _groupsOf(List<Map<String, dynamic>> accounts) {
+    final groups = groupAccountsByCustomer(accounts);
+    groups.sort((a, b) {
+      // Geciken müşteri üstte: ön muhasebede ilk iş "kim ödemedi" bakmaktır.
+      if (a.hasOverdue != b.hasOverdue) return a.hasOverdue ? -1 : 1;
+      // Sonra tazelik (yeni satış hemen görünsün), eşitse en yakın vade.
+      final t = b.lastSaleAtUtc.compareTo(a.lastSaleAtUtc);
+      if (t != 0) return t;
+      return (a.nextDueDate ?? '9999').compareTo(b.nextDueDate ?? '9999');
+    });
+    return groups;
+  }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: overdue
-              ? AppColors.danger.withValues(alpha: .35)
-              : isOpen
-                  ? AppColors.border
-                  : AppColors.success.withValues(alpha: .35),
+  /// Müşteri satırı — tablo görünümü: ad · satış adedi · tutarlar · ilerleme · vade.
+  Widget _customerRow(CustomerAccountGroup g) {
+    final isOpen = g.remainingAmount > 0.005;
+    final pct = g.totalAmount > 0 ? (g.paidAmount / g.totalAmount).clamp(0.0, 1.0) : 0.0;
+    final initials = g.customerName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0])
+        .join()
+        .toUpperCase();
+
+    return InkWell(
+      onTap: () => _openCustomerLedger(g),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: g.hasOverdue
+                ? AppColors.danger.withValues(alpha: .35)
+                : isOpen
+                    ? AppColors.border
+                    : AppColors.success.withValues(alpha: .35),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => _openCustomerDetail(a),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(valueOf(a, const ['customerName', 'name'], fallback: 'Hesap'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                      Text(valueOf(a, const ['servicePackageName', 'name'], fallback: ''),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
-                    ],
-                  ),
-                ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.rose,
+                borderRadius: BorderRadius.circular(11),
               ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(CalendarText.tl(remaining),
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: isOpen ? AppColors.primaryDark : AppColors.success)),
-                  Text(isOpen ? 'kalan borç' : 'kapandı',
-                      style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _tag(isInstallment ? 'TAKSİTLİ · ${insts.length} AY' : 'PEŞİN',
-                  isInstallment ? const Color(0xFF7C3AED) : const Color(0xFF0369A1)),
-              if (overdue) _tag('GECİKMİŞ', AppColors.danger),
-              if (numberOf(a, const ['creditBalance']) > 0)
-                _tag('KREDİ ${CalendarText.tl(numberOf(a, const ['creditBalance']))}',
-                    AppColors.success),
-              if (isOpen && nextDue.isNotEmpty)
+              child: Text(initials.isEmpty ? '—' : initials,
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(g.customerName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 Text(
-                  '${shortDay(nextDue)} · ${CalendarText.tl(numberOf(a, const ['nextDueAmount']))}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                  g.saleCount == 1
+                      ? valueOf(g.accounts.first, const ['servicePackageName', 'name'], fallback: '')
+                      : '${g.saleCount} satış',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
                 ),
-            ],
-          ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(CalendarText.tl(g.remainingAmount),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: isOpen
+                          ? (g.hasOverdue ? AppColors.danger : AppColors.primaryDark)
+                          : AppColors.success)),
+              Text(isOpen ? 'kalan borç' : 'kapandı',
+                  style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+            ]),
+          ]),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: pct,
-                    minHeight: 5,
-                    backgroundColor: AppColors.surfaceSoft,
-                    valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                  ),
+          // Tutar üçlüsü — tabloda sütun olan bilgiler dar ekranda satır içinde.
+          Row(children: [
+            Expanded(child: _miniStat('Toplam', CalendarText.tl(g.totalAmount), AppColors.ink)),
+            Expanded(child: _miniStat('Tahsil', CalendarText.tl(g.paidAmount), AppColors.success)),
+            Expanded(child: _miniStat('Satış', '${g.saleCount}', AppColors.muted)),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 5,
+                  backgroundColor: AppColors.surfaceSoft,
+                  valueColor:
+                      AlwaysStoppedAnimation(isOpen ? AppColors.primary : AppColors.success),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                isInstallment
-                    ? '$paidCount/${insts.length} taksit'
-                    : '%${(pct * 100).round()} ödendi',
-                style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+            ),
+            const SizedBox(width: 8),
+            Text('%${(pct * 100).round()}',
+                style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+          ]),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            if (g.hasOverdue) _tag('GECİKMİŞ', AppColors.danger),
+            if (g.hasInstallmentPlan && !g.hasOverdue) _tag('TAKSİTLİ', const Color(0xFF7C3AED)),
+            if (isOpen && g.nextDueDate != null)
+              Text('${shortDay(g.nextDueDate!)} · ${CalendarText.tl(g.nextDueAmount)}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            // Tek satışlı müşteride hızlı tahsilat: hedef belirsiz değil.
+            if (isOpen && g.accounts.length == 1)
+              TextButton.icon(
+                onPressed: () => _openAccountDetail(g.accounts.first),
+                style: AppButtons.inline(),
+                icon: const Icon(Icons.payments_rounded, size: 15),
+                label: const Text('Tahsilat', style: TextStyle(fontSize: 11.5)),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              if (isOpen && isInstallment) ...[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _monthlyCollect(a),
-                    style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: const Icon(Icons.event_available_rounded, size: 15),
-                    label: const Text('Aylık taksit', style: TextStyle(fontSize: 11.5)),
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              if (isOpen)
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _openAccountDetail(a),
-                    style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: const Icon(Icons.payments_rounded, size: 15),
-                    label: Text(isInstallment ? 'Genel tahsilat' : 'Tahsilat al',
-                        style: const TextStyle(fontSize: 11.5)),
-                  ),
-                ),
-              const SizedBox(width: 6),
-              // SATIŞLAR: bu müşterinin tüm satışları + geçmiş satış ekleme + İPTAL.
-              // Detay sayfası PARANIN görünümüdür (ekstre/taksit/tahsilat); satışın kendisini
-              // yönetmek için ayrı kapı gerekiyordu — daha önce kullanıcı müşteri kartına
-              // yönlendiriliyordu (aşağıdaki bilgi metni de bu yüzden vardı).
-              IconButton(
-                onPressed: () => _openCustomerSales(a),
-                tooltip: 'Satışlar',
-                icon: const Icon(Icons.inventory_2_outlined),
-              ),
-              IconButton(
-                onPressed: () => _openAccountDetail(a),
-                tooltip: 'Detay',
-                icon: const Icon(Icons.chevron_right_rounded),
-              ),
-            ],
-          ),
-        ],
+          ]),
+        ]),
       ),
     );
   }
+
+  Widget _miniStat(String label, String value, Color tone) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                  fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: AppColors.muted)),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: tone)),
+        ],
+      );
+
+  /// MÜŞTERİ CARİ DEFTERİ — tam ekran. Taksit takvimi burada; tahsilat hâlâ TEK BİR SATIŞIN
+  /// carisine yazılır (para doğru yere gitsin diye satış satırından açılır).
+  Future<void> _openCustomerLedger(CustomerAccountGroup g) async {
+    await openCustomerLedgerSheet(
+      context,
+      group: g,
+      onCollect: (a) async => _openAccountDetail(a),
+      onCollectMonthly: (a) async => _monthlyCollect(a),
+      onOpenSale: (a) async => _openAccountDetail(a),
+      onOpenSalesWorkspace: () async {
+        if (g.accounts.isEmpty) return;
+        await _openCustomerSales(g.accounts.first);
+      },
+    );
+    if (mounted) _reload();
+  }
+
 
   Widget _tag(String text, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
