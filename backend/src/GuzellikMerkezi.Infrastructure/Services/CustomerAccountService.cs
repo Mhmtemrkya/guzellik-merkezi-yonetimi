@@ -1413,15 +1413,27 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var sessions = await _db.CustomerPackageSessions
             .AsNoTracking()
             .Where(s => s.TenantId == tenantId)
-            .Select(s => new { s.CustomerAccountId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
+            .Select(s => new { s.CustomerAccountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
             .ToListAsync(cancellationToken);
 
-        var scopedSessions = sessions
+        // YALNIZ TEKİL HİZMET SATIŞLARI (ServicePackageId = Guid.Empty).
+        //
+        // Paket satışı, içindeki HER hizmet için de bir seans satırı açar (bkz. AdisyonService
+        // 2a). Bu satırlar süzülmediği için paketten gelen seanslar Hizmet Raporu'nda ayrıca
+        // "satılmış hizmet" gibi sayılıyordu: aynı satış hem Paket hem Hizmet raporunda görünüyor,
+        // ciro payı iki kez okunuyordu. Paket raporu ters yönde AYNI süzgeci zaten uyguluyor
+        // (`ServicePackageId != Guid.Empty`); iki rapor artık aynı kümeyi paylaşmıyor.
+        var serviceOnlySessions = sessions.Where(s => s.ServicePackageId == Guid.Empty).ToList();
+
+        var scopedSessions = serviceOnlySessions
             .Where(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && periodAccountIds.Contains(s.CustomerAccountId))
             .ToList();
 
         // Ciro: seans satırında tutar yok → satışın toplamı seans ağırlığına göre dağıtılır
         // (paket raporundaki kalem dağıtımıyla aynı mantık; kategori dışı kalemler paya girmez).
+        // AĞIRLIK PAYDASI SATIŞIN TAMAMIDIR (paket kalemleri dahil): karma fişte — bir paket +
+        // bir tekil hizmet aynı cariye yazıldığında — payda yalnız hizmet satırlarından
+        // kurulursa, satışın TÜM tutarı hizmete yazılır ve paketin payı hizmet cirosuna eklenirdi.
         var weightByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
@@ -1444,7 +1456,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var cancelledSummaries = await LoadCancelledSummariesAsync(tenantId, fromUtc, toUtc, cancellationToken);
         var cancelledSoldServiceCount = cancelledSummaries
             .SelectMany(c => c.Sessions)
-            .Count(s => scopedServiceIds.Contains(s.ServiceId));
+            // Paketten gelen seans satırları hizmet sayılmaz — canlı taraftaki
+            // `serviceOnlySessions` süzgeciyle aynı kural (paket raporu bunun tersini uygular).
+            .Count(s => s.PackageId == Guid.Empty && scopedServiceIds.Contains(s.ServiceId));
 
         var sessionsTotal = scopedSessions.Sum(s => s.TotalSessions);
         var sessionsUsed = scopedSessions.Sum(s => s.UsedSessions);

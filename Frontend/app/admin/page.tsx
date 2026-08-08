@@ -2100,8 +2100,10 @@ export default function AdminDashboard() {
                       </span>
                       <div>
                         <div className="text-[13px] font-semibold text-[#4a3a44]">Hizmet Raporu</div>
+                        {/* Kapsam ekranda yazılı: bu blok YALNIZ tekil hizmet satışlarını sayar,
+                            paketten gelen seanslar Paket Raporu'nda okunur (ikisi ayrık küme). */}
                         <div className="text-[10px] text-[#705a66]">
-                          {svcWindowLabel}
+                          Tekil hizmet satışları · {svcWindowLabel}
                           {serviceCategory && ` · ${serviceCategory}${serviceSubCategory ? ` / ${serviceSubCategory}` : ''}`}
                         </div>
                       </div>

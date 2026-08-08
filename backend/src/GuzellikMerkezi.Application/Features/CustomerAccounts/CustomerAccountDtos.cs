@@ -265,6 +265,12 @@ public sealed record AccountReportDto(
 /// <summary>
 /// Pano "Hizmet Raporu" kartları. Paket raporundan TAMAMEN AYRIDIR: buradaki kategori HİZMETİN
 /// kategorisidir ve sayılan şey hizmettir, paket değil. Dönem + kategori birlikte uygulanır.
+/// <para>
+/// KAPSAM: yalnız TEKİL hizmet satışları (<c>CustomerPackageSession.ServicePackageId</c> boş).
+/// Paket satışı içindeki her hizmet için de seans satırı açar; onlar Paket Raporu'na aittir.
+/// İki rapor ayrık kümelere bakar — süzgeç simetriktir (dolu ↔ boş) ve biri değişirse diğeri de
+/// değişmeli, yoksa aynı satış iki blokta birden sayılır.
+/// </para>
 /// </summary>
 public sealed record ServiceReportDto(
     int ServiceSalesCount,          // "Toplam Hizmet" — dönemde satılan hizmet adedi

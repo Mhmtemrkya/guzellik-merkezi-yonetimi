@@ -2363,7 +2363,9 @@ class _ServiceReportCardState extends State<_ServiceReportCard> {
     return _DashCard(
       icon: Icons.spa_rounded,
       title: 'Hizmet Raporu',
-      subtitle: _reportWindow(_period, _custom).label,
+      // Kapsam ekranda yazılı (web paritesi): bu blok YALNIZ tekil hizmet satışlarını sayar,
+      // paketten gelen seanslar Paket Raporu'nda okunur (ikisi ayrık küme).
+      subtitle: 'Tekil hizmet satışları · ${_reportWindow(_period, _custom).label}',
       busy: _busy,
       filter: _ReportPeriodBar(
         period: _period,

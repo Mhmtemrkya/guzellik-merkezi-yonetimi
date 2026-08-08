@@ -145,9 +145,14 @@ public sealed class PackageReportScopeTests
             Assert.Equal(1, report.Value!.PackageSalesCount);   // 2 değil
             Assert.Equal(6, report.Value.SessionsTotal);        // 7 değil
 
-            // Hizmet raporu ikisini de sayar: paketin içindeki hizmet de bir hizmet satışıdır.
+            // HİZMET RAPORU YALNIZ TEKİL HİZMET SATIŞINI SAYAR (8 Ağu 2026, kullanıcı kararı).
+            // Eskiden paketin içindeki hizmet de "hizmet satışı" sayılıyordu (burada 2); aynı satış
+            // hem Paket hem Hizmet raporunda görünüyor, cirosu iki kez okunuyordu. İki rapor artık
+            // ayrık kümelere bakar — süzgeç tek alanla simetrik: ServicePackageId dolu ↔ boş.
+            // Ayrıntı: ServiceReportPackageExclusionTests.
             var service = await NewService(db).GetServiceReportAsync(seed.TenantId);
-            Assert.Equal(2, service.Value!.ServiceSalesCount);
+            Assert.Equal(1, service.Value!.ServiceSalesCount);
+            Assert.Equal(1, service.Value.SessionsTotal);        // paketin 6 seansı hariç
         }
     }
 }
