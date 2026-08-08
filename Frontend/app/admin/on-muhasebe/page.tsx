@@ -10,6 +10,7 @@ import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
 import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
 import InstallmentCollectionDialog from '@/components/dashboard/InstallmentCollectionDialog'
 import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
+import CustomerLedgerModal from '@/components/dashboard/CustomerLedgerModal'
 import CariSalesWorkspace from '@/components/dashboard/CariSalesWorkspace'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerPicker, { type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
@@ -24,6 +25,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi, fetchAllPaged, ApiClientError } from '@/lib/apiClient'
+import { activeInstallments, groupAccountsByCustomer } from '@/lib/accountGrouping'
 import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAdisyon,
@@ -31,7 +33,7 @@ import {
   paymentMethodLabel,
 } from '@/lib/apiMappers'
 import {
-  Ban, Banknote, Boxes, Briefcase, Building2, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
+  Ban, Banknote, Boxes, Briefcase, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
   CreditCard, History, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
   Trash2, TrendingDown, TrendingUp, Undo2, Users, Wallet, Wrench, Zap,
 } from 'lucide-react'
@@ -154,7 +156,13 @@ function OnMuhasebePageInner() {
     async () => {
       if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] }
       const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, cancelled, services] = await Promise.all([
-        adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+        // TÜM cariler sayfa sayfa: liste artık MÜŞTERİ BAZINDA gruplanıyor. Tek sayfalık (500)
+        // çekimde müşterinin bazı satışları listeye hiç girmez ve grup toplamı (borç/tahsilat)
+        // sessizce eksik çıkardı — kısmi veriyle toplama yapmak yanlış rakam üretir.
+        fetchAllPaged<ApiCustomerAccount>(
+          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, page, pageSize }),
+          500,
+        ).catch(() => [] as ApiCustomerAccount[]),
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
@@ -168,7 +176,7 @@ function OnMuhasebePageInner() {
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
       ])
       return {
-        accounts: apiItems(accounts), expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
+        accounts, expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
         appts: apiItems(appts), customers, packages: apiItems(packages),
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
         cancelled: Array.isArray(cancelled) ? cancelled : [],
@@ -329,8 +337,6 @@ function OnMuhasebePageInner() {
   // kurumlarda eski damgalı (CancelledAtUtc dolu) satırlara karşı savunma olarak durur.
   const liveAccounts = useMemo(() => accounts.filter((a) => a.saleStatus !== 'Cancelled'), [accounts])
 
-  const activeInstallments = (a: CustomerAccount) => a.installments.filter((i) => i.status !== 'Cancelled')
-
   const accountCounts = useMemo(() => ({
     all: liveAccounts.length,
     installment: liveAccounts.filter((a) => activeInstallments(a).length > 1).length,
@@ -363,6 +369,33 @@ function OnMuhasebePageInner() {
       return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999')
     })
   }, [liveAccounts, accountFilter, accountQuery])
+
+  /**
+   * MÜŞTERİ BAZINDA GRUPLAMA — liste satırı artık satış değil MÜŞTERİ.
+   *
+   * Aynı müşterinin üç satışı üç ayrı cari kartı açar (kural değişmedi: tahsilat/iptal/taksit
+   * doğru satışa bağlansın diye şart). Ama ön muhasebede soru "bu müşteri ne kadar borçlu" —
+   * aynı ad üç satırda üç tutarla görününce toplamı kullanıcı kafadan yapıyordu.
+   * Süzgeç ÖNCE hesap düzeyinde uygulanır (çipler hesap sayar), sonra kalanlar gruplanır.
+   */
+  const accountGroups = useMemo(() => {
+    const groups = groupAccountsByCustomer(filteredAccounts)
+    return groups.sort((a, b) => {
+      // Geciken müşteri üstte: ön muhasebede ilk iş "kim ödemedi" bakmaktır.
+      if (a.hasOverdue !== b.hasOverdue) return a.hasOverdue ? -1 : 1
+      // Sonra tazelik (yeni satış hemen görünsün), eşitse en yakın vade.
+      const t = b.lastSaleAtUtc.localeCompare(a.lastSaleAtUtc)
+      if (t !== 0) return t
+      return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999')
+    })
+  }, [filteredAccounts])
+
+  /** Tablodan açılan müşteri (grup) — modal bu müşterinin TÜM satışlarını gösterir. */
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const selGroup = useMemo(
+    () => accountGroups.find((g) => (g.customerId || g.accounts[0]?.id) === selectedGroupId) || null,
+    [accountGroups, selectedGroupId],
+  )
 
   const selAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) || null, [accounts, selectedAccountId])
   const openAccount = (id: string): void => { setSelectedAccountId(id); setAccountDetailOpen(true) }
@@ -1068,101 +1101,122 @@ function OnMuhasebePageInner() {
               </div>
             </div>
 
-            {/* ---- Cari listesi ---- */}
-            <div className="grid gap-3 lg:grid-cols-2">
-              {filteredAccounts.map((a) => {
-                const insts = activeInstallments(a)
-                const isInstallment = insts.length > 1
-                const isOpen = a.remainingAmount > 0.005
-                const pct = a.totalAmount > 0 ? Math.min(100, Math.round((a.paidAmount / a.totalAmount) * 100)) : 0
-                const paidCount = insts.filter((i) => i.remaining <= 0.005).length
-                const initials = (a.customerName || a.name).trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
-                return (
-                  <div
-                    key={a.id}
-                    className={`rounded-[18px] border bg-white p-4 transition-shadow hover:shadow-[0_22px_46px_-34px_rgba(150,78,104,0.5)] ${
-                      a.hasOverdue ? 'border-rose-200' : isOpen ? 'border-[#ead8df]/80' : 'border-emerald-200/70'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <button type="button" onClick={() => openAccount(a.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#a3576f]">
-                          {initials || '—'}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[14px] font-semibold text-[#352432]">{a.customerName || a.name}</span>
-                          <span className="block truncate text-[11px] text-[#705a66]">{a.servicePackageName || a.name}</span>
-                        </span>
-                      </button>
-                      <div className="shrink-0 text-right">
-                        <div className={`font-display text-[19px] tabular-nums ${isOpen ? 'text-[#c85776]' : 'text-emerald-700'}`}>{formatTL(a.remainingAmount)}</div>
-                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">{isOpen ? 'kalan borç' : 'kapandı'}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                      <span className={`rounded-md px-2 py-0.5 text-[9.5px] font-bold ${isInstallment ? 'bg-[#f3e8ff] text-[#7c3aed]' : 'bg-[#e0f2fe] text-[#0369a1]'}`}>
-                        {isInstallment ? `TAKSİTLİ · ${insts.length} AY` : 'PEŞİN'}
-                      </span>
-                      {a.hasOverdue && <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[9.5px] font-bold text-rose-700">GECİKMİŞ</span>}
-                      {a.creditBalance > 0 && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700">KREDİ {formatTL(a.creditBalance)}</span>}
-                      {isOpen && a.nextDueDate && (
-                        <span className="inline-flex items-center gap-1 text-[10.5px] text-[#705a66]">
-                          <CalendarDays className="h-3 w-3 text-[#c85776]" /> {shortDay(a.nextDueDate)} · <b className="text-[#4a3a44]">{formatTL(a.nextDueAmount)}</b>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
-                        <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} />
-                      </span>
-                      <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">
-                        {isInstallment ? `${paidCount}/${insts.length} taksit` : `%${pct} ödendi`}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {isOpen && isInstallment && (
-                        <button
-                          type="button" onClick={() => { setSelectedAccountId(a.id); setCollectMode('monthly') }}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#c85776]/50 bg-white px-3 text-[11.5px] font-semibold text-[#a3576f] transition-transform hover:-translate-y-0.5"
+            {/* ---- Cari TABLOSU (müşteri bazında) ----
+                Kart ızgarası yerine tablo: aynı müşterinin birden çok satışı tek satırda
+                toplanır, satıra tıklayınca müşterinin cari defteri (tam sayfa) açılır. */}
+            <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/80 bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] border-collapse text-[12.5px]">
+                  <thead className="sticky top-0 z-10 bg-[#fff7fa]">
+                    <tr className="border-b border-[#f0dce5] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                      <th className="px-4 py-2.5">Müşteri</th>
+                      <th className="px-3 py-2.5 text-center">Satış</th>
+                      <th className="px-3 py-2.5 text-right">Toplam</th>
+                      <th className="px-3 py-2.5 text-right">Tahsil edilen</th>
+                      <th className="px-3 py-2.5 text-right">Kalan borç</th>
+                      <th className="px-3 py-2.5">Tahsilat durumu</th>
+                      <th className="px-3 py-2.5">Sıradaki vade</th>
+                      <th className="px-3 py-2.5 text-right">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accountGroups.map((g) => {
+                      const isOpen = g.remainingAmount > 0.005
+                      const pct = g.totalAmount > 0 ? Math.min(100, Math.round((g.paidAmount / g.totalAmount) * 100)) : 0
+                      const initials = g.customerName.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
+                      const rowKey = g.customerId || g.accounts[0]?.id || g.customerName
+                      return (
+                        <tr
+                          key={rowKey}
+                          onClick={() => setSelectedGroupId(rowKey)}
+                          className={`cursor-pointer border-b border-[#f8f0f4] transition-colors last:border-b-0 hover:bg-[#fff7fa] ${g.hasOverdue ? 'bg-rose-50/40' : ''}`}
                         >
-                          <CalendarClock className="h-3.5 w-3.5" /> Aylık taksit
-                        </button>
-                      )}
-                      {isOpen && (
-                        <button
-                          type="button" onClick={() => { setSelectedAccountId(a.id); setCollectMode('general') }}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
-                        >
-                          <Banknote className="h-3.5 w-3.5" /> {isInstallment ? 'Genel tahsilat' : 'Tahsilat al'}
-                        </button>
-                      )}
-                      {/* SATIŞLAR: bu müşterinin tüm satışları + geçmiş satış ekleme + İPTAL.
-                          Detay modali PARANIN görünümüdür (ekstre/taksit/tahsilat); satışın
-                          kendisini yönetmek için ayrı kapı gerekiyordu. */}
-                      {a.customerId && (
-                        <button
-                          type="button"
-                          onClick={() => setSalesCustomer({ id: a.customerId!, name: a.customerName || a.name })}
-                          className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
-                        >
-                          <Package className="h-3.5 w-3.5 text-[#c85776]" /> Satışlar
-                        </button>
-                      )}
-                      <button
-                        type="button" onClick={() => openAccount(a.id)}
-                        className={`inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0] ${a.customerId ? '' : 'ml-auto'}`}
-                      >
-                        Detay <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-              {filteredAccounts.length === 0 && (
-                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66] lg:col-span-2">
+                          <td className="px-4 py-2.5">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[11px] font-bold text-[#a3576f]">
+                                {initials || '—'}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate font-semibold text-[#352432]">{g.customerName}</span>
+                                <span className="block truncate text-[11px] text-[#705a66]">
+                                  {g.saleCount === 1 ? (g.accounts[0].servicePackageName || g.accounts[0].name) : `${g.saleCount} satış`}
+                                  {g.customerPhone ? ` · ${g.customerPhone}` : ''}
+                                </span>
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] font-bold tabular-nums text-[#a3576f]">
+                              {g.saleCount}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-[#4a3a44]">{formatTL(Math.round(g.totalAmount))}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-emerald-700">{formatTL(Math.round(g.paidAmount))}</td>
+                          <td className={`px-3 py-2.5 text-right font-display text-[15px] tabular-nums ${isOpen ? (g.hasOverdue ? 'text-rose-700' : 'text-[#c85776]') : 'text-emerald-700'}`}>
+                            {formatTL(Math.round(g.remainingAmount))}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="h-1.5 w-20 overflow-hidden rounded-full bg-[#f7e9ee]">
+                                <span className={`block h-full rounded-full ${isOpen ? 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]' : 'bg-gradient-to-r from-[#7fc7ad] to-[#2c7d63]'}`} style={{ width: `${Math.max(3, pct)}%` }} />
+                              </span>
+                              <span className="shrink-0 text-[10.5px] font-semibold tabular-nums text-[#705a66]">%{pct}</span>
+                              {g.hasOverdue && (
+                                <span className="shrink-0 rounded-md bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700">GECİKMİŞ</span>
+                              )}
+                              {g.hasInstallmentPlan && !g.hasOverdue && (
+                                <span className="shrink-0 rounded-md bg-[#f3e8ff] px-1.5 py-0.5 text-[9.5px] font-bold text-[#7c3aed]">TAKSİTLİ</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-[11.5px] text-[#705a66]">
+                            {isOpen && g.nextDueDate ? (
+                              <span className="inline-flex items-center gap-1">
+                                <CalendarDays className="h-3 w-3 text-[#c85776]" /> {shortDay(g.nextDueDate)}
+                                <b className="text-[#4a3a44]">{formatTL(g.nextDueAmount)}</b>
+                              </span>
+                            ) : isOpen ? '—' : <span className="text-emerald-700">kapandı</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isOpen && g.accounts.length === 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setSelectedAccountId(g.accounts[0].id); setCollectMode('general') }}
+                                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+                                >
+                                  <Banknote className="h-3.5 w-3.5" /> Tahsilat
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedGroupId(rowKey)}
+                                className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 text-[11px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                              >
+                                Defter <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  {accountGroups.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-[#f0dce5] bg-[#fff7fa] text-[11.5px] font-bold text-[#352432]">
+                        <td className="px-4 py-2.5">{accountGroups.length} müşteri</td>
+                        <td className="px-3 py-2.5 text-center tabular-nums">{accountGroups.reduce((s, g) => s + g.saleCount, 0)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.totalAmount, 0)))}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.paidAmount, 0)))}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-[#c85776]">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.remainingAmount, 0)))}</td>
+                        <td className="px-3 py-2.5" colSpan={3} />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+              {accountGroups.length === 0 && (
+                <div className="px-4 py-12 text-center text-[12.5px] text-[#705a66]">
                   {accountQuery ? 'Aramaya uyan cari hesap yok.' : 'Bu kapsamda cari hesap yok.'}
                 </div>
               )}
@@ -1221,6 +1275,22 @@ function OnMuhasebePageInner() {
                 </div>
               </ModalPortal>
             )}
+
+            {/* MÜŞTERİ CARİ DEFTERİ — tablodan açılır, tam sayfa. Aylık taksit takvimi burada;
+                tahsilat hâlâ TEK BİR SATIŞIN carisine yazılır (para doğru yere gitsin). */}
+            <CustomerLedgerModal
+              group={selGroup}
+              open={Boolean(selGroup)}
+              onClose={() => setSelectedGroupId(null)}
+              onCollect={(accountId) => { setSelectedAccountId(accountId); setCollectMode('general') }}
+              onCollectMonthly={(accountId) => { setSelectedAccountId(accountId); setCollectMode('monthly') }}
+              onOpenSale={(accountId) => { setSelectedGroupId(null); openAccount(accountId) }}
+              onOpenSalesWorkspace={() => {
+                if (!selGroup?.customerId) return
+                setSelectedGroupId(null)
+                setSalesCustomer({ id: selGroup.customerId, name: selGroup.customerName })
+              }}
+            />
 
             <AccountDetailModal
               account={selAccount}
