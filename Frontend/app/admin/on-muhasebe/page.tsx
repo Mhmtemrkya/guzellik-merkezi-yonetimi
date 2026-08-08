@@ -28,6 +28,7 @@ import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
   apiItems, expenseCategoryLabels, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAdisyon,
   normalizeAppointment, normalizeCustomCategory, normalizeCustomer, normalizeExpense, normalizePackage, normalizeService, normalizeStaff,
+  paymentMethodLabel,
 } from '@/lib/apiMappers'
 import {
   Ban, Banknote, Boxes, Briefcase, Building2, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
@@ -396,7 +397,8 @@ function OnMuhasebePageInner() {
       rows.push({
         date: p.occurredAtUtc || '',
         label: 'Tahsilat',
-        detail: [p.method, p.reference].filter(Boolean).join(' · '),
+        // Yöntem HAM kodla ("cash") yazılıyordu — cari ekstresinde Türkçe etiket görünsün.
+        detail: [p.method ? paymentMethodLabel(p.method) : '', p.reference].filter(Boolean).join(' · '),
         debit: 0,
         credit: p.amount,
       })

@@ -4,22 +4,13 @@ import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/payment_method.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
 import '../accounting/collection_sheet.dart';
 import '../accounting/expense_form_sheet.dart';
 import '../appointments/calendar_theme.dart';
-
-const _methodLabels = {
-  'cash': 'Nakit',
-  'card': 'Kart',
-  'transfer': 'Havale/EFT',
-  'Cash': 'Nakit',
-  'Card': 'Kart',
-  'BankTransfer': 'Havale/EFT',
-  'Check': 'Çek',
-};
 
 /// Günlük Kasa — web "kasa" sayfasının özellik karşılığı: gün/ay nakit akışı,
 /// gelir/gider/net + yöntem dağılımı, hareket listesi, tahsilat ve gider ekleme.
@@ -213,7 +204,7 @@ class _CashScreenState extends State<CashScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(_methodLabels['${m['method']}'] ?? '${m['method']}',
+                          Text(paymentMethodLabel('${m['method']}'),
                               style:
                                   const TextStyle(fontWeight: FontWeight.w700)),
                           Text(
@@ -315,7 +306,7 @@ class _CashScreenState extends State<CashScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        '${_methodLabels['${e['method']}'] ?? valueOf(e, const ['method'], fallback: '')} · ${_short('${e['occurredAtUtc']}')}',
+                        '${paymentMethodLabel('${e['method']}')} · ${_short('${e['occurredAtUtc']}')}',
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.muted),
                       ),

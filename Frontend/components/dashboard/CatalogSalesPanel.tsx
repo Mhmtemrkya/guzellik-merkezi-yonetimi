@@ -392,7 +392,10 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
           {account.sessionsTotal > 0 && (
             <>
               <span className="text-[#c9b3bd]">·</span>
-              <span className="font-semibold text-[#4a3a44]">{account.sessionsUsed}/{account.sessionsTotal} seans</span>
+              {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
+              <span className="font-semibold tabular-nums text-[#4a3a44]">
+                {Math.max(0, account.sessionsTotal - account.sessionsUsed)} seans kaldı
+              </span>
             </>
           )}
         </span>

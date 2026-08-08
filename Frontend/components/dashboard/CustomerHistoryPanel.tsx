@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { formatTL, normalizeAdisyon, normalizeAppointment } from '@/lib/apiMappers'
+import { formatTL, normalizeAdisyon, normalizeAppointment, paymentMethodLabel } from '@/lib/apiMappers'
 import type {
   ApiAdisyon,
   ApiAppointment,
@@ -34,15 +34,6 @@ function fmtTime(ts: number): string {
   if (!ts) return ''
   const d = new Date(ts)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-/** Backend ödeme yöntemi kodunu insan diline çevirir. */
-function methodLabel(method: string): string {
-  const key = (method || '').toLowerCase()
-  if (key.includes('cash') || key.includes('nakit')) return 'Nakit'
-  if (key.includes('card') || key.includes('kart')) return 'Kart'
-  if (key.includes('transfer') || key.includes('havale') || key.includes('eft')) return 'Havale'
-  return method || 'Tahsilat'
 }
 
 /** Kullanılan/yapılan iş satırı. */
@@ -268,7 +259,7 @@ export default function CustomerHistoryPanel({
           key: `pay-${p.id}`,
           ts: Date.parse(p.occurredAtUtc || '') || 0,
           desc: acc.servicePackageName || acc.name,
-          appliedBy: methodLabel(p.method),
+          appliedBy: paymentMethodLabel(p.method),
           soldBy: null,
           trailing: `+${formatTL(p.amount)}`,
           tone: 'in',
@@ -339,17 +330,29 @@ export default function CustomerHistoryPanel({
             <div key={g.packageId} className="rounded-xl border border-[#f0e2e9] bg-[#fdf9fb] px-3 py-2">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="min-w-0 truncate text-[12px] font-bold text-[#2b1e29]">{g.name}</span>
-                <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[#705a66]">
-                  <span className="text-[#8e3f5b]">{g.rows.reduce((n, r) => n + r.remaining, 0)}</span> /{' '}
-                  {g.rows.reduce((n, r) => n + r.total, 0)} seans
-                </span>
+                {/* NET CEVAP: "3 / 4 seans" hangi sayının kalan olduğunu söylemiyordu. */}
+                {(() => {
+                  const rem = g.rows.reduce((n, r) => n + r.remaining, 0)
+                  return (
+                    <span className={`shrink-0 text-[11px] font-semibold ${rem > 0 ? 'text-[#8e3f5b]' : 'text-[#705a66]'}`}>
+                      {rem > 0 ? `${rem} seans kaldı` : 'Seans kalmadı'}
+                    </span>
+                  )
+                })()}
               </div>
               <ul className="mt-1.5 space-y-1">
                 {g.rows.map((r) => (
                   <li key={r.serviceDefinitionId} className="flex items-baseline justify-between gap-2 text-[11.5px]">
                     <span className="min-w-0 truncate text-[#4a3a44]">{r.serviceName}</span>
-                    <span className="shrink-0 font-semibold tabular-nums text-[#705a66]">
-                      <span className={r.remaining > 0 ? 'text-[#8e3f5b]' : ''}>{r.remaining}</span> / {r.total} kaldı
+                    <span className="shrink-0 font-semibold text-[#705a66]">
+                      {r.remaining > 0 ? (
+                        <>
+                          <span className="tabular-nums text-[#8e3f5b]">{r.remaining} seans kaldı</span>
+                          <span className="ml-1.5 text-[10.5px] tabular-nums">({r.total} seanslık)</span>
+                        </>
+                      ) : (
+                        <span className="tabular-nums">Bitti ({r.total} seans kullanıldı)</span>
+                      )}
                     </span>
                   </li>
                 ))}

@@ -627,7 +627,9 @@ public sealed partial class ReportsService : IReportsService
     private static string MethodLabel(string key) => key switch
     {
         "cash" => "Nakit",
-        "card" => "Kredi Kartı",
+        // Panelde bu yöntem her yerde "Kart" (tahsilat modalleri, kasa, müşteri kartı); rapor
+        // "Kredi Kartı" diyerek aynı kaydı ikinci bir adla anıyordu.
+        "card" => "Kart",
         "transfer" => "Havale / EFT",
         "check" => "Çek",
         // Yöntemi hiç yazılmamış tahsilatlar (eski adisyon kayıtları dâhil) — uydurma yapılmaz.

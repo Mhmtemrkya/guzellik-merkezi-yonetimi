@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/payment_method.dart';
 import '../accounting/adisyon_receipt_sheet.dart' show adisyonItemTypeKey, adisyonItemVisual;
 
 /// Müşterinin geçmişi — web `CustomerHistoryPanel` paritesi. Üç sekme, ÜÇ FARKLI SORU:
@@ -289,9 +290,9 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         final p = raw.cast<String, dynamic>();
         rows.add(_Row(
           at: parseUtcToLocal(p['occurredAtUtc']),
-          tag: _methodLabel('${p['method'] ?? ''}'),
+          tag: paymentMethodLabel('${p['method'] ?? ''}'),
           desc: name,
-          appliedBy: _methodLabel('${p['method'] ?? ''}'),
+          appliedBy: paymentMethodLabel('${p['method'] ?? ''}'),
           amount: '+${_money.format((p['amount'] as num?)?.toDouble() ?? 0)}',
           tone: AppColors.success,
         ));
@@ -307,16 +308,6 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       return b.compareTo(a);
     });
     return rows;
-  }
-
-  static String _methodLabel(String method) {
-    final key = method.toLowerCase();
-    if (key.contains('cash') || key.contains('nakit')) return 'Nakit';
-    if (key.contains('card') || key.contains('kart')) return 'Kart';
-    if (key.contains('transfer') || key.contains('havale') || key.contains('eft')) {
-      return 'Havale';
-    }
-    return method.isEmpty ? 'Tahsilat' : method;
   }
 
   @override
@@ -503,7 +494,6 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   Widget _balanceCard(Map<String, dynamic> g) {
     final rows = (g['rows'] as List).cast<Map<String, dynamic>>();
     final remaining = rows.fold<int>(0, (n, r) => n + (r['remaining'] as int));
-    final total = rows.fold<int>(0, (n, r) => n + (r['total'] as int));
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -523,9 +513,12 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
               ),
-              Text('$remaining / $total seans',
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
+              // NET CEVAP: "3 / 4 seans" hangi sayının kalan olduğunu söylemiyordu.
+              Text(remaining > 0 ? '$remaining seans kaldı' : 'Seans kalmadı',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: remaining > 0 ? AppColors.primaryDark : AppColors.muted)),
             ],
           ),
           const SizedBox(height: 4),
@@ -540,9 +533,16 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11.5, color: AppColors.ink)),
                   ),
-                  Text('${r['remaining']} / ${r['total']} kaldı',
-                      style: const TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                  Text(
+                      (r['remaining'] as int) > 0
+                          ? '${r['remaining']} seans kaldı'
+                          : 'Bitti (${r['total']} seans)',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: (r['remaining'] as int) > 0
+                              ? AppColors.primaryDark
+                              : AppColors.muted)),
                 ],
               ),
             ),

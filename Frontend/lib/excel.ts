@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
+import { paymentMethodLabel } from '@/lib/apiMappers'
 
 // ---------------------------------------------------------------------------
 // Tip tanımları
@@ -471,18 +472,21 @@ export interface DailyAdisyonExportRow {
   status: string           // Açık / Tamamlandı
 }
 
+/**
+ * Yöntemi olmayan satıra "Nakit" yazılıyordu — kaydedilmemiş bilgiyi UYDURMAK, dışa aktarılan
+ * dosyada gerçek gibi görünür. Etiket artık ekranlarla ortak çeviriciden gelir.
+ */
 function adisyonMethodLabel(m: string | null): string {
-  const k = (m || '').toLowerCase()
-  if (k === 'card') return 'Kart'
-  if (k === 'transfer') return 'Havale/EFT'
-  if (k === 'check') return 'Çek'
-  return 'Nakit'
+  return paymentMethodLabel(m)
 }
-function adisyonMethodKey(m: string | null): 'cash' | 'card' | 'transfer' {
+function adisyonMethodKey(m: string | null): 'cash' | 'card' | 'transfer' | 'unknown' {
   const k = (m || '').toLowerCase()
   if (k === 'card') return 'card'
   if (k === 'transfer') return 'transfer'
-  return 'cash'
+  if (k === 'cash') return 'cash'
+  // Yöntemi yazılmamış tahsilat Nakit kovasına gidiyordu: satırda "Yöntem Kaydedilmemiş"
+  // yazarken tutarın Nakit toplamına eklenmesi kasa sayımını yanıltır.
+  return 'unknown'
 }
 
 export async function exportDailyAdisyonToExcel(
@@ -555,7 +559,7 @@ export async function exportDailyAdisyonToExcel(
     zebra = !zebra
   }
 
-  const byMethod = { cash: 0, card: 0, transfer: 0 }
+  const byMethod = { cash: 0, card: 0, transfer: 0, unknown: 0 }
   let ciro = 0
   let tahsilat = 0
   for (const r of rows) {
@@ -576,6 +580,8 @@ export async function exportDailyAdisyonToExcel(
   addTotal('Nakit', byMethod.cash, { color: 'FF2F9E72' })
   addTotal('Kart', byMethod.card, { color: 'FF2563EB' })
   addTotal('Havale / EFT', byMethod.transfer, { color: 'FF7C3AED' })
+  // Yalnız böyle kayıt varsa yazılır — üç kovanın toplamı "Toplam Tahsilat"ı tutsun.
+  if (byMethod.unknown > 0) addTotal('Yöntem Kaydedilmemiş', byMethod.unknown, { color: 'FF8A7A83' })
   addTotal('Toplam Tahsilat', tahsilat, { strong: true, color: 'FF2F9E72' })
   addTotal('Toplam Ciro', ciro, { strong: true, color: 'FFA63E5F' })
 

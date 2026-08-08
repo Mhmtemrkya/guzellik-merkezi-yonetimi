@@ -16,7 +16,7 @@ import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import CustomerSalesModal, { summarizeCustomerSales } from '@/components/dashboard/CustomerSalesModal'
 import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
-import { formatTL } from '@/lib/apiMappers'
+import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
 import type { Appointment, CustomerAccount } from '@/lib/types'
@@ -32,6 +32,12 @@ export interface CustomerModalData {
   joined: string
   notes?: string
   debt: number
+  /**
+   * Sunucunun hesapladığı NET TAHSİLAT (tahsilat + arşiv − iade). KPI'lardaki "Toplam Harcama /
+   * Tahsil Edilen" ikilisi artık `accounts` listesinden türetiliyor — iki rakam birbirinden
+   * çıkarılabilsin diye aynı kümeye bakmaları şart. Alan, listeyle aynı kaynaktan gelsin diye
+   * arayüzde kalır ama kartlarda kullanılmaz.
+   */
   spent: number
   apptCount: number
   lastService: string
@@ -310,7 +316,7 @@ function SalesSummaryCard({
             )}
             {summary.sessionsTotal > 0 && (
               <span className="rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] font-bold text-[#a34a62]">
-                {summary.sessionsUsed}/{summary.sessionsTotal} seans
+                {Math.max(0, summary.sessionsTotal - summary.sessionsUsed)} seans kaldı
               </span>
             )}
           </div>
@@ -342,6 +348,7 @@ export default function CustomerDetailModal({
   tenantId,
   appts,
   accounts,
+  accountsLoading = false,
   isStaff,
   canAdisyon,
   canBlacklist,
@@ -364,6 +371,11 @@ export default function CustomerDetailModal({
   tenantId?: string
   appts: Appointment[]
   accounts: CustomerAccount[]
+  /**
+   * Cari/randevu verisi hâlâ geliyor mu? Satış tutarı kartları bu listeden hesaplandığı için,
+   * yükleme sırasında ₺0 yazmak yerine "—" gösterilir (bir an "harcama yok" sanılıyordu).
+   */
+  accountsLoading?: boolean
   isStaff: boolean
   canAdisyon: boolean
   canBlacklist: boolean
@@ -461,6 +473,8 @@ export default function CustomerDetailModal({
   )
   const customerAccounts = useMemo(() => accounts.filter((a) => a.customerId === cid), [accounts, cid])
   const salesSummary = useMemo(() => summarizeCustomerSales(customerAccounts), [customerAccounts])
+  /** KPI'daki satış adedi: tutarlarla AYNI kümeye bakar (iptaller tutara girmiyor, sayıya da girmez). */
+  const salesCount = salesSummary.active + salesSummary.completed
 
   /**
    * Tahsilat alınabilecek cariler: kalan borcu olanlar. İptal edilen satışlar zaten canlı listeye
@@ -538,11 +552,12 @@ export default function CustomerDetailModal({
   const completedCount = useMemo(() => customerAppts.filter((a) => a.status === 'tamamlandi').length, [customerAppts])
 
   // Ödeme tercihleri (donut) — cari tahsilatları ödeme yöntemine göre (tutar + işlem adedi).
+  // Etiket ORTAK çeviriciden gelir: ham kod ("cash") dilimde olduğu gibi yazılıyordu.
   const paymentSegments = useMemo(() => {
     const m = new Map<string, { sum: number; count: number }>()
     for (const a of customerAccounts) {
       for (const p of a.payments) {
-        const k = p.method?.trim() || 'Diğer'
+        const k = paymentMethodLabel(p.method)
         const cur = m.get(k) ?? { sum: 0, count: 0 }
         cur.sum += p.amount
         cur.count += 1
@@ -581,7 +596,36 @@ export default function CustomerDetailModal({
       icon: CalendarPlus,
       onClick: () => setTab('appointments'),
     },
-    { label: 'Toplam Harcama', value: formatTL(customer.spent), sub: 'tahsil edilen', icon: Wallet },
+    /*
+     * ÜÇLÜ OKUMA: Toplam Harcama − Tahsil Edilen ≈ Açık Borç. Eskiden "Toplam Harcama" TAHSİL
+     * EDİLEN parayı gösteriyordu; 30.000 ₺'lik paket alıp 5.000 ₺ ödeyen müşteride kart 5.000
+     * yazıyor, satışın büyüklüğü hiçbir yerde görünmüyordu. Üç kart da AYNI kaynaktan (satış
+     * özeti) beslenir; rakamlar birbirini tutsun diye sunucudaki "harcama" (tahsilat − iade)
+     * alanı burada KULLANILMAZ.
+     *
+     * "≈": Açık Borç cari BAŞINA sıfırla sınırlanır (fazla ödeme alacak bakiyesi olur, borcu
+     * eksiye çekmez) — fazla tahsilatı olan müşteride çıkarma birebir tutmayabilir.
+     */
+    {
+      label: 'Toplam Harcama',
+      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.total)),
+      sub: accountsLoading ? 'yükleniyor' : salesCount > 0 ? `${salesCount} satış tutarı` : 'satış kaydı yok',
+      icon: Wallet,
+      onClick: hasSalesPanel ? () => setSalesOpen(true) : undefined,
+    },
+    {
+      label: 'Tahsil Edilen',
+      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.paid)),
+      // Kalan tutarı yazmıyoruz: yanındaki "Açık Borç" kartı zaten AYNI rakamı gösteriyor
+      // (iki kart da Toplam − Tahsil Edilen formülünden çıkıyor). Burada oran daha çok şey söyler.
+      sub: accountsLoading
+        ? 'yükleniyor'
+        : salesSummary.total > 0
+          ? `satışın %${Math.min(100, Math.round((salesSummary.paid / salesSummary.total) * 100))}'i`
+          : 'tahsilat yok',
+      icon: Wallet,
+      tone: 'text-emerald-700',
+    },
     {
       label: 'Açık Borç',
       value: formatTL(customer.debt),
@@ -592,11 +636,16 @@ export default function CustomerDetailModal({
       onClick: canAdisyon && customer.debt > 0 ? () => setTab('adisyon') : undefined,
     },
     // Satış listesi ayrı modalde: her sekmeden tek tıkla ulaşılsın diye KPI şeridinde duruyor.
+    // Sayı İPTALLERİ SAYMAZ — "Toplam Harcama" da saymıyor; iptaller alt satırda ayrıca yazılır.
     ...(hasSalesPanel
       ? [{
         label: 'Satışlar',
-        value: String(salesSummary.count),
-        sub: salesSummary.count > 0 ? formatTL(Math.round(salesSummary.total)) : 'kayıt yok',
+        value: accountsLoading ? '—' : String(salesCount),
+        sub: accountsLoading
+          ? 'yükleniyor'
+          : salesSummary.cancelled > 0
+            ? `${salesSummary.cancelled} iptal edildi`
+            : salesCount > 0 ? 'listeyi aç' : 'kayıt yok',
         icon: Package,
         onClick: () => setSalesOpen(true),
       }]
@@ -726,15 +775,17 @@ export default function CustomerDetailModal({
                   </div>
                 </div>
 
-                {/* KPI şeridi — telefonda 2, tablette 3, dizüstünde tek sıra. */}
-                <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:w-auto">
+                {/* KPI şeridi — telefonda 2, tablette 3, dizüstünde tek sıra.
+                    Kart sayısı 6'ya çıktığı için xl'de asgari genişlik daraltıldı: kimlik bloğu
+                    (ad + iletişim) sıkışmasın. */}
+                <div className={`grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:w-auto ${hasSalesPanel ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
                   {kpis.map((k) => {
                     const Tag = k.onClick ? 'button' : 'div'
                     return (
                       <Tag
                         key={k.label}
                         {...(k.onClick ? { type: 'button' as const, onClick: k.onClick, title: 'Ayrıntıya git' } : {})}
-                        className={`min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 text-left xl:min-w-[118px] ${
+                        className={`min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 text-left xl:min-w-[104px] ${
                           k.onClick ? 'cursor-pointer transition-colors hover:border-[#efbfd0] hover:bg-white' : ''
                         }`}
                       >

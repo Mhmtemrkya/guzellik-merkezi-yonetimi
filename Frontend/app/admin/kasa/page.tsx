@@ -588,7 +588,9 @@ function KasaPageInner() {
                         <div className="grid h-16 w-16 place-items-center rounded-full bg-white text-center">
                           <div>
                             <div className="font-display text-[15px] font-bold leading-none text-[#241923]">%{topPct}</div>
-                            <div className="text-[8px] font-semibold uppercase text-[#705a66]">{topMethod ? cashFlowMethodLabel(topMethod.method) : ''}</div>
+                            {/* Yöntemi yazılmamış kayıtların etiketi uzun ("Yöntem Kaydedilmemiş") —
+                                daire içinde taşmasın diye kırpılır. */}
+                            <div className="mx-auto max-w-[54px] truncate text-[8px] font-semibold uppercase text-[#705a66]" title={topMethod ? cashFlowMethodLabel(topMethod.method) : ''}>{topMethod ? cashFlowMethodLabel(topMethod.method) : ''}</div>
                           </div>
                         </div>
                       </div>

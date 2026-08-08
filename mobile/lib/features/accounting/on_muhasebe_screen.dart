@@ -11,6 +11,7 @@ import '../../shared/crud/crud_screen.dart';
 import '../../shared/guide/guide_content.dart';
 import '../../shared/guide/page_guide.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/payment_method.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../shared/widgets/period_selector.dart';
@@ -39,13 +40,6 @@ const _expenseCategories = [
   CrudOption('Office', 'Ofis'),
   CrudOption('Other', 'Diğer'),
 ];
-const _paymentMethods = [
-  CrudOption('Cash', 'Nakit'),
-  CrudOption('Card', 'Kart'),
-  CrudOption('BankTransfer', 'Havale/EFT'),
-  CrudOption('Check', 'Çek'),
-];
-
 enum _Tab { overview, adisyon, accounts, expenses, salary }
 
 /// Ön Muhasebe — web sayfasının özellik karşılığı:
@@ -1439,9 +1433,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   String _catLabel(String key) =>
       _expenseCategories.firstWhere((c) => c.value == key,
           orElse: () => CrudOption(key, key)).label;
-  String _methodLabel(String key) =>
-      _paymentMethods.firstWhere((c) => c.value == key,
-          orElse: () => CrudOption(key, key)).label;
+  String _methodLabel(String key) => paymentMethodLabel(key);
 }
 
 class _AccData {
@@ -2282,9 +2274,10 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
         ),
       );
 
-  String _methodOf(String key) => _paymentMethods
-      .firstWhere((c) => c.value == key, orElse: () => CrudOption(key, key))
-      .label;
+  /// Tahsilat yöntemi ORTAK çeviriciden gelir: buradaki tablo enum adlarıyla (`Cash`) tam
+  /// eşleşme arıyordu, tahsilatlar ise web'in yazdığı küçük harfli kodu (`cash`) taşır —
+  /// cari ekstresinde ham "cash" yazısı görünüyordu.
+  String _methodOf(String key) => paymentMethodLabel(key);
   String _short(String iso) {
     final d = DateTime.tryParse(iso)?.toLocal();
     return d == null ? '' : '${d.day}.${d.month}.${d.year}';

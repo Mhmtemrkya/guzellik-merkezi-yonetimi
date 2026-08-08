@@ -1097,11 +1097,43 @@ const cashFlowMethodLabels: Record<CashFlowMethodKey, string> = {
   card: 'Kart',
   transfer: 'Havale / EFT',
   check: 'Çek',
-  unknown: 'Diğer',
+  // "Diğer" bir yöntem varmış izlenimi veriyordu; gerçek şu ki o kayıtlarda yöntem hiç
+  // yazılmamış. Backend (ReportsService.MethodLabel) ve Raporlar yardım metni de bunu böyle
+  // adlandırır — aynı kayıt iki ekranda iki farklı adla görünmesin.
+  unknown: 'Yöntem Kaydedilmemiş',
 }
 
 export function cashFlowMethodLabel(key: CashFlowMethodKey): string {
   return cashFlowMethodLabels[key]
+}
+
+/**
+ * HAM ödeme yöntemi kodunu (tahsilat/adisyon kaydındaki serbest metin) Türkçe etikete çevirir.
+ *
+ * Veritabanında tek bir yazım yok: web `cash/card/transfer`, mobil taksit sayfası
+ * `Cash/Card/BankTransfer`, eski kayıtlarda Türkçe metin (`Nakit`, `Havale/EFT`) bulunur.
+ * Bu yüzden eşleme TAM EŞİTLİK değil, backend'deki `ReportsService.NormalizeMethod` ile aynı
+ * mantıkta parça arama yapar — yeni bir eşleme tablosu yazan her ekran aynı hatayı ("cash"
+ * yazısının ekranda görünmesi) yeniden üretiyordu.
+ */
+export function paymentMethodLabel(raw: string | null | undefined): string {
+  const { key } = normalizeCashFlowMethod(raw)
+  if (key !== 'unknown') return cashFlowMethodLabels[key]
+
+  const m = String(raw || '').trim().toLocaleLowerCase('tr')
+  // "Adisyon" bir ödeme yöntemi DEĞİL: yöntem kırılımı gelmeden önceki adisyon tahsilatları
+  // bu metinle yazılmıştı, gerçek yöntemleri hiç saklanmadı. `unknown`, backend'in bu kayıtlar
+  // için ürettiği anahtardır — çevirici kendi çıktısını geri yediğinde "Unknown" yazmasın.
+  if (!m || m === 'unknown' || m === 'adisyon' || m === 'adisyon tahsilatı') return cashFlowMethodLabels.unknown
+  if (m === 'other' || m === 'diğer') return 'Diğer'
+  // SIRA BACKEND'LE AYNI (ReportsService.NormalizeMethod): "giftcard" içinde "card" geçtiği için
+  // Kart'a düşer. Bugün hediye çeki tahsilat DEĞİL indirim kalemi olarak yazılıyor, yani bu dize
+  // üretilmiyor; sırayı burada değiştirmek aynı kaydın rapordaki adıyla ayrışmasına yol açardı.
+  if (m.includes('hediye') || m.includes('gift')) return 'Hediye Çeki'
+  if (m.includes('puan') || m.includes('sadakat') || m.includes('loyalty')) return 'Sadakat Puanı'
+  // Serbest metin yöntem adı: uydurma yapılmaz, yalnız okunur hâle getirilir.
+  const text = String(raw || '').trim()
+  return text.slice(0, 1).toLocaleUpperCase('tr') + text.slice(1)
 }
 
 const cashFlowMethodTones: Record<CashFlowMethodKey, string> = {

@@ -291,15 +291,21 @@ function MusterilerPageInner() {
   const selected = useMemo(() => filtered.find((c) => c.id === selectedId) || filtered[0], [filtered, selectedId])
 
   // ---- Seçili müşterinin randevu + cari kayıtları (yalnız modal açıkken, yalnız o müşteri için).
-  const { data: detailData } = useApiQuery<{ appts: ApiAppointment[]; accounts: ApiCustomerAccount[] }>(
+  const { data: detailData, loading: detailLoading } = useApiQuery<{ appts: ApiAppointment[]; accounts: ApiCustomerAccount[] }>(
     async () => {
       const cid = selected?.id
       if (!cid || !tenantId || !modalOpen) return { appts: [], accounts: [] }
-      const [apptRes, accRes] = await Promise.all([
+      const [apptRes, accounts] = await Promise.all([
         adminApi.appointments<ApiAppointment>({ tenantId, customerId: cid, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
-        adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
+        // TÜM cariler sayfa sayfa: modaldeki "Toplam Harcama / Tahsil Edilen" artık bu listeden
+        // hesaplanıyor; tek sayfalık (100) çekim, çok satışı olan müşteride tutarı sessizce eksik
+        // gösterirdi.
+        fetchAllPaged<ApiCustomerAccount>(
+          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page, pageSize }),
+          200,
+        ).catch(() => [] as ApiCustomerAccount[]),
       ])
-      return { appts: apiItems(apptRes), accounts: apiItems(accRes) }
+      return { appts: apiItems(apptRes), accounts }
     },
     [tenantId, selected?.id, modalOpen, sessRefresh],
     { initialData: { appts: [], accounts: [] } },
@@ -718,6 +724,7 @@ function MusterilerPageInner() {
             tenantId={tenantId}
             appts={appts}
             accounts={accounts}
+            accountsLoading={detailLoading}
             isStaff={isStaff}
             canAdisyon={canAdisyon}
             canBlacklist={canBlacklist}

@@ -240,8 +240,12 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
           {account.appliedByStaffName && (
             <span className="inline-flex items-center gap-1" title="Seansları uygulayan"><Sparkles className="h-3 w-3 text-[#c85776]" /> {account.appliedByStaffName}</span>
           )}
+          {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
           {account.sessionsTotal > 0 && (
-            <span className="font-semibold text-[#4a3a44]">{account.sessionsUsed}/{account.sessionsTotal} seans</span>
+            <span className="font-semibold tabular-nums text-[#4a3a44]">
+              {Math.max(0, account.sessionsTotal - account.sessionsUsed)} seans kaldı
+              <span className="ml-1 font-normal text-[#705a66]">({account.sessionsTotal} seanslık)</span>
+            </span>
           )}
         </span>
 

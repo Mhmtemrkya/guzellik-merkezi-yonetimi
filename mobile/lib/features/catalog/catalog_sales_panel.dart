@@ -185,9 +185,12 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
           children: [
             Expanded(
               child: _kpi(
-                'Seans',
-                sessionsTotal > 0 ? '$sessionsUsed/$sessionsTotal' : '—',
-                sessionsTotal > 0 ? '${sessionsTotal - sessionsUsed} kalan' : 'Seanssız',
+                'Kalan Seans',
+                // KPI'nın büyük rakamı KALAN olsun; toplam/kullanılan alt satırda.
+                sessionsTotal > 0 ? '${sessionsTotal - sessionsUsed}' : '—',
+                sessionsTotal > 0
+                    ? '$sessionsTotal seanslık · $sessionsUsed kullanıldı'
+                    : 'Seanssız',
               ),
             ),
             const SizedBox(width: 6),
@@ -436,7 +439,8 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
                     Text(
                       '${soldAt == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(soldAt)}'
                       ' · ${valueOf(a, const ['soldByStaffName'], fallback: 'Satan belirtilmemiş')}'
-                      '${sessionsTotal > 0 ? ' · ${numberOf(a, const ['sessionsUsed']).toInt()}/$sessionsTotal seans' : ''}',
+                      // "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır.
+                      '${sessionsTotal > 0 ? ' · ${sessionsTotal - numberOf(a, const ['sessionsUsed']).toInt()} seans kaldı' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 10, color: AppColors.muted),

@@ -94,8 +94,8 @@ export default function CustomerSessionsCard({
           <span className="rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2.5 py-0.5 text-[11px] font-bold text-[#a34a62]">
             {totals.remaining} seans kaldı
           </span>
-          <span className="rounded-full border border-[#ead8df] bg-[#fffafc] px-2.5 py-0.5 text-[11px] font-semibold text-[#4a3a44]">
-            {totals.used}/{totals.total} kullanıldı
+          <span className="rounded-full border border-[#ead8df] bg-[#fffafc] px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-[#4a3a44]">
+            {totals.total} seansın {totals.used}&apos;i kullanıldı
           </span>
         </div>
       </div>
@@ -212,8 +212,8 @@ function SessionTile({ group, idx }: { group: ServiceGroup; idx: number }) {
           </div>
         ) : (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#705a66]">
-            <span className="tabular-nums">{used}/{total} kullanıldı</span>
-            <span className="rounded-md bg-[#fff1f6] px-1.5 py-0.5 font-bold tabular-nums text-[#a34a62]">{remaining} kaldı</span>
+            <span className="rounded-md bg-[#fff1f6] px-1.5 py-0.5 font-bold tabular-nums text-[#a34a62]">{remaining} seans kaldı</span>
+            <span className="tabular-nums">{total} seanslık · {used} kullanıldı</span>
           </div>
         )}
       </div>

@@ -11,7 +11,7 @@ import CustomerSessionsCard from './CustomerSessionsCard'
 import ConsentWarningBanner from '@/components/dashboard/ConsentWarningBanner'
 import LoyaltyCard from './LoyaltyCard'
 import type { CustomerAccount } from '@/lib/types'
-import { formatTL } from '@/lib/apiMappers'
+import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
 
 // ---------------------------------------------------------------------------
 // CARİ DETAY MODALI
@@ -303,8 +303,11 @@ export default function AccountDetailModal({
                           <span className="truncate text-[#4a3a44]">{it.name}</span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
+                          {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
                           {it.sessionsTotal > 0 && (
-                            <span className="text-[10px] font-semibold text-[#705a66]">{it.sessionsUsed}/{it.sessionsTotal} seans</span>
+                            <span className="text-[10px] font-semibold tabular-nums text-[#705a66]">
+                              {Math.max(0, it.sessionsTotal - it.sessionsUsed)} seans kaldı
+                            </span>
                           )}
                           <span className="font-bold tabular-nums">{formatTL(it.amount)}</span>
                         </span>
@@ -330,7 +333,7 @@ export default function AccountDetailModal({
                           <Receipt className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                           <span className="truncate text-[#4a3a44]">
                             {formatDay(p.occurredAtUtc)}
-                            {p.method ? ` · ${p.method}` : ''}
+                            {p.method ? ` · ${paymentMethodLabel(p.method)}` : ''}
                             {p.reference ? ` · ${p.reference}` : ''}
                           </span>
                         </span>

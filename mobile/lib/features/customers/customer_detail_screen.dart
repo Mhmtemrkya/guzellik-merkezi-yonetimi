@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/customer_call.dart';
+import '../../shared/payment_method.dart';
 import '../../shared/widgets/app_background.dart';
 import '../consent/consent_warning_banner.dart';
 import '../../shared/widgets/sparkline.dart';
@@ -48,23 +49,6 @@ const _donutColors = [
   Color(0xFFC85776), Color(0xFF7C5CBF), Color(0xFF2FAE8E),
   Color(0xFFE8932F), Color(0xFF4A9FE0), Color(0xFFD65A8E),
 ];
-
-String _methodLabel(String raw) {
-  switch (raw) {
-    case 'Cash':
-      return 'Nakit';
-    case 'CreditCard':
-    case 'Card':
-      return 'Kredi Kartı';
-    case 'BankTransfer':
-    case 'Transfer':
-      return 'Havale/EFT';
-    case 'Other':
-      return 'Diğer';
-    default:
-      return raw.isEmpty ? 'Diğer' : raw;
-  }
-}
 
 /// Doğum gününe kalan gün. Yıl yok sayılır: bu yılki tarih geçtiyse gelecek yıla bakılır.
 /// Web'deki `daysToBirthday` ile aynı mantık — salonun kutlama/kampanya fırsatı.
@@ -178,10 +162,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       final results = await Future.wait<dynamic>([
         _api.get('/api/admin/customers/$_id').catchError((_) => null),
         // Ölçek: tüm cari listesi çekilmez — yalnız bu müşterinin satışları (sunucu filtresi).
+        // Bu müşterinin TÜM satışları sayfa sayfa çekilir: "Toplam Harcama / Tahsil Edilen"
+        // kartları bu listeden hesaplandığı için tek sayfalık çekim tutarı sessizce eksik
+        // gösterirdi.
         _api
-            .get('/api/admin/accounts/',
-                query: {'page': 1, 'pageSize': 200, 'customerId': _id})
-            .catchError((_) => const <dynamic>[]),
+            .getAllPaged('/api/admin/accounts/',
+                query: {'customerId': _id}, pageSize: 200)
+            .catchError((_) => const <String, dynamic>{}),
         // Ölçek: randevular da SUNUCUDA müşteriye göre süzülür (cari listesindeki gibi).
         // Eskiden tüm kurumun ilk 500 randevusu çekilip bellekte süzülüyordu; backend
         // eskiden yeniye sıraladığı için kurum 500 randevuyu aşınca bu müşterinin
@@ -271,10 +258,18 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   // --- Türetilen değerler ---
 
   String get _name => valueOf(_customer, const ['fullName', 'name'], fallback: 'Müşteri');
-  double get _spent => _accounts.fold(
-      0, (s, a) => s + ((a['paidAmount'] as num?)?.toDouble() ?? 0));
-  double get _debt => _accounts.fold(
-      0, (s, a) => s + ((a['remainingAmount'] as num?)?.toDouble() ?? 0));
+  /// Satış tutarları (toplam / tahsil edilen / kalan) TEK kaynaktan — KPI kartları ile
+  /// "Paket & Hizmet Satışları" kartı aynı rakamı göstersin.
+  SalesSummary get _sales => salesSummaryOf(_accounts);
+
+  /// İPTAL EDİLEN satış borç doğurmaz (sunucudaki müşteri borcu da onu saymaz); eskiden
+  /// iptal edilmiş carinin kalanı da bu toplama giriyordu.
+  double get _debt => _accounts
+      .where((a) => '${a['saleStatus']}' != 'Cancelled')
+      .fold(0, (s, a) {
+    final remaining = (a['remainingAmount'] as num?)?.toDouble() ?? 0;
+    return s + (remaining > 0 ? remaining : 0);
+  });
 
   DateTime? get _lastApptDate {
     for (final a in _appts) {
@@ -525,12 +520,44 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       );
 
   Widget _kpiStrip(BuildContext context, DateTime? last) {
-    // 3. alan: dokunulunca gidilecek sekme (yoksa kart pasif).
-    final items = <(String, String, int?)>[
-      ('Toplam Randevu', '${_appts.length}', 1),
-      ('Toplam Harcama', CalendarText.tl(_spent), null),
+    /*
+     * ÜÇLÜ OKUMA: Toplam Harcama − Tahsil Edilen ≈ Açık Borç. Eskiden "Toplam Harcama" TAHSİL
+     * EDİLEN parayı gösteriyordu; 30.000 ₺'lik paket alıp 5.000 ₺ ödeyen müşteride kart 5.000
+     * yazıyor, satışın büyüklüğü hiçbir yerde görünmüyordu (web paritesi).
+     *
+     * "≈": Açık Borç cari BAŞINA sıfırla sınırlanır (fazla ödeme alacak bakiyesi olur, borcu
+     * eksiye çekmez) — fazla tahsilatı olan müşteride çıkarma birebir tutmayabilir.
+     */
+    final s = _sales;
+    final salesCount = s.active + s.completed;
+    // Cariler gelene kadar ₺0 yazmak "harcama yok" gibi okunuyordu.
+    String money(double v) => _loading ? '—' : CalendarText.tl(v);
+    void openSales() => openCustomerSalesSheet(
+          context,
+          api: _api,
+          customerId: _id,
+          customerName: _name,
+          accounts: _accounts,
+          onChanged: _reload,
+        );
+
+    // 3. alan: dokunulunca yapılacak iş (yoksa kart pasif).
+    final items = <(String, String, VoidCallback?)>[
+      (
+        'Toplam Randevu',
+        '${_appts.length}',
+        () => DefaultTabController.of(context).animateTo(1)
+      ),
+      ('Toplam Harcama', money(s.total), openSales),
+      ('Tahsil Edilen', money(s.paid), null),
       // Borç görünce ilk iş adisyona bakmaktır — kart oraya götürsün.
-      ('Açık Borç', CalendarText.tl(_debt), _debt > 0 ? 2 : null),
+      (
+        'Açık Borç',
+        money(_debt),
+        _debt > 0 ? () => DefaultTabController.of(context).animateTo(2) : null
+      ),
+      // Sayı İPTALLERİ SAYMAZ — "Toplam Harcama" da saymıyor, iki kart aynı kümeye baksın.
+      ('Satışlar', _loading ? '—' : '$salesCount', openSales),
       ('Son İşlem',
           last == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(last),
           null),
@@ -543,7 +570,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
-          final (label, value, target) = items[i];
+          final (label, value, onTap) = items[i];
           final danger = label == 'Açık Borç' && _debt > 0;
           final card = Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -569,17 +596,21 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                         fontSize: 15,
                         height: 1.1,
                         fontWeight: FontWeight.w800,
-                        color: danger ? AppColors.danger : AppColors.ink)),
+                        color: danger
+                            ? AppColors.danger
+                            : label == 'Tahsil Edilen'
+                                ? AppColors.success
+                                : AppColors.ink)),
               ],
             ),
           );
-          if (target == null) return card;
+          if (onTap == null) return card;
           return Material(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => DefaultTabController.of(context).animateTo(target),
+              onTap: onTap,
               child: card,
             ),
           );
@@ -942,7 +973,7 @@ class _OverviewTab extends StatelessWidget {
     for (final a in state._accounts) {
       for (final p in (a['payments'] as List? ?? const [])) {
         if (p is! Map) continue;
-        final k = _methodLabel('${p['method'] ?? ''}'.trim());
+        final k = paymentMethodLabel('${p['method'] ?? ''}');
         sum[k] = (sum[k] ?? 0) + ((p['amount'] as num?)?.toDouble() ?? 0);
         count[k] = (count[k] ?? 0) + 1;
       }
@@ -1263,7 +1294,8 @@ class _SessionsCardState extends State<_SessionsCard> {
                 children: [
                   _summaryPill('$remainingAll seans kaldı', AppColors.primaryDark),
                   const SizedBox(width: 6),
-                  _summaryPill('$usedAll/$totalAll kullanıldı', AppColors.muted),
+                  _summaryPill(
+                      '$totalAll seansın $usedAll\'i kullanıldı', AppColors.muted),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1380,7 +1412,11 @@ class _SessionsCardState extends State<_SessionsCard> {
               ),
             ),
             const SizedBox(height: 5),
-            Text('$used / ${g.total} seans kullanıldı',
+            // Kullanıcı KALAN seansı arıyor — cevap önce, döküm sonra.
+            Text(
+                g.remaining > 0
+                    ? '${g.remaining} seans kaldı · ${g.total} seanslık'
+                    : 'Bitti (${g.total} seans kullanıldı)',
                 style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
           ],
         ),
@@ -2498,7 +2534,8 @@ class _SalesSummaryCard extends StatelessWidget {
                         _statChip('Biten ${s.completed}', const Color(0xFF3B82F6)),
                       if (s.cancelled > 0) _statChip('İptal ${s.cancelled}', AppColors.danger),
                       if (s.sessionsTotal > 0)
-                        _statChip('${s.sessionsUsed}/${s.sessionsTotal} seans',
+                        _statChip(
+                            '${s.sessionsTotal - s.sessionsUsed} seans kaldı',
                             AppColors.primaryDark),
                     ],
                   ),

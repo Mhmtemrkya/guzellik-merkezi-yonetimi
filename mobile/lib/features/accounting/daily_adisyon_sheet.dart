@@ -4,6 +4,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/export/export_helper.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/payment_method.dart';
 import '../appointments/calendar_theme.dart';
 
 /// Günlük adisyon kartı — gün içinde kime ne yapıldı (saatli), kim yaptı ve tahsilatlar.
@@ -119,7 +120,10 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
           valueOf(r, const ['description'], fallback: ''),
           valueOf(r, const ['customerName'], fallback: ''),
           valueOf(r, const ['staffName'], fallback: ''),
-          valueOf(r, const ['method'], fallback: ''),
+          // Yalnız tahsilat satırında yöntem vardır; boş alana "Yöntem Kaydedilmemiş" yazılmaz.
+          '${r['method'] ?? ''}'.trim().isEmpty
+              ? ''
+              : paymentMethodLabel('${r['method']}'),
           CalendarText.tl(numberOf(r, const ['amount'])),
         ];
       }).toList(),

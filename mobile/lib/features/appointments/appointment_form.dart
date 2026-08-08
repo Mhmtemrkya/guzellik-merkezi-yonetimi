@@ -506,6 +506,52 @@ class _AppointmentFormState extends State<AppointmentForm> {
 
   bool get _hasBookablePackage => _ownedPackages.any((p) => _pkgRemaining(p) > 0);
 
+  /// MÜŞTERİNİN SATIN ALDIĞI TEKİL HİZMETLER — pakete bağlı OLMAYAN seans bakiyeleri
+  /// (adisyonda hizmet satılınca `ServicePackageId = Guid.Empty` ile açılır).
+  ///
+  /// NEDEN AYRI LİSTE: Hizmet sekmesi yalnız katalog gösteriyordu; müşterinin ödediği hizmet
+  /// hakları sadece seçim etiketindeki küçük bir metinden anlaşılıyordu. Paket sekmesindeki
+  /// "satın alınmıştan seç" davranışının aynısı burada da olsun — katalog altta kalır.
+  List<Map<String, dynamic>> get _ownedServices {
+    const emptyGuid = '00000000-0000-0000-0000-000000000000';
+    final map = <String, Map<String, dynamic>>{};
+    for (final s in _sessions) {
+      final pid = '${s['servicePackageId'] ?? ''}';
+      final sid = '${s['serviceDefinitionId'] ?? ''}';
+      if (sid.isEmpty || sid == 'null') continue;
+      // Pakete bağlı satırlar Paket sekmesine aittir.
+      if (pid.isNotEmpty && pid != 'null' && pid != emptyGuid) continue;
+      final remaining = (s['remainingSessions'] as num?)?.toInt() ?? 0;
+      final total = (s['totalSessions'] as num?)?.toInt() ?? 0;
+      final sessionId = '${s['id'] ?? ''}';
+      final row = map[sid];
+      if (row == null) {
+        map[sid] = {
+          'serviceDefinitionId': sid,
+          'serviceName': '${s['serviceName'] ?? 'Hizmet'}',
+          'remaining': remaining,
+          'total': total,
+          // Randevu TAM olarak bu seans kaydına bağlanır (aynı hizmet birden çok kez satılmış olabilir).
+          'sessionId': remaining > 0 && sessionId.isNotEmpty ? sessionId : null,
+        };
+      } else {
+        row['remaining'] = (row['remaining'] as int) + remaining;
+        row['total'] = (row['total'] as int) + total;
+        if (row['sessionId'] == null && remaining > 0 && sessionId.isNotEmpty) {
+          row['sessionId'] = sessionId;
+        }
+      }
+    }
+    final list = map.values.toList();
+    // Kalanı olanlar üstte; sonra bitmeye en yakın önce.
+    list.sort((a, b) {
+      final ra = a['remaining'] as int, rb = b['remaining'] as int;
+      if ((ra > 0) != (rb > 0)) return rb > 0 ? 1 : -1;
+      return ra.compareTo(rb);
+    });
+    return list;
+  }
+
   /// Seçimi sıfırlar — sekme değişince önceki seçim (ve satış riski) taşınmasın.
   void _clearWorkSelection() {
     serviceId = null;
@@ -773,6 +819,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
     }
 
     final pkgCount = _ownedPackages.length;
+    final svcCount = _ownedServices.length;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -781,14 +828,18 @@ class _AppointmentFormState extends State<AppointmentForm> {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(children: [
-        tab('service', 'Hizmet', Icons.content_cut_rounded),
+        // Sayaç = SATIN ALINMIŞ kayıt adedi; iki sekmede de aynı anlam.
+        tab('service', svcCount > 0 ? 'Hizmet ($svcCount)' : 'Hizmet',
+            Icons.content_cut_rounded),
         tab('package', pkgCount > 0 ? 'Paket ($pkgCount)' : 'Paket', Icons.card_giftcard_rounded),
       ]),
     );
   }
 
-  /// HİZMET SEKMESİ — katalogdan hizmet seçimi + ne olacağının açık anlatımı.
+  /// HİZMET SEKMESİ — SATIN ALINAN hizmetler (paket sekmesindeki düzenin aynısı) + altında
+  /// katalogdan yeni hizmet satışı.
   List<Widget> _serviceTab() {
+    final owned = _ownedServices;
     final remainingMap = _remainingByService;
     // Hakkı olan hizmetler üstte ve rozetli: seçmeden önce satış açılıp açılmayacağı görünsün.
     final items = services.map((s) {
@@ -809,9 +860,32 @@ class _AppointmentFormState extends State<AppointmentForm> {
     final remaining = serviceId == null ? 0 : (remainingMap[serviceId!] ?? 0);
 
     return [
+      // SATIN ALINAN HİZMETLER — paket sekmesindeki kartın aynısı. Müşterinin ödediği hak
+      // önce gelir: yeni satış açmadan önce kullanılmamış seansı görünsün.
+      if (owned.isNotEmpty) ...[
+        _OwnedPackageCard(
+          name: 'Satın alınan hizmetler',
+          rows: owned,
+          keyOf: (r) => 'svc:${r['serviceDefinitionId']}',
+          selectedKey: _ownedPick,
+          onPick: (row) => setState(() {
+            final sid = '${row['serviceDefinitionId']}';
+            _ownedPick = 'svc:$sid';
+            serviceId = sid;
+            // Seans kimliği SUNUCUYA gider: randevu tam olarak SEÇİLEN satışın bakiyesine bağlanır.
+            _sourceSessionId = row['sessionId'] as String?;
+            if (staffId != null && !_eligibleStaff.any((s) => '${s['id']}' == staffId)) {
+              staffId = null;
+            }
+          }),
+        ),
+        const SizedBox(height: 12),
+        _sectionLabel('Yeni hizmet sat'),
+        const SizedBox(height: 6),
+      ],
       _select(
         label: 'Hizmet',
-        value: serviceId,
+        value: _ownedPick != null && _ownedPick!.startsWith('svc:') ? null : serviceId,
         items: items,
         titleKeys: const ['_label'],
         onChanged: (value) => setState(() {
@@ -825,7 +899,26 @@ class _AppointmentFormState extends State<AppointmentForm> {
           }
         }),
       ),
-      if (selected != null && selected.isNotEmpty) ...[
+      // Satın alınmış hizmetten seçildiğinde de ne olacağını yaz — katalogla aynı netlik.
+      if (_ownedPick != null && _ownedPick!.startsWith('svc:')) ...[
+        const SizedBox(height: 10),
+        Builder(builder: (_) {
+          final row = owned.firstWhere(
+              (r) => 'svc:${r['serviceDefinitionId']}' == _ownedPick,
+              orElse: () => const <String, dynamic>{});
+          if (row.isEmpty) return const SizedBox.shrink();
+          return _noteBox(
+            icon: Icons.check_circle_rounded,
+            bg: const Color(0xFFECFDF5),
+            border: const Color(0xFFA7F3D0),
+            fg: const Color(0xFF065F46),
+            text: '${row['serviceName']} — satın alınmış hizmetten ${row['remaining']} seans '
+                'kaldı. Yeni satış açılmaz; randevu bu bakiyeye açılır ve tamamlanınca '
+                '1 seans düşer.',
+          );
+        }),
+      ],
+      if (_ownedPick == null && selected != null && selected.isNotEmpty) ...[
         const SizedBox(height: 10),
         if (remaining > 0)
           _noteBox(
@@ -870,9 +963,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
     return [
       for (final p in owned) ...[
         _OwnedPackageCard(
-          packageId: '${p['packageId']}',
           name: '${p['name']}',
           rows: (p['rows'] as List).cast<Map<String, dynamic>>(),
+          keyOf: (r) => '${p['packageId']}|${r['serviceDefinitionId']}',
           selectedKey: _ownedPick,
           onPick: (row) => setState(() {
             final sid = '${row['serviceDefinitionId']}';
@@ -958,6 +1051,17 @@ class _AppointmentFormState extends State<AppointmentForm> {
       ),
     );
   }
+
+  /// Hizmet sekmesindeki iki bölümü ayıran küçük başlık ("satın alınan" ↔ "yeni sat").
+  Widget _sectionLabel(String text) => Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .8,
+          color: Color(0xFFA3576F),
+        ),
+      );
 
   /// Ne olacağını açıkça yazan bilgi kutusu (satış açılacak mı, seanstan mı düşecek).
   Widget _noteBox({
@@ -1314,24 +1418,30 @@ class _AppointmentFormState extends State<AppointmentForm> {
       );
 }
 
-/// MÜŞTERİNİN SATIN ALDIĞI PAKET — içindeki her işlemin seans kırılımıyla.
+/// MÜŞTERİNİN SATIN ALDIĞI PAKET / HİZMET — içindeki her işlemin seans kırılımıyla.
 ///
 /// Paket adı tek başına randevuya yetmez: bir paketin içinde birden çok işlem olabilir ve randevu
 /// bunlardan BİRİNE açılır. Kart bu yüzden paketi başlık, işlemleri seçilebilir satır yapar;
 /// kalanı biten satır seçilemez ama gizlenmez (paketin tamamı görünsün).
+///
+/// Aynı kart TEKİL HİZMET satışları için de kullanılır (pakete bağlı olmayan seanslar): iki
+/// sekmede "satın alınmıştan seç" davranışı birebir aynı olsun. Satır anahtarını çağıran üretir
+/// (`keyOf`) — paket satırı `paketId|hizmetId`, hizmet satırı `svc:hizmetId`.
 class _OwnedPackageCard extends StatelessWidget {
   const _OwnedPackageCard({
-    required this.packageId,
     required this.name,
     required this.rows,
+    required this.keyOf,
     required this.selectedKey,
     required this.onPick,
   });
-  final String packageId;
   final String name;
   final List<Map<String, dynamic>> rows;
 
-  /// Seçili satırın anahtarı: `${packageId}|${serviceDefinitionId}`
+  /// Satırın seçim anahtarını üretir — paket ve hizmet kartları farklı biçim kullanır.
+  final String Function(Map<String, dynamic> row) keyOf;
+
+  /// Seçili satırın anahtarı.
   final String? selectedKey;
 
   /// Seçilen SATIRIN tamamı döner — çağıran hem hizmeti hem seans kaydını (sessionId) alır.
@@ -1340,7 +1450,6 @@ class _OwnedPackageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remainingTotal = rows.fold<int>(0, (n, r) => n + (r['remaining'] as int));
-    final grandTotal = rows.fold<int>(0, (n, r) => n + (r['total'] as int));
     final depleted = remainingTotal <= 0;
 
     return Container(
@@ -1369,8 +1478,9 @@ class _OwnedPackageCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
                   ),
                 ),
+                // NET CEVAP: "3 / 4 seans" hangi sayının kalan olduğunu söylemiyordu.
                 Text(
-                  '$remainingTotal / $grandTotal seans',
+                  depleted ? 'Seans kalmadı' : '$remainingTotal seans kaldı',
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
@@ -1383,7 +1493,7 @@ class _OwnedPackageCard extends StatelessWidget {
           for (final r in rows)
             _PackageRow(
               row: r,
-              selected: selectedKey == '$packageId|${r['serviceDefinitionId']}',
+              selected: selectedKey == keyOf(r),
               onTap: () => onPick(r),
             ),
         ],
@@ -1455,16 +1565,22 @@ class _PackageRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
+                // "3 / 4" okunmuyordu: kullanıcı KALAN seansı arıyor. Kalan büyük puntoda ve
+                // kendi kelimesiyle; toplam/kullanılan ikinci satırda.
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '$remaining / $total',
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF8E3F5B)),
+                      remaining > 0 ? '$remaining seans kaldı' : 'Seans kalmadı',
+                      style: TextStyle(
+                          fontSize: remaining > 0 ? 12.5 : 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: remaining > 0
+                              ? const Color(0xFF8E3F5B)
+                              : const Color(0xFF7A6672)),
                     ),
                     Text(
-                      usable ? 'kalan seans' : 'bitti',
+                      '$total seanslık · ${total - remaining < 0 ? 0 : total - remaining} kullanıldı',
                       style: const TextStyle(fontSize: 10, color: Color(0xFF7A6672)),
                     ),
                   ],

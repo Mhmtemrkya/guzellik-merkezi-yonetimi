@@ -504,7 +504,9 @@ class _CustomerSalesPanelState extends State<CustomerSalesPanel> {
                   _meta(Icons.event_rounded, _fmtDate(a['soldAtUtc'] ?? a['createdAtUtc'])),
                   if (staff.isNotEmpty) _meta(Icons.person_rounded, staff),
                   if (applier.isNotEmpty) _meta(Icons.auto_awesome_rounded, applier),
-                  if (st > 0) _meta(Icons.confirmation_number_rounded, '$su/$st seans'),
+                  // "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır.
+                  if (st > 0)
+                    _meta(Icons.confirmation_number_rounded, '${st - su} seans kaldı'),
                 ],
               ),
               if (status == 'Cancelled' && reason.isNotEmpty) ...[
