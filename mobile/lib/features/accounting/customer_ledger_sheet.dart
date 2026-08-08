@@ -22,6 +22,8 @@ import 'payment_schedule_grid.dart';
 Future<void> openCustomerLedgerSheet(
   BuildContext context, {
   required CustomerAccountGroup group,
+  /// Bu müşterinin İPTAL arşivi — iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR.
+  List<Map<String, dynamic>> cancelledSales = const [],
   required Future<void> Function(Map<String, dynamic> account) onCollect,
   required Future<void> Function(Map<String, dynamic> account) onCollectMonthly,
   required Future<void> Function(Map<String, dynamic> account) onOpenSale,
@@ -34,6 +36,7 @@ Future<void> openCustomerLedgerSheet(
     fullscreenDialog: true,
     builder: (_) => CustomerLedgerScreen(
       group: group,
+      cancelledSales: cancelledSales,
       onCollect: onCollect,
       onCollectMonthly: onCollectMonthly,
       onOpenSale: onOpenSale,
@@ -46,6 +49,7 @@ Future<void> openCustomerLedgerSheet(
 class CustomerLedgerScreen extends StatefulWidget {
   const CustomerLedgerScreen({
     required this.group,
+    this.cancelledSales = const [],
     required this.onCollect,
     required this.onCollectMonthly,
     required this.onOpenSale,
@@ -55,6 +59,9 @@ class CustomerLedgerScreen extends StatefulWidget {
   });
 
   final CustomerAccountGroup group;
+
+  /// İptal arşivi: satırları canlı tablodan silinir, parası yalnız buradan okunur.
+  final List<Map<String, dynamic>> cancelledSales;
   final Future<void> Function(Map<String, dynamic> account) onCollect;
   final Future<void> Function(Map<String, dynamic> account) onCollectMonthly;
   final Future<void> Function(Map<String, dynamic> account) onOpenSale;
@@ -171,9 +178,19 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                 ]),
                 const SizedBox(height: 12),
                 Row(children: [
-                  Expanded(child: _kpi('Toplam Satış', CalendarText.tl(g.totalAmount), AppColors.ink)),
+                  // İPTAL EDİLENLER DE SAYILIR: "Tahsil Edilen" arşivi sayarken bu kart saymazsa
+                  // iki kart birbirini yalanlar (web paritesi).
+                  Expanded(
+                      child: _kpi('Toplam Satış',
+                          CalendarText.tl(g.totalAmount + _cancelledTotal), AppColors.ink,
+                          sub: _cancelledCount > 0 ? '$_cancelledCount iptal dahil' : null)),
                   const SizedBox(width: 8),
-                  Expanded(child: _kpi('Tahsil Edilen', CalendarText.tl(g.paidAmount), AppColors.success, sub: "satışın %$paidPct'i")),
+                  Expanded(
+                      child: _kpi('Tahsil Edilen',
+                          CalendarText.tl(g.paidAmount + _cancelledRetained), AppColors.success,
+                          sub: _cancelledRetained > 0.5
+                              ? '${CalendarText.tl(_cancelledRetained)} iptalden'
+                              : "satışın %$paidPct'i")),
                 ]),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -237,6 +254,44 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           'sale': valueOf(a, const ['servicePackageName', 'name'], fallback: 'Satış'),
           'method': paymentMethodLabel('${m['method'] ?? ''}'),
           'amount': numberOf(m, const ['amount']),
+          'refund': false,
+        });
+      }
+    }
+    // İPTAL EDİLEN SATIŞIN PARASI DA BURADA (web paritesi): iptalde tahsilat satırları canlı
+    // tablodan silinip arşive taşınır, bu yüzden `accounts` üzerinden hiç görünmezdi — müşteri
+    // ödeme yapmış ama ekstre boş çıkıyordu. Gerçek tarih/yöntem arşiv kopyalarından okunur.
+    for (final c in widget.cancelledSales) {
+      final name = valueOf(c, const ['name'], fallback: 'Satış');
+      final pays = (c['payments'] as List? ?? const []).whereType<Map>().toList();
+      if (pays.isNotEmpty) {
+        for (final raw in pays) {
+          final m = raw.cast<String, dynamic>();
+          rows.add({
+            'at': parseUtcToLocal(m['occurredAtUtc']),
+            'sale': '$name · İPTAL',
+            'method': paymentMethodLabel('${m['method'] ?? ''}'),
+            'amount': numberOf(m, const ['amount']),
+            'refund': false,
+          });
+        }
+      } else if (numberOf(c, const ['collectedAmount']) > 0.005) {
+        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir.
+        rows.add({
+          'at': parseUtcToLocal(c['cancelledAtUtc'] ?? c['soldAtUtc']),
+          'sale': '$name · İPTAL',
+          'method': 'iptal edilen satış',
+          'amount': numberOf(c, const ['collectedAmount']),
+          'refund': false,
+        });
+      }
+      if (numberOf(c, const ['refundedAmount']) > 0.005) {
+        rows.add({
+          'at': parseUtcToLocal(c['cancelledAtUtc']),
+          'sale': '$name · İADE',
+          'method': 'müşteriye geri ödendi',
+          'amount': numberOf(c, const ['refundedAmount']),
+          'refund': true,
         });
       }
     }
@@ -249,7 +304,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     return _section(
       'Tahsilat Ekstresi',
       Icons.receipt_long_rounded,
-      '${rows.length} tahsilat · toplam ${CalendarText.tl(g.paidAmount)}',
+      '${rows.length} hareket · net ${CalendarText.tl(_ledgerNet(rows))}',
       rows.isEmpty
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
@@ -282,15 +337,57 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                               style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
                         ]),
                       ),
-                      Text('+${CalendarText.tl(r['amount'] as double)}',
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.success)),
+                      Text(
+                          '${r['refund'] == true ? '−' : '+'}${CalendarText.tl(r['amount'] as double)}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: r['refund'] == true ? AppColors.danger : AppColors.success)),
                     ]),
                   ),
+                // TOPLAM SATIRI: tahsilat − iade = net (web paritesi, kullanıcı isteği).
+                const Divider(height: 18),
+                Row(children: [
+                  const Expanded(
+                    child: Text('TOPLAM',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .5)),
+                  ),
+                  if (_ledgerRefunded(rows) > 0.005)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        'İade ${CalendarText.tl(_ledgerRefunded(rows))}',
+                        style: const TextStyle(fontSize: 10.5, color: AppColors.danger),
+                      ),
+                    ),
+                  Text(CalendarText.tl(_ledgerNet(rows)),
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _ledgerNet(rows) >= 0 ? AppColors.success : AppColors.danger)),
+                ]),
               ],
             ),
     );
   }
+
+  /// İptal arşivi özetleri — KPI'lar canlı + arşiv toplamını gösterir.
+  int get _cancelledCount => widget.cancelledSales.length;
+  double get _cancelledTotal => widget.cancelledSales
+      .fold<double>(0, (s, c) => s + numberOf(c, const ['totalAmount']));
+  double get _cancelledRetained => widget.cancelledSales
+      .fold<double>(0, (s, c) => s + numberOf(c, const ['retainedAmount']));
+
+  /// Ekstre toplamları SATIRLARIN KENDİSİNDEN türetilir: özet ile satırlar farklı kaynaktan
+  /// gelince "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu.
+  static double _ledgerNet(List<Map<String, dynamic>> rows) => rows.fold<double>(
+      0,
+      (s, r) => s + ((r['refund'] == true ? -1 : 1) * (r['amount'] as double)));
+
+  static double _ledgerRefunded(List<Map<String, dynamic>> rows) => rows
+      .where((r) => r['refund'] == true)
+      .fold<double>(0, (s, r) => s + (r['amount'] as double));
 
   /// Tek satış satırı — kendi cari kartı; tahsilat buradan alınır (para doğru satışa yazılsın).
   Widget _saleRow(Map<String, dynamic> a) {

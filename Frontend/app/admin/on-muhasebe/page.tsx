@@ -340,7 +340,19 @@ function OnMuhasebePageInner() {
   // ---------- cari hesaplar ----------
   // Arşive taşıma sayesinde liste zaten temiz gelir; süzgeç, migration'ı henüz uygulanmamış
   // kurumlarda eski damgalı (CancelledAtUtc dolu) satırlara karşı savunma olarak durur.
-  const liveAccounts = useMemo(() => accounts.filter((a) => a.saleStatus !== 'Cancelled'), [accounts])
+  /**
+   * CANLI CARİLER. İptal ölçütü İKİ KAYNAKTAN: `saleStatus`/`cancelledAtUtc` damgası VE iptal
+   * arşivi. Yalnız damgaya bakmak, damgası eksik kalmış (eski kayıt, yarım kalmış iptal) satışı
+   * canlı ve TAHSİLAT ALINABİLİR bırakıyordu — arşivde iptal görünen bir satışa para yazılabilirdi.
+   */
+  const cancelledAccountIds = useMemo(
+    () => new Set(cancelledSales.map((c) => c.originalAccountId).filter(Boolean)),
+    [cancelledSales],
+  )
+  const liveAccounts = useMemo(
+    () => accounts.filter((a) => a.saleStatus !== 'Cancelled' && !a.cancelledAtUtc && !cancelledAccountIds.has(a.id)),
+    [accounts, cancelledAccountIds],
+  )
 
   const accountCounts = useMemo(() => ({
     all: liveAccounts.length,

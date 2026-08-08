@@ -1166,6 +1166,14 @@ export interface CancelledSale {
    * doğru yanıtlar (yoksa iş "İşlemler" sekmesine kayıyordu).
    */
   packageSessionIds: string[]
+  /**
+   * İptal edilen satışın TÜM seans kimlikleri (paket + TEKİL hizmet). Yalnız paket kimlikleri
+   * bilinince, iptal edilmiş TEKİL hizmet randevusu "bağ çözülemedi" sayılıp sezgiye düşüyor ve
+   * müşterinin aynı hizmeti içeren BAŞKA paketi varsa yanlışlıkla "Seanslar"a yazılıyordu.
+   */
+  allSessionIds: string[]
+  /** Arşivlenmiş tahsilatlar — ekstre gerçek tarih/yöntemi buradan okur. */
+  payments: { id: string; amount: number; method: string; reference: string; occurredAtUtc: string }[]
   cancelledAtUtc: string
   cancellationReason: string
 }

@@ -189,7 +189,29 @@ public sealed record CancelledSaleDto(
     /// iptal sonrası da doğru sınıflandırmayı mümkün kılar (arşiv = tek gerçek kaynak).
     /// </para>
     /// </summary>
-    IReadOnlyCollection<Guid> PackageSessionIds);
+    IReadOnlyCollection<Guid> PackageSessionIds,
+    /// <summary>
+    /// İptal edilen satışın TÜM seans kimlikleri (paket + TEKİL hizmet).
+    /// <para>
+    /// Yalnız paket kimlikleri verilince, iptal edilmiş TEKİL HİZMET satışının randevusu
+    /// "bilinmeyen bağ" sayılıp sezgiye düşüyordu: müşterinin aynı hizmeti içeren BAŞKA bir
+    /// paketi varsa iş yanlışlıkla "Seanslar" sekmesine yazılıyordu. Bu liste "bağ çözüldü ama
+    /// PAKET DEĞİL" cevabını mümkün kılar.
+    /// </para>
+    /// </summary>
+    IReadOnlyCollection<Guid> AllSessionIds,
+    /// <summary>
+    /// İptal edilen satışın arşivlenmiş TAHSİLATLARI (gerçek tarih · yöntem · tutar).
+    /// <para>
+    /// Ekstre bunları tek bir sentetik satıra indiriyordu (satış tarihi + "iptal edilen satış");
+    /// gerçek ödeme günleri ve yöntemleri kayboluyor, "2 tahsilat · toplam 0" gibi çelişkili
+    /// özetler çıkıyordu. Kaynak <c>archived_sale_payments</c> — kalıcı defter.
+    /// </para>
+    /// </summary>
+    IReadOnlyCollection<ArchivedPaymentDto> Payments);
+
+/// <summary>İptal arşivindeki tek tahsilat satırı (kalıcı kopya).</summary>
+public sealed record ArchivedPaymentDto(Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc);
 
 public sealed record CreateCustomerAccountRequest(
     Guid? BranchId,

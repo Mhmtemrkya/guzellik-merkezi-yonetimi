@@ -274,6 +274,12 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   SalesSummary get _sales => salesSummaryOf(_accounts);
 
   /// İptal edilip İADE EDİLMEYEN, yani kurumun kasasında kalan para (web paritesi).
+  /// İptal edilen satışların TUTARI — "Toplam Harcama" kartı da bunu saymalı. Yalnız "Tahsil
+  /// Edilen"e arşiv eklenince, tüm satışı iptal edilmiş müşteride Harcama ₺0 ↔ Tahsil ₺600
+  /// çelişkisi çıkıyordu (iki kart birbirini yalanlıyor).
+  double get _cancelledTotal => _cancelledSales.fold(
+      0, (s, c) => s + ((c['totalAmount'] as num?)?.toDouble() ?? 0));
+
   double get _cancelledRetained => _cancelledSales.fold(0, (s, c) {
         final retained = (c['retainedAmount'] as num?)?.toDouble() ??
             (((c['collectedAmount'] as num?)?.toDouble() ?? 0) -
@@ -570,7 +576,8 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         '${_appts.length}',
         () => DefaultTabController.of(context).animateTo(1)
       ),
-      ('Toplam Harcama', money(s.total), openSales),
+      // İPTAL EDİLENLER DE SAYILIR (bkz. _cancelledTotal) — aksi hâlde "Tahsil Edilen" ile çelişir.
+      ('Toplam Harcama', money(s.total + _cancelledTotal), openSales),
       // İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive taşındığı için
       // canlı özet onu görmez, ama para fiilen kasada kaldı (iade edilen kısım düşülmüştür).
       ('Tahsil Edilen', money(s.paid + _cancelledRetained), null),

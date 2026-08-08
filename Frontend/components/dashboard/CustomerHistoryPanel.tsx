@@ -218,7 +218,10 @@ export default function CustomerHistoryPanel({
   const knownSessionIds = useMemo(() => {
     const set = new Set<string>()
     for (const s of effectiveSessions) if (s.id) set.add(s.id)
-    for (const c of data?.cancelled || []) for (const id of c.packageSessionIds) set.add(id)
+    // ARŞİVDEKİ TÜM seanslar (paket + TEKİL hizmet): yalnız paket kimlikleri eklenince, iptal
+    // edilmiş TEKİL hizmet randevusu "bağ çözülemedi" sayılıp sezgiye düşüyordu — müşterinin
+    // aynı hizmeti içeren BAŞKA paketi varsa iş yanlışlıkla "Seanslar"a yazılıyordu.
+    for (const c of data?.cancelled || []) for (const id of c.allSessionIds) set.add(id)
     return set
   }, [effectiveSessions, data])
 

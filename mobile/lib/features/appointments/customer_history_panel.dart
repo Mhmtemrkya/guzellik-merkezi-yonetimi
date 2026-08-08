@@ -244,10 +244,13 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   }
 
   /// İptal ARŞİVİNDEKİ paket seanslarının kimlikleri.
-  Set<String> get _cancelledPackageSessionIds {
+  Set<String> get _cancelledPackageSessionIds => _cancelledIds('packageSessionIds');
+
+  /// Arşiv kayıtlarından verilen alanın kimliklerini toplar.
+  Set<String> _cancelledIds(String field) {
     final set = <String>{};
     for (final c in _cancelled) {
-      for (final id in (c['packageSessionIds'] as List? ?? const [])) {
+      for (final id in (c[field] as List? ?? const [])) {
         final s = '$id';
         if (s.isNotEmpty && s != 'null') set.add(s);
       }
@@ -262,7 +265,9 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       final id = '${s['id'] ?? ''}';
       if (id.isNotEmpty && id != 'null') set.add(id);
     }
-    set.addAll(_cancelledPackageSessionIds);
+    // ARŞİVDEKİ TÜM seanslar (paket + TEKİL hizmet): yalnız paket kimlikleri eklenince, iptal
+    // edilmiş TEKİL hizmet randevusu sezgiye düşüp yanlışlıkla "Seanslar"a yazılıyordu.
+    set.addAll(_cancelledIds('allSessionIds'));
     return set;
   }
 

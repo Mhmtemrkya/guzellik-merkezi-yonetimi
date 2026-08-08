@@ -497,6 +497,10 @@ export default function CustomerDetailModal({
     // Tahsil edilip İADE EDİLMEYEN kısım: iptalden sonra da kurumun kasasında kalır.
     retained: customerCancelled.reduce((s, c) => s + Math.max(0, c.retainedAmount), 0),
     refunded: customerCancelled.reduce((s, c) => s + Math.max(0, c.refundedAmount), 0),
+    // İptal edilen satışların TUTARI: "Toplam Harcama" kartı da bunu saymalı. Yalnız
+    // "Tahsil Edilen"e arşiv eklenince ÇELİŞKİ çıkıyordu — tüm satışları iptal edilmiş
+    // müşteride Harcama ₺0 iken Tahsil ₺600 görünüyor, iki kart birbirini yalanlıyordu.
+    total: customerCancelled.reduce((s, c) => s + Math.max(0, c.totalAmount), 0),
   }), [customerCancelled])
 
   /**
@@ -631,8 +635,14 @@ export default function CustomerDetailModal({
      */
     {
       label: 'Toplam Harcama',
-      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.total)),
-      sub: accountsLoading ? 'yükleniyor' : salesCount > 0 ? `${salesCount} satış tutarı` : 'satış kaydı yok',
+      // İPTAL EDİLEN SATIŞLAR DA SAYILIR: "Tahsil Edilen" arşivi sayarken bu kart saymayınca
+      // tüm satışı iptal edilmiş müşteride Harcama ₺0 ↔ Tahsil ₺600 çelişkisi çıkıyordu.
+      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.total + cancelledSummary.total)),
+      sub: accountsLoading
+        ? 'yükleniyor'
+        : cancelledSummary.count > 0
+          ? `${salesCount + cancelledSummary.count} satış · ${cancelledSummary.count} iptal`
+          : salesCount > 0 ? `${salesCount} satış tutarı` : 'satış kaydı yok',
       icon: Wallet,
       onClick: hasSalesPanel ? () => setSalesOpen(true) : undefined,
     },

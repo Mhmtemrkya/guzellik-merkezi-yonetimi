@@ -980,6 +980,16 @@ export function mapCancelledSale(raw: unknown): CancelledSale {
     sessionsUsed: Number(c?.sessionsUsed || 0),
     adisyonId: (c?.adisyonId as string | null) ?? null,
     packageSessionIds: Array.isArray(c?.packageSessionIds) ? (c.packageSessionIds as string[]).map(String) : [],
+    allSessionIds: Array.isArray(c?.allSessionIds) ? (c.allSessionIds as string[]).map(String) : [],
+    payments: Array.isArray(c?.payments)
+      ? (c.payments as Record<string, unknown>[]).map((p, i) => ({
+          id: String(p?.id || `arch-pay-${i}`),
+          amount: Number(p?.amount || 0),
+          method: String(p?.method || ''),
+          reference: String(p?.reference || ''),
+          occurredAtUtc: String(p?.occurredAtUtc || ''),
+        }))
+      : [],
     cancelledAtUtc: String(c?.cancelledAtUtc || ''),
     cancellationReason: String(c?.cancellationReason || ''),
   }

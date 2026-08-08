@@ -266,6 +266,65 @@ public sealed class ServiceReportPackageExclusionTests
     }
 
     /// <summary>
+    /// KATALOG ZAMMI GEÇMİŞ CİROYU DEĞİŞTİRMEZ: dağıtım önce SATIŞIN KENDİ kalem fiyatını kullanır.
+    ///
+    /// Ağırlık doğrudan güncel katalog fiyatına bağlanınca, sonradan yapılan zam/indirim eski
+    /// dönemin raporunu oynatıyordu (aynı rapor iki gün farklı rakam veriyordu).
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_CatalogPriceChange_DoesNotMovePastRevenue()
+    {
+        var options = NewOptions();
+        Guid tenantId, serviceId;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Zam QA", $"zam-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var service = new ServiceDefinition(tenant.Id, branch.Id, "Cilt Bakımı", 45, 500m, "Bakım");
+            db.ServiceDefinitions.Add(service);
+            var package = new ServicePackage(tenant.Id, branch.Id, "Bakım Paketi", 900m, 0m, 0);
+            db.ServicePackages.Add(package);
+            var customer = new Customer(tenant.Id, branch.Id, "Zam", "0555 121 21 21", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Karma satış", 1400m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-30), null);
+            db.CustomerAccounts.Add(account);
+
+            // Satış anındaki bedel: 500 TL (fişte yazılı).
+            var adisyon = new Adisyon(tenant.Id, branch.Id, customer.Id, null, null);
+            adisyon.AddItem(AdisyonItemType.Service, service.Id, "Cilt Bakımı", 1, 500m, null, false);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, package.Id, service.Id, 3),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, service.Id, 1, adisyon.Id));
+            await db.SaveChangesAsync();
+
+            // SONRADAN ZAM: katalog 500 → 2.000.
+            service.ChangePricing(45, 2000m);
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            serviceId = service.Id;
+        }
+
+        await using var verify = NewDb(options);
+        var result = await NewAccounts(verify).GetServiceReportAsync(tenantId);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        // Fişteki gerçek bedel: 500. Zam sonrası katalog fiyatı kullanılsaydı rakam oynardı.
+        Assert.Equal(500m, Math.Round(result.Value!.Revenue, 2));
+        Assert.NotEqual(Guid.Empty, serviceId);
+    }
+
+    /// <summary>
     /// LEGACY KARMA SATIŞ (adisyon bağı YOK) → dağıtım seans ADEDİNE değil KATALOG FİYATINA göre.
     ///
     /// Seans adedine oranlamak ucuz ama çok seanslı hizmete satışın büyük kısmını yazıyordu:

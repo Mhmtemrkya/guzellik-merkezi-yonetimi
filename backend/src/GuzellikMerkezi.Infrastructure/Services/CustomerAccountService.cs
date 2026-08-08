@@ -1068,6 +1068,22 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             })
             .ToListAsync(cancellationToken);
 
+        // ARŞİVLENMİŞ TAHSİLATLAR: iptalde canlı satırlar silinip buraya taşınır. Ekstre gerçek
+        // tarih/yöntemi buradan okur (tek sentetik satır yerine).
+        var archiveIds = rows.Select(x => x.Id).ToArray();
+        var paymentsByArchive = archiveIds.Length == 0
+            ? new Dictionary<Guid, List<ArchivedPaymentDto>>()
+            : (await _db.ArchivedSalePayments.AsNoTracking()
+                    .Where(p => p.TenantId == tenantId && archiveIds.Contains(p.CancelledSaleId))
+                    .Select(p => new { p.CancelledSaleId, p.Id, p.Amount, p.Method, p.Reference, p.OccurredAtUtc })
+                    .ToListAsync(cancellationToken))
+                .GroupBy(p => p.CancelledSaleId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(p => p.OccurredAtUtc)
+                          .Select(p => new ArchivedPaymentDto(p.Id, p.Amount, p.Method, p.Reference, p.OccurredAtUtc))
+                          .ToList());
+
         var result = rows.Select(x => new CancelledSaleDto(
             x.Id, x.OriginalAccountId, x.TenantId, x.BranchId, x.CustomerId,
             x.CustomerName,
@@ -1076,11 +1092,14 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             Math.Max(0m, x.CollectedAmount - x.RefundedAmount),
             x.SoldAtUtc, x.SoldByStaffMemberId, x.SoldByStaffName, x.IsHistorical,
             x.SessionsTotal, x.SessionsUsed, x.AdisyonId, x.CancelledAtUtc, x.CancellationReason,
-            // İptal edilen satışın PAKET seansları: randevu bağı iptalden sonra da çözülebilsin.
+            // İptal edilen satışın seansları: randevu bağı iptalden sonra da çözülebilsin.
+            // PAKET olanlar ayrı, TÜMÜ ayrı — "bağ çözüldü ama paket değil" cevabı için ikisi de şart.
             ParseSaleSnapshot(x.Snapshot)?.Sessions
                 .Where(s => s.ServicePackageId != Guid.Empty)
                 .Select(s => s.Id)
-                .ToArray() ?? [])).ToList();
+                .ToArray() ?? [],
+            ParseSaleSnapshot(x.Snapshot)?.Sessions.Select(s => s.Id).ToArray() ?? [],
+            paymentsByArchive.TryGetValue(x.Id, out var pays) ? pays : [])).ToList();
 
         return Result<IReadOnlyCollection<CancelledSaleDto>>.Success(result);
     }
@@ -1475,25 +1494,59 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .GroupBy(s => (AdisyonId: s.SourceAdisyonId!.Value, s.ServiceDefinitionId))
             .ToDictionary(g => g.Key, g => g.Count());
 
-        // LEGACY/ELLE AÇILMIŞ CARİ İÇİN AĞIRLIK: seans ADEDİ değil KATALOG FİYATI × seans.
+        // LEGACY/ELLE AÇILMIŞ CARİ İÇİN AĞIRLIK: seans ADEDİ değil FİYAT × seans.
         //
         // Seans adedine oranlamak, ucuz ama çok seanslı hizmete satışın büyük kısmını yazıyordu:
         // 1.500 TL'lik fişte 10 seanslık 100 TL'lik hizmet ile 1 seanslık 500 TL'lik hizmet
-        // varken ilkine 1.363,64 düşüyordu (doğrusu ≈ 1.000 / 500). Paket raporu bu dağıtımı
+        // varken ilkine 1.363,64 düşüyordu (doğrusu 1.000 / 500). Paket raporu bu dağıtımı
         // zaten kalem BİRİM FİYATIYLA yapıyor; iki rapor aynı satışa farklı ciro yazamaz.
-        // Fiyat bilinmiyorsa (silinmiş hizmet) seans adedine düşülür — eski davranış.
+        //
+        // FİYAT ÖNCE SATIŞIN KENDİ KAYDINDAN: aynı fişteki kalem tutarı (varsa) kullanılır,
+        // yoksa katalog fiyatına düşülür. Güncel kataloğa doğrudan bağlanmak, sonradan yapılan
+        // ZAM/İNDİRİM ile GEÇMİŞ dönemin cirosunu değiştiriyordu (aynı rapor iki gün farklı
+        // rakam veriyordu). Fiyat hiç bilinmiyorsa (silinmiş hizmet, kalemsiz kayıt) seans
+        // adedine düşülür.
+        //
+        // KARIŞIK BİRİM TUZAĞI: bazı satırlar "fiyat×seans", bazıları "seans" ağırlığı alırsa
+        // payda anlamsız olur (500 TL ile 3 adet toplanır). Bu yüzden karar HESAP BAZINDA
+        // verilir: satışın TÜM satırlarının fiyatı biliniyorsa fiyat ağırlığı, biri bile
+        // bilinmiyorsa hepsi seans adedi kullanır.
         var servicePriceById = serviceRows.ToDictionary(x => x.Id, x => x.Price);
-        decimal WeightOf(Guid serviceId, int totalSessions)
+        var soldUnitPrice = new Dictionary<(Guid AdisyonId, Guid ServiceId), decimal>();
+        if (sourceAdisyonIds.Length > 0)
+        {
+            foreach (var (key, total) in saleLineTotals)
+            {
+                var units = sessions
+                    .Where(s => s.SourceAdisyonId == key.AdisyonId && s.ServiceDefinitionId == key.ServiceId)
+                    .Sum(s => Math.Max(1, s.TotalSessions));
+                if (units > 0) soldUnitPrice[key] = total / units;
+            }
+        }
+
+        decimal PriceOf(Guid? adisyonId, Guid serviceId)
+        {
+            if (adisyonId is { } aid && soldUnitPrice.TryGetValue((aid, serviceId), out var sold) && sold > 0m) return sold;
+            return servicePriceById.TryGetValue(serviceId, out var p) ? p : 0m;
+        }
+
+        // Hesabın tüm satırlarında fiyat biliniyor mu? (karışık birim olmasın)
+        var priceKnownByAccount = sessions
+            .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
+            .GroupBy(s => s.CustomerAccountId)
+            .ToDictionary(g => g.Key, g => g.All(s => PriceOf(s.SourceAdisyonId, s.ServiceDefinitionId) > 0m));
+
+        decimal WeightOf(Guid accountId, Guid? adisyonId, Guid serviceId, int totalSessions)
         {
             var units = Math.Max(1, totalSessions);
-            var price = servicePriceById.TryGetValue(serviceId, out var p) ? p : 0m;
-            return price > 0m ? price * units : units;
+            if (!priceKnownByAccount.TryGetValue(accountId, out var usePrice) || !usePrice) return units;
+            return PriceOf(adisyonId, serviceId) * units;
         }
 
         var weightByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => WeightOf(x.ServiceDefinitionId, x.TotalSessions)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => WeightOf(x.CustomerAccountId, x.SourceAdisyonId, x.ServiceDefinitionId, x.TotalSessions)));
 
         var revenue = scopedSessions.Sum(s =>
         {
@@ -1505,7 +1558,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             }
             var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1m;
             var total = totalByAccount.TryGetValue(s.CustomerAccountId, out var t) ? t : 0m;
-            return total * WeightOf(s.ServiceDefinitionId, s.TotalSessions) / weight;
+            return total * WeightOf(s.CustomerAccountId, s.SourceAdisyonId, s.ServiceDefinitionId, s.TotalSessions) / weight;
         });
 
         // "Aktif Hizmet": dönemde satılanlardan seansı hâlâ devam eden satış adedi

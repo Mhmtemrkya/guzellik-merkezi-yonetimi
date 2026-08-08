@@ -115,7 +115,22 @@ export default function CustomerLedgerModal({
       }
     }
     for (const c of cancelledSales) {
-      if (c.collectedAmount > 0.005) {
+      // GERÇEK TAHSİLAT SATIRLARI (arşivden): tarih ve yöntem korunur. Tek sentetik satıra
+      // indirmek ödeme günlerini/yöntemlerini siliyor ve "2 tahsilat · toplam 0" gibi çelişkili
+      // özetler üretiyordu (tutar arşiv toplamından, adet canlı listeden geliyordu).
+      if (c.payments.length > 0) {
+        for (const p of c.payments) {
+          rows.push({
+            ts: Date.parse(p.occurredAtUtc || '') || 0,
+            date: (p.occurredAtUtc || '').slice(0, 10),
+            sale: `${c.name} · İPTAL`,
+            method: paymentMethodLabel(p.method),
+            amount: p.amount,
+            kind: 'in',
+          })
+        }
+      } else if (c.collectedAmount > 0.005) {
+        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir.
         rows.push({
           ts: Date.parse(c.cancelledAtUtc || c.soldAtUtc || '') || 0,
           date: (c.soldAtUtc || c.cancelledAtUtc || '').slice(0, 10),
@@ -139,11 +154,25 @@ export default function CustomerLedgerModal({
     return rows.sort((x, y) => y.ts - x.ts)
   }, [group, cancelledSales])
 
+  /**
+   * EKSTRE TOPLAMLARI — tablonun ALTINDAKİ toplam satırı (kullanıcı isteği).
+   * Satırların KENDİSİNDEN türetilir: özet ile satırlar farklı kaynaktan gelince
+   * "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu.
+   */
+  const ledgerTotals = useMemo(() => {
+    const collected = ledger.filter((r) => r.kind === 'in').reduce((s, r) => s + r.amount, 0)
+    const refunded = ledger.filter((r) => r.kind === 'refund').reduce((s, r) => s + r.amount, 0)
+    return { collected, refunded, net: collected - refunded }
+  }, [ledger])
+
   /** İptalden KURUMDA KALAN para (tahsil − iade) — KPI'a eklenir, yoksa sıfır görünürdü. */
   const cancelledSummary = useMemo(() => ({
     count: cancelledSales.length,
     retained: cancelledSales.reduce((s, c) => s + Math.max(0, c.retainedAmount), 0),
     refunded: cancelledSales.reduce((s, c) => s + Math.max(0, c.refundedAmount), 0),
+    // İptal edilen satışların TUTARI: "Toplam Satış" kartı da bunu saymalı, yoksa yalnız
+    // "Tahsil Edilen"e arşiv eklendiği için iki kart birbirini yalanlıyordu.
+    total: cancelledSales.reduce((s, c) => s + Math.max(0, c.totalAmount), 0),
   }), [cancelledSales])
 
   if (!group) return null
@@ -222,7 +251,14 @@ export default function CustomerLedgerModal({
 
                   {/* KPI şeridi */}
                   <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto">
-                    <Kpi label="Toplam Satış" value={formatTL(Math.round(group.totalAmount))} icon={TrendingUp} />
+                    <Kpi
+                      label="Toplam Satış"
+                      /* İPTAL EDİLENLER DE SAYILIR (bkz. cancelledSummary.total): "Tahsil Edilen"
+                         arşivi sayarken bu kart saymazsa çelişki çıkar. */
+                      value={formatTL(Math.round(group.totalAmount + cancelledSummary.total))}
+                      icon={TrendingUp}
+                      sub={cancelledSummary.count > 0 ? `${cancelledSummary.count} iptal dahil` : undefined}
+                    />
                     <Kpi
                       label="Tahsil Edilen"
                       /* İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive
@@ -340,7 +376,13 @@ export default function CustomerLedgerModal({
                 )}
 
                 {tab === 'ledger' && (
-                  <Section title="Tahsilat Ekstresi" icon={Receipt} hint={`${ledger.length} tahsilat · toplam ${formatTL(Math.round(group.paidAmount))}`}>
+                  <Section
+                    title="Tahsilat Ekstresi"
+                    icon={Receipt}
+                    /* ÖZET SATIRIN KENDİSİNDEN TÜRETİLİR: adet canlı listeden, tutar arşivden
+                       gelince "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu. */
+                    hint={`${ledger.length} hareket · net ${formatTL(Math.round(ledgerTotals.net))}`}
+                  >
                     {ledger.length === 0 ? (
                       <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-8 text-center text-[12px] text-[#705a66]">
                         Bu müşteriden henüz tahsilat alınmamış.
@@ -368,6 +410,22 @@ export default function CustomerLedgerModal({
                               </tr>
                             ))}
                           </tbody>
+                          {/* TOPLAM SATIRI: tahsilat − iade = net. Excel'deki toplam bandı gibi
+                              tablonun altında sabit durur. */}
+                          <tfoot>
+                            <tr className="border-t-2 border-[#f0dce5] bg-[#fff7fa] text-[12px] font-bold text-[#352432]">
+                              <td className="py-2 pr-3">TOPLAM</td>
+                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#705a66]">{ledger.length} hareket</td>
+                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#705a66]">
+                                {ledgerTotals.refunded > 0.005
+                                  ? `Tahsilat ${formatTL(Math.round(ledgerTotals.collected))} · İade ${formatTL(Math.round(ledgerTotals.refunded))}`
+                                  : 'Tahsilat'}
+                              </td>
+                              <td className={`py-2 text-right font-display text-[15px] tabular-nums ${ledgerTotals.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                {formatTL(Math.round(ledgerTotals.net))}
+                              </td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     )}

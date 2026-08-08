@@ -700,7 +700,17 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     // İptal edilen satış borç/vade akışının DIŞINDADIR: kayıt arşive taşındığı için listede
     // zaten görünmez. Aşağıdaki süzgeç, migration'ı henüz uygulanmamış kurumlarda kalan eski
     // damgalı satırlara karşı savunma olarak durur.
-    bool cancelled(Map<String, dynamic> a) => '${a['saleStatus']}' == 'Cancelled';
+    // İPTAL ÖLÇÜTÜ İKİ KAYNAKTAN: damga (saleStatus/cancelledAtUtc) VE iptal arşivi. Yalnız
+    // damgaya bakmak, damgası eksik kalmış satışı canlı ve TAHSİLAT ALINABİLİR bırakıyordu —
+    // arşivde iptal görünen bir satışa para yazılabilirdi (web paritesi).
+    final cancelledIds = data.cancelled
+        .map((c) => '${c['originalAccountId'] ?? ''}')
+        .where((id) => id.isNotEmpty && id != 'null')
+        .toSet();
+    bool cancelled(Map<String, dynamic> a) =>
+        '${a['saleStatus']}' == 'Cancelled' ||
+        '${a['cancelledAtUtc'] ?? ''}'.replaceAll('null', '').isNotEmpty ||
+        cancelledIds.contains('${a['id']}');
     final live = data.accounts.where((a) => !cancelled(a)).toList();
     final cancelledCount = data.cancelled.length;
     // İADE: iptal edilirken müşteriye para geri ödenmiş kayıtlar.
@@ -990,6 +1000,11 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     await openCustomerLedgerSheet(
       context,
       group: g,
+      // İPTAL ARŞİVİ: iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR (arşive taşınır),
+      // defterde hiç görünmüyordu.
+      cancelledSales: (_last?.cancelled ?? const <Map<String, dynamic>>[])
+          .where((c) => '${c['customerId']}' == g.customerId)
+          .toList(),
       onCollect: (a) async => _openAccountDetail(a),
       onCollectMonthly: (a) async => _monthlyCollect(a),
       onOpenSale: (a) async => _openAccountDetail(a),
@@ -1005,12 +1020,20 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     if (mounted) _reload();
   }
 
+  /// İptal edilmiş mi? Damga VEYA arşiv kaydı — ikisinden biri yeterli (bkz. `cancelled`).
+  bool _isCancelledAccount(Map<String, dynamic> a) {
+    if ('${a['saleStatus']}' == 'Cancelled') return true;
+    if ('${a['cancelledAtUtc'] ?? ''}'.replaceAll('null', '').isNotEmpty) return true;
+    return (_last?.cancelled ?? const <Map<String, dynamic>>[])
+        .any((c) => '${c['originalAccountId']}' == '${a['id']}');
+  }
+
   /// Süzgeçli satırdan, müşterinin TÜM canlı satışlarını taşıyan grubu kurar.
   /// (Kimlik süzgeçli listeden gelir; içerik tam listeden.)
   CustomerAccountGroup _unfilteredGroupOf(CustomerAccountGroup g) {
     if (g.customerId.isEmpty) return g;
     final all = (_last?.accounts ?? const <Map<String, dynamic>>[])
-        .where((a) => '${a['saleStatus']}' != 'Cancelled' && '${a['customerId']}' == g.customerId)
+        .where((a) => !_isCancelledAccount(a) && '${a['customerId']}' == g.customerId)
         .toList();
     if (all.length <= g.accounts.length) return g;
     final groups = groupAccountsByCustomer(all);
@@ -1023,9 +1046,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     try {
       final res = await widget.api
           .getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200);
-      final live = apiItems(res)
-          .where((a) => '${a['saleStatus']}' != 'Cancelled')
-          .toList();
+      final live = apiItems(res).where((a) => !_isCancelledAccount(a)).toList();
       if (live.isEmpty) return null;
       final groups = groupAccountsByCustomer(live);
       return groups.isEmpty ? null : groups.first;
