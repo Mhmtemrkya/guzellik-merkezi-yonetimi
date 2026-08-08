@@ -291,7 +291,7 @@ function MusterilerPageInner() {
   const selected = useMemo(() => filtered.find((c) => c.id === selectedId) || filtered[0], [filtered, selectedId])
 
   // ---- Seçili müşterinin randevu + cari kayıtları (yalnız modal açıkken, yalnız o müşteri için).
-  const { data: detailData, loading: detailLoading } = useApiQuery<{
+  const { data: detailData, loading: detailLoading, error: detailError } = useApiQuery<{
     appts: ApiAppointment[]
     accounts: ApiCustomerAccount[]
     cancelled: unknown[]
@@ -304,15 +304,17 @@ function MusterilerPageInner() {
         // TÜM cariler sayfa sayfa: modaldeki "Toplam Harcama / Tahsil Edilen" artık bu listeden
         // hesaplanıyor; tek sayfalık (100) çekim, çok satışı olan müşteride tutarı sessizce eksik
         // gösterirdi.
+        // PARA VERİSİ HEP BİRLİKTE: canlı cariler + iptal arşivi TEK bütündür ("Tahsil Edilen"
+        // ikisinin toplamıdır). Biri düşüp diğeri gelirse KPI yarım gerçeği rakam gibi gösterir
+        // (0 ya da iptalsiz eksik tutar). Hata yutulmaz — modal "—" ve sayfa hata gösterir.
         fetchAllPaged<ApiCustomerAccount>(
           (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page, pageSize }),
           200,
-        ).catch(() => [] as ApiCustomerAccount[]),
+        ),
         // İPTAL ARŞİVİ: iptal edilen satışın satırları canlı tablodan SİLİNİR, bu yüzden iptal
         // sayısı ve kısmi iade sonrası kurumda kalan para yalnız buradan okunabilir.
         adminApi.listCancelledSales<unknown[]>({ customerId: cid }, tenantId)
-          .then((rows) => (Array.isArray(rows) ? rows : []))
-          .catch(() => [] as unknown[]),
+          .then((rows) => (Array.isArray(rows) ? rows : [])),
       ])
       return { appts: apiItems(apptRes), accounts, cancelled }
     },
@@ -734,7 +736,9 @@ function MusterilerPageInner() {
             tenantId={tenantId}
             appts={appts}
             accounts={accounts}
-            accountsLoading={detailLoading}
+            /* Hata da "yükleniyor" gibi ele alınır: veri gelmediyse ₺0 GERÇEK RAKAM gibi
+               okunuyordu (müşteri hiç ödememiş sanılırdı). Kartlar "—" gösterir. */
+            accountsLoading={detailLoading || Boolean(detailError)}
             cancelledSales={cancelledSales}
             isStaff={isStaff}
             canAdisyon={canAdisyon}

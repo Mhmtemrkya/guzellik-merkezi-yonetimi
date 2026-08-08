@@ -179,7 +179,17 @@ public sealed record CancelledSaleDto(
     int SessionsUsed,
     Guid? AdisyonId,
     DateTime CancelledAtUtc,
-    string? CancellationReason);
+    string? CancellationReason,
+    /// <summary>
+    /// İptal edilen satışın PAKETE bağlı seans kayıtlarının kimlikleri.
+    /// <para>
+    /// İptalde seans satırları canlı tablodan SİLİNİR ama tamamlanmış randevunun
+    /// <c>SourceCustomerPackageSessionId</c> bağı yerinde kalır. Müşteri geçmişi paneli bağı
+    /// çözemeyince "paketten değil" sanıp işi "İşlemler" sekmesine kaydırıyordu; bu liste,
+    /// iptal sonrası da doğru sınıflandırmayı mümkün kılar (arşiv = tek gerçek kaynak).
+    /// </para>
+    /// </summary>
+    IReadOnlyCollection<Guid> PackageSessionIds);
 
 public sealed record CreateCustomerAccountRequest(
     Guid? BranchId,

@@ -159,10 +159,13 @@ function OnMuhasebePageInner() {
         // TÜM cariler sayfa sayfa: liste artık MÜŞTERİ BAZINDA gruplanıyor. Tek sayfalık (500)
         // çekimde müşterinin bazı satışları listeye hiç girmez ve grup toplamı (borç/tahsilat)
         // sessizce eksik çıkardı — kısmi veriyle toplama yapmak yanlış rakam üretir.
+        // HATA YUTULMAZ: boş liste "cari yok" demektir, oysa gerçek "veri alınamadı"dır.
+        // Cari tablosu gruplama yaptığı için eksik veri YANLIŞ TOPLAM üretir — sayfa hata
+        // göstersin (useApiQuery.error) ki kullanıcı rakama güvenmesin.
         fetchAllPaged<ApiCustomerAccount>(
           (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, page, pageSize }),
           500,
-        ).catch(() => [] as ApiCustomerAccount[]),
+        ),
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
@@ -172,7 +175,9 @@ function OnMuhasebePageInner() {
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
         // İptal edilen satışlar canlı cari listesinde YOK — arşivden ayrı çekilir.
-        adminApi.listCancelledSales<unknown[]>(undefined, tenantId).catch(() => [] as unknown[]),
+        // PARA VERİSİ HEP BİRLİKTE: cari defterindeki "Tahsil Edilen" canlı + arşiv toplamıdır;
+        // biri düşüp diğeri gelirse yarım gerçek rakam gibi görünür. Hata yutulmaz.
+        adminApi.listCancelledSales<unknown[]>(undefined, tenantId),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
       ])
       return {
@@ -390,11 +395,32 @@ function OnMuhasebePageInner() {
     })
   }, [filteredAccounts])
 
-  /** Tablodan açılan müşteri (grup) — modal bu müşterinin TÜM satışlarını gösterir. */
+  /**
+   * Tablodan açılan müşteri (grup) — defter bu müşterinin TÜM satışlarını gösterir.
+   *
+   * DEFTER SÜZGEÇTEN BAĞIMSIZ KURULUR: grup, `filteredAccounts`'tan değil TÜM canlı carilerden
+   * türetilir. Aksi hâlde "Geciken" çipi ya da arama açıkken defter yalnız EŞLEŞEN satışı
+   * gösteriyor; "Toplam Satış / Tahsil Edilen / Kalan Borç" ve taksit takvimi müşterinin
+   * gerçeğini değil süzgecin kalıntısını anlatıyordu (ekstre de eksik çıkıyordu).
+   * İPTAL EDİLENLER de eklenir: iptal satırı canlı listede yok ama parası (tahsilat/iade)
+   * defterin ekstresine ve "iptalden kalan" hesabına girmeli.
+   */
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
-  const selGroup = useMemo(
-    () => accountGroups.find((g) => (g.customerId || g.accounts[0]?.id) === selectedGroupId) || null,
-    [accountGroups, selectedGroupId],
+  const selGroup = useMemo(() => {
+    if (!selectedGroupId) return null
+    // Süzgeçli listeden yalnız KİMLİĞİ öğrenilir (hangi müşteri seçildi).
+    const picked = accountGroups.find((g) => (g.customerId || g.accounts[0]?.id) === selectedGroupId)
+    if (!picked) return null
+    const all = picked.customerId
+      ? liveAccounts.filter((a) => a.customerId === picked.customerId)
+      : picked.accounts
+    return groupAccountsByCustomer(all)[0] ?? picked
+  }, [accountGroups, selectedGroupId, liveAccounts])
+
+  /** Seçili müşterinin İPTAL arşivi — defterdeki "iptaller" bölümünün kaynağı. */
+  const selGroupCancelled = useMemo(
+    () => (selGroup?.customerId ? cancelledSales.filter((c) => c.customerId === selGroup.customerId) : []),
+    [cancelledSales, selGroup],
   )
 
   const selAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) || null, [accounts, selectedAccountId])
@@ -1280,6 +1306,7 @@ function OnMuhasebePageInner() {
                 tahsilat hâlâ TEK BİR SATIŞIN carisine yazılır (para doğru yere gitsin). */}
             <CustomerLedgerModal
               group={selGroup}
+              cancelledSales={selGroupCancelled}
               open={Boolean(selGroup)}
               onClose={() => setSelectedGroupId(null)}
               onCollect={(accountId) => { setSelectedAccountId(accountId); setCollectMode('general') }}

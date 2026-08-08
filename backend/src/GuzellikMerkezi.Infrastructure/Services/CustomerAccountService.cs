@@ -215,10 +215,6 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .ToHashSet();
         }
 
-        var catalogScoped = (serviceDefinitionId is { } s1 && s1 != Guid.Empty)
-                            || (servicePackageId is { } s2 && s2 != Guid.Empty)
-                            || categoryScoped;
-
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var search = request.Search.Trim();
@@ -270,10 +266,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // süzgeci adisyon satışlarını hiç göremezdi. Genel listede de gerekli, bu yüzden burada.
         items = await WithPackageLinkAsync(tenantId, items, cancellationToken);
 
-        // Satış paneli (müşteri kartı ya da katalog kartı): seans durumu + kalemler +
-        // Aktif/Tamamlandı/İptal rozeti. Yalnızca süzülmüş listede hesaplanır (genel liste hafif kalsın).
-        if ((customerId is { } scoped && scoped != Guid.Empty) || catalogScoped)
-            items = await EnrichSalesAsync(tenantId, accounts, items, cancellationToken);
+        // Satış paneli: seans durumu + kalemler + Aktif/Tamamlandı/İptal rozeti.
+        //
+        // GENEL LİSTEDE DE HESAPLANIR: Ön Muhasebe cari tablosu "Kalan Seans" gösteriyor ve
+        // zenginleştirme atlandığında bu alan HER SATIRDA 0 dönüyordu (kullanıcı seansı biten
+        // paketle hiç kullanılmamışı ayırt edemiyordu). Zenginleştirme yalnız SAYFADAKİ satırlar
+        // için çalışır (tüm kurum değil) — maliyeti sayfa boyutuyla sınırlıdır.
+        items = await EnrichSalesAsync(tenantId, accounts, items, cancellationToken);
 
         return Result<PagedResult<CustomerAccountDto>>.Success(new PagedResult<CustomerAccountDto>(items, total, request.SafePage, request.SafePageSize));
     }
@@ -1064,6 +1063,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 x.SoldAtUtc, x.SoldByStaffMemberId,
                 SoldByStaffName = x.SoldByStaffMember != null ? x.SoldByStaffMember.FullName : null,
                 x.IsHistorical, x.SessionsTotal, x.SessionsUsed, x.AdisyonId, x.CancelledAtUtc, x.CancellationReason,
+                // Snapshot JSON'u: pakete bağlı seans kimlikleri buradan çözülür (aşağıda).
+                x.Snapshot,
             })
             .ToListAsync(cancellationToken);
 
@@ -1074,7 +1075,12 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             x.ServicePackageId, x.Name, x.TotalAmount, x.DepositAmount, x.CollectedAmount, x.RefundedAmount,
             Math.Max(0m, x.CollectedAmount - x.RefundedAmount),
             x.SoldAtUtc, x.SoldByStaffMemberId, x.SoldByStaffName, x.IsHistorical,
-            x.SessionsTotal, x.SessionsUsed, x.AdisyonId, x.CancelledAtUtc, x.CancellationReason)).ToList();
+            x.SessionsTotal, x.SessionsUsed, x.AdisyonId, x.CancelledAtUtc, x.CancellationReason,
+            // İptal edilen satışın PAKET seansları: randevu bağı iptalden sonra da çözülebilsin.
+            ParseSaleSnapshot(x.Snapshot)?.Sessions
+                .Where(s => s.ServicePackageId != Guid.Empty)
+                .Select(s => s.Id)
+                .ToArray() ?? [])).ToList();
 
         return Result<IReadOnlyCollection<CancelledSaleDto>>.Success(result);
     }
@@ -1461,20 +1467,45 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .ToDictionary(g => g.Key, g => g.Sum(x => Math.Round(x.Quantity * x.UnitPrice, 2, MidpointRounding.AwayFromZero)));
         }
 
+        // AYNI (fiş, hizmet) ÇİFTİNDEN KAÇ SEANS SATIRI DOĞDU: kalem tutarı bu satırlara BÖLÜNÜR.
+        // Aksi hâlde her satır kalemin TAMAMINI sayıyordu — bir fişte aynı hizmetten iki seans
+        // kaydı varsa 300 TL'lik kalem 600 TL ciro üretiyordu (adet katı kadar şişme).
+        var sessionsPerSaleLine = scopedSessions
+            .Where(s => s.SourceAdisyonId.HasValue)
+            .GroupBy(s => (AdisyonId: s.SourceAdisyonId!.Value, s.ServiceDefinitionId))
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // LEGACY/ELLE AÇILMIŞ CARİ İÇİN AĞIRLIK: seans ADEDİ değil KATALOG FİYATI × seans.
+        //
+        // Seans adedine oranlamak, ucuz ama çok seanslı hizmete satışın büyük kısmını yazıyordu:
+        // 1.500 TL'lik fişte 10 seanslık 100 TL'lik hizmet ile 1 seanslık 500 TL'lik hizmet
+        // varken ilkine 1.363,64 düşüyordu (doğrusu ≈ 1.000 / 500). Paket raporu bu dağıtımı
+        // zaten kalem BİRİM FİYATIYLA yapıyor; iki rapor aynı satışa farklı ciro yazamaz.
+        // Fiyat bilinmiyorsa (silinmiş hizmet) seans adedine düşülür — eski davranış.
+        var servicePriceById = serviceRows.ToDictionary(x => x.Id, x => x.Price);
+        decimal WeightOf(Guid serviceId, int totalSessions)
+        {
+            var units = Math.Max(1, totalSessions);
+            var price = servicePriceById.TryGetValue(serviceId, out var p) ? p : 0m;
+            return price > 0m ? price * units : units;
+        }
+
         var weightByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(1, x.TotalSessions)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => WeightOf(x.ServiceDefinitionId, x.TotalSessions)));
+
         var revenue = scopedSessions.Sum(s =>
         {
             if (s.SourceAdisyonId is { } adisyonId
                 && saleLineTotals.TryGetValue((adisyonId, s.ServiceDefinitionId), out var lineTotal))
             {
-                return lineTotal;
+                var share = sessionsPerSaleLine.TryGetValue((adisyonId, s.ServiceDefinitionId), out var n) && n > 0 ? n : 1;
+                return lineTotal / share;
             }
-            var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1;
+            var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1m;
             var total = totalByAccount.TryGetValue(s.CustomerAccountId, out var t) ? t : 0m;
-            return total * Math.Max(1, s.TotalSessions) / weight;
+            return total * WeightOf(s.ServiceDefinitionId, s.TotalSessions) / weight;
         });
 
         // "Aktif Hizmet": dönemde satılanlardan seansı hâlâ devam eden satış adedi

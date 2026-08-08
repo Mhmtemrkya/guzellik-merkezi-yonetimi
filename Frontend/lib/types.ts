@@ -1160,6 +1160,12 @@ export interface CancelledSale {
   sessionsTotal: number
   sessionsUsed: number
   adisyonId: string | null
+  /**
+   * İptal edilen satışın PAKETE bağlı seans kimlikleri. İptalde seans satırları silinir ama
+   * randevunun bağı kalır; müşteri geçmişi bu listeyle "paketten mi" sorusunu iptalden SONRA da
+   * doğru yanıtlar (yoksa iş "İşlemler" sekmesine kayıyordu).
+   */
+  packageSessionIds: string[]
   cancelledAtUtc: string
   cancellationReason: string
 }

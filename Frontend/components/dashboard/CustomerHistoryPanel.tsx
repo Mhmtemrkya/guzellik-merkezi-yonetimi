@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { formatTL, normalizeAdisyon, normalizeAppointment, paymentMethodLabel } from '@/lib/apiMappers'
+import { formatTL, mapCancelledSale, normalizeAdisyon, normalizeAppointment, paymentMethodLabel } from '@/lib/apiMappers'
 import type {
   ApiAdisyon,
+  CancelledSale,
   ApiAppointment,
   ApiCustomerPackageSession,
   CustomerAccount,
@@ -106,13 +107,14 @@ export default function CustomerHistoryPanel({
     adisyonlar: ApiAdisyon[]
     sessions: ApiCustomerPackageSession[]
     packages: ServicePackage[]
+    cancelled: CancelledSale[]
   }>(
     async () => {
-      if (!customerId) return { appts: [], adisyonlar: [], sessions: [], packages: [] }
+      if (!customerId) return { appts: [], adisyonlar: [], sessions: [], packages: [], cancelled: [] }
       // SAYFALAR SONUNA KADAR: tek sayfa 200 kayıtla sınırlıydı — uzun süreli müşteride
       // geçmişin eski kısmı sessizce eksik görünüyordu (sunucu süzgeci sayesinde yalnız bu
       // müşterinin kayıtları okunur, maliyet düşük).
-      const [appts, adisyonlar, ownSessions, ownPackages] = await Promise.all([
+      const [appts, adisyonlar, ownSessions, ownPackages, cancelled] = await Promise.all([
         fetchAllPaged<ApiAppointment>((page, pageSize) =>
           adminApi.appointments<ApiAppointment>({ tenantId, customerId, page, pageSize }), 200,
         ).catch(() => [] as ApiAppointment[]),
@@ -132,11 +134,16 @@ export default function CustomerHistoryPanel({
               adminApi.packages<ServicePackage>({ tenantId, page, pageSize }), 200,
             ).catch(() => [] as ServicePackage[])
           : Promise.resolve([] as ServicePackage[]),
+        // İPTAL ARŞİVİ: iptalde seans satırları silinir, randevunun bağı kalır. Bu liste
+        // olmadan iptal edilmiş paketin işi "Seanslar" yerine "İşlemler"e kayıyordu.
+        adminApi.listCancelledSales<unknown[]>({ customerId }, tenantId)
+          .then((rows) => (Array.isArray(rows) ? rows.map(mapCancelledSale) : []))
+          .catch(() => [] as CancelledSale[]),
       ])
-      return { appts, adisyonlar, sessions: ownSessions, packages: ownPackages }
+      return { appts, adisyonlar, sessions: ownSessions, packages: ownPackages, cancelled }
     },
     [customerId, tenantId, canAdisyon, refreshKey, needsOwnSessions, needsOwnPackages],
-    { initialData: { appts: [], adisyonlar: [], sessions: [], packages: [] } },
+    { initialData: { appts: [], adisyonlar: [], sessions: [], packages: [], cancelled: [] } },
   )
 
   /** Prop verilmişse o kullanılır (çağıran zaten çekmiştir), yoksa panelin kendi çektiği. */
@@ -192,21 +199,28 @@ export default function CustomerHistoryPanel({
     return set
   }, [effectiveSessions])
 
-  /** PAKETE ait seans kayıtlarının kimlikleri — randevunun bağlı olduğu seansı sınıflandırır. */
+  /**
+   * PAKETE ait seans kayıtlarının kimlikleri — randevunun bağlı olduğu seansı sınıflandırır.
+   * İPTAL ARŞİVİ DE KATILIR: iptalde canlı seans satırı silinir ama randevunun bağı kalır;
+   * arşiv olmadan iptal edilmiş paketin işi "İşlemler"e kayıyordu (tek paketi olan müşteride
+   * sezgi de boş kaldığı için kurtarmıyordu).
+   */
   const packageSessionIds = useMemo(() => {
     const set = new Set<string>()
     for (const s of effectiveSessions) {
       if (s.id && s.servicePackageId && s.servicePackageId !== EMPTY_GUID) set.add(s.id)
     }
+    for (const c of data?.cancelled || []) for (const id of c.packageSessionIds) set.add(id)
     return set
-  }, [effectiveSessions])
+  }, [effectiveSessions, data])
 
   /** BİLİNEN tüm seans kayıtları (paket + tekil) — bağın çözülüp çözülmediğini bu söyler. */
   const knownSessionIds = useMemo(() => {
     const set = new Set<string>()
     for (const s of effectiveSessions) if (s.id) set.add(s.id)
+    for (const c of data?.cancelled || []) for (const id of c.packageSessionIds) set.add(id)
     return set
-  }, [effectiveSessions])
+  }, [effectiveSessions, data])
 
   /**
    * Bir randevu PAKETTEN mi karşılandı?

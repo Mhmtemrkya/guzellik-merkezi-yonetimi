@@ -979,6 +979,7 @@ export function mapCancelledSale(raw: unknown): CancelledSale {
     sessionsTotal: Number(c?.sessionsTotal || 0),
     sessionsUsed: Number(c?.sessionsUsed || 0),
     adisyonId: (c?.adisyonId as string | null) ?? null,
+    packageSessionIds: Array.isArray(c?.packageSessionIds) ? (c.packageSessionIds as string[]).map(String) : [],
     cancelledAtUtc: String(c?.cancelledAtUtc || ''),
     cancellationReason: String(c?.cancellationReason || ''),
   }

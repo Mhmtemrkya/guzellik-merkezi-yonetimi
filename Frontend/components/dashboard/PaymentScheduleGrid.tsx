@@ -1,57 +1,33 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 import { formatTL } from '@/lib/apiMappers'
 import type { MonthCell } from '@/lib/accountGrouping'
 
 /**
  * AYLIK TAKSİT TAKVİMİ — Excel'deki "aylık ödeme ızgarası"nın panel karşılığı.
  *
- * Sütunlar aylar (yıl sınırını geçince yıl etiketi yeniden yazılır), hücre rengi o ayın
- * durumunu söyler: yeşil ödendi · amber kısmi · kırmızı gecikmiş · nötr bekleyen.
- * Muhasebeci "hangi ay para geldi, hangi ay gelmedi" sorusunu tek bakışta yanıtlasın diye
- * tutarlar hücrenin İÇİNDE yazılır (tooltip'e saklanmaz — yazdırılan tabloda da okunmalı).
+ * GERÇEK TABLO: üstte AY SÜTUNLARI (yıl üst başlıkta gruplanır), altında satırlar —
+ * Planlanan · Tahsil edilen · Kalan · Durum. Muhasebeci Excel'de neye bakıyorsa aynısı:
+ * bir ayın sütununu aşağı okuyunca o ayın tüm hikâyesi çıkar.
  *
- * RENK TEK BAŞINA ANLAM TAŞIMAZ: her hücrede durum harfi/işareti ve alt satırda tutar var
- * (renk körlüğü + siyah-beyaz çıktı). Şerit yatay kaydırılır ve "bugün" sütunu açılışta
- * görünür konuma getirilir.
+ * Hücre rengi durumu söyler: yeşil ödendi · amber kısmi · kırmızı gecikmiş · nötr bekleyen.
+ * RENK TEK BAŞINA ANLAM TAŞIMAZ: durum satırında yazı da var (renk körlüğü + s/b çıktı).
+ * İlk sütun (satır başlıkları) yapışkandır; yatay kaydırırken hangi satıra baktığın kaybolmasın.
  */
 
 const MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 
-const CELL_STYLE: Record<MonthCell['status'], { box: string; chip: string; label: string; mark: string }> = {
-  paid: {
-    box: 'border-emerald-300 bg-emerald-50',
-    chip: 'text-emerald-800',
-    label: 'Ödendi',
-    mark: '✓',
-  },
-  partial: {
-    box: 'border-amber-300 bg-amber-50',
-    chip: 'text-amber-900',
-    label: 'Kısmi',
-    mark: '◐',
-  },
-  overdue: {
-    box: 'border-rose-300 bg-rose-50',
-    chip: 'text-rose-800',
-    label: 'Gecikmiş',
-    mark: '!',
-  },
-  upcoming: {
-    box: 'border-[#e3d2da] bg-white',
-    chip: 'text-[#4a3a44]',
-    label: 'Bekleyen',
-    mark: '·',
-  },
-  none: {
-    box: 'border-dashed border-[#ecdfe5] bg-[#fcfafb]',
-    chip: 'text-[#a3908f]',
-    label: 'Taksit yok',
-    mark: '–',
-  },
+const CELL: Record<MonthCell['status'], { bg: string; ink: string; label: string; mark: string }> = {
+  paid: { bg: 'bg-emerald-50', ink: 'text-emerald-800', label: 'Ödendi', mark: '✓' },
+  partial: { bg: 'bg-amber-50', ink: 'text-amber-900', label: 'Kısmi', mark: '◐' },
+  overdue: { bg: 'bg-rose-50', ink: 'text-rose-800', label: 'Gecikmiş', mark: '!' },
+  upcoming: { bg: 'bg-white', ink: 'text-[#4a3a44]', label: 'Bekleyen', mark: '·' },
+  none: { bg: 'bg-[#fcfafb]', ink: 'text-[#a3908f]', label: '—', mark: '' },
 }
+
+/** Sütun genişliği — 12 ay ekrana sığsın ama tutarlar (₺12.345) kırpılmasın. */
+const COL = 'min-w-[92px]'
 
 export default function PaymentScheduleGrid({
   cells,
@@ -62,26 +38,15 @@ export default function PaymentScheduleGrid({
   todayKey: string
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const todayRef = useRef<HTMLDivElement | null>(null)
-  const [canScroll, setCanScroll] = useState({ left: false, right: false })
+  const todayRef = useRef<HTMLTableCellElement | null>(null)
 
-  // Açılışta "bugün"e kaydır: 24 aylık planda kullanıcı her seferinde elle sağa sürüklüyordu.
+  // Açılışta "bugün" sütununa kaydır: 24 aylık planda kullanıcı her seferinde elle sürüklüyordu.
   useEffect(() => {
     const box = scrollRef.current
     const target = todayRef.current
     if (!box || !target) return
     box.scrollLeft = Math.max(0, target.offsetLeft - box.clientWidth / 2 + target.clientWidth / 2)
   }, [cells, todayKey])
-
-  const syncArrows = (): void => {
-    const box = scrollRef.current
-    if (!box) return
-    setCanScroll({
-      left: box.scrollLeft > 4,
-      right: box.scrollLeft + box.clientWidth < box.scrollWidth - 4,
-    })
-  }
-  useEffect(syncArrows, [cells])
 
   const totals = useMemo(() => ({
     due: cells.reduce((s, c) => s + c.due, 0),
@@ -90,9 +55,16 @@ export default function PaymentScheduleGrid({
     overdue: cells.filter((c) => c.status === 'overdue').reduce((s, c) => s + c.remaining, 0),
   }), [cells])
 
-  const nudge = (dir: -1 | 1): void => {
-    scrollRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' })
-  }
+  /** Yıl üst başlığı: aynı yılın ayları tek hücrede birleşir (Excel'deki yıl bandı). */
+  const yearSpans = useMemo(() => {
+    const out: { year: number; span: number }[] = []
+    for (const c of cells) {
+      const last = out[out.length - 1]
+      if (last && last.year === c.year) last.span += 1
+      else out.push({ year: c.year, span: 1 })
+    }
+    return out
+  }, [cells])
 
   if (cells.length === 0) {
     return (
@@ -106,8 +78,7 @@ export default function PaymentScheduleGrid({
     <div>
       {/* Özet şeridi — KAPSAM AÇIKÇA YAZILI: bu rakamlar YALNIZ taksitleri sayar. Peşinat ve
           peşin satışlar taksit satırı üretmediğinden buraya girmez; üstteki "Tahsil Edilen"
-          KPI'ı ise müşterinin TÜM tahsilatıdır. Etiketsiz bırakılınca iki rakam çelişiyormuş
-          gibi okunuyordu (₺135 taksit ↔ ₺10.385 toplam). */}
+          KPI'ı ise müşterinin TÜM tahsilatıdır (etiketsiz bırakılınca çelişki sanılıyordu). */}
       <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
         <SummaryChip label="Taksit planı" value={totals.due} tone="text-[#4a3a44] border-[#ead8df] bg-white" />
         <SummaryChip label="Taksitlerden tahsil" value={totals.paid} tone="text-emerald-800 border-emerald-200 bg-emerald-50" />
@@ -116,79 +87,138 @@ export default function PaymentScheduleGrid({
           <SummaryChip label="Gecikmiş" value={totals.overdue} tone="text-rose-800 border-rose-200 bg-rose-50" />
         )}
         <span className="ml-auto hidden items-center gap-2 text-[10px] text-[#705a66] sm:flex">
-          <Legend swatch="bg-emerald-200 border-emerald-300" text="Ödendi" />
-          <Legend swatch="bg-amber-200 border-amber-300" text="Kısmi" />
-          <Legend swatch="bg-rose-200 border-rose-300" text="Gecikmiş" />
+          <Legend swatch="bg-emerald-100 border-emerald-300" text="Ödendi" />
+          <Legend swatch="bg-amber-100 border-amber-300" text="Kısmi" />
+          <Legend swatch="bg-rose-100 border-rose-300" text="Gecikmiş" />
           <Legend swatch="bg-white border-[#e3d2da]" text="Bekleyen" />
         </span>
       </div>
 
-      <div className="relative">
-        {canScroll.left && <ScrollButton side="left" onClick={() => nudge(-1)} />}
-        {canScroll.right && <ScrollButton side="right" onClick={() => nudge(1)} />}
-
-        <div
-          ref={scrollRef}
-          onScroll={syncArrows}
-          className="flex gap-1.5 overflow-x-auto pb-1.5"
-          role="list"
-          aria-label="Aylık taksit takvimi"
-        >
-          {cells.map((c, idx) => {
-            const s = CELL_STYLE[c.status]
-            const isToday = c.key === todayKey
-            // Yıl etiketi yalnız ilk sütunda ve yıl değişiminde — 24 aylık planda "Oca" hangi
-            // yılın ocağı sorusu ortaya çıkıyordu.
-            const showYear = idx === 0 || c.year !== cells[idx - 1].year
-            return (
-              <div
-                key={c.key}
-                ref={isToday ? todayRef : undefined}
-                role="listitem"
-                title={`${MONTHS_SHORT[c.month - 1]} ${c.year} · ${s.label}${c.due > 0 ? ` · Planlanan ${formatTL(c.due)} · Tahsil ${formatTL(c.paid)} · Kalan ${formatTL(c.remaining)}` : ''}`}
-                className={`relative w-[104px] shrink-0 rounded-[12px] border px-2 py-2 ${s.box} ${
-                  isToday ? 'ring-2 ring-[#c85776] ring-offset-1' : ''
-                }`}
-              >
-                <div className="flex items-baseline justify-between gap-1">
-                  <span className="text-[11px] font-bold text-[#352432]">
+      <div ref={scrollRef} className="overflow-x-auto rounded-[12px] border border-[#ead8df]">
+        <table className="w-full border-collapse text-[11.5px]">
+          <thead>
+            {/* Yıl bandı — 24 aylık planda "Oca" hangi yılın ocağı sorusu ortaya çıkıyordu. */}
+            <tr>
+              <th className="sticky left-0 z-20 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-2.5 py-1 text-left text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                Yıl
+              </th>
+              {yearSpans.map((y) => (
+                <th
+                  key={y.year}
+                  colSpan={y.span}
+                  className="border-b border-r border-[#f0dce5] bg-[#fff7fa] px-2 py-1 text-center text-[10px] font-bold text-[#a3576f]"
+                >
+                  {y.year}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              <th className="sticky left-0 z-20 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-2.5 py-1.5 text-left text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                Ay
+              </th>
+              {cells.map((c) => {
+                const isToday = c.key === todayKey
+                return (
+                  <th
+                    key={c.key}
+                    ref={isToday ? todayRef : undefined}
+                    className={`${COL} border-b border-r border-[#f0dce5] px-2 py-1.5 text-center text-[11px] font-bold ${
+                      isToday ? 'bg-[#c85776] text-white' : 'bg-[#fff7fa] text-[#352432]'
+                    }`}
+                  >
                     {MONTHS_SHORT[c.month - 1]}
-                    {showYear && <span className="ml-1 text-[9px] font-semibold text-[#a3576f]">{c.year}</span>}
-                  </span>
-                  {/* Renkten BAĞIMSIZ durum işareti (renk körlüğü + s/b çıktı). */}
-                  <span className={`text-[11px] font-black leading-none ${s.chip}`} aria-hidden>{s.mark}</span>
-                </div>
-
-                {c.due > 0 ? (
-                  <>
-                    <div className={`mt-1 font-display text-[14px] leading-none tabular-nums ${s.chip}`}>
-                      {formatTL(Math.round(c.remaining > 0.005 ? c.remaining : c.due))}
-                    </div>
-                    <div className="mt-0.5 text-[9.5px] leading-tight text-[#705a66]">
-                      {c.status === 'paid'
-                        ? 'ödendi'
-                        : c.status === 'partial'
-                          ? `${formatTL(Math.round(c.paid))} ödendi`
-                          : c.status === 'overdue'
-                            ? 'gecikmiş'
-                            : 'bekliyor'}
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-1 text-[10px] leading-tight text-[#a3908f]">taksit yok</div>
-                )}
-
-                {isToday && (
-                  <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 rounded-full bg-[#c85776] px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-white">
-                    bu ay
-                  </span>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                    {isToday && <span className="ml-1 text-[8.5px] font-black">BU AY</span>}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            <Row
+              label="Planlanan"
+              cells={cells}
+              todayKey={todayKey}
+              render={(c) => (c.due > 0 ? formatTL(Math.round(c.due)) : '—')}
+              tone="text-[#4a3a44]"
+            />
+            <Row
+              label="Tahsil edilen"
+              cells={cells}
+              todayKey={todayKey}
+              render={(c) => (c.due > 0 ? formatTL(Math.round(c.paid)) : '—')}
+              tone="text-emerald-700"
+            />
+            <Row
+              label="Kalan"
+              cells={cells}
+              todayKey={todayKey}
+              render={(c) => (c.due > 0 ? formatTL(Math.round(c.remaining)) : '—')}
+              tone="text-[#a3576f]"
+              bold
+            />
+            {/* DURUM satırı rengin yazıyla karşılığıdır — renk körlüğü ve s/b çıktı için şart. */}
+            <tr>
+              <td className="sticky left-0 z-10 border-r border-[#f0dce5] bg-[#fff7fa] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#a3576f]">
+                Durum
+              </td>
+              {cells.map((c) => {
+                const s = CELL[c.status]
+                return (
+                  <td
+                    key={c.key}
+                    title={`${MONTHS_SHORT[c.month - 1]} ${c.year} · ${s.label}`}
+                    className={`${COL} border-r border-[#f0dce5] px-2 py-1.5 text-center text-[10px] font-bold ${s.bg} ${s.ink} ${
+                      c.key === todayKey ? 'ring-1 ring-inset ring-[#c85776]' : ''
+                    }`}
+                  >
+                    {s.mark && <span className="mr-0.5">{s.mark}</span>}
+                    {s.label}
+                  </td>
+                )
+              })}
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
+  )
+}
+
+/** Tutar satırı — hücre zemini o ayın durumunu, yazı tutarı verir. */
+function Row({
+  label,
+  cells,
+  todayKey,
+  render,
+  tone,
+  bold,
+}: {
+  label: string
+  cells: MonthCell[]
+  todayKey: string
+  render: (c: MonthCell) => string
+  tone: string
+  bold?: boolean
+}) {
+  return (
+    <tr>
+      <td className="sticky left-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#a3576f]">
+        {label}
+      </td>
+      {cells.map((c) => {
+        const s = CELL[c.status]
+        return (
+          <td
+            key={c.key}
+            className={`${COL} border-b border-r border-[#f0dce5] px-2 py-1.5 text-right tabular-nums ${s.bg} ${
+              c.due > 0 ? tone : 'text-[#c9b3bd]'
+            } ${bold && c.due > 0 ? 'font-bold' : ''} ${c.key === todayKey ? 'ring-1 ring-inset ring-[#c85776]' : ''}`}
+          >
+            {render(c)}
+          </td>
+        )
+      })}
+    </tr>
   )
 }
 
@@ -207,21 +237,5 @@ function Legend({ swatch, text }: { swatch: string; text: string }) {
       <span className={`h-2.5 w-2.5 rounded-[3px] border ${swatch}`} />
       {text}
     </span>
-  )
-}
-
-function ScrollButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
-  const Icon = side === 'left' ? ChevronLeft : ChevronRight
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={side === 'left' ? 'Önceki aylar' : 'Sonraki aylar'}
-      className={`absolute top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-[#ead8df] bg-white/95 text-[#a3576f] shadow-[0_6px_16px_-8px_rgba(150,78,104,0.7)] transition-colors hover:bg-[#fff1f6] ${
-        side === 'left' ? '-left-2' : '-right-2'
-      }`}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
   )
 }

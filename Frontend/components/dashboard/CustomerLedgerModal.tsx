@@ -10,7 +10,7 @@ import ModalPortal from '@/components/dashboard/ModalPortal'
 import PaymentScheduleGrid from '@/components/dashboard/PaymentScheduleGrid'
 import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
 import { activeInstallments, buildMonthlySchedule, type CustomerAccountGroup } from '@/lib/accountGrouping'
-import type { CustomerAccount } from '@/lib/types'
+import type { CancelledSale, CustomerAccount } from '@/lib/types'
 
 /**
  * MÜŞTERİ CARİ DEFTERİ — Ön Muhasebe tablosundan açılan TAM SAYFA modal.
@@ -50,6 +50,7 @@ function todayIsoLocal(): string {
 
 export default function CustomerLedgerModal({
   group,
+  cancelledSales = [],
   open,
   onClose,
   onCollect,
@@ -58,6 +59,12 @@ export default function CustomerLedgerModal({
   onOpenSalesWorkspace,
 }: {
   group: CustomerAccountGroup | null
+  /**
+   * Bu müşterinin İPTAL arşivi. İptal edilen satışın cari/tahsilat satırları canlı tablodan
+   * SİLİNİR (arşive taşınır), bu yüzden `group.accounts` içinde bulunmazlar — parası
+   * (tahsil edilen − iade) defterden tamamen kaybolurdu.
+   */
+  cancelledSales?: CancelledSale[]
   open: boolean
   onClose: () => void
   /** Genel tahsilat — SEÇİLEN satışın carisine yazılır. */
@@ -85,10 +92,16 @@ export default function CustomerLedgerModal({
   const todayIso = todayIsoLocal()
   const cells = useMemo(() => (group ? buildMonthlySchedule(group, todayIso) : []), [group, todayIso])
 
-  /** Birleşik ekstre: tüm satışların tahsilatları tek listede (hangi satıştan geldiği yazılı). */
+  /**
+   * Birleşik ekstre: tüm satışların tahsilatları tek listede (hangi satıştan geldiği yazılı).
+   *
+   * İPTAL EDİLEN SATIŞIN PARASI DA BURADA: iptalde tahsilat satırları canlı tablodan silinip
+   * arşive taşınır, bu yüzden `accounts` üzerinden hiç görünmezdi — müşteri ödeme yapmış ama
+   * ekstre boş çıkıyordu. Arşiv kaydı tek satırda özetlenir (tahsil edilen ve varsa iade).
+   */
   const ledger = useMemo(() => {
     if (!group) return []
-    const rows: { ts: number; date: string; sale: string; method: string; amount: number }[] = []
+    const rows: { ts: number; date: string; sale: string; method: string; amount: number; kind: 'in' | 'refund' }[] = []
     for (const a of group.accounts) {
       for (const p of a.payments || []) {
         rows.push({
@@ -97,11 +110,41 @@ export default function CustomerLedgerModal({
           sale: a.servicePackageName || a.name,
           method: paymentMethodLabel(p.method),
           amount: p.amount,
+          kind: 'in',
+        })
+      }
+    }
+    for (const c of cancelledSales) {
+      if (c.collectedAmount > 0.005) {
+        rows.push({
+          ts: Date.parse(c.cancelledAtUtc || c.soldAtUtc || '') || 0,
+          date: (c.soldAtUtc || c.cancelledAtUtc || '').slice(0, 10),
+          sale: `${c.name} · İPTAL`,
+          method: 'iptal edilen satış',
+          amount: c.collectedAmount,
+          kind: 'in',
+        })
+      }
+      if (c.refundedAmount > 0.005) {
+        rows.push({
+          ts: Date.parse(c.cancelledAtUtc || '') || 0,
+          date: (c.cancelledAtUtc || '').slice(0, 10),
+          sale: `${c.name} · İADE`,
+          method: 'müşteriye geri ödendi',
+          amount: c.refundedAmount,
+          kind: 'refund',
         })
       }
     }
     return rows.sort((x, y) => y.ts - x.ts)
-  }, [group])
+  }, [group, cancelledSales])
+
+  /** İptalden KURUMDA KALAN para (tahsil − iade) — KPI'a eklenir, yoksa sıfır görünürdü. */
+  const cancelledSummary = useMemo(() => ({
+    count: cancelledSales.length,
+    retained: cancelledSales.reduce((s, c) => s + Math.max(0, c.retainedAmount), 0),
+    refunded: cancelledSales.reduce((s, c) => s + Math.max(0, c.refundedAmount), 0),
+  }), [cancelledSales])
 
   if (!group) return null
 
@@ -180,7 +223,17 @@ export default function CustomerLedgerModal({
                   {/* KPI şeridi */}
                   <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:w-auto">
                     <Kpi label="Toplam Satış" value={formatTL(Math.round(group.totalAmount))} icon={TrendingUp} />
-                    <Kpi label="Tahsil Edilen" value={formatTL(Math.round(group.paidAmount))} icon={Wallet} tone="text-emerald-700" sub={`satışın %${paidPct}'i`} />
+                    <Kpi
+                      label="Tahsil Edilen"
+                      /* İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive
+                         taşındığı için canlı özet onu görmez, ama para fiilen kasada kaldı. */
+                      value={formatTL(Math.round(group.paidAmount + cancelledSummary.retained))}
+                      icon={Wallet}
+                      tone="text-emerald-700"
+                      sub={cancelledSummary.retained > 0.5
+                        ? `${formatTL(Math.round(cancelledSummary.retained))} iptalden kaldı`
+                        : `satışın %${paidPct}'i`}
+                    />
                     <Kpi
                       label="Kalan Borç"
                       value={formatTL(Math.round(group.remainingAmount))}
@@ -241,6 +294,40 @@ export default function CustomerLedgerModal({
                         onOpen={() => onOpenSale(a.id)}
                       />
                     ))}
+                    {/* İPTAL EDİLEN SATIŞLAR: canlı listede yoklar (arşive taşındılar) ama
+                        paraları defterde görünmeli — "neden tahsilat var, satış yok" sorusu
+                        burada yanıtlanır. */}
+                    {cancelledSales.length > 0 && (
+                      <div className="rounded-[14px] border border-rose-200 bg-rose-50/40 p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-rose-700">
+                          <AlertTriangle className="h-3.5 w-3.5" /> İptal edilen satışlar ({cancelledSales.length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {cancelledSales.map((c) => (
+                            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-white px-3 py-2 text-[12px]">
+                              <span className="min-w-0">
+                                <span className="block truncate font-semibold text-[#352432]">{c.name}</span>
+                                <span className="block text-[11px] text-[#705a66]">
+                                  {fmtDay(c.cancelledAtUtc)} · iptal edildi
+                                  {c.cancellationReason ? ` · ${c.cancellationReason}` : ''}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-right">
+                                <span className="block font-semibold tabular-nums text-emerald-700">
+                                  {formatTL(Math.round(c.retainedAmount))} kurumda kaldı
+                                </span>
+                                {c.refundedAmount > 0.005 && (
+                                  <span className="block text-[11px] tabular-nums text-rose-700">
+                                    {formatTL(Math.round(c.refundedAmount))} iade edildi
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       onClick={onOpenSalesWorkspace}
@@ -275,7 +362,9 @@ export default function CustomerLedgerModal({
                                 <td className="py-2 pr-3 tabular-nums text-[#4a3a44]">{fmtDay(r.date)}</td>
                                 <td className="max-w-[240px] truncate py-2 pr-3 text-[#352432]">{r.sale}</td>
                                 <td className="py-2 pr-3 text-[#705a66]">{r.method}</td>
-                                <td className="py-2 text-right font-semibold tabular-nums text-emerald-700">+{formatTL(r.amount)}</td>
+                                <td className={`py-2 text-right font-semibold tabular-nums ${r.kind === 'refund' ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                  {r.kind === 'refund' ? '−' : '+'}{formatTL(r.amount)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

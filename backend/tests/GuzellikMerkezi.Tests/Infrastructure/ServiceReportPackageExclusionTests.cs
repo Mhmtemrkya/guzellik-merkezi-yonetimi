@@ -212,4 +212,110 @@ public sealed class ServiceReportPackageExclusionTests
         // Oransal dağıtım 1.150 × 1/4 = 287,50 verirdi; doğrusu kalemin kendi tutarı.
         Assert.Equal(250m, result.Value!.Revenue);
     }
+
+    /// <summary>
+    /// AYNI FİŞTE AYNI HİZMETTEN İKİ SEANS SATIRI → kalem tutarı BÖLÜNÜR, katlanmaz.
+    ///
+    /// Her seans satırı kalemin TAMAMINI sayıyordu: 300 TL'lik kalem iki satıra düşünce ciro
+    /// 600 TL görünüyordu (adet katı kadar şişme).
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_SplitsSaleLineAcrossItsSessionRows()
+    {
+        var options = NewOptions();
+        Guid tenantId;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Bolme QA", $"bolme-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var service = new ServiceDefinition(tenant.Id, branch.Id, "Cilt Bakımı", 45, 150m, "Bakım");
+            db.ServiceDefinitions.Add(service);
+            var customer = new Customer(tenant.Id, branch.Id, "Bolme", "0555 999 88 77", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Cilt Bakımı ×2", 300m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-1), null);
+            db.CustomerAccounts.Add(account);
+
+            // TEK kalem: 2 adet × 150 TL = 300 TL.
+            var adisyon = new Adisyon(tenant.Id, branch.Id, customer.Id, null, null);
+            adisyon.AddItem(AdisyonItemType.Service, service.Id, "Cilt Bakımı", 2, 150m, null, false);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+
+            // Aynı fişten İKİ seans satırı doğdu (adet başına bir kayıt).
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, service.Id, 1, adisyon.Id),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, service.Id, 1, adisyon.Id));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+        }
+
+        await using var verify = NewDb(options);
+        var result = await NewAccounts(verify).GetServiceReportAsync(tenantId);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        // Her satır 300 sayarsa 600 çıkar; doğrusu kalemin kendisi.
+        Assert.Equal(300m, result.Value!.Revenue);
+    }
+
+    /// <summary>
+    /// LEGACY KARMA SATIŞ (adisyon bağı YOK) → dağıtım seans ADEDİNE değil KATALOG FİYATINA göre.
+    ///
+    /// Seans adedine oranlamak ucuz ama çok seanslı hizmete satışın büyük kısmını yazıyordu:
+    /// 1.500 TL'lik fişte 10 seanslık 100 TL'lik hizmet + 1 seanslık 500 TL'lik hizmet varken
+    /// ilkine 1.363,64 düşüyordu. Paket raporu bu dağıtımı zaten birim fiyatla yapıyor.
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_LegacySale_AllocatesByCatalogPrice()
+    {
+        var options = NewOptions();
+        Guid tenantId, cheapId;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Legacy QA", $"legacy-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            // AYRI KATEGORİLER: rapor yalnız birine daraltılabilsin, dağıtım payı ölçülebilsin.
+            var cheap = new ServiceDefinition(tenant.Id, branch.Id, "Ucuz Bakım", 30, 100m, "Ucuz");
+            var pricey = new ServiceDefinition(tenant.Id, branch.Id, "Pahalı Bakım", 60, 500m, "Pahalı");
+            db.ServiceDefinitions.AddRange(cheap, pricey);
+            var customer = new Customer(tenant.Id, branch.Id, "Legacy", "0555 333 22 11", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            // Elle açılmış cari (SourceAdisyonId YOK) — 1.500 TL.
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Eski kayıt", 1500m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-1), null);
+            db.CustomerAccounts.Add(account);
+            await db.SaveChangesAsync();
+
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, cheap.Id, 10),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, pricey.Id, 1));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            cheapId = cheap.Id;
+        }
+
+        await using var verify = NewDb(options);
+        // Yalnız UCUZ kategoriye daralt.
+        var svc = await verify.ServiceDefinitions.FindAsync(cheapId);
+        var result = await NewAccounts(verify).GetServiceReportAsync(tenantId, category: svc!.Category);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        // FİYAT ağırlığı: 1.500 × (100×10) / (100×10 + 500×1) = 1.000.
+        // SEANS ADEDİ ağırlığı (eski, hatalı) 1.500 × 10/11 ≈ 1.363,64 verirdi.
+        Assert.Equal(1000m, Math.Round(result.Value!.Revenue, 2));
+    }
 }

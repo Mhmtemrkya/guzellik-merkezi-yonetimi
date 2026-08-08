@@ -89,6 +89,8 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   /// Çağıran seans/paket vermediğinde panelin kendi çektiği veri (bkz. `_needsOwnSessions`).
   List<Map<String, dynamic>> _ownSessions = const [];
   List<Map<String, dynamic>> _ownPackages = const [];
+  /// İptal arşivi — iptalde seans satırı silinir ama randevunun bağı kalır (bkz. `_packageSessionIds`).
+  List<Map<String, dynamic>> _cancelled = const [];
 
   @override
   void initState() {
@@ -148,6 +150,10 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
           widget.api
               .getAllPaged('/api/admin/packages/', pageSize: 200)
               .catchError((_) => const <String, dynamic>{}),
+        // İPTAL ARŞİVİ: bu liste olmadan iptal edilmiş paketin işi "İşlemler"e kayıyordu.
+        widget.api
+            .get('/api/admin/accounts/cancelled', query: {'customerId': cid})
+            .catchError((_) => const <dynamic>[]),
       ]);
       if (!mounted) return;
       setState(() {
@@ -158,7 +164,8 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         // Koşullu eklendikleri için indeksleri kaymaz: seans varsa 2, paket ondan sonra gelir.
         var next = 2;
         if (_needsOwnSessions) _ownSessions = apiItems(res[next++]);
-        if (_needsOwnPackages) _ownPackages = apiItems(res[next]);
+        if (_needsOwnPackages) _ownPackages = apiItems(res[next++]);
+        _cancelled = apiItems(res[next]);
       });
     } catch (_) {
       if (mounted) setState(() { _appts = const []; _adisyonlar = const []; });
@@ -221,6 +228,8 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   }
 
   /// PAKETE ait seans kayıtlarının kimlikleri — randevunun bağlı olduğu seansı sınıflandırır.
+  /// İPTAL ARŞİVİ DE KATILIR: iptalde canlı seans satırı silinir ama randevunun bağı kalır;
+  /// arşiv olmadan iptal edilmiş paketin işi "İşlemler"e kayıyordu.
   Set<String> get _packageSessionIds {
     final set = <String>{};
     for (final s in _effectiveSessions) {
@@ -229,6 +238,19 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       if (id.isEmpty || id == 'null') continue;
       if (pid.isEmpty || pid == 'null' || pid == _emptyGuid) continue;
       set.add(id);
+    }
+    set.addAll(_cancelledPackageSessionIds);
+    return set;
+  }
+
+  /// İptal ARŞİVİNDEKİ paket seanslarının kimlikleri.
+  Set<String> get _cancelledPackageSessionIds {
+    final set = <String>{};
+    for (final c in _cancelled) {
+      for (final id in (c['packageSessionIds'] as List? ?? const [])) {
+        final s = '$id';
+        if (s.isNotEmpty && s != 'null') set.add(s);
+      }
     }
     return set;
   }
@@ -240,6 +262,7 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
       final id = '${s['id'] ?? ''}';
       if (id.isNotEmpty && id != 'null') set.add(id);
     }
+    set.addAll(_cancelledPackageSessionIds);
     return set;
   }
 

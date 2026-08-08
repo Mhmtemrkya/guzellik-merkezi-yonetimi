@@ -26,6 +26,9 @@ Future<void> openCustomerLedgerSheet(
   required Future<void> Function(Map<String, dynamic> account) onCollectMonthly,
   required Future<void> Function(Map<String, dynamic> account) onOpenSale,
   required Future<void> Function() onOpenSalesWorkspace,
+  /// Defterin KENDİ verisini tazelemesi için: tahsilat sonrası açık kalan sayfa eski rakamları
+  /// göstermesin (aşağıdaki `_refresh`). Verilmezse sayfa anlık görüntüyle çalışır.
+  Future<CustomerAccountGroup?> Function()? onRefresh,
 }) {
   return Navigator.of(context).push<void>(MaterialPageRoute(
     fullscreenDialog: true,
@@ -35,6 +38,7 @@ Future<void> openCustomerLedgerSheet(
       onCollectMonthly: onCollectMonthly,
       onOpenSale: onOpenSale,
       onOpenSalesWorkspace: onOpenSalesWorkspace,
+      onRefresh: onRefresh,
     ),
   ));
 }
@@ -46,6 +50,7 @@ class CustomerLedgerScreen extends StatefulWidget {
     required this.onCollectMonthly,
     required this.onOpenSale,
     required this.onOpenSalesWorkspace,
+    this.onRefresh,
     super.key,
   });
 
@@ -55,12 +60,27 @@ class CustomerLedgerScreen extends StatefulWidget {
   final Future<void> Function(Map<String, dynamic> account) onOpenSale;
   final Future<void> Function() onOpenSalesWorkspace;
 
+  /// Tahsilat sonrası defteri tazeler (bkz. `_refresh`).
+  final Future<CustomerAccountGroup?> Function()? onRefresh;
+
   @override
   State<CustomerLedgerScreen> createState() => _CustomerLedgerScreenState();
 }
 
 class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   int _tab = 0;
+
+  /// Ekranda GÖSTERİLEN grup. Tahsilat sonrası tazelenir; başlangıçta çağıranın verdiği anlık
+  /// görüntüdür.
+  late CustomerAccountGroup _group = widget.group;
+
+  /// TAHSİLAT SONRASI DEFTER TAZELENİR. Sayfa açık kalırken tahsilat alınınca KPI'lar, taksit
+  /// takvimi ve ekstre eski rakamları göstermeye devam ediyordu (kullanıcı "para işlenmedi mi"
+  /// diye ikinci kez tahsilat almaya kalkabilirdi).
+  Future<void> _refresh() async {
+    final next = await widget.onRefresh?.call();
+    if (next != null && mounted) setState(() => _group = next);
+  }
 
   String get _todayIso {
     final d = DateTime.now();
@@ -73,7 +93,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final g = widget.group;
+    final g = _group;
     final cells = buildMonthlySchedule(g, _todayIso);
     final paidPct = g.totalAmount > 0 ? ((g.paidAmount / g.totalAmount) * 100).round().clamp(0, 100) : 0;
     final initials = g.customerName
@@ -199,7 +219,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         for (final a in g.accounts) _saleRow(a),
         const SizedBox(height: 4),
         OutlinedButton.icon(
-          onPressed: () => widget.onOpenSalesWorkspace(),
+          onPressed: () async { await widget.onOpenSalesWorkspace(); await _refresh(); },
           icon: const Icon(Icons.inventory_2_outlined, size: 17),
           label: const Text('Satış yönetimi — geçmiş satış, iptal', style: TextStyle(fontSize: 12)),
         ),
@@ -355,7 +375,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             if (isInstallment) ...[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => widget.onCollectMonthly(a),
+                  onPressed: () async { await widget.onCollectMonthly(a); await _refresh(); },
                   style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                   icon: const Icon(Icons.event_available_rounded, size: 15),
                   label: const Text('Aylık taksit', style: TextStyle(fontSize: 11.5)),
@@ -365,7 +385,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             ],
             Expanded(
               child: FilledButton.icon(
-                onPressed: () => widget.onCollect(a),
+                onPressed: () async { await widget.onCollect(a); await _refresh(); },
                 style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                 icon: const Icon(Icons.payments_rounded, size: 15),
                 label: Text(isInstallment ? 'Genel tahsilat' : 'Tahsilat al',

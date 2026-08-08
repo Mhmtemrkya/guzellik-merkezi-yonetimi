@@ -181,9 +181,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             .catchError((_) => const <dynamic>[]),
         // İPTAL ARŞİVİ: iptal edilen satışın cari/tahsilat satırları canlı tablodan SİLİNİR,
         // bu yüzden iptal sayısı ve kısmi iade sonrası KURUMDA KALAN para yalnız buradan okunur.
-        _api
-            .get('/api/admin/accounts/cancelled', query: {'customerId': _id})
-            .catchError((_) => const <dynamic>[]),
+        // PARA VERİSİ HEP BİRLİKTE: "Tahsil Edilen" canlı cariler + iptal arşivinin toplamıdır.
+        // Biri düşüp diğeri gelirse KPI yarım gerçeği rakam gibi gösterir — hata yutulmaz,
+        // ekran hata durumuna geçer (_error).
+        _api.get('/api/admin/accounts/cancelled', query: {'customerId': _id}),
       ]);
 
       if (results[0] is Map) {

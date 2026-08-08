@@ -77,9 +77,10 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     final results = await Future.wait([
       // TÜM cariler sayfa sayfa: liste MÜŞTERİ BAZINDA gruplanıyor, tek sayfalık (500) çekimde
       // müşterinin bazı satışları listeye hiç girmez ve grup toplamı sessizce eksik çıkardı.
-      widget.api
-          .getAllPaged('/api/admin/accounts/', pageSize: 500)
-          .catchError((_) => const <String, dynamic>{}),
+      //
+      // HATA YUTULMAZ: boş sonuç "cari yok" demektir, oysa gerçek "veri alınamadı"dır. Gruplama
+      // eksik veriyle YANLIŞ TOPLAM üretir — ekran hata göstersin ki kullanıcı rakama güvenmesin.
+      widget.api.getAllPaged('/api/admin/accounts/', pageSize: 500),
       widget.api.get('/api/admin/expenses/', query: {
         'fromUtc': _rangeStart.toUtc().toIso8601String(),
         'toUtc': _rangeEnd.toUtc().toIso8601String(),
@@ -862,7 +863,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         .toUpperCase();
 
     return InkWell(
-      onTap: () => _openCustomerLedger(g),
+      // DEFTER SÜZGEÇTEN BAĞIMSIZ: "Geciken" çipi ya da arama açıkken grup yalnız EŞLEŞEN
+      // satışı taşır; defter müşterinin gerçeğini değil süzgecin kalıntısını gösterirdi.
+      onTap: () => _openCustomerLedger(_unfilteredGroupOf(g)),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -994,8 +997,42 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         if (g.accounts.isEmpty) return;
         await _openCustomerSales(g.accounts.first);
       },
+      // TAHSİLAT SONRASI DEFTER TAZELENİR: sayfa açık kalırken alınan tahsilat sonrası KPI ve
+      // takvim eski rakamları göstermeye devam ediyordu. Veri SUNUCUDAN yeniden çekilir —
+      // ekrandaki listeden süzmek, ekranın kendisi bayatken işe yaramaz.
+      onRefresh: () => _reloadLedgerGroup(g.customerId),
     );
     if (mounted) _reload();
+  }
+
+  /// Süzgeçli satırdan, müşterinin TÜM canlı satışlarını taşıyan grubu kurar.
+  /// (Kimlik süzgeçli listeden gelir; içerik tam listeden.)
+  CustomerAccountGroup _unfilteredGroupOf(CustomerAccountGroup g) {
+    if (g.customerId.isEmpty) return g;
+    final all = (_last?.accounts ?? const <Map<String, dynamic>>[])
+        .where((a) => '${a['saleStatus']}' != 'Cancelled' && '${a['customerId']}' == g.customerId)
+        .toList();
+    if (all.length <= g.accounts.length) return g;
+    final groups = groupAccountsByCustomer(all);
+    return groups.isEmpty ? g : groups.first;
+  }
+
+  /// Defterin kendi verisini tazeler: müşterinin TÜM carileri sunucudan yeniden okunur.
+  Future<CustomerAccountGroup?> _reloadLedgerGroup(String customerId) async {
+    if (customerId.isEmpty) return null;
+    try {
+      final res = await widget.api
+          .getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200);
+      final live = apiItems(res)
+          .where((a) => '${a['saleStatus']}' != 'Cancelled')
+          .toList();
+      if (live.isEmpty) return null;
+      final groups = groupAccountsByCustomer(live);
+      return groups.isEmpty ? null : groups.first;
+    } catch (_) {
+      // Tazeleme başarısızsa ESKİ veri korunur (null döner) — boş/yanlış tablo göstermek yerine.
+      return null;
+    }
   }
 
 

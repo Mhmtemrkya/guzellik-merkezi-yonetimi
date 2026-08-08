@@ -1435,6 +1435,10 @@ export async function fetchAllPaged<T>(
   const total = first?.total ?? first?.totalCount ?? items.length
   let page = 2
   while (items.length < total && page <= 100) {
+    // SONRAKİ SAYFA HATASI YUTULMAZ. Burada `catch` ile eldekini döndürmek, çağıranın
+    // `.catch(() => [])` kalkanıyla birleşince "hiç kayıt yok" gibi görünüyordu: ağ/sunucu
+    // hatası sessizce EKSİK VERİ olarak okunuyor, üstelik cari listesinde gruplama toplamları
+    // olduğundan küçük çıkıyordu. Hata yukarı fırlar; ekran boş liste değil HATA gösterir.
     const next = await loader(page, pageSize)
     const batch = pagedItems(next)
     if (!batch.length) break
