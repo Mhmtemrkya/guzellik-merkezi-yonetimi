@@ -233,16 +233,32 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
     return set;
   }
 
+  /// BİLİNEN tüm seans kayıtları (paket + tekil) — bağın çözülüp çözülmediğini bu söyler.
+  Set<String> get _knownSessionIds {
+    final set = <String>{};
+    for (final s in _effectiveSessions) {
+      final id = '${s['id'] ?? ''}';
+      if (id.isNotEmpty && id != 'null') set.add(id);
+    }
+    return set;
+  }
+
   /// Bir randevu PAKETTEN mi karşılandı?
   ///
   /// KESİN CEVAP randevunun bağlı olduğu seans kaydıdır (`sourceCustomerPackageSessionId`) —
   /// sunucu bunu tamamlamada GERÇEKTEN düşülen seansla yazar. Sezgi ("hizmet herhangi bir
   /// pakette geçiyor") müşteri aynı hizmeti hem paketten hem tekil satın aldığında yanılıyordu.
-  /// Bağı olmayan ESKİ kayıtlar için sezgi korunur (web paritesi).
+  ///
+  /// BAĞ ÇÖZÜLEMİYORSA SEZGİYE DÜŞÜLÜR — "bulunamadı" ≠ "paketten değil". Satış İPTAL edilince
+  /// seans satırları canlı tablodan SİLİNİR (arşive taşınır) ama tamamlanmış randevu ve onun bağı
+  /// yerinde kalır; körü körüne bakılsaydı iptalden sonra o randevu "İşlemler"e kayardı.
+  /// Bağı olmayan ESKİ kayıtlar için de sezgi korunur (web paritesi).
   bool _isFromPackage(Map<String, dynamic> a) {
     if (((a['price'] as num?)?.toDouble() ?? 0) > 0) return false; // ücretli randevu tüketmez
     final link = '${a['sourceCustomerPackageSessionId'] ?? ''}';
-    if (link.isNotEmpty && link != 'null') return _packageSessionIds.contains(link);
+    if (link.isNotEmpty && link != 'null' && _knownSessionIds.contains(link)) {
+      return _packageSessionIds.contains(link);
+    }
     final sid = '${a['serviceDefinitionId'] ?? ''}';
     return sid.isNotEmpty && sid != 'null' && _packageServiceIds.contains(sid);
   }

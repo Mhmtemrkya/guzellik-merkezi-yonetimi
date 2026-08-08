@@ -26,7 +26,7 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
-import { apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import { apiItems, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import {
   ChevronLeft, ChevronRight, CreditCard, FileUp,
@@ -291,11 +291,15 @@ function MusterilerPageInner() {
   const selected = useMemo(() => filtered.find((c) => c.id === selectedId) || filtered[0], [filtered, selectedId])
 
   // ---- Seçili müşterinin randevu + cari kayıtları (yalnız modal açıkken, yalnız o müşteri için).
-  const { data: detailData, loading: detailLoading } = useApiQuery<{ appts: ApiAppointment[]; accounts: ApiCustomerAccount[] }>(
+  const { data: detailData, loading: detailLoading } = useApiQuery<{
+    appts: ApiAppointment[]
+    accounts: ApiCustomerAccount[]
+    cancelled: unknown[]
+  }>(
     async () => {
       const cid = selected?.id
-      if (!cid || !tenantId || !modalOpen) return { appts: [], accounts: [] }
-      const [apptRes, accounts] = await Promise.all([
+      if (!cid || !tenantId || !modalOpen) return { appts: [], accounts: [], cancelled: [] }
+      const [apptRes, accounts, cancelled] = await Promise.all([
         adminApi.appointments<ApiAppointment>({ tenantId, customerId: cid, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         // TÜM cariler sayfa sayfa: modaldeki "Toplam Harcama / Tahsil Edilen" artık bu listeden
         // hesaplanıyor; tek sayfalık (100) çekim, çok satışı olan müşteride tutarı sessizce eksik
@@ -304,14 +308,20 @@ function MusterilerPageInner() {
           (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page, pageSize }),
           200,
         ).catch(() => [] as ApiCustomerAccount[]),
+        // İPTAL ARŞİVİ: iptal edilen satışın satırları canlı tablodan SİLİNİR, bu yüzden iptal
+        // sayısı ve kısmi iade sonrası kurumda kalan para yalnız buradan okunabilir.
+        adminApi.listCancelledSales<unknown[]>({ customerId: cid }, tenantId)
+          .then((rows) => (Array.isArray(rows) ? rows : []))
+          .catch(() => [] as unknown[]),
       ])
-      return { appts: apiItems(apptRes), accounts }
+      return { appts: apiItems(apptRes), accounts, cancelled }
     },
     [tenantId, selected?.id, modalOpen, sessRefresh],
-    { initialData: { appts: [], accounts: [] } },
+    { initialData: { appts: [], accounts: [], cancelled: [] } },
   )
   const appts = useMemo(() => (detailData?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [detailData])
   const accounts = useMemo(() => (detailData?.accounts || []).map((a, i) => normalizeAccount(a, i)), [detailData])
+  const cancelledSales = useMemo(() => (detailData?.cancelled || []).map(mapCancelledSale), [detailData])
   // Seçili müşterinin profil fotoğrafını tekil uçtan çek (liste artık fotoğraf taşımıyor — perf).
   useEffect(() => {
     let cancelled = false
@@ -725,6 +735,7 @@ function MusterilerPageInner() {
             appts={appts}
             accounts={accounts}
             accountsLoading={detailLoading}
+            cancelledSales={cancelledSales}
             isStaff={isStaff}
             canAdisyon={canAdisyon}
             canBlacklist={canBlacklist}

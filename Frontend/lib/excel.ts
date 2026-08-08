@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { paymentMethodLabel } from '@/lib/apiMappers'
+import { paymentMethodKey, paymentMethodLabel } from '@/lib/apiMappers'
+import type { CashFlowMethodKey } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Tip tanımları
@@ -479,14 +480,13 @@ export interface DailyAdisyonExportRow {
 function adisyonMethodLabel(m: string | null): string {
   return paymentMethodLabel(m)
 }
-function adisyonMethodKey(m: string | null): 'cash' | 'card' | 'transfer' | 'unknown' {
-  const k = (m || '').toLowerCase()
-  if (k === 'card') return 'card'
-  if (k === 'transfer') return 'transfer'
-  if (k === 'cash') return 'cash'
-  // Yöntemi yazılmamış tahsilat Nakit kovasına gidiyordu: satırda "Yöntem Kaydedilmemiş"
-  // yazarken tutarın Nakit toplamına eklenmesi kasa sayımını yanıltır.
-  return 'unknown'
+/**
+ * Kova ETİKETLE AYNI kuraldan gelir (ortak `paymentMethodKey`). Burada TAM EŞLEŞMELİ kendi
+ * eşlemesi vardı: `"Nakit"`/`"BankTransfer"` gibi yazımlar satırda doğru etiketlenirken tutarı
+ * "Yöntem Kaydedilmemiş" kovasına düşüyor, Nakit/Havale toplamları eksik çıkıyordu.
+ */
+function adisyonMethodKey(m: string | null): CashFlowMethodKey {
+  return paymentMethodKey(m)
 }
 
 export async function exportDailyAdisyonToExcel(
@@ -559,7 +559,9 @@ export async function exportDailyAdisyonToExcel(
     zebra = !zebra
   }
 
-  const byMethod = { cash: 0, card: 0, transfer: 0, unknown: 0 }
+  // Ortak normalizer `check` de dönebilir — kova eksik kalırsa çek tahsilatı hiçbir toplama
+  // girmez ve alt satırların toplamı "Toplam Tahsilat"ı tutmaz.
+  const byMethod: Record<CashFlowMethodKey, number> = { cash: 0, card: 0, transfer: 0, check: 0, unknown: 0 }
   let ciro = 0
   let tahsilat = 0
   for (const r of rows) {
@@ -580,6 +582,7 @@ export async function exportDailyAdisyonToExcel(
   addTotal('Nakit', byMethod.cash, { color: 'FF2F9E72' })
   addTotal('Kart', byMethod.card, { color: 'FF2563EB' })
   addTotal('Havale / EFT', byMethod.transfer, { color: 'FF7C3AED' })
+  if (byMethod.check > 0) addTotal('Çek', byMethod.check, { color: 'FFB45309' })
   // Yalnız böyle kayıt varsa yazılır — üç kovanın toplamı "Toplam Tahsilat"ı tutsun.
   if (byMethod.unknown > 0) addTotal('Yöntem Kaydedilmemiş', byMethod.unknown, { color: 'FF8A7A83' })
   addTotal('Toplam Tahsilat', tahsilat, { strong: true, color: 'FF2F9E72' })

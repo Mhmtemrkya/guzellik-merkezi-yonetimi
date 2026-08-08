@@ -201,6 +201,13 @@ export default function CustomerHistoryPanel({
     return set
   }, [effectiveSessions])
 
+  /** BİLİNEN tüm seans kayıtları (paket + tekil) — bağın çözülüp çözülmediğini bu söyler. */
+  const knownSessionIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of effectiveSessions) if (s.id) set.add(s.id)
+    return set
+  }, [effectiveSessions])
+
   /**
    * Bir randevu PAKETTEN mi karşılandı?
    *
@@ -208,13 +215,18 @@ export default function CustomerHistoryPanel({
    * tamamlamada GERÇEKTEN düşülen seansla yazar. Sezgi ("hizmet herhangi bir pakette geçiyor")
    * müşteri aynı hizmeti hem paketten hem tekil satın aldığında yanılıyordu: tekil haktan
    * yapılan iş "Seanslar"a, paketten yapılan iş "İşlemler"e düşebiliyordu.
-   * Bağı olmayan ESKİ kayıtlar için sezgi korunur.
+   *
+   * BAĞ ÇÖZÜLEMİYORSA SEZGİYE DÜŞÜLÜR — "bulunamadı" ≠ "paketten değil". Satış İPTAL edilince
+   * seans satırları canlı tablodan SİLİNİR (arşive taşınır) ama tamamlanmış randevu ve onun
+   * bağı yerinde kalır. Bağı körü körüne "paket seansları arasında mı" diye sorsaydık, iptalden
+   * sonra o randevu "İşlemler"e kayardı — üstelik müşterinin aynı hizmeti içeren BAŞKA canlı
+   * paketi varsa eski sezgisel davranış onu doğru sınıflandırıyordu (gerileme olurdu).
    */
   const isFromPackage = useMemo(() => (ap: { price: number; serviceDefinitionId?: string; sourceSessionId?: string | null }): boolean => {
     if (Number(ap.price || 0) > 0) return false // ücretli randevu seans TÜKETMEZ
-    if (ap.sourceSessionId) return packageSessionIds.has(ap.sourceSessionId)
+    if (ap.sourceSessionId && knownSessionIds.has(ap.sourceSessionId)) return packageSessionIds.has(ap.sourceSessionId)
     return Boolean(ap.serviceDefinitionId) && packageServiceIds.has(ap.serviceDefinitionId!)
-  }, [packageSessionIds, packageServiceIds])
+  }, [packageSessionIds, packageServiceIds, knownSessionIds])
 
   /** Hizmet → o hizmeti satan personel (satışın carisinden). "Kim verdi" sorusunun cevabı. */
   const soldByService = useMemo(() => {

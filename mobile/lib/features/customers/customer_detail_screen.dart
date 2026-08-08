@@ -114,6 +114,8 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   };
   List<Map<String, dynamic>> _accounts = const [];
   List<Map<String, dynamic>> _appts = const [];
+  /// İptal arşivi — iptal edilen satışlar canlı `_accounts` listesinde bulunmaz.
+  List<Map<String, dynamic>> _cancelledSales = const [];
   bool _loading = true;
   String? _error;
   // Tembel sekmeleri (adisyon, seans, sağlık) yenilemek için sayaç.
@@ -177,6 +179,11 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             .get('/api/admin/appointments/',
                 query: {'page': 1, 'pageSize': 500, 'customerId': _id})
             .catchError((_) => const <dynamic>[]),
+        // İPTAL ARŞİVİ: iptal edilen satışın cari/tahsilat satırları canlı tablodan SİLİNİR,
+        // bu yüzden iptal sayısı ve kısmi iade sonrası KURUMDA KALAN para yalnız buradan okunur.
+        _api
+            .get('/api/admin/accounts/cancelled', query: {'customerId': _id})
+            .catchError((_) => const <dynamic>[]),
       ]);
 
       if (results[0] is Map) {
@@ -190,6 +197,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
           .toList()
         ..sort((x, y) =>
             '${y['startUtc']}'.compareTo('${x['startUtc']}'));
+      _cancelledSales = apiItems(results[3])
+          .where((c) => '${c['customerId']}' == _id)
+          .toList();
 
       if (mounted) setState(() => _loading = false);
     } catch (e) {
@@ -261,6 +271,14 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   /// Satış tutarları (toplam / tahsil edilen / kalan) TEK kaynaktan — KPI kartları ile
   /// "Paket & Hizmet Satışları" kartı aynı rakamı göstersin.
   SalesSummary get _sales => salesSummaryOf(_accounts);
+
+  /// İptal edilip İADE EDİLMEYEN, yani kurumun kasasında kalan para (web paritesi).
+  double get _cancelledRetained => _cancelledSales.fold(0, (s, c) {
+        final retained = (c['retainedAmount'] as num?)?.toDouble() ??
+            (((c['collectedAmount'] as num?)?.toDouble() ?? 0) -
+                ((c['refundedAmount'] as num?)?.toDouble() ?? 0));
+        return s + (retained > 0 ? retained : 0);
+      });
 
   /// İPTAL EDİLEN satış borç doğurmaz (sunucudaki müşteri borcu da onu saymaz); eskiden
   /// iptal edilmiş carinin kalanı da bu toplama giriyordu.
@@ -549,7 +567,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         () => DefaultTabController.of(context).animateTo(1)
       ),
       ('Toplam Harcama', money(s.total), openSales),
-      ('Tahsil Edilen', money(s.paid), null),
+      // İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive taşındığı için
+      // canlı özet onu görmez, ama para fiilen kasada kaldı (iade edilen kısım düşülmüştür).
+      ('Tahsil Edilen', money(s.paid + _cancelledRetained), null),
       // Borç görünce ilk iş adisyona bakmaktır — kart oraya götürsün.
       (
         'Açık Borç',
@@ -872,6 +892,10 @@ class _OverviewTab extends StatelessWidget {
         Builder(
           builder: (ctx) => _SalesSummaryCard(
             summary: salesSummaryOf(state._accounts),
+            // İptal adedi ARŞİVDEN gelir: iptal edilen satır canlı listede kalmaz, bu yüzden
+            // canlı özetin `cancelled` sayacı gerçekte hep 0'dır.
+            cancelledCount: state._cancelledSales.length,
+            cancelledRetained: state._cancelledRetained,
             onOpen: () => openCustomerSalesSheet(
               ctx,
               api: state.widget.api,
@@ -2381,9 +2405,18 @@ class _ApptRow extends StatelessWidget {
 
 /// Genel Bakış'taki satış özeti — dokununca tam satış listesi sheet'i açılır (web paritesi).
 class _SalesSummaryCard extends StatelessWidget {
-  const _SalesSummaryCard({required this.summary, required this.onOpen});
+  const _SalesSummaryCard({
+    required this.summary,
+    required this.onOpen,
+    this.cancelledCount = 0,
+    this.cancelledRetained = 0,
+  });
 
   final SalesSummary summary;
+
+  /// İptal ARŞİVİNDEN gelen adet/tutar — iptal edilen satış canlı listede bulunmaz.
+  final int cancelledCount;
+  final double cancelledRetained;
   final VoidCallback onOpen;
 
   static final _money = NumberFormat.currency(
@@ -2532,7 +2565,13 @@ class _SalesSummaryCard extends StatelessWidget {
                       if (s.active > 0) _statChip('Devam eden ${s.active}', AppColors.success),
                       if (s.completed > 0)
                         _statChip('Biten ${s.completed}', const Color(0xFF3B82F6)),
-                      if (s.cancelled > 0) _statChip('İptal ${s.cancelled}', AppColors.danger),
+                      // Adet arşivden; canlı özetin sayacı iptalde hep 0 kalır.
+                      if (cancelledCount > 0)
+                        _statChip('İptal $cancelledCount', AppColors.danger),
+                      if (cancelledRetained > 0.5)
+                        _statChip(
+                            'İptalden kalan ${_money.format(cancelledRetained)}',
+                            AppColors.primaryDark),
                       if (s.sessionsTotal > 0)
                         _statChip(
                             '${s.sessionsTotal - s.sessionsUsed} seans kaldı',

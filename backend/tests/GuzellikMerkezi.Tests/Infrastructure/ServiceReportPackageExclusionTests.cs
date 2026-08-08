@@ -103,9 +103,11 @@ public sealed class ServiceReportPackageExclusionTests
     }
 
     /// <summary>
-    /// KARMA FİŞ: paket + tekil hizmet AYNI cariye yazıldığında ciro payı seans ağırlığına göre
-    /// bölünür. Ağırlık paydası satışın TAMAMI olmalı; yalnız hizmet satırlarından kurulsaydı
-    /// satışın tüm tutarı hizmete yazılır, paketin payı hizmet cirosuna eklenirdi.
+    /// KARMA FİŞ — BAĞ YOKKA oransal dağıtım: paket + tekil hizmet AYNI cariye yazıldığında ciro
+    /// payı seans ağırlığına göre bölünür. Ağırlık paydası satışın TAMAMI olmalı; yalnız hizmet
+    /// satırlarından kurulsaydı satışın tüm tutarı hizmete yazılır, paketin payı hizmet cirosuna
+    /// eklenirdi. (Seans satırı bir adisyona bağlıysa bunun yerine GERÇEK kalem tutarı kullanılır —
+    /// bkz. <see cref="GetServiceReportAsync_UsesActualSaleLineTotal"/>.)
     /// </summary>
     [Fact]
     public async Task GetServiceReportAsync_SharedAccount_AllocatesOnlyServiceShare()
@@ -153,5 +155,61 @@ public sealed class ServiceReportPackageExclusionTests
         // 1.200 × 1/4 = 300 (satışın tamamı değil).
         Assert.Equal(300m, report.Revenue);
         Assert.NotEqual(Guid.Empty, serviceId);
+    }
+
+    /// <summary>
+    /// SEANS BİR ADİSYONA BAĞLIYSA CİRO O KALEMİN GERÇEK TUTARIDIR — oransal dağıtım değil.
+    ///
+    /// Karma fişte oran, hizmetin gerçek bedelini yansıtmıyordu: 900 TL'lik 3 seanslık paket +
+    /// 250 TL'lik 1 seanslık hizmet aynı cariye yazıldığında hizmete 1.150 × 1/4 ≈ 287,50
+    /// düşüyordu — oysa müşteri o hizmete 250 TL ödedi. Seans satırı hangi fişten doğduğunu
+    /// <c>SourceAdisyonId</c> ile taşır; kalem de <c>RefId</c> + tutarı ile durur.
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_UsesActualSaleLineTotal()
+    {
+        var options = NewOptions();
+        Guid tenantId;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Gercek Tutar QA", $"gercek-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var service = new ServiceDefinition(tenant.Id, branch.Id, "Cilt Bakımı", 45, 250m, "Bakım");
+            db.ServiceDefinitions.Add(service);
+            var package = new ServicePackage(tenant.Id, branch.Id, "Bakım Paketi", 900m, 0m, 0);
+            db.ServicePackages.Add(package);
+            var customer = new Customer(tenant.Id, branch.Id, "Gercek Tutar", "0555 777 88 99", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            // TEK cari, 1.150 TL: 3 paket seansı + 1 tekil hizmet seansı.
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Karma satış", 1150m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-1), null);
+            db.CustomerAccounts.Add(account);
+
+            // Hizmetin GERÇEK bedeli fişte: 1 × 250 TL.
+            var adisyon = new Adisyon(tenant.Id, branch.Id, customer.Id, null, null);
+            adisyon.AddItem(AdisyonItemType.Service, service.Id, "Cilt Bakımı", 1, 250m, null, false);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, package.Id, service.Id, 3),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, service.Id, 1, adisyon.Id));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+        }
+
+        await using var verify = NewDb(options);
+        var result = await NewAccounts(verify).GetServiceReportAsync(tenantId);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        // Oransal dağıtım 1.150 × 1/4 = 287,50 verirdi; doğrusu kalemin kendi tutarı.
+        Assert.Equal(250m, result.Value!.Revenue);
     }
 }

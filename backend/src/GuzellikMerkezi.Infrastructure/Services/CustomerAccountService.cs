@@ -1413,7 +1413,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var sessions = await _db.CustomerPackageSessions
             .AsNoTracking()
             .Where(s => s.TenantId == tenantId)
-            .Select(s => new { s.CustomerAccountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions })
+            .Select(s => new { s.CustomerAccountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId })
             .ToListAsync(cancellationToken);
 
         // YALNIZ TEKİL HİZMET SATIŞLARI (ServicePackageId = Guid.Empty).
@@ -1429,17 +1429,49 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .Where(s => scopedServiceIds.Contains(s.ServiceDefinitionId) && periodAccountIds.Contains(s.CustomerAccountId))
             .ToList();
 
-        // Ciro: seans satırında tutar yok → satışın toplamı seans ağırlığına göre dağıtılır
-        // (paket raporundaki kalem dağıtımıyla aynı mantık; kategori dışı kalemler paya girmez).
-        // AĞIRLIK PAYDASI SATIŞIN TAMAMIDIR (paket kalemleri dahil): karma fişte — bir paket +
-        // bir tekil hizmet aynı cariye yazıldığında — payda yalnız hizmet satırlarından
-        // kurulursa, satışın TÜM tutarı hizmete yazılır ve paketin payı hizmet cirosuna eklenirdi.
+        // CİRO: ÖNCE GERÇEK SATIR TUTARI, olmazsa oransal dağıtım.
+        //
+        // Seans satırında tutar yoktur; eskiden tek yol carinin TOPLAMINI seans adedine oranlamaktı.
+        // Karma fişte bu yanlış cevap veriyordu: 900 TL'lik 3 seanslık paket + 300 TL'lik 1 seanslık
+        // hizmet aynı cariye yazıldığında hizmete 1200×1/4 = 300 değil de paket/hizmet fiyatları
+        // farklıysa bambaşka bir tutar düşüyordu (ör. 100 TL'lik hizmet 3 seanslıksa 900 görünürdü).
+        // Oysa tekil hizmet satışının GERÇEK bedeli adisyon kaleminde duruyor: seans satırı hangi
+        // fişten doğduğunu SourceAdisyonId ile taşır, kalem de RefId + LineTotal ile fiyatı.
+        //
+        // Oransal dağıtım YALNIZCA bağ kurulamadığında (eski kayıt, elle açılmış cari) devreye
+        // girer; orada da AĞIRLIK PAYDASI SATIŞIN TAMAMIDIR (paket kalemleri dahil), yoksa
+        // satışın tüm tutarı hizmete yazılır ve paketin payı hizmet cirosuna eklenirdi.
+        var sourceAdisyonIds = scopedSessions
+            .Where(s => s.SourceAdisyonId.HasValue)
+            .Select(s => s.SourceAdisyonId!.Value)
+            .Distinct()
+            .ToArray();
+        var saleLineTotals = new Dictionary<(Guid AdisyonId, Guid ServiceId), decimal>();
+        if (sourceAdisyonIds.Length > 0)
+        {
+            var lines = await _db.AdisyonItems.AsNoTracking()
+                .Where(i => sourceAdisyonIds.Contains(i.AdisyonId)
+                            && i.Type == AdisyonItemType.Service
+                            && !i.CoveredByPackage
+                            && i.RefId != null)
+                .Select(i => new { i.AdisyonId, ServiceId = i.RefId!.Value, i.Quantity, i.UnitPrice })
+                .ToListAsync(cancellationToken);
+            saleLineTotals = lines
+                .GroupBy(x => (x.AdisyonId, x.ServiceId))
+                .ToDictionary(g => g.Key, g => g.Sum(x => Math.Round(x.Quantity * x.UnitPrice, 2, MidpointRounding.AwayFromZero)));
+        }
+
         var weightByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
             .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(1, x.TotalSessions)));
         var revenue = scopedSessions.Sum(s =>
         {
+            if (s.SourceAdisyonId is { } adisyonId
+                && saleLineTotals.TryGetValue((adisyonId, s.ServiceDefinitionId), out var lineTotal))
+            {
+                return lineTotal;
+            }
             var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1;
             var total = totalByAccount.TryGetValue(s.CustomerAccountId, out var t) ? t : 0m;
             return total * Math.Max(1, s.TotalSessions) / weight;

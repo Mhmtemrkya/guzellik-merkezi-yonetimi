@@ -15,8 +15,7 @@ library;
 const _unrecorded = 'Yöntem Kaydedilmemiş';
 
 String paymentMethodLabel(String? raw) {
-  final text = (raw ?? '').trim();
-  final m = text.toLowerCase();
+  final m = (raw ?? '').trim().toLowerCase();
   if (m.contains('cash') || m.contains('nakit')) return 'Nakit';
   if (m.contains('card') || m.contains('kart')) return 'Kart';
   if (m.contains('transfer') ||
@@ -29,7 +28,12 @@ String paymentMethodLabel(String? raw) {
   // "Adisyon" bir ödeme yöntemi DEĞİL: o kayıtlarda gerçek yöntem hiç saklanmamış. `unknown`,
   // backend'in bu kayıtlar için ürettiği anahtar — çevirici kendi çıktısını geri yediğinde
   // ekrana "Unknown" yazmasın.
-  if (m.isEmpty || m == 'unknown' || m == 'adisyon' || m == 'adisyon tahsilatı') {
+  // Çeviricinin KENDİ çıktısı geri verilebilir; serbest-metin dalına düşüp bozulmamalı.
+  if (m.isEmpty ||
+      m == 'unknown' ||
+      m == _unrecorded.toLowerCase() ||
+      m == 'adisyon' ||
+      m == 'adisyon tahsilatı') {
     return _unrecorded;
   }
   if (m == 'other' || m == 'diğer') return 'Diğer';
@@ -41,5 +45,13 @@ String paymentMethodLabel(String? raw) {
     return 'Sadakat Puanı';
   }
   // Serbest metin yöntem adı: uydurulmaz, yalnız okunur hâle getirilir.
-  return text[0].toUpperCase() + text.substring(1);
+  // BACKEND/WEB İLE AYNI BİÇİM: önce tamamı küçültülür, sonra baş harf büyütülür — ham metni
+  // olduğu gibi bırakmak "IDEAL ÖDEME" ↔ "İdeal ödeme" gibi aynı kaydın üç ekranda farklı
+  // yazılmasına yol açıyordu. Dart'ın toUpperCase'i locale duyarsız olduğundan Türkçe i → İ
+  // eşlemesi elle yapılır (bkz. shared/person_name.dart).
+  final first = m[0];
+  return (_trUpper[first] ?? first.toUpperCase()) + m.substring(1);
 }
+
+/// Türkçe büyük harf istisnaları — `toUpperCase()` 'i' → 'I' verir, doğrusu 'İ'.
+const _trUpper = {'i': 'İ', 'ı': 'I', 'ğ': 'Ğ', 'ü': 'Ü', 'ş': 'Ş', 'ö': 'Ö', 'ç': 'Ç'};

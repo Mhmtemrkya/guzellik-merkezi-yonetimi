@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { paymentMethodLabel } from './apiMappers'
+import { paymentMethodKey, paymentMethodLabel } from './apiMappers'
 
 /**
  * BU KURAL ÜÇ YERDE YAZILI: burada, `mobile/lib/shared/payment_method.dart` ve backend
@@ -47,6 +47,27 @@ describe('paymentMethodLabel', () => {
     expect(paymentMethodLabel('other')).toBe('Diğer')
     // Serbest metin: uydurulmaz, yalnız okunur hâle getirilir (Türkçe i → İ).
     expect(paymentMethodLabel('ideal ödeme')).toBe('İdeal ödeme')
+    // BACKEND İLE AYNI BİÇİM: ham metin küçültülüp baş harfi büyütülür. Olduğu gibi
+    // bırakılsaydı aynı kayıt raporda "İdeal ödeme", panelde "IDEAL ÖDEME" görünürdü.
+    expect(paymentMethodLabel('IDEAL ÖDEME')).toBe('İdeal ödeme')
+  })
+
+  it('kova ile etiket AYNI kuralı kullanır — toplamlar satırla tutmalı', () => {
+    // Dışa aktarımda kova TAM EŞLEŞME arıyordu: "Nakit"/"BankTransfer" satırda doğru etiketlenip
+    // tutarı "Yöntem Kaydedilmemiş" toplamına düşüyordu (kasa sayımını yanıltır).
+    const cases: [string, string][] = [
+      ['cash', 'Nakit'], ['Nakit', 'Nakit'],
+      ['card', 'Kart'], ['Card', 'Kart'],
+      ['transfer', 'Havale / EFT'], ['BankTransfer', 'Havale / EFT'], ['Havale/EFT', 'Havale / EFT'],
+      ['Check', 'Çek'],
+    ]
+    for (const [raw, label] of cases) {
+      expect(paymentMethodLabel(raw)).toBe(label)
+      // Kovanın etiketi, satırda yazan etiketle aynı olmalı.
+      expect(paymentMethodLabel(paymentMethodKey(raw))).toBe(label)
+    }
+    expect(paymentMethodKey('')).toBe('unknown')
+    expect(paymentMethodKey('Adisyon')).toBe('unknown')
   })
 
   it('parça-arama önceliği backend ile AYNI — sapma sessiz olurdu', () => {

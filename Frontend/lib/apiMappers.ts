@@ -1108,6 +1108,17 @@ export function cashFlowMethodLabel(key: CashFlowMethodKey): string {
 }
 
 /**
+ * HAM yöntem metnini kovaya indirger (`cash|card|transfer|check|unknown`).
+ *
+ * TOPLAMLAR VE ETİKET AYNI KURALI KULLANMALI: dışa aktarım kendi TAM EŞLEŞMELİ eşlemesini
+ * yazıyordu; `"Nakit"` ya da `"BankTransfer"` yazan kayıt satırda doğru etiketle görünürken
+ * tutarı "Yöntem Kaydedilmemiş" kovasına düşüyordu (kasa sayımını yanıltır).
+ */
+export function paymentMethodKey(raw: string | null | undefined): CashFlowMethodKey {
+  return normalizeCashFlowMethod(raw).key
+}
+
+/**
  * HAM ödeme yöntemi kodunu (tahsilat/adisyon kaydındaki serbest metin) Türkçe etikete çevirir.
  *
  * Veritabanında tek bir yazım yok: web `cash/card/transfer`, mobil taksit sayfası
@@ -1120,11 +1131,17 @@ export function paymentMethodLabel(raw: string | null | undefined): string {
   const { key } = normalizeCashFlowMethod(raw)
   if (key !== 'unknown') return cashFlowMethodLabels[key]
 
-  const m = String(raw || '').trim().toLocaleLowerCase('tr')
+  // KÜÇÜLTME LOCALE-DUYARSIZ (backend `ToLowerInvariant` ile aynı): Türkçe küçültme "I" harfini
+  // "ı"ya çevirir ve baş harf büyütülünce geri "I" olur — aynı kayıt raporda "İdeal ödeme",
+  // panelde "Ideal ödeme" görünürdü. Ç/Ö/Ş gibi harfler zaten locale'den bağımsız çevrilir.
+  const m = String(raw || '').trim().toLowerCase()
   // "Adisyon" bir ödeme yöntemi DEĞİL: yöntem kırılımı gelmeden önceki adisyon tahsilatları
   // bu metinle yazılmıştı, gerçek yöntemleri hiç saklanmadı. `unknown`, backend'in bu kayıtlar
   // için ürettiği anahtardır — çevirici kendi çıktısını geri yediğinde "Unknown" yazmasın.
-  if (!m || m === 'unknown' || m === 'adisyon' || m === 'adisyon tahsilatı') return cashFlowMethodLabels.unknown
+  // Çeviricinin KENDİ çıktısı geri verilebilir (etiketten kovaya, kovadan etikete): bu durumda
+  // metin serbest-metin dalına düşüp "Yöntem kaydedilmemiş" gibi bozulmamalı.
+  if (!m || m === 'unknown' || m === cashFlowMethodLabels.unknown.toLowerCase()
+      || m === 'adisyon' || m === 'adisyon tahsilatı') return cashFlowMethodLabels.unknown
   if (m === 'other' || m === 'diğer') return 'Diğer'
   // SIRA BACKEND'LE AYNI (ReportsService.NormalizeMethod): "giftcard" içinde "card" geçtiği için
   // Kart'a düşer. Bugün hediye çeki tahsilat DEĞİL indirim kalemi olarak yazılıyor, yani bu dize
@@ -1132,8 +1149,10 @@ export function paymentMethodLabel(raw: string | null | undefined): string {
   if (m.includes('hediye') || m.includes('gift')) return 'Hediye Çeki'
   if (m.includes('puan') || m.includes('sadakat') || m.includes('loyalty')) return 'Sadakat Puanı'
   // Serbest metin yöntem adı: uydurma yapılmaz, yalnız okunur hâle getirilir.
-  const text = String(raw || '').trim()
-  return text.slice(0, 1).toLocaleUpperCase('tr') + text.slice(1)
+  // BACKEND İLE AYNI BİÇİM (ReportsService.MethodLabel): önce tamamı küçültülür, sonra baş harf
+  // büyütülür. Ham metni olduğu gibi bırakmak "IDEAL ÖDEME" ↔ "İdeal ödeme" gibi aynı kaydın
+  // rapor ile panelde farklı yazılmasına yol açıyordu.
+  return m.slice(0, 1).toLocaleUpperCase('tr') + m.slice(1)
 }
 
 const cashFlowMethodTones: Record<CashFlowMethodKey, string> = {

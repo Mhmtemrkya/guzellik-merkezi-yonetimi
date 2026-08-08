@@ -19,7 +19,7 @@ import CollectionDialog, { type CollectionSubmitPayload } from '@/components/das
 import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
-import type { Appointment, CustomerAccount } from '@/lib/types'
+import type { Appointment, CancelledSale, CustomerAccount } from '@/lib/types'
 
 export interface CustomerModalData {
   id: string
@@ -349,6 +349,7 @@ export default function CustomerDetailModal({
   appts,
   accounts,
   accountsLoading = false,
+  cancelledSales = [],
   isStaff,
   canAdisyon,
   canBlacklist,
@@ -376,6 +377,12 @@ export default function CustomerDetailModal({
    * yükleme sırasında ₺0 yazmak yerine "—" gösterilir (bir an "harcama yok" sanılıyordu).
    */
   accountsLoading?: boolean
+  /**
+   * İPTAL ARŞİVİ. İptal edilen satışın cari/tahsilat satırları canlı tablodan SİLİNİR
+   * (`cancelled_sales`'a taşınır), bu yüzden `accounts` listesinde iz bırakmazlar: iptal sayacı
+   * hiç dolmaz ve kısmi iade sonrası KURUMDA KALAN para ("retained") hiçbir kartta görünmezdi.
+   */
+  cancelledSales?: CancelledSale[]
   isStaff: boolean
   canAdisyon: boolean
   canBlacklist: boolean
@@ -475,6 +482,22 @@ export default function CustomerDetailModal({
   const salesSummary = useMemo(() => summarizeCustomerSales(customerAccounts), [customerAccounts])
   /** KPI'daki satış adedi: tutarlarla AYNI kümeye bakar (iptaller tutara girmiyor, sayıya da girmez). */
   const salesCount = salesSummary.active + salesSummary.completed
+
+  /**
+   * İPTAL ARŞİVİ ÖZETİ. İptal edilen satış canlı `accounts` listesinde YOKTUR (satırlar silinip
+   * arşive taşınır), bu yüzden `salesSummary.cancelled` gerçekte hep 0 kalır — iptal sayısı da
+   * kısmi iade sonrası kurumda kalan para da yalnız buradan okunabilir.
+   */
+  const customerCancelled = useMemo(
+    () => cancelledSales.filter((c) => c.customerId === cid),
+    [cancelledSales, cid],
+  )
+  const cancelledSummary = useMemo(() => ({
+    count: customerCancelled.length,
+    // Tahsil edilip İADE EDİLMEYEN kısım: iptalden sonra da kurumun kasasında kalır.
+    retained: customerCancelled.reduce((s, c) => s + Math.max(0, c.retainedAmount), 0),
+    refunded: customerCancelled.reduce((s, c) => s + Math.max(0, c.refundedAmount), 0),
+  }), [customerCancelled])
 
   /**
    * Tahsilat alınabilecek cariler: kalan borcu olanlar. İptal edilen satışlar zaten canlı listeye
@@ -615,14 +638,19 @@ export default function CustomerDetailModal({
     },
     {
       label: 'Tahsil Edilen',
-      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.paid)),
+      // İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive taşındığı için
+      // canlı özet onu görmez, ama para fiilen kasada kaldı (iade edilen kısım düşülmüştür).
+      // Sıfır göstermek "bu müşteriden hiç tahsilat yok" gibi okunuyordu.
+      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.paid + cancelledSummary.retained)),
       // Kalan tutarı yazmıyoruz: yanındaki "Açık Borç" kartı zaten AYNI rakamı gösteriyor
       // (iki kart da Toplam − Tahsil Edilen formülünden çıkıyor). Burada oran daha çok şey söyler.
       sub: accountsLoading
         ? 'yükleniyor'
-        : salesSummary.total > 0
-          ? `satışın %${Math.min(100, Math.round((salesSummary.paid / salesSummary.total) * 100))}'i`
-          : 'tahsilat yok',
+        : cancelledSummary.retained > 0
+          ? `${formatTL(Math.round(cancelledSummary.retained))} iptalden kaldı`
+          : salesSummary.total > 0
+            ? `satışın %${Math.min(100, Math.round((salesSummary.paid / salesSummary.total) * 100))}'i`
+            : 'tahsilat yok',
       icon: Wallet,
       tone: 'text-emerald-700',
     },
@@ -637,14 +665,16 @@ export default function CustomerDetailModal({
     },
     // Satış listesi ayrı modalde: her sekmeden tek tıkla ulaşılsın diye KPI şeridinde duruyor.
     // Sayı İPTALLERİ SAYMAZ — "Toplam Harcama" da saymıyor; iptaller alt satırda ayrıca yazılır.
+    // İptal adedi ARŞİVDEN gelir: iptal edilen satır canlı listede kalmaz, bu yüzden canlı
+    // özetin `cancelled` sayacı gerçekte hep 0'dır.
     ...(hasSalesPanel
       ? [{
         label: 'Satışlar',
         value: accountsLoading ? '—' : String(salesCount),
         sub: accountsLoading
           ? 'yükleniyor'
-          : salesSummary.cancelled > 0
-            ? `${salesSummary.cancelled} iptal edildi`
+          : cancelledSummary.count > 0
+            ? `${cancelledSummary.count} iptal edildi`
             : salesCount > 0 ? 'listeyi aç' : 'kayıt yok',
         icon: Package,
         onClick: () => setSalesOpen(true),
