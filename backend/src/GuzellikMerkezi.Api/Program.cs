@@ -27,6 +27,13 @@ Environment.SetEnvironmentVariable(
         ?? "Development");
 #endif
 
+/// <summary>
+/// Gerçek soket adresinin <c>HttpContext.Items</c> anahtarı. Değer, <c>UseForwardedHeaders</c>
+/// <c>Connection.RemoteIpAddress</c>'i yeniden yazmadan ÖNCE saklanır: hız sınırının "güvenilen
+/// proxy'den mi geldi" kararı istemcinin dokunamayacağı bir veriye dayanmalı (bkz. ClientIp).
+/// </summary>
+const string SocketIpKey = "__socket-ip";
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
@@ -85,13 +92,27 @@ builder.Services.AddRateLimiter(options =>
     {
         var ip = http.Connection.RemoteIpAddress;
         var partition = http.Request.Headers["X-Client-Partition"].ToString();
-        if (partition.Length is > 0 and <= 64 && ip is not null && System.Net.IPAddress.IsLoopback(ip))
+        // LOOPBACK TESTİ SOKET ADRESİNE BAKAR, YENİDEN YAZILMIŞ ADRESE DEĞİL.
+        //
+        // SOMUT AÇIK: `UseForwardedHeaders`, `Connection.RemoteIpAddress`'i X-Forwarded-For'dan
+        // YENİDEN YAZAR. Testi yeniden yazılmış değere yaptırmak, `ForwardedHeaders__TrustAll=true`
+        // açıldığı anda şu zinciri kuruyordu: saldırgan XFF'e `127.0.0.1` yazar → adres loopback
+        // görünür → `X-Client-Partition` başlığına İTİBAR EDİLİR → saldırgan kendi kova anahtarını
+        // seçer → her istekte yeni kova alır ve login/OTP dâhil TÜM hız sınırları fiilen kalkar.
+        // Üretimde TrustAll kapalı olduğu için bugün sömürülemiyor; ama sınırın güvenliği bir
+        // yapılandırma bayrağına bağlı olmamalı. Gerçek soket adresi forwarding'den ÖNCE saklanır
+        // (bkz. "socket-ip" middleware'i) ve yalnız o değere güvenilir.
+        var socket = http.Items.TryGetValue(SocketIpKey, out var raw) && raw is System.Net.IPAddress s ? s : ip;
+        if (partition.Length is > 0 and <= 64 && socket is not null && System.Net.IPAddress.IsLoopback(socket))
             return $"p:{partition}";
         return ip?.ToString() ?? "unknown";
     }
 
     /// <summary>Soket adresi — istemcinin DEĞİŞTİREMEYECEĞİ tek anahtar (çerez silmek etkilemez).</summary>
-    static string SocketIp(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    static string SocketIp(HttpContext http) =>
+        (http.Items.TryGetValue(SocketIpKey, out var raw) && raw is System.Net.IPAddress s
+            ? s
+            : http.Connection.RemoteIpAddress)?.ToString() ?? "unknown";
 
     // IP TAVANI — BÖLÜMLEME ANAHTARININ ÜSTÜNDE İKİNCİ KATMAN.
     //
@@ -106,6 +127,26 @@ builder.Services.AddRateLimiter(options =>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
     {
         var path = http.Request.Path.Value ?? string.Empty;
+
+        // ÖDEME DÖNÜŞÜ İÇİN KURUM GENELİ TAVAN (IP'DEN BAĞIMSIZ).
+        //
+        // SOMUT AÇIK: "payment-callback" politikası IP BAŞINA sınırlıyordu. Her callback
+        // sağlayıcıya bir dış SORGU tetiklediği için, çok sayıda IP'ye dağılmış bir istemci
+        // (botnet, ucuz proxy havuzu) sınırı hiç görmeden sağlayıcı kotamızı ve faturamızı
+        // tüketebilir, sonuç deneme-yanılmasını da paralelleştirebilirdi. Per-IP sınır bu
+        // saldırıya karşı tanım gereği kördür; TOPLAM iş hacmini bağlayan ikinci bir tavan gerekir.
+        //
+        // TAVAN BİLEREK YÜKSEK (dakikada 600 ≈ saniyede 10): meşru trafik checkout başına TEK
+        // dönüştür, bu platformun hacminin kat kat üstüdür. Amaç adil paylaşım değil, kaçak bir
+        // yükü sınırlamak. Yine de bir takas var ve kayda geçiyor: tavan doluyken meşru bir dönüş
+        // de 429 alır. Bu kabul edilebilir, çünkü para çekimi sağlayıcı tarafında ZATEN gerçekleşmiş
+        // olur; callback yalnızca mutabakattır ve tekrar denenebilir (uç idempotent).
+        if (path.StartsWith("/api/payments/", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter("payments:all",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+        }
+
         var isAuthPath = path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase);
         if (!isAuthPath) return RateLimitPartition.GetNoLimiter("none");
 
@@ -270,6 +311,19 @@ await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(app.Services, app.Config
 //   ForwardedHeaders__TrustAll=true              (LB dış XFF'i ezmeli/eklemeli — aksi halde spoof riski)
 //   ForwardedHeaders__KnownProxies__0=<lb-ip>    (güvenilen proxy IP'lerini tek tek listele)
 {
+    // GERÇEK SOKET ADRESİ FORWARDING'DEN ÖNCE SAKLANIR.
+    //
+    // `UseForwardedHeaders` bundan sonra `Connection.RemoteIpAddress`'i X-Forwarded-For'dan
+    // yeniden yazacak. Hız sınırının "bu istek güvenilen proxy'den mi geldi" kararı yeniden
+    // yazılmış adrese bakarsa, TrustAll açıkken istemci kendini loopback gösterip kova anahtarını
+    // seçebilir ve tüm sınırları atlar (bkz. ClientIp). Karar bu değere bağlanır — istemcinin
+    // erişemeyeceği tek veri budur.
+    app.Use(async (ctx, next) =>
+    {
+        ctx.Items[SocketIpKey] = ctx.Connection.RemoteIpAddress;
+        await next();
+    });
+
     var fh = new ForwardedHeadersOptions
     {
         ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,

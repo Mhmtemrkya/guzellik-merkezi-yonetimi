@@ -2,6 +2,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -159,6 +160,27 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
         }
 
         var baseUrl = string.IsNullOrWhiteSpace(configuredBaseUrl) ? SandboxBaseUrl : configuredBaseUrl!;
+
+        // HOST ALLOWLIST'İ BURADA DA UYGULANIR — YAZMA YOLUNA GÜVENİLMEZ.
+        //
+        // SOMUT AÇIK: `ValidatePaymentApiUrl` yalnızca ayar KAYDEDİLİRKEN çağrılıyordu
+        // (PlatformMessagingService). Oysa bu satır, kart referanslarının ve tahsilat
+        // isteklerinin gideceği HttpClient'ı KURAN yerdir ve kaydedilmiş değere hiç bakmadan
+        // güveniyordu. Yazma kapısını atlayan her yol (doğrudan veritabanı düzenlemesi, kapı
+        // eklenmeden önce yazılmış satır, yedekten geri yükleme, ileride eklenecek ikinci bir
+        // ayar ucu) sahte bir host'u sessizce devreye alırdı.
+        //
+        // Bu, aynı dosyada PaymentConfigGate için yazılan kuralın ta kendisi: "aynı kural iki
+        // yere yazılırsa saparlar" — burada saptığı yer, kuralın YALNIZ bir yerde olmasıydı.
+        // Doğrulama kararın VERİLDİĞİ noktada tekrarlanır; tek kaynak OutboundEndpointGuard.
+        if (OutboundEndpointGuard.ValidatePaymentApiHost(baseUrl) is { } hostError)
+        {
+            // Ayrıntı yalnız günlüğe: host adı ve allowlist keşif bilgisidir (bkz. PaymentConfigGate).
+            _logger.LogError("Ödeme sağlayıcı adresi allowlist'i geçemedi: {BaseUrl} — {Error}", baseUrl, hostError);
+            return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                "Ödeme sağlayıcısı adresi geçersiz. Platform yöneticisi ödeme ayarlarını düzeltmeli."));
+        }
+
         var http = _httpFactory.CreateClient("Iyzico");
         var gateway = new IyzicoPaymentGateway(http, apiKey!, secretKey!, baseUrl, _logger);
         return Result<PaymentGatewayContext>.Success(new PaymentGatewayContext(gateway, settings.PaymentsReturnUrl));

@@ -38,11 +38,24 @@ public static class OutboundEndpointGuard
     };
 
     /// <summary>
-    /// Ödeme API adresini doğrular. SMS ile aynı gerekçe, daha yüksek risk: bu adrese kart
-    /// referansları ve tahsilat istekleri gider; sahte bir host'a yönlendirmek hem para hem
-    /// kimlik bilgisi sızdırır.
+    /// ÖDEME ADRESİNİN AĞ ERİŞİMİ GEREKTİRMEYEN doğrulaması: şema + host allowlist'i.
+    ///
+    /// <para>
+    /// İSTEK YOLUNDA KULLANILAN SÜRÜM BUDUR (<c>PaymentGatewayResolver</c>). Asıl güvenlik
+    /// kontrolü zaten burasıdır: host sabit bir listeden gelmek zorundadır, dolayısıyla adresin
+    /// nereye çözüldüğü saldırganın seçebileceği bir şey değildir.
+    /// </para>
+    /// <para>
+    /// DNS kontrolü BİLEREK DIŞARIDA: <see cref="ValidatePaymentApiUrl"/> ad çözemediğinde
+    /// fail-closed davranır (doğru bir kural — bkz. <see cref="ResolveAddresses"/>), ama o kuralı
+    /// her checkout'ta uygulamak geçici bir DNS kesintisini TÜM ÖDEMELERİ durduran bir arızaya
+    /// çevirirdi. Allowlist'teki iki host zaten bilinen public adreslerdir; onlar için DNS
+    /// kontrolünün eklediği güvenlik, eklediği erişilebilirlik riskini karşılamıyor. Ağ kontrolü
+    /// ayarın KAYDEDİLDİĞİ anda yapılır: orada yavaşlık önemsiz, geri bildirim anında ve
+    /// yöneticinin yanlış yapılandırmayı düzeltme şansı var.
+    /// </para>
     /// </summary>
-    public static string? ValidatePaymentApiUrl(string? apiUrl)
+    public static string? ValidatePaymentApiHost(string? apiUrl)
     {
         if (string.IsNullOrWhiteSpace(apiUrl)) return null; // boş = sağlayıcının varsayılan (sandbox) adresi
 
@@ -52,7 +65,25 @@ public static class OutboundEndpointGuard
             return "Ödeme API adresi yalnız HTTPS olabilir.";
         if (!PaymentHosts.Contains(uri.Host))
             return $"İzin verilmeyen ödeme sunucusu: {uri.Host}. İzinli: {string.Join(", ", PaymentHosts)}.";
-        if (IsPrivateHost(uri.Host))
+        return null;
+    }
+
+    /// <summary>
+    /// Ödeme API adresini TAM doğrular (host allowlist'i + ad çözümlemesi). SMS ile aynı gerekçe,
+    /// daha yüksek risk: bu adrese kart referansları ve tahsilat istekleri gider; sahte bir
+    /// host'a yönlendirmek hem para hem kimlik bilgisi sızdırır.
+    /// <para>
+    /// AYAR KAYDEDİLİRKEN kullanılır; istek yolunda <see cref="ValidatePaymentApiHost"/> çağrılır
+    /// (gerekçe orada).
+    /// </para>
+    /// </summary>
+    public static string? ValidatePaymentApiUrl(string? apiUrl)
+    {
+        if (ValidatePaymentApiHost(apiUrl) is { } error) return error;
+        if (string.IsNullOrWhiteSpace(apiUrl)) return null;
+
+        var host = new Uri(apiUrl).Host;
+        if (IsPrivateHost(host))
             return "Ödeme API adresi özel/loopback bir adrese çözülüyor.";
         return null;
     }
