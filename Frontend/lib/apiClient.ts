@@ -1448,22 +1448,29 @@ export async function fetchAllPaged<T>(
     // olduğundan küçük çıkıyordu. Hata yukarı fırlar; ekran boş liste değil HATA gösterir.
     const next = await loader(page, pageSize)
     const batch = pagedItems(next)
-    // Sunucu erken boş sayfa döndü: sayım bayat olabilir (eşzamanlı silme). Bu SİSTEMATİK
-    // kesme değildir; ekranı hataya düşürmek iyi niyetli bir yarışı felakete çevirirdi.
-    if (!batch.length) return items
+    // ERKEN BOŞ SAYFA DA EKSİK LİSTEDİR.
+    //
+    // Burası bir tur önce "iyi niyetli yarış" sayılıp sessizce elde olanı döndürüyordu. Denetim
+    // haklı çıktı: sunucu `total: 100` derken 1. sayfa 1 kayıt, 2. sayfa boş dönerse ekran o TEK
+    // kaydı TAM liste sanıyor — cari, borç, tahsilat ve iptal listeleri sessizce eksik gösteriliyor.
+    // Eşzamanlı silme ihtimali, para ekranında eksik veriyi doğru göstermenin gerekçesi olamaz;
+    // bayat sayaç yüzünden nadiren hata vermek, her seferinde sessizce yanlış toplam göstermekten
+    // iyidir. Aşağıdaki tek kontrol ikisini de yakalar.
+    if (!batch.length) break
     items.push(...batch)
     page++
   }
 
-  // TAVANA ÇARPIP EKSİK DÖNMEK SESSİZ VERİ KAYBIDIR. Döngü `page <= 100` ile durunca, 200'lük
-  // sayfada 20.000 kaydı aşan kurumda liste HATASIZ ama EKSİK dönüyordu; cari ekranı bunu
-  // gerçek toplam sanıp daha küçük bir borç gösteriyordu. Tavanı yükseltmek TEK BAŞINA yetmez —
-  // yükseltilmiş tavan da aynı sessiz kesmeyi daha ileride yapar. Buraya düşmek "tavan bitti
-  // ama kayıt bitmedi" demektir ve para ekranında bu bir HATADIR.
+  // EKSİK LİSTE SESSİZCE DÖNMEZ — sebebi tavan da olsa erken biten sayfa da.
+  //
+  // İki yol da buraya düşer: (1) `MAX_PAGES` tavanına çarpmak, (2) sunucunun `total`dan az kayıt
+  // vermesi. İkisi de aynı sonucu doğurur: ekran eksik listeyi TAM sanır ve cari/borç/tahsilat
+  // toplamları olduğundan küçük görünür. Tavanı yükseltmek tek başına yetmez; yükseltilmiş tavan
+  // da aynı sessiz kesmeyi daha ileride yapar.
   if (items.length < total) {
     throw new Error(
-      `Liste eksik alındı (${items.length}/${total}). Sayfalama tavanına ulaşıldı; ` +
-      'rakamlar eksik olacağı için gösterilmiyor.',
+      `Liste eksik alındı (${items.length}/${total}). Rakamlar eksik olacağı için gösterilmiyor; ` +
+      'sayfayı yenileyin.',
     )
   }
   return items

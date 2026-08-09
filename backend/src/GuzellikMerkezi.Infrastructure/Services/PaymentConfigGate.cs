@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,38 +8,40 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 /// ÖDEME YAPILANDIRMASININ TUTARLILIK KAPISI — hazırlık (readiness) yoklamasının para tarafı.
 ///
 /// <para>
-/// Ödeme AÇIKKEN eksik/çelişkili ayar hiçbir yerde yakalanmıyordu: örnek yük dengeleyiciden trafik
-/// alıyor, kusur ancak ilk gerçek tahsilat denemesinde — yani MÜŞTERİ ÖDERKEN — ortaya çıkıyordu.
-/// Bu kapı hatayı deploy anına çeker.
+/// KURALI BURASI YAZMAZ, <see cref="IPaymentGatewayResolver"/>'A SORAR. İlk sürümde kapı kendi
+/// kural setini taşıyordu ve o set çözücününkinin ZAYIF bir kopyasıydı: tanınmayan bir sağlayıcı
+/// adı (ör. "TypoPay") anahtarları varsa geçiyor, üretimde SANDBOX adresi HTTPS olduğu için
+/// geçiyordu. Yani readiness "hazır" derken gerçek checkout ya hata veriyor ya da sandbox'tan
+/// SAHTE PARA başarısı üretiyordu. Aynı kural iki yere yazılırsa saparlar — bu depoda kanıtlanmış
+/// bir hata sınıfı; çözüm kuralı çoğaltmak değil, TEK KAYNAĞA sormaktır.
 /// </para>
 ///
 /// <para>
-/// KAPALI ÖDEME SORUN DEĞİLDİR. Üretim <c>PaymentsEnabled=0</c> ile çalışıyor ve bu GEÇERLİ bir
-/// yapılandırmadır; kapalı ödeme yüzünden trafik kesilmez. "Sıkı kapı" yazarken en kolay yapılan
-/// hata, doğru yapılandırmayı da reddetmektir.
-/// </para>
-///
-/// <para>
-/// Uç noktada değil BURADA durur: aynı kural iki yere yazılırsa saparlar (bu depoda kanıtlanmış
-/// bir hata sınıfı). Uç ve testler AYNI fonksiyonu çağırır.
+/// KAPALI ÖDEME SORUN DEĞİLDİR: üretim <c>PaymentsEnabled=0</c> ile çalışıyor ve bu GEÇERLİ bir
+/// yapılandırmadır; kapalı ödeme yüzünden trafik kesilmez.
 /// </para>
 /// </summary>
 public static class PaymentConfigGate
 {
     /// <summary>
-    /// Sorun varsa insan okuyabilir gerekçe, yoksa <c>null</c>.
+    /// Sorun varsa LOG'a yazılacak ayrıntılı gerekçe, yoksa <c>null</c>.
+    ///
+    /// <para>
+    /// DÖNEN METİN İSTEMCİYE VERİLMEZ. Sağlayıcı adı, anahtarların eksikliği ve sağlayıcı adresi
+    /// keşif bilgisidir; <c>/health/ready</c> kimlik doğrulaması istemeyen bir uçtur ve bu ayrıntı
+    /// oradan sızarsa saldırgana ödeme entegrasyonunun yarım olduğunu ve hangi sağlayıcıyı
+    /// hedefleyeceğini söyler. Uç genel bir mesaj döndürür; ayrıntı yalnız sunucu günlüğüne gider.
+    /// </para>
     /// </summary>
-    /// <param name="isProduction">
-    /// Üretimde bazı yapılandırmalar (simülasyon sağlayıcısı, düz HTTP) reddedilir; geliştirici
-    /// ortamında aynısı MEŞRUDUR ve engellenmemelidir.
-    /// </param>
     public static async Task<string?> DescribeAsync(
-        GuzellikDbContext db, bool isProduction, CancellationToken ct)
+        GuzellikDbContext db, IPaymentGatewayResolver resolver, CancellationToken ct)
     {
-        Domain.Entities.PlatformIntegrationSettings? settings;
+        bool paymentsEnabled;
         try
         {
-            settings = await db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+            paymentsEnabled = await db.PlatformIntegrationSettings.AsNoTracking()
+                .Select(x => x.PaymentsEnabled)
+                .FirstOrDefaultAsync(ct);
         }
         catch
         {
@@ -47,39 +50,14 @@ public static class PaymentConfigGate
             return null;
         }
 
-        // Ayar satırı yok = yeni kurulum; ödeme kapalı sayılır ve trafiğe alınabilir.
-        if (settings is null || !settings.PaymentsEnabled) return null;
+        // Ayar satırı yok ya da ödeme kapalı → yeni kurulum / üretim yapılandırması. Kapı geçer.
+        if (!paymentsEnabled) return null;
 
-        // Sağlayıcı anahtarları eksikse gerçek çekim İMKÂNSIZ; "ödeme açık" yalan söylüyor demektir.
-        if (!settings.PaymentsConfigured)
-            return $"Ödeme açık ama '{settings.PaymentProvider}' sağlayıcısının anahtarları eksik.";
-
-        // ÜRETİMDE SİMÜLASYON = PARA ÇEKİLMEDEN ABONELİK: sessizce "başarılı" dönen sağlayıcı
-        // abonelikleri bedavaya açardı.
-        if (isProduction
-            && string.Equals(settings.PaymentProvider, "Simulation", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Üretimde ödeme açık ama sağlayıcı 'Simulation' — tahsilat yapılmadan abonelik açılır.";
-        }
-
-        // Dönüş adresi olmadan checkout başlatılamaz (servis zaten reddeder); bunu ilk müşteri
-        // denemesinden ÖNCE söyleyelim.
-        if (string.IsNullOrWhiteSpace(settings.PaymentsReturnUrl))
-            return "Ödeme açık ama dönüş adresi (PaymentsReturnUrl) tanımlı değil.";
-
-        if (!string.IsNullOrWhiteSpace(settings.IyzicoBaseUrl))
-        {
-            if (!Uri.TryCreate(settings.IyzicoBaseUrl, UriKind.Absolute, out var baseUri))
-                return $"Ödeme sağlayıcı adresi geçersiz: '{settings.IyzicoBaseUrl}'.";
-
-            // Kart verisi taşımasak da işlem anahtarı/tutar bu adrese gider; üretimde düz HTTP olmaz.
-            if (isProduction
-                && !string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            {
-                return "Üretimde ödeme sağlayıcı adresi HTTPS olmalı.";
-            }
-        }
-
-        return null;
+        // ÇEKİRDEK: gerçek checkout'un kullandığı çözücünün TA KENDİSİ çağrılır. Çözücü neyi
+        // reddediyorsa readiness de onu reddeder — ikisi tanım gereği aynı fikirdedir.
+        var resolved = await resolver.ResolveAsync(ct);
+        return resolved.IsFailure
+            ? $"Ödeme açık ama sağlayıcı çözümlenemedi: {resolved.Error.Message}"
+            : null;
     }
 }

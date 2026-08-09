@@ -93,7 +93,6 @@ class ApiClient {
     final items = <dynamic>[];
     var page = 1;
     var total = 0;
-    var exhausted = false;
     // Tavan SONSUZ DÖNGÜYE karşıdır, veri sınırı değildir (bkz. aşağıdaki kontrol).
     while (page <= _maxPages) {
       final res = await get(
@@ -103,21 +102,18 @@ class ApiClient {
       final batch = res is Map ? (res['items'] as List? ?? const []) : const [];
       total = res is Map ? (res['totalCount'] as num? ?? 0).toInt() : 0;
       items.addAll(batch);
-      if (batch.isEmpty || items.length >= total) {
-        exhausted = true;
-        break;
-      }
+      // ERKEN BOŞ SAYFA DA EKSİK LİSTEDİR (web paritesi): sunucu `total: 100` derken 2. sayfa
+      // boş dönerse elde kalan 1 kayıt TAM liste sanılıyordu. "Eşzamanlı silme olabilir" gerekçesi
+      // para ekranında eksik veriyi doğru göstermeyi haklı çıkarmaz.
+      if (batch.isEmpty || items.length >= total) break;
       page++;
     }
 
-    // TAVANA ÇARPIP EKSİK DÖNMEK SESSİZ VERİ KAYBIDIR. Eskiden döngü `page <= 100` ile
-    // durunca liste HATASIZ ama EKSİK dönüyordu; ekran bunu gerçek toplam sanıp daha küçük
-    // bir borç gösteriyordu. Tavanı yükseltmek tek başına yetmez — yükseltilmiş tavan da
-    // aynı sessiz kesmeyi daha ileride yapar.
-    if (!exhausted && items.length < total) {
+    // Eksik liste sessizce dönmez — sebebi tavan da olsa erken biten sayfa da.
+    if (items.length < total) {
       throw StateError(
-        'Liste eksik alındı (${items.length}/$total). Sayfalama tavanına ulaşıldı; '
-        'rakamlar eksik olacağı için gösterilmiyor.',
+        'Liste eksik alındı (${items.length}/$total). Rakamlar eksik olacağı için '
+        'gösterilmiyor; sayfayı yenileyin.',
       );
     }
     return {'items': items, 'totalCount': total > 0 ? total : items.length};

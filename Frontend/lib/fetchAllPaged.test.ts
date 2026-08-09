@@ -39,13 +39,18 @@ describe('fetchAllPaged', () => {
     await expect(fetchAllPaged(server(600), 1)).rejects.toThrow(/eksik/i)
   })
 
-  it('erken boş sayfa HATA DEĞİLDİR — bayat sayım ekranı düşürmemeli', async () => {
-    // totalCount 100 diyor ama sunucu 2. sayfada boş dönüyor. Bu SİSTEMATİK kesme değil,
-    // büyük olasılıkla eşzamanlı silme yüzünden bayatlamış bir sayaçtır; iyi niyetli bir
-    // yarışı ekran hatasına çevirmek felakete dönerdi.
+  it('BLOCKER B2: erken boş sayfa EKSİK LİSTEDİR — tam sayılmaz', async () => {
+    // Denetimin senaryosu birebir: sunucu total=100 diyor, 1. sayfa 1 kayıt, 2. sayfa boş.
+    // Bir tur önce bu "iyi niyetli yarış" sayılıp o TEK kayıt tam liste kabul ediliyordu;
+    // cari/borç/tahsilat toplamları sessizce eksik görünüyordu.
     const flaky = (page: number) =>
       Promise.resolve({ items: page === 1 ? [{ id: 'a' }] : [], total: 100 })
-    const rows = await fetchAllPaged(flaky, 1)
-    expect(rows).toHaveLength(1)
+    await expect(fetchAllPaged(flaky, 1)).rejects.toThrow(/eksik/i)
+  })
+
+  it('sunucu sayımı doğru bildirirse erken bitiş sorun değil', async () => {
+    // total gerçekten 1 ise tek kayıt TAM listedir; kapı yanlış alarm vermemeli.
+    const honest = () => Promise.resolve({ items: [{ id: 'a' }], total: 1 })
+    expect(await fetchAllPaged(honest, 10)).toHaveLength(1)
   })
 })
