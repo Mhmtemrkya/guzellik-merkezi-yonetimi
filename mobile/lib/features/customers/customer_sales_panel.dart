@@ -154,30 +154,44 @@ List<Map<String, dynamic>> cancelledToPseudoAccounts(
 /// ayrı yazıldığında tazeleme yolu iptalleri düşürüyor ve sekme ilk işlemden sonra boşalıyordu.
 /// Sayfalama `getAllPaged` iledir — tek sayfa çok satışı olan müşteride listeyi sessizce keser.
 /// </p>
-Future<List<Map<String, dynamic>>> loadCustomerSalesAccounts(
+Future<CustomerSalesLoad> loadCustomerSalesAccounts(
   ApiClient api,
   String customerId,
 ) async {
-  // ARŞİV İKİNCİL VERİDİR — CANLI LİSTEYİ DÜŞÜREMEZ. Bu `catchError` KALDIRILMAMALI:
-  // iki çağrı birbirine bağlandığında arşivdeki tek bir aksaklık (404, zaman aşımı) tüm
-  // sonucu hataya çeviriyor; çağıranlar bunu "satışlar alınamadı" diye yakalayıp sheet'i HİÇ
-  // AÇMIYOR ya da eski listeyi sessizce koruyor. Gerçek olay: uç adresi bir kez yanlış
-  // yazıldı ve analyze + 34 birim testi yeşilken özellik tamamen açılmaz hâle geldi.
-  // İptal sekmesinin geçici olarak eksik kalması, panelin hiç açılmamasından İYİDİR.
+  // ARŞİV İKİNCİL VERİDİR — CANLI LİSTEYİ DÜŞÜREMEZ. İki çağrı birbirine bağlandığında
+  // arşivdeki tek bir aksaklık (404, zaman aşımı) tüm sonucu hataya çeviriyor; çağıranlar bunu
+  // "satışlar alınamadı" diye yakalayıp sheet'i HİÇ AÇMIYOR. Gerçek olay: uç adresi bir kez
+  // yanlış yazıldı ve analyze + birim testleri yeşilken özellik tamamen açılmaz hâle geldi.
   final live = apiItems(
     await api.getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200),
   ).where((a) => '${a['customerId']}' == customerId).toList();
 
-  List<Map<String, dynamic>> cancelledRaw;
+  // AMA HATA SESSİZCE YUTULAMAZ: boş arşiv "iptal yok" diye okunuyordu. Kullanıcı, iptal
+  // edilmiş bir satışı göremediği için ikinci kez iptal/tahsilat işlemi yapabilir. Bayrak
+  // taşınır; ekran "İptal edilenler yüklenemedi" der — "iptal yok" DEMEZ.
   try {
-    cancelledRaw = apiItems(
+    final cancelledRaw = apiItems(
       await api.get('/api/admin/accounts/cancelled', query: {'customerId': customerId}),
     );
+    return CustomerSalesLoad(
+      accounts: [...live, ...cancelledToPseudoAccounts(cancelledRaw, customerId: customerId)],
+    );
   } catch (_) {
-    cancelledRaw = const [];
+    return CustomerSalesLoad(accounts: live, archiveUnavailable: true);
   }
+}
 
-  return [...live, ...cancelledToPseudoAccounts(cancelledRaw, customerId: customerId)];
+/// Satış yükleme sonucu: satırlar + ARŞİVİN OKUNUP OKUNAMADIĞI.
+///
+/// Bayrak olmadan "arşiv okunamadı" ile "hiç iptal yok" ekranda AYNI görünüyordu; ikisi
+/// birbirinden ayrılmadan kullanıcı eksik veriye güvenip işlem yapabilir.
+class CustomerSalesLoad {
+  const CustomerSalesLoad({required this.accounts, this.archiveUnavailable = false});
+
+  final List<Map<String, dynamic>> accounts;
+
+  /// `true` → iptal arşivi okunamadı; "İptal" sekmesi "yüklenemedi" demeli, "yok" değil.
+  final bool archiveUnavailable;
 }
 
 /// Satış listesini ayrı bir tam sayfa sheet'te açar (web'deki `CustomerSalesModal` karşılığı).
@@ -189,6 +203,7 @@ Future<void> openCustomerSalesSheet(
   required List<Map<String, dynamic>> accounts,
   required Future<void> Function() onChanged,
   bool canManage = true,
+  bool archiveUnavailable = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -201,6 +216,7 @@ Future<void> openCustomerSalesSheet(
       accounts: accounts,
       onChanged: onChanged,
       canManage: canManage,
+      archiveUnavailable: archiveUnavailable,
     ),
   );
 }
@@ -214,6 +230,7 @@ class CustomerSalesSheet extends StatefulWidget {
     required this.accounts,
     required this.onChanged,
     this.canManage = true,
+    this.archiveUnavailable = false,
     super.key,
   });
 
@@ -224,12 +241,16 @@ class CustomerSalesSheet extends StatefulWidget {
   final Future<void> Function() onChanged;
   final bool canManage;
 
+  /// İptal arşivi okunamadıysa `true` — "İptal" sekmesi "yüklenemedi" der, "yok" DEMEZ.
+  final bool archiveUnavailable;
+
   @override
   State<CustomerSalesSheet> createState() => _CustomerSalesSheetState();
 }
 
 class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
   late List<Map<String, dynamic>> _accounts = widget.accounts;
+  late bool _archiveUnavailable = widget.archiveUnavailable;
 
   /// Sheet ana ekranın state'inden kopya taşır; satış değişince hem ana ekranı
   /// hem de kendi listesini tazeler (yoksa sheet eski veriyi göstermeye devam ederdi).
@@ -240,8 +261,13 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
   Future<void> _handleChanged() async {
     await widget.onChanged();
     try {
-      final list = await loadCustomerSalesAccounts(widget.api, widget.customerId);
-      if (mounted) setState(() => _accounts = list);
+      final load = await loadCustomerSalesAccounts(widget.api, widget.customerId);
+      if (mounted) {
+        setState(() {
+          _accounts = load.accounts;
+          _archiveUnavailable = load.archiveUnavailable;
+        });
+      }
     } catch (_) {
       // ana ekran zaten tazelendi; sheet kapanınca güncel veri görünür
     }
@@ -361,6 +387,25 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
                 controller: controller,
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
                 children: [
+                  // ARŞİV OKUNAMADI UYARISI: bayrak olmadan "iptal yok" ile "iptal listesi
+                  // alınamadı" ekranda AYNI görünüyordu. Kullanıcı iptal edilmiş bir satışı
+                  // göremediği için ikinci kez iptal/tahsilat işlemi yapabilirdi.
+                  if (_archiveUnavailable)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: .08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.danger.withValues(alpha: .35)),
+                      ),
+                      child: const Text(
+                        'İptal edilen satışlar YÜKLENEMEDİ — liste eksik olabilir. '
+                        'İşlem yapmadan önce sayfayı yenileyin.',
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger),
+                      ),
+                    ),
                   CustomerSalesPanel(
                     api: widget.api,
                     customerId: widget.customerId,

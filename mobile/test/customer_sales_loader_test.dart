@@ -33,7 +33,7 @@ void main() {
   setUp(calls.clear);
 
   test('canlı satışlar + arşivden geri kurulan iptaller birleşir', () async {
-    final rows = await loadCustomerSalesAccounts(
+    final load = await loadCustomerSalesAccounts(
       client(
         live: [
           {'id': 'cari-1', 'customerId': 'm1', 'name': 'Cilt Bakımı', 'saleStatus': 'Active'},
@@ -45,8 +45,9 @@ void main() {
       'm1',
     );
 
-    expect(rows, hasLength(2));
-    expect(rows.where((r) => r['saleStatus'] == 'Cancelled'), hasLength(1));
+    expect(load.accounts, hasLength(2));
+    expect(load.accounts.where((r) => r['saleStatus'] == 'Cancelled'), hasLength(1));
+    expect(load.archiveUnavailable, isFalse);
   });
 
   test('DOĞRU uç adresleri çağrılır (yanlış adres sessizce özelliği kapatıyordu)', () async {
@@ -59,7 +60,7 @@ void main() {
   });
 
   test('ARŞİV PATLASA BİLE canlı satışlar döner — panel açılmaya devam eder', () async {
-    final rows = await loadCustomerSalesAccounts(
+    final load = await loadCustomerSalesAccounts(
       client(
         live: [
           {'id': 'cari-1', 'customerId': 'm1', 'name': 'Lazer', 'saleStatus': 'Active'},
@@ -70,8 +71,12 @@ void main() {
     );
 
     // İptal sekmesinin geçici olarak eksik kalması, sheet'in HİÇ AÇILMAMASINDAN iyidir.
-    expect(rows, hasLength(1));
-    expect(rows.first['id'], 'cari-1');
+    expect(load.accounts, hasLength(1));
+    expect(load.accounts.first['id'], 'cari-1');
+
+    // ASIL İDDİA: eksiklik SESSİZ DEĞİL. Bayrak olmadan "iptal yok" ile "arşiv okunamadı"
+    // ekranda aynı görünüyor ve kullanıcı aynı işi ikinci kez yapabiliyordu.
+    expect(load.archiveUnavailable, isTrue);
   });
 
   test('CANLI liste patlarsa hata YUTULMAZ — çağıran uyarıyı gösterebilmeli', () async {
@@ -83,7 +88,7 @@ void main() {
   });
 
   test('başka müşterinin arşiv kaydı sızmaz', () async {
-    final rows = await loadCustomerSalesAccounts(
+    final load = await loadCustomerSalesAccounts(
       client(cancelled: [
         {'id': 'ars-1', 'originalAccountId': 'cari-1', 'customerId': 'm1', 'retainedAmount': 100},
         {'id': 'ars-2', 'originalAccountId': 'cari-2', 'customerId': 'BASKA', 'retainedAmount': 200},
@@ -91,8 +96,8 @@ void main() {
       'm1',
     );
 
-    expect(rows, hasLength(1));
-    expect(rows.first['id'], 'cari-1');
+    expect(load.accounts, hasLength(1));
+    expect(load.accounts.first['id'], 'cari-1');
   });
 }
 

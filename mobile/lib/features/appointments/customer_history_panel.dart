@@ -92,6 +92,10 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
   /// İptal arşivi — iptalde seans satırı silinir ama randevunun bağı kalır (bkz. `_packageSessionIds`).
   List<Map<String, dynamic>> _cancelled = const [];
 
+  /// İptal arşivi okunamadı mı? Okunamadığında iptal edilmiş paketin işi yanlış sekmeye
+  /// düşer; kullanıcı bunu göremeyeceği için AÇIKÇA söylenir ("iptal yok" sanılmasın).
+  bool _archiveFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -134,6 +138,7 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
     try {
       // SAYFALAR SONUNA KADAR (web paritesi): tek sayfa 200 kayıtla sınırlıydı, uzun süreli
       // müşteride geçmişin eski kısmı sessizce eksik görünüyordu.
+      var archiveFailed = false;
       final res = await Future.wait([
         widget.api
             .getAllPaged('/api/admin/appointments/', query: {'customerId': cid}, pageSize: 200)
@@ -151,9 +156,15 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
               .getAllPaged('/api/admin/packages/', pageSize: 200)
               .catchError((_) => const <String, dynamic>{}),
         // İPTAL ARŞİVİ: bu liste olmadan iptal edilmiş paketin işi "İşlemler"e kayıyordu.
+        // HATA SESSİZCE BOŞ LİSTEYE ÇEVRİLMEZ: boş arşiv "iptal yok" demektir ve tam da
+        // yukarıdaki yanlış sınıflandırmayı üretir — üstelik kullanıcı bunu göremez.
+        // Bayrak taşınır, panel "geçmiş eksik olabilir" uyarısı gösterir.
         widget.api
             .get('/api/admin/accounts/cancelled', query: {'customerId': cid})
-            .catchError((_) => const <dynamic>[]),
+            .catchError((_) {
+          archiveFailed = true;
+          return const <dynamic>[];
+        }),
       ]);
       if (!mounted) return;
       setState(() {
@@ -166,6 +177,7 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
         if (_needsOwnSessions) _ownSessions = apiItems(res[next++]);
         if (_needsOwnPackages) _ownPackages = apiItems(res[next++]);
         _cancelled = apiItems(res[next]);
+        _archiveFailed = archiveFailed;
       });
     } catch (_) {
       if (mounted) setState(() { _appts = const []; _adisyonlar = const []; });
@@ -488,6 +500,17 @@ class _CustomerHistoryPanelState extends State<CustomerHistoryPanel> {
             ],
           ),
           const SizedBox(height: 8),
+          // ARŞİV OKUNAMADI: iptal edilmiş paketin işi yanlış sekmeye düşmüş olabilir.
+          // Sessiz kalmak, eksik geçmişi "geçmiş yok" gibi gösteriyordu.
+          if (_archiveFailed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'İptal edilen satışlar yüklenemedi — geçmiş eksik ya da yanlış sınıflanmış olabilir.',
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.danger),
+              ),
+            ),
           Text(caption, style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
           // SEANSLAR: önce kalan bakiye (paket → işlem kırılımı), sonra kullanım geçmişi.
           if (isSessions && groups.isNotEmpty) ...[

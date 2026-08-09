@@ -1426,6 +1426,13 @@ export function pagedItems<T>(result: PagedResult<T> | T[] | null | undefined): 
  * Büyük listelerde (ör. 12 bin müşteri) tek istekte tavana takılmamak için 1000'lik
  * sayfalarla ilerler; emniyet için en fazla 100 sayfa (100 bin kayıt) dener.
  */
+/**
+ * Sayfalama güvenlik tavanı. Sonsuz döngüye karşı vardır, VERİ SINIRI DEĞİLDİR: tavana
+ * çarpıldığında sessizce kısa dönmek yerine hata verilir (bkz. `fetchAllPaged` sonu).
+ * 1.000'lik varsayılan sayfayla 500.000 kayda kadar yeter.
+ */
+const MAX_PAGES = 500
+
 export async function fetchAllPaged<T>(
   loader: (page: number, pageSize: number) => Promise<PagedResult<T>>,
   pageSize = 1000,
@@ -1434,16 +1441,30 @@ export async function fetchAllPaged<T>(
   const items = [...pagedItems(first)]
   const total = first?.total ?? first?.totalCount ?? items.length
   let page = 2
-  while (items.length < total && page <= 100) {
+  while (items.length < total && page <= MAX_PAGES) {
     // SONRAKİ SAYFA HATASI YUTULMAZ. Burada `catch` ile eldekini döndürmek, çağıranın
     // `.catch(() => [])` kalkanıyla birleşince "hiç kayıt yok" gibi görünüyordu: ağ/sunucu
     // hatası sessizce EKSİK VERİ olarak okunuyor, üstelik cari listesinde gruplama toplamları
     // olduğundan küçük çıkıyordu. Hata yukarı fırlar; ekran boş liste değil HATA gösterir.
     const next = await loader(page, pageSize)
     const batch = pagedItems(next)
-    if (!batch.length) break
+    // Sunucu erken boş sayfa döndü: sayım bayat olabilir (eşzamanlı silme). Bu SİSTEMATİK
+    // kesme değildir; ekranı hataya düşürmek iyi niyetli bir yarışı felakete çevirirdi.
+    if (!batch.length) return items
     items.push(...batch)
     page++
+  }
+
+  // TAVANA ÇARPIP EKSİK DÖNMEK SESSİZ VERİ KAYBIDIR. Döngü `page <= 100` ile durunca, 200'lük
+  // sayfada 20.000 kaydı aşan kurumda liste HATASIZ ama EKSİK dönüyordu; cari ekranı bunu
+  // gerçek toplam sanıp daha küçük bir borç gösteriyordu. Tavanı yükseltmek TEK BAŞINA yetmez —
+  // yükseltilmiş tavan da aynı sessiz kesmeyi daha ileride yapar. Buraya düşmek "tavan bitti
+  // ama kayıt bitmedi" demektir ve para ekranında bu bir HATADIR.
+  if (items.length < total) {
+    throw new Error(
+      `Liste eksik alındı (${items.length}/${total}). Sayfalama tavanına ulaşıldı; ` +
+      'rakamlar eksik olacağı için gösterilmiyor.',
+    )
   }
   return items
 }

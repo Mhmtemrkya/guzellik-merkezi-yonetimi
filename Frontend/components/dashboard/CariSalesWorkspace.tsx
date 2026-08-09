@@ -53,26 +53,34 @@ export default function CariSalesWorkspace({
   const [busy, setBusy] = useState(false)
   const [tick, setTick] = useState(0)
 
-  const { data, reload, error } = useApiQuery<{ live: ApiCustomerAccount[]; cancelled: CancelledSale[] }>(
+  const { data, reload, error } = useApiQuery<{
+    live: ApiCustomerAccount[]
+    cancelled: CancelledSale[]
+    archiveUnavailable: boolean
+  }>(
     async () => {
-      if (!open || !customerId || !tenantId) return { live: [], cancelled: [] }
-      // TÜM SATIŞLAR sayfa sayfa: tek sayfa 100 ile sınırlıydı — çok satışı olan müşteride
-      // panel eski kayıtları sessizce KESİYOR, "İptal" sekmesi ve özet eksik çıkıyordu.
-      // Hata da YUTULMAZ: boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
-      const [live, cancelled] = await Promise.all([
-        fetchAllPaged<ApiCustomerAccount>(
-          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId, page, pageSize }),
-          200,
-        ),
-        // İPTAL ARŞİVİ: iptal edilen satışın satırları canlı tablodan SİLİNİR. Panelin "İptal"
-        // sekmesi yalnız `saleStatus`e bakıyordu ve bu yüzden HER ZAMAN boştu.
-        adminApi.listCancelledSales<unknown[]>({ customerId }, tenantId)
-          .then((rows) => (Array.isArray(rows) ? rows.map(mapCancelledSale) : [])),
-      ])
-      return { live, cancelled }
+      if (!open || !customerId || !tenantId) return { live: [], cancelled: [], archiveUnavailable: false }
+      // CANLI LİSTE ÖNCE ve hatası YUTULMAZ: boş liste "satış yok" demektir, oysa gerçek
+      // "veri alınamadı"dır. Tek sayfa 100 ile sınırlıydı — çok satışı olan müşteride panel
+      // eski kayıtları sessizce KESİYORDU.
+      const live = await fetchAllPaged<ApiCustomerAccount>(
+        (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId, page, pageSize }),
+        200,
+      )
+
+      // İPTAL ARŞİVİ İKİNCİLDİR: iptal edilen satışın satırları canlı tablodan SİLİNİR, panelin
+      // "İptal" sekmesi yalnız buradan dolar. Arşiv çökerse panel yine açılmalı — AMA hata
+      // sessizce boş listeye çevrilmemeli: "iptal yok" ile "arşiv okunamadı" ekranda aynı
+      // görünürse kullanıcı iptal edilmiş bir satışı göremeyip aynı işi ikinci kez yapabilir.
+      try {
+        const rows = await adminApi.listCancelledSales<unknown[]>({ customerId }, tenantId)
+        return { live, cancelled: Array.isArray(rows) ? rows.map(mapCancelledSale) : [], archiveUnavailable: false }
+      } catch {
+        return { live, cancelled: [], archiveUnavailable: true }
+      }
     },
     [open, customerId, tenantId, tick],
-    { initialData: { live: [], cancelled: [] } },
+    { initialData: { live: [], cancelled: [], archiveUnavailable: false } },
   )
 
   /**
@@ -156,6 +164,13 @@ export default function CariSalesWorkspace({
       {error && (
         <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12px] text-rose-800">
           Satışlar alınamadı: {error} — liste eksik olabilir, işlem yapmadan önce sayfayı yenileyin.
+        </div>
+      )}
+      {/* ARŞİV OKUNAMADI: "İptal" sekmesinin boş olması GERÇEK sıfır sanılıyordu. */}
+      {data?.archiveUnavailable && (
+        <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12px] text-rose-800">
+          İptal edilen satışlar yüklenemedi — &quot;İptal&quot; sekmesi eksik olabilir (boş görünmesi
+          &quot;iptal yok&quot; anlamına gelmez). İşlem yapmadan önce sayfayı yenileyin.
         </div>
       )}
       <CustomerSalesPanel

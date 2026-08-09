@@ -74,6 +74,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   }
 
   Future<_AccData> _load() async {
+    var cancelledFailed = false;
     final results = await Future.wait([
       // TÜM cariler sayfa sayfa: liste MÜŞTERİ BAZINDA gruplanıyor, tek sayfalık (500) çekimde
       // müşterinin bazı satışları listeye hiç girmez ve grup toplamı sessizce eksik çıkardı.
@@ -95,9 +96,11 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           .catchError((_) => const <dynamic>[]),
       // İptal edilen satışlar canlı cari listesinde YOK: iptalde kayıt (taksit/tahsilat/seans
       // dahil) cancelled_sales arşivine taşınıp silinir. "İptal edilenler" bu uçtan okunur.
-      widget.api
-          .get('/api/admin/accounts/cancelled')
-          .catchError((_) => const <dynamic>[]),
+      // HATA BOŞ LİSTEYE ÇEVRİLİR AMA SESSİZCE DEĞİL: bayrak taşınır, ekran uyarı gösterir.
+      widget.api.get('/api/admin/accounts/cancelled').catchError((_) {
+        cancelledFailed = true;
+        return const <dynamic>[];
+      }),
     ]);
     final data = _AccData(
       accounts: apiItems(results[0]),
@@ -105,6 +108,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       adisyonlar: apiItems(results[2]),
       staff: apiItems(results[3]),
       cancelled: apiItems(results[4]),
+      cancelledFailed: cancelledFailed,
     );
     // Son yüklenen veri FAB'lardan da erişilebilir olsun (maaş sayfası personel listesi ister).
     _last = data;
@@ -797,6 +801,24 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           (v) => setState(() => _accountFilter = v),
         ),
         const SizedBox(height: 8),
+        // ARŞİV OKUNAMADI: aşağıdaki "İptal edilenler · 0" sayacı GERÇEK sıfır sanılıyordu.
+        // Kullanıcı iptal edilmiş satışı göremeyip aynı işi ikinci kez yapabilirdi.
+        if (data.cancelledFailed)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.danger.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.danger.withValues(alpha: .35)),
+            ),
+            child: const Text(
+              'İptal edilen satışlar YÜKLENEMEDİ — aşağıdaki iptal/iade sayıları eksik. '
+              'Rakamlara güvenmeden önce sayfayı yenileyin.',
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger),
+            ),
+          ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1092,11 +1114,12 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     if (customerId.isEmpty) return;
     final name = '${account['customerName'] ?? account['name'] ?? 'Müşteri'}';
 
-    List<Map<String, dynamic>> accounts = const [];
+    CustomerSalesLoad load = const CustomerSalesLoad(accounts: []);
     try {
       // Canlı cariler (sayfalı) + İPTAL ARŞİVİ tek kaynaktan: iptal edilen satır canlı tabloda
       // YOKTUR, arşivsiz çekildiğinde sheet'in "İptal" sekmesi hep boş kalıyordu.
-      accounts = await loadCustomerSalesAccounts(widget.api, customerId);
+      // Arşiv okunamazsa liste yine gelir ama BAYRAK taşınır (sessiz "iptal yok" yasak).
+      load = await loadCustomerSalesAccounts(widget.api, customerId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Satışlar alınamadı: $e')));
@@ -1114,7 +1137,8 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         api: widget.api,
         customerId: customerId,
         customerName: name,
-        accounts: accounts,
+        accounts: load.accounts,
+        archiveUnavailable: load.archiveUnavailable,
         onChanged: () async => _reload(),
       ),
     );
@@ -1520,6 +1544,7 @@ class _AccData {
     required this.adisyonlar,
     required this.staff,
     required this.cancelled,
+    this.cancelledFailed = false,
   });
   final List<Map<String, dynamic>> accounts;
   final List<Map<String, dynamic>> expenses;
@@ -1528,6 +1553,10 @@ class _AccData {
 
   /// İptal arşivi (cancelled_sales) — canlı cari listesinden AYRI kaynak.
   final List<Map<String, dynamic>> cancelled;
+
+  /// Arşiv OKUNAMADI mı? Boş liste "iptal yok" demektir; ikisi ayrılmazsa kullanıcı
+  /// iptal edilmiş satışı göremeyip aynı işi ikinci kez yapabilir.
+  final bool cancelledFailed;
 }
 
 // ---------------------------------------------------------------------------

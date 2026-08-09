@@ -93,7 +93,9 @@ class ApiClient {
     final items = <dynamic>[];
     var page = 1;
     var total = 0;
-    while (page <= 100) {
+    var exhausted = false;
+    // Tavan SONSUZ DÖNGÜYE karşıdır, veri sınırı değildir (bkz. aşağıdaki kontrol).
+    while (page <= _maxPages) {
       final res = await get(
         path,
         query: {...?query, 'page': page, 'pageSize': pageSize},
@@ -101,11 +103,28 @@ class ApiClient {
       final batch = res is Map ? (res['items'] as List? ?? const []) : const [];
       total = res is Map ? (res['totalCount'] as num? ?? 0).toInt() : 0;
       items.addAll(batch);
-      if (batch.isEmpty || items.length >= total) break;
+      if (batch.isEmpty || items.length >= total) {
+        exhausted = true;
+        break;
+      }
       page++;
+    }
+
+    // TAVANA ÇARPIP EKSİK DÖNMEK SESSİZ VERİ KAYBIDIR. Eskiden döngü `page <= 100` ile
+    // durunca liste HATASIZ ama EKSİK dönüyordu; ekran bunu gerçek toplam sanıp daha küçük
+    // bir borç gösteriyordu. Tavanı yükseltmek tek başına yetmez — yükseltilmiş tavan da
+    // aynı sessiz kesmeyi daha ileride yapar.
+    if (!exhausted && items.length < total) {
+      throw StateError(
+        'Liste eksik alındı (${items.length}/$total). Sayfalama tavanına ulaşıldı; '
+        'rakamlar eksik olacağı için gösterilmiyor.',
+      );
     }
     return {'items': items, 'totalCount': total > 0 ? total : items.length};
   }
+
+  /// Sayfalama güvenlik tavanı — 1.000'lik varsayılan sayfayla 500.000 kayda kadar yeter.
+  static const int _maxPages = 500;
 
   /// [idempotencyKey] verilirse istek `Idempotency-Key` başlığıyla gider: ağ hatası sonrası
   /// tekrar denemede sunucu işi İKİNCİ KEZ yapmaz, ilk yanıtı aynen döndürür. Aynı akıştaki
