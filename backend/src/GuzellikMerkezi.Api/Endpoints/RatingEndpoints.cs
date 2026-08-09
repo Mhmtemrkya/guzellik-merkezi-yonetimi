@@ -44,7 +44,9 @@ public static class RatingEndpoints
         });
 
         // Public (anonim): müşteri QR ile gelir; link durumunu okur ve yıldız gönderir.
-        var pub = app.MapGroup("/api/public/ratings").WithTags("Ratings");
+        // ANONİM PUANLAMA — token deneme-yanılmasına karşı hız sınırlı. Rastgele GUID token'larla
+        // geçerli bir değerlendirme oturumu aranabilir; sınırsız bırakılırsa jeton uzayı taranırdı.
+        var pub = app.MapGroup("/api/public/ratings").WithTags("Ratings").RequireRateLimiting("public-browse");
         pub.MapGet("/{token:guid}", async (Guid token, IRatingService service, HttpContext http, CancellationToken ct) =>
             (await service.GetPublicAsync(token, ct)).ToHttpResult(http));
         pub.MapPost("/{token:guid}", async (Guid token, SubmitRatingRequest request, IRatingService service, HttpContext http, CancellationToken ct) =>

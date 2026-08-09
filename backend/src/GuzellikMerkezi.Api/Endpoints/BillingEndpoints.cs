@@ -55,7 +55,9 @@ public static class BillingEndpoints
         // Kimlik doğrulaması YOK: bu isteği kullanıcının tarayıcısı ya da sağlayıcı yapar, oturum
         // taşımaz. Güvenlik, tahmin edilemez form anahtarının sağlayıcıya SORULARAK doğrulanmasına
         // dayanır — anahtarı uyduran biri "başarılı ödeme" ürettiremez.
-        var callback = app.MapGroup("/api/payments").WithTags("Payments").AllowAnonymous();
+        // ANONİM AMA SINIRSIZ DEĞİL: her callback sağlayıcıya bir sorgu (dış çağrı) tetikler.
+        var callback = app.MapGroup("/api/payments").WithTags("Payments")
+            .AllowAnonymous().RequireRateLimiting("payment-callback");
 
         callback.MapPost("/callback", (HttpContext http, IBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
             HandleCallbackAsync(http, svc, resolver, ct));

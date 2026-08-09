@@ -126,6 +126,12 @@ builder.Services.AddRateLimiter(options =>
     // Herkese açık salon vitrini (anonim gezinme): IP başına dakikada 60 istek.
     options.AddPolicy("public-browse", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // ÖDEME DÖNÜŞÜ (anonim): sağlayıcı ya da kullanıcı tarayıcısı çağırır, oturum taşımaz. Her
+    // istek sağlayıcıya bir SORGU (dış çağrı) tetikler; sınırsız bırakıldığında uydurma
+    // anahtarlarla hem sağlayıcı kotası tüketilir hem sonuç deneme-yanılması yapılırdı. Meşru
+    // dönüş tek bir istektir; IP başına dakikada 30 fazlasıyla yeter.
+    options.AddPolicy("payment-callback", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
 var app = builder.Build();
