@@ -71,4 +71,58 @@ public sealed class AdminEndpointAuthorizationTests
             """,
             violations));
     }
+
+    /// <summary>
+    /// FİNANSAL ALANLARIN OKUMASI DA İZNE TABİDİR — <c>writeOnly</c> ile AÇILAMAZ.
+    ///
+    /// <para>
+    /// <c>RequirePermission(..., writeOnly: true)</c> okumayı serbest bırakır: personel yazamasa da
+    /// LİSTEYİ görebilir. Bu, katalog (hizmet/stok) için MEŞRUDUR — personel randevu alırken o
+    /// listeleri görmek zorunda. Ama PARA alanlarında (cari, kasa, gider, muhasebe, raporlar)
+    /// okuma da sızıntıdır: yetkisiz personel kurumun cirosunu, borçlarını, giderlerini görürdü.
+    /// </para>
+    /// <para>
+    /// 9 Ağu 2026 canlı pentest'te bu matris "açık madde" olarak işaretlenmişti; kod aslında doğru
+    /// uyguluyordu ama hiçbir kapı biri yanlışlıkla `writeOnly` eklerse yakalamıyordu. Bu test o
+    /// boşluğu kapatır.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void FinancialAdminGroupsRestrictReadsToo()
+    {
+        var endpointsDir = Path.Combine(SourceTree.SourceRoot, "GuzellikMerkezi.Api", "Endpoints");
+        var violations = new List<string>();
+
+        // Para ile ilgili yol parçaları: bu grupların okuması da izne tabi olmalı.
+        string[] financialPaths = ["/api/admin/accounts", "/api/admin/cash", "/api/admin/expenses",
+            "/api/admin/reports", "/api/admin/commissions"];
+
+        foreach (var file in Directory.EnumerateFiles(endpointsDir, "*.cs"))
+        {
+            var content = SourceTree.StripComments(File.ReadAllText(file));
+            foreach (Match m in Regex.Matches(content, @"MapGroup\(\s*""(?<path>/api/admin/[^""]*)""\s*\)(?<chain>[^;]*);"))
+            {
+                var path = m.Groups["path"].Value;
+                if (!financialPaths.Any(fp => path.StartsWith(fp, StringComparison.Ordinal))) continue;
+
+                var chain = m.Groups["chain"].Value;
+                // writeOnly:true okumayı açar — finansal alanda YASAK.
+                if (Regex.IsMatch(chain, @"writeOnly\s*:\s*true"))
+                {
+                    violations.Add(
+                        $"{Path.GetFileName(file)}:{SourceTree.LineOf(content, m.Index)} → {path} " +
+                        "finansal ama writeOnly:true (okuma serbest bırakılmış)");
+                }
+            }
+        }
+
+        Assert.True(violations.Count == 0, SourceTree.Describe(
+            "FİNANSAL ALANDA OKUMA SERBEST BIRAKILAMAZ.",
+            """
+            writeOnly:true yalnız yazmayı kısıtlar, okumayı sayfa iznine BAKMADAN geçirir. Katalog
+            (hizmet/stok) için doğrudur ama para alanlarında (cari/kasa/gider/rapor/prim) yetkisiz
+            personel kurumun mali tablosunu görürdü. writeOnly'i kaldırın; okuma da izin istesin.
+            """,
+            violations));
+    }
 }
