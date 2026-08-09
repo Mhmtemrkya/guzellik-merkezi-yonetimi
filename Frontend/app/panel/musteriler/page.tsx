@@ -25,7 +25,7 @@ import AppointmentEditor, { type AppointmentEditorValues } from '@/components/da
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import {
@@ -299,23 +299,26 @@ function MusterilerPageInner() {
     async () => {
       const cid = selected?.id
       if (!cid || !tenantId || !modalOpen) return { appts: [], accounts: [], cancelled: [] }
-      const [apptRes, accounts, cancelled] = await Promise.all([
+      const [apptRes, salesRes] = await Promise.all([
         adminApi.appointments<ApiAppointment>({ tenantId, customerId: cid, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
-        // TÜM cariler sayfa sayfa: modaldeki "Toplam Harcama / Tahsil Edilen" artık bu listeden
-        // hesaplanıyor; tek sayfalık (100) çekim, çok satışı olan müşteride tutarı sessizce eksik
-        // gösterirdi.
-        // PARA VERİSİ HEP BİRLİKTE: canlı cariler + iptal arşivi TEK bütündür ("Tahsil Edilen"
-        // ikisinin toplamıdır). Biri düşüp diğeri gelirse KPI yarım gerçeği rakam gibi gösterir
-        // (0 ya da iptalsiz eksik tutar). Hata yutulmaz — modal "—" ve sayfa hata gösterir.
-        fetchAllPaged<ApiCustomerAccount>(
-          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId: cid, page, pageSize }),
-          200,
-        ),
-        // İPTAL ARŞİVİ: iptal edilen satışın satırları canlı tablodan SİLİNİR, bu yüzden iptal
-        // sayısı ve kısmi iade sonrası kurumda kalan para yalnız buradan okunabilir.
-        adminApi.listCancelledSales<unknown[]>({ customerId: cid }, tenantId)
-          .then((rows) => (Array.isArray(rows) ? rows : [])),
+        // CANLI + ARŞİV TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
+        //
+        // Bunlar iki AYRI istekle çekiliyordu ve modalin "Toplam Harcama / Tahsil Edilen" KPI'ları
+        // ikisinin TOPLAMIDIR. Araya bir iptal girdiğinde aynı satış hem canlıda hem arşivde
+        // görünüp ÇİFT sayılabiliyor, ters sırada ise hiçbirinde görünmeyip 0'a düşüyordu.
+        // Sunucu ikisini tek transaction'da (RepeatableRead) okur; yarış penceresi kapanır.
+        //
+        // Sayfalama da SUNUCUDA: bu uç, müşteri kapsamında listenin TAMAMINI döndürür ya da
+        // reddeder — `fetchAllPaged` ile taklit etmek her sayfayı ayrı ana düşürüp yarışı
+        // geri getirirdi. Hata YUTULMAZ: boş liste "satış yok" demektir, oysa gerçek
+        // "veri alınamadı"dır — modal "—", sayfa hata gösterir.
+        adminApi.accountsWithArchive<{
+          live?: { items?: ApiCustomerAccount[] }
+          cancelled?: unknown[]
+        }>({ customerId: cid }, tenantId),
       ])
+      const accounts = Array.isArray(salesRes?.live?.items) ? salesRes.live!.items! : []
+      const cancelled = Array.isArray(salesRes?.cancelled) ? salesRes.cancelled : []
       return { appts: apiItems(apptRes), accounts, cancelled }
     },
     [tenantId, selected?.id, modalOpen, sessRefresh],

@@ -24,7 +24,7 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi, fetchAllPaged, ApiClientError } from '@/lib/apiClient'
+import { adminApi, ApiClientError } from '@/lib/apiClient'
 import { activeInstallments, groupAccountsByCustomer } from '@/lib/accountGrouping'
 import { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import {
@@ -155,17 +155,22 @@ function OnMuhasebePageInner() {
   }>(
     async () => {
       if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] }
-      const [accounts, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, cancelled, services] = await Promise.all([
-        // TÜM cariler sayfa sayfa: liste artık MÜŞTERİ BAZINDA gruplanıyor. Tek sayfalık (500)
-        // çekimde müşterinin bazı satışları listeye hiç girmez ve grup toplamı (borç/tahsilat)
-        // sessizce eksik çıkardı — kısmi veriyle toplama yapmak yanlış rakam üretir.
-        // HATA YUTULMAZ: boş liste "cari yok" demektir, oysa gerçek "veri alınamadı"dır.
-        // Cari tablosu gruplama yaptığı için eksik veri YANLIŞ TOPLAM üretir — sayfa hata
-        // göstersin (useApiQuery.error) ki kullanıcı rakama güvenmesin.
-        fetchAllPaged<ApiCustomerAccount>(
-          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, page, pageSize }),
-          500,
-        ),
+      const [sales, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, services] = await Promise.all([
+        // CANLI CARİLER + İPTAL ARŞİVİ TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
+        //
+        // İkisi AYRI çekiliyordu; tablo müşteri bazında gruplanıp para topladığı için araya giren
+        // bir iptal aynı satışı hem canlıda hem arşivde gösterip ÇİFT saydırabiliyor, ters sırada
+        // ise hiçbirinde göstermeyip 0'a düşürüyordu. Sunucu ikisini tek transaction'da okur.
+        //
+        // Sayfalama da SUNUCUDA: uç listenin TAMAMINI döndürür ya da açıkça reddeder — bu yüzden
+        // `fetchAllPaged` gerekmez (o, her sayfayı ayrı ana düşürüp yarışı geri getirirdi).
+        // HATA YUTULMAZ: boş liste "cari yok" demektir, oysa gerçek "veri alınamadı"dır. Cari
+        // tablosu gruplama yaptığı için eksik veri YANLIŞ TOPLAM üretir — sayfa hata göstersin
+        // (useApiQuery.error) ki kullanıcı rakama güvenmesin.
+        adminApi.accountsWithArchive<{
+          live?: { items?: ApiCustomerAccount[] }
+          cancelled?: unknown[]
+        }>({}, tenantId),
         adminApi.expenses<ApiBusinessExpense>({ tenantId, fromUtc: monthStart.toISOString(), toUtc: monthEnd.toISOString(), page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
         adminApi.adisyonlar<ApiAdisyon>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
@@ -174,17 +179,15 @@ function OnMuhasebePageInner() {
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
-        // İptal edilen satışlar canlı cari listesinde YOK — arşivden ayrı çekilir.
-        // PARA VERİSİ HEP BİRLİKTE: cari defterindeki "Tahsil Edilen" canlı + arşiv toplamıdır;
-        // biri düşüp diğeri gelirse yarım gerçek rakam gibi görünür. Hata yutulmaz.
-        adminApi.listCancelledSales<unknown[]>(undefined, tenantId),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
       ])
       return {
-        accounts, expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
+        // Canlı cariler ve iptal arşivi AYNI yanıttan çözülür (bkz. yukarıdaki uç).
+        accounts: Array.isArray(sales?.live?.items) ? sales.live!.items! : [],
+        expenses: apiItems(expenses), adisyonlar: apiItems(adisyonlar),
         appts: apiItems(appts), customers, packages: apiItems(packages),
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
-        cancelled: Array.isArray(cancelled) ? cancelled : [],
+        cancelled: Array.isArray(sales?.cancelled) ? sales.cancelled : [],
         services: apiItems(services),
       }
     },

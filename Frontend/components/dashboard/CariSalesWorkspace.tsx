@@ -63,10 +63,14 @@ export default function CariSalesWorkspace({
       // CANLI + ARŞİV TEK İSTEKTE (tek anlık görüntü). İkisi ayrı çekilirken aradaki bir iptal
       // aynı satışı ÇİFT saydırabiliyor ya da tamamen kaybettirebiliyordu. Hata da YUTULMAZ:
       // boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
+      // SAYFA BOYUTU GÖNDERİLMEZ. Burada `pageSize: 500` vardı ve 500'den fazla canlı satışı
+      // olan müşteride fazlası SESSİZCE kesiliyordu — üstelik panelin özet rakamları bu eksik
+      // listeden hesaplanıyordu. Uç, müşteri kapsamında listenin TAMAMINI döndürür ya da açıkça
+      // reddeder; sayfaları burada dolaşmak tek-anlık-görüntü garantisini bozardı.
       const res = await adminApi.accountsWithArchive<{
         live?: { items?: ApiCustomerAccount[] }
         cancelled?: unknown[]
-      }>({ customerId, page: 1, pageSize: 500 }, tenantId)
+      }>({ customerId }, tenantId)
 
       const live = Array.isArray(res?.live?.items) ? res.live!.items! : []
       const cancelled = Array.isArray(res?.cancelled) ? res.cancelled.map(mapCancelledSale) : []

@@ -163,14 +163,18 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     try {
       final results = await Future.wait<dynamic>([
         _api.get('/api/admin/customers/$_id').catchError((_) => null),
-        // Ölçek: tüm cari listesi çekilmez — yalnız bu müşterinin satışları (sunucu filtresi).
-        // Bu müşterinin TÜM satışları sayfa sayfa çekilir: "Toplam Harcama / Tahsil Edilen"
-        // kartları bu listeden hesaplandığı için tek sayfalık çekim tutarı sessizce eksik
-        // gösterirdi.
-        _api
-            .getAllPaged('/api/admin/accounts/',
-                query: {'customerId': _id}, pageSize: 200)
-            .catchError((_) => const <String, dynamic>{}),
+        // CANLI + ARŞİV TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
+        //
+        // İkisi AYRI çekiliyordu ve "Toplam Harcama / Tahsil Edilen" kartları ikisinin
+        // TOPLAMIDIR. Araya bir iptal girdiğinde aynı satış hem canlıda hem arşivde görünüp
+        // ÇİFT sayılabiliyor, ters sırada ise hiçbirinde görünmeyip 0'a düşüyordu. Sunucu
+        // ikisini tek transaction'da okur.
+        //
+        // Sayfalama da SUNUCUDA: uç, müşteri kapsamında listenin TAMAMINI döndürür ya da
+        // reddeder. `getAllPaged` ile taklit etmek her sayfayı ayrı ana düşürüp yarışı geri
+        // getirirdi. Hata YUTULMAZ (catchError yok): boş liste "satış yok" demektir, oysa
+        // gerçek "veri alınamadı"dır — ekran hata durumuna geçer (_error).
+        _api.get('/api/admin/accounts/with-archive', query: {'customerId': _id}),
         // Ölçek: randevular da SUNUCUDA müşteriye göre süzülür (cari listesindeki gibi).
         // Eskiden tüm kurumun ilk 500 randevusu çekilip bellekte süzülüyordu; backend
         // eskiden yeniye sıraladığı için kurum 500 randevuyu aşınca bu müşterinin
@@ -179,28 +183,26 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
             .get('/api/admin/appointments/',
                 query: {'page': 1, 'pageSize': 500, 'customerId': _id})
             .catchError((_) => const <dynamic>[]),
-        // İPTAL ARŞİVİ: iptal edilen satışın cari/tahsilat satırları canlı tablodan SİLİNİR,
-        // bu yüzden iptal sayısı ve kısmi iade sonrası KURUMDA KALAN para yalnız buradan okunur.
-        // PARA VERİSİ HEP BİRLİKTE: "Tahsil Edilen" canlı cariler + iptal arşivinin toplamıdır.
-        // Biri düşüp diğeri gelirse KPI yarım gerçeği rakam gibi gösterir — hata yutulmaz,
-        // ekran hata durumuna geçer (_error).
-        _api.get('/api/admin/accounts/cancelled', query: {'customerId': _id}),
       ]);
 
       if (results[0] is Map) {
         _customer = (results[0] as Map).cast<String, dynamic>();
       }
-      _accounts = apiItems(results[1])
+      // Canlı satışlar ve iptal arşivi AYNI yanıttan çözülür (bkz. yukarıdaki uç).
+      final sales = results[1] is Map
+          ? (results[1] as Map).cast<String, dynamic>()
+          : const <String, dynamic>{};
+      _accounts = apiItems(sales['live'])
           .where((a) => '${a['customerId']}' == _id)
+          .toList();
+      _cancelledSales = apiItems(sales['cancelled'])
+          .where((c) => '${c['customerId']}' == _id)
           .toList();
       _appts = apiItems(results[2])
           .where((a) => '${a['customerId']}' == _id)
           .toList()
         ..sort((x, y) =>
             '${y['startUtc']}'.compareTo('${x['startUtc']}'));
-      _cancelledSales = apiItems(results[3])
-          .where((c) => '${c['customerId']}' == _id)
-          .toList();
 
       if (mounted) setState(() => _loading = false);
     } catch (e) {

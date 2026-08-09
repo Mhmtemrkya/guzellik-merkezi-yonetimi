@@ -167,8 +167,13 @@ Future<CustomerSalesLoad> loadCustomerSalesAccounts(
   //
   // Tek istek olduğu için "arşiv ayrı çöktü" durumu da ARTIK YOK: ya ikisi de gelir ya hiçbiri.
   // Hata YUTULMAZ — boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
+  // SAYFA BOYUTU GÖNDERİLMEZ. Burada `pageSize: 500` vardı ve 500'den fazla canlı satışı olan
+  // müşteride fazlası SESSİZCE kesiliyordu — üstelik sheet'in özet rakamları bu eksik listeden
+  // hesaplanıyordu. Uç, müşteri kapsamında listenin TAMAMINI döndürür ya da açıkça reddeder;
+  // sayfaları burada dolaşmak (getAllPaged) her sayfayı ayrı ana düşürüp tek-anlık-görüntü
+  // garantisini bozardı.
   final res = await api.get('/api/admin/accounts/with-archive',
-      query: {'customerId': customerId, 'page': 1, 'pageSize': 500});
+      query: {'customerId': customerId});
 
   final map = res is Map ? res.cast<String, dynamic>() : const <String, dynamic>{};
   final live = apiItems(map['live'])

@@ -30,7 +30,7 @@ Future<void> openCustomerLedgerSheet(
   required Future<void> Function() onOpenSalesWorkspace,
   /// Defterin KENDİ verisini tazelemesi için: tahsilat sonrası açık kalan sayfa eski rakamları
   /// göstermesin (aşağıdaki `_refresh`). Verilmezse sayfa anlık görüntüyle çalışır.
-  Future<CustomerAccountGroup?> Function()? onRefresh,
+  Future<LedgerRefresh> Function()? onRefresh,
 }) {
   return Navigator.of(context).push<void>(MaterialPageRoute(
     fullscreenDialog: true,
@@ -44,6 +44,41 @@ Future<void> openCustomerLedgerSheet(
       onRefresh: onRefresh,
     ),
   ));
+}
+
+/// Defter tazeleme SONUCU — "veri geldi", "satış kalmadı" ve "okunamadı" AYRI durumlardır.
+///
+/// <p>
+/// Üçü de eskiden `null` ile ifade ediliyordu ve ekran hepsinde eski satırları OLDUĞU GİBİ
+/// göstermeye devam ediyordu. Somut sonuç: satış başka bir cihazda iptal/iade edilmişken açık
+/// defter o satışı CANLI ve TAHSİL EDİLEBİLİR göstermeyi sürdürüyor, kullanıcı kapanmış bir
+/// satıştan tahsilat almaya kalkabiliyordu. Sessiz bayat veri, para ekranında boş ekrandan
+/// tehlikelidir: kullanıcı gördüğü rakama güvenerek işlem yapar.
+/// </p>
+class LedgerRefresh {
+  /// Taze veri geldi.
+  const LedgerRefresh.loaded(CustomerAccountGroup this.group)
+      : failed = false,
+        gone = false;
+
+  /// Sunucuda bu müşterinin CANLI satışı kalmadı (iptal edilmiş/silinmiş).
+  const LedgerRefresh.gone()
+      : group = null,
+        failed = false,
+        gone = true;
+
+  /// Tazeleme başarısız — ekrandaki veri BAYAT; doğruluğu bilinmiyor.
+  const LedgerRefresh.failed()
+      : group = null,
+        failed = true,
+        gone = false;
+
+  final CustomerAccountGroup? group;
+  final bool failed;
+  final bool gone;
+
+  /// Ekrandaki rakamlara güvenilemez → para işlemleri kapatılır.
+  bool get blocksActions => failed || gone;
 }
 
 class CustomerLedgerScreen extends StatefulWidget {
@@ -68,7 +103,7 @@ class CustomerLedgerScreen extends StatefulWidget {
   final Future<void> Function() onOpenSalesWorkspace;
 
   /// Tahsilat sonrası defteri tazeler (bkz. `_refresh`).
-  final Future<CustomerAccountGroup?> Function()? onRefresh;
+  final Future<LedgerRefresh> Function()? onRefresh;
 
   @override
   State<CustomerLedgerScreen> createState() => _CustomerLedgerScreenState();
@@ -81,12 +116,79 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   /// görüntüdür.
   late CustomerAccountGroup _group = widget.group;
 
+  /// Tazeleme başarısız oldu ya da satış artık yok → ekrandaki rakamlar BAYAT.
+  LedgerRefresh? _staleReason;
+
   /// TAHSİLAT SONRASI DEFTER TAZELENİR. Sayfa açık kalırken tahsilat alınınca KPI'lar, taksit
   /// takvimi ve ekstre eski rakamları göstermeye devam ediyordu (kullanıcı "para işlenmedi mi"
   /// diye ikinci kez tahsilat almaya kalkabilirdi).
+  ///
+  /// BAŞARISIZLIK ARTIK YUTULMAZ. Eskiden tazeleme hatası da "satış kalmadı" durumu da sessizce
+  /// eski veriyi bırakıyordu: iptal/iade edilmiş bir satış ekranda CANLI ve TAHSİL EDİLEBİLİR
+  /// kalıyor, kullanıcı kapanmış bir satıştan para almaya kalkabiliyordu. Artık ekran bayat
+  /// olduğunu SÖYLER ve para düğmelerini KAPATIR — yenilenene kadar.
   Future<void> _refresh() async {
     final next = await widget.onRefresh?.call();
-    if (next != null && mounted) setState(() => _group = next);
+    if (next == null || !mounted) return;
+    setState(() {
+      _staleReason = next.blocksActions ? next : null;
+      final fresh = next.group;
+      if (fresh != null) _group = fresh;
+    });
+  }
+
+  /// Bayatken para işlemleri kapalıdır (bkz. `_refresh`).
+  bool get _blocked => _staleReason?.blocksActions == true;
+
+  /// "Bu ekran güncel değil" şeridi — iki farklı sebep, iki farklı cümle.
+  Widget _staleBanner() {
+    final gone = _staleReason?.gone == true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECDD3)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFB91C1C)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              gone ? 'Bu satış artık açık değil' : 'Ekran güncellenemedi',
+              style: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF9F1239)),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              gone
+                  ? 'Satış iptal edilmiş ya da kaldırılmış olabilir. Aşağıdaki rakamlar son '
+                      'görüntüdür; tahsilat kapatıldı. Sayfayı kapatıp listeyi yenileyin.'
+                  : 'Veriler sunucudan alınamadı; aşağıdaki rakamlar ESKİ olabilir. Yanlış '
+                      'tutardan tahsilat alınmasın diye para işlemleri kapatıldı.',
+              style: const TextStyle(fontSize: 11.5, color: Color(0xFF9F1239), height: 1.35),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 30,
+              child: OutlinedButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded, size: 15),
+                label: const Text('Yeniden dene', style: TextStyle(fontSize: 11.5)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF9F1239),
+                  side: const BorderSide(color: Color(0xFFFECDD3)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
   }
 
   String get _todayIso {
@@ -124,6 +226,10 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
         children: [
+          // ---------------- BAYAT VERİ UYARISI ----------------
+          // Boş ekran değil, YANLIŞ ekran tehlikelidir: rakamlar duruyor ama artık doğru
+          // olmayabilir. Uyarı görünürken tahsilat düğmeleri de kapalıdır.
+          if (_blocked) _staleBanner(),
           // ---------------- KİMLİK + KPI ----------------
           Container(
             padding: const EdgeInsets.all(14),
@@ -487,10 +593,16 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         if (isOpen) ...[
           const SizedBox(height: 9),
           Row(children: [
+            // BAYAT EKRANDA PARA DÜĞMESİ YOK: `onPressed: null` düğmeyi hem işlevsiz hem
+            // GÖRSEL OLARAK pasif yapar (kullanıcı neden çalışmadığını yukarıdaki şeritten
+            // okur). Yalnız gizlemek yetmezdi — kullanıcı düğmeyi arar, bulamayınca listeye
+            // döner ve orada da eski veriyi görürdü.
             if (isInstallment) ...[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () async { await widget.onCollectMonthly(a); await _refresh(); },
+                  onPressed: _blocked
+                      ? null
+                      : () async { await widget.onCollectMonthly(a); await _refresh(); },
                   style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                   icon: const Icon(Icons.event_available_rounded, size: 15),
                   label: const Text('Aylık taksit', style: TextStyle(fontSize: 11.5)),
@@ -500,7 +612,9 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             ],
             Expanded(
               child: FilledButton.icon(
-                onPressed: () async { await widget.onCollect(a); await _refresh(); },
+                onPressed: _blocked
+                    ? null
+                    : () async { await widget.onCollect(a); await _refresh(); },
                 style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                 icon: const Icon(Icons.payments_rounded, size: 15),
                 label: Text(isInstallment ? 'Genel tahsilat' : 'Tahsilat al',

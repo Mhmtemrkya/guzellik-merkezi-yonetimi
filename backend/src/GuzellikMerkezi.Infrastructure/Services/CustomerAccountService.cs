@@ -164,7 +164,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .Include(x => x.Payments)
             .Include(x => x.SoldByStaffMember)
             .Include(x => x.AppliedByStaffMember)
+            // KARARLI TOPLAM SIRA: yalnız CreatedAtUtc bir TAM sıra değildir. Aynı anda oluşan
+            // satırlarda (toplu içeri aktarma, aynı fişten açılan kartlar) MySQL'in LIMIT/OFFSET
+            // sırası tanımsızdır; sayfalar arasında satır TEKRARLAYABİLİR ya da DÜŞEBİLİR.
+            // ListAllForCustomerAsync sayfaları birleştirdiği için bu doğrudan eksik/çift
+            // satış demektir — Id ile sıra tekilleştirilir.
             .OrderByDescending(x => x.CreatedAtUtc)
+            .ThenBy(x => x.Id)
             .AsQueryable();
 
         // Müşteri kartı: yalnız o müşterinin carileri (tüm liste çekilmesin).
@@ -1098,6 +1104,16 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     /// yarış değil sözleşme doğrulamaktır.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Tek müşterinin satışları tek istekte TAMAMEN dönerken üst güvenlik sınırı. Gerçek bir
+    /// sınır değil, kaçak bir sorguya karşı fren: bu alanda tek müşterinin binlerce satışı olmaz.
+    /// Aşılırsa liste KESİLMEZ, istek REDDEDİLİR (bkz. aşağıdaki gerekçe).
+    /// </summary>
+    private const int CustomerSalesHardCap = 5000;
+
+    /// <summary>Tek turda çekilen sayfa boyutu (PageRequest tavanı 1000).</summary>
+    private const int CustomerSalesPageSize = 1000;
+
     public async Task<Result<CustomerAccountsWithArchiveDto>> ListWithArchiveAsync(
         Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default)
     {
@@ -1105,7 +1121,25 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken)
             : null;
 
-        var live = await ListAsync(tenantId, request, cancellationToken, customerId);
+        // MÜŞTERİ KAPSAMINDA LİSTE TAMDIR — SESSİZCE KESİLMEZ.
+        //
+        // İstemciler (web CariSalesWorkspace + mobil customer_sales_panel) tek sayfa `pageSize=500`
+        // istiyordu. 500'den fazla canlı satışı olan müşteride fazlası HİÇ GÖRÜNMÜYOR, üstelik
+        // panel "Toplam Harcama / Tahsil Edilen" özetlerini bu eksik listeden hesaplıyordu:
+        // rakam yanlış ama hatasız görünüyordu. Sayfa boyutunu büyütmek uçurumu taşır, kaldırmaz.
+        //
+        // Sayfalamayı İSTEMCİYE bırakmak da olmaz: her sayfa ayrı transaction demektir ve bu ucun
+        // var oluş sebebi olan tek-anlık-görüntü garantisi (canlı + arşiv aynı andan) bozulurdu.
+        // Bu yüzden sayfalar BU transaction içinde toplanır; RepeatableRead hepsini aynı ana sabitler.
+        //
+        // KAPSAMSIZ ÇAĞRI DA TAMDIR (Ön Muhasebe cari tablosu). Orada da canlı liste ve arşiv
+        // AYRI isteklerle çekiliyordu ve tablo müşteri bazında gruplanıp para topladığı için aynı
+        // yarış oradaki toplamları da bozabiliyordu. İstemciler zaten `fetchAllPaged`/`getAllPaged`
+        // ile listenin TAMAMINI çekiyordu — yani tamamlama yeni bir maliyet getirmez, yalnız
+        // sayfaları tek anlık görüntüye alır ve üst sınırı açık hâle getirir.
+        //
+        // `request` bu yüzden sayfa boyutu olarak KULLANILMAZ; imzada geriye uyumluluk için durur.
+        var live = await CollectAllAsync(tenantId, customerId, cancellationToken);
         if (live.IsFailure) return Result<CustomerAccountsWithArchiveDto>.Failure(live.Error);
 
         var cancelled = await ListCancelledAsync(tenantId, customerId, null, cancellationToken);
@@ -1116,6 +1150,67 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         return Result<CustomerAccountsWithArchiveDto>.Success(
             new CustomerAccountsWithArchiveDto(live.Value!, cancelled.Value!));
+    }
+
+    /// <summary>
+    /// TÜM canlı satışlar (istenirse tek müşteri kapsamında) — eksiksiz ya da hata; sessiz kesme YOK.
+    ///
+    /// <para>
+    /// Çağıranın açtığı transaction içinde koşar (bkz. <see cref="ListWithArchiveAsync"/>), bu
+    /// yüzden sayfalar aynı anlık görüntüden gelir. Dönen <see cref="PagedResult{T}"/> tek sayfa
+    /// gibi biçimlenir (<c>Page = 1</c>, <c>PageSize = toplam</c>) — istemciler `live.items`
+    /// okumaya devam eder, DTO değişmez.
+    /// </para>
+    /// <para>
+    /// SINIR AŞILIRSA KESMEK YERİNE REDDEDİLİR: para ekranında eksik liste, hata mesajından
+    /// tehlikelidir; kullanıcı yanlış toplama güvenip işlem yapar. Aynı kural istemcideki
+    /// `fetchAllPaged` / `getAllPaged` yardımcılarında da geçerli.
+    /// </para>
+    /// </summary>
+    private async Task<Result<PagedResult<CustomerAccountDto>>> CollectAllAsync(
+        Guid tenantId, Guid? customerId, CancellationToken cancellationToken)
+    {
+        var scoped = customerId is { } c && c != Guid.Empty;
+        var collected = new List<CustomerAccountDto>();
+        var page = 1;
+        int total;
+
+        while (true)
+        {
+            var slice = await ListAsync(
+                tenantId, new PageRequest(page, CustomerSalesPageSize), cancellationToken, customerId);
+            if (slice.IsFailure) return slice;
+
+            total = slice.Value!.TotalCount;
+            if (total > CustomerSalesHardCap)
+            {
+                return Result<PagedResult<CustomerAccountDto>>.Failure(Error.Conflict(
+                    scoped
+                        ? $"Bu müşterinin {total} satışı var; tek ekranda güvenle gösterilebilecek " +
+                          $"üst sınır {CustomerSalesHardCap}. Liste eksik gösterilmemesi için " +
+                          "durduruldu — kayıtlar Ön Muhasebe'den dönem süzgeciyle incelenmelidir."
+                        : $"Kurumda {total} cari kayıt var; tek istekte güvenle taşınabilecek üst " +
+                          $"sınır {CustomerSalesHardCap}. Toplamların eksik hesaplanmaması için " +
+                          "durduruldu — listeyi müşteri ya da dönem süzgeciyle daraltın."));
+            }
+
+            collected.AddRange(slice.Value.Items);
+
+            // BOŞ SAYFA DA EKSİK LİSTEDİR: sunucu total=N derken sayfa boş dönerse elde kalan
+            // kısmı TAM liste saymak, sessiz kesmenin ta kendisidir (aynı kural istemcide de var).
+            if (slice.Value.Items.Count == 0 && collected.Count < total)
+            {
+                return Result<PagedResult<CustomerAccountDto>>.Failure(Error.Conflict(
+                    $"Satış listesi eksik alındı ({collected.Count}/{total}). Yanlış toplam " +
+                    "gösterilmemesi için durduruldu; sayfayı yenileyin."));
+            }
+
+            if (collected.Count >= total) break;
+            page++;
+        }
+
+        return Result<PagedResult<CustomerAccountDto>>.Success(
+            new PagedResult<CustomerAccountDto>(collected, total, 1, Math.Max(collected.Count, 1)));
     }
 
     public async Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(

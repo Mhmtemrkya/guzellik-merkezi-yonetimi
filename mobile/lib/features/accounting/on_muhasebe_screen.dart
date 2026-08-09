@@ -74,14 +74,18 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   }
 
   Future<_AccData> _load() async {
-    var cancelledFailed = false;
     final results = await Future.wait([
-      // TÜM cariler sayfa sayfa: liste MÜŞTERİ BAZINDA gruplanıyor, tek sayfalık (500) çekimde
-      // müşterinin bazı satışları listeye hiç girmez ve grup toplamı sessizce eksik çıkardı.
+      // CANLI CARİLER + İPTAL ARŞİVİ TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
       //
+      // İkisi AYRI çekiliyordu; tablo müşteri bazında gruplanıp para topladığı için araya giren
+      // bir iptal aynı satışı hem canlıda hem arşivde gösterip ÇİFT saydırabiliyor, ters sırada
+      // ise hiçbirinde göstermeyip 0'a düşürüyordu. Sunucu ikisini tek transaction'da okur.
+      //
+      // Sayfalama da SUNUCUDA: uç listenin TAMAMINI döndürür ya da açıkça reddeder — bu yüzden
+      // `getAllPaged` gerekmez (o, her sayfayı ayrı ana düşürüp yarışı geri getirirdi).
       // HATA YUTULMAZ: boş sonuç "cari yok" demektir, oysa gerçek "veri alınamadı"dır. Gruplama
       // eksik veriyle YANLIŞ TOPLAM üretir — ekran hata göstersin ki kullanıcı rakama güvenmesin.
-      widget.api.getAllPaged('/api/admin/accounts/', pageSize: 500),
+      widget.api.get('/api/admin/accounts/with-archive'),
       widget.api.get('/api/admin/expenses/', query: {
         'fromUtc': _rangeStart.toUtc().toIso8601String(),
         'toUtc': _rangeEnd.toUtc().toIso8601String(),
@@ -94,21 +98,18 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       widget.api
           .get('/api/admin/staff/', query: {'page': 1, 'pageSize': 100})
           .catchError((_) => const <dynamic>[]),
-      // İptal edilen satışlar canlı cari listesinde YOK: iptalde kayıt (taksit/tahsilat/seans
-      // dahil) cancelled_sales arşivine taşınıp silinir. "İptal edilenler" bu uçtan okunur.
-      // HATA BOŞ LİSTEYE ÇEVRİLİR AMA SESSİZCE DEĞİL: bayrak taşınır, ekran uyarı gösterir.
-      widget.api.get('/api/admin/accounts/cancelled').catchError((_) {
-        cancelledFailed = true;
-        return const <dynamic>[];
-      }),
     ]);
+    // Canlı cariler ve iptal arşivi AYNI yanıttan çözülür: artık "arşiv ayrı çöktü" durumu YOK —
+    // ya ikisi de gelir ya hiçbiri (istek patlarsa _load fırlar, ekran hata gösterir).
+    final sales = results[0] is Map
+        ? (results[0] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
     final data = _AccData(
-      accounts: apiItems(results[0]),
+      accounts: apiItems(sales['live']),
       expenses: apiItems(results[1]),
       adisyonlar: apiItems(results[2]),
       staff: apiItems(results[3]),
-      cancelled: apiItems(results[4]),
-      cancelledFailed: cancelledFailed,
+      cancelled: apiItems(sales['cancelled']),
     );
     // Son yüklenen veri FAB'lardan da erişilebilir olsun (maaş sayfası personel listesi ister).
     _last = data;
@@ -188,6 +189,10 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('$e')));
       }
+      // HATADA DA TAZELE. Başarısız bir istek "hiçbir şey olmadı" demek DEĞİLDİR: sunucu işi
+      // yapmış ama yanıt yolda kopmuş olabilir. Eskiden yalnız başarıda yenileniyordu; hata
+      // sonrası ekran bayat kalıyor ve kullanıcı aynı tahsilatı ikinci kez almaya kalkabiliyordu.
+      _reload();
     }
   }
 
@@ -801,24 +806,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           (v) => setState(() => _accountFilter = v),
         ),
         const SizedBox(height: 8),
-        // ARŞİV OKUNAMADI: aşağıdaki "İptal edilenler · 0" sayacı GERÇEK sıfır sanılıyordu.
-        // Kullanıcı iptal edilmiş satışı göremeyip aynı işi ikinci kez yapabilirdi.
-        if (data.cancelledFailed)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.danger.withValues(alpha: .08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.danger.withValues(alpha: .35)),
-            ),
-            child: const Text(
-              'İptal edilen satışlar YÜKLENEMEDİ — aşağıdaki iptal/iade sayıları eksik. '
-              'Rakamlara güvenmeden önce sayfayı yenileyin.',
-              style: TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger),
-            ),
-          ),
+        // NOT: "arşiv ayrı çöktü" uyarısı KALDIRILDI çünkü o durum artık OLUŞAMAZ — canlı
+        // cariler ve iptal arşivi tek istekten gelir; istek patlarsa ekranın tamamı hata
+        // gösterir, sessiz "İptal edilenler · 0" mümkün değildir.
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1063,18 +1053,25 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   }
 
   /// Defterin kendi verisini tazeler: müşterinin TÜM carileri sunucudan yeniden okunur.
-  Future<CustomerAccountGroup?> _reloadLedgerGroup(String customerId) async {
-    if (customerId.isEmpty) return null;
+  ///
+  /// ÜÇ SONUÇ AYRIDIR (bkz. [LedgerRefresh]). Eskiden üçü de `null` dönüyordu ve defter her
+  /// durumda eski satırları göstermeye devam ediyordu: "tazeleme başarısız" ile "satış iptal
+  /// edildi" ekranda AYNI görünüyor, iptal edilmiş 1.000 TL'lik satış canlı ve TAHSİL
+  /// EDİLEBİLİR duruyordu. Hata yutmak, para ekranında eksik veriyi doğru göstermektir.
+  Future<LedgerRefresh> _reloadLedgerGroup(String customerId) async {
+    if (customerId.isEmpty) return const LedgerRefresh.failed();
     try {
       final res = await widget.api
           .getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200);
       final live = apiItems(res).where((a) => !_isCancelledAccount(a)).toList();
-      if (live.isEmpty) return null;
+      // Canlı satış kalmadı = satış iptal/silinmiş. "Okunamadı" DEĞİLDİR; ayrı söylenir.
+      if (live.isEmpty) return const LedgerRefresh.gone();
       final groups = groupAccountsByCustomer(live);
-      return groups.isEmpty ? null : groups.first;
+      return groups.isEmpty
+          ? const LedgerRefresh.gone()
+          : LedgerRefresh.loaded(groups.first);
     } catch (_) {
-      // Tazeleme başarısızsa ESKİ veri korunur (null döner) — boş/yanlış tablo göstermek yerine.
-      return null;
+      return const LedgerRefresh.failed();
     }
   }
 
@@ -1544,19 +1541,14 @@ class _AccData {
     required this.adisyonlar,
     required this.staff,
     required this.cancelled,
-    this.cancelledFailed = false,
   });
   final List<Map<String, dynamic>> accounts;
   final List<Map<String, dynamic>> expenses;
   final List<Map<String, dynamic>> adisyonlar;
   final List<Map<String, dynamic>> staff;
 
-  /// İptal arşivi (cancelled_sales) — canlı cari listesinden AYRI kaynak.
+  /// İptal arşivi (cancelled_sales) — canlı cariler ile AYNI anlık görüntüden gelir.
   final List<Map<String, dynamic>> cancelled;
-
-  /// Arşiv OKUNAMADI mı? Boş liste "iptal yok" demektir; ikisi ayrılmazsa kullanıcı
-  /// iptal edilmiş satışı göremeyip aynı işi ikinci kez yapabilir.
-  final bool cancelledFailed;
 }
 
 // ---------------------------------------------------------------------------

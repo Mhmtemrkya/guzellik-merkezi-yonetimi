@@ -44,6 +44,19 @@ public interface ICustomerAccountService
     /// İki sorgu TEK transaction içinde çalışır; MySQL REPEATABLE READ altında ikisi de aynı anı
     /// görür. Yarış penceresi kapanır.
     /// </para>
+    /// <para>
+    /// <b>LİSTE TAMDIR — SESSİZCE KESİLMEZ.</b> Canlı satışların TAMAMI döner:
+    /// <paramref name="request"/> sayfa boyutu yok sayılır (imzada geriye uyumluluk için durur),
+    /// sayfalar aynı transaction içinde toplanır. İstemciler tek sayfa (<c>pageSize=500</c>)
+    /// istiyordu ve daha fazla satışı olan müşteride liste SESSİZCE kesiliyordu — üstelik panelin
+    /// para özetleri bu eksik listeden hesaplanıyordu. Üst güvenlik sınırı aşılırsa liste
+    /// kesilmez, istek <c>Conflict</c> ile REDDEDİLİR: para ekranında eksik liste, hata
+    /// mesajından tehlikelidir.
+    /// </para>
+    /// <para>
+    /// <paramref name="customerId"/> yalnızca KAPSAM daraltır (müşteri kartı ↔ Ön Muhasebe cari
+    /// tablosu); iki yolda da tamlık garantisi aynıdır.
+    /// </para>
     /// </summary>
     Task<Result<CustomerAccountsWithArchiveDto>> ListWithArchiveAsync(
         Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default);
