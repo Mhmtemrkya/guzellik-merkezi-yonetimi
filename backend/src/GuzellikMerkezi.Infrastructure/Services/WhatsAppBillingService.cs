@@ -671,15 +671,32 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         }
         if (purchase.Status != CreditPurchaseStatus.Pending) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
+        // ÇİFT ONAY KAPISI — kilit + TAZE OKUMA, işlemin İÇİNDE.
+        //
+        // Yukarıdaki durum kontrolü işlemin DIŞINDA ve kilitsizdi: iki yönetici (ya da çift
+        // tıklama) aynı talebi aynı anda onaylayınca ikisi de "Pending" görüyor, ikisi de
+        // bakiyeyi artırıyordu — kurum bir ödemeye karşılık İKİ KEZ kontör kazanıyordu.
         // Talebin "onaylandı" damgası ile bakiyenin artması AYNI kayıtta olmalı: biri olup diğeri
         // olmazsa ya para yüklenmeden talep kapanır ya da aynı talep ikinci kez yüklenebilir.
+        var alreadyProcessed = false;
         await InWalletTransactionAsync(async () =>
         {
+            await RowLock.LockRowAsync(_db, "whatsapp_credit_purchases", purchase.Id, ct);
+            // Kilit alındıktan SONRA taze oku: araya giren istek durumu değiştirmiş olabilir.
+            await _db.Entry(purchase).ReloadAsync(ct);
+            if (purchase.Status != CreditPurchaseStatus.Pending)
+            {
+                alreadyProcessed = true;
+                return false;
+            }
+
             purchase.Approve(processedByUserId);
             await CreditWalletAsync(purchase.TenantId, purchase.GrantsTry, $"Kontör: {purchase.PackageName}", purchase.CreditPackageId, processedByUserId, ct);
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
+
+        if (alreadyProcessed) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
         return Result<CreditPurchaseDto>.Success(await ToPurchaseDtoAsync(purchase, ct));
     }
@@ -697,8 +714,26 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         }
         if (purchase.Status != CreditPurchaseStatus.Pending) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
 
-        purchase.Reject(processedByUserId, note);
-        await _db.SaveChangesAsync(ct);
+        // ONAYLA AYNI YARIŞ: "onayla" ile "reddet" aynı anda gelirse ikisi de Pending görüyordu;
+        // bakiye artarken talep reddedilmiş görünebiliyordu. Kilit + taze okuma ikisini sıraya sokar.
+        var alreadyProcessed = false;
+        await InWalletTransactionAsync(async () =>
+        {
+            await RowLock.LockRowAsync(_db, "whatsapp_credit_purchases", purchase.Id, ct);
+            await _db.Entry(purchase).ReloadAsync(ct);
+            if (purchase.Status != CreditPurchaseStatus.Pending)
+            {
+                alreadyProcessed = true;
+                return false;
+            }
+
+            purchase.Reject(processedByUserId, note);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+
+        if (alreadyProcessed) return Result<CreditPurchaseDto>.Failure(Error.Conflict("Bu talep zaten işlenmiş."));
+
         return Result<CreditPurchaseDto>.Success(await ToPurchaseDtoAsync(purchase, ct));
     }
 

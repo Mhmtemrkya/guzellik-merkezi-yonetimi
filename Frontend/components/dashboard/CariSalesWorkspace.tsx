@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { adminApi } from '@/lib/apiClient'
-import { apiItems, normalizeAccount } from '@/lib/apiMappers'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { mapCancelledSale, normalizeAccount } from '@/lib/apiMappers'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import type { ApiCustomerAccount, CustomerAccount } from '@/lib/types'
+import type { ApiCustomerAccount, CancelledSale, CustomerAccount } from '@/lib/types'
 import CustomerSalesModal, { summarizeCustomerSales } from '@/components/dashboard/CustomerSalesModal'
 import CustomerSalesPanel from '@/components/dashboard/CustomerSalesPanel'
 import type { HistoricalCatalogOption, HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
@@ -53,22 +53,62 @@ export default function CariSalesWorkspace({
   const [busy, setBusy] = useState(false)
   const [tick, setTick] = useState(0)
 
-  const { data, reload } = useApiQuery<ApiCustomerAccount[]>(
+  const { data, reload, error } = useApiQuery<{ live: ApiCustomerAccount[]; cancelled: CancelledSale[] }>(
     async () => {
-      if (!open || !customerId || !tenantId) return []
-      const res = await adminApi
-        .accounts<ApiCustomerAccount>({ tenantId, customerId, page: 1, pageSize: 100 })
-        .catch(() => ({ items: [] }))
-      return apiItems(res)
+      if (!open || !customerId || !tenantId) return { live: [], cancelled: [] }
+      // TÜM SATIŞLAR sayfa sayfa: tek sayfa 100 ile sınırlıydı — çok satışı olan müşteride
+      // panel eski kayıtları sessizce KESİYOR, "İptal" sekmesi ve özet eksik çıkıyordu.
+      // Hata da YUTULMAZ: boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
+      const [live, cancelled] = await Promise.all([
+        fetchAllPaged<ApiCustomerAccount>(
+          (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId, page, pageSize }),
+          200,
+        ),
+        // İPTAL ARŞİVİ: iptal edilen satışın satırları canlı tablodan SİLİNİR. Panelin "İptal"
+        // sekmesi yalnız `saleStatus`e bakıyordu ve bu yüzden HER ZAMAN boştu.
+        adminApi.listCancelledSales<unknown[]>({ customerId }, tenantId)
+          .then((rows) => (Array.isArray(rows) ? rows.map(mapCancelledSale) : [])),
+      ])
+      return { live, cancelled }
     },
     [open, customerId, tenantId, tick],
-    { initialData: [] },
+    { initialData: { live: [], cancelled: [] } },
   )
 
-  const accounts = useMemo<CustomerAccount[]>(
-    () => (data || []).map((a, i) => normalizeAccount(a, i)),
-    [data],
-  )
+  /**
+   * Panelin gördüğü satışlar: canlı + ARŞİVDEN geri kurulan iptaller.
+   * Arşiv kaydı cari satırı değildir; panelin beklediği şekle çevrilir ki "İptal" sekmesi
+   * gerçekten dolsun (tutar, tarih, iptal gerekçesi arşivden gelir).
+   */
+  const accounts = useMemo<CustomerAccount[]>(() => {
+    const live = (data?.live || []).map((a, i) => normalizeAccount(a, i))
+    const cancelled = (data?.cancelled || []).map((c) => normalizeAccount({
+      id: c.originalAccountId || c.id,
+      tenantId,
+      branchId: c.branchId,
+      customerId: c.customerId,
+      customerName: c.customerName,
+      customerPhone: c.customerPhone,
+      servicePackageId: c.servicePackageId,
+      name: c.name,
+      totalAmount: c.totalAmount,
+      depositAmount: c.depositAmount,
+      // İptalde alacak kalmaz; tahsil edilen tutar KURUMDA KALAN paradır.
+      paidAmount: c.retainedAmount,
+      remainingAmount: 0,
+      soldAtUtc: c.soldAtUtc,
+      soldByStaffName: c.soldByStaffName,
+      isHistorical: c.isHistorical,
+      sessionsTotal: c.sessionsTotal,
+      sessionsUsed: c.sessionsUsed,
+      cancelledAtUtc: c.cancelledAtUtc,
+      cancellationReason: c.cancellationReason,
+      saleStatus: 'Cancelled',
+      installments: [],
+      payments: [],
+    } as unknown as ApiCustomerAccount, 0))
+    return [...live, ...cancelled]
+  }, [data, tenantId])
   const summary = useMemo(() => summarizeCustomerSales(accounts), [accounts])
 
   /** Her satış aksiyonundan sonra HEM bu panel HEM çağıran sayfa tazelenir: cari listesindeki
@@ -111,6 +151,13 @@ export default function CariSalesWorkspace({
 
   return (
     <CustomerSalesModal open={open} onClose={onClose} customerName={customerName} summary={summary}>
+      {/* VERİ ALINAMADIYSA AÇIKÇA SÖYLE: boş liste "satış yok" gibi okunuyordu ve kullanıcı
+          eksik veri üzerinden iptal/geçmiş satış işlemi yapabilirdi. */}
+      {error && (
+        <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12px] text-rose-800">
+          Satışlar alınamadı: {error} — liste eksik olabilir, işlem yapmadan önce sayfayı yenileyin.
+        </div>
+      )}
       <CustomerSalesPanel
         variant="flush"
         customerName={customerName}

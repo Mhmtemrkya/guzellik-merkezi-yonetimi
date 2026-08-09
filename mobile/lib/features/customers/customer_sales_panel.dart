@@ -114,6 +114,61 @@ SalesSummary salesSummaryOf(List<Map<String, dynamic>> accounts) {
   );
 }
 
+/// İPTAL ARŞİVİNİ panelin anladığı satış satırına çevirir (SAF FONKSİYON — ağ yok, test edilir).
+///
+/// <p>
+/// İptal bir DAMGA değil TAŞIMA'dır: canlı satır silinir, anlık görüntü arşive gider. Panel ise
+/// sekmeleri yalnız `saleStatus`e bakarak ayırır. Bu çeviri olmadan "İptal" sekmesi HER ZAMAN
+/// boştu — hem burada hem web'deki `CariSalesWorkspace`'te aynı kusur vardı.
+/// </p>
+///
+/// <p>
+/// `id` ARŞİV SATIRININ DEĞİL, ASIL CARİNİN kimliğidir: "İptali geri al" düğmesi
+/// `/api/admin/accounts/{id}/restore-sale` uçlarına gider; arşiv kimliği yazılsa geri alma
+/// yanlış kaydı hedefler ya da 404 döner.
+/// </p>
+List<Map<String, dynamic>> cancelledToPseudoAccounts(
+  List<Map<String, dynamic>> cancelled, {
+  String? customerId,
+}) {
+  final rows = customerId == null || customerId.isEmpty
+      ? cancelled
+      : cancelled.where((c) => '${c['customerId']}' == customerId);
+  return rows.map<Map<String, dynamic>>((c) {
+    final original = '${c['originalAccountId'] ?? ''}';
+    return <String, dynamic>{
+      ...c,
+      'id': original.isEmpty || original == 'null' ? '${c['id']}' : original,
+      'saleStatus': 'Cancelled',
+      // İptalde ALACAK KALMAZ; tahsil edilen tutar kurumda KALAN paradır.
+      'paidAmount': numberOf(c, const ['retainedAmount']),
+      'remainingAmount': 0,
+    };
+  }).toList();
+}
+
+/// Müşterinin panelde görünecek TÜM satışları: canlı cariler + arşivden geri kurulan iptaller.
+///
+/// <p>
+/// TEK KAYNAK: sheet'in ilk açılışı da, her işlemden sonraki tazelemesi de buradan geçer. Ayrı
+/// ayrı yazıldığında tazeleme yolu iptalleri düşürüyor ve sekme ilk işlemden sonra boşalıyordu.
+/// Sayfalama `getAllPaged` iledir — tek sayfa çok satışı olan müşteride listeyi sessizce keser.
+/// </p>
+Future<List<Map<String, dynamic>>> loadCustomerSalesAccounts(
+  ApiClient api,
+  String customerId,
+) async {
+  final results = await Future.wait([
+    api.getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200),
+    api.get('/api/admin/accounts/cancelled', query: {'customerId': customerId}),
+  ]);
+  final live = apiItems(results[0])
+      .where((a) => '${a['customerId']}' == customerId)
+      .toList();
+  final cancelled = cancelledToPseudoAccounts(apiItems(results[1]), customerId: customerId);
+  return [...live, ...cancelled];
+}
+
 /// Satış listesini ayrı bir tam sayfa sheet'te açar (web'deki `CustomerSalesModal` karşılığı).
 Future<void> openCustomerSalesSheet(
   BuildContext context, {
@@ -167,14 +222,14 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
 
   /// Sheet ana ekranın state'inden kopya taşır; satış değişince hem ana ekranı
   /// hem de kendi listesini tazeler (yoksa sheet eski veriyi göstermeye devam ederdi).
+  ///
+  /// Tazeleme AÇILIŞLA AYNI kaynaktan (`loadCustomerSalesAccounts`) okur. Eskiden burada canlı
+  /// cariler tek sayfa ve arşivsiz çekiliyordu: "İptal" sekmesi açılışta doluyor, ilk işlemden
+  /// sonra KENDİ KENDİNE boşalıyordu — iptal edilen satış gözden kayboluyordu.
   Future<void> _handleChanged() async {
     await widget.onChanged();
     try {
-      final res = await widget.api.get('/api/admin/accounts/',
-          query: {'page': 1, 'pageSize': 200, 'customerId': widget.customerId});
-      final list = apiItems(res)
-          .where((a) => '${a['customerId']}' == widget.customerId)
-          .toList();
+      final list = await loadCustomerSalesAccounts(widget.api, widget.customerId);
       if (mounted) setState(() => _accounts = list);
     } catch (_) {
       // ana ekran zaten tazelendi; sheet kapanınca güncel veri görünür

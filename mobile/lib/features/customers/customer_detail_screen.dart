@@ -560,12 +560,14 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     final salesCount = s.active + s.completed;
     // Cariler gelene kadar ₺0 yazmak "harcama yok" gibi okunuyordu.
     String money(double v) => _loading ? '—' : CalendarText.tl(v);
+    // Sheet'e canlı satışlarla BİRLİKTE iptal arşivi verilir; iptal edilen satır canlı listede
+    // kalmadığı için "İptal" sekmesi arşivsiz hep boş görünüyordu.
     void openSales() => openCustomerSalesSheet(
           context,
           api: _api,
           customerId: _id,
           customerName: _name,
-          accounts: _accounts,
+          accounts: [..._accounts, ...cancelledToPseudoAccounts(_cancelledSales, customerId: _id)],
           onChanged: _reload,
         );
 
@@ -912,7 +914,11 @@ class _OverviewTab extends StatelessWidget {
               api: state.widget.api,
               customerId: '${c['id']}',
               customerName: state._name,
-              accounts: state._accounts,
+              // Kartın iptal sayacı arşivden geliyor; sheet de AYNI kaydı görmeli.
+              accounts: [
+                ...state._accounts,
+                ...cancelledToPseudoAccounts(state._cancelledSales, customerId: '${c['id']}'),
+              ],
               onChanged: state._reload,
             ),
           ),

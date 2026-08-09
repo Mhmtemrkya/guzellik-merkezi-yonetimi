@@ -447,13 +447,53 @@ public sealed class BillingService : IBillingService
                         "Önceki tahsilatın sonucu doğrulanamadı; işlem elle incelenmeli.", tenant.SubscriptionEndsAtUtc));
                 }
 
+                // ATOMİK SAHİPLİK BURADA DA ŞART. Bu kurtarma yolu claim ALMADAN abonelik
+                // uzatıyordu: aynı sağlayıcı ödemesi hem kontör defterine hem aboneliğe
+                // sayılabiliyor, tek tahsilatla iki şey satın alınmış oluyordu. Yukarıdaki
+                // çapraz-tablo kontrolü KONTROL-SONRA-YAZ'dır; eşzamanlı kontör callback'ine
+                // karşı bağlayıcı olan tek şey benzersiz indekstir.
+                if (!await ProviderPaymentClaims.TryClaimAsync(
+                        _db, context.Value.Gateway.Provider, probe.Value.ProviderPaymentId!,
+                        ProviderPaymentClaim.SubscriptionLedger, pending.Id, tenantId, ct))
+                {
+                    const string claimReason = "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; abonelik uzatılmadı.";
+                    _logger.LogError("Yenileme kurtarması sahiplenilemedi ({PaymentId}); ödeme kimliği başka defterde.", pending.Id);
+                    await _audit.LogAsync(tenantId, null, "RenewalClaimConflict", "Subscription", pending.Id,
+                        claimReason, new { pending.ConversationId, probe.Value.ProviderPaymentId }, ct);
+                    // PENDING BIRAKILIR: "başarısız" demek yeniden çekim yolunu açar; para gerçekte
+                    // çekilmiş olabilir. İnsan kararı gerekir.
+                    return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                        false, pending.AttemptNumber, claimReason, tenant.SubscriptionEndsAtUtc));
+                }
+
                 pending.MarkSucceeded(probe.Value.ProviderPaymentId, DateTime.UtcNow);
                 var recovered = await FinalizeRenewalAsync(tenant, plan, pending, probe.Value.ProviderPaymentId, ct);
                 return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
                     true, pending.AttemptNumber, "Önceki deneme başarılıymış; abonelik uzatıldı.", recovered));
             }
-            pending.MarkFailed("UNRESOLVED", "Önceki deneme doğrulanamadı.", DateTime.UtcNow);
-            await _db.SaveChangesAsync(ct);
+
+            // ARA/BİLİNMEYEN SONUÇ TERMINAL "Failed" YAPILAMAZ.
+            //
+            // Sorgu başarısız dönmek ZORUNDA değil: ağ hatası, sağlayıcı 5xx'i ya da "hâlâ
+            // işleniyor" durumu da buraya düşüyordu. Denemeyi Failed damgalamak yeniden çekim
+            // yolunu açıyor ve gerçekte çekilmiş olabilecek tutar İKİNCİ kez çekilebiliyordu.
+            // Yalnız sağlayıcı AÇIKÇA reddettiyse (kesin sonuç) Failed yazılır; aksi hâlde
+            // deneme PENDING kalır ve bir sonraki tur yeniden sorar.
+            var declined = probe.IsSuccess && probe.Value!.Outcome == PaymentOutcome.Declined;
+            if (declined)
+            {
+                pending.MarkFailed(probe.Value!.ErrorCode ?? "DECLINED", probe.Value.ErrorMessage ?? "Sağlayıcı ödemeyi reddetti.", DateTime.UtcNow);
+                await _db.SaveChangesAsync(ct);
+            }
+            else
+            {
+                await _audit.LogAsync(tenantId, null, "RenewalOutcomeUnresolved", "Subscription", pending.Id,
+                    "Önceki tahsilat denemesinin sonucu belirsiz; deneme açık bırakıldı.",
+                    new { pending.ConversationId, pending.AmountTRY, pending.Provider }, ct);
+                return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                    false, pending.AttemptNumber,
+                    "Önceki tahsilatın sonucu sağlayıcıdan alınamadı; tekrar denenecek.", tenant.SubscriptionEndsAtUtc));
+            }
         }
 
         // DENEMELER ARASINDA BEKLEME: tarayıcı birkaç saatte bir çalışır; aralık koymazsak üç deneme
@@ -516,6 +556,23 @@ public sealed class BillingService : IBillingService
 
         if (!charge.Value!.Succeeded)
         {
+            // ARA/BİLİNMEYEN SONUÇ TERMINAL "Failed" DEĞİLDİR (bkz. kurtarma yolundaki eşi).
+            //
+            // HTTP başarıyla döndü diye sonuç kesin sayılmaz: sağlayıcı "hâlâ işleniyor" ya da
+            // biçimsiz bir yanıt vermiş olabilir. Bunu Failed damgalamak denemeyi kapatır ve bir
+            // sonraki tur AYNI dönemi yeniden çeker — parası çekilmiş olabilecek kart ikinci kez
+            // çekilir. Yalnız sağlayıcı KESİN reddettiyse kapatılır; aksi hâlde PENDING kalır ve
+            // sonraki tur `RetrievePaymentAsync` ile çözer.
+            if (charge.Value.Outcome != PaymentOutcome.Declined)
+            {
+                _logger.LogWarning("Yenileme tahsilatının sonucu belirsiz: {Tenant} {Conversation}", tenantId, conversationId);
+                await _audit.LogAsync(tenantId, null, "RenewalOutcomeUnresolved", "Subscription", payment.Id,
+                    $"Yenileme tahsilatının sonucu kesin değil ({attemptNumber}. deneme); deneme açık bırakıldı.",
+                    new { charge.Value.ErrorCode, attemptNumber }, ct);
+                return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                    false, attemptNumber, "Tahsilatın sonucu kesinleşmedi; sonraki turda doğrulanacak.", tenant.SubscriptionEndsAtUtc));
+            }
+
             payment.MarkFailed(charge.Value.ErrorCode, charge.Value.ErrorMessage, now);
             card.MarkChargeFailed();
             await _db.SaveChangesAsync(ct);

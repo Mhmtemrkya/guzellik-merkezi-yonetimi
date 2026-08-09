@@ -163,6 +163,14 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
 
         var json = response.Value!;
         var ok = IsSuccess(json);
+        // SONUCUN KESİNLİĞİ AÇIKÇA İŞARETLENİR (Non-3DS saklı kart çekimi).
+        //
+        // Burası `Outcome`u hiç yazmıyordu ve varsayılan `Unresolved` kalıyordu: iyzico AÇIKÇA
+        // reddettiğinde bile sonuç "belirsiz" görünüyor, çağıran denemeyi kapatamıyor ve kart
+        // düzeltilse bile kurum askıda kalabiliyordu. Ters yön daha tehlikeli: "belirsiz"i red
+        // sayan bir çağıran, parası çekilmiş olabilecek dönemi İKİNCİ kez çeker.
+        // iyzico `status=failure` + errorCode döndüyse bu KESİN reddir; ağ/biçim hatası değil.
+        var declined = !ok && !string.IsNullOrWhiteSpace(Str(json, "errorCode"));
         return Result<ChargeResult>.Success(new ChargeResult(
             ok,
             Str(json, "conversationId") ?? request.ConversationId,
@@ -170,7 +178,8 @@ public sealed class IyzicoPaymentGateway : IPaymentGateway
             Decimal(json, "paidPrice"),
             ok ? null : Str(json, "errorCode"),
             ok ? null : ErrorText(json, "Kartdan tahsilat yapılamadı."),
-            Str(json, "currency")));
+            Str(json, "currency"),
+            ok ? PaymentOutcome.Succeeded : declined ? PaymentOutcome.Declined : PaymentOutcome.Unresolved));
     }
 
     public async Task<Result<ChargeResult>> RetrievePaymentAsync(string conversationId, CancellationToken ct = default)

@@ -84,9 +84,16 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
             Outcome: PaymentOutcome.Succeeded)));
     }
 
+    /// <summary>
+    /// Saklı kart çekimi (Non-3DS eşdeğeri). SONUCUN KESİNLİĞİ AÇIKÇA işaretlenir: `Outcome`
+    /// yazılmayınca varsayılan `Unresolved` kalıyordu ve BAŞARILI bir çekim bile "belirsiz"
+    /// görünüyordu — simülasyon, gerçek sağlayıcıdan farklı davranınca testler asıl hatayı
+    /// gizler (bu kusur önce iyzico yolunda bulundu, burada da aynısı vardı).
+    /// </summary>
     public Task<Result<ChargeResult>> ChargeStoredCardAsync(StoredCardChargeRequest request, CancellationToken ct = default) =>
         Task.FromResult(Result<ChargeResult>.Success(new ChargeResult(
-            true, request.ConversationId, $"sim-pay-{request.ConversationId}", request.AmountTry, null, null, "TRY")));
+            true, request.ConversationId, $"sim-pay-{request.ConversationId}", request.AmountTry, null, null, "TRY",
+            PaymentOutcome.Succeeded)));
 
     /// <summary>
     /// DURUM TUTMAYAN SAĞLAYICI "ÖDENDİ" DİYEMEZ.
@@ -100,7 +107,10 @@ public sealed class SimulationPaymentGateway : IPaymentGateway
     public Task<Result<ChargeResult>> RetrievePaymentAsync(string conversationId, CancellationToken ct = default) =>
         Task.FromResult(Result<ChargeResult>.Success(new ChargeResult(
             false, conversationId, null, 0m, "SIM_NO_HISTORY",
-            "Simülasyon sağlayıcısı geçmiş tahsilat kaydı tutmaz.", "TRY")));
+            "Simülasyon sağlayıcısı geçmiş tahsilat kaydı tutmaz.", "TRY",
+            // "Bilmiyorum" RED DEĞİLDİR: Declined damgası denemeyi kalıcı kapatır ve gerçekte
+            // çekilmiş olabilecek bir tutar bir daha sorgulanmaz.
+            PaymentOutcome.Unresolved)));
 
     public Task<Result> RefundAsync(string providerPaymentId, decimal amount, CancellationToken ct = default) =>
         Task.FromResult(Result.Success());

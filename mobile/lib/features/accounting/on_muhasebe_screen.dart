@@ -1094,9 +1094,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
 
     List<Map<String, dynamic>> accounts = const [];
     try {
-      final res = await widget.api.get('/api/admin/accounts/',
-          query: {'page': 1, 'pageSize': 200, 'customerId': customerId});
-      accounts = apiItems(res).where((x) => '${x['customerId']}' == customerId).toList();
+      // Canlı cariler (sayfalı) + İPTAL ARŞİVİ tek kaynaktan: iptal edilen satır canlı tabloda
+      // YOKTUR, arşivsiz çekildiğinde sheet'in "İptal" sekmesi hep boş kalıyordu.
+      accounts = await loadCustomerSalesAccounts(widget.api, customerId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Satışlar alınamadı: $e')));
