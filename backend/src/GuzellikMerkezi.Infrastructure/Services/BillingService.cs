@@ -297,6 +297,26 @@ public sealed class BillingService : IBillingService
         var nowUtc = DateTime.UtcNow;
         if (!result.Succeeded)
         {
+            // ARA/BELİRSİZ SONUÇ TERMİNAL "Failed" DEĞİLDİR — yenileme yollarındaki kuralın
+            // İLK CHECKOUT'taki eşi (orada düzeltilmiş, burası atlanmıştı).
+            //
+            // 3DS'in ORTASINDA sorulan bir checkout "başarısız" değil BELİRSİZdir; ağ hatası ve
+            // sağlayıcı 5xx'i de buraya düşer. Failed damgası denemeyi KALICI kapatır: sonradan
+            // ödemesi geçen müşterinin kaydı kapanmış olur, para karşılıksız kalır ve kurum
+            // ödediği aboneliği alamaz. Yalnız sağlayıcı AÇIKÇA reddettiyse (kesin sonuç)
+            // kapatılır; aksi hâlde kayıt PENDING kalır ve dönüş/webhook tekrar geldiğinde
+            // (ya da yenileme turunun sorgu yolu) sonucu çözer.
+            if (result.Outcome != PaymentOutcome.Declined)
+            {
+                if (tx is not null) await tx.CommitAsync(ct);
+                _logger.LogWarning("Checkout sonucu belirsiz, kayıt açık bırakıldı: {Conversation}", result.ConversationId);
+                await _audit.LogAsync(payment.TenantId, null, "CheckoutOutcomeUnresolved", "Subscription", payment.Id,
+                    "Ödemenin sonucu sağlayıcıdan kesin alınamadı; kayıt açık bırakıldı.",
+                    new { result.ErrorCode, result.ConversationId }, ct);
+                return Result<CheckoutCompletedDto>.Success(new CheckoutCompletedDto(
+                    false, "Ödemenin sonucu henüz kesinleşmedi; birkaç dakika içinde doğrulanacak.", null, null));
+            }
+
             payment.MarkFailed(result.ErrorCode, result.ErrorMessage, nowUtc);
             await _db.SaveChangesAsync(ct);
             if (tx is not null) await tx.CommitAsync(ct);
@@ -325,9 +345,12 @@ public sealed class BillingService : IBillingService
         // callback'ine karşı bağlayıcı değildir: ikisi de diğerini "henüz commit etmemiş"
         // görüp aynı dış ödemeyi kendi defterine yazabilir. Benzersiz kısıt burada tek kazananı
         // seçer (bkz. ProviderPaymentClaim).
-        if (!await ProviderPaymentClaims.TryClaimAsync(
+        // "Zaten BENİM" ile "BAŞKASININ" ayrılır: sahiplik yazıldıktan sonra çöken bir dönüş,
+        // kendi bıraktığı satır yüzünden bir daha tamamlanamıyordu (bkz. ClaimOutcome).
+        if (await ProviderPaymentClaims.TryClaimAsync(
                 _db, context.Value.Gateway.Provider, result.ProviderPaymentId!,
-                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct))
+                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct)
+            == ProviderPaymentClaims.ClaimOutcome.OwnedByAnother)
         {
             return await RejectMismatchedCallbackAsync(
                 payment, "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; abonelik başlatılmadı.", nowUtc, tx, ct);
@@ -452,9 +475,19 @@ public sealed class BillingService : IBillingService
                 // sayılabiliyor, tek tahsilatla iki şey satın alınmış oluyordu. Yukarıdaki
                 // çapraz-tablo kontrolü KONTROL-SONRA-YAZ'dır; eşzamanlı kontör callback'ine
                 // karşı bağlayıcı olan tek şey benzersiz indekstir.
-                if (!await ProviderPaymentClaims.TryClaimAsync(
-                        _db, context.Value.Gateway.Provider, probe.Value.ProviderPaymentId!,
-                        ProviderPaymentClaim.SubscriptionLedger, pending.Id, tenantId, ct))
+                // SAHİPLİK VE FİNALİZASYON AYNI TRANSACTION'DA. Ayrı commit edildiklerinde,
+                // sahiplik yazıldıktan sonra çöken bir tur ORTADA BİR SATIR bırakıyordu: abonelik
+                // uzamamış ama ödeme "sahiplenilmiş" oluyordu. Tek transaction ikisini birlikte
+                // kalıcı yapar; çökme ikisini birden geri alır.
+                await using var recoveryTx = _db.Database.IsRelational()
+                    ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+                    : null;
+
+                var claimOutcome = await ProviderPaymentClaims.TryClaimAsync(
+                    _db, context.Value.Gateway.Provider, probe.Value.ProviderPaymentId!,
+                    ProviderPaymentClaim.SubscriptionLedger, pending.Id, tenantId, ct);
+
+                if (claimOutcome == ProviderPaymentClaims.ClaimOutcome.OwnedByAnother)
                 {
                     const string claimReason = "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; abonelik uzatılmadı.";
                     _logger.LogError("Yenileme kurtarması sahiplenilemedi ({PaymentId}); ödeme kimliği başka defterde.", pending.Id);
@@ -466,8 +499,16 @@ public sealed class BillingService : IBillingService
                         false, pending.AttemptNumber, claimReason, tenant.SubscriptionEndsAtUtc));
                 }
 
+                // AlreadyOwnedBySelf: sahiplik BİZE ait — önceki tur tam burada çökmüş. Devam
+                // edilir; aksi hâlde kurum ödediği hâlde aboneliği sonsuza dek açılmazdı.
+                if (claimOutcome == ProviderPaymentClaims.ClaimOutcome.AlreadyOwnedBySelf)
+                {
+                    _logger.LogWarning("Yarım kalmış yenileme sürdürülüyor ({PaymentId}); sahiplik zaten bu kayda ait.", pending.Id);
+                }
+
                 pending.MarkSucceeded(probe.Value.ProviderPaymentId, DateTime.UtcNow);
                 var recovered = await FinalizeRenewalAsync(tenant, plan, pending, probe.Value.ProviderPaymentId, ct);
+                if (recoveryTx is not null) await recoveryTx.CommitAsync(ct);
                 return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
                     true, pending.AttemptNumber, "Önceki deneme başarılıymış; abonelik uzatıldı.", recovered));
             }
@@ -608,9 +649,16 @@ public sealed class BillingService : IBillingService
 
         // Sahiplik yenileme yolunda da alınır: bu tahsilat da bir dış ödeme kimliği tüketir ve
         // kontör defteriyle aynı havuzu paylaşır (bkz. ProviderPaymentClaim).
-        if (!await ProviderPaymentClaims.TryClaimAsync(
+        // Sahiplik + finalizasyon TEK transaction (kurtarma yolundaki gerekçenin aynısı):
+        // ayrı commit edilirse aradaki çökme, aboneliği uzatmadan ödemeyi sahiplenmiş bırakır.
+        await using var chargeTx = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+
+        if (await ProviderPaymentClaims.TryClaimAsync(
                 _db, context.Value.Gateway.Provider, charge.Value.ProviderPaymentId!,
-                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct))
+                ProviderPaymentClaim.SubscriptionLedger, payment.Id, payment.TenantId, ct)
+            == ProviderPaymentClaims.ClaimOutcome.OwnedByAnother)
         {
             // Çekim GERÇEKLEŞMİŞ olabilir; "başarısız" demek bir sonraki turda ikinci çekim demektir.
             // Deneme PENDING bırakılır ve elle incelemeye düşer (mismatch yolundaki gerekçenin aynısı).
@@ -626,6 +674,7 @@ public sealed class BillingService : IBillingService
         payment.MarkSucceeded(charge.Value.ProviderPaymentId, now);
         card.MarkCharged(now);
         var endsAt = await FinalizeRenewalAsync(tenant, plan, payment, charge.Value.ProviderPaymentId, ct);
+        if (chargeTx is not null) await chargeTx.CommitAsync(ct);
         return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(true, attemptNumber, "Abonelik yenilendi.", endsAt));
     }
 

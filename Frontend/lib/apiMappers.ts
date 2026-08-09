@@ -990,6 +990,18 @@ export function mapCancelledSale(raw: unknown): CancelledSale {
           occurredAtUtc: String(p?.occurredAtUtc || ''),
         }))
       : [],
+    // İADE KANALI: sunucu 'cash'/'card'/'transfer' gönderir; ekrana çevirisi
+    // `paymentMethodLabel` ile yapılır (ham anahtar yazdırmak yasak).
+    refunds: Array.isArray(c?.refunds)
+      ? (c.refunds as Record<string, unknown>[]).map((r, i) => ({
+          id: String(r?.id || `refund-${i}`),
+          amount: Number(r?.amount || 0),
+          method: String(r?.method || ''),
+          reference: String(r?.reference || ''),
+          refundedAtUtc: String(r?.refundedAtUtc || ''),
+          reason: String(r?.reason || ''),
+        }))
+      : [],
     cancelledAtUtc: String(c?.cancelledAtUtc || ''),
     cancellationReason: String(c?.cancellationReason || ''),
   }

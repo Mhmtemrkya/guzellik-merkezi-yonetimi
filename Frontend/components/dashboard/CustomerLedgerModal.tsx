@@ -130,22 +130,39 @@ export default function CustomerLedgerModal({
           })
         }
       } else if (c.collectedAmount > 0.005) {
-        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir.
+        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir. YÖNTEM SÜTUNUNA
+        // yöntem olmayan bir metin ("iptal edilen satış") yazılmaz: satışın durumu zaten
+        // başlıkta yazıyor, kanal ise gerçekten BİLİNMİYOR.
         rows.push({
           ts: Date.parse(c.cancelledAtUtc || c.soldAtUtc || '') || 0,
           date: (c.soldAtUtc || c.cancelledAtUtc || '').slice(0, 10),
           sale: `${c.name} · İPTAL`,
-          method: 'iptal edilen satış',
+          method: paymentMethodLabel(''),
           amount: c.collectedAmount,
           kind: 'in',
         })
       }
-      if (c.refundedAmount > 0.005) {
+      // GERÇEK İADE SATIRLARI: paranın çıktığı KANAL (nakit/kart/havale) gösterilir. Burası
+      // "müşteriye geri ödendi" diye sentetik bir metin yazıyordu; kart iadesi ile nakit iade
+      // ekstrede ayırt edilemiyor, kasa kırılımı tutmuyordu. Tahsilat tarafındaki desenin eşi.
+      if (c.refunds.length > 0) {
+        for (const r of c.refunds) {
+          rows.push({
+            ts: Date.parse(r.refundedAtUtc || '') || 0,
+            date: (r.refundedAtUtc || '').slice(0, 10),
+            sale: `${c.name} · İADE`,
+            method: paymentMethodLabel(r.method),
+            amount: r.amount,
+            kind: 'refund',
+          })
+        }
+      } else if (c.refundedAmount > 0.005) {
+        // Eski arşiv kaydı (iade satırı yok) — kanal BİLİNMİYOR; uydurma yapılmaz.
         rows.push({
           ts: Date.parse(c.cancelledAtUtc || '') || 0,
           date: (c.cancelledAtUtc || '').slice(0, 10),
           sale: `${c.name} · İADE`,
-          method: 'müşteriye geri ödendi',
+          method: paymentMethodLabel(''),
           amount: c.refundedAmount,
           kind: 'refund',
         })

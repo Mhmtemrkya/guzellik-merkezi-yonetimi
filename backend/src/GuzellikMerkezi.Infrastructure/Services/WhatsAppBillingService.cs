@@ -609,10 +609,18 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         // ATOMİK SAHİPLİK — para hareketinden ÖNCE. Üstteki çapraz tablo sorgusu
         // KONTROL-SONRA-YAZ'dır ve eşzamanlı bir abonelik callback'ine karşı bağlayıcı değildir;
         // garanti benzersiz indekstedir (bkz. ProviderPaymentClaim).
+        // "ZATEN BENİM" ile "BAŞKASININ" ayrılır. Ayrılmadığında, sahiplik yazıldıktan sonra
+        // çöken bir tur kendi bıraktığı satır yüzünden yeniden denenemiyor ve — buradaki dal
+        // TERMİNAL damga yazdığı için — GERÇEKTEN ÖDENMİŞ bir kontör yüklemesi kalıcı olarak
+        // "başarısız" işaretleniyordu. Para alınmış, kontör hiç yüklenmemiş olurdu.
         var claimed = await ProviderPaymentClaims.TryClaimAsync(
             _db, provider, providerPaymentId!, ProviderPaymentClaim.WhatsAppCreditLedger,
             purchase.Id, purchase.TenantId, ct);
-        if (!claimed)
+        if (claimed == ProviderPaymentClaims.ClaimOutcome.AlreadyOwnedBySelf)
+        {
+            _logger.LogWarning("Yarım kalmış kontör yüklemesi sürdürülüyor ({PurchaseId}); sahiplik zaten bu kayda ait.", purchase.Id);
+        }
+        if (claimed == ProviderPaymentClaims.ClaimOutcome.OwnedByAnother)
         {
             const string reason = "Bu sağlayıcı ödemesi başka bir deftere işlenmiş; kontör yüklenmedi.";
             purchase.MarkPaymentFailed("ClaimConflict", reason, nowUtc);

@@ -1084,6 +1084,23 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                           .Select(p => new ArchivedPaymentDto(p.Id, p.Amount, p.Method, p.Reference, p.OccurredAtUtc))
                           .ToList());
 
+        // İADELER: paranın hangi KANALDAN çıktığı ekstrede "müşteriye geri ödendi" diye sentetik
+        // bir metne indirgeniyordu; kart iadesi kasada nakit çıkışı gibi okunuyordu. Kanal iptal
+        // anında zaten yazılıyor (refund_transactions), yalnız dışarı verilmiyordu.
+        // Global süzgeç geçersiz kılınan (soft-delete) iadeleri zaten eler — IgnoreQueryFilters YOK.
+        var refundsByArchive = archiveIds.Length == 0
+            ? new Dictionary<Guid, List<RefundDto>>()
+            : (await _db.RefundTransactions.AsNoTracking()
+                    .Where(r => r.TenantId == tenantId && archiveIds.Contains(r.CancelledSaleId))
+                    .Select(r => new { r.CancelledSaleId, r.Id, r.Amount, r.Method, r.Reference, r.RefundedAtUtc, r.Reason })
+                    .ToListAsync(cancellationToken))
+                .GroupBy(r => r.CancelledSaleId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(r => r.RefundedAtUtc)
+                          .Select(r => new RefundDto(r.Id, r.Amount, r.Method, r.Reference, r.RefundedAtUtc, r.Reason))
+                          .ToList());
+
         var result = rows.Select(x => new CancelledSaleDto(
             x.Id, x.OriginalAccountId, x.TenantId, x.BranchId, x.CustomerId,
             x.CustomerName,
@@ -1099,7 +1116,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .Select(s => s.Id)
                 .ToArray() ?? [],
             ParseSaleSnapshot(x.Snapshot)?.Sessions.Select(s => s.Id).ToArray() ?? [],
-            paymentsByArchive.TryGetValue(x.Id, out var pays) ? pays : [])).ToList();
+            paymentsByArchive.TryGetValue(x.Id, out var pays) ? pays : [],
+            refundsByArchive.TryGetValue(x.Id, out var refs) ? refs : [])).ToList();
 
         return Result<IReadOnlyCollection<CancelledSaleDto>>.Success(result);
     }

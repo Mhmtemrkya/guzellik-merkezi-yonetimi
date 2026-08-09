@@ -276,20 +276,38 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           });
         }
       } else if (numberOf(c, const ['collectedAmount']) > 0.005) {
-        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir.
+        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir. YÖNTEM SÜTUNUNA
+        // yöntem olmayan metin yazılmaz; kanal gerçekten bilinmiyor.
         rows.add({
           'at': parseUtcToLocal(c['cancelledAtUtc'] ?? c['soldAtUtc']),
           'sale': '$name · İPTAL',
-          'method': 'iptal edilen satış',
+          'method': paymentMethodLabel(''),
           'amount': numberOf(c, const ['collectedAmount']),
           'refund': false,
         });
       }
-      if (numberOf(c, const ['refundedAmount']) > 0.005) {
+
+      // GERÇEK İADE SATIRLARI: paranın çıktığı KANAL gösterilir (web paritesi). Burası
+      // "müşteriye geri ödendi" diye sentetik metin yazıyordu; kart iadesi ile nakit iade
+      // ayırt edilemiyor, kasa kırılımı tutmuyordu.
+      final refunds = (c['refunds'] as List? ?? const []).whereType<Map>().toList();
+      if (refunds.isNotEmpty) {
+        for (final raw in refunds) {
+          final r = raw.cast<String, dynamic>();
+          rows.add({
+            'at': parseUtcToLocal(r['refundedAtUtc']),
+            'sale': '$name · İADE',
+            'method': paymentMethodLabel('${r['method'] ?? ''}'),
+            'amount': numberOf(r, const ['amount']),
+            'refund': true,
+          });
+        }
+      } else if (numberOf(c, const ['refundedAmount']) > 0.005) {
+        // Eski arşiv kaydı (iade satırı yok) — kanal BİLİNMİYOR; uydurma yapılmaz.
         rows.add({
           'at': parseUtcToLocal(c['cancelledAtUtc']),
           'sale': '$name · İADE',
-          'method': 'müşteriye geri ödendi',
+          'method': paymentMethodLabel(''),
           'amount': numberOf(c, const ['refundedAmount']),
           'refund': true,
         });

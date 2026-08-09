@@ -173,6 +173,56 @@ public sealed class SubscriptionClaimBypassMySqlTests
     }
 
     /// <summary>
+    /// ÇÖKMEDEN SONRA KENDİ SAHİPLİĞİYLE DEVAM EDER (kilitlenme değil).
+    ///
+    /// <para>
+    /// Sahiplik yazılıp abonelik uzatılmadan önce süreç çökerse ORTADA bir claim satırı kalır.
+    /// Sahiplenme yalnız <c>bool</c> döndüğü sürece bir sonraki tur bu satırı "başkasının" sanıp
+    /// PENDING bırakıyordu — ve bu KALICIYDI: kurum parayı ödemiş, aboneliği bir daha ASLA
+    /// açılmıyordu. Sahibi BİZ olduğumuzda (aynı defter + aynı ödeme kaydı) iş sürdürülmelidir.
+    /// </para>
+    /// </summary>
+    [MySqlFact]
+    public async Task Yenileme_KendiSahipligiVarsa_YarimKalaniTamamlar()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+
+        // ÇÖKME SİMÜLASYONU: sahiplik BU ödeme kaydı adına yazılmış, finalizasyon yapılmamış.
+        await using (var db = database.NewContext())
+        {
+            db.ProviderPaymentClaims.Add(new ProviderPaymentClaim(
+                Provider, RakipOdemeKimligi, ProviderPaymentClaim.SubscriptionLedger,
+                seed.PaymentId, seed.TenantId));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = database.NewContext())
+        {
+            var outcome = await NewService(db, new RecoveringGateway(seed.ConversationId, 500m))
+                .ChargeRenewalAsync(seed.TenantId);
+
+            Assert.True(outcome.IsSuccess, outcome.IsFailure ? outcome.Error.Message : null);
+            // ASIL İDDİA: kendi sahipliği yolu tıkamaz.
+            Assert.True(outcome.Value!.Charged, outcome.Value.Message);
+        }
+
+        await using (var verify = database.NewContext())
+        {
+            var payment = await verify.SubscriptionPayments.IgnoreQueryFilters()
+                .SingleAsync(p => p.Id == seed.PaymentId);
+            Assert.Equal(SubscriptionPayment.Succeeded, payment.Status);
+
+            var tenant = await verify.Tenants.IgnoreQueryFilters().SingleAsync(t => t.Id == seed.TenantId);
+            Assert.True(tenant.SubscriptionEndsAtUtc > seed.EndsAtUtc, "Abonelik uzatılmadı.");
+
+            // İKİNCİ bir sahiplik satırı AÇILMAMALI — tek ödeme, tek sahiplik.
+            Assert.Single(await verify.ProviderPaymentClaims.IgnoreQueryFilters()
+                .Where(c => c.ProviderPaymentId == RakipOdemeKimligi).ToListAsync());
+        }
+    }
+
+    /// <summary>
     /// SAHİPSİZ ÖDEME KURTARILIR — ve sahiplik GERÇEKTEN YAZILIR.
     ///
     /// <para>

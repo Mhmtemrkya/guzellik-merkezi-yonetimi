@@ -1174,6 +1174,12 @@ export interface CancelledSale {
   allSessionIds: string[]
   /** Arşivlenmiş tahsilatlar — ekstre gerçek tarih/yöntemi buradan okur. */
   payments: { id: string; amount: number; method: string; reference: string; occurredAtUtc: string }[]
+  /**
+   * Müşteriye yapılan İADELER — paranın çıktığı GERÇEK kanal (nakit/kart/havale).
+   * Ekstre bunu "müşteriye geri ödendi" diye sentetik bir metinle gösteriyordu; kart iadesi
+   * kasa kırılımında nakit çıkışı gibi okunuyordu. Bir iptalin birden çok kısmi iadesi olabilir.
+   */
+  refunds: { id: string; amount: number; method: string; reference: string; refundedAtUtc: string; reason: string }[]
   cancelledAtUtc: string
   cancellationReason: string
 }

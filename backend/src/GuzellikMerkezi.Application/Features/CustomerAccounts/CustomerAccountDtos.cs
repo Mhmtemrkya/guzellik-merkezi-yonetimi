@@ -208,10 +208,26 @@ public sealed record CancelledSaleDto(
     /// özetler çıkıyordu. Kaynak <c>archived_sale_payments</c> — kalıcı defter.
     /// </para>
     /// </summary>
-    IReadOnlyCollection<ArchivedPaymentDto> Payments);
+    IReadOnlyCollection<ArchivedPaymentDto> Payments,
+    /// <summary>
+    /// Müşteriye yapılan İADELER (gerçek tarih · KANAL · tutar) — kaynak <c>refund_transactions</c>.
+    /// <para>
+    /// Ekstre iadeyi "müşteriye geri ödendi" diye SENTETİK bir metinle gösteriyordu: paranın hangi
+    /// kanaldan çıktığı (nakit/kart/havale) hiç görünmüyordu ve kart iadesi kasa kırılımında nakit
+    /// çıkışı gibi okunuyordu. Kanal iptal anında zaten kaydediliyor, yalnız dışarı verilmiyordu.
+    /// </para>
+    /// <para>
+    /// Bir iptalin BİRDEN ÇOK kısmi iadesi olabilir; tek alan değil liste olmasının sebebi bu.
+    /// Geçersiz kılınan (soft-delete) iadeler global süzgeçle zaten dışarıda kalır.
+    /// </para>
+    /// </summary>
+    IReadOnlyCollection<RefundDto> Refunds);
 
 /// <summary>İptal arşivindeki tek tahsilat satırı (kalıcı kopya).</summary>
 public sealed record ArchivedPaymentDto(Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc);
+
+/// <summary>Müşteriye yapılan tek iade satırı — <c>Method</c>: cash / card / transfer.</summary>
+public sealed record RefundDto(Guid Id, decimal Amount, string? Method, string? Reference, DateTime RefundedAtUtc, string? Reason);
 
 public sealed record CreateCustomerAccountRequest(
     Guid? BranchId,
