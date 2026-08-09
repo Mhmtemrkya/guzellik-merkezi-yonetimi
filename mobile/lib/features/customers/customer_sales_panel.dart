@@ -158,15 +158,26 @@ Future<List<Map<String, dynamic>>> loadCustomerSalesAccounts(
   ApiClient api,
   String customerId,
 ) async {
-  final results = await Future.wait([
-    api.getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200),
-    api.get('/api/admin/accounts/cancelled', query: {'customerId': customerId}),
-  ]);
-  final live = apiItems(results[0])
-      .where((a) => '${a['customerId']}' == customerId)
-      .toList();
-  final cancelled = cancelledToPseudoAccounts(apiItems(results[1]), customerId: customerId);
-  return [...live, ...cancelled];
+  // ARŞİV İKİNCİL VERİDİR — CANLI LİSTEYİ DÜŞÜREMEZ. Bu `catchError` KALDIRILMAMALI:
+  // iki çağrı birbirine bağlandığında arşivdeki tek bir aksaklık (404, zaman aşımı) tüm
+  // sonucu hataya çeviriyor; çağıranlar bunu "satışlar alınamadı" diye yakalayıp sheet'i HİÇ
+  // AÇMIYOR ya da eski listeyi sessizce koruyor. Gerçek olay: uç adresi bir kez yanlış
+  // yazıldı ve analyze + 34 birim testi yeşilken özellik tamamen açılmaz hâle geldi.
+  // İptal sekmesinin geçici olarak eksik kalması, panelin hiç açılmamasından İYİDİR.
+  final live = apiItems(
+    await api.getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200),
+  ).where((a) => '${a['customerId']}' == customerId).toList();
+
+  List<Map<String, dynamic>> cancelledRaw;
+  try {
+    cancelledRaw = apiItems(
+      await api.get('/api/admin/accounts/cancelled', query: {'customerId': customerId}),
+    );
+  } catch (_) {
+    cancelledRaw = const [];
+  }
+
+  return [...live, ...cancelledToPseudoAccounts(cancelledRaw, customerId: customerId)];
 }
 
 /// Satış listesini ayrı bir tam sayfa sheet'te açar (web'deki `CustomerSalesModal` karşılığı).
