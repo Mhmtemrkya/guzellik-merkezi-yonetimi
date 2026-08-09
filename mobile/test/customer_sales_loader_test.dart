@@ -53,30 +53,19 @@ void main() {
   test('DOĞRU uç adresleri çağrılır (yanlış adres sessizce özelliği kapatıyordu)', () async {
     await loadCustomerSalesAccounts(client(), 'm1');
 
-    expect(calls.any((c) => c.startsWith('/api/admin/accounts/?')), isTrue,
-        reason: 'canlı cari listesi çağrılmadı: $calls');
-    expect(calls.any((c) => c.startsWith('/api/admin/accounts/cancelled')), isTrue,
-        reason: 'iptal arşivi çağrılmadı ya da adres yanlış: $calls');
+    expect(calls.any((c) => c.startsWith('/api/admin/accounts/with-archive')), isTrue,
+        reason: 'birleşik uç çağrılmadı ya da adres yanlış: $calls');
+    // TEK istek: ikiye bölünürse aradaki iptal satışı çift saydırır ya da kaybettirir.
+    expect(calls, hasLength(1), reason: 'canlı ve arşiv ayrı çekilmiş: $calls');
   });
 
-  test('ARŞİV PATLASA BİLE canlı satışlar döner — panel açılmaya devam eder', () async {
-    final load = await loadCustomerSalesAccounts(
-      client(
-        live: [
-          {'id': 'cari-1', 'customerId': 'm1', 'name': 'Lazer', 'saleStatus': 'Active'},
-        ],
-        archiveThrows: true,
-      ),
-      'm1',
+  test('istek patlarsa hata YUTULMAZ — kısmi liste "tam" sayılmaz', () async {
+    // Tek uçta "arşiv ayrı çöktü" durumu yoktur: ya ikisi de gelir ya hiçbiri. Yarım veriyi
+    // tam sanmaktansa hata göstermek doğrudur (para ekranı).
+    await expectLater(
+      loadCustomerSalesAccounts(client(archiveThrows: true), 'm1'),
+      throwsA(isA<Exception>()),
     );
-
-    // İptal sekmesinin geçici olarak eksik kalması, sheet'in HİÇ AÇILMAMASINDAN iyidir.
-    expect(load.accounts, hasLength(1));
-    expect(load.accounts.first['id'], 'cari-1');
-
-    // ASIL İDDİA: eksiklik SESSİZ DEĞİL. Bayrak olmadan "iptal yok" ile "arşiv okunamadı"
-    // ekranda aynı görünüyor ve kullanıcı aynı işi ikinci kez yapabiliyordu.
-    expect(load.archiveUnavailable, isTrue);
   });
 
   test('CANLI liste patlarsa hata YUTULMAZ — çağıran uyarıyı gösterebilmeli', () async {
@@ -120,13 +109,11 @@ class _FakeApi extends ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     calls.add('$path?${query ?? const {}}');
 
-    if (path.contains('cancelled')) {
-      if (archiveThrows) throw Exception('arşiv ucu erişilemez (404/zaman aşımı)');
-      return cancelled;
-    }
-
-    if (liveThrows) throw Exception('cari listesi alınamadı');
-    // getAllPaged bu şekli bekler; totalCount verilmezse tek turda biter.
-    return {'items': live, 'totalCount': live.length};
+    // TEK UÇ: canlı + arşiv aynı anlık görüntüden döner (yarış penceresi yok).
+    if (liveThrows || archiveThrows) throw Exception('satışlar alınamadı');
+    return {
+      'live': {'items': live, 'totalCount': live.length},
+      'cancelled': cancelled,
+    };
   }
 }

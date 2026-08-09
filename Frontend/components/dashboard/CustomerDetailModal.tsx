@@ -17,6 +17,7 @@ import CustomerVipToggle from '@/components/dashboard/CustomerVipToggle'
 import CustomerSalesModal, { summarizeCustomerSales } from '@/components/dashboard/CustomerSalesModal'
 import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
 import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
+import { reconcileCustomerMoney } from '@/lib/customerMoney'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerHistoryPanel from '@/components/dashboard/CustomerHistoryPanel'
 import type { Appointment, CancelledSale, CustomerAccount } from '@/lib/types'
@@ -517,6 +518,20 @@ export default function CustomerDetailModal({
   )
   const canCollect = Boolean(onCollectPayment) && collectableAccounts.length > 0
 
+  /**
+   * ÜÇ KARTIN MUTABAKATI (bkz. lib/customerMoney). İptal + iade senaryosunda kartlar
+   * "Harcama 1.000 · Tahsil 600 · Borç 0" gösterip aradaki 400'ü HİÇBİR YERDE yazmıyordu.
+   * İade artık kendi kalemidir; kimlik kapanır.
+   */
+  const money = useMemo(() => reconcileCustomerMoney({
+    liveTotal: salesSummary.total,
+    livePaid: salesSummary.paid,
+    liveDebt: totalDebt,
+    cancelledTotal: cancelledSummary.total,
+    cancelledRetained: cancelledSummary.retained,
+    cancelledRefunded: cancelledSummary.refunded,
+  }), [salesSummary.total, salesSummary.paid, totalDebt, cancelledSummary])
+
   /** Süzgeç çiplerindeki sayaçlar — hangi durumda kaç kayıt olduğu tıklamadan görünür. */
   const apptStatusCounts = useMemo(() => {
     const m: Record<string, number> = {}
@@ -637,7 +652,7 @@ export default function CustomerDetailModal({
       label: 'Toplam Harcama',
       // İPTAL EDİLEN SATIŞLAR DA SAYILIR: "Tahsil Edilen" arşivi sayarken bu kart saymayınca
       // tüm satışı iptal edilmiş müşteride Harcama ₺0 ↔ Tahsil ₺600 çelişkisi çıkıyordu.
-      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.total + cancelledSummary.total)),
+      value: accountsLoading ? '—' : formatTL(Math.round(money.total)),
       sub: accountsLoading
         ? 'yükleniyor'
         : cancelledSummary.count > 0
@@ -651,16 +666,20 @@ export default function CustomerDetailModal({
       // İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive taşındığı için
       // canlı özet onu görmez, ama para fiilen kasada kaldı (iade edilen kısım düşülmüştür).
       // Sıfır göstermek "bu müşteriden hiç tahsilat yok" gibi okunuyordu.
-      value: accountsLoading ? '—' : formatTL(Math.round(salesSummary.paid + cancelledSummary.retained)),
+      value: accountsLoading ? '—' : formatTL(Math.round(money.collected)),
       // Kalan tutarı yazmıyoruz: yanındaki "Açık Borç" kartı zaten AYNI rakamı gösteriyor
       // (iki kart da Toplam − Tahsil Edilen formülünden çıkıyor). Burada oran daha çok şey söyler.
+      // İADE GÖRÜNÜR OLMALI: "kurumda kalan" ile "hiç alınmamış" ekranda aynı görünüyordu ve
+      // Harcama − Tahsil farkı açıklanamıyordu.
       sub: accountsLoading
         ? 'yükleniyor'
-        : cancelledSummary.retained > 0
-          ? `${formatTL(Math.round(cancelledSummary.retained))} iptalden kaldı`
-          : salesSummary.total > 0
-            ? `satışın %${Math.min(100, Math.round((salesSummary.paid / salesSummary.total) * 100))}'i`
-            : 'tahsilat yok',
+        : money.refunded > 0.005
+          ? `${formatTL(Math.round(money.refunded))} müşteriye iade edildi`
+          : cancelledSummary.retained > 0
+            ? `${formatTL(Math.round(cancelledSummary.retained))} iptalden kaldı`
+            : salesSummary.total > 0
+              ? `satışın %${Math.min(100, Math.round((salesSummary.paid / salesSummary.total) * 100))}'i`
+              : 'tahsilat yok',
       icon: Wallet,
       tone: 'text-emerald-700',
     },

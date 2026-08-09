@@ -1103,6 +1103,19 @@ export const adminApi = {
       query: { tenantId },
       body: { reason, refundedAmount: refundedAmount ?? 0, refundMethod: refundMethod ?? null },
     }),
+  /**
+   * CANLI + ARŞİV TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
+   *
+   * İkisini ayrı ayrı çekmek yarış üretiyordu: iki istek arasında bir satış iptal edilirse aynı
+   * satış hem canlıda hem arşivde görünüp ÇİFT sayılabiliyor, ters sırada ise hiçbirinde
+   * görünmeyip KAYBOLUYORDU (1.000 TL satış / 400 TL iadede 2.000 brüt gibi imkânsız rakamlar).
+   * Sunucu ikisini tek transaction'da okur.
+   */
+  accountsWithArchive: <T = unknown>(
+    params: { customerId?: string; page?: number; pageSize?: number },
+    tenantId?: string,
+  ): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/with-archive', { query: { tenantId, ...params } }),
   /** İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç). */
   listCancelledSales: <T = unknown>(params?: { customerId?: string; servicePackageId?: string }, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/accounts/cancelled', { query: { tenantId, ...params } }),

@@ -34,6 +34,19 @@ public interface ICustomerAccountService
 
     /// <summary>İptal arşivi — "İptal Edilenler" ekranının kaynağı (geri alınmışlar hariç).</summary>
     Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(Guid tenantId, Guid? customerId = null, Guid? servicePackageId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// CANLI + ARŞİV, TEK ANLIK GÖRÜNTÜDEN. İstemci bunları iki AYRI istekle çekiyordu ve iki
+    /// istek arasında bir satış iptal edilirse aynı satış hem canlıda hem arşivde görünüp ÇİFT
+    /// sayılabiliyor, ters sırada ise HİÇBİRİNDE görünmeyip kayboluyordu (1.000 TL satış /
+    /// 400 TL iadede 2.000 brüt · 1.600 tahsilat gibi imkânsız rakamlar).
+    /// <para>
+    /// İki sorgu TEK transaction içinde çalışır; MySQL REPEATABLE READ altında ikisi de aynı anı
+    /// görür. Yarış penceresi kapanır.
+    /// </para>
+    /// </summary>
+    Task<Result<CustomerAccountsWithArchiveDto>> ListWithArchiveAsync(
+        Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> UpdateAsync(Guid tenantId, Guid id, UpdateCustomerAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RescheduleAsync(Guid tenantId, Guid id, RescheduleAccountRequest request, CancellationToken cancellationToken = default);
     Task<Result<CustomerAccountDto>> RegisterPaymentAsync(Guid tenantId, Guid id, RegisterAccountPaymentRequest request, CancellationToken cancellationToken = default);

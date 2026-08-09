@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import { adminApi } from '@/lib/apiClient'
 import { mapCancelledSale, normalizeAccount } from '@/lib/apiMappers'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiCustomerAccount, CancelledSale, CustomerAccount } from '@/lib/types'
@@ -60,24 +60,17 @@ export default function CariSalesWorkspace({
   }>(
     async () => {
       if (!open || !customerId || !tenantId) return { live: [], cancelled: [], archiveUnavailable: false }
-      // CANLI LİSTE ÖNCE ve hatası YUTULMAZ: boş liste "satış yok" demektir, oysa gerçek
-      // "veri alınamadı"dır. Tek sayfa 100 ile sınırlıydı — çok satışı olan müşteride panel
-      // eski kayıtları sessizce KESİYORDU.
-      const live = await fetchAllPaged<ApiCustomerAccount>(
-        (page, pageSize) => adminApi.accounts<ApiCustomerAccount>({ tenantId, customerId, page, pageSize }),
-        200,
-      )
+      // CANLI + ARŞİV TEK İSTEKTE (tek anlık görüntü). İkisi ayrı çekilirken aradaki bir iptal
+      // aynı satışı ÇİFT saydırabiliyor ya da tamamen kaybettirebiliyordu. Hata da YUTULMAZ:
+      // boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
+      const res = await adminApi.accountsWithArchive<{
+        live?: { items?: ApiCustomerAccount[] }
+        cancelled?: unknown[]
+      }>({ customerId, page: 1, pageSize: 500 }, tenantId)
 
-      // İPTAL ARŞİVİ İKİNCİLDİR: iptal edilen satışın satırları canlı tablodan SİLİNİR, panelin
-      // "İptal" sekmesi yalnız buradan dolar. Arşiv çökerse panel yine açılmalı — AMA hata
-      // sessizce boş listeye çevrilmemeli: "iptal yok" ile "arşiv okunamadı" ekranda aynı
-      // görünürse kullanıcı iptal edilmiş bir satışı göremeyip aynı işi ikinci kez yapabilir.
-      try {
-        const rows = await adminApi.listCancelledSales<unknown[]>({ customerId }, tenantId)
-        return { live, cancelled: Array.isArray(rows) ? rows.map(mapCancelledSale) : [], archiveUnavailable: false }
-      } catch {
-        return { live, cancelled: [], archiveUnavailable: true }
-      }
+      const live = Array.isArray(res?.live?.items) ? res.live!.items! : []
+      const cancelled = Array.isArray(res?.cancelled) ? res.cancelled.map(mapCancelledSale) : []
+      return { live, cancelled, archiveUnavailable: false }
     },
     [open, customerId, tenantId, tick],
     { initialData: { live: [], cancelled: [], archiveUnavailable: false } },

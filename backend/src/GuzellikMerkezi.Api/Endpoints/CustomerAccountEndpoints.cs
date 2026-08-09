@@ -38,6 +38,17 @@ public static class CustomerAccountEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CancelSaleAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         });
 
+        // CANLI + ARŞİV TEK İSTEKTE. İstemci ikisini ayrı ayrı çekiyordu; iki istek arasında bir
+        // satış iptal edilirse aynı satış ÇİFT sayılabiliyor ya da tamamen KAYBOLABİLİYORDU.
+        // Bu uç ikisini tek anlık görüntüden döndürür (bkz. ListWithArchiveAsync).
+        group.MapGet("/with-archive", async (Guid? tenantId, int? page, int? pageSize, Guid? customerId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            if (resolvedTenantId == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            var req = new PageRequest(page ?? 1, pageSize ?? 200);
+            return (await service.ListWithArchiveAsync(resolvedTenantId, req, customerId, ct)).ToHttpResult(http);
+        });
+
         // İptal arşivi — "İptal Edilenler" ekranının kaynağı. ":guid" kısıtı sayesinde
         // aşağıdaki "/{id:guid}" rotasıyla çakışmaz.
         group.MapGet("/cancelled", async (Guid? tenantId, Guid? customerId, Guid? servicePackageId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>

@@ -1091,6 +1091,39 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, restored, revenue, count, cancellationToken));
     }, cancellationToken);
 
+    /// <summary>
+    /// CANLI + ARŞİV TEK ANLIK GÖRÜNTÜDEN — bkz. <see cref="ICustomerAccountService.ListWithArchiveAsync"/>.
+    ///
+    /// <para>
+    /// İki sorgu TEK transaction içinde koşar. MySQL varsayılanı REPEATABLE READ olduğundan
+    /// transaction'ın ilk okumasıyla kurulan anlık görüntü ikinci sorguda da geçerlidir: araya
+    /// giren bir iptal, satışı ne İKİ listede birden gösterebilir ne de ikisinden birden düşürebilir.
+    /// </para>
+    /// <para>
+    /// İlişkisel olmayan sağlayıcıda (birim testleri) transaction açılmaz; oradaki amaç zaten
+    /// yarış değil sözleşme doğrulamaktır.
+    /// </para>
+    /// </summary>
+    public async Task<Result<CustomerAccountsWithArchiveDto>> ListWithArchiveAsync(
+        Guid tenantId, PageRequest request, Guid? customerId = null, CancellationToken cancellationToken = default)
+    {
+        await using var tx = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken)
+            : null;
+
+        var live = await ListAsync(tenantId, request, cancellationToken, customerId);
+        if (live.IsFailure) return Result<CustomerAccountsWithArchiveDto>.Failure(live.Error);
+
+        var cancelled = await ListCancelledAsync(tenantId, customerId, null, cancellationToken);
+        if (cancelled.IsFailure) return Result<CustomerAccountsWithArchiveDto>.Failure(cancelled.Error);
+
+        // Yalnız okuma yapıldı; commit anlık görüntüyü serbest bırakmak için.
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
+        return Result<CustomerAccountsWithArchiveDto>.Success(
+            new CustomerAccountsWithArchiveDto(live.Value!, cancelled.Value!));
+    }
+
     public async Task<Result<IReadOnlyCollection<CancelledSaleDto>>> ListCancelledAsync(
         Guid tenantId, Guid? customerId = null, Guid? servicePackageId = null, CancellationToken cancellationToken = default)
     {

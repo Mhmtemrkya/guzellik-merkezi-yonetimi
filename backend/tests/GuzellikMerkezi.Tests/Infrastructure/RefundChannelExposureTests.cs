@@ -223,4 +223,55 @@ public sealed class RefundChannelExposureTests
             Assert.DoesNotContain(listed.Value!.Items, a => a.Id == seed.AccountId);
         }
     }
+
+    /// <summary>
+    /// BLOCKER B4: CANLI + ARŞİV TEK OKUMADAN — satış ne ÇİFT sayılır ne KAYBOLUR.
+    ///
+    /// <para>
+    /// İstemci ikisini AYRI isteklerle çekiyordu. İki istek arasında bir satış iptal edilirse aynı
+    /// satış hem canlı listede hem arşivde görünüp çift sayılabiliyor; ters sırada ise hiçbirinde
+    /// görünmeyip kayboluyordu. Birleşik uç ikisini tek transaction'da okur.
+    /// </para>
+    /// <para>
+    /// Bu test yarışı değil DEĞİŞMEZİ ölçer: aynı satış iki listeden YALNIZ BİRİNDE olmalı —
+    /// iptalden önce canlıda, sonra arşivde. Toplam her iki durumda da 1 kalır.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task BirlesikOkuma_SatisTekListedeGorunur()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).RegisterPaymentAsync(seed.TenantId, seed.AccountId,
+                new RegisterAccountPaymentRequest(1000m, "cash", null, null))).IsSuccess);
+
+        // İPTALDEN ÖNCE: canlıda 1, arşivde 0.
+        await using (var before = NewDb(options))
+        {
+            var res = await NewService(before).ListWithArchiveAsync(seed.TenantId, new PageRequest(1, 200));
+            Assert.True(res.IsSuccess, res.IsFailure ? res.Error.Message : null);
+            Assert.Single(res.Value!.Live.Items);
+            Assert.Empty(res.Value.Cancelled);
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewService(db).CancelSaleAsync(seed.TenantId, seed.AccountId,
+                new CancelSaleRequest("vazgeçti", RefundedAmount: 400m, RefundMethod: "cash"))).IsSuccess);
+
+        // İPTALDEN SONRA: canlıda 0, arşivde 1. Toplam yine 1 — ne çift ne kayıp.
+        await using (var after = NewDb(options))
+        {
+            var res = await NewService(after).ListWithArchiveAsync(seed.TenantId, new PageRequest(1, 200));
+            Assert.True(res.IsSuccess, res.IsFailure ? res.Error.Message : null);
+            Assert.Empty(res.Value!.Live.Items);
+            var archived = Assert.Single(res.Value.Cancelled);
+
+            // Denetimin senaryosu: 1.000 tahsilat, 400 iade → kurumda 600 kalır.
+            Assert.Equal(1000m, archived.CollectedAmount);
+            Assert.Equal(400m, archived.RefundedAmount);
+            Assert.Equal(600m, archived.RetainedAmount);
+        }
+    }
 }

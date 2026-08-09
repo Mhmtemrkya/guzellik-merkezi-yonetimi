@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Application.Features.CustomerAccounts;
@@ -225,6 +226,17 @@ public sealed record CancelledSaleDto(
 
 /// <summary>İptal arşivindeki tek tahsilat satırı (kalıcı kopya).</summary>
 public sealed record ArchivedPaymentDto(Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc);
+
+/// <summary>
+/// Canlı cariler + iptal arşivi, AYNI ANDAN okunmuş hâli.
+/// <para>
+/// İki ayrı istek arasında bir satış iptal edilirse aynı satış çift sayılabiliyor ya da tamamen
+/// kaybolabiliyordu. Bu zarf ikisini tek okumada taşır.
+/// </para>
+/// </summary>
+public sealed record CustomerAccountsWithArchiveDto(
+    PagedResult<CustomerAccountDto> Live,
+    IReadOnlyCollection<CancelledSaleDto> Cancelled);
 
 /// <summary>Müşteriye yapılan tek iade satırı — <c>Method</c>: cash / card / transfer.</summary>
 public sealed record RefundDto(Guid Id, decimal Amount, string? Method, string? Reference, DateTime RefundedAtUtc, string? Reason);

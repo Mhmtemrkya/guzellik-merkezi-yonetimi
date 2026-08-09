@@ -287,6 +287,16 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
         return s + (retained > 0 ? retained : 0);
       });
 
+  /// MÜŞTERİYE GERİ ÖDENEN tutar (web paritesi).
+  ///
+  /// Kimlik: Harcama = Tahsil + İADE + Borç. Bu kalem görünmezken 1.000 tahsil edilip iptalde
+  /// 400 iade edilen müşteride kartlar "Harcama 1.000 · Tahsil 600 · Borç 0" gösteriyor ve
+  /// aradaki 400 HİÇBİR YERDE yazmıyordu — rakamların her biri doğru, birlikte açıklanamaz.
+  double get _cancelledRefunded => _cancelledSales.fold(0, (s, c) {
+        final refunded = (c['refundedAmount'] as num?)?.toDouble() ?? 0;
+        return s + (refunded > 0 ? refunded : 0);
+      });
+
   /// İPTAL EDİLEN satış borç doğurmaz (sunucudaki müşteri borcu da onu saymaz); eskiden
   /// iptal edilmiş carinin kalanı da bu toplama giriyordu.
   double get _debt => _accounts
@@ -583,6 +593,11 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       // İPTAL EDİLEN SATIŞTAN KALAN PARA DA SAYILIR: iptalde satırlar arşive taşındığı için
       // canlı özet onu görmez, ama para fiilen kasada kaldı (iade edilen kısım düşülmüştür).
       ('Tahsil Edilen', money(s.paid + _cancelledRetained), null),
+      // İADE GÖRÜNÜR OLMALI (web paritesi): 1.000 tahsil edilip iptalde 400 iade edilince
+      // kartlar Harcama 1.000 · Tahsil 600 · Borç 0 gösteriyor, aradaki 400 HİÇBİR YERDE
+      // yazmıyordu. Kimlik: Harcama = Tahsil + İade + Borç. Yalnız iade varsa gösterilir.
+      if (_cancelledRefunded > 0.005)
+        ('İade Edilen', money(_cancelledRefunded), null),
       // Borç görünce ilk iş adisyona bakmaktır — kart oraya götürsün.
       (
         'Açık Borç',

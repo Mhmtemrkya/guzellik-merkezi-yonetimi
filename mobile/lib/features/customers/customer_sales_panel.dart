@@ -158,27 +158,26 @@ Future<CustomerSalesLoad> loadCustomerSalesAccounts(
   ApiClient api,
   String customerId,
 ) async {
-  // ARŞİV İKİNCİL VERİDİR — CANLI LİSTEYİ DÜŞÜREMEZ. İki çağrı birbirine bağlandığında
-  // arşivdeki tek bir aksaklık (404, zaman aşımı) tüm sonucu hataya çeviriyor; çağıranlar bunu
-  // "satışlar alınamadı" diye yakalayıp sheet'i HİÇ AÇMIYOR. Gerçek olay: uç adresi bir kez
-  // yanlış yazıldı ve analyze + birim testleri yeşilken özellik tamamen açılmaz hâle geldi.
-  final live = apiItems(
-    await api.getAllPaged('/api/admin/accounts/', query: {'customerId': customerId}, pageSize: 200),
-  ).where((a) => '${a['customerId']}' == customerId).toList();
+  // CANLI + ARŞİV TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
+  //
+  // İkisi ayrı ayrı çekilirken araya giren bir iptal aynı satışı hem canlıda hem arşivde
+  // gösterip ÇİFT saydırabiliyor, ters sırada ise hiçbirinde göstermeyip KAYBEDİYORDU
+  // (1.000 TL satış / 400 TL iadede 2.000 brüt · 1.600 tahsilat gibi imkânsız rakamlar).
+  // Sunucu ikisini tek transaction'da okur; yarış penceresi kapanır.
+  //
+  // Tek istek olduğu için "arşiv ayrı çöktü" durumu da ARTIK YOK: ya ikisi de gelir ya hiçbiri.
+  // Hata YUTULMAZ — boş liste "satış yok" demektir, oysa gerçek "veri alınamadı"dır.
+  final res = await api.get('/api/admin/accounts/with-archive',
+      query: {'customerId': customerId, 'page': 1, 'pageSize': 500});
 
-  // AMA HATA SESSİZCE YUTULAMAZ: boş arşiv "iptal yok" diye okunuyordu. Kullanıcı, iptal
-  // edilmiş bir satışı göremediği için ikinci kez iptal/tahsilat işlemi yapabilir. Bayrak
-  // taşınır; ekran "İptal edilenler yüklenemedi" der — "iptal yok" DEMEZ.
-  try {
-    final cancelledRaw = apiItems(
-      await api.get('/api/admin/accounts/cancelled', query: {'customerId': customerId}),
-    );
-    return CustomerSalesLoad(
-      accounts: [...live, ...cancelledToPseudoAccounts(cancelledRaw, customerId: customerId)],
-    );
-  } catch (_) {
-    return CustomerSalesLoad(accounts: live, archiveUnavailable: true);
-  }
+  final map = res is Map ? res.cast<String, dynamic>() : const <String, dynamic>{};
+  final live = apiItems(map['live'])
+      .where((a) => '${a['customerId']}' == customerId)
+      .toList();
+  final cancelled = cancelledToPseudoAccounts(
+      apiItems(map['cancelled']), customerId: customerId);
+
+  return CustomerSalesLoad(accounts: [...live, ...cancelled]);
 }
 
 /// Satış yükleme sonucu: satırlar + ARŞİVİN OKUNUP OKUNAMADIĞI.
@@ -252,6 +251,9 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
   late List<Map<String, dynamic>> _accounts = widget.accounts;
   late bool _archiveUnavailable = widget.archiveUnavailable;
 
+  /// Son tazeleme başarısız mı? `true` iken liste BAYAT'tır ve işlem yapılmamalıdır.
+  bool _stale = false;
+
   /// Sheet ana ekranın state'inden kopya taşır; satış değişince hem ana ekranı
   /// hem de kendi listesini tazeler (yoksa sheet eski veriyi göstermeye devam ederdi).
   ///
@@ -266,10 +268,16 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
         setState(() {
           _accounts = load.accounts;
           _archiveUnavailable = load.archiveUnavailable;
+          _stale = false;
         });
       }
     } catch (_) {
-      // ana ekran zaten tazelendi; sheet kapanınca güncel veri görünür
+      // TAZELEME BAŞARISIZ = EKRANDAKİ VERİ ARTIK GÜVENİLMEZ.
+      //
+      // Sessiz kalmak, iptal edilmiş bir satışı ekranda CANLI ve TAHSİL EDİLEBİLİR bırakıyordu:
+      // kullanıcı kapanmış bir satıştan tahsilat almaya çalışabilir ya da aynı satışı ikinci kez
+      // iptal etmeyi deneyebilirdi. Liste bayat işaretlenir; kullanıcı açıkça uyarılır.
+      if (mounted) setState(() => _stale = true);
     }
   }
 
@@ -390,6 +398,25 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
                   // ARŞİV OKUNAMADI UYARISI: bayrak olmadan "iptal yok" ile "iptal listesi
                   // alınamadı" ekranda AYNI görünüyordu. Kullanıcı iptal edilmiş bir satışı
                   // göremediği için ikinci kez iptal/tahsilat işlemi yapabilirdi.
+                  // BAYAT LİSTE UYARISI: iptal/tahsilat sonrası tazeleme başarısızsa ekrandaki
+                  // satış hâlâ "canlı" görünür. Kullanıcı kapanmış bir satıştan tahsilat almaya
+                  // kalkışmadan önce bunu bilmeli.
+                  if (_stale)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.warning.withValues(alpha: .40)),
+                      ),
+                      child: const Text(
+                        'Liste güncellenemedi — ekrandaki satışlar SON DURUMU göstermiyor olabilir. '
+                        'İşlem yapmadan önce sayfayı kapatıp yeniden açın.',
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.warning),
+                      ),
+                    ),
                   if (_archiveUnavailable)
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
