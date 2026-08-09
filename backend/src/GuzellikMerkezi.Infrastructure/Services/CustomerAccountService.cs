@@ -648,11 +648,18 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     private async Task<Dictionary<Guid, decimal>> LoadServicePricesAsync(
         Guid tenantId, IEnumerable<Guid> serviceIds, CancellationToken cancellationToken)
     {
-        var ids = serviceIds.Where(x => x != Guid.Empty).Distinct().ToArray();
-        if (ids.Length == 0) return [];
-        return await _db.ServiceDefinitions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
-            .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
+        var ids = serviceIds.Where(x => x != Guid.Empty).Distinct().ToHashSet();
+        if (ids.Count == 0) return [];
+        // ÖNCE MATERYALİZE, SONRA BELLEKTE SÜZ: bu sağlayıcı yerel koleksiyonun HİÇBİR şeklini
+        // (Guid[]/List/HashSet/enum[]) sorguya çeviremiyor — `ids.Contains(x.Id)` burada
+        // NullReferenceException ile 500 üretiyordu. Ölçüm: ContainsTranslationProbeMySqlTests.
+        // [[project_mysql_query_gotchas]]
+        return (await _db.ServiceDefinitions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .Select(x => new { x.Id, x.Price })
+                .ToListAsync(cancellationToken))
+            .Where(x => ids.Contains(x.Id))
+            .ToDictionary(x => x.Id, x => x.Price);
     }
 
     public async Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default)
@@ -913,27 +920,14 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             cancellationToken,
             restoreStaffIds);
 
-        // ESKİ ARŞİVLERDE DONMUŞ FİYAT YOKTUR (migration öncesi iptaller).
+        // ESKİ ARŞİVLERDE DONMUŞ FİYAT YOKTUR (migration öncesi iptaller) ve BÖYLE KALIR.
         //
-        // `UnitPriceAtSale` migration'ı yalnız CANLI seans satırlarını doldurdu; arşivdeki
-        // snapshot JSON'una dokunmadı. Böyle bir satış geri alınınca fiyat null kalıyor ve ciro
-        // dağıtımı seans adedine kayıyordu — ölçülen örnekte 1.000 TL'lik hizmet cirosu geri alma
-        // sonrası 1.363,64 oluyordu. Eksik fiyat, canlı backfill'in yaptığının AYNISIYLA
-        // (bugünün katalog fiyatı) tamamlanır; böylece geri alınan satış da bundan sonrası için
-        // SABİTLENİR. Snapshot'ta fiyat varsa ona DOKUNULMAZ.
-        var missingPriceServiceIds = snapshot.Sessions
-            .Where(x => x.UnitPriceAtSale is null or <= 0m)
-            .Select(x => x.ServiceDefinitionId)
-            .Where(x => x != Guid.Empty)
-            .Distinct()
-            .ToArray();
-        var legacyPrices = missingPriceServiceIds.Length == 0
-            ? []
-            : await _db.ServiceDefinitions.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && missingPriceServiceIds.Contains(x.Id))
-                .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
-
-        var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot, legacyPrices);
+        // Bir tur önce burada eksik fiyat BUGÜNÜN katalogundan tamamlanıyordu. Yanlıştı: fiyatın
+        // dolması hesabı seans-adedi ağırlığından fiyat ağırlığına geçiriyor ve satıştan bu yana
+        // katalog düzenlendiyse geri alma ciroyu DEĞİŞTİRİYORDU (ölçüldü: 1.000 → 1.285,71).
+        // Geri alma ciro-nötr olmak zorunda; eksik fiyat null bırakılır, dağıtım iptalden
+        // önceki hâline — seans adedine — döner. Ayrıntı: RebuildFromSnapshot.
+        var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot);
         var nowUtc = DateTime.UtcNow;
 
         // Yedekte adisyon statüsü yoksa (v1 kayıtları) eski davranış: hepsi onaylı sayılır.
@@ -1150,13 +1144,18 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
         // ARŞİVLENMİŞ TAHSİLATLAR: iptalde canlı satırlar silinip buraya taşınır. Ekstre gerçek
         // tarih/yöntemi buradan okur (tek sentetik satır yerine).
-        var archiveIds = rows.Select(x => x.Id).ToArray();
-        var paymentsByArchive = archiveIds.Length == 0
+        // Kimlik süzgeci BELLEKTE: bu sağlayıcı yerel koleksiyon `Contains`ini sorguya çeviremiyor
+        // ("Expression '@archiveIds' … does not have a type mapping assigned") → arşivde en az bir
+        // iptal varken bu uç 500 verirdi. Ölçüm: ContainsTranslationProbeMySqlTests.
+        // [[project_mysql_query_gotchas]]
+        var archiveIds = rows.Select(x => x.Id).ToHashSet();
+        var paymentsByArchive = archiveIds.Count == 0
             ? new Dictionary<Guid, List<ArchivedPaymentDto>>()
             : (await _db.ArchivedSalePayments.AsNoTracking()
-                    .Where(p => p.TenantId == tenantId && archiveIds.Contains(p.CancelledSaleId))
+                    .Where(p => p.TenantId == tenantId)
                     .Select(p => new { p.CancelledSaleId, p.Id, p.Amount, p.Method, p.Reference, p.OccurredAtUtc })
                     .ToListAsync(cancellationToken))
+                .Where(p => archiveIds.Contains(p.CancelledSaleId))
                 .GroupBy(p => p.CancelledSaleId)
                 .ToDictionary(
                     g => g.Key,
@@ -1168,12 +1167,13 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // bir metne indirgeniyordu; kart iadesi kasada nakit çıkışı gibi okunuyordu. Kanal iptal
         // anında zaten yazılıyor (refund_transactions), yalnız dışarı verilmiyordu.
         // Global süzgeç geçersiz kılınan (soft-delete) iadeleri zaten eler — IgnoreQueryFilters YOK.
-        var refundsByArchive = archiveIds.Length == 0
+        var refundsByArchive = archiveIds.Count == 0
             ? new Dictionary<Guid, List<RefundDto>>()
             : (await _db.RefundTransactions.AsNoTracking()
-                    .Where(r => r.TenantId == tenantId && archiveIds.Contains(r.CancelledSaleId))
+                    .Where(r => r.TenantId == tenantId)
                     .Select(r => new { r.CancelledSaleId, r.Id, r.Amount, r.Method, r.Reference, r.RefundedAtUtc, r.Reason })
                     .ToListAsync(cancellationToken))
+                .Where(r => archiveIds.Contains(r.CancelledSaleId))
                 .GroupBy(r => r.CancelledSaleId)
                 .ToDictionary(
                     g => g.Key,
@@ -1574,17 +1574,28 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .Where(s => s.SourceAdisyonId.HasValue)
             .Select(s => s.SourceAdisyonId!.Value)
             .Distinct()
-            .ToArray();
+            .ToHashSet();
         var saleLineTotals = new Dictionary<(Guid AdisyonId, Guid ServiceId), decimal>();
-        if (sourceAdisyonIds.Length > 0)
+        if (sourceAdisyonIds.Count > 0)
         {
-            var lines = await _db.AdisyonItems.AsNoTracking()
-                .Where(i => sourceAdisyonIds.Contains(i.AdisyonId)
-                            && i.Type == AdisyonItemType.Service
-                            && !i.CoveredByPackage
-                            && i.RefId != null)
-                .Select(i => new { i.AdisyonId, ServiceId = i.RefId!.Value, i.Quantity, i.UnitPrice })
-                .ToListAsync(cancellationToken);
+            // CANLI 500: fiş kimlikleri `sourceAdisyonIds.Contains(i.AdisyonId)` ile süzülüyordu;
+            // bu sağlayıcı yerel koleksiyonu çeviremiyor ve Hizmet Raporu, dönemde adisyondan
+            // doğmuş tek bir hizmet seansı olduğu anda 500 veriyordu.
+            // Ölçüm: ContainsTranslationProbeMySqlTests. [[project_mysql_query_gotchas]]
+            //
+            // KURUM KAPSAMI SUNUCUDA KALMALI: adisyon_items'ta TenantId YOK (kapsam yalnız
+            // AdisyonId'den geliyordu). Süzgeci düpedüz bellekte yapmak TÜM kurumların
+            // kalemlerini okumak olurdu — kapsam EXISTS alt sorgusuyla korunur (aynı desen
+            // ListAsync'teki katalog süzgecinde de kullanılıyor), kimlik süzgeci bellekte.
+            var lines = (await _db.AdisyonItems.AsNoTracking()
+                    .Where(i => i.Type == AdisyonItemType.Service
+                                && !i.CoveredByPackage
+                                && i.RefId != null
+                                && _db.Adisyonlar.Any(a => a.Id == i.AdisyonId && a.TenantId == tenantId))
+                    .Select(i => new { i.AdisyonId, ServiceId = i.RefId!.Value, i.Quantity, i.UnitPrice })
+                    .ToListAsync(cancellationToken))
+                .Where(x => sourceAdisyonIds.Contains(x.AdisyonId))
+                .ToList();
             saleLineTotals = lines
                 .GroupBy(x => (x.AdisyonId, x.ServiceId))
                 .ToDictionary(g => g.Key, g => g.Sum(x => Math.Round(x.Quantity * x.UnitPrice, 2, MidpointRounding.AwayFromZero)));
@@ -1621,7 +1632,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // verilir: satışın TÜM satırlarının fiyatı biliniyorsa fiyat ağırlığı, biri bile
         // bilinmiyorsa hepsi seans adedi kullanır.
         var soldUnitPrice = new Dictionary<(Guid AdisyonId, Guid ServiceId), decimal>();
-        if (sourceAdisyonIds.Length > 0)
+        if (sourceAdisyonIds.Count > 0)
         {
             foreach (var (key, total) in saleLineTotals)
             {

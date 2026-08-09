@@ -746,6 +746,24 @@ public sealed class AdisyonService : IAdisyonService
         //     Salon yazılımı standardı: paket fişte satılır, onay/checkout anında seanslar aktive olur.
         if (packageSaleItems.Count > 0 && accountId is not null)
         {
+            // KATALOG FİYATLARI TEK SEFERDE, BELLEKTE SÜZÜLMEK ÜZERE.
+            //
+            // CANLI 500: burada `package.Items.Select(...).Contains(x.Id)` yazıyordu. Bellekteki
+            // bir koleksiyonu sorgu ağacına gömmek MySql.EntityFrameworkCore'da çevrilemiyor
+            // ("Expression '@Select' … does not have a type mapping assigned") → onay
+            // InvalidOperationException ile 500 veriyor, satış cariye HİÇ işlenmiyordu.
+            // Kimlikleri önce diziye almak DA YETMEZ: bu sağlayıcı YEREL koleksiyonun hiçbir
+            // şeklini (Guid[]/List/HashSet/enum[]) çeviremiyor — ölçüldü, bkz.
+            // ContainsTranslationProbeMySqlTests. Tek güvenli yol depodaki yerleşik desendir:
+            // ÖNCE materyalize et, SONRA bellekte süz. [[project_mysql_query_gotchas]]
+            //
+            // Sorgu döngünün DIŞINA alındı: her paket kalemi için ayrı tam tablo okuması yapmasın.
+            var catalogPrices = (await _db.ServiceDefinitions.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId)
+                    .Select(x => new { x.Id, x.Price })
+                    .ToListAsync(cancellationToken))
+                .ToDictionary(x => x.Id, x => x.Price);
+
             foreach (var item in packageSaleItems)
             {
                 var package = await _db.ServicePackages
@@ -765,16 +783,12 @@ public sealed class AdisyonService : IAdisyonService
                 // FİYAT SATIŞ ANINDA DONDURULUR: bu satırların fiyatı normalde adisyon
                 // kaleminden çözülür, ama fiş sonradan silinirse tek dayanak bu değer kalır —
                 // aksi hâlde ciro dağıtımı sessizce seans adedine kayar.
-                var pkgUnitPrices = await _db.ServiceDefinitions.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId
-                             && package.Items.Select(pi => pi.ServiceDefinitionId).Contains(x.Id))
-                    .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
                 foreach (var pkgItem in package.Items)
                 {
                     _db.CustomerPackageSessions.Add(new CustomerPackageSession(
                         tenantId, adisyon.CustomerId, accountId.Value, package.Id,
                         pkgItem.ServiceDefinitionId, pkgItem.SessionCount * qty, adisyon.Id,
-                        pkgUnitPrices.TryGetValue(pkgItem.ServiceDefinitionId, out var pp) ? pp : null));
+                        catalogPrices.TryGetValue(pkgItem.ServiceDefinitionId, out var pp) ? pp : null));
                 }
             }
         }

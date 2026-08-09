@@ -38,7 +38,7 @@ public sealed partial class CustomerAccountService
     /// (migration öncesi arşivler). Boş sözlük = tamamlanacak bir şey yok.
     /// </param>
     private RebuiltSale RebuildFromSnapshot(
-        Guid tenantId, Guid accountId, SaleSnapshot snapshot, IReadOnlyDictionary<Guid, decimal> legacyPrices)
+        Guid tenantId, Guid accountId, SaleSnapshot snapshot)
     {
         var a = snapshot.Account;
 
@@ -85,14 +85,24 @@ public sealed partial class CustomerAccountService
         var sessions = new List<CustomerPackageSession>(snapshot.Sessions.Count);
         foreach (var s in snapshot.Sessions)
         {
-            // DONMUŞ FİYAT DA GERİ YÜKLENİR: aktarılmazsa geri alınan satışın cirosu sessizce
+            // DONMUŞ FİYAT YALNIZ YEDEKTEN. Aktarılmazsa geri alınan satışın cirosu sessizce
             // seans adedi dağıtımına kayardı (snapshot şema paritesi).
-            // Snapshot'ta fiyat varsa O kullanılır; yoksa (eski arşiv) katalogdan tamamlanır.
+            //
+            // GÜNCEL KATALOĞA DÜŞÜLMEZ. Bir tur önce, yedeğinde fiyat OLMAYAN eski iptaller
+            // (kolon migration'ından önce arşivlenenler) geri alınırken eksik fiyat BUGÜNÜN
+            // katalogundan tamamlanıyordu. Bu, iptali geri almayı ciro-nötr olmaktan çıkarıyordu:
+            // fiyatın dolması hesabı "seans adedi" ağırlığından "fiyat" ağırlığına geçiriyor
+            // (bkz. GetServiceReportAsync → priceKnownByAccount) ve satış anından beri katalog
+            // düzenlendiyse dağıtım satışın hiç bulunmadığı bir yere oturuyordu — ölçülen örnekte
+            // doğrusu 1.000 TL olan ciro geri alma sonrası 1.285,71 TL oldu.
+            //
+            // DEĞİŞMEZ: iptal → geri al ciroyu DEĞİŞTİRMEZ. İptalden önce bu satırların fiyatı
+            // null'dı ve hesap seans adedi ağırlığı kullanıyordu; null geri yüklemek tam olarak
+            // o hâli yeniden kurar. Kaba ama SABİT — aynı dosyanın kendi kuralı: fiyat yalnız
+            // satışın KENDİ kaydından okunur.
             var frozenPrice = s.UnitPriceAtSale is { } snapPrice && snapPrice > 0m
                 ? snapPrice
-                : legacyPrices.TryGetValue(s.ServiceDefinitionId, out var legacy) && legacy > 0m
-                    ? legacy
-                    : (decimal?)null;
+                : (decimal?)null;
             var session = new CustomerPackageSession(
                 tenantId, a.CustomerId, accountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions,
                 s.SourceAdisyonId, frozenPrice);
