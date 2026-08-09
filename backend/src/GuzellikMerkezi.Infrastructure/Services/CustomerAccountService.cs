@@ -486,16 +486,23 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         _db.CustomerAccounts.Add(account);
 
         // Seanslar: pakette kalem varsa onlardan, yoksa tek hizmet + adet olarak.
+        // FİYAT SATIŞ ANINDA DONDURULUR (bkz. LoadServicePricesAsync): bu kayıtların adisyon
+        // kalemi yoktur, fiyat sonradan yalnız GÜNCEL katalogdan okunabilirdi.
         if (package is not null && package.Items.Count > 0)
         {
+            var prices = await LoadServicePricesAsync(
+                tenantId, package.Items.Select(i => i.ServiceDefinitionId), cancellationToken);
             foreach (var item in package.Items)
                 _db.CustomerPackageSessions.Add(new CustomerPackageSession(
-                    tenantId, customer.Id, account.Id, package.Id, item.ServiceDefinitionId, item.SessionCount));
+                    tenantId, customer.Id, account.Id, package.Id, item.ServiceDefinitionId, item.SessionCount,
+                    unitPriceAtSale: prices.TryGetValue(item.ServiceDefinitionId, out var p) ? p : null));
         }
         else if (request.SessionsTotal > 0 && request.ServiceDefinitionId is { } serviceId && serviceId != Guid.Empty)
         {
+            var prices = await LoadServicePricesAsync(tenantId, [serviceId], cancellationToken);
             _db.CustomerPackageSessions.Add(new CustomerPackageSession(
-                tenantId, customer.Id, account.Id, package?.Id ?? Guid.Empty, serviceId, request.SessionsTotal));
+                tenantId, customer.Id, account.Id, package?.Id ?? Guid.Empty, serviceId, request.SessionsTotal,
+                unitPriceAtSale: prices.TryGetValue(serviceId, out var sp) ? sp : null));
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -628,6 +635,26 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
     /// <para>DİKKAT: <c>Remove()</c> bu DbContext'te otomatik soft-delete'e çevriliyor
     /// (bkz. GuzellikDbContext.ApplyAuditInfo). Gerçek silme yalnızca <c>ExecuteDeleteAsync</c> ile olur.</para>
     /// </summary>
+
+    /// <summary>
+    /// Verilen hizmetlerin O ANKİ katalog fiyatlarını okur — seans satırına DONDURULMAK için.
+    ///
+    /// <para>
+    /// Ciro dağıtımı fiyat ağırlığı kullanır; ağırlık GÜNCEL katalogdan okununca sonradan yapılan
+    /// bir zam KAPANMIŞ dönemin cirosunu değiştiriyordu. Fiyat satış anında yazılırsa geçmiş sabit
+    /// kalır ve dağıtımın isabeti de korunur (seans adedine düşmek zorunda kalınmaz).
+    /// </para>
+    /// </summary>
+    private async Task<Dictionary<Guid, decimal>> LoadServicePricesAsync(
+        Guid tenantId, IEnumerable<Guid> serviceIds, CancellationToken cancellationToken)
+    {
+        var ids = serviceIds.Where(x => x != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        return await _db.ServiceDefinitions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
+    }
+
     public async Task<Result<CustomerAccountDto>> CancelSaleAsync(Guid tenantId, Guid id, CancelSaleRequest request, CancellationToken cancellationToken = default)
     {
         // Tutar işareti kilit gerektirmez; tahsil edilene karşı doğrulama kilit ALTINDA yapılır.
@@ -1157,10 +1184,14 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // Paketle satış: müşteride hizmet-bazlı seans bakiyesi aç (otomatik düşüm için).
         if (package is not null)
         {
+            // Fiyat satış anında dondurulur — katalog düzenlenince geçmiş ciro oynamasın.
+            var prices = await LoadServicePricesAsync(
+                tenantId, package.Items.Select(i => i.ServiceDefinitionId), cancellationToken);
             foreach (var item in package.Items)
             {
                 _db.CustomerPackageSessions.Add(new CustomerPackageSession(
-                    tenantId, customer.Id, account.Id, package.Id, item.ServiceDefinitionId, item.SessionCount));
+                    tenantId, customer.Id, account.Id, package.Id, item.ServiceDefinitionId, item.SessionCount,
+                    unitPriceAtSale: prices.TryGetValue(item.ServiceDefinitionId, out var p) ? p : null));
             }
         }
 
@@ -1456,7 +1487,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var sessions = await _db.CustomerPackageSessions
             .AsNoTracking()
             .Where(s => s.TenantId == tenantId)
-            .Select(s => new { s.CustomerAccountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId })
+            // `Id` ve `UnitPriceAtSale` ciro dağıtımı için ŞART: fiyat artık güncel kataloğdan
+            // değil, seans satırına satış anında dondurulmuş değerden okunuyor.
+            .Select(s => new { s.Id, s.CustomerAccountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, s.UnitPriceAtSale })
             .ToListAsync(cancellationToken);
 
         // YALNIZ TEKİL HİZMET SATIŞLARI (ServicePackageId = Guid.Empty).
@@ -1519,17 +1552,21 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         // varken ilkine 1.363,64 düşüyordu (doğrusu 1.000 / 500). Paket raporu bu dağıtımı
         // zaten kalem BİRİM FİYATIYLA yapıyor; iki rapor aynı satışa farklı ciro yazamaz.
         //
-        // FİYAT ÖNCE SATIŞIN KENDİ KAYDINDAN: aynı fişteki kalem tutarı (varsa) kullanılır,
-        // yoksa katalog fiyatına düşülür. Güncel kataloğa doğrudan bağlanmak, sonradan yapılan
-        // ZAM/İNDİRİM ile GEÇMİŞ dönemin cirosunu değiştiriyordu (aynı rapor iki gün farklı
-        // rakam veriyordu). Fiyat hiç bilinmiyorsa (silinmiş hizmet, kalemsiz kayıt) seans
-        // adedine düşülür.
+        // FİYAT YALNIZ SATIŞIN KENDİ KAYDINDAN: önce aynı fişteki kalem tutarı, yoksa seans
+        // satırına SATIŞ ANINDA DONDURULMUŞ birim fiyat. GÜNCEL KATALOĞA ASLA DÜŞÜLMEZ.
+        //
+        // Önceki tur kusurun yalnız yarısını kapatmıştı: kalemi olan satışlar sabitlendi ama
+        // legacy/elle açılmış kayıtlar hâlâ güncel kataloğa bağlıydı. ÖLÇÜLDÜ: aynı satış, aynı
+        // dönem, yalnız DİĞER hizmetin katalog fiyatı düzenlenince ciro 1.000 → 250'ye düştü.
+        // Kapanmış bir ay, iki gün sonra farklı rakam veren bir rapora karşı kapatılamaz.
+        //
+        // Fiyat hiç bilinmiyorsa (donmuş fiyatı olmayan çok eski kayıt) seans ADEDİNE düşülür:
+        // kaba ama SABİT.
         //
         // KARIŞIK BİRİM TUZAĞI: bazı satırlar "fiyat×seans", bazıları "seans" ağırlığı alırsa
         // payda anlamsız olur (500 TL ile 3 adet toplanır). Bu yüzden karar HESAP BAZINDA
         // verilir: satışın TÜM satırlarının fiyatı biliniyorsa fiyat ağırlığı, biri bile
         // bilinmiyorsa hepsi seans adedi kullanır.
-        var servicePriceById = serviceRows.ToDictionary(x => x.Id, x => x.Price);
         var soldUnitPrice = new Dictionary<(Guid AdisyonId, Guid ServiceId), decimal>();
         if (sourceAdisyonIds.Length > 0)
         {
@@ -1542,29 +1579,35 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             }
         }
 
-        decimal PriceOf(Guid? adisyonId, Guid serviceId)
+        // SATIŞ ANINDA DONDURULMUŞ birim fiyat — seans satırının KENDİ kaydı, katalog DEĞİL.
+        var frozenUnitPrice = sessions
+            .Where(x => x.UnitPriceAtSale is > 0m)
+            .ToDictionary(x => x.Id, x => x.UnitPriceAtSale!.Value);
+
+        // 0 = "fiyat bilinmiyor" → çağıran seans adedi ağırlığına düşer.
+        decimal PriceOf(Guid sessionId, Guid? adisyonId, Guid serviceId)
         {
             if (adisyonId is { } aid && soldUnitPrice.TryGetValue((aid, serviceId), out var sold) && sold > 0m) return sold;
-            return servicePriceById.TryGetValue(serviceId, out var p) ? p : 0m;
+            return frozenUnitPrice.TryGetValue(sessionId, out var frozen) ? frozen : 0m;
         }
 
         // Hesabın tüm satırlarında fiyat biliniyor mu? (karışık birim olmasın)
         var priceKnownByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
-            .ToDictionary(g => g.Key, g => g.All(s => PriceOf(s.SourceAdisyonId, s.ServiceDefinitionId) > 0m));
+            .ToDictionary(g => g.Key, g => g.All(s => PriceOf(s.Id, s.SourceAdisyonId, s.ServiceDefinitionId) > 0m));
 
-        decimal WeightOf(Guid accountId, Guid? adisyonId, Guid serviceId, int totalSessions)
+        decimal WeightOf(Guid sessionId, Guid accountId, Guid? adisyonId, Guid serviceId, int totalSessions)
         {
             var units = Math.Max(1, totalSessions);
             if (!priceKnownByAccount.TryGetValue(accountId, out var usePrice) || !usePrice) return units;
-            return PriceOf(adisyonId, serviceId) * units;
+            return PriceOf(sessionId, adisyonId, serviceId) * units;
         }
 
         var weightByAccount = sessions
             .Where(s => periodAccountIds.Contains(s.CustomerAccountId))
             .GroupBy(s => s.CustomerAccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => WeightOf(x.CustomerAccountId, x.SourceAdisyonId, x.ServiceDefinitionId, x.TotalSessions)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => WeightOf(x.Id, x.CustomerAccountId, x.SourceAdisyonId, x.ServiceDefinitionId, x.TotalSessions)));
 
         var revenue = scopedSessions.Sum(s =>
         {
@@ -1576,7 +1619,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             }
             var weight = weightByAccount.TryGetValue(s.CustomerAccountId, out var w) && w > 0 ? w : 1m;
             var total = totalByAccount.TryGetValue(s.CustomerAccountId, out var t) ? t : 0m;
-            return total * WeightOf(s.CustomerAccountId, s.SourceAdisyonId, s.ServiceDefinitionId, s.TotalSessions) / weight;
+            return total * WeightOf(s.Id, s.CustomerAccountId, s.SourceAdisyonId, s.ServiceDefinitionId, s.TotalSessions) / weight;
         });
 
         // "Aktif Hizmet": dönemde satılanlardan seansı hâlâ devam eden satış adedi

@@ -762,11 +762,19 @@ public sealed class AdisyonService : IAdisyonService
                         "Kalemi kaldırıp güncel paketi ekleyin — aksi hâlde bedel tahakkuk eder ama seans açılmaz."));
                 }
                 var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
+                // FİYAT SATIŞ ANINDA DONDURULUR: bu satırların fiyatı normalde adisyon
+                // kaleminden çözülür, ama fiş sonradan silinirse tek dayanak bu değer kalır —
+                // aksi hâlde ciro dağıtımı sessizce seans adedine kayar.
+                var pkgUnitPrices = await _db.ServiceDefinitions.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId
+                             && package.Items.Select(pi => pi.ServiceDefinitionId).Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
                 foreach (var pkgItem in package.Items)
                 {
                     _db.CustomerPackageSessions.Add(new CustomerPackageSession(
                         tenantId, adisyon.CustomerId, accountId.Value, package.Id,
-                        pkgItem.ServiceDefinitionId, pkgItem.SessionCount * qty, adisyon.Id));
+                        pkgItem.ServiceDefinitionId, pkgItem.SessionCount * qty, adisyon.Id,
+                        pkgUnitPrices.TryGetValue(pkgItem.ServiceDefinitionId, out var pp) ? pp : null));
                 }
             }
         }
@@ -779,9 +787,12 @@ public sealed class AdisyonService : IAdisyonService
             foreach (var item in serviceSaleItems)
             {
                 var qty = (int)Math.Max(1, Math.Round(item.Quantity, MidpointRounding.AwayFromZero));
+                // KALEMİN KENDİ BİRİM FİYATI katalogdan daha doğrudur: bu satışta uygulanan
+                // indirim/zam buradadır. Satış anında dondurulur.
                 _db.CustomerPackageSessions.Add(new CustomerPackageSession(
                     tenantId, adisyon.CustomerId, accountId.Value, Guid.Empty,
-                    item.RefId!.Value, qty, adisyon.Id));
+                    item.RefId!.Value, qty, adisyon.Id,
+                    item.UnitPrice > 0m ? item.UnitPrice : null));
             }
         }
 

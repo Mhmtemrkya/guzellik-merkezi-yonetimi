@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -17,8 +18,24 @@ public static class HealthEndpoints
         // ELLE uygulandığı için yeni binary, eski şema üzerinde "hazır" diyip yük dengeleyiciden
         // TRAFİK ALABİLİYORDU: eksik kolona yazan uçlar 500 veriyor, beklenen kısıtlar bulunmuyordu.
         // Bekleyen migration varsa 503 döneriz — deploy otomasyonu bu örneği devreye almaz.
-        app.MapGet("/health/ready", async (GuzellikDbContext db, HttpContext http, CancellationToken ct) =>
+        app.MapGet("/health/ready", async (GuzellikDbContext db, IWebHostEnvironment env, HttpContext http, CancellationToken ct) =>
         {
+            // ÖDEME AYARI TUTARSIZSA HAZIR DEĞİLİZ.
+            //
+            // Ödeme AÇIKKEN eksik/çelişkili ayar hiçbir yerde yakalanmıyordu: örnek trafiğe
+            // alınıyor, kusur ancak ilk gerçek tahsilat denemesinde — yani MÜŞTERİ ÖDERKEN —
+            // ortaya çıkıyordu. Bu kontrol, hatayı deploy anına çeker.
+            //
+            // ÖDEME KAPALIYSA KAPI GEÇER: üretim `PaymentsEnabled=0` ile çalışıyor ve bu
+            // GEÇERLİ bir yapılandırmadır; kapalı ödeme yüzünden trafik kesilmesi olmaz.
+            var paymentIssue = await PaymentConfigGate.DescribeAsync(db, env.IsProduction(), ct);
+            if (paymentIssue is not null)
+            {
+                return Results.Json(
+                    ApiResponse<object>.Fail("PaymentConfigInvalid", paymentIssue, http.TraceIdentifier),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
             if (db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
                 return Results.Ok(ApiResponse<object>.Ok(new { status = "ready" }, http.TraceIdentifier));
 

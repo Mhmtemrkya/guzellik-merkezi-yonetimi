@@ -18,7 +18,8 @@ public sealed class CustomerPackageSession : Entity
         Guid servicePackageId,
         Guid serviceDefinitionId,
         int totalSessions,
-        Guid? sourceAdisyonId = null)
+        Guid? sourceAdisyonId = null,
+        decimal? unitPriceAtSale = null)
     {
         if (totalSessions < 0) throw new DomainException("Seans sayısı negatif olamaz.");
         TenantId = tenantId;
@@ -29,6 +30,7 @@ public sealed class CustomerPackageSession : Entity
         TotalSessions = totalSessions;
         UsedSessions = 0;
         SourceAdisyonId = sourceAdisyonId;
+        UnitPriceAtSale = unitPriceAtSale is > 0m ? unitPriceAtSale : null;
     }
 
     public Guid TenantId { get; private set; }
@@ -42,6 +44,23 @@ public sealed class CustomerPackageSession : Entity
     public int UsedSessions { get; private set; }
     /// <summary>Bu seans bakiyesini açan adisyon (satış). Adisyon geri alınırken izlenebilirlik için; eski kayıtlarda null.</summary>
     public Guid? SourceAdisyonId { get; private set; }
+
+    /// <summary>
+    /// SATIŞ ANINDAKİ birim fiyat — ciro dağıtımı için DONMUŞ değer.
+    ///
+    /// <para>
+    /// Karma bir satışın tutarı hizmetler arasında fiyat ağırlığıyla bölünür. Ağırlık GÜNCEL
+    /// katalogdan okununca, kataloğa yapılan bir zam KAPANMIŞ dönemin cirosunu değiştiriyordu:
+    /// ölçülen bir örnekte yalnız DİĞER hizmetin fiyatı düzenlenince aynı satışın aynı dönemdeki
+    /// cirosu 1.000 → 250'ye düştü. Kapanmış bir ay, iki gün sonra farklı rakam veren bir rapora
+    /// karşı kapatılamaz.
+    /// </para>
+    /// <para>
+    /// <c>null</c> = "fiyat bilinmiyor" (dağıtım seans adedine düşer). SIFIR YAZILMAZ: 0,
+    /// "bedava satıldı" ile "bilinmiyor"u aynı kovaya atardı.
+    /// </para>
+    /// </summary>
+    public decimal? UnitPriceAtSale { get; private set; }
 
     public int RemainingSessions => Math.Max(0, TotalSessions - UsedSessions);
 

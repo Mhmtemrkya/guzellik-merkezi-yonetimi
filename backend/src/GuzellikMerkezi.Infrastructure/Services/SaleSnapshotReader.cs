@@ -132,9 +132,14 @@ internal static class SaleSnapshotReader
         Guid Id, decimal Amount, string? Method, string? Reference, DateTime OccurredAtUtc, DateTime CreatedAtUtc,
         Guid? SourceAdisyonId = null, Guid? SourceAppointmentId = null);
 
+    /// <param name="UnitPriceAtSale">
+    /// Satış anındaki DONMUŞ birim fiyat. ARŞİVE YAZILMAK ZORUNDA: snapshot'ta olmayan bir kolon
+    /// geri almada sessizce null'a düşer ve ciro dağıtımı seans adedine kayar (bu depoda aynı
+    /// sınıf hata iki kez yaşandı — kolon, snapshot ve geri alma ÜÇÜ BİRDEN güncellenir).
+    /// </param>
     public sealed record SnapshotSession(
         Guid Id, Guid ServicePackageId, Guid ServiceDefinitionId, int TotalSessions, int UsedSessions,
-        Guid? SourceAdisyonId, DateTime CreatedAtUtc);
+        Guid? SourceAdisyonId, DateTime CreatedAtUtc, decimal? UnitPriceAtSale = null);
 
     /// <summary>DB'den okunan DateTime Kind=Unspecified döner; değer UTC instant olduğundan işaretlenir.</summary>
     public static DateTime Utc(DateTime value) =>
@@ -167,7 +172,7 @@ internal static class SaleSnapshotReader
                 .Select(p => new SnapshotPayment(p.Id, p.Amount, p.Method, p.Reference, Utc(p.OccurredAtUtc), Utc(p.CreatedAtUtc), p.SourceAdisyonId, p.SourceAppointmentId))
                 .ToList(),
             sessions
-                .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc)))
+                .Select(s => new SnapshotSession(s.Id, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.UsedSessions, s.SourceAdisyonId, Utc(s.CreatedAtUtc), s.UnitPriceAtSale))
                 .ToList(),
             adisyonlar.Select(a => a.Id).ToList(),
             adisyonlar

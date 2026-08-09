@@ -80,8 +80,11 @@ public sealed partial class CustomerAccountService
         var sessions = new List<CustomerPackageSession>(snapshot.Sessions.Count);
         foreach (var s in snapshot.Sessions)
         {
+            // DONMUŞ FİYAT DA GERİ YÜKLENİR: aktarılmazsa geri alınan satışın cirosu sessizce
+            // seans adedi dağıtımına kayardı (snapshot şema paritesi).
             var session = new CustomerPackageSession(
-                tenantId, a.CustomerId, accountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions, s.SourceAdisyonId);
+                tenantId, a.CustomerId, accountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions,
+                s.SourceAdisyonId, s.UnitPriceAtSale);
             _db.CustomerPackageSessions.Add(session);
             var entry = _db.Entry(session);
             entry.Property(x => x.Id).CurrentValue = s.Id;

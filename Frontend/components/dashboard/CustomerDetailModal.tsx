@@ -666,12 +666,23 @@ export default function CustomerDetailModal({
     },
     {
       label: 'Açık Borç',
-      value: formatTL(customer.debt),
-      sub: customer.debt > 0 ? 'adisyona git' : 'borç yok',
+      /*
+       * TEK ANLIK GÖRÜNTÜ: bu kart `customer.debt`i (SUNUCUNUN hesabı, LİSTE isteğiyle gelmiş)
+       * gösteriyordu; yanındaki iki kart ise modalın KENDİ `accounts` isteğinden türüyordu.
+       * İki ayrı okuma = iki ayrı an: liste çekildikten sonra bir tahsilat girilirse üçlü
+       * "Harcama − Tahsil ≈ Borç" bağıntısı tam o tahsilat kadar tutmuyordu.
+       * Aynı modalın tahsilat panelinde zaten `totalDebt` kullanılıyordu; yani modal kendi
+       * içinde İKİ FARKLI borç rakamı gösterebiliyordu.
+       *
+       * Kalan "≈" farkı artık yalnız BİLİNEN ve İSTENEN sebepten: açık borç cari BAŞINA
+       * sıfırla sınırlanır (fazla ödeme alacak olur, başka satışın borcunu silmez).
+       */
+      value: accountsLoading ? '—' : formatTL(Math.round(totalDebt)),
+      sub: accountsLoading ? 'yükleniyor' : totalDebt > 0.005 ? 'adisyona git' : 'borç yok',
       icon: CreditCard,
-      tone: customer.debt > 0 ? 'text-rose-700' : undefined,
+      tone: totalDebt > 0.005 ? 'text-rose-700' : undefined,
       // Borç görünce yapılacak ilk şey adisyona bakmaktır — kart oraya götürsün.
-      onClick: canAdisyon && customer.debt > 0 ? () => setTab('adisyon') : undefined,
+      onClick: canAdisyon && totalDebt > 0.005 ? () => setTab('adisyon') : undefined,
     },
     // Satış listesi ayrı modalde: her sekmeden tek tıkla ulaşılsın diye KPI şeridinde duruyor.
     // Sayı İPTALLERİ SAYMAZ — "Toplam Harcama" da saymıyor; iptaller alt satırda ayrıca yazılır.

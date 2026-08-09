@@ -325,14 +325,21 @@ public sealed class ServiceReportPackageExclusionTests
     }
 
     /// <summary>
-    /// LEGACY KARMA SATIŞ (adisyon bağı YOK) → dağıtım seans ADEDİNE değil KATALOG FİYATINA göre.
+    /// LEGACY KARMA SATIŞ (adisyon bağı YOK) → dağıtım seans ADEDİNE değil BİRİM FİYATA göre.
     ///
     /// Seans adedine oranlamak ucuz ama çok seanslı hizmete satışın büyük kısmını yazıyordu:
     /// 1.500 TL'lik fişte 10 seanslık 100 TL'lik hizmet + 1 seanslık 500 TL'lik hizmet varken
     /// ilkine 1.363,64 düşüyordu. Paket raporu bu dağıtımı zaten birim fiyatla yapıyor.
+    ///
+    /// <para>
+    /// FİYATIN KAYNAĞI DEĞİŞTİ (denetim turu 4): eskiden GÜNCEL katalogdan okunuyordu ve bu,
+    /// kapanmış dönemin cirosunu kataloğa dokunulunca oynatıyordu. Artık satış anında seans
+    /// satırına DONDURULUR. İsabet aynı kalır (1.000), üstelik geçmiş sabittir — bkz.
+    /// <see cref="GetServiceReportAsync_LegacySale_RevenueMovesWhenCatalogPriceEdited"/>.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task GetServiceReportAsync_LegacySale_AllocatesByCatalogPrice()
+    public async Task GetServiceReportAsync_LegacySale_AllocatesByFrozenUnitPrice()
     {
         var options = NewOptions();
         Guid tenantId, cheapId;
@@ -358,9 +365,12 @@ public sealed class ServiceReportPackageExclusionTests
             db.CustomerAccounts.Add(account);
             await db.SaveChangesAsync();
 
+            // Fiyat SATIŞ ANINDA dondurulur (üretimdeki yazma yollarının yaptığının aynısı).
             db.CustomerPackageSessions.AddRange(
-                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, cheap.Id, 10),
-                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, pricey.Id, 1));
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, cheap.Id, 10,
+                    unitPriceAtSale: 100m),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, pricey.Id, 1,
+                    unitPriceAtSale: 500m));
             await db.SaveChangesAsync();
 
             tenantId = tenant.Id;
@@ -376,5 +386,76 @@ public sealed class ServiceReportPackageExclusionTests
         // FİYAT ağırlığı: 1.500 × (100×10) / (100×10 + 500×1) = 1.000.
         // SEANS ADEDİ ağırlığı (eski, hatalı) 1.500 × 10/11 ≈ 1.363,64 verirdi.
         Assert.Equal(1000m, Math.Round(result.Value!.Revenue, 2));
+    }
+
+    /// <summary>
+    /// KANIT TESTİ (denetim turu 4 · #6): LEGACY satışın cirosu KATALOG DÜZENLENİNCE DEĞİŞİYOR MU?
+    ///
+    /// <para>
+    /// İddia: "legacy hizmet cirosu hâlâ katalog fiyatıyla değişiyor". Bu test iddiayı
+    /// ARİTMETİKTEN BAĞIMSIZ ölçer: aynı satış, aynı dönem, DEĞİŞMEYEN tek şey rapor —
+    /// arada yalnız hizmetin katalog fiyatı düzenlenir. Rakam oynuyorsa kusur gerçektir;
+    /// çünkü kapanmış bir ayı, iki gün sonra farklı rakam veren bir rapora karşı kapatamazsınız.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_LegacySale_RevenueMovesWhenCatalogPriceEdited()
+    {
+        var options = NewOptions();
+        Guid tenantId, cheapId, priceyId;
+        string category;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Drift QA", $"drift-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var cheap = new ServiceDefinition(tenant.Id, branch.Id, "Ucuz Bakım", 30, 100m, "Ucuz");
+            var pricey = new ServiceDefinition(tenant.Id, branch.Id, "Pahalı Bakım", 60, 500m, "Pahalı");
+            db.ServiceDefinitions.AddRange(cheap, pricey);
+            var customer = new Customer(tenant.Id, branch.Id, "Drift", "0555 777 88 99", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            // LEGACY: elle açılmış cari, adisyon bağı YOK → fiyat yalnız katalogdan bilinebilir.
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Eski kayıt", 1500m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-1), null);
+            db.CustomerAccounts.Add(account);
+            await db.SaveChangesAsync();
+
+            // Üretimdeki yazma yolları fiyatı satış anında dondurur; test de öyle yapar.
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, cheap.Id, 10,
+                    unitPriceAtSale: 100m),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, pricey.Id, 1,
+                    unitPriceAtSale: 500m));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            cheapId = cheap.Id;
+            priceyId = pricey.Id;
+            category = cheap.Category!;
+        }
+
+        decimal before;
+        await using (var read = NewDb(options))
+            before = (await NewAccounts(read).GetServiceReportAsync(tenantId, category: category)).Value!.Revenue;
+
+        // GEÇMİŞE DOKUNULMADI — yalnız BUGÜNÜN katalog fiyatı düzenlendi.
+        await using (var edit = NewDb(options))
+        {
+            var pricey = await edit.ServiceDefinitions.FindAsync(priceyId);
+            pricey!.ChangePricing(pricey.DurationMinutes, 5000m);
+            await edit.SaveChangesAsync();
+        }
+
+        decimal after;
+        await using (var read = NewDb(options))
+            after = (await NewAccounts(read).GetServiceReportAsync(tenantId, category: category)).Value!.Revenue;
+
+        Assert.Equal(Math.Round(before, 2), Math.Round(after, 2));
+        _ = cheapId;
     }
 }
