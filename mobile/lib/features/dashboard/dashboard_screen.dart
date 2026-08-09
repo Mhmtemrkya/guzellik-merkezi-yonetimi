@@ -3689,6 +3689,9 @@ class _InstallmentChartCard extends StatelessWidget {
                 final frac = maxTotal > 0 ? total / maxTotal : 0.0;
                 final barH = 6 + frac * 76;
                 final colH = total > 0 ? (col / total) * barH : 0.0;
+                // Peşinat, tahsilatın İÇİNDEKİ paydır; bandı ondan pay alır (çift sayım yok).
+                final dep = numberOf(m, const ['deposit']);
+                final depH = (total > 0 ? (dep / total) * barH : 0.0).clamp(0.0, colH);
                 final monthIdx = numberOf(m, const ['month']).toInt();
                 return Expanded(
                   child: Padding(
@@ -3709,9 +3712,16 @@ class _InstallmentChartCard extends StatelessWidget {
                                   height: barH - colH,
                                   color: const Color(0xFFF3A6C0),
                                 ),
+                                // PEŞİN TAHSİLAT AYRI BANT (web paritesi): peşinat taksit satırı
+                                // üretmediği için grafikte hiç görünmüyordu. Tek renge katmak da
+                                // yetmez — "bu ay taksitler ödendi" diye okunurdu.
                                 Container(
-                                  height: colH,
+                                  height: colH - depH,
                                   color: const Color(0xFFD8B46D),
+                                ),
+                                Container(
+                                  height: depH,
+                                  color: const Color(0xFF4E9E73),
                                 ),
                               ],
                             ),
@@ -3735,7 +3745,9 @@ class _InstallmentChartCard extends StatelessWidget {
           const SizedBox(height: 12),
           const Row(
             children: [
-              _LegendDot(color: Color(0xFFD8B46D), label: 'Tahsil edildi'),
+              _LegendDot(color: Color(0xFF4E9E73), label: 'Peşin'),
+              SizedBox(width: 14),
+              _LegendDot(color: Color(0xFFD8B46D), label: 'Taksit'),
               SizedBox(width: 14),
               _LegendDot(color: Color(0xFFF3A6C0), label: 'Alınacak'),
             ],

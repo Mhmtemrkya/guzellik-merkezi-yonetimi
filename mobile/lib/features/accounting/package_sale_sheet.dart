@@ -256,15 +256,17 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     return '';
   }
 
-  /// Peşinat alanı hizmet satışında gizlidir (web ile aynı kullanıcı kuralı) — ama o kural fişin
-  /// YALNIZCA hizmetten ibaret olduğu döneme aitti; paket/ürün ek kalemi girince alan açılır.
-  bool get _showDownPayment => !_isService || _extras.isNotEmpty;
+  /// PEŞİNAT ALANI HER SATIŞ TÜRÜNDE AÇIKTIR (9 Ağu 2026, kullanıcı kararı · web paritesi).
+  ///
+  /// Alan bir dönem hizmet satışında GİZLENİYORDU (o da bir kullanıcı talebiydi). Sonuç: hizmet
+  /// satışında tahsilat alınamıyor, dolayısıyla satış cariye HEMEN işlenemiyor, her zaman ilk
+  /// randevuya erteleniyordu — paket satışında yapılabilen şey hizmette yapılamıyordu.
+  ///
+  /// Alan OPSİYONELDİR: boş bırakılırsa davranış eskisi gibi (erteleme), tutar girilirse satış
+  /// kaydedilir kaydedilmez cariye işlenir. Eski akış kaybolmaz, yanına ikinci yol eklenir.
+  bool get _showDownPayment => true;
 
-  /// DEĞER DE ALANLA BİRLİKTE SIFIRLANIR: kullanıcı peşinat yazıp sonra ek kalemi kaldırırsa alan
-  /// gizlenir ama denetleyicideki metin kalırdı. Peşinat artık satışın cariye NE ZAMAN işleneceğini
-  /// belirlediği için, görünmeyen bir tutar satışı sessizce "hemen işle" yoluna sokardı.
   double get _downPaymentValue {
-    if (!_showDownPayment) return 0;
     final raw = downPayment.text.trim().replaceAll(',', '.');
     if (raw.isEmpty) return 0;
     return double.tryParse(raw) ?? 0;
@@ -1073,7 +1075,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                               onChanged: (_) => setState(() {}),
                             ),
                           ),
-                          // Peşinat alanı hizmet satışında gizlidir (bkz. _showDownPayment).
+                          // Peşinat her satış türünde girilebilir (bkz. _showDownPayment).
                           if (_showDownPayment) ...[
                             const SizedBox(width: 10),
                             Expanded(

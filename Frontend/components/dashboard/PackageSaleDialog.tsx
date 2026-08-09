@@ -316,15 +316,22 @@ export default function PackageSaleDialog({
   const isInstallment = payMode === 'taksit'
   const perInstallment = isInstallment && installmentCount > 0 ? Math.round((total / installmentCount) * 100) / 100 : 0
   /**
-   * Peşinat alanı hizmet satışında gizlidir (kullanıcı talebi) — AMA o kural fişin YALNIZCA
-   * hizmetten ibaret olduğu döneme aitti; paket/ürün ek kalemi girince alan açılır.
+   * PEŞİNAT ALANI HER SATIŞ TÜRÜNDE AÇIKTIR (9 Ağu 2026, kullanıcı kararı).
    *
-   * <p>DEĞER DE ALANLA BİRLİKTE SIFIRLANIR: kullanıcı peşinat yazıp sonra ek kalemi kaldırırsa alan
-   * gizlenir ama state'teki tutar kalırdı. Peşinat artık satışın cariye NE ZAMAN işleneceğini
-   * belirlediği için, görünmeyen bir tutar satışı sessizce "hemen işle" yoluna sokardı.</p>
+   * <p>
+   * Alan bir dönem hizmet satışında GİZLENİYORDU (o da bir kullanıcı talebiydi). Sonuç: hizmet
+   * satışında tahsilat alınamıyor, dolayısıyla satış cariye HEMEN işlenemiyor, her zaman ilk
+   * randevuya erteleniyordu — paket satışında yapılabilen şey hizmette yapılamıyordu. Kullanıcı
+   * bu kısıtın kalkmasını ve iki modalın AYNI sistemi paylaşmasını istedi.
+   * </p>
+   * <p>
+   * Alan OPSİYONELDİR: boş bırakılırsa davranış eskisi gibi (erteleme), tutar girilirse satış
+   * kaydedilir kaydedilmez cariye işlenir (bkz. <c>approveNow</c>). Yani eski akış kaybolmaz,
+   * yanına ikinci bir yol eklenir.
+   * </p>
    */
-  const showDownPayment = !isServiceSale || extras.length > 0
-  const pay = showDownPayment ? Number(downPayment) || 0 : 0
+  const showDownPayment = true
+  const pay = Number(downPayment) || 0
 
   /**
    * ERTELEME (ilk randevuda otomatik cariye işleme) YALNIZ ÜRÜNSÜZ FİŞTE MÜMKÜNDÜR.
@@ -1023,14 +1030,15 @@ export default function PackageSaleDialog({
                 </div>
               </div>
 
-              {/* Hizmet satışında peşinat alanı formda gizlidir; ek kalem eklenince açılır ama
-                  kullanıcı onay adımında olduğu için görmez — nereye döneceği yazılır. */}
-              {isServiceSale && extras.length > 0 && pay === 0 && (
+              {/* TAHSİLAT HATIRLATMASI: peşinat girilmemiş satış cariye ŞİMDİ işlenmez. Alan artık
+                  formda hep görünür olduğu için "alan açıldı" uyarısına gerek kalmadı; burada
+                  yalnız geri dönüp tahsilat girme yolu gösterilir. */}
+              {pay === 0 && canDefer && (
                 <div className="flex items-start gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-[#b14d6c]">
                   <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                   <span>
-                    Ek kalem eklendiği için <strong className="font-semibold">peşinat alanı açıldı</strong>. Tahsilat
-                    alacaksanız Düzenle’ye dönüp girin — peşinat girilen satış kaydedilir kaydedilmez cariye işlenir.
+                    Tahsilat alacaksanız <strong className="font-semibold">Düzenle</strong>’ye dönüp peşinat girin —
+                    peşinat girilen satış kaydedilir kaydedilmez cariye işlenir.
                   </span>
                 </div>
               )}

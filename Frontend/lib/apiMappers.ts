@@ -492,6 +492,7 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
       due: Number(m?.due ?? 0),
       collected: Number(m?.collected ?? 0),
       remaining: Number(m?.remaining ?? 0),
+      deposit: Number(m?.deposit ?? 0),
     }
   })
   return {

@@ -284,9 +284,19 @@ public sealed record CustomerPackageSessionDto(
 public sealed record AccountMonthlyInstallmentDto(
     int Year,
     int Month,
-    decimal Due,        // O ay vadesi gelen taksit toplamı (plan tutarı)
-    decimal Collected,  // O aya dağıtılan tahsilat
-    decimal Remaining); // Kalan (Due − Collected)
+    decimal Due,        // O ay TAHAKKUK eden tutar: vadesi gelen taksitler + o ay alınan peşinat
+    decimal Collected,  // O ay TAHSİL edilen tutar (peşinat DAHİL)
+    decimal Remaining,  // Kalan (Due − Collected)
+    /// <summary>
+    /// <see cref="Collected"/> içindeki PEŞİNAT payı — grafikte ayrı bant olarak gösterilir.
+    /// <para>
+    /// Peşinat taksit satırı üretmediği için grafik onu HİÇ göstermiyordu: 30.000'lik satışın
+    /// peşin alınan 10.000'i, kasaya giren en büyük kalem olmasına rağmen "bu ay ne tahsil ettim"
+    /// grafiğinde yoktu. Toplama katmak yetmez — ayrı alan olmazsa taksit tahsilatıyla karışır
+    /// ve "bu ay taksitler tıkır tıkır ödendi" gibi yanlış okunur.
+    /// </para>
+    /// </summary>
+    decimal Deposit = 0m);
 
 /// <summary>
 /// Kurum yöneticisi panosu "Genel Rapor" özeti: paket satışı, yapılacak seans,

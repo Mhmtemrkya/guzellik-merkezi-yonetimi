@@ -1210,6 +1210,7 @@ export interface ApiAccountMonthlyInstallment {
   due?: number
   collected?: number
   remaining?: number
+  deposit?: number
 }
 
 /** Pano "Hizmet Raporu" kartları — paket raporundan ayrı, kategori HİZMETİN kategorisidir. */
@@ -1300,9 +1301,17 @@ export interface AccountMonthlyInstallment {
   month: number
   /** "Haz" gibi kısa ay etiketi (tr-TR). */
   label: string
+  /** O ay TAHAKKUK eden tutar: vadesi gelen taksitler + o ay alınan peşinat. */
   due: number
+  /** O ay TAHSİL edilen tutar — peşinat DAHİL. */
   collected: number
   remaining: number
+  /**
+   * `collected` içindeki PEŞİNAT payı. Grafikte ayrı bant çizilir: peşinat taksit satırı
+   * üretmediği için eskiden hiç görünmüyordu (30.000'lik satışın peşin 10.000'i grafikte yoktu).
+   * Toplama katmak yetmez — ayrılmazsa taksit tahsilatıyla karışıp "taksitler ödendi" gibi okunur.
+   */
+  deposit: number
 }
 
 export interface AccountReport {

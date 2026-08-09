@@ -1799,7 +1799,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         decimal totalCollected = 0m;
         decimal overdueAmount = 0m;
         // Ay → (vade tutarı, dağıtılan tahsilat)
-        var monthBuckets = new Dictionary<(int Year, int Month), (decimal Due, decimal Collected)>();
+        var monthBuckets = new Dictionary<(int Year, int Month), (decimal Due, decimal Collected, decimal Deposit)>();
 
         // Müşteri kırılımı için cari bazında biriktirilen değerler (aşağıda müşteriye göre toplanır).
         var customerAgg = new Dictionary<Guid, CustomerBreakdownAccumulator>();
@@ -1835,8 +1835,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 if (remaining > 0m && inst.DueDate < today) overdueAmount += remaining;
 
                 var key = (inst.DueDate.Year, inst.DueDate.Month);
-                var agg = monthBuckets.TryGetValue(key, out var cur) ? cur : (Due: 0m, Collected: 0m);
-                monthBuckets[key] = (agg.Due + inst.Amount, agg.Collected + paid);
+                var agg = monthBuckets.TryGetValue(key, out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m);
+                monthBuckets[key] = (agg.Due + inst.Amount, agg.Collected + paid, agg.Deposit);
 
                 bucket.InstallmentCount++;
                 bucket.PaidAmount += paid;
@@ -1859,6 +1859,33 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                         bucket.NextDueAmount = remaining;
                     }
                 }
+            }
+
+            // PEŞİNAT DA AYLIK GRAFİĞE GİRER.
+            //
+            // Grafik yalnız TAKSİT satırlarından kuruluyordu; peşinat taksit olmadığı için
+            // 30.000'lik satışın peşin alınan 10.000'i hiçbir ayda GÖRÜNMÜYORDU — kasaya en büyük
+            // parayı sokan kalem, "bu ay ne tahsil ettim" grafiğinde yoktu.
+            //
+            // ÇİFT SAYIM YOK: peşinat `AllocatePayments` havuzundan zaten düşülüyor (taksitleri
+            // kapatmaz), dolayısıyla yukarıdaki `paid` toplamlarına hiç girmedi.
+            //
+            // Hem Due hem Collected'a yazılır: peşinat satış anında TAHAKKUK EDİP AYNI ANDA
+            // TAHSİL EDİLEN bir kalemdir; yalnız Collected'a yazmak o ayı "borcu olmadan para
+            // gelmiş" gibi gösterirdi. Ay, tahsilatın GERÇEK tarihinden alınır (geçmişe dönük
+            // satışta satış tarihi ile ödeme tarihi farklı olabilir).
+            var depositPayment = acc.Payments.FirstOrDefault(p => p.Id == acc.Id);
+            if (depositPayment is not null && depositPayment.Amount > 0m)
+            {
+                var dKey = (depositPayment.OccurredAtUtc.Year, depositPayment.OccurredAtUtc.Month);
+                var dAgg = monthBuckets.TryGetValue(dKey, out var dCur) ? dCur : (Due: 0m, Collected: 0m, Deposit: 0m);
+                monthBuckets[dKey] = (
+                    dAgg.Due + depositPayment.Amount,
+                    dAgg.Collected + depositPayment.Amount,
+                    dAgg.Deposit + depositPayment.Amount);
+
+                totalCollected += depositPayment.Amount;
+                bucket.PaidAmount += depositPayment.Amount;
             }
         }
 
@@ -1896,9 +1923,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         for (var i = 0; i < totalSpan; i++)
         {
             var d = firstOfThisMonth.AddMonths(startOffset + i);
-            var agg = monthBuckets.TryGetValue((d.Year, d.Month), out var cur) ? cur : (Due: 0m, Collected: 0m);
+            var agg = monthBuckets.TryGetValue((d.Year, d.Month), out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m);
             monthly.Add(new AccountMonthlyInstallmentDto(
-                d.Year, d.Month, agg.Due, agg.Collected, Math.Max(0m, agg.Due - agg.Collected)));
+                d.Year, d.Month, agg.Due, agg.Collected, Math.Max(0m, agg.Due - agg.Collected), agg.Deposit));
         }
 
         // Seanslar: CustomerPackageSession yalnızca tenant ile global süzülür (BranchId yok).

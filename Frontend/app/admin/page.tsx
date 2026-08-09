@@ -1119,6 +1119,13 @@ interface InstallmentChartPoint extends AccountMonthlyInstallment {
   axisLabel: string
   isNext: boolean
   collectionRate: number
+  /**
+   * Peşinat DIŞINDAKİ tahsilat — yani gerçekten TAKSİT olarak ödenen kısım.
+   *
+   * Grafik üç bant yığar: peşin · taksit · kalan. `collected` peşinatı DA içerdiği için
+   * doğrudan yığılamaz; peşinat iki kez sayılır ve bar toplamı vadeyi aşardı.
+   */
+  installmentCollected: number
 }
 
 interface InstallmentAxisTickProps {
@@ -1173,12 +1180,24 @@ function InstallmentTooltip({ active, payload }: TooltipProps<number, string>) {
         </span>
       </div>
       <div className="mt-3 space-y-2 border-t border-[#f2e7eb] pt-3">
+        {/* PEŞİN ayrı satır: kasaya giren en büyük kalem "taksit tahsilatı" gibi okunmasın. */}
+        {point.deposit > 0.005 && (
+          <div className="flex items-center justify-between gap-5 text-[11px]">
+            <span className="flex items-center gap-2 text-[#7d6a72]">
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-[#4e9e73]" />
+              Peşin tahsilat
+            </span>
+            <b className="tabular-nums text-[#2f6b4c]">{formatTL(Math.round(point.deposit))}</b>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-5 text-[11px]">
           <span className="flex items-center gap-2 text-[#7d6a72]">
             <span className="h-2.5 w-2.5 rounded-[3px] bg-[#d8b46d]" />
-            Tahsil edildi
+            {point.deposit > 0.005 ? 'Taksit tahsilatı' : 'Tahsil edildi'}
           </span>
-          <b className="tabular-nums text-[#3a2b33]">{formatTL(Math.round(point.collected))}</b>
+          <b className="tabular-nums text-[#3a2b33]">
+            {formatTL(Math.round(point.deposit > 0.005 ? point.installmentCollected : point.collected))}
+          </b>
         </div>
         <div className="flex items-center justify-between gap-5 text-[11px]">
           <span className="flex items-center gap-2 text-[#7d6a72]">
@@ -1188,7 +1207,8 @@ function InstallmentTooltip({ active, payload }: TooltipProps<number, string>) {
           <b className="tabular-nums text-[#c05277]">{formatTL(Math.round(point.remaining))}</b>
         </div>
         <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#eadde3] pt-2 text-[11px]">
-          <span className="font-medium text-[#7d6a72]">Toplam vade</span>
+          {/* "Vade" değil TAHAKKUK: peşinat o ay tahakkuk edip aynı anda tahsil edilir. */}
+          <span className="font-medium text-[#7d6a72]">Toplam tahakkuk</span>
           <b className="tabular-nums text-[#2b1e29]">{formatTL(Math.round(point.due))}</b>
         </div>
       </div>
@@ -1262,6 +1282,8 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
       axisLabel: `${month.label}|${month.year}|${state}`,
       isNext: isNextMonth,
       collectionRate: month.due > 0 ? Math.min(100, (month.collected / month.due) * 100) : 0,
+      // Peşinat ayrı bant çizildiği için taksit bandı ondan ARINDIRILIR (çift sayım olmasın).
+      installmentCollected: Math.max(0, month.collected - month.deposit),
     }
   })
   const windowDue = visible.reduce((sum, month) => sum + month.due, 0)
@@ -1347,6 +1369,11 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 26, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
                   <defs>
+                    <linearGradient id="installmentDeposit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#bfe6cd" />
+                      <stop offset="55%" stopColor="#7fc79c" />
+                      <stop offset="100%" stopColor="#4e9e73" />
+                    </linearGradient>
                     <linearGradient id="installmentCollected" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#f3dcae" />
                       <stop offset="55%" stopColor="#e0bd76" />
@@ -1383,20 +1410,32 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     cursor={{ fill: '#fff2f6', opacity: 0.9, radius: 14 }}
                     wrapperStyle={{ outline: 'none' }}
                   />
+                  {/* PEŞİN TAHSİLAT — en altta, kendi bandı.
+                      Peşinat taksit satırı üretmediği için grafikte HİÇ görünmüyordu: 30.000'lik
+                      satışın peşin alınan 10.000'i, kasaya giren en büyük kalem olmasına rağmen
+                      yoktu. Ayrı bant olmasının sebebi, toplama katmanın yetmemesi: taksit
+                      tahsilatıyla aynı renge girerse "bu ay taksitler ödendi" diye okunur. */}
                   <Bar
-                    dataKey="collected"
-                    name="Tahsil edildi"
+                    dataKey="deposit"
+                    name="Peşin tahsilat"
                     stackId="installments"
-                    fill="url(#installmentCollected)"
+                    fill="url(#installmentDeposit)"
                     maxBarSize={34}
                     radius={[0, 0, 10, 10]}
                     animationDuration={850}
                     animationEasing="ease-out"
-                  >
-                    {chartData.map((point) => (
-                      <Cell key={`collected-${point.key}`} fill="url(#installmentCollected)" />
-                    ))}
-                  </Bar>
+                  />
+                  {/* TAKSİT TAHSİLATI — peşinattan ARINDIRILMIŞ kısım (bkz. installmentCollected). */}
+                  <Bar
+                    dataKey="installmentCollected"
+                    name="Taksit tahsilatı"
+                    stackId="installments"
+                    fill="url(#installmentCollected)"
+                    maxBarSize={34}
+                    radius={[0, 0, 0, 0]}
+                    animationDuration={850}
+                    animationEasing="ease-out"
+                  />
                   <Bar
                     dataKey="remaining"
                     name="Alınacak"
