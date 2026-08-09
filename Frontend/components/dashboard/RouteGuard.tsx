@@ -8,9 +8,9 @@ import type { UserRole } from '@/lib/types'
 
 const roleHome: Record<UserRole, string> = {
   PlatformAdmin: '/platform',
-  InstitutionOwner: '/admin',
-  BranchManager: '/admin',
-  Staff: '/personel',
+  InstitutionOwner: '/panel',
+  BranchManager: '/panel',
+  Staff: '/ekip',
 }
 
 function resolveHome(role: UserRole | undefined | null): string {

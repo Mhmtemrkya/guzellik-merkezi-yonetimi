@@ -33,35 +33,35 @@ All panels, pages, and visible features must be exercised end-to-end in live bro
 - [ ] sidebar/logout/guard behavior.
 
 ### Kurum Yöneticisi / Admin
-- [x] `/admin/musteriler`: edit modal PUT success persists after list reload.
-- [x] `/admin/personel`: edit modal PUT success persists after list reload.
-- [x] `/admin/paketler`: service edit modal PUT success persists after list reload.
-- [ ] `/admin`: dashboard cards, branch switcher, appointment list, quick links.
-- [ ] `/admin/onaylar`: backend-pending/empty state and visible actions.
-- [ ] `/admin/loglar`: backend-pending/empty state and visible actions.
-- [ ] `/admin/musteriler`: create, search, select, edit, delete QA-created customer only, Excel buttons if implemented.
-- [ ] `/admin/paketler`: create, select/unselect package preview, edit, delete QA-created service only.
-- [ ] `/admin/stok`: backend-pending/PDF state.
-- [ ] `/admin/randevular`: create/edit/status/filter/date behavior if exposed.
-- [ ] `/admin/kasa`: backend-pending state.
-- [ ] `/admin/on-muhasebe`: backend-pending/PDF state.
-- [ ] `/admin/raporlar`: backend-pending/report state.
-- [ ] `/admin/bildirimler`: state/actions.
-- [ ] `/admin/ayarlar`: settings state/actions.
+- [x] `/panel/musteriler`: edit modal PUT success persists after list reload.
+- [x] `/panel/ekip`: edit modal PUT success persists after list reload.
+- [x] `/panel/paketler`: service edit modal PUT success persists after list reload.
+- [ ] `/panel`: dashboard cards, branch switcher, appointment list, quick links.
+- [ ] `/panel/onaylar`: backend-pending/empty state and visible actions.
+- [ ] `/panel/loglar`: backend-pending/empty state and visible actions.
+- [ ] `/panel/musteriler`: create, search, select, edit, delete QA-created customer only, Excel buttons if implemented.
+- [ ] `/panel/paketler`: create, select/unselect package preview, edit, delete QA-created service only.
+- [ ] `/panel/stok`: backend-pending/PDF state.
+- [ ] `/panel/randevular`: create/edit/status/filter/date behavior if exposed.
+- [ ] `/panel/kasa`: backend-pending state.
+- [ ] `/panel/on-muhasebe`: backend-pending/PDF state.
+- [ ] `/panel/raporlar`: backend-pending/report state.
+- [ ] `/panel/bildirimler`: state/actions.
+- [ ] `/panel/ayarlar`: settings state/actions.
 - [ ] sidebar/logout/route guard.
 
 ### Personel
-- [ ] `/personel`: dashboard.
-- [ ] `/personel/randevular`: list/filter/status actions if exposed.
-- [ ] `/personel/musteriler`: list/search/select details.
-- [ ] `/personel/seanslar`: backend-pending state.
-- [ ] `/personel/paketler`: backend-pending/package state.
-- [ ] `/personel/stok`: backend-pending/stock state.
-- [ ] `/personel/kasa`: backend-pending/cash state.
-- [ ] `/personel/raporlar`: performance/report state.
-- [ ] `/personel/loglar`: history state.
-- [ ] `/personel/bildirimler`: notifications state.
-- [ ] `/personel/profil`: profile state/actions.
+- [ ] `/ekip`: dashboard.
+- [ ] `/ekip/randevular`: list/filter/status actions if exposed.
+- [ ] `/ekip/musteriler`: list/search/select details.
+- [ ] `/ekip/seanslar`: backend-pending state.
+- [ ] `/ekip/paketler`: backend-pending/package state.
+- [ ] `/ekip/stok`: backend-pending/stock state.
+- [ ] `/ekip/kasa`: backend-pending/cash state.
+- [ ] `/ekip/raporlar`: performance/report state.
+- [ ] `/ekip/loglar`: history state.
+- [ ] `/ekip/bildirimler`: notifications state.
+- [ ] `/ekip/profil`: profile state/actions.
 - [ ] sidebar/logout/route guard.
 
 ## Issues found
@@ -70,5 +70,5 @@ None open yet in this ledger. Add each with: page, feature, steps, expected, act
 
 ## Current live state
 
-Last known page: `/admin/paketler`, service edit modal success visible.
+Last known page: `/panel/paketler`, service edit modal success visible.
 Next planned area: Platform Admin full panel QA, then remaining Admin pages, then Personel and public/auth.

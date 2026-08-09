@@ -80,7 +80,7 @@ const STAFF_NOTE: GuideStep = {
 
 const guides: Record<string, PageGuide> = {
   /* ─────────────────────────── KURUM YÖNETİCİSİ ─────────────────────────── */
-  '/admin': {
+  '/panel': {
     title: 'Dashboard — Genel Bakış',
     intro:
       'Salonunuzun günlük nabzını tek ekranda tutar: gelir grafikleri, randevu durumu, personel performansı ve hızlı işlemler burada.',
@@ -134,7 +134,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/randevular': {
+  '/panel/randevular': {
     title: 'Randevular',
     intro:
       'Takvim üzerinde randevu oluşturur, onaylar, tamamlar; iptal ve gelmedi durumlarını yönetirsiniz. Bekleme listesi ve WhatsApp onayı da bu akışa bağlıdır.',
@@ -184,7 +184,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/musteriler': {
+  '/panel/musteriler': {
     title: 'Müşteriler',
     intro:
       'Tüm danışan kayıtlarınız: segment sekmeleri, detay kartı (grafik, konsültasyon, tedavi günlüğü, seans ve cari), satış ve sadakat yönetimi.',
@@ -240,7 +240,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/paketler': {
+  '/panel/paketler': {
     title: 'Paket & Hizmet',
     intro:
       'Hizmet kataloğunuzu ve seanslı paketlerinizi burada kurarsınız; fiyatlar, kategoriler ve sadakat puanı ayarları da buradadır.',
@@ -272,7 +272,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/stok': {
+  '/panel/stok': {
     title: 'Stok & Ürün',
     intro:
       'Ürün envanterinizi, kritik stok uyarılarını ve tüm giriş/çıkış hareketlerini buradan takip edersiniz.',
@@ -304,7 +304,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/kasa': {
+  '/panel/kasa': {
     title: 'Günlük Kasa',
     intro:
       'Günün tüm tahsilatlarını alır, ödeme yöntemlerine göre izler ve gelir-gider akışını grafikle takip edersiniz.',
@@ -336,7 +336,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/on-muhasebe': {
+  '/panel/on-muhasebe': {
     title: 'Ön Muhasebe',
     intro:
       'Cari hesaplar, taksit planları, giderler, personel maaşları ve adisyon — salonunuzun tüm finans operasyonu bu sekmelerde.',
@@ -374,7 +374,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/kasa-kapanis': {
+  '/panel/kasa-kapanis': {
     title: 'Gün Sonu Kasa Kapanışı',
     intro:
       'Gün biterken kasayı sayar, sistemin beklediği tutarla karşılaştırır ve farkı kayıt altına alırsınız.',
@@ -400,7 +400,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/hediye-cek': {
+  '/panel/hediye-cek': {
     title: 'Hediye Çeki & Kupon',
     intro:
       'İndirim kuponları ve hediye çekleri üretir, geçerliliklerini yönetir ve kullanımlarını izlersiniz.',
@@ -426,7 +426,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/bekleme-listesi': {
+  '/panel/bekleme-listesi': {
     title: 'Bekleme Listesi',
     intro:
       'Dolu saatler için müşteri sırası tutar; yer açıldığında WhatsApp üzerinden otomatik teklif gönderir.',
@@ -452,7 +452,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/personel': {
+  '/panel/ekip': {
     title: 'Personel & Roller',
     intro:
       'Ekibinizi yönetir, iki seviyeli yetkiler atar, giriş bilgilerini üretir ve performansı izlersiniz.',
@@ -496,7 +496,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/personel/cizelge': {
+  '/panel/ekip/cizelge': {
     title: 'Personel Çizelgesi',
     intro:
       'Ekibinizin gün, hafta ve ay bazında doluluğunu tek tabloda görürsünüz; kim ne zaman hangi müşteriyle çalışıyor.',
@@ -527,7 +527,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/onaylar': {
+  '/panel/onaylar': {
     title: 'Onay Bekleyenler',
     intro:
       'Personelin yaptığı tüm işlemler burada taslak olarak bekler; siz onaylayınca sistem işlemi otomatik uygular.',
@@ -553,7 +553,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/bildirimler': {
+  '/panel/bildirimler': {
     title: 'Bildirimler & Mesajlaşma',
     intro:
       'WhatsApp, SMS ve e-posta üzerinden otomatik hatırlatmalar ve kampanya duyuruları yönetilir.',
@@ -585,7 +585,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/loglar': {
+  '/panel/loglar': {
     title: 'Log Kayıtları',
     intro:
       'Sistemde kimin, ne zaman, hangi cihazdan ne yaptığının tam denetim izi.',
@@ -611,7 +611,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/ayarlar': {
+  '/panel/ayarlar': {
     title: 'Ayarlar',
     intro:
       'Kurum kimliği, şubeler, finans tercihleri ve güvenlik politikaları — sistemin tüm yapılandırması burada.',
@@ -653,7 +653,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/paket': {
+  '/panel/paket': {
     title: 'Paketim (Abonelik)',
     intro:
       'BeautyAsist aboneliğinizin planı, kotaları ve yükseltme seçenekleri.',
@@ -673,7 +673,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/admin/raporlar': {
+  '/panel/raporlar': {
     title: 'Raporlar',
     intro:
       'Finans, müşteri, personel ve hizmet analitiği — dört rapor sekmesi ve dönem karşılaştırmalı grafikler.',
@@ -717,7 +717,7 @@ const guides: Record<string, PageGuide> = {
   },
 
   /* ─────────────────────────── PERSONEL PANELİ ─────────────────────────── */
-  '/personel': {
+  '/ekip': {
     title: 'Personel Paneli',
     intro:
       'Gününüzün özeti: bugünkü programınız, atanmış müşterileriniz ve bekleyen işleriniz tek ekranda.',
@@ -749,7 +749,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/personel/seanslar': {
+  '/ekip/seanslar': {
     title: 'Seanslarım',
     intro:
       'Paketli müşterilerinizin kalan seanslarını ve tahsilat durumlarını takip edersiniz.',
@@ -769,7 +769,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/personel/profil': {
+  '/ekip/profil': {
     title: 'Profilim',
     intro: 'Hesap bilgileriniz ve parola değişikliği.',
     steps: [
@@ -886,7 +886,7 @@ const guides: Record<string, PageGuide> = {
 /**
  * Verilen path için kılavuzu bulur.
  * - Query string ve sondaki / temizlenir.
- * - /personel/* sayfaları admin eşdeğerini kullanır (personel notu eklenerek),
+ * - /ekip/* sayfaları admin eşdeğerini kullanır (personel notu eklenerek),
  *   çünkü bu sayfalar aynı bileşenin re-export'udur.
  */
 export function resolveGuide(pathname: string | null): { key: string; guide: PageGuide } | null {
@@ -896,8 +896,8 @@ export function resolveGuide(pathname: string | null): { key: string; guide: Pag
   const direct = guides[path]
   if (direct) return { key: path, guide: direct }
 
-  if (path.startsWith('/personel/')) {
-    const adminPath = path.replace('/personel', '/admin')
+  if (path.startsWith('/ekip/')) {
+    const adminPath = path.replace('/ekip', '/panel')
     const adminGuide = guides[adminPath]
     if (adminGuide) {
       return {

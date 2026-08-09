@@ -111,8 +111,8 @@ export default function ChangePasswordPage() {
   const goToDashboard = (): void => {
     const role = session?.user?.role
     if (role === 'PlatformAdmin') router.replace('/platform')
-    else if (role === 'Staff') router.replace('/personel')
-    else router.replace('/admin')
+    else if (role === 'Staff') router.replace('/ekip')
+    else router.replace('/panel')
   }
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {

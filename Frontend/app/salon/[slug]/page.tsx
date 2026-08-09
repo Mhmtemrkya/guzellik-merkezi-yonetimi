@@ -228,7 +228,7 @@ export default function SalonProfilePage() {
   const [reviewTotal, setReviewTotal] = useState(0)
   const [reviewPage, setReviewPage] = useState(1)
   const [activeCategory, setActiveCategory] = useState('')
-  // Çok şubeli kurum: '' = tüm şubeler; seçilince hizmet/personel/yorumlar o şubeye süzülür.
+  // Çok şubeli kurum: '' = tüm şubeler; seçilince hizmet/ekip/yorumlar o şubeye süzülür.
   const [selectedBranchId, setSelectedBranchId] = useState('')
   const [branchAggregates, setBranchAggregates] = useState<import('@/lib/publicSalonApi').PublicSalonAggregates | null>(null)
   const [selectedService, setSelectedService] = useState<PublicSalonService | null>(null)

@@ -954,7 +954,7 @@ export const adminApi = {
     apiRequest<T>('/api/ratings/issue', { method: 'POST', query: { tenantId }, body: { appointmentId } }),
 
   /**
-   * Panel için son müşteri yorumları + salon/personel ortalaması.
+   * Panel için son müşteri yorumları + salon/ekip ortalaması.
    * Vitrindeki (/salonlar) maskeleme burada YOKTUR — kurum kendi müşterisinin adını görür.
    * Sunucu yalnız yöneticilere açar (personel 403 alır).
    */

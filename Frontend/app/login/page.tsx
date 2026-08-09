@@ -51,7 +51,7 @@ const roleMetas: RoleMeta[] = [
     badge: 'YÖNETİM',
     desc: 'Personel, müşteri, paket, taksit, randevu, kasa ve raporların tam yönetimi. Rol atama ve onay yetkisi.',
     icon: Building2,
-    href: '/admin',
+    href: '/panel',
     cardClass: 'from-[#f7c6d6] via-[#f0aac2] to-[#e798b4] text-[#3a1f2c]',
   },
   {
@@ -60,7 +60,7 @@ const roleMetas: RoleMeta[] = [
     badge: 'YÖNETİM',
     desc: 'Bağlı şubenin personel, randevu, müşteri ve kasa operasyonlarının yönetimi. Şube bazlı rapor erişimi.',
     icon: MapPin,
-    href: '/admin',
+    href: '/panel',
     cardClass: 'from-[#c2718c] via-[#a85673] to-[#8e3f5c] text-white',
   },
   {
@@ -69,7 +69,7 @@ const roleMetas: RoleMeta[] = [
     badge: 'OPERASYON',
     desc: 'Atanmış yetkilere göre randevu, müşteri ve seans işlemleri. Tüm işlemler yönetici onayı ve log kaydı ile.',
     icon: Users2,
-    href: '/personel',
+    href: '/ekip',
     cardClass: 'from-[#8e3f5c] via-[#6e2f47] to-[#54243a] text-white',
   },
   {
@@ -326,7 +326,7 @@ export default function LoginPage() {
    *
    * Kurum yöneticisinin BranchId'si yoktur → backend kurumun TÜM şubelerini döndürür
    * (bkz. AuthService.GetLoginScopeAsync), bu yüzden çok şubeli kurumda seçim gerekir.
-   * Şube yöneticisi/personel tek şubeye bağlı olduğundan giriş tek adımda biter.
+   * Şube yöneticisi/ekip tek şubeye bağlı olduğundan giriş tek adımda biter.
    *
    * Bu bayrak olmadan ekranda seçim beliriyor ama buton hâlâ "Giriş Yap" diyordu:
    * kullanıcı Enter'a basıp bir şeylerin belirdiğini görüyor, ne yapacağını bilmiyordu.

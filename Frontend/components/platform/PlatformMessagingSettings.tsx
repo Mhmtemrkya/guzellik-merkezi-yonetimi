@@ -301,7 +301,7 @@ export default function PlatformMessagingSettings() {
             </div>
             <div>
               <label className={labelCls}>Ödeme sonrası dönüş adresi (panel)</label>
-              <input value={payments.returnUrl} onChange={(e) => setPayments((p) => ({ ...p, returnUrl: e.target.value }))} placeholder="https://panel.beautyasist.com/admin/paket" className={inputCls} />
+              <input value={payments.returnUrl} onChange={(e) => setPayments((p) => ({ ...p, returnUrl: e.target.value }))} placeholder="https://panel.beautyasist.com/panel/paket" className={inputCls} />
             </div>
             <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
               Kart bilgileri BİZE HİÇ GELMEZ: kullanıcı kartını iyzico&apos;nun 3D Secure formuna girer, biz yalnızca

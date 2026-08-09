@@ -1,0 +1,2350 @@
+'use client'
+
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Topbar from '@/components/dashboard/Topbar'
+import AppointmentEditor, { type AppointmentEditorValues } from '@/components/dashboard/AppointmentEditor'
+import ManagerAppointmentInbox from '@/components/dashboard/ManagerAppointmentInbox'
+import AppointmentReminderControl from '@/components/dashboard/AppointmentReminderControl'
+import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import CustomerFormDialog, { type CustomerFormValues } from '@/components/dashboard/CustomerFormDialog'
+import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
+import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
+import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
+import AppointmentsCalendarLinkButton from '@/components/dashboard/AppointmentsCalendarLinkButton'
+import ScopeBadge from '@/components/dashboard/ScopeBadge'
+import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
+import DayScheduleModal, { type WaitlistLite } from '@/components/dashboard/DayScheduleModal'
+import AdisyonModal from '@/components/dashboard/AdisyonModal'
+import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
+import CompleteAppointmentDialog from '@/components/dashboard/CompleteAppointmentDialog'
+import CollectionDialog from '@/components/dashboard/CollectionDialog'
+import { useBranch } from '@/components/dashboard/BranchContext'
+import { useAuth } from '@/components/dashboard/AuthContext'
+import { useFeature } from '@/components/dashboard/FeatureContext'
+import { useApiQuery } from '@/hooks/useApiQuery'
+import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import {
+  apiItems,
+  dayTitle,
+  formatTL,
+  guidOrUndefined,
+  monthLabel,
+  normalizeAccount,
+  normalizeAppointment,
+  normalizeCustomer,
+  normalizePackage,
+  normalizeService,
+  normalizeStaff,
+  normalizeStaffTimeOff,
+  normalizeWaitlistEntry,
+} from '@/lib/apiMappers'
+import { describeRange, describeRangeShort, fromDateInput } from '@/lib/reportRanges'
+import {
+  Activity,
+  Calendar,
+  CalendarDays,
+  CalendarPlus,
+  CalendarRange,
+  CheckCircle2,
+  FileText,
+  Mail,
+  Phone,
+  ShieldCheck,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  PenLine,
+  Plus,
+  ReceiptText,
+  RotateCcw,
+  StickyNote,
+  Trash2,
+  UserPlus,
+  Wallet,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react'
+import { AnimatePresence, motion, type Variants } from 'framer-motion'
+import type {
+  ApiAppointment,
+  ApiCustomer,
+  ApiCustomerAccount,
+  ApiService,
+  ApiServicePackage,
+  ApiStaff,
+  ApiStaffTimeOff,
+  ApiWaitlistEntry,
+  Appointment,
+  AppointmentLookups,
+  AppointmentStatusKey,
+  Customer,
+  CustomerAccount,
+  PagedResult,
+  Service,
+  ServicePackage,
+  Staff,
+} from '@/lib/types'
+
+type ScopeKey = 'today' | 'week' | 'month' | 'pending'
+
+interface StaffStatusFormValues {
+  status?: string
+  reason?: string
+}
+
+const staffStatusOptions = [
+  { value: 'Confirmed', label: 'Devam' },
+  { value: 'InProgress', label: 'İşlemde' },
+  { value: 'Completed', label: 'Tamamlandı' },
+  { value: 'Cancelled', label: 'İptal' },
+  { value: 'NoShow', label: 'Gelmedi' },
+]
+
+const scopeMeta: Record<ScopeKey, { label: string; description: string }> = {
+  today: { label: 'Bugün', description: 'Sadece bugünkü randevular' },
+  week: { label: 'Bu Hafta', description: 'Bu hafta içindeki randevular' },
+  month: { label: 'Bu Ay', description: 'Mevcut ayın randevuları' },
+  pending: { label: 'Bekleyenler', description: 'Bu ay içindeki bekleyen randevular' },
+}
+
+interface BadgeMeta {
+  label: string
+  icon: LucideIcon
+  cls: string
+  dot: string
+}
+
+const statusBadge: Record<AppointmentStatusKey, BadgeMeta> = {
+  tamamlandi: { label: 'Tamamlandı', icon: CheckCircle2, cls: 'bg-[#fff4f8] text-[#2f1724]', dot: 'bg-white' },
+  devam: {
+    label: 'Devam',
+    icon: Activity,
+    cls: 'bg-[#f0aac2]/15 text-[#c85776] border border-[#efbfd0]/75',
+    dot: 'bg-[#f0aac2]',
+  },
+  bekliyor: {
+    label: 'Bekliyor',
+    icon: Clock,
+    cls: 'border border-[#ead8df]/70 text-[#352432]/70',
+    dot: 'border border-[#fff4f8]/40',
+  },
+  iptal: {
+    label: 'İptal',
+    icon: XCircle,
+    cls: 'bg-rose-400/15 text-rose-700 border border-rose-300/25',
+    dot: 'bg-rose-300/70',
+  },
+  taslak: {
+    label: 'Taslak',
+    icon: Clock,
+    cls: 'border border-dashed border-indigo-300/60 bg-indigo-50 text-indigo-600',
+    dot: 'bg-indigo-300',
+  },
+  islemde: {
+    label: 'İşlemde',
+    icon: Activity,
+    cls: 'bg-violet-100 text-violet-700 border border-violet-300/60',
+    dot: 'bg-violet-500',
+  },
+}
+
+// Alt bölüm (gün özeti + çizelge) için yumuşak durum tonları — takvim statusBadge'i kullanmaya devam eder.
+interface StatusTone {
+  label: string
+  dot: string
+  bar: string
+  pill: string
+}
+
+const statusTone: Record<AppointmentStatusKey, StatusTone> = {
+  tamamlandi: {
+    label: 'Tamamlandı',
+    dot: 'bg-emerald-500',
+    bar: 'from-emerald-400 to-emerald-500',
+    pill: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
+  },
+  devam: {
+    label: 'Onaylandı',
+    dot: 'bg-sky-500',
+    bar: 'from-sky-400 to-sky-500',
+    pill: 'border border-sky-100 bg-sky-50 text-sky-700',
+  },
+  bekliyor: {
+    label: 'Bekliyor',
+    dot: 'bg-amber-400',
+    bar: 'from-amber-300 to-amber-400',
+    pill: 'border border-amber-100 bg-amber-50 text-amber-700',
+  },
+  iptal: {
+    label: 'İptal',
+    dot: 'bg-rose-400',
+    bar: 'from-rose-300 to-rose-400',
+    pill: 'border border-rose-100 bg-rose-50 text-rose-700',
+  },
+  taslak: {
+    label: 'Taslak',
+    dot: 'bg-indigo-400',
+    bar: 'from-indigo-300 to-indigo-400',
+    pill: 'border border-dashed border-indigo-200 bg-indigo-50 text-indigo-600',
+  },
+  islemde: {
+    label: 'İşlemde',
+    dot: 'bg-violet-500',
+    bar: 'from-violet-400 to-violet-500',
+    pill: 'border border-violet-200 bg-violet-50 text-violet-700',
+  },
+}
+
+const statusToneOrder: AppointmentStatusKey[] = ['islemde', 'tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
+
+const metricCardShell =
+  'relative overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]'
+
+function initials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
+      .join('') || '•'
+  )
+}
+
+function AvatarBubble({ name }: { name: string }) {
+  return (
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efd5dd] bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[10px] font-semibold text-[#7f4057] shadow-[0_10px_22px_-16px_rgba(190,91,125,0.8)]">
+      {initials(name)}
+    </span>
+  )
+}
+
+/** Üst özet kartının dönemi. Kartın kendi süzgecidir; takvimi/listeyi etkilemez. */
+type BandPreset = 'day' | 'month' | 'year' | 'custom'
+
+const bandPresetLabels: Record<BandPreset, string> = {
+  day: 'Gün',
+  month: 'Ay',
+  year: 'Yıl',
+  custom: 'Özel',
+}
+
+interface BandRange {
+  /** Dahil — yerel gün anahtarı (YYYY-AA-GG). */
+  fromIso: string
+  /** HARİÇ — yerel gün anahtarı (yarı açık aralık: [fromIso, toIso)). */
+  toIso: string
+  /** Kartın başlığı: "7 Ağustos Cuma" · "Ağustos 2026" · "2026" · "01 Tem — 09 Ağu". */
+  label: string
+  /** Başlığın altındaki tam aralık metni. */
+  hint: string
+}
+
+/** Yerel gün anahtarına gün ekler (ay/yıl taşmasını Date halleder, saat ekseni hiç kullanılmaz). */
+function addIsoDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return isoDateOnly(new Date(y || 1970, (m || 1) - 1, (d || 1) + days))
+}
+
+/**
+ * Kartın aralığını çözer.
+ *
+ * <p><code>reportRanges.resolvePeriod</code> BİLEREK kullanılmadı: o her zaman "bugün + offset"
+ * ekseninde çalışır, bu sayfanın çapası ise takvimde SEÇİLİ GÜN ve GEZİLEN AY'dır. Mayıs'a gidip
+ * "Ay" seçilince kart Mayıs'ı, takvimde 12'ye tıklanınca "Gün" kartı 12'yi göstermeli.</p>
+ *
+ * <p>Hesap baştan sona yerel gün anahtarı (YYYY-AA-GG) üzerinden yapılır; randevu satırlarının
+ * <code>date</code> alanı da yerel gündür. Date/UTC eksenine geçmek dosyanın başında iki kez
+ * uyarılan gün kaymasını geri getirir.</p>
+ */
+function resolveBandRange(
+  preset: BandPreset,
+  selectedDateIso: string,
+  monthDate: Date,
+  custom: { from: string; to: string },
+): BandRange {
+  const describe = (fromIso: string, toIso: string): string => {
+    const from = fromDateInput(fromIso)
+    const to = fromDateInput(toIso)
+    return from && to ? describeRange({ from, to }) : ''
+  }
+
+  if (preset === 'month') {
+    const fromIso = isoDateOnly(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1))
+    const toIso = isoDateOnly(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))
+    return { fromIso, toIso, label: monthLabel(fromIso), hint: describe(fromIso, toIso) }
+  }
+
+  if (preset === 'year') {
+    const year = monthDate.getFullYear()
+    const fromIso = isoDateOnly(new Date(year, 0, 1))
+    const toIso = isoDateOnly(new Date(year + 1, 0, 1))
+    return { fromIso, toIso, label: `${year}`, hint: describe(fromIso, toIso) }
+  }
+
+  if (preset === 'custom') {
+    // Kutulardaki BİTİŞ dahildir; iç aralık yarı açık olduğu için bir gün ileri alınır.
+    // Bitiş başlangıcın önüne çekilirse aralık tek güne düşer — ters/boş pencere üretilmez.
+    const fromIso = custom.from
+    const endIso = custom.to < custom.from ? custom.from : custom.to
+    const toIso = addIsoDays(endIso, 1)
+    const from = fromDateInput(fromIso)
+    const to = fromDateInput(toIso)
+    return {
+      fromIso,
+      toIso,
+      label: from && to ? describeRangeShort({ from, to }) : 'Özel aralık',
+      hint: describe(fromIso, toIso),
+    }
+  }
+
+  const toIso = addIsoDays(selectedDateIso, 1)
+  return {
+    fromIso: selectedDateIso,
+    toIso,
+    label: dayTitle(selectedDateIso),
+    hint: describe(selectedDateIso, toIso),
+  }
+}
+
+/**
+ * DÖNEM ÖZETİ BANDI — sayfanın en üstünde, tam genişlikte tek şerit.
+ *
+ * <p>Öncesinde burada AY kapsamlı dört ayrı kart (sparkline'lı) vardı ve gün özeti takvimin
+ * ALTINDA dar bir sütunda duruyordu: aynı statü sayıları iki farklı kapsamda iki kez okunuyordu.
+ * Kartlar kaldırıldı, gün özeti yukarı alındı. Dar sütun için tasarlanmış dikey yığın tam
+ * genişlikte çok boş duracağı için düzen yataya çevrildi: solda büyük rakam + tutar,
+ * sağda statü kırılımı, altta oran şeridi.</p>
+ *
+ * <p>Kartın BAŞINDA kendi dönem süzgeci vardır: Gün · Ay · Yıl · Özel. Süzgeç YALNIZ bu kartı
+ * yönetir — takvim ve alttaki liste kendi kapsamlarında kalır; böylece "bugün ne var" ile
+ * "bu yıl ne oldu" aynı ekranda, yer değiştirmeden okunur.</p>
+ */
+function PeriodSummaryBand({
+  preset,
+  onPresetChange,
+  custom,
+  onCustomChange,
+  range,
+  total,
+  counts,
+  totalAmount,
+  segments,
+  loading,
+  error,
+}: {
+  preset: BandPreset
+  onPresetChange: (next: BandPreset) => void
+  /** Özel aralık kutuları — bitiş DAHİL okunur (kullanıcı "9 Ağustos'a kadar" der). */
+  custom: { from: string; to: string }
+  onCustomChange: (next: { from: string; to: string }) => void
+  range: BandRange
+  total: number
+  counts: Record<AppointmentStatusKey, number>
+  totalAmount: number
+  segments: { key: AppointmentStatusKey; tone: StatusTone; count: number; pct: number }[]
+  loading: boolean
+  /** Dolu ise dönem çekilemedi: aşağıdaki sıfırlar veri DEĞİL, eksik veridir. */
+  error: string
+}) {
+  const presets: BandPreset[] = ['day', 'month', 'year', 'custom']
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className={`${metricCardShell} p-5`}
+    >
+      <span aria-hidden className="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
+
+      {/* --- KARTIN BAŞI: dönem etiketi + Gün/Ay/Yıl/Özel süzgeci --- */}
+      <div className="relative mb-5 flex flex-col gap-3 border-b border-[#f3e4ea] pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+            <Calendar className="h-4 w-4" strokeWidth={1.7} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold tracking-tight text-[#241923]">{range.label}</div>
+            <div className="truncate text-[11px] font-medium text-[#8a7480]">{range.hint}</div>
+          </div>
+          <AnimatePresence>
+            {loading && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f0d9e2] bg-[#fff1f6] px-2.5 py-1 text-[10.5px] font-semibold text-[#a34a62]"
+              >
+                <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#c05277]" />
+                Dönem yükleniyor
+              </motion.span>
+            )}
+            {!loading && error && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                title={error}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10.5px] font-semibold text-rose-700"
+              >
+                <XCircle className="h-3 w-3" strokeWidth={2.1} />
+                Dönem yüklenemedi — sayılar eksik
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPresetChange(p)}
+                className={`relative rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
+                  preset === p ? 'text-white' : 'text-[#705a66] hover:text-[#a34a62]'
+                }`}
+              >
+                {preset === p && (
+                  <motion.span
+                    // Rapor çubuğundaki pille AYNI layoutId kullanılamaz: aynı id iki ayrı
+                    // bileşende yaşarsa Framer pili ekranlar arasında uçurur.
+                    layoutId="randevu-ozet-donem-pill"
+                    className="absolute inset-0 rounded-full bg-[#c05277] shadow-[0_10px_22px_-16px_rgba(192,82,119,0.9)]"
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <span className="relative">{bandPresetLabels[p]}</span>
+              </button>
+            ))}
+          </div>
+
+          <AnimatePresence initial={false}>
+            {preset === 'custom' && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                className="inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-[#efe1e7] bg-white px-2.5 py-1.5"
+              >
+                <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[#c05277]" strokeWidth={1.8} />
+                <input
+                  type="date"
+                  aria-label="Başlangıç tarihi"
+                  value={custom.from}
+                  max={custom.to}
+                  onChange={(e) => {
+                    if (e.target.value) onCustomChange({ ...custom, from: e.target.value })
+                  }}
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                />
+                <span className="text-[11px] text-[#a3576f]">→</span>
+                <input
+                  type="date"
+                  aria-label="Bitiş tarihi"
+                  value={custom.to}
+                  min={custom.from}
+                  onChange={(e) => {
+                    if (e.target.value) onCustomChange({ ...custom, to: e.target.value })
+                  }}
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="relative flex flex-col gap-5 xl:flex-row xl:items-center xl:gap-8">
+        {/* Sol: dönem toplamı + tutar */}
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5 xl:flex-col xl:items-start xl:gap-3">
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-display text-[38px] font-bold leading-none tracking-tight text-[#241923] tabular-nums">
+                <AnimatedNumber value={total} />
+              </span>
+              <span className="text-[15px] font-semibold text-[#241923]">randevu</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[#f3e4ea] bg-[#fff8fa] px-3.5 py-2.5 sm:min-w-[190px]">
+            <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
+              <Wallet className="h-3.5 w-3.5 text-[#c85776]" strokeWidth={1.7} />
+              Toplam Tutar
+            </span>
+            <span className="text-[17px] font-semibold tracking-tight text-[#241923] tabular-nums">
+              <AnimatedNumber value={totalAmount} format={(n) => formatTL(Math.round(n))} />
+            </span>
+          </div>
+        </div>
+
+        {/* Sağ: statü kırılımı + oran şeridi */}
+        <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
+            {statusToneOrder.map((key) => {
+              const tone = statusTone[key]
+              return (
+                <div key={key} className="sm:border-l sm:border-[#f3e4ea] sm:pl-3 sm:first:border-0 sm:first:pl-0">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+                    {tone.label}
+                  </div>
+                  <div className="mt-1.5 text-[22px] font-semibold leading-none tracking-tight text-[#241923] tabular-nums">
+                    <AnimatedNumber value={counts[key]} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-4 flex h-2 w-full gap-1">
+            {segments.length ? (
+              segments.map((segment) => (
+                <motion.span
+                  key={segment.key}
+                  initial={{ scaleX: 0, opacity: 0 }}
+                  animate={{ scaleX: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ width: `${segment.pct}%`, transformOrigin: 'left' }}
+                  className={`h-full rounded-full bg-gradient-to-r ${segment.tone.bar}`}
+                />
+              ))
+            ) : (
+              <span className="h-full w-full rounded-full bg-[#f6ecf0]" />
+            )}
+          </div>
+
+          {segments.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {segments.map((segment) => (
+                <span
+                  key={segment.key}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${segment.tone.pill}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${segment.tone.dot}`} />
+                  {segment.tone.label} %{segment.pct}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+interface MonthRange {
+  start: Date
+  end: Date
+  days: number
+}
+
+/**
+ * Ayın YEREL (TR) sınırları. `Date.UTC(...)` kullanıldığında ay UTC'de 00:00'da başlıyordu;
+ * Türkiye UTC+3 olduğu için ayın ilk günü 00:00–02:59 arasındaki randevular aralığın DIŞINDA
+ * kalıyor, sonraki ayın aynı saatleri ise İÇERİ giriyordu. `new Date(y, m, 1)` yerel gece
+ * yarısıdır ve `toISOString()` doğru UTC anını verir (TR'de önceki gün 21:00).
+ */
+function monthRange(monthDate: Date): MonthRange {
+  const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0)
+  const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0, 0)
+  return { start, end, days: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate() }
+}
+
+/**
+ * YEREL tarihin YYYY-AA-GG karşılığı. `toISOString()` değeri UTC'ye kaydırdığı için Türkiye'de
+ * 00:00–02:59 arasında BİR ÖNCEKİ günü veriyordu — "bugün" süzgeci geceyarısından sonra yanlış
+ * güne bakıyordu. Randevu satırlarının `date` alanı da yerel gündür; karşılaştırma aynı eksende olmalı.
+ */
+function isoDateOnly(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+interface DashboardData {
+  appointmentsResult: PagedResult<ApiAppointment>
+  customersResult: PagedResult<ApiCustomer>
+  staffResult: PagedResult<ApiStaff>
+  servicesResult: PagedResult<ApiService>
+  packagesResult: PagedResult<ApiServicePackage>
+  /** Onaylanmış paket/hizmet satışı olan müşteri Id'leri — randevu yalnızca bunlara verilebilir. */
+  eligibleCustomerIds: string[]
+}
+
+const listContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.06 } },
+}
+
+const listRow: Variants = {
+  hidden: { opacity: 0, x: -8 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } },
+}
+
+function RandevularPageInner() {
+  const search = useSearchParams()
+  const scopeParam = search?.get('scope') as ScopeKey | null
+  const scope: ScopeKey = scopeParam && scopeParam in scopeMeta ? scopeParam : 'month'
+  const scopeInfo = scopeMeta[scope]
+
+  const today = new Date()
+  const [monthDate, setMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1))
+  const [selectedDay, setSelectedDay] = useState<number>(today.getDate())
+  // ÜST ÖZET KARTININ DÖNEM SÜZGECİ. `null` = kullanıcı henüz seçim yapmadı; kart o zaman sol
+  // menüden gelen kapsamı (?scope=) izler, böylece "Bugün / Bu hafta / Bekleyenler" bağlantıları
+  // eskisi gibi çalışır. Kullanıcı bir pile bastığı anda seçim yapışır ve kapsam değişse de kalır.
+  const [bandPreset, setBandPreset] = useState<BandPreset | null>(null)
+  const [bandCustom, setBandCustom] = useState<{ from: string; to: string }>(() => ({
+    from: isoDateOnly(new Date(today.getFullYear(), today.getMonth(), 1)),
+    to: isoDateOnly(today),
+  }))
+  const [actionError, setActionError] = useState<string>('')
+  // Editor dialog state
+  const [createOpen, setCreateOpen] = useState(false)
+  // Hızlı menüden ?action=new ile gelindiğinde yeni randevu modalını aç
+  useEffect(() => {
+    if (search?.get('action') === 'new') setCreateOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+  const [createDate, setCreateDate] = useState<string>('')
+  const [createTime, setCreateTime] = useState<string>('')
+  const [createStaffId, setCreateStaffId] = useState<string>('')
+  // Takvimde bir güne tıklanınca açılan saatlik personel çizelgesi modalı
+  const [scheduleDate, setScheduleDate] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
+  // Randevu-içi adisyon kartı + günlük adisyon kartı modalları (Ön Muhasebe'ye gitmeden)
+  const [adisyonModal, setAdisyonModal] = useState<{ open: boolean; customerId?: string; customerName?: string; staffMemberId?: string }>({ open: false })
+  const [dailyOpen, setDailyOpen] = useState(false)
+  // Randevu tamamlama + ödeme kutusu hedefi (günlük kart, liste, onay kutusu ortak kullanır).
+  const [completeTarget, setCompleteTarget] = useState<{ appointmentId: string; customerId: string | null; customerName: string; fallbackAmount: number } | null>(null)
+  // Günlük karttan doğrudan tahsilat hedefi (cari hesap ödeme modalı).
+  const [collectTarget, setCollectTarget] = useState<{ accounts: CustomerAccount[]; accountId: string } | null>(null)
+  // Aksiyon kutusundan "Ertele" ile gelen randevu (içinde bulunulan ay listesinde olmayabilir).
+  const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
+  // Hovered day for quick-add button popout
+  const [hoverDay, setHoverDay] = useState<number | null>(null)
+  const { user } = useAuth()
+  const isStaffUser = user?.role === 'Staff'
+  // Tamamlamayı geri alma AYRI yetkidir (Appointments.VoidCompletion): tüketilmiş paket seansını
+  // iade eder. Yönetici rolleri tam erişimlidir; personel yalnız izin verilmişse görür.
+  const canVoidCompletion =
+    !isStaffUser || (user?.permissions || []).some((p) => p.toLowerCase() === 'appointments.voidcompletion')
+  const { selectedInstitutionId, selectedBranch, selectedInstitution } = useBranch()
+  const tenantId = guidOrUndefined(selectedInstitutionId)
+  const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
+  const { performWrite } = useStaffApproval()
+  const [staffActionMsg, setStaffActionMsg] = useState<string>('')
+  const range = monthRange(monthDate)
+  // VERİ PENCERESİ AYDAN GENİŞ: gün modalı seçilen tarihin HAFTASINI gösteriyor, ay sınırındaki
+  // bir güne tıklanınca komşu ayın günleri (ör. 1 Ağustos'un haftasındaki 27–31 Temmuz) veri
+  // kaynağında olmadığı için "randevu yok" görünüyordu. Aya ±7 gün pay eklenir; ay ızgarası
+  // zaten güne göre süzdüğü (r.date === key) için fazladan kayıtlar görünmez.
+  const fetchStart = new Date(range.start); fetchStart.setDate(fetchStart.getDate() - 7)
+  const fetchEnd = new Date(range.end); fetchEnd.setDate(fetchEnd.getDate() + 7)
+  const rangeStartIso = fetchStart.toISOString()
+  // Backend toUtc'yi KAPSAYICI (<=) uyguluyor; tam sınırdaki kayıt iki dönemde birden
+  // sayılmasın diye 1 ms geri alınır.
+  const rangeEndIso = new Date(fetchEnd.getTime() - 1).toISOString()
+
+  const { data, loading, error, reload } = useApiQuery<DashboardData>(
+    async () => {
+      // TAKVİM SAYFALARI SONUNA KADAR OKUNUR: tek sayfa 300 kayıtla sınırlıydı, yoğun bir ayda
+      // (300+ randevu) ızgarada ve gün modalinde randevular sessizce eksik görünüyordu.
+      const appointmentsPromise = fetchAllPaged<ApiAppointment>((page, pageSize) =>
+        adminApi.appointments<ApiAppointment>({ tenantId, fromUtc: rangeStartIso, toUtc: rangeEndIso, page, pageSize }),
+        500,
+      ).then((items) => ({ items }))
+
+      // Sınırsız müşteri ölçeği: tüm müşteri listesi ÇEKİLMEZ. Satır adları/telefonları
+      // randevu DTO'sundan gelir; seçiciler sunucu aramasıyla çalışır.
+      if (isStaffUser) {
+        const [appointmentsResult, staffResult, servicesResult] = await Promise.all([
+          appointmentsPromise,
+          adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 10 }),
+          adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
+        ])
+        return {
+          appointmentsResult,
+          customersResult: { items: [] },
+          staffResult,
+          servicesResult,
+          packagesResult: { items: [] },
+          eligibleCustomerIds: [],
+        }
+      }
+
+      const [appointmentsResult, staffResult, servicesResult, packagesResult] = await Promise.all([
+        appointmentsPromise,
+        adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 300 }),
+        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }),
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch<PagedResult<ApiServicePackage>>(() => ({ items: [] })),
+      ])
+      return { appointmentsResult, customersResult: { items: [] }, staffResult, servicesResult, packagesResult, eligibleCustomerIds: [] }
+    },
+    [tenantId, rangeStartIso, rangeEndIso, isStaffUser],
+    { initialData: null },
+  )
+
+  // Şube/ay kapsamındaki personel izinleri — çizelge modalında izinli personele randevu engellenir.
+  const { data: timeOffData, reload: reloadTimeOff } = useApiQuery<ApiStaffTimeOff[]>(
+    async () => {
+      if (!tenantId) return []
+      return adminApi
+        .timeOff<ApiStaffTimeOff>({ tenantId, fromDate: isoDateOnly(range.start), toDate: isoDateOnly(range.end) })
+        .catch<ApiStaffTimeOff[]>(() => [])
+    },
+    [tenantId, rangeStartIso, rangeEndIso],
+    { initialData: [] },
+  )
+  const monthTimeOffs = useMemo(() => (timeOffData || []).map((t, i) => normalizeStaffTimeOff(t, i)), [timeOffData])
+  const [leaveBusy, setLeaveBusy] = useState(false)
+
+  // Aktif bekleme listesi — çizelge modalının sağ rayındaki "Bekleme Listesi" kartı (yönetici).
+  const { data: waitlistData } = useApiQuery<ApiWaitlistEntry[]>(
+    async () => {
+      if (!tenantId || isStaffUser) return []
+      return adminApi.waitlist<ApiWaitlistEntry>(tenantId, true).catch<ApiWaitlistEntry[]>(() => [])
+    },
+    [tenantId, isStaffUser],
+    { initialData: [] },
+  )
+
+  // Çizelge modalından personeli o gün izinli yap / iznini kaldır (yalnızca yönetici).
+  const handleToggleLeave = async (staffId: string, date: string, currentlyOnLeave: boolean): Promise<void> => {
+    if (isStaffUser) return
+    setLeaveBusy(true)
+    setActionError('')
+    try {
+      if (currentlyOnLeave) {
+        // Tüm gün izni kaldırılır; saat aralıkları "Gün Kapat" bloklarının × düğmesiyle silinir.
+        const existing = monthTimeOffs.find(
+          (t) => t.staffMemberId === staffId && (t.date || '').slice(0, 10) === date && t.isFullDay,
+        )
+        if (existing) await adminApi.removeTimeOff(existing.id, tenantId)
+      } else {
+        await adminApi.addTimeOff({ staffMemberId: staffId, date, reason: null }, tenantId)
+      }
+      await reloadTimeOff()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'İzin güncellenemedi.')
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  /**
+   * "Gün Kapat" paneli — seçilen personellerin o gündeki saat aralığını (ya da tüm günü)
+   * randevuya kapatır. Zaten kapalı olanlar 409 döndürür; toplu işlemde bu ATLANIR, diğer
+   * hatalar toplanıp panele fırlatılır ki kullanıcı ne olduğunu görsün.
+   */
+  const handleCloseHours = async (input: {
+    staffIds: string[]
+    date: string
+    startMinute: number | null
+    endMinute: number | null
+    reason: string | null
+  }): Promise<void> => {
+    if (isStaffUser) return
+    setLeaveBusy(true)
+    setActionError('')
+    try {
+      const failures: string[] = []
+      for (const staffId of input.staffIds) {
+        try {
+          await adminApi.addTimeOff(
+            {
+              staffMemberId: staffId,
+              date: input.date,
+              reason: input.reason,
+              startMinute: input.startMinute,
+              endMinute: input.endMinute,
+            },
+            tenantId,
+          )
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : ''
+          // "zaten kapalı / zaten izin tanımlı" = hedef durum zaten sağlanmış, hata değil.
+          if (/zaten/i.test(msg)) continue
+          const name = staffList.find((s) => s.id === staffId)?.name || 'Personel'
+          failures.push(`${name}: ${msg || 'kapatılamadı'}`)
+        }
+      }
+      await reloadTimeOff()
+      if (failures.length) throw new Error(failures.join(' · '))
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  /** Kapalı saat/izin kaydını kaldırır (çizelgedeki kapalı blokun × düğmesi). */
+  const handleRemoveTimeOff = async (id: string): Promise<void> => {
+    if (isStaffUser) return
+    setLeaveBusy(true)
+    setActionError('')
+    try {
+      await adminApi.removeTimeOff(id, tenantId)
+      await reloadTimeOff()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Kapalı saat kaldırılamadı.')
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  const normalizedLookups: {
+    customers: Record<string, Customer>
+    staff: Record<string, Staff>
+    services: Record<string, Service>
+  } = useMemo(() => {
+    const customers = Object.fromEntries(
+      apiItems(data?.customersResult).map((x, i): [string, Customer] => {
+        const c = normalizeCustomer(x, i)
+        return [c.id, c]
+      }),
+    )
+    const staff = Object.fromEntries(
+      apiItems(data?.staffResult).map((x, i): [string, Staff] => {
+        const s = normalizeStaff(x, i)
+        return [s.id, s]
+      }),
+    )
+    const services = Object.fromEntries(
+      apiItems(data?.servicesResult).map((x, i): [string, Service] => {
+        const s = normalizeService(x, i)
+        return [s.id, s]
+      }),
+    )
+    return { customers, staff, services }
+  }, [data])
+
+  const apiLookups: AppointmentLookups = useMemo(
+    () => ({
+      customers: Object.fromEntries(apiItems(data?.customersResult).map((c) => [c.id ?? '', c])),
+      staff: Object.fromEntries(apiItems(data?.staffResult).map((s) => [s.id ?? '', s])),
+      services: Object.fromEntries(apiItems(data?.servicesResult).map((s) => [s.id ?? '', s])),
+    }),
+    [data],
+  )
+
+  const appointments = useMemo<Appointment[]>(
+    () => apiItems(data?.appointmentsResult).map((a, i) => normalizeAppointment(a, apiLookups, i)),
+    [data, apiLookups],
+  )
+
+  const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
+  /**
+   * SAYIMLARIN AY KAPSAMI. `appointments` bilerek aydan ±7 gün geniştir (gün modalı seçilen
+   * tarihin haftasını gösteriyor, ay sınırındaki komşu günler de lazım). Ham liste sayıldığı
+   * sürece bu pay metriklere sızıyordu: "Bu ay toplam" 14 güne kadar fazla okuyor, sparkline
+   * ayın gününe göre kova açtığı için 29 Temmuz ile 29 Ağustos aynı kovaya düşüyordu.
+   * Süzgeç yerel gün anahtarının (`r.date`) ay öneki üzerinden yapılır; Date'e çevirip
+   * karşılaştırmak dosyanın başında iki kez uyarılan UTC kaymasını geri getirir.
+   */
+  const monthAppointments = useMemo<Appointment[]>(
+    () => appointments.filter((r) => r.date.startsWith(`${monthKey}-`)),
+    [appointments, monthKey],
+  )
+
+  const allPackages = useMemo<ServicePackage[]>(
+    () => apiItems(data?.packagesResult).map((p, i) => normalizePackage(p, i)).filter((p) => p.isActive),
+    [data],
+  )
+
+  const customersList: Customer[] = useMemo(() => Object.values(normalizedLookups.customers), [normalizedLookups])
+  const staffList: Staff[] = useMemo(() => Object.values(normalizedLookups.staff), [normalizedLookups])
+  const servicesList: Service[] = useMemo(() => Object.values(normalizedLookups.services), [normalizedLookups])
+  // Gelir tahmini için: serviceDefinitionId → katalog fiyatı (paket seansında randevu fiyatı 0 gelir).
+  const servicePrices: Record<string, number> = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const s of servicesList) if (s.id) m[s.id] = Number(s.price || 0)
+    return m
+  }, [servicesList])
+
+  // Bekleme listesi satırları (yalnızca aktif: Waiting/Notified) — servis adı çözülerek modala geçer.
+  const waitlistRows = useMemo<WaitlistLite[]>(() => {
+    const svc = normalizedLookups.services
+    return (waitlistData || [])
+      .map((w, i) => normalizeWaitlistEntry(w, i))
+      .filter((w) => w.status === 'Waiting' || w.status === 'Notified')
+      .map((w) => ({
+        id: w.id,
+        customerName: w.customerName || 'Müşteri',
+        serviceName: w.serviceDefinitionId ? svc[w.serviceDefinitionId]?.name : undefined,
+        preferredDate: w.preferredDate || undefined,
+      }))
+  }, [waitlistData, normalizedLookups])
+  const selfStaff = useMemo(() => {
+    if (!isStaffUser) return null
+    const userEmail = user?.email?.toLowerCase()
+    return staffList.find((s) => s.tenantUserId === user?.userId || (userEmail && s.email?.toLowerCase() === userEmail)) || staffList[0] || null
+  }, [isStaffUser, staffList, user?.email, user?.userId])
+  const appointmentStaffList = useMemo(() => (isStaffUser ? (selfStaff ? [selfStaff] : []) : staffList), [isStaffUser, selfStaff, staffList])
+  const canCreateAppointment = !isStaffUser || Boolean(selfStaff)
+  // Bekleme listesi özelliği açıksa dolu-slot uyarısında "bekleme listesine ekle" teklifi göster.
+  const waitlistEnabled = useFeature('appointments.waitlist')
+  // Adisyon (ön muhasebe) özelliği — randevu-içi adisyon kartı + günlük adisyon butonu için.
+  const canAdisyon = useFeature('billing.adisyon')
+
+  // Scope-based pre-filter
+  const todayIso = isoDateOnly(today)
+  const weekStart = new Date(today)
+  weekStart.setHours(0, 0, 0, 0)
+  weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7)) // Monday
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 7)
+
+  // SEKMELER ÜSTTEKİ KARTLARLA AYNI KÜMEYİ SÜZER. `appointments` bilerek aydan ±7 gün geniştir
+  // (bkz. monthAppointments); "Bu Ay" ve "Bekleyenler" bu ham listeden süzülürse aşağıdaki satır
+  // sayısı yukarıdaki karttan farklı çıkıyordu. Bugün/Bu Hafta zaten kendi tarih penceresini
+  // uyguluyor — onlar ay sınırını aşabilir, doğrusu da bu.
+  const scopedAppointments: Appointment[] = useMemo(() => {
+    switch (scope) {
+      case 'today':
+        return appointments.filter((r) => r.date === todayIso)
+      case 'week':
+        return appointments.filter((r) => {
+          const d = new Date(`${r.date}T00:00:00`)
+          return d >= weekStart && d < weekEnd
+        })
+      case 'pending':
+        return monthAppointments.filter((r) => r.status === 'bekliyor')
+      default:
+        return monthAppointments
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments, monthAppointments, scope, todayIso])
+
+  const monthDays = Array.from({ length: range.days }, (_, i) => i + 1)
+  // Bugünün ay/gün indeksi — gösterilen ay bugünü içeriyorsa highlight için kullanılır.
+  const todayDate = new Date()
+  const isViewingTodaysMonth =
+    monthDate.getFullYear() === todayDate.getFullYear() && monthDate.getMonth() === todayDate.getMonth()
+  const todayDay = isViewingTodaysMonth ? todayDate.getDate() : null
+
+  // Bugüne dön: monthDate'i bugüne ve selectedDay'i bugüne çek
+  const jumpToToday = () => {
+    setMonthDate(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1))
+    setSelectedDay(todayDate.getDate())
+  }
+
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1).getDay()
+  const mondayPad = (firstDay + 6) % 7
+
+  // Önceki ay gün sayısı — boş weekPad yerine gerçek geçmiş ay günleri (muted gösterilir)
+  const prevMonthDays = new Date(monthDate.getFullYear(), monthDate.getMonth(), 0).getDate()
+  const prevPad = Array.from({ length: mondayPad }, (_, i) => prevMonthDays - mondayPad + i + 1)
+
+  // Sonraki ay günleri — 6 satıra (42 hücre) tamamla
+  const totalCells = 42
+  const nextPadCount = Math.max(0, totalCells - mondayPad - range.days)
+  const nextPad = Array.from({ length: nextPadCount }, (_, i) => i + 1)
+
+  // Cell tipi — ayrım yapabilmek için
+  type CalendarCell = { day: number; type: 'prev' | 'curr' | 'next' }
+  const allCells: CalendarCell[] = [
+    ...prevPad.map((d) => ({ day: d, type: 'prev' as const })),
+    ...monthDays.map((d) => ({ day: d, type: 'curr' as const })),
+    ...nextPad.map((d) => ({ day: d, type: 'next' as const })),
+  ]
+
+  const byDay: Record<number, Appointment[]> = monthDays.reduce<Record<number, Appointment[]>>((acc, day) => {
+    const key = `${monthKey}-${String(day).padStart(2, '0')}`
+    acc[day] = appointments.filter((r) => r.date === key)
+    return acc
+  }, {})
+  const selectedDate = `${monthKey}-${String(selectedDay).padStart(2, '0')}`
+  // Takvim sadece "ay" (month) scope'unda görünür; diğer scope'lar doğrudan liste açar
+  const showCalendar = scope === 'month'
+  const selectedAppointments = showCalendar
+    ? byDay[selectedDay] || []
+    : scopedAppointments
+
+  const listHeaderLabel =
+    scope === 'today'
+      ? 'Bugün'
+      : scope === 'week'
+        ? 'Bu hafta'
+        : scope === 'pending'
+          ? 'Tüm bekleyenler'
+          : dayTitle(selectedDate)
+
+  // ---------------------------------------------------------------------------
+  // ÜST ÖZET KARTININ DÖNEMİ (Gün · Ay · Yıl · Özel)
+  // ---------------------------------------------------------------------------
+  /**
+   * Kullanıcı süzgece dokunmadıysa kart sol menüden gelen kapsamı gösterir: Bugün → gün,
+   * Bu hafta → o haftanın aralığı, Bu ay → takvimde seçili gün (kartın eski davranışı),
+   * Bekleyenler → ay. "Bekleyenler"de kart AYIN TAMAMINI özetler, alttaki liste yalnız
+   * bekleyenleri listeler; rozet listenin kapsamını, kart da kendi dönemini yazdığı için
+   * ikisi karışmaz.
+   */
+  const scopeBandPreset: BandPreset = scope === 'week' ? 'custom' : scope === 'pending' ? 'month' : 'day'
+  const effectiveBandPreset: BandPreset = bandPreset ?? scopeBandPreset
+  // "Bugün" kapsamında çapa BUGÜNdür: takvimden başka bir gün seçilmiş olsa bile kart, listenin
+  // gösterdiği günü özetlemeli.
+  const bandAnchorIso = bandPreset === null && scope === 'today' ? todayIso : selectedDate
+  const effectiveBandCustom =
+    bandPreset === null && scope === 'week'
+      ? { from: isoDateOnly(weekStart), to: addIsoDays(isoDateOnly(weekStart), 6) }
+      : bandCustom
+  const bandRange = resolveBandRange(effectiveBandPreset, bandAnchorIso, monthDate, effectiveBandCustom)
+
+  /**
+   * Yüklü veri penceresi aydan ±7 gün geniştir (bkz. fetchStart/fetchEnd). Kartın aralığı bunun
+   * DIŞINA taşıyorsa (Yıl ya da geniş bir özel aralık) o dönem ayrıca çekilir; içindeyse zaten
+   * elimizdeki liste süzülür — ikinci istek atılmaz. Sayım tek kod yolundan geçtiği için "Gün" ile
+   * "Yıl" arasında statü eşlemesi ayrışamaz.
+   */
+  const loadedFromIso = isoDateOnly(fetchStart)
+  const loadedToIso = isoDateOnly(fetchEnd)
+  const bandNeedsFetch = bandRange.fromIso < loadedFromIso || bandRange.toIso > loadedToIso
+
+  // HATA MUTLAKA GÖSTERİLİR: istek düşerse useApiQuery veriyi başlangıç değerine ([]) çeker,
+  // kart da "0 randevu / hepsi 0" gösterirdi — bu, işletme hakkında YANLIŞ bir cümledir
+  // ("2026'da hiç randevu yok"). Sıfırlar bu kartta gerçek boşluktan ayırt edilemez.
+  const { data: bandData, loading: bandLoading, error: bandError } = useApiQuery<ApiAppointment[]>(
+    async () => {
+      const from = fromDateInput(bandRange.fromIso)
+      const to = fromDateInput(bandRange.toIso)
+      if (!from || !to) return []
+      // Bitiş 1 ms geri alınır: backend toUtc'yi KAPSAYICI (<=) uyguluyor, sınırdaki randevu iki
+      // dönemde birden sayılmasın (ana sorgudaki kuralın aynısı).
+      return fetchAllPaged<ApiAppointment>(
+        (page, pageSize) =>
+          adminApi.appointments<ApiAppointment>({
+            tenantId,
+            fromUtc: from.toISOString(),
+            toUtc: new Date(to.getTime() - 1).toISOString(),
+            page,
+            pageSize,
+          }),
+        500,
+      )
+    },
+    [tenantId, bandRange.fromIso, bandRange.toIso, bandNeedsFetch],
+    { initialData: [], enabled: bandNeedsFetch },
+  )
+
+  const bandAppointments = useMemo<Appointment[]>(() => {
+    const source = bandNeedsFetch
+      ? (bandData || []).map((a, i) => normalizeAppointment(a, apiLookups, i))
+      : appointments
+    // Süzgeç yerel gün anahtarı üzerinden: `r.date` de yerel gündür, ISO metinleri sözlük
+    // sırasında karşılaştırılabilir. Date'e çevirmek UTC kaymasını geri getirir.
+    return source.filter((r) => r.date >= bandRange.fromIso && r.date < bandRange.toIso)
+  }, [bandNeedsFetch, bandData, apiLookups, appointments, bandRange.fromIso, bandRange.toIso])
+
+  const changeBandPreset = (next: BandPreset): void => {
+    // "Özel"e geçerken kutular O ANDA görünen aralıkla dolar: kullanıcı sıfırdan tarih yazmak
+    // yerine mevcut pencereyi kenarından esnetir.
+    if (next === 'custom') setBandCustom({ from: bandRange.fromIso, to: addIsoDays(bandRange.toIso, -1) })
+    setBandPreset(next)
+  }
+
+  const changeBandCustom = (next: { from: string; to: string }): void => {
+    setBandCustom(next)
+    // Kapsamdan türetilmiş aralık düzenlenirse seçim kullanıcının olur.
+    setBandPreset('custom')
+  }
+
+  const moveMonth = (delta: number): void => {
+    setMonthDate((current) => {
+      const next = new Date(current.getFullYear(), current.getMonth() + delta, 1)
+      const now = new Date()
+      // Eğer gidilen ay bugünün ayı ise bugünü seç, aksi halde 1'i.
+      const isTargetTodayMonth =
+        next.getFullYear() === now.getFullYear() && next.getMonth() === now.getMonth()
+      setSelectedDay(isTargetTodayMonth ? now.getDate() : 1)
+      return next
+    })
+  }
+
+  const toUtcRange = (date: string, time: string, durationMinutes: number): { startUtc: string; endUtc: string } => {
+    const start = new Date(`${date}T${time || '09:00'}:00`)
+    const duration = Math.max(5, durationMinutes || 30)
+    const end = new Date(start.getTime() + duration * 60000)
+    return { startUtc: start.toISOString(), endUtc: end.toISOString() }
+  }
+
+  const appointmentPayload = (values: AppointmentEditorValues): Record<string, unknown> => {
+    const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
+    const utcRange = toUtcRange(values.date, values.time, values.durationMinutes || service?.duration || 30)
+    return {
+      branchId,
+      customerId: values.customerId,
+      staffMemberId: isStaffUser ? selfStaff?.id : values.staffMemberId,
+      serviceDefinitionId: values.serviceDefinitionId,
+      ...utcRange,
+      // Randevu ciro taşımaz — satış/ödeme adisyon+cari katmanında. Tamamlanınca seans düşer.
+      price: 0,
+      notes: values.notes || null,
+      // SEÇİLEN PAKETİN SEANSI: modal paket kırılımında belirli bir satır seçtiriyor. Bu bilgi
+      // gönderilmezse backend aynı hizmete ait EN ESKİ seansı tüketir ve kullanıcı B paketini
+      // seçse bile A paketinden düşerdi (iptal/izlenebilirlik de yanlış satışa bağlanırdı).
+      sourceCustomerPackageSessionId: values.sourceSessionId || null,
+    }
+  }
+
+  const handleCreateAppointment = async (values: AppointmentEditorValues): Promise<void> => {
+    if (isStaffUser && !selfStaff?.id) {
+      throw new Error('Personel hesabın StaffMember kaydıyla eşleşmedi. Kurum yöneticisi personel hesabını tekrar bağlamalı.')
+    }
+    const payload = appointmentPayload(values)
+    // Randevu doğrudan oluşturulur; personel oluşturursa backend onu "taslak" yapıp kurum
+    // yöneticisi onayına düşürür — randevularda taslak görünür, onaylanınca aktif randevuya döner.
+    //
+    // KATALOGDAN SATIŞ tek transaction: randevu açılamazsa satış da geri alınır.
+    if (values.catalogSale) {
+      await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
+    } else {
+      await adminApi.createAppointment(payload, tenantId)
+    }
+    if (isStaffUser) {
+      setStaffActionMsg('Randevu taslak olarak oluşturuldu ve kurum yöneticisi onayına gönderildi. Onaylanınca aktif randevuya dönecek.')
+      await reload()
+      return
+    }
+
+    // Not: Paket satışı / cari açma artık randevu ekranında YAPILMAZ — satış adisyon akışında.
+    // Randevu yalnızca müşterinin satın aldığı seansa açılır ve tamamlanınca o seanstan düşer.
+    await reload()
+  }
+
+  // Slot dolu (SlotFull) → müşteriyi TAM o slot için bekleme listesine ekle.
+  // Yer açılınca (iptal) müşteriye WhatsApp'tan "yer açıldı, ister misiniz?" teklifi gider.
+  const handleAddToWaitlist = async (values: AppointmentEditorValues): Promise<void> => {
+    const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
+    const duration = values.durationMinutes || service?.duration || 30
+    const { startUtc } = toUtcRange(values.date, values.time, duration)
+    await adminApi.addWaitlist(
+      {
+        customerId: values.customerId,
+        serviceDefinitionId: values.serviceDefinitionId || null,
+        staffMemberId: (isStaffUser ? selfStaff?.id : values.staffMemberId) || null,
+        preferredDate: values.date,
+        preferredStartUtc: startUtc,
+        durationMinutes: duration,
+        branchId: branchId ?? null,
+        note: null,
+        // SEÇİLEN PAKET/SEANS BEKLEME KAYDINDA DA SAKLANIR. Randevu payload'ında taşınan bu bilgi
+        // slot dolduğunda kayboluyordu: yer açılınca sistem aynı hizmete ait EN ESKİ seansı
+        // tüketiyor, kullanıcı B paketini seçmiş olsa bile A'dan düşüyordu.
+        sourceCustomerPackageSessionId: values.sourceSessionId || null,
+      },
+      tenantId,
+    )
+    await reload()
+  }
+
+  // Not: Puanlama linki artık ekranda QR olarak gösterilmez — randevu Tamamlandı olunca
+  // backend 24 saat geçerli linki üretip müşteriye WhatsApp'tan otomatik gönderir.
+
+  const handleEditAppointment = async (appointmentId: string, values: AppointmentEditorValues): Promise<void> => {
+    const service = values.serviceDefinitionId ? normalizedLookups.services[values.serviceDefinitionId] : undefined
+    const utcRange = toUtcRange(values.date, values.time, values.durationMinutes || service?.duration || 30)
+    // Düzenlemede yalnızca zamanlama + durum + not güncellenir (müşteri/hizmet/ekip sabittir).
+    // TEK UÇ: eskiden üç ayrı çağrı yapılıyordu; durum başarılı olup not çağrısı patlarsa randevu
+    // tamamlanmış (ve seans düşmüş) hâlde kalırken ekran "kaydedilemedi" diyordu.
+    await adminApi.updateAppointment(appointmentId, {
+      startUtc: utcRange.startUtc,
+      endUtc: utcRange.endUtc,
+      status: values.status,
+      statusReason: null,
+      notesProvided: true,
+      notes: values.notes || null,
+    }, tenantId)
+    await reload()
+  }
+
+  const handleStaffStatusChange = async (appointmentId: string, values: StaffStatusFormValues): Promise<void> => {
+    setActionError('')
+    await adminApi.changeAppointmentStatus(
+      appointmentId,
+      { status: values.status || 'Confirmed', reason: values.reason || null },
+      tenantId,
+    )
+    setStaffActionMsg('Randevu durumu güncellendi. Sadece kendi randevu kaydın üzerinde işlem yapıldı.')
+    await reload()
+  }
+
+  // "Tamamlandı" → ödeme kutusunu aç (günlük personel kartındaki akışın aynısı, her yüzeyde ortak).
+  const openCompleteFor = (appointmentId: string): void => {
+    const a = appointments.find((x) => x.id === appointmentId)
+    setScheduleDate(null) // gün modalı üstte kalmasın diye kapat (adisyon akışıyla aynı)
+    setCompleteTarget({
+      appointmentId,
+      customerId: a?.customerId || null,
+      customerName: a?.musteri || '',
+      fallbackAmount: Number(a?.price || 0),
+    })
+  }
+
+  // Hızlı durum aksiyonu (liste satırı + günlük kart): işleme al / onayla / iptal.
+  const quickStatus = async (appointmentId: string, status: 'InProgress' | 'Confirmed' | 'Cancelled'): Promise<void> => {
+    setActionError('')
+    try {
+      await adminApi.changeAppointmentStatus(appointmentId, { status, reason: null }, tenantId)
+      await reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Randevu durumu güncellenemedi.')
+    }
+  }
+
+  // Taslak randevuyu onayla (liste satırı + onay kutusu).
+  const quickApprove = async (appointmentId: string): Promise<void> => {
+    setActionError('')
+    try {
+      await adminApi.approveAppointment(appointmentId, tenantId)
+      await reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Randevu onaylanamadı.')
+    }
+  }
+
+  // Çizelge detay paneli için: seçilen müşterinin açık adisyon toplamlarını getir (ödeme/cari).
+  // Müşterinin cari hesap id'sini bul — İSİM ARAMA YOK (Customer.FullName şifreli, aranamaz).
+  // Kaynak: açık adisyonun customerAccountId'si ya da paket seanslarındaki customerAccountId.
+  const findAccountIdFor = useCallback(
+    async (cid: string, openAdisyon?: { customerAccountId?: string | null } | null): Promise<string | null> => {
+      const fromAdisyon = openAdisyon?.customerAccountId ? String(openAdisyon.customerAccountId) : null
+      if (fromAdisyon && fromAdisyon !== 'null') return fromAdisyon
+      try {
+        const sessions = await adminApi.customerSessions<{ customerAccountId?: string | null }>(cid, tenantId)
+        const id = (Array.isArray(sessions) ? sessions : []).map((s) => s?.customerAccountId).find((x) => !!x && String(x) !== 'null')
+        return id ? String(id) : null
+      } catch {
+        return null
+      }
+    },
+    [tenantId],
+  )
+
+  const loadOpenAdisyon = useCallback(
+    async (cid: string) => {
+      const a = await adminApi
+        .openAdisyon<{ chargeTotal?: number; paymentTotal?: number; customerAccountId?: string | null }>(cid, tenantId)
+        .catch(() => null)
+      const accountId = await findAccountIdFor(cid, a)
+      let cariRemaining = 0
+      let accId: string | undefined
+      if (accountId) {
+        const acc = await adminApi.account<ApiCustomerAccount>(accountId, tenantId).catch(() => null)
+        if (acc) {
+          const n = normalizeAccount(acc, 0)
+          cariRemaining = n.remainingAmount
+          accId = n.id
+        }
+      }
+      if (!a && !accId) return null
+      return {
+        chargeTotal: Number(a?.chargeTotal || 0),
+        paymentTotal: Number(a?.paymentTotal || 0),
+        cariRemaining,
+        accountId: accId,
+      }
+    },
+    [tenantId, findAccountIdFor],
+  )
+
+  // Günlük karttan doğrudan tahsilat: bilinen cari hesabı (accountId) getirip CollectionDialog aç.
+  const openCollectFor = async (customerId: string, accountId?: string): Promise<void> => {
+    setScheduleDate(null) // gün modalını kapat (z-index; adisyon akışıyla aynı)
+    setActionError('')
+    const id = accountId || (await findAccountIdFor(customerId, null))
+    if (!id) {
+      setActionError('Bu müşterinin cari hesabı yok — tahsilat için önce satış/cari açın.')
+      return
+    }
+    try {
+      const acc = await adminApi.account<ApiCustomerAccount>(id, tenantId)
+      const n = normalizeAccount(acc, 0)
+      setCollectTarget({ accounts: [n], accountId: n.id })
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Cari hesap alınamadı.')
+    }
+  }
+
+  const editingAppointment = useMemo(
+    () =>
+      editingId
+        ? appointments.find((a) => a.id === editingId) ||
+          (rescheduleAppt?.id === editingId ? rescheduleAppt : undefined)
+        : undefined,
+    [editingId, appointments, rescheduleAppt],
+  )
+  const noteEditingAppointment = useMemo(
+    () => (noteEditingId ? appointments.find((a) => a.id === noteEditingId) : undefined),
+    [noteEditingId, appointments],
+  )
+
+  // Takvim başlığındaki ay özeti satırı bu ikisini kullanır (üstteki bant GÜN kapsamlıdır).
+  const monthlyTotal = monthAppointments.length
+  const completed = monthAppointments.filter((r) => r.status === 'tamamlandi').length
+
+  // Hızlı müşteri kaydı — topbar'daki "Yeni Müşteri" ve randevu modalındaki buton aynı akışı kullanır.
+  // Oluşan müşteri döndürülür (randevu modalı otomatik seçer); Staff onaya düştüyse null döner.
+  const quickCreateCustomer = async (values: CustomerFormValues): Promise<Customer | null> => {
+    const payload = {
+      branchId: branchId || null, fullName: values.fullName, phone: values.phone, email: values.email || null,
+      birthDate: values.birthDate || null, gender: values.gender || 'Unspecified',
+      kvkkConsent: Boolean(values.kvkkConsent), notes: values.notes || null,
+      photoUrl: typeof values.photoUrl === 'string' && values.photoUrl ? values.photoUrl : null,
+    }
+    const res = await performWrite({
+      operationType: 'CreateCustomer',
+      title: `Müşteri: ${String(payload.fullName || '—')}`,
+      summary: String(payload.phone || ''),
+      payload,
+      tenantId,
+      directAction: () => adminApi.createCustomer<ApiCustomer>(payload, tenantId),
+    })
+    if (res.submittedToApproval) {
+      setStaffActionMsg(staffApprovalSuccessMessage('Müşteri ekleme'))
+      await reload()
+      return null
+    }
+    await reload()
+    return res.result ? normalizeCustomer(res.result) : null
+  }
+
+  // Gün özeti kartı: durum dağılımı, toplam tutar ve yüzdelik segmentler
+  const bandCounts: Record<AppointmentStatusKey, number> = {
+    tamamlandi: bandAppointments.filter((r) => r.status === 'tamamlandi').length,
+    devam: bandAppointments.filter((r) => r.status === 'devam').length,
+    bekliyor: bandAppointments.filter((r) => r.status === 'bekliyor').length,
+    taslak: bandAppointments.filter((r) => r.status === 'taslak').length,
+    iptal: bandAppointments.filter((r) => r.status === 'iptal').length,
+    islemde: bandAppointments.filter((r) => r.status === 'islemde').length,
+  }
+  const bandTotalAmount = bandAppointments.reduce((sum, r) => sum + Number(r.price || 0), 0)
+  const bandSegments = statusToneOrder
+    .map((key) => ({
+      key,
+      count: bandCounts[key],
+      pct: bandAppointments.length ? Math.round((bandCounts[key] / bandAppointments.length) * 100) : 0,
+      tone: statusTone[key],
+    }))
+    .filter((segment) => segment.count > 0)
+
+  return (
+    <>
+      <Topbar
+        title={isStaffUser ? 'Randevularım' : 'Randevular'}
+        subtitle={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeInfo.label}${isStaffUser ? ' · sadece kendi randevuların' : ''}`}
+        breadcrumbs={isStaffUser ? ['Personel', 'Randevularım', scopeInfo.label] : ['Admin', 'İşletme', 'Randevular', scopeInfo.label]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <CustomerFormDialog
+              mode="create"
+              description="Müşteriyi buradan kaydedip sayfadan ayrılmadan randevusunu oluşturabilirsin."
+              submitLabel={isStaffUser ? 'Onaya gönder' : 'Müşteri oluştur'}
+              onSubmit={async (values) => {
+                await quickCreateCustomer(values)
+              }}
+              trigger={
+                <button type="button"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]">
+                  <UserPlus className="h-4 w-4" strokeWidth={2.1} /> Yeni Müşteri
+                </button>
+              }
+            />
+            <PackageSaleDialog
+              tenantId={tenantId}
+              onDone={reload}
+              triggerLabel="Paket Satışı"
+              triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+            />
+            {canAdisyon && (
+              <button
+                type="button"
+                onClick={() => setAdisyonModal({ open: true })}
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              >
+                <ReceiptText className="h-4 w-4" strokeWidth={2.1} /> Müşteri Adisyonu
+              </button>
+            )}
+            {!isStaffUser && canAdisyon && (
+              <button
+                type="button"
+                onClick={() => setDailyOpen(true)}
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              >
+                <CalendarDays className="h-4 w-4" strokeWidth={2.1} /> Günlük Adisyon
+              </button>
+            )}
+            {canCreateAppointment && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateDate(selectedDate)
+                  setCreateOpen(true)
+                }}
+                className="inline-flex min-w-max items-center gap-2 rounded-[15px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5"
+              >
+                <Plus className="h-4 w-4" strokeWidth={1.8} />
+                {isStaffUser ? 'Kendi randevunu oluştur' : 'Yeni Randevu'}
+              </button>
+            )}
+            <ExcelTransferActions<Appointment>
+              compact
+              featureKey="excel.appointments"
+              moduleName="Randevular"
+              context={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeInfo.label}`}
+              rows={scopedAppointments}
+              sheet={{
+                subtitle: `${scopedAppointments.length} randevu · ${scopeInfo.label}`,
+                columns: [
+                  { key: 'date', header: 'Tarih', width: 14, type: 'date', accessor: (a) => a.date },
+                  { key: 'time', header: 'Saat', width: 10, type: 'text', accessor: (a) => a.time },
+                  { key: 'customer', header: 'Müşteri', width: 26, type: 'text', accessor: (a) => a.musteri },
+                  { key: 'service', header: 'Hizmet', width: 26, type: 'text', accessor: (a) => a.islem },
+                  { key: 'staff', header: 'Personel', width: 22, type: 'text', accessor: (a) => a.personel },
+                  { key: 'duration', header: 'Süre (dk)', width: 12, type: 'number', accessor: (a) => Number(a.sure || 0) },
+                  { key: 'status', header: 'Durum', width: 14, type: 'text', accessor: (a) => statusBadge[a.status]?.label || '' },
+                  { key: 'price', header: 'Tutar', width: 16, type: 'currency', accessor: (a) => Number(a.price || 0) },
+                  { key: 'notes', header: 'Not', width: 36, type: 'text', accessor: (a) => a.notes || '' },
+                ],
+                totals: {
+                  date: 'TOPLAM',
+                  duration: scopedAppointments.reduce((s, a) => s + Number(a.sure || 0), 0),
+                  price: scopedAppointments.reduce((s, a) => s + Number(a.price || 0), 0),
+                },
+              }}
+            />
+            {!isStaffUser && <AppointmentsCalendarLinkButton tenantId={tenantId} />}
+          </div>
+        }
+      />
+      <div className="relative space-y-6 p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <ScopeBadge label={scopeInfo.label} description={scopeInfo.description} />
+        </div>
+
+        <ApiStateNotice
+          loading={loading}
+          error={error}
+          empty={!loading && !error && appointments.length === 0}
+          /* Kullanıcı "Appointment API" diye bir şey bilmiyor — arayüzde sistemin iç dili olmaz.
+             Boş ekran bir hata değil, bir davet: ne olduğunu söyle ve ne yapılacağını göster. */
+          emptyMessage="Bu ay için henüz randevu yok. Sağ üstteki “Yeni Randevu” ile ilk kaydı oluşturabilirsin."
+        />
+
+        {/* Kurum yöneticisi aksiyon kutusu: saati gelen randevular + onay bekleyen taslaklar */}
+        {!isStaffUser && (
+          <ManagerAppointmentInbox
+            enabled={Boolean(tenantId)}
+            tenantId={tenantId}
+            onReschedule={(a) => {
+              setRescheduleAppt(a)
+              setEditingId(a.id)
+            }}
+            onChanged={reload}
+          />
+        )}
+        {actionError && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{actionError}</div>
+        )}
+        {staffActionMsg && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{staffActionMsg}</div>
+        )}
+
+        {/* DÖNEM ÖZETİ — sayfanın en üstünde, tam genişlikte tek bant.
+            Eskiden burada AY kapsamlı dört kart (Bu ay toplam / Tamamlanan / Bekleyen / Kayıp)
+            vardı ve gün özeti takvimin ALTINDA, dar bir sütunda duruyordu. İkisi aynı sayıları
+            iki farklı kapsamda tekrarlıyordu; kullanıcı mükerrerliği kaldırıp gün özetini üste
+            istedi. Artık kartın başında kendi dönem süzgeci var (Gün · Ay · Yıl · Özel); süzgeç
+            takvimi ve alttaki listeyi DEĞİŞTİRMEZ, yalnız bu kartın sayılarını yönetir. */}
+        <PeriodSummaryBand
+          preset={effectiveBandPreset}
+          onPresetChange={changeBandPreset}
+          custom={effectiveBandCustom}
+          onCustomChange={changeBandCustom}
+          range={bandRange}
+          total={bandAppointments.length}
+          counts={bandCounts}
+          totalAmount={bandTotalAmount}
+          segments={bandSegments}
+          loading={bandNeedsFetch && bandLoading}
+          error={bandNeedsFetch ? bandError : ''}
+        />
+
+        {showCalendar && (
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          className="relative overflow-hidden armo-card armo-card-luxury"
+        >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-16 -top-12 h-48 w-48 rounded-full bg-[#f0aac2]/14 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-3 border-b border-[#ead8df]/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="flex items-center gap-4">
+              {/* BUGÜN KUTUSU KALDIRILDI. İki sorunu vardı:
+                  1) Bugünün tarihini gösteriyordu ama başlığın yanında duruyordu — Mayıs'a
+                     gidince "AĞU 1 · Mayıs 2026" gibi okunuyor, hangi ayda olduğun karışıyordu.
+                  2) Açık pembe kartın içinde neredeyse siyah bir gradient (#3a1a2a → #1d0d17)
+                     kullanıyordu; çevresindeki dille uyumsuzdu.
+                  Bugüne dönmek için zaten sağda "Bugün" düğmesi var, bugünün günü de
+                  ızgarada daire ile işaretli. */}
+              <div>
+                <div className="armo-pill !text-[9px]">
+                  <span className="armo-pill-dot" />
+                  Aylık çizelge
+                </div>
+                <motion.div
+                  key={monthKey}
+                  initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                  className="mt-2 armo-heading text-3xl lg:text-4xl capitalize"
+                >
+                  <span className="armo-shimmer">{monthLabel(`${monthKey}-01`)}</span>
+                </motion.div>
+                {/* Ay özeti — mono/uppercase yerine düz okunur metin; sayılar vurgulu. */}
+                <div className="mt-1.5 text-[12px] text-[#705a66]">
+                  <span className="font-semibold text-[#241923]">{monthlyTotal}</span> randevu
+                  <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
+                  <span className="font-semibold text-[#241923]">{completed}</span> tamamlandı
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isViewingTodaysMonth && (
+                <motion.button
+                  initial={{ opacity: 0, x: 8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  whileTap={{ scale: 0.96 }}
+                  whileHover={{ y: -1 }}
+                  type="button"
+                  onClick={jumpToToday}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3.5 py-2 text-[11.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                  title="Bugüne dön"
+                >
+                  <Calendar className="h-3.5 w-3.5" strokeWidth={1.6} />
+                  Bugün
+                </motion.button>
+              )}
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                whileHover={{ scale: 1.05, x: -1 }}
+                type="button"
+                onClick={() => moveMonth(-1)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
+                title="Önceki ay"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                whileHover={{ scale: 1.05, x: 1 }}
+                type="button"
+                onClick={() => moveMonth(1)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
+                title="Sonraki ay"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </motion.button>
+            </div>
+          </div>
+          <div className="relative grid grid-cols-7 gap-px bg-[#f3e4ea]">
+            {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d, idx) => (
+              <div
+                key={d}
+                className={`bg-[#fffafc] px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.16em] ${
+                  idx >= 5 ? 'text-[#a3576f]' : 'text-[#705a66]'
+                }`}
+              >
+                {d}
+              </div>
+            ))}
+            {allCells.map((cell, i) => {
+              const { day, type } = cell
+              const inCurrentMonth = type === 'curr'
+              const items = inCurrentMonth ? byDay[day] || [] : []
+              const isSelected = inCurrentMonth && day === selectedDay
+              const isToday = inCurrentMonth && day === todayDay
+              const isHovered = inCurrentMonth && day === hoverDay
+              const dayKey = inCurrentMonth ? `${monthKey}-${String(day).padStart(2, '0')}` : ''
+              const noteCount = items.filter((r) => r.notes && r.notes.trim().length > 0).length
+              const completedCount = items.filter((r) => r.status === 'tamamlandi').length
+              const hasAppointments = items.length > 0
+              const weekendIdx = i % 7
+              const isWeekend = weekendIdx === 5 || weekendIdx === 6
+              return (
+                <motion.div
+                  key={`${type}-${day}-${i}`}
+                  initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  transition={{ duration: 0.32, delay: i * 0.008, ease: [0.22, 1, 0.36, 1] }}
+                  onMouseEnter={() => inCurrentMonth && setHoverDay(day)}
+                  onMouseLeave={() => setHoverDay(null)}
+                  className={`group/day relative min-h-32 p-3 transition-all duration-300 ${
+                    !inCurrentMonth
+                      ? 'bg-white/30 opacity-40 hover:opacity-60'
+                      : isSelected
+                        ? 'bg-gradient-to-br from-[#f0aac2]/18 via-[#fff7fa] to-[#d48aa7]/12 ring-1 ring-inset ring-[#f0aac2]/70 shadow-[inset_0_0_32px_rgba(240,170,194,0.22)]'
+                        : isToday
+                          ? 'bg-gradient-to-br from-[#f0aac2]/10 via-[#fff7fa] to-[#fff0f5]'
+                          : 'bg-white hover:bg-gradient-to-br hover:from-[#f0aac2]/6 hover:to-[#fff0f5]'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (inCurrentMonth) {
+                        setSelectedDay(day)
+                        setScheduleDate(dayKey)
+                      } else if (type === 'prev') {
+                        moveMonth(-1)
+                      } else {
+                        moveMonth(1)
+                      }
+                    }}
+                    className="absolute inset-0 z-0 cursor-pointer"
+                    aria-label={`${day} günü için saatlik çizelgeyi aç`}
+                  />
+                  {/* Selected: sağ üst köşede mini ribbon */}
+                  {isSelected && (
+                    <motion.span
+                      layoutId="cal-selected-ribbon"
+                      transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                      aria-hidden
+                      className="pointer-events-none absolute -right-px -top-px z-[2] h-3 w-3 bg-gradient-to-br from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] shadow-[0_0_10px_rgba(240,170,194,0.85)]"
+                    />
+                  )}
+
+                  <div className="pointer-events-none relative z-[1] flex items-center justify-between">
+                    {/* Gün numarası — bugün için altın daire, seçili için solid burgundy daire, diğerleri düz sayı */}
+                    {isToday ? (
+                      <motion.span
+                        layoutId="cal-today-circle"
+                        transition={{ type: 'spring', stiffness: 360, damping: 24 }}
+                        className="relative grid h-9 w-9 place-items-center font-display text-base font-bold tabular-nums text-[#2f1724]"
+                      >
+                        <motion.span
+                          aria-hidden
+                          animate={{ opacity: [0.85, 1, 0.85], scale: [1, 1.06, 1] }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                          className="absolute inset-0 rounded-full bg-gradient-to-br from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] shadow-[0_0_18px_rgba(240,170,194,0.85)]"
+                        />
+                        <span className="relative">{day}</span>
+                      </motion.span>
+                    ) : isSelected ? (
+                      <span className="relative grid h-9 w-9 place-items-center rounded-full border border-[#f0aac2]/65 bg-white/82 font-display text-base font-semibold tabular-nums text-[#c85776]">
+                        {day}
+                      </span>
+                    ) : (
+                      <span
+                        className={`font-display text-xl leading-none tabular-nums ${
+                          !inCurrentMonth
+                            ? 'text-[#352432]/30'
+                            : isWeekend
+                              ? 'text-[#c85776]/55'
+                              : 'text-[#352432]/70'
+                        }`}
+                      >
+                        {day}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      {noteCount > 0 && (
+                        <span
+                          className="inline-flex items-center gap-0.5 border border-amber-300/30 bg-amber-400/10 px-1 py-0.5 text-[8px] font-mono text-amber-700"
+                          title={`${noteCount} not`}
+                        >
+                          <StickyNote className="h-2.5 w-2.5" />
+                          {noteCount}
+                        </span>
+                      )}
+                      {hasAppointments && (
+                        <motion.span
+                          layoutId={`cal-day-count-${day}`}
+                          transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                          className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-mono font-semibold ${
+                            completedCount === items.length
+                              ? 'bg-emerald-400/22 text-emerald-700 ring-1 ring-emerald-300/35'
+                              : items.length >= 5
+                                ? 'bg-gradient-to-br from-[#f0aac2] to-[#d48aa7] text-[#2f1724] shadow-[0_0_10px_rgba(240,170,194,0.6)]'
+                                : 'bg-[#f0aac2]/22 text-[#c85776] ring-1 ring-[#f0aac2]/35'
+                          }`}
+                          title={`${items.length} randevu · ${completedCount} tamamlandı`}
+                        >
+                          {items.length}
+                        </motion.span>
+                      )}
+                    </div>
+                  </div>
+                  {inCurrentMonth && (
+                    <>
+                      <div className="relative z-[1] mt-3 space-y-1.5">
+                        {items.slice(0, 3).map((r, ridx) => {
+                          const b = statusBadge[r.status] || statusBadge.bekliyor
+                          const hasNote = r.notes && r.notes.trim().length > 0
+                          return (
+                            <motion.div
+                              key={r.id}
+                              initial={{ opacity: 0, x: -4 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.28, delay: ridx * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                              whileHover={{ x: 2 }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (isStaffUser) {
+                                  setNoteEditingId(r.id)
+                                } else {
+                                  setEditingId(r.id)
+                                }
+                              }}
+                              className="group/apt relative cursor-pointer overflow-hidden border border-[#ead8df]/70 bg-gradient-to-r from-[#fff4f8]/[0.04] to-[#fff4f8]/[0.01] p-2 pl-3 transition-all hover:border-[#efbfd0]/75 hover:from-[#f0aac2]/12 hover:to-[#fff4f8]/[0.03] hover:shadow-[0_4px_14px_-4px_rgba(240,170,194,0.35)]"
+                            >
+                              {/* Status renkli sol bar */}
+                              <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${b.dot}`} />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[10px] font-semibold tracking-wide text-[#c85776]/95">{r.time}</span>
+                                <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} />
+                              </div>
+                              <div className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium">
+                                <span className="truncate">{r.musteri}</span>
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                              </div>
+                              <div className="flex items-center justify-between gap-2 text-[9px] text-[#352432]/45">
+                                <span className="truncate">{r.islem}</span>
+                                {Number(r.price) > 0 && (
+                                  <span className="shrink-0 font-mono tabular-nums text-[#c85776]/80">
+                                    {formatTL(Number(r.price))}
+                                  </span>
+                                )}
+                              </div>
+                              {hasNote && (
+                                <div className="mt-1 flex items-start gap-1 border-l border-amber-300/40 bg-amber-400/[0.06] px-1.5 py-0.5">
+                                  <StickyNote className="mt-px h-2.5 w-2.5 shrink-0 text-amber-300" strokeWidth={1.6} />
+                                  <span className="line-clamp-1 text-[9px] leading-tight text-amber-700/85">
+                                    {r.notes}
+                                  </span>
+                                </div>
+                              )}
+                              {/* QUICK ACTIONS */}
+                              <div className="mt-1.5 flex gap-1 opacity-0 transition-opacity group-hover/apt:opacity-100">
+                                {!isStaffUser && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingId(r.id)
+                                    }}
+                                    title="Düzenle"
+                                    className="grid h-5 w-5 place-items-center border border-[#ead8df]/70 bg-white/60 text-[#352432]/70 transition-colors hover:border-[#efbfd0]/75 hover:text-[#352432]"
+                                  >
+                                    <PenLine className="h-2.5 w-2.5" strokeWidth={1.6} />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setNoteEditingId(r.id)
+                                  }}
+                                  title={hasNote ? 'Notu düzenle' : 'Not ekle'}
+                                  className={`grid h-5 w-5 place-items-center border bg-white/60 transition-colors ${
+                                    hasNote
+                                      ? 'border-amber-300/40 text-amber-700 hover:bg-amber-400/15'
+                                      : 'border-[#ead8df]/70 text-[#352432]/70 hover:border-[#efbfd0]/75 hover:text-[#352432]'
+                                  }`}
+                                >
+                                  <StickyNote className="h-2.5 w-2.5" strokeWidth={1.6} />
+                                </button>
+                                {!isStaffUser && (
+                                  <ConfirmDialog
+                                    destructive
+                                    title="Randevuyu sil"
+                                    description={`${r.musteri} · ${r.time} randevusu silinsin mi? Bu işlem geri alınamaz.`}
+                                    confirmLabel="Sil"
+                                    onConfirm={async () => {
+                                      await adminApi.deleteAppointment(r.id, tenantId)
+                                      await reload()
+                                    }}
+                                    trigger={
+                                      <button
+                                        type="button"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Sil"
+                                        className="grid h-5 w-5 place-items-center border border-rose-300/30 bg-rose-500/10 text-rose-700 transition-colors hover:bg-rose-500/25"
+                                      >
+                                        <XCircle className="h-2.5 w-2.5" strokeWidth={1.6} />
+                                      </button>
+                                    }
+                                  />
+                                )}
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                        {items.length > 3 && (
+                          <div className="text-[9px] font-mono text-[#352432]/40">+{items.length - 3} randevu</div>
+                        )}
+                      </div>
+                      {/* QUICK ADD POPOUT */}
+                      <AnimatePresence>
+                        {isHovered && canCreateAppointment && (
+                          <motion.button
+                            initial={{ opacity: 0, scale: 0.85, y: 4 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.85, y: 4 }}
+                            transition={{ duration: 0.15 }}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedDay(day)
+                              setCreateDate(dayKey)
+                              setCreateOpen(true)
+                            }}
+                            className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 border border-[#efbfd0]/75 bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-2 py-1 text-[8px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
+                          >
+                            <Plus className="h-2.5 w-2.5" /> Ekle
+                          </motion.button>
+                        )}
+                      </AnimatePresence>
+                    </>
+                  )}
+                </motion.div>
+              )
+            })}
+          </div>
+        </motion.section>
+        )}
+
+        <section className="grid gap-5">
+          {/* RANDEVU ÇİZELGESİ — zaman çizgili, avatarlı tablo */}
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.36, ease: [0.22, 1, 0.36, 1] }}
+            className="relative overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]"
+          >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-[#ffdce8]/40 blur-3xl"
+            />
+            <div className="relative flex items-center justify-between gap-3 px-5 pb-4 pt-5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+                  <Calendar className="h-4 w-4" strokeWidth={1.7} />
+                </span>
+                <div>
+                  {/* Alt satır GERİ GELDİ: üstteki bant artık kendi dönemini gösterebiliyor
+                      (ör. "2026"), dolayısıyla bu listenin hangi günü/kapsamı listelediğini
+                      söyleyen tek yer burası. Mükerrerlik gerekçesi ortadan kalktı. */}
+                  <h2 className="text-[15px] font-semibold tracking-tight text-[#241923]">Randevu çizelgesi</h2>
+                  <p className="mt-0.5 text-[11.5px] text-[#8a7480]">
+                    {listHeaderLabel}
+                    <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
+                    <span className="font-semibold text-[#241923]">{selectedAppointments.length}</span> kayıt
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="relative overflow-x-auto px-4 pb-4">
+              <table className="w-full min-w-[680px] border-separate border-spacing-0 overflow-hidden rounded-[18px] border border-[#efe1e7] text-left">
+                <thead>
+                  <tr className="bg-[#fff8fa] text-[11px] font-medium text-[#8a7480]">
+                    <th className="px-4 py-3 font-medium">Saat</th>
+                    <th className="px-4 py-3 font-medium">Müşteri</th>
+                    <th className="px-4 py-3 font-medium">Hizmet</th>
+                    <th className="px-4 py-3 font-medium">Uzman</th>
+                    <th className="px-4 py-3 font-medium">Durum</th>
+                    <th className="px-4 py-3"> </th>
+                  </tr>
+                </thead>
+                <motion.tbody
+                  variants={listContainer}
+                  initial="hidden"
+                  animate="visible"
+                  className="divide-y divide-[#f3e4ea] bg-white"
+                >
+                  {selectedAppointments.map((r) => {
+                    const tone = statusTone[r.status] || statusTone.bekliyor
+                    const hasNote = Boolean(r.notes && r.notes.trim())
+                    return (
+                      <motion.tr
+                        key={r.id}
+                        variants={listRow}
+                        className="group text-[12px] text-[#3d2f3a] transition-colors hover:bg-[#fff8fa]"
+                      >
+                        <td className="relative px-4 py-4">
+                          <span aria-hidden className="absolute left-[21px] top-0 h-full w-px bg-[#f6e3ea]" />
+                          <span className="relative flex items-center gap-3">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${tone.dot}`} />
+                            <span className="text-[13px] font-semibold tabular-nums text-[#241923]">{r.time}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="flex items-center gap-3">
+                            <AvatarBubble name={r.musteri} />
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1.5">
+                                <span className="block truncate text-[13px] font-semibold text-[#241923]">{r.musteri}</span>
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                              </span>
+                              {r.customerPhone && (
+                                <span className="mt-0.5 block text-[11px] text-[#8a7480]">{r.customerPhone}</span>
+                              )}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="block text-[12.5px] font-medium text-[#3d2f3a]">{r.islem}</span>
+                          <span className="mt-1 inline-flex items-center gap-1.5">
+                            <span className="rounded-md border border-[#f8d8e2] bg-[#fff2f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#c85776]">
+                              {r.sure} dk
+                            </span>
+                            {Number(r.price) > 0 && (
+                              <span className="rounded-md border border-[#f3e6ce] bg-[#fffaf0] px-1.5 py-0.5 text-[10px] font-semibold text-[#b08742] tabular-nums">
+                                {formatTL(Number(r.price))}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-[12px] text-[#5d4a56]">{r.personel}</td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${tone.pill}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                            {tone.label}
+                          </span>
+                          {!['Cancelled', 'Completed', 'NoShow'].includes(r.rawStatus ?? '') && (
+                            <div className="mt-1.5">
+                              <AppointmentReminderControl
+                                appointmentId={r.id}
+                                confirmation={r.customerConfirmation}
+                                tenantId={tenantId}
+                                onChanged={reload}
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="flex items-center justify-end gap-1">
+                            {!isStaffUser && !['Cancelled', 'Completed', 'NoShow'].includes(r.rawStatus ?? '') && (
+                              <>
+                                {r.rawStatus === 'Draft' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void quickApprove(r.id)}
+                                    title="Onayla"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]"
+                                  >
+                                    <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                  </button>
+                                ) : (
+                                  <>
+                                    {r.rawStatus !== 'InProgress' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void quickStatus(r.id, 'InProgress')}
+                                        title="Şu an işlemde"
+                                        className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600"
+                                      >
+                                        <Activity className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openCompleteFor(r.id)}
+                                      title="Tamamla · ödeme al"
+                                      className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            {/* YANLIŞ TAMAMLAMAYI GERİ AL. Tamamlanan randevu iptal/gelmedi
+                                yapılamaz (doğru: seans/finans etkisi üretilmiştir); yanlışlıkla
+                                tamamlanmış kayıt için tek düzeltme yolu budur. Tüketilen seans
+                                müşteriye iade edilir, randevu "Onaylandı"ya döner. */}
+                            {canVoidCompletion && r.rawStatus === 'Completed' && (
+                              <ConfirmDialog
+                                title="Tamamlamayı geri al"
+                                icon={RotateCcw}
+                                description={`${r.musteri} · ${r.time} randevusunun tamamlanması geri alınsın mı? Bu randevuda tüketilen paket seansı müşteriye iade edilir ve randevu "Onaylandı" durumuna döner. Tamamlama sırasında satış cariye işlendiyse önce satışı iptal etmeniz gerekir.`}
+                                confirmLabel="Geri al"
+                                reasonLabel="Geri alma gerekçesi (zorunlu)"
+                                reasonPlaceholder="Örn: yanlış randevu tamamlandı"
+                                onConfirm={async (reason) => {
+                                  await adminApi.voidAppointmentCompletion(r.id, reason, tenantId)
+                                  await reload()
+                                }}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    title="Tamamlamayı geri al"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                  </button>
+                                }
+                              />
+                            )}
+                            {!isStaffUser && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingId(r.id)}
+                                title="Düzenle"
+                                className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]"
+                              >
+                                <PenLine className="h-3.5 w-3.5" strokeWidth={1.7} />
+                              </button>
+                            )}
+                            {isStaffUser && (
+                              <AdminEditDialog
+                                triggerVariant="ghost"
+                                triggerLabel="Durum"
+                                triggerClassName="!min-h-7 rounded-lg px-2.5 py-1 text-[10px]"
+                                title={`${r.musteri} randevu durumu`}
+                                description="Personel panelinden yalnızca kendi randevunun durumunu güncellersin."
+                                note="Backend Staff rolünde Appointment kaydını otomatik olarak TenantUser ↔ StaffMember eşleşmesiyle scope eder."
+                                submitLabel="Durumu kaydet"
+                                successMessage="Randevu durumu güncellendi."
+                                onSubmit={(values) => handleStaffStatusChange(r.id, values as StaffStatusFormValues)}
+                                fields={[
+                                  {
+                                    label: 'Durum',
+                                    name: 'status',
+                                    type: 'select',
+                                    value: r.rawStatus === 'Scheduled' ? 'Confirmed' : r.rawStatus || 'Confirmed',
+                                    options: staffStatusOptions,
+                                  },
+                                  { label: 'Not / neden', name: 'reason', type: 'textarea', value: r.notes || '' },
+                                ]}
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setNoteEditingId(r.id)}
+                              title={hasNote ? 'Notu düzenle' : 'Not ekle'}
+                              className={`grid h-7 w-7 place-items-center rounded-lg border transition-colors ${
+                                hasNote
+                                  ? 'border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                  : 'border-transparent text-[#a9929d] hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]'
+                              }`}
+                            >
+                              <StickyNote className="h-3.5 w-3.5" strokeWidth={1.7} />
+                            </button>
+                            {!isStaffUser && (
+                              <ConfirmDialog
+                                destructive
+                                title="Randevuyu sil"
+                                description={`${r.musteri} · ${r.time} randevusu silinsin mi? Bu işlem geri alınamaz; müşteri planı etkilenir.`}
+                                confirmLabel="Sil"
+                                onConfirm={async () => {
+                                  await adminApi.deleteAppointment(r.id, tenantId)
+                                  await reload()
+                                }}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    title="Sil"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.7} />
+                                  </button>
+                                }
+                              />
+                            )}
+                          </span>
+                        </td>
+                      </motion.tr>
+                    )
+                  })}
+                  {!selectedAppointments.length && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-[12px] text-[#9d7386]">
+                        {scope === 'pending'
+                          ? 'Bekleyen randevu yok.'
+                          : scope === 'today'
+                            ? 'Bugün için randevu yok.'
+                            : scope === 'week'
+                              ? 'Bu hafta için randevu yok.'
+                              : 'Seçili günde randevu yok.'}
+                      </td>
+                    </tr>
+                  )}
+                </motion.tbody>
+              </table>
+            </div>
+          </motion.div>
+        </section>
+      </div>
+
+      {/* CREATE EDITOR (controlled — açıldığında seçili gün prefill) */}
+      <AppointmentEditor
+        mode="create"
+        open={createOpen}
+        onOpenChange={(next) => {
+          setCreateOpen(next)
+          if (!next) {
+            setCreateDate('')
+            setCreateTime('')
+            setCreateStaffId('')
+          }
+        }}
+        customers={[]}
+        serverCustomerSearch
+        staff={staffList}
+        services={servicesList}
+        packages={allPackages}
+        tenantId={tenantId}
+        onQuickCreateCustomer={quickCreateCustomer}
+        onAddToWaitlist={waitlistEnabled ? handleAddToWaitlist : undefined}
+        initialValues={{
+          date: createDate || selectedDate,
+          ...(createTime ? { time: createTime } : {}),
+          ...(!isStaffUser && createStaffId ? { staffMemberId: createStaffId } : {}),
+        }}
+        onSubmit={handleCreateAppointment}
+      />
+
+      {/* EDIT EDITOR */}
+      {editingAppointment && !isStaffUser && (
+        <AppointmentEditor
+          mode="edit"
+          open={Boolean(editingId)}
+          onOpenChange={(next) => !next && setEditingId(null)}
+          customers={editingAppointment.customerId ? [{ id: editingAppointment.customerId, name: editingAppointment.musteri, phone: editingAppointment.customerPhone || '' } as Customer] : []}
+          staff={staffList}
+          services={servicesList}
+          packages={allPackages}
+          customerLabel={editingAppointment.musteri}
+          serviceLabel={editingAppointment.islem}
+          staffLabel={editingAppointment.personel}
+          initialValues={{
+            customerId: editingAppointment.customerId || '',
+            serviceDefinitionId: editingAppointment.serviceDefinitionId || '',
+            staffMemberId: editingAppointment.staffMemberId || '',
+            date: editingAppointment.date,
+            time: editingAppointment.time,
+            durationMinutes: editingAppointment.sure,
+            price: Number(editingAppointment.price || 0),
+            notes: editingAppointment.notes,
+            status: editingAppointment.rawStatus || 'Scheduled',
+          }}
+          onSubmit={async (values) => {
+            await handleEditAppointment(editingAppointment.id, values)
+          }}
+        />
+      )}
+
+      {/* NOTE-ONLY EDITOR */}
+      {noteEditingAppointment && (
+        <AppointmentEditor
+          mode="edit"
+          noteOnly
+          open={Boolean(noteEditingId)}
+          onOpenChange={(next) => !next && setNoteEditingId(null)}
+          customers={noteEditingAppointment.customerId ? [{ id: noteEditingAppointment.customerId, name: noteEditingAppointment.musteri, phone: noteEditingAppointment.customerPhone || '' } as Customer] : []}
+          staff={staffList}
+          services={servicesList}
+          packages={allPackages}
+          customerLabel={noteEditingAppointment.musteri}
+          initialValues={{
+            customerId: noteEditingAppointment.customerId || '',
+            serviceDefinitionId: noteEditingAppointment.serviceDefinitionId || '',
+            staffMemberId: noteEditingAppointment.staffMemberId || '',
+            date: noteEditingAppointment.date,
+            time: noteEditingAppointment.time,
+            durationMinutes: noteEditingAppointment.sure,
+            price: Number(noteEditingAppointment.price || 0),
+            notes: noteEditingAppointment.notes,
+            status: noteEditingAppointment.rawStatus || 'Scheduled',
+          }}
+          onSubmit={async (values) => {
+            await adminApi.changeAppointmentNotes(noteEditingAppointment.id, { notes: values.notes || null }, tenantId)
+            await reload()
+          }}
+        />
+      )}
+
+      {/* GÜNLÜK SAATLİK PERSONEL ÇİZELGESİ — takvimde güne tıklanınca açılır */}
+      <DayScheduleModal
+        open={Boolean(scheduleDate)}
+        date={scheduleDate}
+        appointments={appointments}
+        // Yüklü veri penceresi: modal "geçen ay/hafta" karşılaştırmasını yalnız bu aralık
+        // içindeyse gösterir (dışarısı için kayıt elimizde yok → sahte düşüş çıkıyordu).
+        loadedRange={{ from: isoDateOnly(fetchStart), to: isoDateOnly(fetchEnd) }}
+        staff={isStaffUser && selfStaff ? [selfStaff] : staffList}
+        customers={normalizedLookups.customers}
+        servicePrices={servicePrices}
+        timeOffs={monthTimeOffs}
+        isStaffUser={isStaffUser}
+        busy={leaveBusy}
+        onToggleLeave={!isStaffUser ? handleToggleLeave : undefined}
+        onCloseHours={!isStaffUser ? handleCloseHours : undefined}
+        onRemoveTimeOff={!isStaffUser ? handleRemoveTimeOff : undefined}
+        onChangeDate={(iso) => {
+          setScheduleDate(iso)
+          // Modal içinde hafta/ay gezinirken görünen aralığın verisi de yüklensin diye
+          // ay getirme aralığını (monthDate) senkronize et; arka plandaki takvim de takip eder.
+          const [yy, mm, dd] = iso.split('-').map(Number)
+          if (yy && mm) {
+            setMonthDate((prevMonth) =>
+              prevMonth.getFullYear() === yy && prevMonth.getMonth() === mm - 1 ? prevMonth : new Date(yy, mm - 1, 1),
+            )
+            if (dd) setSelectedDay(dd)
+          }
+        }}
+        onApprove={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.approveAppointment(id, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onStartService={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.changeAppointmentStatus(id, { status: 'InProgress', reason: null }, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onComplete={!isStaffUser ? (id) => openCompleteFor(id) : undefined}
+        onCancel={
+          !isStaffUser
+            ? async (id) => {
+                await adminApi.changeAppointmentStatus(id, { status: 'Cancelled', reason: null }, tenantId)
+                await reload()
+              }
+            : undefined
+        }
+        onDelete={
+          !isStaffUser
+            ? async (id) => {
+                setActionError('')
+                try {
+                  await adminApi.deleteAppointment(id, tenantId)
+                  await reload()
+                } catch (e) {
+                  setActionError(e instanceof Error ? e.message : 'Randevu silinemedi.')
+                }
+              }
+            : undefined
+        }
+        loadOpenAdisyon={loadOpenAdisyon}
+        onOpenAdisyon={
+          canAdisyon
+            ? (customerId, customerName, staffMemberId) => {
+                setScheduleDate(null) // gün modalı z-[200]; adisyon modalı üstte görünsün diye kapat
+                // Randevunun personeli adisyona taşınır: aynı kişi ikinci kez sorulmasın ve boş
+                // bırakılıp prim/satış atfı kaybolmasın.
+                setAdisyonModal({ open: true, customerId, customerName, staffMemberId })
+              }
+            : undefined
+        }
+        onCollect={!isStaffUser ? (customerId, _customerName, accountId) => void openCollectFor(customerId, accountId) : undefined}
+        waitlist={waitlistRows}
+        onReschedule={
+          !isStaffUser
+            ? async (id, { date, time, durationMin, staffId }) => {
+                setActionError('')
+                try {
+                  const body = { ...toUtcRange(date, time, durationMin), ...(staffId ? { staffMemberId: staffId } : {}) }
+                  await adminApi.rescheduleAppointment(id, body, tenantId)
+                  await reload()
+                } catch (e) {
+                  setActionError(e instanceof Error ? e.message : 'Randevu taşınamadı.')
+                }
+              }
+            : undefined
+        }
+        onClose={() => setScheduleDate(null)}
+        onEditAppointment={(id) => {
+          setScheduleDate(null)
+          if (isStaffUser) setNoteEditingId(id)
+          else setEditingId(id)
+        }}
+        onCreateAt={
+          canCreateAppointment
+            ? ({ date, time, staffId }) => {
+                setScheduleDate(null)
+                setCreateDate(date)
+                setCreateTime(time || '')
+                setCreateStaffId(staffId || '')
+                setCreateOpen(true)
+              }
+            : undefined
+        }
+      />
+
+      {/* Randevu-içi adisyon kartı — kalem/satış, ödeme/peşinat, onay, silme (Ön Muhasebe'ye gitmeden) */}
+      <AdisyonModal
+        open={adisyonModal.open}
+        onOpenChange={(o) => {
+          setAdisyonModal((s) => ({ ...s, open: o }))
+          if (!o) void reload()
+        }}
+        customerId={adisyonModal.customerId}
+        customerName={adisyonModal.customerName}
+        tenantId={tenantId}
+        onChanged={reload}
+        allowPick
+        defaultStaffMemberId={adisyonModal.staffMemberId}
+      />
+
+      {/* Günlük adisyon kartı — gün içinde kime ne yapıldı, saatli, tahsilatlar */}
+      <DailyAdisyonModal open={dailyOpen} onOpenChange={setDailyOpen} tenantId={tenantId} />
+
+      {/* Randevu tamamlama + ödeme kutusu — günlük kart, liste ve onay kutusu ortak kullanır */}
+      {completeTarget && (
+        <CompleteAppointmentDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCompleteTarget(null)
+          }}
+          appointmentId={completeTarget.appointmentId}
+          customerId={completeTarget.customerId}
+          customerName={completeTarget.customerName}
+          fallbackAmount={completeTarget.fallbackAmount}
+          tenantId={tenantId}
+          onDone={reload}
+        />
+      )}
+
+      {/* Günlük karttan doğrudan tahsilat — cari hesap ödeme modalı (varsayılan tutar = kalan borç) */}
+      {collectTarget && (
+        <CollectionDialog
+          open
+          hideTrigger
+          onOpenChange={(o) => {
+            if (!o) setCollectTarget(null)
+          }}
+          accounts={collectTarget.accounts}
+          initialAccountId={collectTarget.accountId}
+          onSubmit={async (p) => {
+            await adminApi.registerAccountPayment(
+              p.accountId,
+              { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc },
+              tenantId,
+            )
+            await reload()
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+export default function RandevularPage() {
+  return (
+    <Suspense fallback={null}>
+      <RandevularPageInner />
+    </Suspense>
+  )
+}

@@ -5,7 +5,7 @@
  * randevusu ve müşterisi yan yana. Karşılaştırma dönemi açıkken önceki dönemle de kıyaslanır.
  *
  * Not: Kurum yöneticisi için bu sekme üst menüdeki şube seçiminden bağımsız olarak TÜM şubeleri
- * gösterir — aksi hâlde "karşılaştırma" tek satıra düşerdi. Şube müdürü/personel yalnız kendi
+ * gösterir — aksi hâlde "karşılaştırma" tek satıra düşerdi. Şube müdürü/ekip yalnız kendi
  * şubesini görür (backend `scopedToSingleBranch` ile bildirir).
  */
 

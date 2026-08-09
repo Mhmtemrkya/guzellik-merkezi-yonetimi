@@ -106,7 +106,7 @@ const C = {
 } as const
 
 function isActivePath(pathname: string | null, href: string): boolean {
-  const rootRoutes = ['/admin', '/personel', '/platform']
+  const rootRoutes = ['/panel', '/ekip', '/platform']
   if (!pathname) return false
   if (rootRoutes.includes(href)) return pathname === href
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -550,7 +550,7 @@ function UserBlock({ user, pathname, compact = false, collapsed = false }: UserB
           </div>
         </div>
         {!isPlatform && (
-          <Link href="/admin/ayarlar" aria-label="Ayarlar" title="Ayarlar" className={iconBtn} style={{ color: C.soft }}>
+          <Link href="/panel/ayarlar" aria-label="Ayarlar" title="Ayarlar" className={iconBtn} style={{ color: C.soft }}>
             <Settings className="h-3.5 w-3.5" strokeWidth={1.8} />
           </Link>
         )}
@@ -933,7 +933,7 @@ export default function Sidebar({ items, role, user, version = '1.0' }: SidebarP
           >
             <Menu className="h-4 w-4" strokeWidth={2} /> Menü
           </button>
-          <Link href={activeItem?.href || '/admin'} className="min-w-0 cursor-pointer text-center">
+          <Link href={activeItem?.href || '/panel'} className="min-w-0 cursor-pointer text-center">
             <div className="beautyasist-text-gradient font-display text-[16px] leading-none">BeautyAsist</div>
             <div className="mt-1 truncate text-[10px]" style={{ color: C.mute }}>
               {role} · {activeItem?.label}

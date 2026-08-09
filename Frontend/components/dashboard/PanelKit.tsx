@@ -10,10 +10,10 @@ import type { LucideIcon } from 'lucide-react'
 // hairline, köşede yumuşak gül halesi, renkli başlık bandı ve kartın altını
 // boydan boya kaplayan trend şeridi.
 //
-// Buradaki parçalar /admin panelinde doğmuştu ve orada YEREL tanımlı kalmaya
+// Buradaki parçalar /panel panelinde doğmuştu ve orada YEREL tanımlı kalmaya
 // devam ediyor (o sayfa 2000+ satır; taşımak gereksiz regresyon riski).
 // Personel paneli aynı dili kullansın diye ortak sürüm buraya çıkarıldı;
-// ileride /admin de bunlara geçebilir.
+// ileride /panel de bunlara geçebilir.
 // ---------------------------------------------------------------------------
 
 export type PanelTone = 'rose' | 'gold' | 'mint' | 'violet' | 'peach' | 'cream'

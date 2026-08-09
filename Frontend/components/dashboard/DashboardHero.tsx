@@ -66,7 +66,7 @@ export default function DashboardHero({
       sub: appointmentsToday > 0 ? `${completedToday} tamamlandı · ${waitingToday} bekliyor` : 'Bugün randevu yok',
       icon: CalendarRange,
       tone: 'from-[#ffe3ec] to-[#ffd0e0] text-[#a63e5f]',
-      href: '/admin/randevular',
+      href: '/panel/randevular',
     },
     {
       key: 'cash',
@@ -75,7 +75,7 @@ export default function DashboardHero({
       sub: 'Kasaya giren',
       icon: Wallet,
       tone: 'from-[#e6f7ee] to-[#d1f0e0] text-[#2f7d54]',
-      href: '/admin/kasa',
+      href: '/panel/kasa',
     },
     {
       key: 'pending',
@@ -84,7 +84,7 @@ export default function DashboardHero({
       sub: pendingApprovals > 0 ? 'İncelemeni bekliyor' : 'Her şey onaylı',
       icon: BellRing,
       tone: 'from-[#fff2dc] to-[#ffe6bd] text-[#a3701f]',
-      href: '/admin/onaylar',
+      href: '/panel/onaylar',
     },
     {
       key: 'team',
@@ -93,14 +93,14 @@ export default function DashboardHero({
       sub: `${totalCustomers.toLocaleString('tr-TR')} müşteri`,
       icon: Users,
       tone: 'from-[#efe7ff] to-[#e0d3ff] text-[#6b45c0]',
-      href: '/admin/personel',
+      href: '/panel/ekip',
     },
   ]
 
   const shortcuts = [
-    { label: 'Yeni randevu', icon: CalendarPlus, href: '/admin/randevular?action=new' },
-    { label: 'Yeni müşteri', icon: UserPlus, href: '/admin/musteriler?action=new' },
-    { label: 'Günlük kasa', icon: Wallet, href: '/admin/kasa' },
+    { label: 'Yeni randevu', icon: CalendarPlus, href: '/panel/randevular?action=new' },
+    { label: 'Yeni müşteri', icon: UserPlus, href: '/panel/musteriler?action=new' },
+    { label: 'Günlük kasa', icon: Wallet, href: '/panel/kasa' },
   ]
 
   return (
@@ -228,7 +228,7 @@ export default function DashboardHero({
           <span>Bugün için planlanmış randevu yok — takvimden yeni randevu ekleyebilirsin.</span>
         )}
         {pendingApprovals > 0 && (
-          <Link href="/admin/onaylar" className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100">
+          <Link href="/panel/onaylar" className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100">
             {pendingApprovals} onay bekliyor <ArrowUpRight className="h-3 w-3" />
           </Link>
         )}

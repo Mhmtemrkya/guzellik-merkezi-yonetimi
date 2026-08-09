@@ -1286,7 +1286,7 @@ export default function DayScheduleModal({
                                         onDragStart={canDragThis ? (e) => { e.stopPropagation(); setDraggingId(appt.id); setSelectedId(appt.id); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', appt.id) } catch { /* noop */ } } : undefined}
                                         onDragEnd={canDragThis ? () => { setDraggingId(null); setDropInfo(null) } : undefined}
                                         onClick={(e) => { e.stopPropagation(); setSelectedId(appt.id) }}
-                                        title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}${canDragThis ? ' · sürükle: saat/personel değiştir' : ''}`}
+                                        title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}${canDragThis ? ' · sürükle: saat/ekip değiştir' : ''}`}
                                         /* Komple renk dolgusu yerine BEYAZ KART + renkli sol şerit: durum yine
                                            tek bakışta okunuyor ama VIP/borç rozetleri ve metin boğulmuyor. */
                                         className={`flex h-full w-full flex-col overflow-hidden rounded-[10px] border border-[#eadfe4] bg-white pl-2.5 pr-2 text-left shadow-[0_6px_16px_-12px_rgba(120,71,88,0.5)] transition-all hover:border-[#e0c2ce] hover:shadow-[0_10px_22px_-12px_rgba(120,71,88,0.55)] ${tiny ? 'py-0.5' : 'py-1'} ${isSel ? 'border-[#c85776] ring-2 ring-[#c85776]/35' : ''} ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''} ${appt.status === 'iptal' ? 'opacity-70' : ''}`}

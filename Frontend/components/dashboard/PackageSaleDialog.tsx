@@ -648,7 +648,7 @@ export default function PackageSaleDialog({
     const cid = presetCustomer?.id || customerId
     setOpen(false)
     // stayOnPage: randevu modalı gibi akış içinden satışta yönlendirme yapılmaz.
-    if (!stayOnPage && cid) router.push(`/admin/musteriler?customer=${cid}&sale=1`)
+    if (!stayOnPage && cid) router.push(`/panel/musteriler?customer=${cid}&sale=1`)
   }
 
   const openSavedCard = () => {

@@ -56,7 +56,7 @@ public sealed class PlatformIntegrationSettings : Entity
     public string? IyzicoBaseUrl { get; private set; }
 
     /// <summary>
-    /// 3D Secure dönüşünde kullanıcının yönlendirileceği panel adresi (ör. https://panel.../admin/paket).
+    /// 3D Secure dönüşünde kullanıcının yönlendirileceği panel adresi (ör. https://panel.../panel/paket).
     /// Callback ucu sonucu işleyip kullanıcıyı buraya geri gönderir.
     /// </summary>
     public string? PaymentsReturnUrl { get; private set; }

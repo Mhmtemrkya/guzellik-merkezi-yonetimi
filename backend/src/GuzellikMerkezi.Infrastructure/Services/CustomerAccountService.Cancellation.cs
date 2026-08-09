@@ -33,7 +33,12 @@ public sealed partial class CustomerAccountService
     /// <c>protected set</c> olduğundan EF'in <see cref="Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry"/>
     /// property erişimiyle yazılır — domain'e yalnız geri yükleme için setter açmaya gerek kalmaz.
     /// </summary>
-    private RebuiltSale RebuildFromSnapshot(Guid tenantId, Guid accountId, SaleSnapshot snapshot)
+    /// <param name="legacyPrices">
+    /// Snapshot'ta donmuş fiyatı OLMAYAN hizmetler için tamamlayıcı katalog fiyatları
+    /// (migration öncesi arşivler). Boş sözlük = tamamlanacak bir şey yok.
+    /// </param>
+    private RebuiltSale RebuildFromSnapshot(
+        Guid tenantId, Guid accountId, SaleSnapshot snapshot, IReadOnlyDictionary<Guid, decimal> legacyPrices)
     {
         var a = snapshot.Account;
 
@@ -82,9 +87,15 @@ public sealed partial class CustomerAccountService
         {
             // DONMUŞ FİYAT DA GERİ YÜKLENİR: aktarılmazsa geri alınan satışın cirosu sessizce
             // seans adedi dağıtımına kayardı (snapshot şema paritesi).
+            // Snapshot'ta fiyat varsa O kullanılır; yoksa (eski arşiv) katalogdan tamamlanır.
+            var frozenPrice = s.UnitPriceAtSale is { } snapPrice && snapPrice > 0m
+                ? snapPrice
+                : legacyPrices.TryGetValue(s.ServiceDefinitionId, out var legacy) && legacy > 0m
+                    ? legacy
+                    : (decimal?)null;
             var session = new CustomerPackageSession(
                 tenantId, a.CustomerId, accountId, s.ServicePackageId, s.ServiceDefinitionId, s.TotalSessions,
-                s.SourceAdisyonId, s.UnitPriceAtSale);
+                s.SourceAdisyonId, frozenPrice);
             _db.CustomerPackageSessions.Add(session);
             var entry = _db.Entry(session);
             entry.Property(x => x.Id).CurrentValue = s.Id;

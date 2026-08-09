@@ -58,37 +58,37 @@ const searchRoutes: Record<SearchScope, SearchRoute[]> = {
     { label: 'Sistem Ayarları', path: '/platform/sistem', keywords: 'sistem ayar health webhook bakım yedekleme güvenlik entegrasyon veri saklama' },
   ],
   admin: [
-    { label: 'Yeni Randevu Oluştur', path: '/admin/randevular?action=new', keywords: 'yeni randevu oluştur ekle aç booking aksiyon', action: true },
-    { label: 'Yeni Müşteri Ekle', path: '/admin/musteriler?action=new', keywords: 'yeni müşteri danışan ekle kayıt aksiyon', action: true },
-    { label: 'Tahsilat Al / Kasa', path: '/admin/kasa', keywords: 'tahsilat ödeme al kasa para aksiyon', action: true },
-    { label: 'Bugünün Randevuları', path: '/admin/randevular?scope=today', keywords: 'bugün randevu günlük aksiyon', action: true },
-    { label: 'Onay Bekleyenler', path: '/admin/onaylar?scope=pending', keywords: 'onay bekleyen taslak aksiyon', action: true },
-    { label: 'Dashboard', path: '/admin', keywords: 'özet dashboard performans' },
-    { label: 'Müşteriler', path: '/admin/musteriler', keywords: 'müşteri danışan kayıt crm' },
-    { label: 'Randevular', path: '/admin/randevular', keywords: 'randevu takvim seans' },
-    { label: 'Paket & Hizmet', path: '/admin/paketler', keywords: 'paket hizmet fiyat seans' },
-    { label: 'Stok & Ürün', path: '/admin/stok', keywords: 'stok ürün depo' },
-    { label: 'Günlük Kasa', path: '/admin/kasa', keywords: 'kasa ödeme tahsilat günlük' },
-    { label: 'Ön Muhasebe', path: '/admin/on-muhasebe', keywords: 'cari taksit ön muhasebe' },
-    { label: 'Raporlar', path: '/admin/raporlar', keywords: 'rapor finans personel müşteri' },
-    { label: 'Personel & Roller', path: '/admin/personel', keywords: 'personel rol yetki ekip' },
-    { label: 'Bildirimler', path: '/admin/bildirimler', keywords: 'bildirim hatırlatma sms' },
-    { label: 'Onay Bekleyenler', path: '/admin/onaylar', keywords: 'onay bekleyen aksiyon' },
-    { label: 'Log Kayıtları', path: '/admin/loglar', keywords: 'log audit geçmiş' },
-    { label: 'Ayarlar', path: '/admin/ayarlar', keywords: 'ayar şube kurum güvenlik' },
+    { label: 'Yeni Randevu Oluştur', path: '/panel/randevular?action=new', keywords: 'yeni randevu oluştur ekle aç booking aksiyon', action: true },
+    { label: 'Yeni Müşteri Ekle', path: '/panel/musteriler?action=new', keywords: 'yeni müşteri danışan ekle kayıt aksiyon', action: true },
+    { label: 'Tahsilat Al / Kasa', path: '/panel/kasa', keywords: 'tahsilat ödeme al kasa para aksiyon', action: true },
+    { label: 'Bugünün Randevuları', path: '/panel/randevular?scope=today', keywords: 'bugün randevu günlük aksiyon', action: true },
+    { label: 'Onay Bekleyenler', path: '/panel/onaylar?scope=pending', keywords: 'onay bekleyen taslak aksiyon', action: true },
+    { label: 'Dashboard', path: '/panel', keywords: 'özet dashboard performans' },
+    { label: 'Müşteriler', path: '/panel/musteriler', keywords: 'müşteri danışan kayıt crm' },
+    { label: 'Randevular', path: '/panel/randevular', keywords: 'randevu takvim seans' },
+    { label: 'Paket & Hizmet', path: '/panel/paketler', keywords: 'paket hizmet fiyat seans' },
+    { label: 'Stok & Ürün', path: '/panel/stok', keywords: 'stok ürün depo' },
+    { label: 'Günlük Kasa', path: '/panel/kasa', keywords: 'kasa ödeme tahsilat günlük' },
+    { label: 'Ön Muhasebe', path: '/panel/on-muhasebe', keywords: 'cari taksit ön muhasebe' },
+    { label: 'Raporlar', path: '/panel/raporlar', keywords: 'rapor finans personel müşteri' },
+    { label: 'Personel & Roller', path: '/panel/ekip', keywords: 'personel rol yetki ekip' },
+    { label: 'Bildirimler', path: '/panel/bildirimler', keywords: 'bildirim hatırlatma sms' },
+    { label: 'Onay Bekleyenler', path: '/panel/onaylar', keywords: 'onay bekleyen aksiyon' },
+    { label: 'Log Kayıtları', path: '/panel/loglar', keywords: 'log audit geçmiş' },
+    { label: 'Ayarlar', path: '/panel/ayarlar', keywords: 'ayar şube kurum güvenlik' },
   ],
   personel: [
-    { label: 'Yeni Randevu Oluştur', path: '/personel/randevular?action=new', keywords: 'yeni randevu oluştur ekle aksiyon', action: true },
-    { label: 'Yeni Müşteri Ekle', path: '/personel/musteriler?action=new', keywords: 'yeni müşteri ekle danışan aksiyon', action: true },
-    { label: 'Bugünün Randevularım', path: '/personel/randevular?scope=today', keywords: 'bugün randevu günlük aksiyon', action: true },
-    { label: 'Personel Paneli', path: '/personel', keywords: 'özet dashboard görev' },
-    { label: 'Randevularım', path: '/personel/randevular', keywords: 'randevu takvim seans' },
-    { label: 'Müşterilerim', path: '/personel/musteriler', keywords: 'müşteri danışan kayıt' },
-    { label: 'Seanslarım', path: '/personel/seanslar', keywords: 'seans tamamlama paket' },
-    { label: 'Paket Satışı', path: '/personel/paketler', keywords: 'paket hizmet satış' },
-    { label: 'Kasa / Tahsilat', path: '/personel/kasa', keywords: 'kasa tahsilat ödeme' },
-    { label: 'Performansım', path: '/personel/raporlar', keywords: 'performans rapor komisyon' },
-    { label: 'Profilim', path: '/personel/profil', keywords: 'profil oturum hesap' },
+    { label: 'Yeni Randevu Oluştur', path: '/ekip/randevular?action=new', keywords: 'yeni randevu oluştur ekle aksiyon', action: true },
+    { label: 'Yeni Müşteri Ekle', path: '/ekip/musteriler?action=new', keywords: 'yeni müşteri ekle danışan aksiyon', action: true },
+    { label: 'Bugünün Randevularım', path: '/ekip/randevular?scope=today', keywords: 'bugün randevu günlük aksiyon', action: true },
+    { label: 'Personel Paneli', path: '/ekip', keywords: 'özet dashboard görev' },
+    { label: 'Randevularım', path: '/ekip/randevular', keywords: 'randevu takvim seans' },
+    { label: 'Müşterilerim', path: '/ekip/musteriler', keywords: 'müşteri danışan kayıt' },
+    { label: 'Seanslarım', path: '/ekip/seanslar', keywords: 'seans tamamlama paket' },
+    { label: 'Paket Satışı', path: '/ekip/paketler', keywords: 'paket hizmet satış' },
+    { label: 'Kasa / Tahsilat', path: '/ekip/kasa', keywords: 'kasa tahsilat ödeme' },
+    { label: 'Performansım', path: '/ekip/raporlar', keywords: 'performans rapor komisyon' },
+    { label: 'Profilim', path: '/ekip/profil', keywords: 'profil oturum hesap' },
   ],
 }
 
@@ -204,7 +204,7 @@ export default function Topbar({
 
   const scope: SearchScope = pathname?.startsWith('/platform')
     ? 'platform'
-    : pathname?.startsWith('/personel')
+    : pathname?.startsWith('/ekip')
       ? 'personel'
       : 'admin'
   const placeholder =
@@ -243,8 +243,8 @@ export default function Topbar({
             scope === 'platform'
               ? '/platform/uyarilar'
               : scope === 'personel'
-                ? '/personel/bildirimler'
-                : '/admin/bildirimler',
+                ? '/ekip/bildirimler'
+                : '/panel/bildirimler',
         },
       ]
     }
@@ -401,7 +401,7 @@ export default function Topbar({
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.94 }}
-                onClick={() => router.push(`${scope === 'personel' ? '/personel' : '/admin'}/randevular?action=new`)}
+                onClick={() => router.push(`${scope === 'personel' ? '/ekip' : '/panel'}/randevular?action=new`)}
                 aria-label="Randevu oluştur"
                 title="Randevu oluştur"
                 className="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#c85776]/30 bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11px] font-semibold text-white shadow-[0_14px_30px_-18px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
@@ -417,7 +417,7 @@ export default function Topbar({
                 navbar'ını sıkıştırmasın). Satışın kendi ekranına gitmeden hızlı giriş.
                 İkincil stil: navbar'daki tek BİRİNCİL aksiyon "Randevu Oluştur" olarak kalsın.
                 Paket paketinde adisyon yoksa PackageSaleDialog kendini gizler (feature gate içeride). */}
-            {scope === 'admin' && pathname === '/admin' && (
+            {scope === 'admin' && pathname === '/panel' && (
               <PackageSaleDialog
                 tenantId={tenantId}
                 triggerLabel={<span className="hidden lg:inline">Paket Sat</span>}
@@ -427,7 +427,7 @@ export default function Topbar({
 
             {/* GENEL EXCEL İÇERİ AKTAR — yalnızca dashboard'da; diğer sayfaların aksiyon
                 dolu navbar'ını sıkıştırmasın */}
-            {scope === 'admin' && pathname === '/admin' && (
+            {scope === 'admin' && pathname === '/panel' && (
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.94 }}
@@ -552,7 +552,7 @@ export default function Topbar({
                                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                                       <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.complete(a.id))} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"><CheckCircle2 className="h-3 w-3" /> Tamamlandı</button>
                                       <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.noShow(a.id))} className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"><UserX className="h-3 w-3" /> Gelmedi</button>
-                                      <button type="button" onClick={() => { setNoticeOpen(false); router.push('/admin/randevular') }} className="inline-flex items-center gap-1 rounded-md border border-[#ead8df] bg-white px-2 py-1 text-[10px] font-semibold text-[#7c6170] transition-colors hover:bg-[#fff4f8]"><CalendarClock className="h-3 w-3" /> Ertele</button>
+                                      <button type="button" onClick={() => { setNoticeOpen(false); router.push('/panel/randevular') }} className="inline-flex items-center gap-1 rounded-md border border-[#ead8df] bg-white px-2 py-1 text-[10px] font-semibold text-[#7c6170] transition-colors hover:bg-[#fff4f8]"><CalendarClock className="h-3 w-3" /> Ertele</button>
                                     </div>
                                   </div>
                                 ))}

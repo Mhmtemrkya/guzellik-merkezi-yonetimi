@@ -913,7 +913,27 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             cancellationToken,
             restoreStaffIds);
 
-        var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot);
+        // ESKİ ARŞİVLERDE DONMUŞ FİYAT YOKTUR (migration öncesi iptaller).
+        //
+        // `UnitPriceAtSale` migration'ı yalnız CANLI seans satırlarını doldurdu; arşivdeki
+        // snapshot JSON'una dokunmadı. Böyle bir satış geri alınınca fiyat null kalıyor ve ciro
+        // dağıtımı seans adedine kayıyordu — ölçülen örnekte 1.000 TL'lik hizmet cirosu geri alma
+        // sonrası 1.363,64 oluyordu. Eksik fiyat, canlı backfill'in yaptığının AYNISIYLA
+        // (bugünün katalog fiyatı) tamamlanır; böylece geri alınan satış da bundan sonrası için
+        // SABİTLENİR. Snapshot'ta fiyat varsa ona DOKUNULMAZ.
+        var missingPriceServiceIds = snapshot.Sessions
+            .Where(x => x.UnitPriceAtSale is null or <= 0m)
+            .Select(x => x.ServiceDefinitionId)
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        var legacyPrices = missingPriceServiceIds.Length == 0
+            ? []
+            : await _db.ServiceDefinitions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && missingPriceServiceIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.Price, cancellationToken);
+
+        var rebuilt = RebuildFromSnapshot(tenantId, accountId, snapshot, legacyPrices);
         var nowUtc = DateTime.UtcNow;
 
         // Yedekte adisyon statüsü yoksa (v1 kayıtları) eski davranış: hepsi onaylı sayılır.

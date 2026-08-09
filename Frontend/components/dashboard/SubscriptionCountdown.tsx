@@ -335,7 +335,7 @@ export default function SubscriptionCountdown({ tenantId }: { tenantId?: string 
               </>
             )}
 
-            <Link href="/admin/paket" className={`group mt-3.5 inline-flex items-center gap-1 text-[12px] font-semibold transition-colors ${theme.cta}`}>
+            <Link href="/panel/paket" className={`group mt-3.5 inline-flex items-center gap-1 text-[12px] font-semibold transition-colors ${theme.cta}`}>
               {ctaLabel}
               <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2} />
             </Link>

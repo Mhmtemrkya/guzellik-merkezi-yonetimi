@@ -67,6 +67,26 @@ const nextConfig = {
 
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
+
+  /**
+   * ESKİ ARAYÜZ YOLLARI KALICI OLARAK TAŞINDI.
+   *
+   * `/admin` panelin adresinde görünmesin diye `/panel`, personel alanı da `/panel/personel`
+   * ("personeli yönet") ile karışmasın diye `/ekip` oldu. Yer imleri, açık sekmeler ve Tauri
+   * masaüstü kabuğunun kayıtlı adresi kırılmasın diye eski yollar 308 ile taşınır — 308,
+   * 301'den farklı olarak metodu korur (POST POST kalır).
+   *
+   * DİKKAT: `/api/admin/*` API yoludur ve DEĞİŞMEMİŞTİR (mobil + backend ona bağlı). Buradaki
+   * kurallar yalnız arayüz yollarını kapsar; `/api` ile başlayanlar eşleşmez.
+   */
+  async redirects() {
+    return [
+      { source: "/admin", destination: "/panel", permanent: true },
+      { source: "/admin/:path*", destination: "/panel/:path*", permanent: true },
+      { source: "/personel", destination: "/ekip", permanent: true },
+      { source: "/personel/:path*", destination: "/ekip/:path*", permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;

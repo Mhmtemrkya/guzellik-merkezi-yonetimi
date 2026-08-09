@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Application.Features.CustomerAccounts;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -456,6 +457,107 @@ public sealed class ServiceReportPackageExclusionTests
             after = (await NewAccounts(read).GetServiceReportAsync(tenantId, category: category)).Value!.Revenue;
 
         Assert.Equal(Math.Round(before, 2), Math.Round(after, 2));
+        _ = cheapId;
+    }
+
+    /// <summary>
+    /// BLOCKER B6: MIGRATION ÖNCESİ ARŞİV geri alınınca ciro KAYMAMALI.
+    ///
+    /// <para>
+    /// `UnitPriceAtSale` migration'ı yalnız CANLI seans satırlarını doldurdu; `cancelled_sales`
+    /// içindeki snapshot JSON'una dokunmadı. Böyle bir satış geri alınınca fiyat null kalıyor,
+    /// ciro dağıtımı seans adedine kayıyor ve 1.000 TL'lik hizmet cirosu 1.363,64 oluyordu.
+    /// </para>
+    /// <para>
+    /// Bu test ESKİ arşivi taklit eder: seanslar fiyatsız kurulur, satış iptal edilir (snapshot
+    /// fiyatsız yazılır), sonra geri alınır. Rapor iptalden ÖNCEKİ rakamı vermelidir.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetServiceReportAsync_EskiArsivGeriAlininca_CiroKaymaz()
+    {
+        var options = NewOptions();
+        Guid tenantId, cheapId, accountId;
+        string category;
+
+        await using (var db = NewDb(options))
+        {
+            var tenant = new Tenant("Arşiv QA", $"ars-{Guid.NewGuid():N}"[..20], "Premium", TenantStatus.Active);
+            var branch = tenant.AddBranch("Merkez", "İstanbul", true);
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var cheap = new ServiceDefinition(tenant.Id, branch.Id, "Ucuz Bakım", 30, 100m, "Ucuz");
+            var pricey = new ServiceDefinition(tenant.Id, branch.Id, "Pahalı Bakım", 60, 500m, "Pahalı");
+            db.ServiceDefinitions.AddRange(cheap, pricey);
+            var customer = new Customer(tenant.Id, branch.Id, "Arşiv", "0555 444 55 66", null);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+
+            var account = new CustomerAccount(tenant.Id, branch.Id, customer.Id, null, "Eski kayıt", 1500m, 0m);
+            account.SetSaleInfo(DateTime.UtcNow.AddDays(-1), null);
+            db.CustomerAccounts.Add(account);
+            await db.SaveChangesAsync();
+
+            // MIGRATION ÖNCESİ HÂL: seanslarda donmuş fiyat YOK.
+            db.CustomerPackageSessions.AddRange(
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, cheap.Id, 10),
+                new CustomerPackageSession(tenant.Id, customer.Id, account.Id, Guid.Empty, pricey.Id, 1));
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            cheapId = cheap.Id;
+            accountId = account.Id;
+            category = cheap.Category!;
+        }
+
+        // Canlı satırlar backfill edilmiş gibi doldurulur (migration'ın yaptığı).
+        await using (var backfill = NewDb(options))
+        {
+            foreach (var row in await backfill.CustomerPackageSessions.Where(x => x.TenantId == tenantId).ToListAsync())
+            {
+                var price = await backfill.ServiceDefinitions.Where(d => d.Id == row.ServiceDefinitionId)
+                    .Select(d => d.Price).FirstAsync();
+                backfill.Entry(row).Property(x => x.UnitPriceAtSale).CurrentValue = price;
+            }
+            await backfill.SaveChangesAsync();
+        }
+
+        decimal before;
+        await using (var read = NewDb(options))
+            before = (await NewAccounts(read).GetServiceReportAsync(tenantId, category: category)).Value!.Revenue;
+        Assert.Equal(1000m, Math.Round(before, 2));
+
+        // ARŞİVİ ESKİ HÂLE GETİR: iptal snapshot'ından fiyat alanını SİL (migration öncesi kayıt).
+        await using (var cancel = NewDb(options))
+            Assert.True((await NewAccounts(cancel).CancelSaleAsync(tenantId, accountId,
+                new CancelSaleRequest("arşiv testi"))).IsSuccess);
+
+        await using (var strip = NewDb(options))
+        {
+            var archive = await strip.CancelledSales.IgnoreQueryFilters().SingleAsync(x => x.OriginalAccountId == accountId);
+            // Alanı sil ama JSON'u BOZMA: değeri null yapmak, alanın hiç olmamasıyla aynı yola
+            // düşer (deserialize edilince null) ve gövde geçerli kalır.
+            var stripped = System.Text.RegularExpressions.Regex.Replace(
+                archive.Snapshot ?? string.Empty,
+                @"""UnitPriceAtSale""\s*:\s*[0-9.]+", @"""UnitPriceAtSale"":null");
+            strip.Entry(archive).Property(x => x.Snapshot).CurrentValue = stripped;
+            await strip.SaveChangesAsync();
+        }
+
+        await using (var restore = NewDb(options))
+        {
+            var restored = await NewAccounts(restore).RestoreSaleAsync(tenantId, accountId);
+            Assert.True(restored.IsSuccess, restored.IsFailure ? restored.Error.Message : null);
+        }
+
+        await using (var verify = NewDb(options))
+        {
+            var after = (await NewAccounts(verify).GetServiceReportAsync(tenantId, category: category)).Value!.Revenue;
+            // ASIL İDDİA: geri alma rakamı oynatmadı (1.363,64 DEĞİL).
+            Assert.Equal(1000m, Math.Round(after, 2));
+        }
+
         _ = cheapId;
     }
 }

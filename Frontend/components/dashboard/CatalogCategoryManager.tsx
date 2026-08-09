@@ -97,7 +97,7 @@ export default function CatalogCategoryManager({
           <span className="text-[11px] text-[#352432]/45">{categories.length} kategori</span>
           {/* Ekleme yalnızca Kategoriler sayfasında; burada onCreate verilmez → yönlendirme notu. */}
           {canManage && !onCreate && (
-            <Link href="/admin/paketler?scope=categories"
+            <Link href="/panel/paketler?scope=categories"
               className="inline-flex items-center gap-1.5 rounded-[9px] border border-[#ead8df] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705a66] hover:bg-[#fff4f8]">
               <FolderPlus className="h-3.5 w-3.5" /> Kategori eklemek için Kategoriler sayfası
             </Link>

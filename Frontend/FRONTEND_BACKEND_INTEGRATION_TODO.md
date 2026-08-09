@@ -12,7 +12,7 @@
 ### Auth
 - `POST /api/auth/login-scope`
   - Body: `{ email, role }`
-  - Kullanım: admin/personel için e-posta + rol ile erişebileceği tenant/branch listesini getir.
+  - Kullanım: admin/ekip için e-posta + rol ile erişebileceği tenant/branch listesini getir.
 - `POST /api/auth/login`
   - Body: `{ email, password, role, tenantId?, branchId? }`
   - Dönen: `{ accessToken, refreshToken, expiresAtUtc, user }`
@@ -36,7 +36,7 @@
 - `PATCH /api/admin/appointments/{id}/schedule`
 - `PATCH /api/admin/appointments/{id}/status`
 
-Tüm admin çağrıları JWT ister. Platform Admin tenantId query ile tenant seçebilir; kurum/personel rolünde tenant claim’den gelir.
+Tüm admin çağrıları JWT ister. Platform Admin tenantId query ile tenant seçebilir; kurum/ekip rolünde tenant claim’den gelir.
 
 ## Frontend hedef mimari
 
@@ -64,20 +64,20 @@ Tüm admin çağrıları JWT ister. Platform Admin tenantId query ile tenant se�
    - Mock e-posta/kurum filtre yerine `loginScope` çağır.
    - Login submit gerçek `/api/auth/login` çağırmalı.
    - Hata/loading UI görünür olmalı.
-   - Başarılı login sonrası role göre `/admin`, `/personel`, `/platform` yönlendir.
+   - Başarılı login sonrası role göre `/panel`, `/ekip`, `/platform` yönlendir.
 
 5. Layoutlar
-   - `app/admin/layout.tsx`, `app/personel/layout.tsx`, `app/platform/layout.tsx`
+   - `app/panel/layout.tsx`, `app/ekip/layout.tsx`, `app/platform/layout.tsx`
    - Sidebar user bilgisini auth context’ten al.
    - Logout linki session temizlemeli.
 
 6. Panel entegrasyonu önceliği
    - `app/platform/page.tsx` ve `app/platform/kurumlar/page.tsx` → tenants API.
-   - `app/admin/page.tsx` → customers/staff/services/appointments/branches dashboard özetleri.
-   - `app/admin/musteriler/page.tsx` → customers API.
-   - `app/admin/personel/page.tsx` → staff API.
-   - `app/admin/paketler/page.tsx` → services API; paket satış backend modülü yoksa sayfada “paket satış backend kapsamı bekliyor” uyarısı göster.
-   - `app/admin/randevular/page.tsx` → appointments API.
+   - `app/panel/page.tsx` → customers/staff/services/appointments/branches dashboard özetleri.
+   - `app/panel/musteriler/page.tsx` → customers API.
+   - `app/panel/ekip/page.tsx` → staff API.
+   - `app/panel/paketler/page.tsx` → services API; paket satış backend modülü yoksa sayfada “paket satış backend kapsamı bekliyor” uyarısı göster.
+   - `app/panel/randevular/page.tsx` → appointments API.
 
 7. Backend açıkları / sonraki modüller
    - Paket satışı, seans düşümü, ödeme/taksit/cari, stok, kasa, audit log endpointleri henüz backend’de yok.

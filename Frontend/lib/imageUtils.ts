@@ -1,6 +1,6 @@
 /**
  * Bir görsel dosyasını canvas ile en fazla `maxSize` px'e küçültüp JPEG data-URL döndürür.
- * DB'yi (LONGTEXT base64) şişirmemek için ürün/personel görsellerinde kullanılır.
+ * DB'yi (LONGTEXT base64) şişirmemek için ürün/ekip görsellerinde kullanılır.
  */
 export function downscaleImage(file: File, maxSize: number): Promise<string> {
   return new Promise((resolve, reject) => {

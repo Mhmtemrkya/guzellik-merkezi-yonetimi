@@ -44,39 +44,39 @@ export interface QuickAction {
 }
 
 const CATALOG: QuickAction[] = [
-  { id: 'randevu-yeni', label: 'Yeni Randevu', icon: CalendarPlus, href: '/admin/randevular?action=new' },
-  { id: 'musteri-yeni', label: 'Yeni Müşteri', icon: UserPlus, href: '/admin/musteriler?action=new' },
-  { id: 'randevular', label: 'Randevular', icon: Calendar, href: '/admin/randevular' },
-  { id: 'musteriler', label: 'Müşteriler', icon: Users, href: '/admin/musteriler' },
-  { id: 'kasa', label: 'Günlük Kasa', icon: Wallet, href: '/admin/kasa' },
-  { id: 'on-muhasebe', label: 'Ön Muhasebe', icon: Landmark, href: '/admin/on-muhasebe' },
-  { id: 'adisyon', label: 'Adisyon', icon: ClipboardList, href: '/admin/on-muhasebe?scope=adisyon' },
-  { id: 'paketler', label: 'Paket & Hizmet', icon: Package, href: '/admin/paketler' },
-  { id: 'stok', label: 'Stok & Ürün', icon: Boxes, href: '/admin/stok' },
-  { id: 'raporlar', label: 'Raporlar', icon: FileBarChart, href: '/admin/raporlar' },
-  { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, href: '/admin/bildirimler' },
-  { id: 'personel', label: 'Personel', icon: UserCog, href: '/admin/personel', adminOnly: true },
-  { id: 'onaylar', label: 'Onaylar', icon: ShieldCheck, href: '/admin/onaylar', adminOnly: true },
+  { id: 'randevu-yeni', label: 'Yeni Randevu', icon: CalendarPlus, href: '/panel/randevular?action=new' },
+  { id: 'musteri-yeni', label: 'Yeni Müşteri', icon: UserPlus, href: '/panel/musteriler?action=new' },
+  { id: 'randevular', label: 'Randevular', icon: Calendar, href: '/panel/randevular' },
+  { id: 'musteriler', label: 'Müşteriler', icon: Users, href: '/panel/musteriler' },
+  { id: 'kasa', label: 'Günlük Kasa', icon: Wallet, href: '/panel/kasa' },
+  { id: 'on-muhasebe', label: 'Ön Muhasebe', icon: Landmark, href: '/panel/on-muhasebe' },
+  { id: 'adisyon', label: 'Adisyon', icon: ClipboardList, href: '/panel/on-muhasebe?scope=adisyon' },
+  { id: 'paketler', label: 'Paket & Hizmet', icon: Package, href: '/panel/paketler' },
+  { id: 'stok', label: 'Stok & Ürün', icon: Boxes, href: '/panel/stok' },
+  { id: 'raporlar', label: 'Raporlar', icon: FileBarChart, href: '/panel/raporlar' },
+  { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, href: '/panel/bildirimler' },
+  { id: 'personel', label: 'Personel', icon: UserCog, href: '/panel/ekip', adminOnly: true },
+  { id: 'onaylar', label: 'Onaylar', icon: ShieldCheck, href: '/panel/onaylar', adminOnly: true },
 ]
 
 const DEFAULT_IDS = ['randevu-yeni', 'musteri-yeni', 'kasa', 'adisyon', 'raporlar']
 
-/** Personelin hızlı menüsü: işlemler /personel/* sayfalarına gider ve rol izniyle süzülür. */
+/** Personelin hızlı menüsü: işlemler /ekip/* sayfalarına gider ve rol izniyle süzülür. */
 const STAFF_CATALOG: QuickAction[] = [
-  { id: 'randevu-yeni', label: 'Yeni Randevu', icon: CalendarPlus, href: '/personel/randevular?action=new', permissionKey: 'Appointments' },
-  { id: 'musteri-yeni', label: 'Yeni Müşteri', icon: UserPlus, href: '/personel/musteriler?action=new', permissionKey: 'Customers' },
-  { id: 'randevular', label: 'Randevularım', icon: Calendar, href: '/personel/randevular', permissionKey: 'Appointments' },
-  { id: 'musteriler', label: 'Müşterilerim', icon: Users, href: '/personel/musteriler', permissionKey: 'Customers' },
-  { id: 'seanslar', label: 'Seanslarım', icon: Scissors, href: '/personel/seanslar', permissionKey: 'Services' },
-  { id: 'paketler', label: 'Paket & Hizmet', icon: Package, href: '/personel/paketler', permissionKey: 'Services' },
-  { id: 'kasa', label: 'Günlük Kasa', icon: Wallet, href: '/personel/kasa', permissionKey: 'CashRegister' },
-  { id: 'on-muhasebe', label: 'Ön Muhasebe', icon: Landmark, href: '/personel/on-muhasebe', permissionKey: 'Accounting' },
-  { id: 'adisyon', label: 'Adisyon', icon: ClipboardList, href: '/personel/on-muhasebe?scope=adisyon', permissionKey: 'Accounting' },
-  { id: 'stok', label: 'Stok & Ürün', icon: Boxes, href: '/personel/stok', permissionKey: 'Stock' },
-  { id: 'raporlar', label: 'Raporlar', icon: FileBarChart, href: '/personel/raporlar', permissionKey: 'Reports' },
-  { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, href: '/personel/bildirimler', permissionKey: 'Notifications' },
-  { id: 'loglar', label: 'Loglarım', icon: ScrollText, href: '/personel/loglar', permissionKey: 'Logs' },
-  { id: 'profil', label: 'Profilim', icon: UserRound, href: '/personel/profil' },
+  { id: 'randevu-yeni', label: 'Yeni Randevu', icon: CalendarPlus, href: '/ekip/randevular?action=new', permissionKey: 'Appointments' },
+  { id: 'musteri-yeni', label: 'Yeni Müşteri', icon: UserPlus, href: '/ekip/musteriler?action=new', permissionKey: 'Customers' },
+  { id: 'randevular', label: 'Randevularım', icon: Calendar, href: '/ekip/randevular', permissionKey: 'Appointments' },
+  { id: 'musteriler', label: 'Müşterilerim', icon: Users, href: '/ekip/musteriler', permissionKey: 'Customers' },
+  { id: 'seanslar', label: 'Seanslarım', icon: Scissors, href: '/ekip/seanslar', permissionKey: 'Services' },
+  { id: 'paketler', label: 'Paket & Hizmet', icon: Package, href: '/ekip/paketler', permissionKey: 'Services' },
+  { id: 'kasa', label: 'Günlük Kasa', icon: Wallet, href: '/ekip/kasa', permissionKey: 'CashRegister' },
+  { id: 'on-muhasebe', label: 'Ön Muhasebe', icon: Landmark, href: '/ekip/on-muhasebe', permissionKey: 'Accounting' },
+  { id: 'adisyon', label: 'Adisyon', icon: ClipboardList, href: '/ekip/on-muhasebe?scope=adisyon', permissionKey: 'Accounting' },
+  { id: 'stok', label: 'Stok & Ürün', icon: Boxes, href: '/ekip/stok', permissionKey: 'Stock' },
+  { id: 'raporlar', label: 'Raporlar', icon: FileBarChart, href: '/ekip/raporlar', permissionKey: 'Reports' },
+  { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, href: '/ekip/bildirimler', permissionKey: 'Notifications' },
+  { id: 'loglar', label: 'Loglarım', icon: ScrollText, href: '/ekip/loglar', permissionKey: 'Logs' },
+  { id: 'profil', label: 'Profilim', icon: UserRound, href: '/ekip/profil' },
 ]
 const STAFF_DEFAULT_IDS = ['randevu-yeni', 'musteri-yeni', 'randevular', 'seanslar', 'kasa']
 const MAX_ITEMS = 7
@@ -128,7 +128,7 @@ export default function QuickMenu() {
   const isStaff = user?.role === 'Staff'
   const isAdmin = !isStaff
 
-  // Rol'e göre katalog + varsayılanlar. Personelde işlemler /personel/* sayfalarına gider
+  // Rol'e göre katalog + varsayılanlar. Personelde işlemler /ekip/* sayfalarına gider
   // ve personelin rol izniyle süzülür; yöneticide kurum kataloğu kullanılır.
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user?.permissions])
   const catalog = isStaff ? STAFF_CATALOG : CATALOG

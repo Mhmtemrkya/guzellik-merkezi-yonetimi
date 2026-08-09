@@ -1098,7 +1098,7 @@ export default function AppointmentEditor({
 
   /**
    * Adım tamamlanma durumu ZİNCİRLİDİR: bir adım, kendinden öncekiler bitmeden "tamam"
-   * sayılmaz. Tarih/saat/personel varsayılan geldiği için 3. adım tek başına dolu görünüyor
+   * sayılmaz. Tarih/saat/ekip varsayılan geldiği için 3. adım tek başına dolu görünüyor
    * ve müşteri boşken ✓ alıyordu — sıralı bir akışta bu yanlış okunur.
    */
   const step1Done = Boolean(values.customerId)
