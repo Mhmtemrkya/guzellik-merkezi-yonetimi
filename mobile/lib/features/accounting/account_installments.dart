@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
@@ -136,6 +137,9 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
       _all.where((i) => !i.cancelled && i.remaining > 0.005).toList()
         ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
 
+  /// Çift gönderim freni (bkz. core/network/idempotency.dart). Sheet her açılışta yeni bir
+  /// State üretir → tuz kendiliğinden oturum başına birdir.
+  final String _salt = newIdempotencySalt();
   final _amountCtrl = TextEditingController();
   String _method = 'Cash';
 
@@ -228,13 +232,24 @@ class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
     var done = 0;
     try {
       for (final entry in parts.entries) {
-        await widget.api
-            .post('/api/admin/accounts/${widget.account['id']}/payments', {
-          'amount': entry.value,
-          'method': entry.key,
-          'reference': reference,
-          'occurredAtUtc': occurredAt,
-        });
+        // Anahtar yöntemden türer (indeksten değil) — kısmi hatadan sonraki tekrar gönderimde
+        // başarılı kayıtlar yeniden yazılmaz, sunucu ilk yanıtlarını oynatır.
+        await widget.api.post(
+          '/api/admin/accounts/${widget.account['id']}/payments',
+          {
+            'amount': entry.value,
+            'method': entry.key,
+            'reference': reference,
+            'occurredAtUtc': occurredAt,
+          },
+          idempotencyKey(_salt, [
+            '${widget.account['id']}',
+            entry.key,
+            entry.value,
+            occurredAt,
+            reference,
+          ]),
+        );
         done++;
       }
       if (mounted) Navigator.pop(context, true);

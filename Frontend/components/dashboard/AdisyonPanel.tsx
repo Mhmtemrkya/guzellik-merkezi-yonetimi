@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useRealtime } from '@/components/dashboard/RealtimeContext'
 import { adminApi } from '@/lib/apiClient'
+import { newIdempotencySalt } from '@/lib/idempotency'
 import { adisyonItemTypeLabel, apiItems, formatTL, normalizeAdisyon, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiProduct, ApiService, ApiServicePackage, ApiStaff, AdisyonItemTypeKey } from '@/lib/types'
 import {
@@ -178,6 +179,31 @@ export default function AdisyonPanel({
     void onChanged?.()
   })
 
+  /**
+   * KALEM EKLEMENİN ÇİFT KAYIT FRENİ (bkz. lib/idempotency).
+   *
+   * Burada anahtar İÇERİKTEN türetilemez: adisyona aynı hizmeti ikinci kez ayrı satır olarak
+   * eklemek MEŞRU bir istektir; içerik anahtarı olsaydı ikinci satır sessizce yutulurdu.
+   * Bunun yerine DENEME başına anahtar: yoksa üretilir, yazma BAŞARINCA temizlenir. Böylece
+   * ağ hatasında tekrar aynı anahtarla gider (sunucu oynatır, kalem çiftlenmez), başarıdan
+   * sonraki yeni kalem ise taze anahtar alır.
+   *
+   * `run` kalemi yazdıktan SONRA `refresh()` çağırır; tazeleme patlarsa kalem yine yazılmıştır
+   * ama form da sıfırlanmış olur, yani kullanıcı aynı içerikle yanlışlıkla tekrar gönderemez.
+   *
+   * Anahtar GÖNDERİLEN GÖVDEYE bağlanır: kullanıcı hatadan sonra formu düzeltip tekrar
+   * gönderirse yeni anahtar üretilir. Aksi hâlde middleware aynı anahtarı farklı gövdeyle görüp
+   * `IdempotencyKeyReuse` (409, "yeni bir anahtar üretin") döndürürdü — ve kullanıcının anahtarı
+   * yenileyecek bir yolu olmadığı için panel kapanana kadar kilitli kalırdı.
+   */
+  const pendingItem = useRef<{ key: string; body: string } | null>(null)
+  const takeItemKey = (body: unknown): string => {
+    const fingerprint = JSON.stringify(body)
+    if (pendingItem.current?.body === fingerprint) return pendingItem.current.key
+    pendingItem.current = { key: `ai-${newIdempotencySalt()}`, body: fingerprint }
+    return pendingItem.current.key
+  }
+
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true)
     setError('')
@@ -259,7 +285,8 @@ export default function AdisyonPanel({
     }
     if (!adisyon) return
     run(async () => {
-      await adminApi.addAdisyonItem(adisyon.id, body, tenantId)
+      await adminApi.addAdisyonItem(adisyon.id, body, tenantId, takeItemKey(body))
+      pendingItem.current = null
       // Personel seçimi KORUNUR: aynı fişe arka arkaya kalem eklenirken (aynı seansın hizmeti +
       // ürünü) her seferinde yeniden seçtirmek, boş bırakılıp atıfın kaybolmasına yol açıyordu.
       setForm({ ...emptyForm, type: form.type, method: form.method, staffMemberId: form.staffMemberId })
@@ -285,11 +312,13 @@ export default function AdisyonPanel({
     if (points > maxByDebt) return setError(`İndirim kalan borcu aşamaz (en çok ${maxByDebt}P)`)
     run(async () => {
       await adminApi.adjustLoyalty({ customerId, points: -points, description: 'Adisyon indirimi' }, tenantId)
+      const discountBody = {
+        type: 'Discount', refId: null, description: `Sadakat indirimi · ${points}P`,
+        quantity: 1, unitPrice: points, staffMemberId: null, coveredByPackage: false,
+      }
       try {
-        await adminApi.addAdisyonItem(adisyon.id, {
-          type: 'Discount', refId: null, description: `Sadakat indirimi · ${points}P`,
-          quantity: 1, unitPrice: points, staffMemberId: null, coveredByPackage: false,
-        }, tenantId)
+        await adminApi.addAdisyonItem(adisyon.id, discountBody, tenantId, takeItemKey(discountBody))
+        pendingItem.current = null
       } catch (e) {
         // İndirim kalemi yazılamadıysa puanı geri yükle
         await adminApi.adjustLoyalty({ customerId, points, description: 'İndirim iadesi (hata)' }, tenantId).catch(() => undefined)
@@ -322,12 +351,14 @@ export default function AdisyonPanel({
     if (cost > loyaltyBalance) return setError(`Yetersiz puan — gerekli ${cost}P, bakiye ${loyaltyBalance}P`)
     run(async () => {
       await adminApi.adjustLoyalty({ customerId, points: -cost, description: `Hediye: ${name}` }, tenantId)
+      const giftBody = {
+        type: svc ? 'Service' : 'PackageSale', refId: id,
+        description: `Hediye: ${name} · ${cost}P`,
+        quantity: 1, unitPrice: 0, staffMemberId: null, coveredByPackage: false,
+      }
       try {
-        await adminApi.addAdisyonItem(adisyon.id, {
-          type: svc ? 'Service' : 'PackageSale', refId: id,
-          description: `Hediye: ${name} · ${cost}P`,
-          quantity: 1, unitPrice: 0, staffMemberId: null, coveredByPackage: false,
-        }, tenantId)
+        await adminApi.addAdisyonItem(adisyon.id, giftBody, tenantId, takeItemKey(giftBody))
+        pendingItem.current = null
       } catch (e) {
         await adminApi.adjustLoyalty({ customerId, points: cost, description: 'Hediye iadesi (hata)' }, tenantId).catch(() => undefined)
         throw e

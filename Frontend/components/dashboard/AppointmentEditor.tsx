@@ -1799,6 +1799,7 @@ export default function AppointmentEditor({
               p.accountId,
               { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc },
               tenantId,
+              p.idempotencyKey,
             )
             setSessRefreshKey((k) => k + 1)
           }}

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
@@ -109,6 +110,9 @@ class _CollectionSheetState extends State<_CollectionSheet> {
   Map<String, dynamic>? _selected;
   final List<_Row> _rows = [];
   final _reference = TextEditingController();
+  /// Çift gönderim freni (bkz. core/network/idempotency.dart). Sheet her açılışta yeni bir
+  /// State üretir → tuz kendiliğinden oturum başına birdir.
+  final String _salt = newIdempotencySalt();
   DateTime _date = DateTime.now();
   bool _loading = true;
   bool _saving = false;
@@ -261,8 +265,20 @@ class _CollectionSheetState extends State<_CollectionSheet> {
           reference: reference,
           occurredAtUtc: stamp,
         );
-        await widget.api
-            .post('/api/admin/accounts/${payload.accountId}/payments', payload.body);
+        // ANAHTAR YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL: kısmi hatadan sonra kullanıcı tekrar
+        // gönderdiğinde döngü BAŞARILI olanları da yeniden gönderir (satırlar budanmıyor);
+        // aynı anahtar + aynı gövde sayesinde sunucu onları yazmak yerine oynatır.
+        await widget.api.post(
+          '/api/admin/accounts/${payload.accountId}/payments',
+          payload.body,
+          idempotencyKey(_salt, [
+            payload.accountId,
+            entry.key,
+            entry.value,
+            stamp,
+            reference,
+          ]),
+        );
         done++;
       }
       if (mounted) Navigator.pop(context, done);

@@ -497,7 +497,7 @@ function OnMuhasebePageInner() {
       summary: accounts.find((a) => a.id === p.accountId)?.customerName || '',
       payload: { ...payload, accountId: p.accountId },
       tenantId,
-      directAction: () => adminApi.registerAccountPayment(p.accountId, payload, tenantId),
+      directAction: () => adminApi.registerAccountPayment(p.accountId, payload, tenantId, p.idempotencyKey),
     })
     if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Tahsilat'))
     await reload()

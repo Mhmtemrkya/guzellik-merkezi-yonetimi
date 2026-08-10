@@ -28,6 +28,7 @@ import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffA
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
 import {
   ChevronLeft, ChevronRight, CreditCard, FileUp,
   Mail, MessageCircle, Phone, PenLine, PieChart, Search, ShieldAlert, Sparkles,
@@ -434,13 +435,15 @@ function MusterilerPageInner() {
   const handleRestoreSale = (accountId: string): Promise<void> =>
     runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
 
-  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+  // opts: SaleDetailModal'ın ürettiği çift-tıklama freni — damga da anahtar da ORADAN gelir,
+  // burada `new Date()` üretilirse ikinci tıklamanın gövdesi değişir ve oynatma yerine 409 olur.
+  const handleCollectInstallment = (accountId: string, amount: number, opts: IdempotentWriteOptions): Promise<void> =>
     runSaleAction(() => adminApi.registerAccountPayment(accountId, {
       amount,
       method: 'cash',
       reference: null,
-      occurredAtUtc: new Date().toISOString(),
-    }, tenantId))
+      occurredAtUtc: opts.occurredAtUtc,
+    }, tenantId, opts.idempotencyKey))
 
   const customerPayload = (values: CustomerFormValues): Record<string, unknown> => ({
     branchId: guidOrUndefined(values.branchId) || branchId, fullName: values.fullName, phone: values.phone,
@@ -761,7 +764,7 @@ function MusterilerPageInner() {
                 method: payload.method,
                 reference: payload.reference,
                 occurredAtUtc: payload.occurredAtUtc,
-              }, tenantId))
+              }, tenantId, payload.idempotencyKey))
             }}
             salesPanel={selected ? (
               <CustomerSalesPanel

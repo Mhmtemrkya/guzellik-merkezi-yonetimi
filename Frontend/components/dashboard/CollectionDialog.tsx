@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import type { CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
+import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 
 // ---------------------------------------------------------------------------
 // Ortak "Tahsilat Al" modalı — Günlük Kasa ve Ön Muhasebe (cari) aynı bileşeni
@@ -44,6 +45,12 @@ export interface CollectionSubmitPayload {
   method: string
   reference: string | null
   occurredAtUtc: string
+  /**
+   * `Idempotency-Key` — çağrı yeri bunu `adminApi.registerAccountPayment`'a AYNEN geçirmeli.
+   * Geçirilmezse çift gönderim (çift tıklama ya da kayıt sonrası tazeleme patlayınca atılan
+   * ikinci tıklama) sunucuda İKİNCİ bir tahsilat satırı açar: 400 ₺ 800 ₺ olur.
+   */
+  idempotencyKey: string
 }
 
 interface CollectionDialogProps {
@@ -109,6 +116,15 @@ export default function CollectionDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const pickerRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * Tahsilat anahtarlarının oturum tuzu. YALNIZ açılış/kapanışta döner — aşağıdaki sıfırlama
+   * efektine konulamaz, o efekt `accounts` kimliği her değiştiğinde de çalışır ve tuz dönseydi
+   * çift-gönderim koruması sessizce devre dışı kalırdı.
+   */
+  const saltRef = useRef<string>('')
+  useEffect(() => {
+    if (open) saltRef.current = newIdempotencySalt()
+  }, [open])
 
   const selected = useMemo(() => accounts.find((a) => a.id === accountId) || null, [accounts, accountId])
 
@@ -187,7 +203,11 @@ export default function CollectionDialog({
     for (const r of payable) merged.set(r.method, (merged.get(r.method) ?? 0) + Number(r.amount || 0))
 
     setSaving(true)
+    // Tarihten TÜRETİLİR (öğlen sabitlenir) — yani aynı formun tekrar gönderimi aynı damgayı
+    // üretir. `new Date()` kullanılsaydı her deneme farklı gövde olur, anahtar tutsa bile
+    // middleware parmak izini tutturamaz ve oynatma yerine 409 dönerdi.
     const occurredAtUtc = new Date(`${date || todayIso()}T12:00:00`).toISOString()
+    const trimmedReference = reference.trim() || null
     let done = 0
     try {
       // Her yöntem AYRI tahsilat kaydı olur; sıralı gider ki kısmi hata net anlaşılsın.
@@ -196,8 +216,13 @@ export default function CollectionDialog({
           accountId,
           amount: amt,
           method: m,
-          reference: reference.trim() || null,
+          reference: trimmedReference,
           occurredAtUtc,
+          // ANAHTAR YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL. Kısmi hatada aşağıda satırlar kalanlarla
+          // yeniden kurulur; indeks tabanlı anahtar kayar ve BAŞARILI ilk tahsilatın anahtarı
+          // farklı bir gövdeye denk gelip 409 (KeyReuse) üretirdi. Yöntem parti içinde
+          // benzersizdir (merged yöntem bazında toplanır) ve tekrar denemede aynı kalır.
+          idempotencyKey: idempotencyKey(saltRef.current, accountId, m, amt, occurredAtUtc, trimmedReference),
         })
         done++
       }

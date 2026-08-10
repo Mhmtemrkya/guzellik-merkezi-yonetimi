@@ -30,6 +30,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import { adminApi } from '@/lib/apiClient'
+import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiCustomServiceCategory, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
 
@@ -122,6 +123,16 @@ export default function PackageSaleDialog({
   const isProductSale = Boolean(productSale)
   const isServiceSale = !isProductSale && (Boolean(presetService) || Boolean(serviceSale))
   const [open, setOpen] = useState(false)
+  /**
+   * SATIŞ AKIŞININ ÇİFT KAYIT FRENİ (bkz. lib/idempotency).
+   *
+   * Akış üç ayrı yazmadır (fiş aç → N kalem → onayla) ama TEK bir işlemdir: hepsi aynı tuzdan
+   * türetilir. Ağ kesilip kullanıcı tekrar gönderdiğinde fiş açma isteği ilk yanıtı oynatır,
+   * AYNI `createdId` döner ve kalemler de oynatılır — yani ikinci bir fiş açılmaz ve kalemler
+   * çiftlenmez. Tuz akış ortasında dönerse tam tersi olur: ikinci fiş açılır.
+   */
+  const saleSaltRef = useRef<string>('')
+  if (!saleSaltRef.current) saleSaltRef.current = newIdempotencySalt()
   const [step, setStep] = useState<SaleStep>('form')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -360,6 +371,9 @@ export default function PackageSaleDialog({
   if (!canAdisyon || (isProductSale && !canProducts)) return null
 
   const reset = () => {
+    // Yeni satış = yeni tuz. Aynı müşteriye birebir aynı satışı tekrar yapmak MEŞRUDUR;
+    // tuz dönmeseydi ikinci satış birincinin yanıtı olarak oynatılıp sessizce yutulurdu.
+    saleSaltRef.current = newIdempotencySalt()
     setStep('form')
     setPendingApproval(false)
     setDeferred(false)
@@ -529,9 +543,14 @@ export default function PackageSaleDialog({
           autoApproveOnFirstAppointment: willDefer,
         },
         tenantId,
+        // `forceNew` her çağrıda YENİ fiş açar — sunucudaki "açık fiş varsa onu döndür" koruması
+        // burada devrede değildir, dolayısıyla çift gönderim iki satış fişi üretirdi.
+        idempotencyKey(saleSaltRef.current, 'create', cid, isInstallment ? installmentCount : 0, firstDueDate, saleDate),
       )
       if (!adisyon?.id) throw new Error('Adisyon açılamadı')
       createdId = adisyon.id
+      // Ana kalemin kimliği (üç daldan hangisi seçiliyse) — idempotency anahtarında kullanılır.
+      const mainRefId = isProductSale ? selectedProduct!.id : isServiceSale ? selectedService!.id : selectedPackage!.id
 
       // 2) Ana satış kalemi — onayda cariye borç (+ paket/hizmetse seans bakiyesi, üründe stok).
       await adminApi.addAdisyonItem(
@@ -566,10 +585,11 @@ export default function PackageSaleDialog({
               coveredByPackage: false,
             },
         tenantId,
+        idempotencyKey(saleSaltRef.current, 'main', mainRefId, qty, unitPrice, staffMemberId),
       )
 
       // 2b) Ek kalemler — ana satışla aynı fişe, aynı kurallarla yazılır.
-      for (const e of extras) {
+      for (const [i, e] of extras.entries()) {
         await adminApi.addAdisyonItem(
           createdId,
           {
@@ -582,6 +602,10 @@ export default function PackageSaleDialog({
             coveredByPackage: false,
           },
           tenantId,
+          // SIRA NUMARASI ŞART: aynı hizmet iki ayrı ek kalem olarak eklenebilir (meşru) ve
+          // yalnız içerikten türeyen anahtar ikisini aynı kabul edip birini yutardı. Tekrar
+          // denemede `extras` değişmediği için indeks kararlıdır.
+          idempotencyKey(saleSaltRef.current, 'extra', i, e.kind, e.refId, e.quantity, e.unitPrice),
         )
       }
 
@@ -605,6 +629,7 @@ export default function PackageSaleDialog({
             coveredByPackage: false,
           },
           tenantId,
+          idempotencyKey(saleSaltRef.current, 'pay', pay),
         )
       }
 
@@ -623,6 +648,12 @@ export default function PackageSaleDialog({
       // Adisyon kartı AÇILMAZ (kullanıcı talebi: süreç uzuyordu). Fiş açık kaldıysa (erteleme ya da
       // personelin onay bekleyen isteği) done ekranında isteğe bağlı "Adisyon kartını aç" düğmesi var.
       await safeDone()
+      // SATIŞ BİTTİ → TUZ BURADA DÖNER, `reset()`'e GÜVENİLEMEZ. `reset()` yalnız
+      // `onOpenChange` üzerinden çağrılır; başarı yolundaki `finishAndClose`/`openSavedCard`
+      // ise `setOpen(false)`'u DOĞRUDAN çağırır ve onOpenChange tetiklenmez. Tuz dönmeseydi
+      // aynı müşteriye birebir aynı satışı tekrar yapmak (meşru) ilk satışın yanıtı olarak
+      // oynatılır, kullanıcı "başarılı" görür ama HİÇBİR ŞEY yazılmazdı.
+      saleSaltRef.current = newIdempotencySalt()
       setStep('done')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Satış kaydedilemedi'
@@ -636,7 +667,14 @@ export default function PackageSaleDialog({
         // YARIM FİŞ BIRAKILMAZ: kalemleri eksik kalmış açık adisyon Ön Muhasebe'de gerçek bir satış
         // gibi durur, hizmet/paket fişiyse ilk randevuda otomatik cariye işlenirdi. İptal edilen fiş
         // hiçbir sorguya (açık adisyon / bekleyen satış) girmez.
-        if (createdId) await adminApi.cancelAdisyon(createdId, tenantId).catch(() => undefined)
+        if (createdId) {
+          const cancelled = await adminApi.cancelAdisyon(createdId, tenantId).then(() => true).catch(() => false)
+          // TUZ YALNIZ İPTAL BAŞARILIYSA DÖNER. Fiş gerçekten iptal edildiyse ölüdür; aynı
+          // anahtarla tekrar denemek fiş açma isteğini oynatıp ÖLÜ fişin id'sini döndürür ve
+          // kalemler iptal edilmiş fişe yazılmaya çalışılır. İptal de patladıysa (ağ kesik) fiş
+          // ortadadır: aynı anahtarla devam edip onu tamamlamak doğrudur.
+          if (cancelled) saleSaltRef.current = newIdempotencySalt()
+        }
         setError(msg)
       }
     } finally {

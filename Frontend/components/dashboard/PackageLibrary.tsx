@@ -17,6 +17,7 @@ import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSale
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
 import { apiItems, categoryOrderIndex, formatTL, mapCancelledSale, normalizeAccount, normalizeCampaign, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Gift, Loader2, Minus, PackagePlus, PencilLine,
@@ -197,10 +198,12 @@ export default function PackageLibrary({
     runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId, refundMethod))
   const handleRestoreSale = (accountId: string): Promise<void> =>
     runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
-  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+  // opts: SaleDetailModal'ın ürettiği çift-tıklama freni — damga da anahtar da ORADAN gelir,
+  // burada `new Date()` üretilirse ikinci tıklamanın gövdesi değişir ve oynatma yerine 409 olur.
+  const handleCollectInstallment = (accountId: string, amount: number, opts: IdempotentWriteOptions): Promise<void> =>
     runSaleAction(() => adminApi.registerAccountPayment(accountId, {
-      amount, method: 'cash', reference: null, occurredAtUtc: new Date().toISOString(),
-    }, tenantId))
+      amount, method: 'cash', reference: null, occurredAtUtc: opts.occurredAtUtc,
+    }, tenantId, opts.idempotencyKey))
 
   // ---- istatistikler
   const activeCount = packages.filter((p) => p.status === 'Active').length

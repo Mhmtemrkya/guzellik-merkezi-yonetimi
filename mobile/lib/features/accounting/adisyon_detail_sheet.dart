@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
@@ -39,6 +40,25 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
   Map<String, dynamic>? _adisyon;
   bool _changed = false;
   bool _busy = false;
+
+  /// KALEM EKLEMENİN ÇİFT KAYIT FRENİ — web `AdisyonPanel.takeItemKey` ile aynı kural.
+  ///
+  /// Anahtar içerikten türetilemez: aynı hizmeti fişe ikinci kez ayrı satır olarak eklemek
+  /// MEŞRUDUR ve içerik anahtarı ikinci satırı sessizce yutardı. Bunun yerine DENEME başına
+  /// anahtar: yoksa üretilir, yazma başarınca temizlenir. Ağ hatasında tekrar aynı anahtarla
+  /// gider (sunucu oynatır, kalem çiftlenmez).
+  ///
+  /// Anahtar GÖNDERİLEN GÖVDEYE bağlanır: kullanıcı hatadan sonra formu düzeltip tekrar
+  /// gönderirse yeni anahtar üretilir. Aksi hâlde sunucu aynı anahtarı farklı gövdeyle görüp
+  /// `IdempotencyKeyReuse` (409) döndürürdü ve kullanıcının anahtarı yenileyecek yolu olmadığı
+  /// için sayfa kapanana kadar kilitli kalırdı.
+  ({String key, String body})? _pendingItem;
+  String _takeItemKey(Map<String, dynamic> body) {
+    final fingerprint = body.toString();
+    if (_pendingItem?.body == fingerprint) return _pendingItem!.key;
+    _pendingItem = (key: 'ai-${newIdempotencySalt()}', body: fingerprint);
+    return _pendingItem!.key;
+  }
 
   // Kalem formunun katalogları + sadakat bakiyesi (web AdisyonPanel ile aynı kaynaklar).
   List<Map<String, dynamic>> _services = const [];
@@ -152,8 +172,14 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
     );
     if (body == null) return;
     await _run(
-      () => widget.api
-          .post('/api/admin/adisyonlar/${widget.adisyonId}/items', body),
+      () async {
+        await widget.api.post(
+          '/api/admin/adisyonlar/${widget.adisyonId}/items',
+          body,
+          _takeItemKey(body),
+        );
+        _pendingItem = null;
+      },
       'Kalem eklendi.',
     );
   }
@@ -207,17 +233,22 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
     }
     await _run(() async {
       await _adjustLoyalty(-points, 'Adisyon indirimi');
+      final discountBody = <String, dynamic>{
+        'type': 'Discount',
+        'refId': null,
+        'description': 'Sadakat indirimi · ${points}P',
+        'quantity': 1,
+        'unitPrice': points,
+        'staffMemberId': null,
+        'coveredByPackage': false,
+      };
       try {
-        await widget.api
-            .post('/api/admin/adisyonlar/${widget.adisyonId}/items', {
-          'type': 'Discount',
-          'refId': null,
-          'description': 'Sadakat indirimi · ${points}P',
-          'quantity': 1,
-          'unitPrice': points,
-          'staffMemberId': null,
-          'coveredByPackage': false,
-        });
+        await widget.api.post(
+          '/api/admin/adisyonlar/${widget.adisyonId}/items',
+          discountBody,
+          _takeItemKey(discountBody),
+        );
+        _pendingItem = null;
       } catch (e) {
         // Kalem yazılamadıysa puan geri yüklenir (web ile aynı telafi).
         await _adjustLoyalty(points, 'İndirim iadesi (hata)').catchError((_) {});
@@ -290,17 +321,22 @@ class _AdisyonDetailSheetState extends State<AdisyonDetailSheet> {
     final name = valueOf(item, const ['name'], fallback: 'Hediye');
     await _run(() async {
       await _adjustLoyalty(-cost, 'Hediye: $name');
+      final giftBody = <String, dynamic>{
+        'type': kind == 'svc' ? 'Service' : 'PackageSale',
+        'refId': item['id'],
+        'description': 'Hediye: $name · ${cost}P',
+        'quantity': 1,
+        'unitPrice': 0,
+        'staffMemberId': null,
+        'coveredByPackage': false,
+      };
       try {
-        await widget.api
-            .post('/api/admin/adisyonlar/${widget.adisyonId}/items', {
-          'type': kind == 'svc' ? 'Service' : 'PackageSale',
-          'refId': item['id'],
-          'description': 'Hediye: $name · ${cost}P',
-          'quantity': 1,
-          'unitPrice': 0,
-          'staffMemberId': null,
-          'coveredByPackage': false,
-        });
+        await widget.api.post(
+          '/api/admin/adisyonlar/${widget.adisyonId}/items',
+          giftBody,
+          _takeItemKey(giftBody),
+        );
+        _pendingItem = null;
       } catch (e) {
         await _adjustLoyalty(cost, 'Hediye iadesi (hata)').catchError((_) {});
         rethrow;

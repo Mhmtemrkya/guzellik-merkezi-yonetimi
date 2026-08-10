@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import {
   AlertTriangle, Banknote, CalendarClock, CalendarDays, Check, CheckCircle2, CreditCard,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { AccountInstallmentItem, CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
+import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 import type { CollectionSubmitPayload } from './CollectionDialog'
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,12 @@ export default function InstallmentCollectionDialog({
 
   const [count, setCount] = useState(1)
 
+  /** Çift gönderim freni — bkz. lib/idempotency. Tuz yalnız açılış/kapanışta döner. */
+  const saltRef = useRef<string>('')
+  useEffect(() => {
+    if (open) saltRef.current = newIdempotencySalt()
+  }, [open])
+
   const sumOf = (n: number): number =>
     pending.slice(0, Math.max(0, n)).reduce((s, i) => s + i.remaining, 0)
 
@@ -134,13 +141,18 @@ export default function InstallmentCollectionDialog({
     const amt = Number(amount || 0)
     if (!(amt > 0)) { setError('Tutar 0’dan büyük olmalı.'); return }
     setSaving(true)
+    // Tarihten türer (öğlen sabit) → aynı formun tekrar gönderimi AYNI gövdeyi üretir; anahtar
+    // tuttuğunda sunucu ilk yanıtı oynatabilir.
+    const occurredAtUtc = new Date(`${date || todayIso()}T12:00:00`).toISOString()
+    const trimmedReference = reference.trim() || null
     try {
       await onSubmit({
         accountId: account.id,
         amount: amt,
         method,
-        reference: reference.trim() || null,
-        occurredAtUtc: new Date(`${date || todayIso()}T12:00:00`).toISOString(),
+        reference: trimmedReference,
+        occurredAtUtc,
+        idempotencyKey: idempotencyKey(saltRef.current, account.id, method, amt, occurredAtUtc, trimmedReference),
       })
       setOpen(false)
     } catch (e) {

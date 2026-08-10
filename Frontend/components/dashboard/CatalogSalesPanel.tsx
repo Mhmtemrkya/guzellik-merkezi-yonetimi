@@ -20,6 +20,7 @@ import { apiItems, formatTL, mapCancelledSale, normalizeAccount } from '@/lib/ap
 import { useApiQuery } from '@/hooks/useApiQuery'
 import type { ApiCustomerAccount, CustomerAccount, SaleStatusKey } from '@/lib/types'
 import SaleDetailModal from '@/components/dashboard/SaleDetailModal'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
 import HistoricalSaleDialog, { type HistoricalCatalogOption, type HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 import { formatSaleDate } from '@/components/dashboard/CustomerSalesPanel'
 
@@ -77,7 +78,7 @@ export default function CatalogSalesPanel({
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
   onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
-  onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
+  onCollectInstallment?: (accountId: string, amount: number, opts: IdempotentWriteOptions) => Promise<void>
 }) {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -310,7 +311,7 @@ export default function CatalogSalesPanel({
               onCancelSale={async (id, reason, refunded, method) => { await onCancelSale(id, reason, refunded, method); setDetailId(null); await reloadAll() }}
               onRestoreSale={async (id) => { await onRestoreSale(id); await reloadAll() }}
               onCollectInstallment={
-                onCollectInstallment && (async (id, amount) => { await onCollectInstallment(id, amount); await reload() })
+                onCollectInstallment && (async (id, amount, opts) => { await onCollectInstallment(id, amount, opts); await reload() })
               }
             />
           )

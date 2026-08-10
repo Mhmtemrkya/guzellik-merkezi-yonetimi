@@ -16,6 +16,7 @@ import {
 import { formatTL } from '@/lib/apiMappers'
 import type { CustomerAccount, SaleStatusKey } from '@/lib/types'
 import SaleDetailModal from '@/components/dashboard/SaleDetailModal'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
 import HistoricalSaleDialog, { type HistoricalCatalogOption, type HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
 
 /**
@@ -79,7 +80,7 @@ export default function CustomerSalesPanel({
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
   onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
-  onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
+  onCollectInstallment?: (accountId: string, amount: number, opts: IdempotentWriteOptions) => Promise<void>
 }) {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [detailId, setDetailId] = useState<string | null>(null)

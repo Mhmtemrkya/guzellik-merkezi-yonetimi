@@ -286,7 +286,7 @@ function KasaPageInner() {
       summary: `${values.method || 'cash'}`,
       payload: { accountId: values.accountId, body },
       tenantId,
-      directAction: () => adminApi.registerAccountPayment(values.accountId, body, tenantId),
+      directAction: () => adminApi.registerAccountPayment(values.accountId, body, tenantId, values.idempotencyKey),
     })
     if (res.submittedToApproval) setStaffActionMsg(staffApprovalSuccessMessage('Tahsilat'))
     await reload()

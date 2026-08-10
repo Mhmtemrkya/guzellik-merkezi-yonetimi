@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -22,6 +22,7 @@ import {
 import { formatTL } from '@/lib/apiMappers'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import type { CustomerAccount, SaleStatusKey } from '@/lib/types'
+import { idempotencyKey, newIdempotencySalt, type IdempotentWriteOptions } from '@/lib/idempotency'
 
 /**
  * Satış detay modali — müşteri kartındaki satış satırına tıklanınca açılır.
@@ -78,7 +79,7 @@ export default function SaleDetailModal({
   onClose: () => void
   onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
-  onCollectInstallment?: (accountId: string, amount: number) => Promise<void>
+  onCollectInstallment?: (accountId: string, amount: number, opts: IdempotentWriteOptions) => Promise<void>
 }) {
   const meta = STATUS_META[account.saleStatus]
   const StatusIcon = meta.icon
@@ -93,6 +94,31 @@ export default function SaleDetailModal({
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'transfer'>('cash')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
+
+  /**
+   * ÇİFT TAHSİLAT FRENİ. Rapor edilen senaryo: tahsilat sunucuda başarılı olur ama ardından gelen
+   * ekran tazeleme patlar; düğme açık kalır, kullanıcı bir daha basar ve 400 ₺ 800 ₺ olarak yazılır.
+   *
+   * Aynı taksit + aynı tutar için niyet BİR KEZ üretilir ve modal yaşadığı sürece saklanır:
+   * ikinci tıklama aynı anahtar + aynı gövdeyle gider, sunucu ilk yanıtı oynatır, ikinci satır
+   * açılmaz. BAŞARIDA TEMİZLENMEZ — temizlenseydi tam da korunması gereken tıklama yeni anahtar
+   * üretirdi. Meşru ikinci tahsilat yine mümkün: tahsilat sonrası `inst.remaining` düşer, tutar
+   * değişir ve anahtar kendiliğinden yenilenir.
+   */
+  const saltRef = useRef<string>('')
+  if (!saltRef.current) saltRef.current = newIdempotencySalt()
+  const intentsRef = useRef(new Map<string, IdempotentWriteOptions>())
+  const collectIntent = (installmentId: string, amount: number): IdempotentWriteOptions => {
+    const cacheKey = `${installmentId}:${amount}`
+    const cached = intentsRef.current.get(cacheKey)
+    if (cached) return cached
+    const intent: IdempotentWriteOptions = {
+      idempotencyKey: idempotencyKey(saltRef.current, account.id, installmentId, amount),
+      occurredAtUtc: new Date().toISOString(),
+    }
+    intentsRef.current.set(cacheKey, intent)
+    return intent
+  }
 
   /**
    * Esc yalnız EN ÜSTTEKİ modalı kapatsın. Alttaki modaller (satış listesi, müşteri kartı)
@@ -337,7 +363,11 @@ export default function SaleDetailModal({
                                     <button
                                       type="button"
                                       disabled={working || busy}
-                                      onClick={(e) => { e.stopPropagation(); void run(() => onCollectInstallment!(account.id, inst.remaining)) }}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const intent = collectIntent(inst.id, inst.remaining)
+                                        void run(() => onCollectInstallment!(account.id, inst.remaining, intent))
+                                      }}
                                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-[#2c7d63] px-3 py-1.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-[#24664f] disabled:opacity-60"
                                     >
                                       {working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wallet className="h-3.5 w-3.5" />}

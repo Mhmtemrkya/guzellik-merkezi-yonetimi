@@ -16,6 +16,7 @@ import ServiceFormDialog, { type ConsentTemplateOption, type ServiceFormDialogVa
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
 import { apiItems, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { motion } from 'framer-motion'
 import {
@@ -175,10 +176,12 @@ export default function ServiceLibrary({
     runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId, refundMethod))
   const handleRestoreSale = (accountId: string): Promise<void> =>
     runSaleAction(() => adminApi.restoreSale(accountId, tenantId))
-  const handleCollectInstallment = (accountId: string, amount: number): Promise<void> =>
+  // opts: SaleDetailModal'ın ürettiği çift-tıklama freni — damga da anahtar da ORADAN gelir,
+  // burada `new Date()` üretilirse ikinci tıklamanın gövdesi değişir ve oynatma yerine 409 olur.
+  const handleCollectInstallment = (accountId: string, amount: number, opts: IdempotentWriteOptions): Promise<void> =>
     runSaleAction(() => adminApi.registerAccountPayment(accountId, {
-      amount, method: 'cash', reference: null, occurredAtUtc: new Date().toISOString(),
-    }, tenantId))
+      amount, method: 'cash', reference: null, occurredAtUtc: opts.occurredAtUtc,
+    }, tenantId, opts.idempotencyKey))
 
   const statsByService = useMemo(() => {
     const m = new Map<string, ServiceStats>()

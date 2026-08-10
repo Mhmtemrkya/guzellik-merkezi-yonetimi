@@ -182,8 +182,10 @@ export default function CariSalesWorkspace({
         onCancelSale={(accountId, reason, refundedAmount = 0, refundMethod = 'cash') =>
           run(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId, refundMethod))}
         onRestoreSale={(accountId) => run(() => adminApi.restoreSale(accountId, tenantId))}
-        onCollectInstallment={(accountId, amount) =>
-          run(() => adminApi.registerAccountPayment(accountId, { amount, method: 'cash' }, tenantId))}
+        // Gövdeye damga YAZILMAZ (sunucu kendi "şimdi"sini koyar) — bu yüzden gövde zaten
+        // tıklamalar arasında sabittir ve opts'tan yalnız anahtar gerekir.
+        onCollectInstallment={(accountId, amount, opts) =>
+          run(() => adminApi.registerAccountPayment(accountId, { amount, method: 'cash' }, tenantId, opts.idempotencyKey))}
       />
     </CustomerSalesModal>
   )

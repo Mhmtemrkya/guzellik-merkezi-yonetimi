@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/catalog_picker_field.dart';
@@ -108,6 +109,13 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   /// Ürün satışında satışın gerçekte yapıldığı gün (geçmişe dönük giriş).
   late DateTime saleDate;
   bool saving = false;
+
+  /// SATIŞ AKIŞININ ÇİFT KAYIT FRENİ — web `PackageSaleDialog.saleSaltRef` ile aynı kural.
+  ///
+  /// Akış üç ayrı yazmadır (fiş aç → N kalem → onayla) ama TEK bir işlemdir: hepsi aynı tuzdan
+  /// türer. Ağ kesilip kullanıcı tekrar gönderdiğinde fiş açma isteği ilk yanıtı oynatır, AYNI
+  /// adisyon id'si döner ve kalemler de oynatılır — ikinci fiş açılmaz, kalemler çiftlenmez.
+  String _saleSalt = newIdempotencySalt();
   final price = TextEditingController();
   final downPayment = TextEditingController();
   final notes = TextEditingController();
@@ -458,21 +466,32 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     var phase = 'build';
     try {
       // 1) Adisyonu aç + taksit planını yaz (peşin = 0).
-      final adisyon = await widget.api.post('/api/admin/adisyonlar/', {
-        'customerId': cid,
-        'customerAccountId': null,
-        'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
-        'installmentCount': installment ? installmentCount : 0,
-        'firstDueDate': installment ? _isoDate(firstDueDate) : null,
-        // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
-        'forceNew': true,
-        'autoApproveOnFirstAppointment': willDefer,
-        // Geçmişe dönük satış tarihi (yalnız ürün). Günün ortasına sabitlenir ki saat dilimi
-        // kayması tarihi bir gün öne/arkaya almasın.
-        'saleDateUtc': _isProduct
-            ? DateTime.utc(saleDate.year, saleDate.month, saleDate.day, 12).toIso8601String()
-            : null,
-      });
+      final adisyon = await widget.api.post(
+        '/api/admin/adisyonlar/',
+        {
+          'customerId': cid,
+          'customerAccountId': null,
+          'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
+          'installmentCount': installment ? installmentCount : 0,
+          'firstDueDate': installment ? _isoDate(firstDueDate) : null,
+          // Her satış KENDİ adisyonunu açar (mevcut açık fişe/cariye eklenmez).
+          'forceNew': true,
+          'autoApproveOnFirstAppointment': willDefer,
+          // Geçmişe dönük satış tarihi (yalnız ürün). Günün ortasına sabitlenir ki saat dilimi
+          // kayması tarihi bir gün öne/arkaya almasın.
+          'saleDateUtc': _isProduct
+              ? DateTime.utc(saleDate.year, saleDate.month, saleDate.day, 12).toIso8601String()
+              : null,
+        },
+        // `forceNew` her çağrıda YENİ fiş açar — sunucudaki "açık fiş varsa onu döndür" koruması
+        // burada devrede değildir, dolayısıyla çift gönderim iki satış fişi üretirdi.
+        idempotencyKey(_saleSalt, [
+          'create',
+          cid,
+          installment ? installmentCount : 0,
+          installment ? _isoDate(firstDueDate) : null,
+        ]),
+      );
       final adisyonMap = adisyon is Map ? adisyon.cast<String, dynamic>() : null;
       final adisyonId = adisyonMap?['id']?.toString();
       if (adisyonMap == null || adisyonId == null || adisyonId.isEmpty) {
@@ -486,56 +505,71 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       createdId = adisyonId;
 
       // 2) Ana satış kalemi — onayda cariye borç (+ paketse seans bakiyesi, üründe stok düşümü).
-      await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
-        'type': _isProduct
-            ? 'Product'
-            : _isService
-                ? 'Service'
-                : 'PackageSale',
-        'refId': _selectedId,
-        'description': _isProduct || _isService
-            ? '${selected['name']}'
-            : 'Paket satışı: ${selected['name']}',
-        'quantity': _qty,
-        'unitPrice': _unitPrice,
-        'staffMemberId': staffId,
-        'coveredByPackage': false,
-      });
+      await widget.api.post(
+        '/api/admin/adisyonlar/$adisyonId/items',
+        {
+          'type': _isProduct
+              ? 'Product'
+              : _isService
+                  ? 'Service'
+                  : 'PackageSale',
+          'refId': _selectedId,
+          'description': _isProduct || _isService
+              ? '${selected['name']}'
+              : 'Paket satışı: ${selected['name']}',
+          'quantity': _qty,
+          'unitPrice': _unitPrice,
+          'staffMemberId': staffId,
+          'coveredByPackage': false,
+        },
+        idempotencyKey(_saleSalt, ['main', _selectedId, _qty, _unitPrice, staffId]),
+      );
 
       // 2b) Ek kalemler — ana satışla aynı fişe, aynı kurallarla yazılır.
-      for (final e in _extras) {
-        await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
-          'type': switch (e.kind) {
-            _ExtraKind.service => 'Service',
-            _ExtraKind.package => 'PackageSale',
-            _ExtraKind.product => 'Product',
+      for (final (i, e) in _extras.indexed) {
+        await widget.api.post(
+          '/api/admin/adisyonlar/$adisyonId/items',
+          {
+            'type': switch (e.kind) {
+              _ExtraKind.service => 'Service',
+              _ExtraKind.package => 'PackageSale',
+              _ExtraKind.product => 'Product',
+            },
+            'refId': e.refId,
+            'description': e.kind == _ExtraKind.package ? 'Paket satışı: ${e.name}' : e.name,
+            'quantity': e.quantity,
+            'unitPrice': e.unitPrice,
+            'staffMemberId': e.staffId ?? staffId,
+            'coveredByPackage': false,
           },
-          'refId': e.refId,
-          'description': e.kind == _ExtraKind.package ? 'Paket satışı: ${e.name}' : e.name,
-          'quantity': e.quantity,
-          'unitPrice': e.unitPrice,
-          'staffMemberId': e.staffId ?? staffId,
-          'coveredByPackage': false,
-        });
+          // SIRA NUMARASI ŞART: aynı hizmet iki ayrı ek kalem olabilir (meşru) ve yalnız
+          // içerikten türeyen anahtar ikisini aynı sayıp birini yutardı. Tekrar denemede
+          // `_extras` değişmediği için indeks kararlıdır.
+          idempotencyKey(_saleSalt, ['extra', i, e.kind.name, e.refId, e.quantity, e.unitPrice]),
+        );
       }
 
       // 3) Peşinat alındıysa tahsilat kalemi.
       if (pay > 0) {
-        await widget.api.post('/api/admin/adisyonlar/$adisyonId/items', {
-          'type': 'Payment',
-          'refId': null,
-          'description': _extras.isNotEmpty
-              ? 'Satış peşinatı'
-              : _isProduct
-                  ? 'Ürün peşinatı: ${selected['name']}'
-                  : _isService
-                      ? 'Peşinat: ${selected['name']}'
-                      : 'Paket peşinatı: ${selected['name']}',
-          'quantity': 1,
-          'unitPrice': pay,
-          'staffMemberId': null,
-          'coveredByPackage': false,
-        });
+        await widget.api.post(
+          '/api/admin/adisyonlar/$adisyonId/items',
+          {
+            'type': 'Payment',
+            'refId': null,
+            'description': _extras.isNotEmpty
+                ? 'Satış peşinatı'
+                : _isProduct
+                    ? 'Ürün peşinatı: ${selected['name']}'
+                    : _isService
+                        ? 'Peşinat: ${selected['name']}'
+                        : 'Paket peşinatı: ${selected['name']}',
+            'quantity': 1,
+            'unitPrice': pay,
+            'staffMemberId': null,
+            'coveredByPackage': false,
+          },
+          idempotencyKey(_saleSalt, ['pay', pay]),
+        );
       }
 
       if (approveNow) {
@@ -578,6 +612,11 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       if (createdId != null) {
         try {
           await widget.api.post('/api/admin/adisyonlar/$createdId/cancel', const {});
+          // TUZ YALNIZ İPTAL BAŞARILIYSA DÖNER. Fiş gerçekten iptal edildiyse ölüdür; aynı
+          // anahtarla tekrar denemek fiş açma isteğini oynatıp ÖLÜ fişin id'sini döndürür ve
+          // kalemler iptal edilmiş fişe yazılmaya çalışılır. İptal de patladıysa (ağ kesik)
+          // fiş ortadadır: aynı anahtarla devam edip onu tamamlamak doğrudur.
+          _saleSalt = newIdempotencySalt();
         } catch (_) {
           // İptal de düşerse elde edilecek bir şey yok; asıl hata kullanıcıya gösterilir.
         }
