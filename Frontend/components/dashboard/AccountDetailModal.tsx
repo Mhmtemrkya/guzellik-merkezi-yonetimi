@@ -38,10 +38,12 @@ interface Props {
   tenantId?: string
   ledger: LedgerRow[]
   sessionsTick?: number
-  /** Genel tahsilat (tüm kalan borç) modalını aç. */
-  onCollectGeneral: () => void
-  /** Aylık taksit tahsilatı modalını aç. */
-  onCollectMonthly: () => void
+  /**
+   * TEK tahsilat modalını aç. Eskiden "genel" ve "aylık taksit" diye iki ayrı modal vardı;
+   * ikisi de aynı işi yapıyordu (hesaba tahsilat yazmak) ve kullanıcıyı gereksiz bir seçime
+   * zorluyordu. Tek modal taksitli hesapta planı ve "bu ay ödenmesi gereken"i kendisi gösterir.
+   */
+  onCollect: () => void
   onReschedule: (installmentCount: number, firstDueDate: string) => Promise<void>
 }
 
@@ -61,7 +63,7 @@ function todayIso(): string {
 
 export default function AccountDetailModal({
   account, open, onOpenChange, tenantId, ledger, sessionsTick,
-  onCollectGeneral, onCollectMonthly, onReschedule,
+  onCollect, onReschedule,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('summary')
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -233,37 +235,22 @@ export default function AccountDetailModal({
               {!cancelled && account.remainingAmount > 0.005 && (
                 <div className="rounded-[16px] border border-[#f0d9e2] bg-gradient-to-br from-[#fff1f6] to-white p-4">
                   <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Tahsilat</div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {stats.isInstallment && (
-                      <button
-                        type="button" onClick={onCollectMonthly}
-                        className="group flex items-center gap-3 rounded-[14px] border border-[#c85776]/45 bg-white px-3.5 py-3 text-left transition-transform hover:-translate-y-0.5"
-                      >
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c05277]">
-                          <CalendarClock className="h-5 w-5" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-[13px] font-bold text-[#352432]">Aylık taksiti tahsil et</span>
-                          <span className="block truncate text-[10.5px] text-[#705a66]">
-                            Sıradaki taksit {formatTL(account.nextDueAmount)}
-                            {account.nextDueDate ? ` · ${formatDay(account.nextDueDate)}` : ''}
-                          </span>
-                        </span>
-                      </button>
-                    )}
+                  {/* TEK BUTON: modal taksitli hesapta planı ve "bu ay ödenmesi gereken"i
+                      kendisi getirir; aylık/genel ayrımı kullanıcıya sorulmaz. */}
+                  <div className="mt-2">
                     <button
-                      type="button" onClick={onCollectGeneral}
-                      className={`group flex items-center gap-3 rounded-[14px] px-3.5 py-3 text-left text-white transition-transform hover:-translate-y-0.5 ${
-                        stats.isInstallment ? 'bg-gradient-to-r from-[#c85776] to-[#a63e5f]' : 'bg-gradient-to-r from-[#c85776] to-[#a63e5f] sm:col-span-2'
-                      } shadow-[0_16px_30px_-20px_rgba(168,62,95,0.95)]`}
+                      type="button" onClick={onCollect}
+                      className="group flex w-full items-center gap-3 rounded-[14px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3.5 py-3 text-left text-white shadow-[0_16px_30px_-20px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
                     >
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-white/15">
                         <Banknote className="h-5 w-5" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-[13px] font-bold">Genel tahsilat</span>
+                        <span className="block text-[13px] font-bold">Tahsilat al</span>
                         <span className="block truncate text-[10.5px] text-white/85">
-                          Kalan borcun tamamı {formatTL(account.remainingAmount)}
+                          {stats.isInstallment
+                            ? `Sıradaki taksit ${formatTL(account.nextDueAmount)}${account.nextDueDate ? ` · ${formatDay(account.nextDueDate)}` : ''} — kalan borç ${formatTL(account.remainingAmount)}`
+                            : `Kalan borcun tamamı ${formatTL(account.remainingAmount)}`}
                         </span>
                       </span>
                     </button>
@@ -525,19 +512,11 @@ export default function AccountDetailModal({
 
             {!cancelled && account.remainingAmount > 0.005 && (
               <div className="flex flex-wrap items-center gap-2">
-                {stats.isInstallment && (
-                  <button
-                    type="button" onClick={onCollectMonthly}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-[#c85776]/50 bg-white px-3.5 text-[12px] font-semibold text-[#a3576f] transition-transform hover:-translate-y-0.5"
-                  >
-                    <CalendarClock className="h-4 w-4" /> Aylık taksit
-                  </button>
-                )}
                 <button
-                  type="button" onClick={onCollectGeneral}
+                  type="button" onClick={onCollect}
                   className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
                 >
-                  <CreditCard className="h-4 w-4" /> Genel tahsilat
+                  <CreditCard className="h-4 w-4" /> Tahsilat al
                 </button>
               </div>
             )}

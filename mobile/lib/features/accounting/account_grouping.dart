@@ -19,6 +19,11 @@ class MonthCell {
     required this.due,
     required this.paid,
     required this.remaining,
+    required this.carryIn,
+    required this.expected,
+    required this.outstanding,
+    required this.firstDueDate,
+    required this.installmentCount,
     required this.status,
   });
 
@@ -37,6 +42,21 @@ class MonthCell {
 
   /// Kalan (due − paid), negatife düşmez.
   final double remaining;
+
+  /// Önceki (vadesi gelmiş) aylardan devreden ödenmemiş bakiye.
+  final double carryIn;
+
+  /// O ay ödenmesi gereken toplam: due + carryIn.
+  final double expected;
+
+  /// Sonraki aya devreden: carryIn + remaining.
+  final double outstanding;
+
+  /// O aydaki ilk taksit vadesi (YYYY-MM-DD) — tabloda "Tarih" sütunu bunu gösterir.
+  final String? firstDueDate;
+
+  /// O aya düşen taksit satırı sayısı (birden çok satıştan gelebilir).
+  final int installmentCount;
 
   /// `none` taksit yok · `paid` ödendi · `partial` kısmi · `overdue` gecikmiş · `upcoming` bekleyen.
   final String status;
@@ -135,17 +155,22 @@ List<CustomerAccountGroup> groupAccountsByCustomer(List<Map<String, dynamic>> ac
 /// dışarıdan verilir: "bugün" hesabı YEREL güne göre yapılmalı (UTC gününe geçmek ay sınırında
 /// hücreyi kaydırır).
 List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso) {
-  final byMonth = <String, List<double>>{}; // [due, paid, remaining, anyOverdue(0/1)]
+  final byMonth = <String, List<double>>{}; // [due, paid, remaining, anyOverdue(0/1), count]
+  final firstDue = <String, String>{};
 
   for (final a in group.accounts) {
     for (final i in parseInstallments(a).where((i) => !i.cancelled)) {
       final key = _monthKeyOf(i.dueDate);
       if (key == null) continue;
-      final cur = byMonth[key] ??= [0, 0, 0, 0];
+      final cur = byMonth[key] ??= [0, 0, 0, 0, 0];
       cur[0] += i.amount;
       cur[1] += i.paidAmount;
       cur[2] += i.remaining > 0 ? i.remaining : 0;
       if (i.overdue && i.remaining > 0.005) cur[3] = 1;
+      cur[4] += 1;
+      final day = i.dueDate.length >= 10 ? i.dueDate.substring(0, 10) : i.dueDate;
+      final prev = firstDue[key];
+      if (day.isNotEmpty && (prev == null || day.compareTo(prev) < 0)) firstDue[key] = day;
     }
   }
 
@@ -160,25 +185,44 @@ List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso
   final maxY = int.parse(last[0]), maxM = int.parse(last[1]);
   final nowKey = todayIso.length >= 7 ? todayIso.substring(0, 7) : '';
 
+  final today = todayIso.length >= 10 ? todayIso.substring(0, 10) : todayIso;
   final cells = <MonthCell>[];
+  // DEVİR: aylar kronolojik gezilir, ödenmemiş kalan sonraki aya taşınır (bkz.
+  // account_installments.dart → "DÜZENSİZ ÖDEME (DEVİR) KURALI").
+  var carry = 0.0;
   var y = minY, m = minM;
   while (y < maxY || (y == maxY && m <= maxM)) {
     final key = '$y-${m.toString().padLeft(2, '0')}';
     final v = byMonth[key];
     if (v == null) {
-      cells.add(MonthCell(key: key, year: y, month: m, due: 0, paid: 0, remaining: 0, status: 'none'));
+      // Taksitsiz ay: devir taşınmaya devam eder ama HÜCRE BOŞTUR (kendi vadesi yok).
+      cells.add(MonthCell(
+          key: key, year: y, month: m, due: 0, paid: 0, remaining: 0,
+          carryIn: carry, expected: carry, outstanding: carry,
+          firstDueDate: null, installmentCount: 0, status: 'none'));
     } else {
+      final due = firstDue[key];
+      // DURUM AYIN KENDİ HÂLİDİR, devrin değil: geçmişteki borç yüzünden gelecek ayı kırmızı
+      // yapmak "bu ayın parası gecikti" diye okunur.
       final String status;
       if (v[2] <= 0.005) {
         status = 'paid';
-      } else if (v[3] == 1 || (nowKey.isNotEmpty && key.compareTo(nowKey) < 0)) {
+      } else if (v[3] == 1 ||
+          (nowKey.isNotEmpty && key.compareTo(nowKey) < 0) ||
+          (due != null && due.compareTo(today) < 0)) {
         status = 'overdue';
       } else if (v[1] > 0.005) {
         status = 'partial';
       } else {
         status = 'upcoming';
       }
-      cells.add(MonthCell(key: key, year: y, month: m, due: v[0], paid: v[1], remaining: v[2], status: status));
+      final outstanding = carry + v[2];
+      cells.add(MonthCell(
+          key: key, year: y, month: m, due: v[0], paid: v[1], remaining: v[2],
+          carryIn: carry, expected: v[0] + carry, outstanding: outstanding,
+          firstDueDate: due, installmentCount: v[4].toInt(), status: status));
+      // Devre yalnız VADESİ GELMİŞ ay katkı verir.
+      if (nowKey.isNotEmpty && key.compareTo(nowKey) <= 0) carry = outstanding;
     }
     if (m == 12) {
       m = 1;

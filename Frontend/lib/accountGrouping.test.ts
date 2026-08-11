@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildMonthlySchedule, groupAccountsByCustomer } from './accountGrouping'
+import { buildInstallmentRows, buildMonthlySchedule, dueThisMonth, groupAccountsByCustomer } from './accountGrouping'
 import type { AccountInstallmentItem, CustomerAccount } from './types'
 
 /**
@@ -186,5 +186,73 @@ describe('buildMonthlySchedule', () => {
   it('taksiti olmayan müşteride takvim boştur (peşin satış)', () => {
     const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1' })])
     expect(buildMonthlySchedule(g, '2026-08-15')).toEqual([])
+  })
+})
+
+/**
+ * DÜZENSİZ ÖDEME (DEVİR) — kullanıcının anlattığı Ela senaryosu birebir sabitlenir.
+ *
+ * 30.000 ₺ paket · 5.000 ₺ peşin · kalan 25.000 ₺ 5 ay taksit (ayda 5.000 ₺).
+ * Sunucu tahsilatı VADE SIRASIYLA dağıtır; bu testler o dağıtımın üstüne kurulan
+ * "ödenmeyen ay bir sonraki ayın üstüne biner" görünümünü doğrular.
+ */
+describe('devir (düzensiz ödeme) — Ela senaryosu', () => {
+  const plan = (paidPerInstallment: number[]): AccountInstallmentItem[] =>
+    ['2026-01-10', '2026-02-10', '2026-03-10', '2026-04-10', '2026-05-10'].map((dueDate, idx) =>
+      inst({ id: `i${idx + 1}`, no: idx + 1, dueDate, amount: 5000, paidAmount: paidPerInstallment[idx] ?? 0 }),
+    )
+
+  it('2. ay ödenmezse 3. ayda ödenmesi gereken 10.000 olur', () => {
+    // Ela yalnız 1. ayı ödedi (5.000). Havuz 5.000 → i1 kapanır, i2 ve i3 açık.
+    const rows = buildInstallmentRows(plan([5000]), '2026-03-15')
+    const march = rows[2]
+    expect(march.carryIn).toBe(5000)   // ödenmeyen Şubat devretti
+    expect(march.expected).toBe(10000) // 5.000 plan + 5.000 devir
+    expect(march.outstanding).toBe(10000)
+    // "Bu ay ödenmesi gereken" tahsilat modalının açılış tutarıdır.
+    expect(dueThisMonth(plan([5000]), '2026-03-15')).toBe(10000)
+  })
+
+  it('3. ayda 7.500 ödenirse kalan 2.500 nisana devreder (nisan 7.500 olur)', () => {
+    // Toplam ödenen 12.500 → vade sırasıyla: i1 5.000, i2 5.000, i3 2.500.
+    const rows = buildInstallmentRows(plan([5000, 5000, 2500]), '2026-04-15')
+    const march = rows[2]
+    const april = rows[3]
+    expect(march.item.remaining).toBe(2500)
+    expect(april.carryIn).toBe(2500)
+    expect(april.expected).toBe(7500) // 5.000 plan + 2.500 devir
+    expect(dueThisMonth(plan([5000, 5000, 2500]), '2026-04-15')).toBe(7500)
+  })
+
+  it('devir birikir: iki ay üst üste ödenmezse üçüncü ay üç taksit ister', () => {
+    const rows = buildInstallmentRows(plan([5000]), '2026-04-15')
+    expect(rows[3].carryIn).toBe(10000)
+    expect(rows[3].expected).toBe(15000)
+  })
+
+  it('düzenli ödeyende devir yoktur', () => {
+    const rows = buildInstallmentRows(plan([5000, 5000, 5000]), '2026-03-15')
+    expect(rows.map((r) => r.carryIn)).toEqual([0, 0, 0, 0, 0])
+    expect(rows[3].expected).toBe(5000)
+    // Vadesi gelmemiş aylar "bu ay ödenmesi gereken"e girmez.
+    expect(dueThisMonth(plan([5000, 5000, 5000]), '2026-03-15')).toBe(0)
+  })
+
+  it('iptal edilen taksit devre girmez', () => {
+    const items = plan([5000])
+    items[1] = { ...items[1], status: 'Cancelled' }
+    const rows = buildInstallmentRows(items, '2026-03-15')
+    expect(rows).toHaveLength(4)
+    expect(rows[1].carryIn).toBe(0) // iptal edilen şubat borç doğurmaz
+  })
+
+  it('aylık takvim hücreleri de devri taşır', () => {
+    const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1', installments: plan([5000]) })])
+    const cells = buildMonthlySchedule(g, '2026-03-15')
+    const march = cells.find((c) => c.key === '2026-03')!
+    expect(march.due).toBe(5000)       // PLAN tutarı sütunu değişmez
+    expect(march.carryIn).toBe(5000)
+    expect(march.expected).toBe(10000) // ödenmesi gereken
+    expect(march.status).toBe('overdue')
   })
 })

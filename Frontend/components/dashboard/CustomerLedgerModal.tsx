@@ -54,7 +54,6 @@ export default function CustomerLedgerModal({
   open,
   onClose,
   onCollect,
-  onCollectMonthly,
   onOpenSale,
   onOpenSalesWorkspace,
 }: {
@@ -67,10 +66,8 @@ export default function CustomerLedgerModal({
   cancelledSales?: CancelledSale[]
   open: boolean
   onClose: () => void
-  /** Genel tahsilat — SEÇİLEN satışın carisine yazılır. */
+  /** Tahsilat — SEÇİLEN satışın carisine yazılır (tek modal: aylık/genel ayrımı yok). */
   onCollect: (accountId: string) => void
-  /** Aylık taksit tahsilatı — yalnız taksitli satışta anlamlı. */
-  onCollectMonthly: (accountId: string) => void
   /** Satışın kendi detay modali (ekstre, taksit planı, seans). */
   onOpenSale: (accountId: string) => void
   /** Satış yönetimi (geçmiş satış ekle / iptal). */
@@ -330,7 +327,7 @@ export default function CustomerLedgerModal({
                     icon={CalendarDays}
                     /* KAPSAM UYARISI: peşinat ve peşin satış taksit satırı üretmez, bu yüzden
                        takvim toplamı üstteki "Tahsil Edilen" KPI'ından KÜÇÜK olabilir. */
-                    hint="Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz. Yeşil ödendi · amber kısmi · kırmızı gecikmiş."
+                    hint="Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz. Yeşil ödendi · sarı bekliyor · kırmızı gecikti. Ödenmeyen ay bir sonraki ayın taksitine devreder."
                   >
                     <PaymentScheduleGrid cells={cells} todayKey={todayIso.slice(0, 7)} />
                   </Section>
@@ -343,7 +340,6 @@ export default function CustomerLedgerModal({
                         key={a.id}
                         account={a}
                         onCollect={() => onCollect(a.id)}
-                        onCollectMonthly={() => onCollectMonthly(a.id)}
                         onOpen={() => onOpenSale(a.id)}
                       />
                     ))}
@@ -487,12 +483,10 @@ function Section({ title, icon: Icon, hint, children }: { title: string; icon: t
 function SaleRow({
   account,
   onCollect,
-  onCollectMonthly,
   onOpen,
 }: {
   account: CustomerAccount
   onCollect: () => void
-  onCollectMonthly: () => void
   onOpen: () => void
 }) {
   const insts = activeInstallments(account)
@@ -533,14 +527,10 @@ function SaleRow({
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        {isOpen && isInstallment && (
-          <button type="button" onClick={onCollectMonthly} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#c85776]/50 bg-white px-2.5 text-[11px] font-semibold text-[#a3576f] transition-colors hover:bg-[#fff1f6]">
-            <CalendarClock className="h-3.5 w-3.5" /> Aylık taksit
-          </button>
-        )}
+        {/* TEK BUTON: modal taksitli satışta planı ve "bu ay ödenmesi gereken"i kendisi açar. */}
         {isOpen && (
           <button type="button" onClick={onCollect} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5">
-            <Banknote className="h-3.5 w-3.5" /> {isInstallment ? 'Genel tahsilat' : 'Tahsilat al'}
+            <Banknote className="h-3.5 w-3.5" /> Tahsilat al
           </button>
         )}
         <button type="button" onClick={onOpen} className="ml-auto inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 text-[11px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]">

@@ -979,13 +979,18 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
             if (isOpen && g.nextDueDate != null)
               Text('${shortDay(g.nextDueDate!)} · ${CalendarText.tl(g.nextDueAmount)}',
                   style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-            // Tek satışlı müşteride hızlı tahsilat: hedef belirsiz değil.
-            if (isOpen && g.accounts.length == 1)
+            // ÇOK SATIŞLIDA DA VAR: hedef artık belirsiz değil — tahsilat sayfası o
+            // müşterinin satışlarını listeleyip seçtiriyor (web paritesi).
+            if (isOpen)
               TextButton.icon(
-                onPressed: () => _openAccountDetail(g.accounts.first),
+                onPressed: () => _collectForGroup(g),
                 style: AppButtons.inline(),
                 icon: const Icon(Icons.payments_rounded, size: 15),
-                label: const Text('Tahsilat', style: TextStyle(fontSize: 11.5)),
+                label: Text(
+                    g.accounts.where((a) => numberOf(a, const ['remainingAmount']) > 0.005).length > 1
+                        ? 'Tahsilat al · ${g.accounts.where((a) => numberOf(a, const ['remainingAmount']) > 0.005).length} satış'
+                        : 'Tahsilat al',
+                    style: const TextStyle(fontSize: 11.5)),
               ),
           ]),
         ]),
@@ -1006,6 +1011,42 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         ],
       );
 
+  /// ÇOK SATIŞLI MÜŞTERİDE TAHSİLAT — sayfa o müşterinin satışlarına daraltılır.
+  ///
+  /// Açılışta seçili gelen satış EN ACİL olandır: gecikmişi olan, yoksa vadesi en yakın,
+  /// yoksa borcu en büyük. Tahsilat tek satışın carisine yazılır (bölüştürülmez), kullanıcı
+  /// isterse sayfadaki seçiciden başka satışa geçer.
+  Future<void> _collectForGroup(CustomerAccountGroup g) async {
+    final open = g.accounts
+        .where((a) => numberOf(a, const ['remainingAmount']) > 0.005)
+        .toList();
+    final pool = open.isNotEmpty ? open : g.accounts;
+    if (pool.isEmpty) return;
+    final sorted = [...pool]..sort((a, b) {
+        final ao = a['hasOverdue'] == true, bo = b['hasOverdue'] == true;
+        if (ao != bo) return ao ? -1 : 1;
+        final ad = valueOf(a, const ['nextDueDate'], fallback: '9999-12-31');
+        final bd = valueOf(b, const ['nextDueDate'], fallback: '9999-12-31');
+        final c = (ad.isEmpty ? '9999-12-31' : ad).compareTo(bd.isEmpty ? '9999-12-31' : bd);
+        if (c != 0) return c;
+        return numberOf(b, const ['remainingAmount'])
+            .compareTo(numberOf(a, const ['remainingAmount']));
+      });
+    final saved = await showCollectionSheet(
+      context,
+      api: widget.api,
+      accounts: pool,
+      initialAccountId: '${sorted.first['id']}',
+      title: 'Tahsilat al',
+    );
+    if (saved == null || saved == 0) return;
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Tahsilat kaydedildi.')));
+    }
+    _reload();
+  }
+
   /// MÜŞTERİ CARİ DEFTERİ — tam ekran. Taksit takvimi burada; tahsilat hâlâ TEK BİR SATIŞIN
   /// carisine yazılır (para doğru yere gitsin diye satış satırından açılır).
   Future<void> _openCustomerLedger(CustomerAccountGroup g) async {
@@ -1018,7 +1059,6 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           .where((c) => '${c['customerId']}' == g.customerId)
           .toList(),
       onCollect: (a) async => _openAccountDetail(a),
-      onCollectMonthly: (a) async => _monthlyCollect(a),
       onOpenSale: (a) async => _openAccountDetail(a),
       onOpenSalesWorkspace: () async {
         if (g.accounts.isEmpty) return;
@@ -1085,23 +1125,6 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
         child: Text(text,
             style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
       );
-
-  /// Aylık taksit tahsilatı — bu ay vadesi gelen taksitler seçili gelir.
-  Future<void> _monthlyCollect(Map<String, dynamic> account) async {
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => InstallmentPaymentSheet(api: widget.api, account: account),
-    );
-    if (ok == true) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Tahsilat kaydedildi.')));
-      }
-      _reload();
-    }
-  }
 
   /// CARİ → MÜŞTERİNİN SATIŞLARI. Müşteri kartındaki sheet'in AYNISI açılır (iki ayrı liste
   /// değil). Hesaplar müşteri başına TAZE çekilir: ekrandaki cari listesi sayfalı ve iptalleri
@@ -1602,23 +1625,6 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
 
   List<AccountInstallment> get _installments =>
       parseInstallments(a).where((i) => !i.cancelled).toList();
-  bool get _isInstallment => _installments.length > 1;
-
-  /// Aylık taksit tahsilatı — bu ay (ve gecikmiş önceki aylar) vadesi gelen taksitler.
-  Future<void> _monthlyPayment() async {
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => InstallmentPaymentSheet(api: widget.api, account: a),
-    );
-    if (ok != true) return;
-    await _refresh();
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Tahsilat kaydedildi.')));
-    }
-  }
 
   Future<void> _refresh() async {
     try {
@@ -1815,20 +1821,12 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
                 ),
               )
             else ...[
-              // Taksitlide kırılım: aylık taksit (bu ayki vade) ↔ genel tahsilat (tüm borç).
-              if (_isInstallment) ...[
-                OutlinedButton.icon(
-                  onPressed: _monthlyPayment,
-                  icon: const Icon(Icons.event_available_rounded),
-                  label: const Text('Aylık taksiti tahsil et'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              // TEK BUTON: tahsilat sayfası taksitli hesapta planı, devri ve
+              // "bu ay ödenmesi gereken" tutarı kendisi getirir (web paritesi).
               FilledButton.icon(
                 onPressed: _payment,
                 icon: const Icon(Icons.payments_rounded),
-                label:
-                    Text(_isInstallment ? 'Genel tahsilat' : 'Tahsilat kaydet'),
+                label: const Text('Tahsilat al'),
               ),
             ],
             const SizedBox(height: 8),

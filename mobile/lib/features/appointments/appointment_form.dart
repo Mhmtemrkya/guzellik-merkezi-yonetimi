@@ -8,7 +8,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
-import '../accounting/account_installments.dart';
+import '../accounting/collection_sheet.dart';
 import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/consultation_form_screen.dart';
@@ -769,14 +769,17 @@ class _AppointmentFormState extends State<AppointmentForm> {
       if (picked == null || !mounted) return;
       account = picked;
     }
-    final done = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => InstallmentPaymentSheet(api: widget.api, account: account),
+    // TEK tahsilat sayfası (aylık/genel ayrımı kaldırıldı): taksitli hesapta planı,
+    // devri ve "bu ay ödenmesi gereken" tutarı kendisi getirir.
+    final saved = await showCollectionSheet(
+      context,
+      api: widget.api,
+      accounts: [account],
+      initialAccountId: '${account['id']}',
+      lockAccount: true,
+      title: 'Tahsilat al',
     );
-    if (done == true) await _refreshCustomerData();
+    if (saved != null && saved > 0) await _refreshCustomerData();
   }
 
   static String _money(double v) =>

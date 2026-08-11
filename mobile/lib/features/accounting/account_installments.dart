@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/network/api_client.dart';
-import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
 
 // ---------------------------------------------------------------------------
-// CARİ TAKSİT YARDIMCILARI + AYLIK TAKSİT TAHSİLATI (web paritesi)
+// CARİ TAKSİT YARDIMCILARI (web `lib/accountGrouping.ts` paritesi)
 //
-// Web'de olduğu gibi: "genel tahsilat" tüm kalan borcu alır, "aylık taksit"
-// bu ay (ve gecikmiş önceki aylar) vadesi gelen taksitleri alır.
+// TEK TAHSİLAT SAYFASI: "genel tahsilat" ve "aylık taksit" ayrı sayfaları birleştirildi
+// (bkz. collection_sheet.dart). Taksitli hesapta plan, devir ve "bu ay ödenmesi gereken"
+// tutar o sayfada kendiliğinden çıkar; kullanıcıya hangi modal sorusu sorulmaz.
 //
 // ÖNEMLİ (allocation modeli): sunucu tahsilatı taksite değil hesaba yazar ve
 // VADE SIRASIYLA dağıtır — "şu taksiti öde" seçimi yoktur. Ekran bunu gizlemez,
@@ -116,552 +115,101 @@ String shortDay(String iso) {
   return DateFormat('d MMM yyyy', 'tr_TR').format(d);
 }
 
-/// Aylık taksit tahsilatı alt-sayfası.
-class InstallmentPaymentSheet extends StatefulWidget {
-  const InstallmentPaymentSheet({
-    required this.api,
-    required this.account,
-    super.key,
+// ---------------------------------------------------------------------------
+// DÜZENSİZ ÖDEME (DEVİR) KURALI — web `lib/accountGrouping.ts` ile AYNI kural.
+//
+// Ödenmeyen ayın borcu SİLİNMEZ, sonraki ayın taksitinin ÜSTÜNE biner: 5.000'lik planda
+// 2. ay ödenmezse 3. ayda ödenmesi gereken 10.000 olur; 7.500 ödenirse kalan 2.500 aynı
+// şekilde 4. aya devreder (4. ay = 5.000 + 2.500 = 7.500).
+//
+// TÜRETİLMİŞTİR, PLANI DEĞİŞTİRMEZ: sunucu tahsilatı vade sırasıyla dağıtır ve plan tutarları
+// "finanse edilen / taksit sayısı" kuralıyla yeniden hizalanabilir — taksit satırına 10.000
+// yazmak ilk onarım turunda geri alınırdı. Devir yalnız GÖRÜNÜM + tahsilat önerisi katmanıdır.
+// ---------------------------------------------------------------------------
+
+/// Devirli taksit satırı — bir taksitin "bu ay ödenmesi gereken" hâli.
+class InstallmentDueRow {
+  InstallmentDueRow({
+    required this.item,
+    required this.carryIn,
+    required this.expected,
+    required this.outstanding,
+    required this.isOverdue,
   });
 
-  final ApiClient api;
-  final Map<String, dynamic> account;
+  final AccountInstallment item;
 
-  @override
-  State<InstallmentPaymentSheet> createState() => _InstallmentPaymentSheetState();
+  /// Önceki (vadesi gelmiş) taksitlerden devreden ödenmemiş bakiye.
+  final double carryIn;
+
+  /// Bu ay ödenmesi gereken toplam: `amount + carryIn`.
+  final double expected;
+
+  /// Bu taksitten sonra devreden: `carryIn + remaining`.
+  final double outstanding;
+  final bool isOverdue;
 }
 
-class _InstallmentPaymentSheetState extends State<InstallmentPaymentSheet> {
-  late final List<AccountInstallment> _all = parseInstallments(widget.account);
-  late final List<AccountInstallment> _pending =
-      _all.where((i) => !i.cancelled && i.remaining > 0.005).toList()
-        ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
-
-  /// Çift gönderim freni (bkz. core/network/idempotency.dart). Sheet her açılışta yeni bir
-  /// State üretir → tuz kendiliğinden oturum başına birdir.
-  final String _salt = newIdempotencySalt();
-  final _amountCtrl = TextEditingController();
-  String _method = 'Cash';
-
-  /// İKİNCİ ÖDEME YÖNTEMİ (kırılım) — 3.000 ₺ borcun 2.000'i nakit + 1.000'i kart alınabilsin.
-  /// Boşken davranış eskisi gibi tek tahsilattır. Dolu olduğunda her yöntem AYRI tahsilat kaydı
-  /// olur; tek satırda toplamak kasa kapanışındaki yöntem kırılımını bozardı.
-  final _splitAmountCtrl = TextEditingController();
-  String _splitMethod = 'Card';
-  bool _splitOn = false;
-
-  double get _splitAmount =>
-      double.tryParse(_splitAmountCtrl.text.replaceAll(',', '.')) ?? 0;
-  DateTime _date = DateTime.now();
-  final _referenceCtrl = TextEditingController();
-  int _count = 1;
-  bool _saving = false;
-  String _error = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _count = _dueNowCount.clamp(1, _pending.isEmpty ? 1 : _pending.length);
-    _amountCtrl.text = _sumOf(_count).toStringAsFixed(0);
-    _amountCtrl.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _amountCtrl.dispose();
-    _splitAmountCtrl.dispose();
-    _referenceCtrl.dispose();
-    super.dispose();
-  }
-
-  /// Bu ay (ve gecikmiş önceki aylar) vadesi gelmiş taksit sayısı.
-  int get _dueNowCount {
-    final now = DateTime.now();
-    final lastDay = DateTime(now.year, now.month + 1, 0);
-    final limit = DateFormat('yyyy-MM-dd').format(lastDay);
-    final n = _pending.where((i) => i.dueDate.isNotEmpty && i.dueDate.compareTo(limit) <= 0).length;
-    return n < 1 ? 1 : n;
-  }
-
-  double _sumOf(int n) =>
-      _pending.take(n < 0 ? 0 : n).fold<double>(0, (s, i) => s + i.remaining);
-
-  double get _amount => double.tryParse(_amountCtrl.text.replaceAll(',', '.')) ?? 0;
-
-  /// Girilen tutarın taksitlere vade sırasıyla dağılımı (canlı önizleme).
-  Map<String, double> get _allocation {
-    var pool = _amount;
-    final map = <String, double>{};
-    for (final i in _pending) {
-      final applied = pool < i.remaining ? pool : i.remaining;
-      if (applied > 0) map[i.id] = applied;
-      pool -= applied;
-      if (pool <= 0) break;
-    }
-    return map;
-  }
-
-  double get _leftover {
-    final used = _allocation.values.fold<double>(0, (s, v) => s + v);
-    final left = _amount - used;
-    return left < 0.005 ? 0 : left;
-  }
-
-  Future<void> _submit() async {
-    setState(() {
-      _error = '';
-      _saving = true;
+/// Bir hesabın taksitlerini vade sırasıyla gezip devir bakiyesini hesaplar.
+/// HESAP BAZINDADIR: sunucu tahsilatı hesap havuzundan dağıtır, bir satışın gecikmesi
+/// başka satışın taksitine binmez.
+List<InstallmentDueRow> buildInstallmentRows(List<AccountInstallment> installments) {
+  final ordered = installments.where((i) => !i.cancelled).toList()
+    ..sort((a, b) {
+      final c = a.dueDate.compareTo(b.dueDate);
+      return c != 0 ? c : a.no.compareTo(b.no);
     });
-    if (_amount <= 0) {
-      setState(() {
-        _error = 'Tutar 0’dan büyük olmalı.';
-        _saving = false;
-      });
-      return;
-    }
-    // Kırılım: her yöntem AYRI kayıt. Aynı yöntem iki kez girildiyse tek satırda toplanır.
-    final parts = <String, double>{_method: _amount};
-    if (_splitOn && _splitAmount > 0) {
-      parts[_splitMethod] = (parts[_splitMethod] ?? 0) + _splitAmount;
-    }
-
-    final occurredAt =
-        DateTime(_date.year, _date.month, _date.day, 12).toUtc().toIso8601String();
-    final reference =
-        _referenceCtrl.text.trim().isEmpty ? null : _referenceCtrl.text.trim();
-    var done = 0;
-    try {
-      for (final entry in parts.entries) {
-        // Anahtar yöntemden türer (indeksten değil) — kısmi hatadan sonraki tekrar gönderimde
-        // başarılı kayıtlar yeniden yazılmaz, sunucu ilk yanıtlarını oynatır.
-        await widget.api.post(
-          '/api/admin/accounts/${widget.account['id']}/payments',
-          {
-            'amount': entry.value,
-            'method': entry.key,
-            'reference': reference,
-            'occurredAtUtc': occurredAt,
-          },
-          idempotencyKey(_salt, [
-            '${widget.account['id']}',
-            entry.key,
-            entry.value,
-            occurredAt,
-            reference,
-          ]),
-        );
-        done++;
-      }
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz, kullanıcı ne kaldığını bilmeli.
-          _error = done > 0
-              ? '$e · $done/${parts.length} ödeme kaydedildi; kalanı tekrar deneyin.'
-              : '$e';
-          _saving = false;
-        });
-      }
-    }
+  final today = _todayIso();
+  var carry = 0.0;
+  final out = <InstallmentDueRow>[];
+  for (final i in ordered) {
+    final carryIn = carry;
+    final outstanding = carryIn + i.remaining;
+    // Devre YALNIZ VADESİ GELMİŞ borç girer; yoksa düzenli ödeyen müşteride bile sonraki
+    // satırlar "devir" gösterip o ayın ödenmeyeceğini varsayardı.
+    if (i.dueDate.isNotEmpty && i.dueDate.compareTo(today) <= 0) carry = outstanding;
+    out.add(InstallmentDueRow(
+      item: i,
+      carryIn: carryIn,
+      expected: i.amount + carryIn,
+      outstanding: outstanding,
+      isOverdue: i.remaining > 0.005 &&
+          (i.overdue || (i.dueDate.isNotEmpty && i.dueDate.compareTo(today) < 0)),
+    ));
   }
+  return out;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    final alloc = _allocation;
-    final covered = _pending.where((i) => (alloc[i.id] ?? 0) >= i.remaining - 0.005).length;
-    final partial = _pending.where((i) {
-      final v = alloc[i.id] ?? 0;
-      return v > 0 && v < i.remaining - 0.005;
-    }).toList();
-    final overdueCount = _pending.where((i) => i.overdue).length;
-    final next = _pending.isEmpty ? null : _pending.first;
-    final counts = <int>{1, 2, 3, _dueNowCount, _pending.length}
-        .where((n) => n >= 1 && n <= _pending.length)
-        .toList()
-      ..sort();
+/// "Bu ay ödenmesi gereken" — gecikmiş devir + içinde bulunulan ayın taksiti.
+double dueThisMonth(List<AccountInstallment> installments) {
+  final now = DateTime.now();
+  final limit = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month + 1, 0));
+  return installments
+      .where((i) =>
+          !i.cancelled &&
+          i.remaining > 0.005 &&
+          i.dueDate.isNotEmpty &&
+          i.dueDate.compareTo(limit) <= 0)
+      .fold<double>(0, (s, i) => s + i.remaining);
+}
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          18, 16, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.event_available_rounded,
-                      color: AppColors.primaryDark, size: 20),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Aylık taksit tahsilatı',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                      Text(
-                        '${valueOf(widget.account, const ['customerName', 'name'])} · ${_pending.length} taksit ödenmedi',
-                        style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Sıradaki taksit
-            if (next != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceSoft,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('SIRADAKİ TAKSİT',
-                            style: TextStyle(
-                                fontSize: 9.5,
-                                letterSpacing: 1.1,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primaryDark)),
-                        const Spacer(),
-                        if (next.overdue)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.danger.withValues(alpha: .12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('GECİKTİ',
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.danger)),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(CalendarText.tl(next.remaining),
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                    Text('${shortDay(next.dueDate)} · #${next.no}',
-                        style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 12),
-
-            // Kaç taksit
-            if (_pending.length > 1) ...[
-              const Text('Kaç taksit tahsil edilecek?',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final n in counts)
-                    ChoiceChip(
-                      selected: _count == n,
-                      label: Text(
-                        n == _pending.length && n > 1
-                            ? 'Tümü ($n) ${CalendarText.tl(_sumOf(n))}'
-                            : '$n taksit ${CalendarText.tl(_sumOf(n))}',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      onSelected: (_) => setState(() {
-                        _count = n;
-                        _amountCtrl.text = _sumOf(n).toStringAsFixed(0);
-                      }),
-                    ),
-                ],
-              ),
-              if (_dueNowCount > 1)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Bu ay dahil $_dueNowCount taksitin vadesi gelmiş.',
-                      style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-                ),
-              const SizedBox(height: 12),
-            ],
-
-            // Tutar + yöntem
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _amountCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Tutar', prefixText: '₺ '),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _method,
-                    decoration: const InputDecoration(labelText: 'Yöntem'),
-                    items: const [
-                      DropdownMenuItem(value: 'Cash', child: Text('Nakit')),
-                      DropdownMenuItem(value: 'Card', child: Text('Kart')),
-                      DropdownMenuItem(value: 'BankTransfer', child: Text('Havale/EFT')),
-                    ],
-                    onChanged: (v) => setState(() => _method = v ?? 'Cash'),
-                  ),
-                ),
-              ],
-            ),
-
-            // ÖDEME KIRILIMI — ikinci yöntem (ör. 2.000 nakit + 1.000 kart).
-            if (_splitOn) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _splitAmountCtrl,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                          labelText: 'Tutar (2. yöntem)', prefixText: '₺ '),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _splitMethod,
-                      decoration: const InputDecoration(labelText: 'Yöntem'),
-                      items: const [
-                        DropdownMenuItem(value: 'Cash', child: Text('Nakit')),
-                        DropdownMenuItem(value: 'Card', child: Text('Kart')),
-                        DropdownMenuItem(
-                            value: 'BankTransfer', child: Text('Havale/EFT')),
-                      ],
-                      onChanged: (v) => setState(() => _splitMethod = v ?? 'Card'),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Kırılımı kaldır',
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => setState(() {
-                      _splitOn = false;
-                      _splitAmountCtrl.clear();
-                    }),
-                  ),
-                ],
-              ),
-            ] else
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _splitOn = true),
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Ödeme yöntemi ekle'),
-                ),
-              ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _date,
-                        firstDate: DateTime(DateTime.now().year - 3),
-                        lastDate: DateTime(DateTime.now().year + 3),
-                      );
-                      if (picked != null) setState(() => _date = picked);
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(labelText: 'Tarih'),
-                      child: Text(DateFormat('dd.MM.yyyy').format(_date)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _referenceCtrl,
-                    decoration: const InputDecoration(labelText: 'Dekont / referans'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Taksit planı + canlı dağıtım
-            const Text('Taksit planı',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-            if (overdueCount > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text('$overdueCount taksit gecikmiş',
-                    style: const TextStyle(fontSize: 11, color: AppColors.danger)),
-              ),
-            const SizedBox(height: 6),
-            for (final i in _all)
-              _installmentTile(i, applied: alloc[i.id] ?? 0),
-            const SizedBox(height: 12),
-
-            // Ne olacak özeti
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceSoft.withValues(alpha: .6),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('BU ÖDEME NE YAPACAK?',
-                      style: TextStyle(
-                          fontSize: 9.5,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryDark)),
-                  const SizedBox(height: 4),
-                  Text(
-                    covered > 0
-                        ? '$covered taksit tamamen kapanır'
-                        : 'Hiçbir taksit tamamen kapanmaz',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  if (partial.isNotEmpty)
-                    Text(
-                      '#${partial.first.no} taksite ${CalendarText.tl(alloc[partial.first.id])} kısmi düşer',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  if (_leftover > 0.005)
-                    Text('${CalendarText.tl(_leftover)} fazla ödeme (kredi) olarak kalır',
-                        style: const TextStyle(fontSize: 12)),
-                  const Text('Tahsilat en eski vadeli taksitten başlayarak dağıtılır.',
-                      style: TextStyle(fontSize: 11, color: AppColors.muted)),
-                ],
-              ),
-            ),
-
-            if (_error.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(_error, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
-            ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _saving ? null : () => Navigator.pop(context),
-                    child: const Text('Vazgeç'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : _submit,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.check_rounded),
-                    label: Text('${CalendarText.tl(_amount)} tahsil et'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+/// Tahsilat sayfasının açılış tutarı:
+///  · taksitli hesap → BU AY ÖDENMESİ GEREKEN (devir dahil)
+///  · bu ay vadesi yoksa → SIRADAKİ TAKSİT
+///  · peşin hesap    → kalan borcun tamamı
+///
+/// Taksitlide "kalan borcun tamamı"na düşmek tehlikeliydi: bu ay vadesi olmayan bir planda
+/// sayfa 25.000 ₺ ile açılıp tek dokunuşla tüm planı tahsil edebiliyordu.
+double suggestedCollectionAmount(Map<String, dynamic> account) {
+  final plan = parseInstallments(account).where((i) => !i.cancelled).toList();
+  if (plan.length > 1) {
+    final due = dueThisMonth(plan);
+    if (due > 0.005) return due;
+    final pending = plan.where((i) => i.remaining > 0.005).toList()
+      ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    if (pending.isNotEmpty) return pending.first.remaining;
   }
-
-  Widget _installmentTile(AccountInstallment i, {required double applied}) {
-    final willApply = applied > 0;
-    final bg = i.isPaid
-        ? AppColors.success.withValues(alpha: .07)
-        : willApply
-            ? AppColors.surfaceSoft
-            : i.overdue
-                ? AppColors.danger.withValues(alpha: .07)
-                : AppColors.surface;
-    final label = i.isPaid
-        ? 'ÖDENDİ'
-        : i.overdue
-            ? 'GECİKTİ'
-            : i.isPartial
-                ? 'KISMİ'
-                : 'BEKLİYOR';
-    final labelColor = i.isPaid
-        ? AppColors.success
-        : i.overdue
-            ? AppColors.danger
-            : AppColors.warning;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: willApply ? AppColors.primary.withValues(alpha: .45) : AppColors.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('#${i.no}',
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(shortDay(i.dueDate),
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-              ),
-              Text(CalendarText.tl(i.amount),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 9, fontWeight: FontWeight.w800, color: labelColor)),
-            ],
-          ),
-          if (i.isPartial)
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                'Ödendi ${CalendarText.tl(i.paidAmount)} · Kalan ${CalendarText.tl(i.remaining)}',
-                style: const TextStyle(fontSize: 11, color: AppColors.muted),
-              ),
-            ),
-          if (willApply)
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                'Bu ödemeden ${CalendarText.tl(applied)} düşecek'
-                '${applied >= i.remaining - 0.005 ? ' · kapanır' : ' · kısmi kalır'}',
-                style: const TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  return numberOf(account, const ['remainingAmount', 'remaining']);
 }
 
 /// İPTAL ARŞİVİ (cancelled_sales). İptalde cari kaydı taksit/tahsilat/seanslarıyla birlikte

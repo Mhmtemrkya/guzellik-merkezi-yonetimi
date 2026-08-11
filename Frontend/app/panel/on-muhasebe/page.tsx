@@ -8,7 +8,6 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import CollectionDialog, { type CollectionSubmitPayload } from '@/components/dashboard/CollectionDialog'
 import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
 import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
-import InstallmentCollectionDialog from '@/components/dashboard/InstallmentCollectionDialog'
 import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
 import CustomerLedgerModal from '@/components/dashboard/CustomerLedgerModal'
 import CariSalesWorkspace from '@/components/dashboard/CariSalesWorkspace'
@@ -123,7 +122,15 @@ function OnMuhasebePageInner() {
   const [newAdisyonOpen, setNewAdisyonOpen] = useState(false)
   // Cari detay + tahsilat modalları sayfada tutulur (iç içe dialog yığınından kaçınmak için).
   const [accountDetailOpen, setAccountDetailOpen] = useState(false)
-  const [collectMode, setCollectMode] = useState<'general' | 'monthly' | null>(null)
+  // TEK tahsilat modalı (eski 'general' | 'monthly' ayrımı kaldırıldı).
+  const [collectOpen, setCollectOpen] = useState(false)
+  /**
+   * Modaldeki cari seçicinin KAPSAMI. Çok satışlı müşteride "Tahsilat al" dendiğinde seçici
+   * yalnız O MÜŞTERİNİN satışlarını listeler: tahsilat tek bir satışın carisine yazılır
+   * (bölüştürülmez), o yüzden kullanıcı hangisi olduğunu modalde seçer.
+   * null = kapsam yok, tüm cariler listelenir (kasa/randevu gibi genel girişler).
+   */
+  const [collectScopeIds, setCollectScopeIds] = useState<string[] | null>(null)
   const [cancelledOpen, setCancelledOpen] = useState(false)
   /** Arşiv modalı hangi sekmeyle açılacak — "İptal edilenler" / "İade edilenler" butonları. */
   const [cancelledTab, setCancelledTab] = useState<CancelledTab>('all')
@@ -487,8 +494,31 @@ function OnMuhasebePageInner() {
   // ---------- işlemler ----------
   const goScope = (s: ScopeKey) => router.push(`/panel/on-muhasebe?scope=${s}`)
 
-  // Genel tahsilat da aylık taksit tahsilatı da AYNI uca gider; sunucu tutarı
-  // vade sırasıyla taksitlere dağıtır (allocation modeli).
+  /**
+   * Bir müşterinin satışları için tahsilat modalını açar.
+   *
+   * Çok satışlı müşteride hangi satışın seçili GELECEĞİ önemlidir: kullanıcı "Tahsilat al"a
+   * bastığında aklındaki satış neredeyse her zaman en acil olandır — gecikmişi olan, yoksa
+   * vadesi en yakın, yoksa borcu en büyük olan. Kapalı satışlar seçiciye hiç girmez.
+   */
+  const openCollectFor = (list: CustomerAccount[]): void => {
+    const open = list.filter((a) => a.remainingAmount > 0.005)
+    const pool = open.length > 0 ? open : list
+    if (pool.length === 0) return
+    const primary = [...pool].sort((a, b) => {
+      if (a.hasOverdue !== b.hasOverdue) return a.hasOverdue ? -1 : 1
+      const ad = a.nextDueDate || '9999-12-31'
+      const bd = b.nextDueDate || '9999-12-31'
+      if (ad !== bd) return ad.localeCompare(bd)
+      return b.remainingAmount - a.remainingAmount
+    })[0]
+    setCollectScopeIds(pool.map((a) => a.id))
+    setSelectedAccountId(primary.id)
+    setCollectOpen(true)
+  }
+
+  // Tahsilat tek uca gider; sunucu tutarı vade sırasıyla taksitlere dağıtır (allocation
+  // modeli). "Bu ay ödenmesi gereken" yalnız modalin ÖNERDİĞİ tutardır — kullanıcı değiştirebilir.
   const registerCollection = async (p: CollectionSubmitPayload): Promise<void> => {
     const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc }
     const res = await performWrite({
@@ -1220,13 +1250,21 @@ function OnMuhasebePageInner() {
                           </td>
                           <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
-                              {isOpen && g.accounts.length === 1 && (
+                              {/* ÇOK SATIŞLIDA DA VAR: eskiden buton yalnız tek satışlı müşteride
+                                  çıkıyordu, çünkü para hangi cariye yazılacağı belirsizdi. Artık
+                                  modal o müşterinin satışlarını listeleyip seçtiriyor. */}
+                              {isOpen && (
                                 <button
                                   type="button"
-                                  onClick={() => { setSelectedAccountId(g.accounts[0].id); setCollectMode('general') }}
+                                  onClick={() => openCollectFor(g.accounts)}
                                   className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5"
                                 >
-                                  <Banknote className="h-3.5 w-3.5" /> Tahsilat
+                                  <Banknote className="h-3.5 w-3.5" /> Tahsilat al
+                                  {g.accounts.filter((a) => a.remainingAmount > 0.005).length > 1 && (
+                                    <span className="rounded-full bg-white/25 px-1.5 text-[9.5px] font-bold">
+                                      {g.accounts.filter((a) => a.remainingAmount > 0.005).length} satış
+                                    </span>
+                                  )}
                                 </button>
                               )}
                               <button
@@ -1324,8 +1362,13 @@ function OnMuhasebePageInner() {
               cancelledSales={selGroupCancelled}
               open={Boolean(selGroup)}
               onClose={() => setSelectedGroupId(null)}
-              onCollect={(accountId) => { setSelectedAccountId(accountId); setCollectMode('general') }}
-              onCollectMonthly={(accountId) => { setSelectedAccountId(accountId); setCollectMode('monthly') }}
+              /* Defterden tahsilat: seçici yine o müşterinin satışlarına daralır — kullanıcı
+                 defteri kapatmadan yanlış satışı seçtiyse düzeltebilsin. */
+              onCollect={(accountId) => {
+                setCollectScopeIds(selGroup ? selGroup.accounts.map((a) => a.id) : null)
+                setSelectedAccountId(accountId)
+                setCollectOpen(true)
+              }}
               onOpenSale={(accountId) => { setSelectedGroupId(null); openAccount(accountId) }}
               onOpenSalesWorkspace={() => {
                 if (!selGroup?.customerId) return
@@ -1341,8 +1384,7 @@ function OnMuhasebePageInner() {
               tenantId={tenantId}
               ledger={ledger}
               sessionsTick={sessionsTick}
-              onCollectGeneral={() => setCollectMode('general')}
-              onCollectMonthly={() => setCollectMode('monthly')}
+              onCollect={() => setCollectOpen(true)}
               onReschedule={async (installmentCount, firstDueDate) => {
                 if (!selAccount) return
                 await adminApi.rescheduleAccount(selAccount.id, { installmentCount, firstDueDate }, tenantId)
@@ -1362,23 +1404,24 @@ function OnMuhasebePageInner() {
               }}
             />
 
+            {/* TEK TAHSİLAT MODALI — "genel" ve "aylık taksit" ayrımı kaldırıldı: modal taksitli
+                hesapta planı, devri ve "bu ay ödenmesi gereken" tutarı kendisi getirir. */}
             {selAccount && (
               <CollectionDialog
-                accounts={liveAccounts}
+                /* Kapsam varsa seçici o müşterinin satışlarına daralır. Kapsam boş kalırsa
+                   (liste tazelenip kimlikler değişirse) tüm carilere düşülür — modal asla
+                   seçeneksiz açılmaz. */
+                accounts={
+                  collectScopeIds
+                    ? (liveAccounts.filter((a) => collectScopeIds.includes(a.id)).length > 0
+                        ? liveAccounts.filter((a) => collectScopeIds.includes(a.id))
+                        : liveAccounts)
+                    : liveAccounts
+                }
                 initialAccountId={selAccount.id}
                 hideTrigger
-                open={collectMode === 'general'}
-                onOpenChange={(next) => { if (!next) setCollectMode(null) }}
-                title={`Genel tahsilat · ${selAccount.customerName || selAccount.name}`}
-                onSubmit={registerCollection}
-              />
-            )}
-            {selAccount && (
-              <InstallmentCollectionDialog
-                account={selAccount}
-                hideTrigger
-                open={collectMode === 'monthly'}
-                onOpenChange={(next) => { if (!next) setCollectMode(null) }}
+                open={collectOpen}
+                onOpenChange={(next) => { setCollectOpen(next); if (!next) setCollectScopeIds(null) }}
                 onSubmit={registerCollection}
               />
             )}

@@ -7,12 +7,18 @@ import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
+import 'account_installments.dart';
 
-/// Ortak "Tahsilat Al" alt sayfası — web `CollectionDialog` paritesi.
+/// TEK "Tahsilat Al" alt sayfası — web `CollectionDialog` paritesi.
+///
+/// Eski "aylık taksit tahsilatı" sayfası buraya katıldı: taksitli hesapta taksit planı,
+/// DEVİR (ödenmeyen ayın sonraki aya binmesi) ve "bu ay ödenmesi gereken" hazır tutarı
+/// bu sayfa kendisi getirir; kullanıcı hangi modalı açacağına karar vermez.
 ///
 /// Web ile aynı davranışlar:
 ///  • Cari hesap ARANARAK seçilir (12 bin+ kayıtta dropdown kullanılmaz).
-///  • Seçilince tutar, hesabın KALAN borcuna kuruşu korunarak otomatik dolar.
+///  • Tutar taksitli hesapta BU AY ÖDENMESİ GEREKEN, peşinde kalan borcun tamamıyla dolar
+///    (kuruş korunur).
 ///  • Ödeme kırılımı: 2.000 nakit + 1.000 kart gibi birden çok satır girilebilir;
 ///    her yöntem AYRI tahsilat kaydı olur (kasa kapanışındaki yöntem kırılımı bozulmasın).
 ///  • Tarih YEREL seçilir ve gün ortası (12:00) damgasıyla gönderilir; gece yarısından
@@ -174,9 +180,55 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     _rows
       ..removeRange(1, _rows.length)
       ..first.method = 'cash';
-    final remaining = _kurus(_remaining(account));
-    _rows.first.amount.text = remaining > 0 ? _plain(remaining) : '';
+    // TAKSİTLİ HESAPTA "BU AY ÖDENMESİ GEREKEN" (devir dahil), peşinde kalan borcun tamamı.
+    final suggested = _kurus(suggestedCollectionAmount(account));
+    _rows.first.amount.text = suggested > 0 ? _plain(suggested) : '';
     if (rebuild) setState(() {});
+  }
+
+  // ---- Taksit planı + devir (yalnız taksitli hesapta) ------------------------
+  List<AccountInstallment> get _plan =>
+      _selected == null ? const [] : parseInstallments(_selected!).where((i) => !i.cancelled).toList();
+  bool get _hasPlan => _plan.length > 1;
+  List<InstallmentDueRow> get _dueRows => buildInstallmentRows(_plan);
+  List<InstallmentDueRow> get _pending =>
+      _dueRows.where((r) => r.item.remaining > 0.005).toList();
+  double get _overdueSum =>
+      _pending.where((r) => r.isOverdue).fold<double>(0, (s, r) => s + r.item.remaining);
+  double get _dueNow => _hasPlan ? dueThisMonth(_plan) : 0;
+
+  /// Girilen toplamın taksitlere vade sırasıyla dağılımı (canlı önizleme).
+  Map<String, double> get _allocation {
+    var pool = _total;
+    final map = <String, double>{};
+    for (final r in _pending) {
+      final applied = pool < r.item.remaining ? pool : r.item.remaining;
+      if (applied > 0.005) map[r.item.id] = applied;
+      pool -= applied;
+      if (pool <= 0.005) break;
+    }
+    return map;
+  }
+
+  /// SATIŞ SEÇİMİ MODU — liste tek bir müşterinin satışlarına daraltılmışsa (ön muhasebede
+  /// çok satışlı müşteride "Tahsilat al") seçicide müşteri adı değil SATIŞ adı öne çıkar:
+  /// aynı ad üç kez alt alta yazınca hangi satışa para yazıldığı okunmuyordu.
+  bool get _saleMode {
+    if (_accounts.length < 2) return false;
+    final first = '${_accounts.first['customerId'] ?? ''}';
+    if (first.isEmpty || first == 'null') return false;
+    return _accounts.every((a) => '${a['customerId'] ?? ''}' == first);
+  }
+
+  /// Hazır tutar çipi: tutarı TEK satıra yazar (kırılım varsa sadeleşir).
+  void _applyQuickAmount(double value) {
+    for (final r in _rows.skip(1)) {
+      r.amount.dispose();
+    }
+    setState(() {
+      _rows.removeRange(1, _rows.length);
+      _rows.first.amount.text = _plain(_kurus(value));
+    });
   }
 
   static String _plain(double v) =>
@@ -212,7 +264,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AccountPicker(accounts: _accounts),
+      builder: (_) => _AccountPicker(accounts: _accounts, saleMode: _saleMode),
     );
     if (picked != null) _pick(picked);
   }
@@ -323,6 +375,12 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _accountField(),
+                      if (_hasPlan) ...[
+                        const SizedBox(height: 14),
+                        _quickAmounts(),
+                        const SizedBox(height: 14),
+                        _planPanel(),
+                      ],
                       const SizedBox(height: 14),
                       _amountRows(),
                       const SizedBox(height: 14),
@@ -411,8 +469,8 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Cari hesap',
-            style: TextStyle(
+        Text(_saleMode ? 'Hangi satıştan tahsilat?' : 'Cari hesap',
+            style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: AppColors.primaryDark)),
@@ -437,8 +495,12 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                                valueOf(selected,
-                                    const ['customerName', 'name']),
+                                _saleMode
+                                    ? valueOf(selected,
+                                        const ['servicePackageName', 'name'],
+                                        fallback: 'Satış')
+                                    : valueOf(selected,
+                                        const ['customerName', 'name']),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -457,6 +519,171 @@ class _CollectionSheetState extends State<_CollectionSheet> {
               ],
             ),
           ),
+        ),
+        // Tahsilat TEK satışın carisine yazılır; bölüştürme yok. Çok satışlı müşteride
+        // bunu yazmazsak "hepsinden düşer" sanılıyor.
+        if (_saleMode)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+                'Bu müşterinin ${_accounts.length} açık satışı var. Tahsilat yalnız seçili satışın taksitlerine dağıtılır.',
+                style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+          ),
+      ],
+    );
+  }
+
+  /// HAZIR TUTARLAR — taksitli hesapta "bu ay ödenmesi gereken" öne çıkar (web paritesi).
+  Widget _quickAmounts() {
+    final selected = _selected;
+    if (selected == null) return const SizedBox.shrink();
+    final items = <(String, double)>[];
+    if (_dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(_dueNow)));
+    if (_overdueSum > 0.005 && (_overdueSum - _dueNow).abs() > 0.005) {
+      items.add(('Yalnız gecikmiş', _kurus(_overdueSum)));
+    }
+    final next = _pending.isEmpty ? null : _pending.first;
+    if (next != null && (next.item.remaining - _dueNow).abs() > 0.005) {
+      items.add(('Sıradaki taksit', _kurus(next.item.remaining)));
+    }
+    final remaining = _kurus(_remaining(selected));
+    if (remaining > 0.005) items.add(('Kalan borcun tamamı', remaining));
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Hazır tutarlar',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final item in items)
+              ChoiceChip(
+                selected: (_total - item.$2).abs() < 0.005 && _rows.length == 1,
+                onSelected: (_) => _applyQuickAmount(item.$2),
+                label: Text('${item.$1} · ${CalendarText.tl(item.$2)}',
+                    style: const TextStyle(fontSize: 11.5)),
+              ),
+          ],
+        ),
+        if (_overdueSum > 0.005) ...[
+          const SizedBox(height: 6),
+          Text(
+              'Ödenmeyen aylar sonraki ayın taksitine eklenir — bu ay ödenmesi gereken ${CalendarText.tl(_dueNow)}.',
+              style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+        ],
+      ],
+    );
+  }
+
+  /// TAKSİT PLANI — devir ve canlı dağıtım (web modalindeki sol panelin karşılığı).
+  Widget _planPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Taksit planı',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark)),
+            const Spacer(),
+            if (_overdueSum > 0.005)
+              Text('${CalendarText.tl(_overdueSum)} gecikmiş',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.danger)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        // İÇ İÇE DİKEY KAYDIRMA YOK: sayfa zaten bir SingleChildScrollView içinde. Buraya
+        // kendi ListView'ini koymak iki kaydırılabilir alanı aynı jest arenasına sokup
+        // parmağın hangisini sürüklediğini belirsizleştiriyordu (bkz. jest arenası tuzağı).
+        Column(
+          children: [
+            for (var index = 0; index < _dueRows.length; index++)
+              Builder(builder: (_) {
+              final r = _dueRows[index];
+              final applied = _allocation[r.item.id] ?? 0;
+              final paid = r.item.isPaid;
+              final bg = paid
+                  ? const Color(0xFFECFDF3)
+                  : applied > 0.005
+                      ? const Color(0xFFFFF1F6)
+                      : r.isOverdue
+                          ? const Color(0xFFFEF2F2)
+                          : Colors.white;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('#${r.item.no} · ${shortDay(r.item.dueDate)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                        Text(CalendarText.tl(r.item.amount),
+                            style: const TextStyle(
+                                fontSize: 12.5, fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 6),
+                        Text(
+                          paid
+                              ? 'ÖDENDİ'
+                              : r.isOverdue
+                                  ? 'GECİKTİ'
+                                  : r.item.isPartial
+                                      ? 'KISMİ'
+                                      : 'BEKLİYOR',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: paid
+                                ? AppColors.success
+                                : r.isOverdue
+                                    ? AppColors.danger
+                                    : AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // DEVİR: önceki ayların ödenmemiş borcu bu ayın üstüne biner.
+                    if (r.carryIn > 0.005)
+                      Text(
+                          '+${CalendarText.tl(r.carryIn)} devir → bu ay ${CalendarText.tl(r.expected)}',
+                          style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.danger)),
+                    if (applied > 0.005)
+                      Text(
+                          'Bu ödemeden ${CalendarText.tl(applied)} düşecek'
+                          '${applied >= r.item.remaining - 0.005 ? ' · kapanır' : ' · kısmi kalır'}',
+                          style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primaryDark)),
+                  ],
+                ),
+              );
+              }),
+          ],
         ),
       ],
     );
@@ -585,8 +812,11 @@ class _CollectionSheetState extends State<_CollectionSheet> {
 
 /// Aranabilir cari hesap seçici (web'deki dropdown + arama kutusunun karşılığı).
 class _AccountPicker extends StatefulWidget {
-  const _AccountPicker({required this.accounts});
+  const _AccountPicker({required this.accounts, this.saleMode = false});
   final List<Map<String, dynamic>> accounts;
+
+  /// true ise liste tek müşterinin satışlarıdır — başlıkta SATIŞ adı yazılır.
+  final bool saleMode;
 
   @override
   State<_AccountPicker> createState() => _AccountPickerState();
@@ -602,7 +832,7 @@ class _AccountPickerState extends State<_AccountPicker> {
         ? widget.accounts
         : widget.accounts.where((a) {
             final hay =
-                '${a['customerName'] ?? ''} ${a['name'] ?? ''} ${a['customerPhone'] ?? ''}'
+                '${a['customerName'] ?? ''} ${a['name'] ?? ''} ${a['servicePackageName'] ?? ''} ${a['customerPhone'] ?? ''}'
                     .toLowerCase();
             return hay.contains(q);
           }).toList();
@@ -624,10 +854,12 @@ class _AccountPickerState extends State<_AccountPicker> {
               child: TextField(
                 autofocus: true,
                 onChanged: (v) => setState(() => _query = v),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  prefixIcon: Icon(Icons.search_rounded, size: 18),
-                  hintText: 'Müşteri adı / telefon ara…',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                  hintText: widget.saleMode
+                      ? 'Satış / paket ara…'
+                      : 'Müşteri adı / telefon ara…',
                 ),
               ),
             ),
@@ -635,7 +867,7 @@ class _AccountPickerState extends State<_AccountPicker> {
               child: list.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 36),
-                      child: Text('Cari hesap bulunamadı.',
+                      child: Text('Kayıt bulunamadı.',
                           style: TextStyle(color: AppColors.muted)),
                     )
                   : ListView.separated(
@@ -650,12 +882,21 @@ class _AccountPickerState extends State<_AccountPicker> {
                         return ListTile(
                           dense: true,
                           title: Text(
-                              valueOf(a, const ['customerName', 'name']),
+                              widget.saleMode
+                                  ? valueOf(a,
+                                      const ['servicePackageName', 'name'],
+                                      fallback: 'Satış')
+                                  : valueOf(a, const ['customerName', 'name']),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                   fontWeight: FontWeight.w700, fontSize: 13.5)),
-                          subtitle: Text(valueOf(a, const ['name'], fallback: ''),
+                          subtitle: Text(
+                              widget.saleMode
+                                  ? (a['hasOverdue'] == true
+                                      ? 'GECİKMİŞ · sıradaki vade ${valueOf(a, const ['nextDueDate'], fallback: '—')}'
+                                      : 'Sıradaki vade ${valueOf(a, const ['nextDueDate'], fallback: '—')}')
+                                  : valueOf(a, const ['name'], fallback: ''),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(

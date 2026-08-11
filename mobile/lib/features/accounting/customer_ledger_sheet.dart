@@ -25,7 +25,6 @@ Future<void> openCustomerLedgerSheet(
   /// Bu müşterinin İPTAL arşivi — iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR.
   List<Map<String, dynamic>> cancelledSales = const [],
   required Future<void> Function(Map<String, dynamic> account) onCollect,
-  required Future<void> Function(Map<String, dynamic> account) onCollectMonthly,
   required Future<void> Function(Map<String, dynamic> account) onOpenSale,
   required Future<void> Function() onOpenSalesWorkspace,
   /// Defterin KENDİ verisini tazelemesi için: tahsilat sonrası açık kalan sayfa eski rakamları
@@ -38,7 +37,6 @@ Future<void> openCustomerLedgerSheet(
       group: group,
       cancelledSales: cancelledSales,
       onCollect: onCollect,
-      onCollectMonthly: onCollectMonthly,
       onOpenSale: onOpenSale,
       onOpenSalesWorkspace: onOpenSalesWorkspace,
       onRefresh: onRefresh,
@@ -86,7 +84,6 @@ class CustomerLedgerScreen extends StatefulWidget {
     required this.group,
     this.cancelledSales = const [],
     required this.onCollect,
-    required this.onCollectMonthly,
     required this.onOpenSale,
     required this.onOpenSalesWorkspace,
     this.onRefresh,
@@ -98,7 +95,6 @@ class CustomerLedgerScreen extends StatefulWidget {
   /// İptal arşivi: satırları canlı tablodan silinir, parası yalnız buradan okunur.
   final List<Map<String, dynamic>> cancelledSales;
   final Future<void> Function(Map<String, dynamic> account) onCollect;
-  final Future<void> Function(Map<String, dynamic> account) onCollectMonthly;
   final Future<void> Function(Map<String, dynamic> account) onOpenSale;
   final Future<void> Function() onOpenSalesWorkspace;
 
@@ -597,19 +593,8 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             // GÖRSEL OLARAK pasif yapar (kullanıcı neden çalışmadığını yukarıdaki şeritten
             // okur). Yalnız gizlemek yetmezdi — kullanıcı düğmeyi arar, bulamayınca listeye
             // döner ve orada da eski veriyi görürdü.
-            if (isInstallment) ...[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _blocked
-                      ? null
-                      : () async { await widget.onCollectMonthly(a); await _refresh(); },
-                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                  icon: const Icon(Icons.event_available_rounded, size: 15),
-                  label: const Text('Aylık taksit', style: TextStyle(fontSize: 11.5)),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
+            // TEK BUTON: tahsilat sayfası taksitli satışta planı, devri ve "bu ay
+            // ödenmesi gereken" tutarı kendisi getirir (aylık/genel ayrımı kaldırıldı).
             Expanded(
               child: FilledButton.icon(
                 onPressed: _blocked
@@ -617,8 +602,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                     : () async { await widget.onCollect(a); await _refresh(); },
                 style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                 icon: const Icon(Icons.payments_rounded, size: 15),
-                label: Text(isInstallment ? 'Genel tahsilat' : 'Tahsilat al',
-                    style: const TextStyle(fontSize: 11.5)),
+                label: const Text('Tahsilat al', style: TextStyle(fontSize: 11.5)),
               ),
             ),
           ]),
