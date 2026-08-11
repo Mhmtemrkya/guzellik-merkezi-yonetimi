@@ -38,6 +38,17 @@ const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-[#3
 const inputCls =
   'mt-1 w-full rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776]'
 
+/**
+ * Peşinat ödeme yöntemleri — CollectionDialog'daki METHOD_OPTIONS ile AYNI değerler.
+ * Değerler backend'in beklediği ham anahtarlardır (`cash`/`card`/`transfer`); etiket
+ * çevirisi tek yerden yapılır (bkz. lib/apiMappers → paymentMethodLabel).
+ */
+const DOWN_PAYMENT_METHODS: { value: string; label: string }[] = [
+  { value: 'cash', label: 'Nakit' },
+  { value: 'card', label: 'Kart' },
+  { value: 'transfer', label: 'Havale / EFT' },
+]
+
 type SaleStep = 'form' | 'confirm' | 'done'
 
 /** Onay adımında satışa eklenen ek kalemin türü — adisyon kartındaki kalem türlerinin satış alt kümesi. */
@@ -151,6 +162,14 @@ export default function PackageSaleDialog({
   const [price, setPrice] = useState<number | ''>('')
   const [quantity, setQuantity] = useState(1)
   const [downPayment, setDownPayment] = useState<number | ''>('')
+  /**
+   * PEŞİNATIN ÖDEME YÖNTEMİ (nakit/kart/havale).
+   *
+   * Adisyon kalemi `method` taşır ve onayda `AdisyonService` yöntem BAŞINA ayrı bir
+   * `AccountPayment` açar. Yöntem gönderilmezse sunucu "cash" varsayar — yani kartla alınan
+   * peşinat kasa kapanışında nakit görünüyor, gün sonu sayımı tutmuyordu.
+   */
+  const [downPaymentMethod, setDownPaymentMethod] = useState('cash')
   const [staffMemberId, setStaffMemberId] = useState('')
   const [notes, setNotes] = useState('')
   // Ödeme planı: peşin (taksit yok) ya da taksit (N ay, ilk vade). Cariye onayda işlenir.
@@ -385,6 +404,7 @@ export default function PackageSaleDialog({
     setStaffMemberId('')
     setNotes('')
     setPayMode('pesin')
+    setDownPaymentMethod('cash')
     setInstallmentCount(3)
     setExtras([])
     setSavedAdisyonId('')
@@ -627,9 +647,14 @@ export default function PackageSaleDialog({
             unitPrice: pay,
             staffMemberId: null,
             coveredByPackage: false,
+            // Onayda yöntem başına ayrı AccountPayment açılır (AdisyonService); gönderilmezse
+            // sunucu "cash" varsayar ve kartla alınan peşinat kasada nakit görünürdü.
+            method: downPaymentMethod,
           },
           tenantId,
-          idempotencyKey(saleSaltRef.current, 'pay', pay),
+          // ANAHTARA YÖNTEM DE GİRER: kullanıcı yöntemi değiştirip tekrar denerse gövde
+          // değişir; anahtar sabit kalsaydı sunucu ESKİ yanıtı oynatıp yanlış yöntemi yazardı.
+          idempotencyKey(saleSaltRef.current, 'pay', pay, downPaymentMethod),
         )
       }
 
@@ -1055,7 +1080,13 @@ export default function PackageSaleDialog({
                       Satış {formatTL(mainTotal)} + ek kalem {formatTL(extrasTotal)}
                     </div>
                   )}
-                  {pay > 0 && <div className="text-[11px] text-emerald-700">Tahsilat {formatTL(pay)}</div>}
+                  {/* Yöntem ONAY EKRANINDA da yazılır: kasaya hangi kanaldan girdiği
+                      onaylamadan önce görünmeli (sonradan düzeltmesi tahsilat düzeltmesi). */}
+                  {pay > 0 && (
+                    <div className="text-[11px] text-emerald-700">
+                      Tahsilat {formatTL(pay)} · {DOWN_PAYMENT_METHODS.find((m) => m.value === downPaymentMethod)?.label}
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">Ödeme planı</div>
@@ -1271,7 +1302,29 @@ export default function PackageSaleDialog({
                     />
                   </label>
                 )}
+                {/* YÖNTEM YALNIZ PEŞİNAT VARSA sorulur: para alınmadan "nakit mi kart mı"
+                    sormak boş bir karar; alan da her satışta yer kaplardı. */}
+                {showDownPayment && pay > 0 && (
+                  <label className={labelCls}>
+                    Peşinat ödeme yöntemi
+                    <select
+                      value={downPaymentMethod}
+                      onChange={(e) => setDownPaymentMethod(e.target.value)}
+                      className={inputCls}
+                    >
+                      {DOWN_PAYMENT_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
+              {showDownPayment && pay > 0 && (
+                <p className="mt-1 text-[10.5px] text-[#705a66]">
+                  Peşinat <b>{DOWN_PAYMENT_METHODS.find((m) => m.value === downPaymentMethod)?.label}</b> olarak
+                  kasaya işlenir; gün sonu kasa kapanışındaki yöntem kırılımı buna göre oluşur.
+                </p>
+              )}
 
               {/* Ödeme planı: peşin ya da taksit — taksit cariye onayda kurulur */}
               <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">

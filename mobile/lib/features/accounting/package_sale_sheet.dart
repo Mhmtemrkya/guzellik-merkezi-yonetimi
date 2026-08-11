@@ -8,6 +8,9 @@ import '../../shared/widgets/catalog_picker_field.dart';
 import '../consent/consent_sale_notice.dart';
 import '../customers/customer_picker.dart';
 import 'adisyon_detail_sheet.dart';
+// Peşinat yöntemleri tahsilat sayfasıyla AYNI listeden gelir (cash/card/transfer):
+// iki yerde ayrı liste tutmak, birinde eklenen yöntemin diğerinde eksik kalmasını üretir.
+import 'collection_sheet.dart';
 
 /// Satışa eklenen ek kalemin türü — adisyon kartındaki kalem türlerinin satış alt kümesi.
 enum _ExtraKind { service, package, product }
@@ -118,6 +121,13 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   String _saleSalt = newIdempotencySalt();
   final price = TextEditingController();
   final downPayment = TextEditingController();
+
+  /// PEŞİNATIN ÖDEME YÖNTEMİ (nakit/kart/havale).
+  ///
+  /// Adisyon kalemi method taşır ve onayda AdisyonService yöntem BAŞINA ayrı bir
+  /// AccountPayment açar. Gönderilmezse sunucu cash varsayar — kartla alınan peşinat
+  /// kasa kapanışında nakit görünüyor, gün sonu sayımı tutmuyordu.
+  String _downPaymentMethod = 'cash';
   final notes = TextEditingController();
 
   // ---- Ek kalemler + kaydetme şekli ----
@@ -567,8 +577,13 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
             'unitPrice': pay,
             'staffMemberId': null,
             'coveredByPackage': false,
+            // Onayda yöntem başına ayrı AccountPayment açılır; gönderilmezse sunucu cash
+            // varsayar ve kartla alınan peşinat kasada nakit görünürdü.
+            'method': _downPaymentMethod,
           },
-          idempotencyKey(_saleSalt, ['pay', pay]),
+          // ANAHTARA YÖNTEM DE GİRER: yöntem değişince gövde değişir; anahtar sabit kalsaydı
+          // sunucu ESKİ yanıtı oynatıp yanlış yöntemi yazardı.
+          idempotencyKey(_saleSalt, ['pay', pay, _downPaymentMethod]),
         );
       }
 
@@ -1133,6 +1148,28 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                           ],
                         ],
                       ),
+                      // YÖNTEM YALNIZ PEŞİNAT VARSA sorulur: para alınmadan "nakit mi kart mı"
+                      // sormak boş bir karar; alan da her satışta yer kaplardı.
+                      if (_showDownPayment && _downPaymentValue > 0) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: _downPaymentMethod,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Peşinat ödeme yöntemi',
+                          ),
+                          items: [
+                            for (final m in collectionMethods)
+                              DropdownMenuItem(value: m.value, child: Text(m.label)),
+                          ],
+                          onChanged: (v) => setState(
+                              () => _downPaymentMethod = v ?? _downPaymentMethod),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                            'Peşinat bu yöntemle kasaya işlenir; gün sonu kasa kapanışındaki yöntem kırılımı buna göre oluşur.',
+                            style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                      ],
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: staffId,
