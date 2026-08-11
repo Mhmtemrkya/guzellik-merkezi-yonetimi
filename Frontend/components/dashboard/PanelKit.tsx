@@ -6,9 +6,11 @@ import type { LucideIcon } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // PANEL DİLİ (ortak)
-// Kurum yöneticisi panelinin görsel imzası: krem-beyaz yüzey, üstte altın
-// hairline, köşede yumuşak gül halesi, renkli başlık bandı ve kartın altını
-// boydan boya kaplayan trend şeridi.
+// Kurum yöneticisi panelinin görsel imzası: BEYAZ yüzey, üstte marka
+// hairline'i (pembe -> bordo), köşede yumuşak hale, renkli başlık bandı ve
+// kartın altını boydan boya kaplayan trend şeridi.
+// Renkler /panel panosuyla ORTAK paletten gelir (globals.css -> Dashboard paleti):
+// #A5556E plum · #F9A1B9 pink · #1E4E8C blue · #8E7882 mauve · #F7F6F6 paper.
 //
 // Buradaki parçalar /panel panelinde doğmuştu ve orada YEREL tanımlı kalmaya
 // devam ediyor (o sayfa 2000+ satır; taşımak gereksiz regresyon riski).
@@ -20,31 +22,41 @@ export type PanelTone = 'rose' | 'gold' | 'mint' | 'violet' | 'peach' | 'cream'
 
 /** İkon kutusu + kısayol yüzeyleri (kenarlık · zemin · yazı). */
 export const toneClasses: Record<PanelTone, string> = {
-  rose: 'border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]',
-  gold: 'border-[#f2dfbf] bg-[#fff8ea] text-[#b88938]',
-  mint: 'border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]',
-  violet: 'border-[#eadcf5] bg-[#faf4ff] text-[#8b5aa5]',
-  peach: 'border-[#f3dde0] bg-[#fff6f3] text-[#bd6476]',
-  cream: 'border-[#d9e8f6] bg-[#f3f9ff] text-[#3a7ca8]',
+  rose: 'border-[#DFAFBF] bg-[#F6DFE6] text-[#7A3450]',
+  gold: 'border-[#8FD5B4] bg-[#DFF3EA] text-[#15694A]',
+  mint: 'border-[#AFC9E6] bg-[#E7F0FA] text-[#245C9E]',
+  violet: 'border-[#D3A6B7] bg-[#F2DEE7] text-[#5F2A41]',
+  peach: 'border-[#F6B7CA] bg-[#FDE4EB] text-[#BE3960]',
+  cream: 'border-[#CBC1C6] bg-[#EFECEE] text-[#4E4048]',
+}
+
+/** İkon rozeti — dolu renk, beyaz ikon (bant açık, doygunluk rozetten gelir). */
+export const toneIcon: Record<PanelTone, string> = {
+  rose: 'bg-[#A5556E]',
+  gold: 'bg-[#1E8C60]',
+  mint: 'bg-[#3A72B0]',
+  violet: 'bg-[#723550]',
+  peach: 'bg-[#E4577F]',
+  cream: 'bg-[#74616A]',
 }
 
 /** Kartın renkli başlık bandı. */
 export const toneSurface: Record<PanelTone, string> = {
-  rose: 'from-[#fff1f6] to-[#ffe0eb]',
-  gold: 'from-[#fff8ea] to-[#ffedcd]',
-  violet: 'from-[#f6f1ff] to-[#eae0ff]',
-  mint: 'from-[#eefaf3] to-[#daf2e6]',
-  peach: 'from-[#fff4ee] to-[#ffe4d5]',
-  cream: 'from-[#f3f9ff] to-[#ddecfb]',
+  rose: 'from-[#F9E8ED] to-[#F0D0DB]',
+  gold: 'from-[#E9F6F0] to-[#CDEBDD]',
+  violet: 'from-[#F3E1E9] to-[#E4C7D4]',
+  mint: 'from-[#EDF4FB] to-[#D8E7F6]',
+  peach: 'from-[#FDECF1] to-[#FBD1DE]',
+  cream: 'from-[#F4F2F3] to-[#E4DEE1]',
 }
 
 /** Trend şeridinin çizgi rengi. */
 export const toneStroke: Record<PanelTone, string> = {
-  rose: '#c85776', gold: '#c79a45', violet: '#7c5cbf', mint: '#2f9d6b', peach: '#d97845', cream: '#3a7ca8',
+  rose: '#A5556E', gold: '#1E8C60', violet: '#723550', mint: '#3A72B0', peach: '#E4577F', cream: '#74616A',
 }
 
 export const panelCardShell =
-  'relative overflow-hidden rounded-[24px] border border-[#f3dde5] bg-gradient-to-br from-white via-white to-[#fffafc] shadow-[0_22px_58px_-38px_rgba(120,71,88,0.5)] transition-shadow hover:shadow-[0_28px_66px_-34px_rgba(120,71,88,0.55)]'
+  'relative overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white shadow-[0_22px_58px_-38px_rgba(87,39,61,0.55)] transition-shadow hover:shadow-[0_28px_66px_-34px_rgba(87,39,61,0.6)]'
 
 export const panelListContainer: Variants = {
   hidden: { opacity: 0 },
@@ -56,13 +68,13 @@ export const panelListRow: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } },
 }
 
-/** Kartın üst kenarındaki altın çizgi — marka imzası. */
-export function GoldHairline() {
+/** Kartın üst kenarındaki marka çizgisi — pembe → bordo → pembe. */
+export function BrandHairline() {
   return (
     <span
       aria-hidden
       className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
-      style={{ background: 'linear-gradient(90deg, transparent, rgba(201,164,92,0.55), transparent)' }}
+      style={{ background: 'linear-gradient(90deg, transparent, #F9A1B9 20%, #A5556E 50%, #F9A1B9 80%, transparent)' }}
     />
   )
 }
@@ -104,10 +116,10 @@ export function DonutGauge({ value, label }: { value: number; label?: string }) 
   return (
     <div
       className="grid h-[74px] w-[74px] place-items-center rounded-full"
-      style={{ background: `conic-gradient(#78bf93 ${percent * 3.6}deg, #edf7f1 0deg)` }}
+      style={{ background: `conic-gradient(#1E8C60 ${percent * 3.6}deg, #DFF3EA 0deg)` }}
       aria-label={`${label || 'Oran'} ${percent}%`}
     >
-      <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-white text-[15px] font-semibold text-[#2f6f53]">
+      <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-white text-[15px] font-semibold text-[#15694A]">
         {percent}%
       </div>
     </div>
@@ -125,7 +137,7 @@ export function PeriodTabs<T extends string>({
   options: { key: T; label: string }[]
 }) {
   return (
-    <div className="inline-flex shrink-0 items-center rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+    <div className="inline-flex shrink-0 items-center rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
       {options.map((option) => (
         <button
           key={option.key}
@@ -133,8 +145,8 @@ export function PeriodTabs<T extends string>({
           onClick={() => onChange(option.key)}
           className={`cursor-pointer rounded-full px-2 py-[3px] text-[10px] font-semibold leading-none transition-colors ${
             value === option.key
-              ? 'bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a] shadow-sm'
-              : 'text-[#9a8590] hover:text-[#7a6570]'
+              ? 'bg-[#A5556E] text-white shadow-sm'
+              : 'text-[#74616A] hover:text-[#2A2027]'
           }`}
         >
           {option.label}
@@ -178,24 +190,24 @@ export function PanelMetricCard({
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
       className={`${panelCardShell} group flex min-h-[188px] flex-col`}
     >
-      <GoldHairline />
+      <BrandHairline />
 
       <div className={`relative flex min-h-[76px] items-start justify-between gap-3 bg-gradient-to-br ${toneSurface[tone]} px-5 pb-4 pt-5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/45 blur-2xl transition-transform duration-500 group-hover:scale-110" />
-        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] bg-white/85 shadow-[0_12px_26px_-18px_rgba(120,71,88,0.9)] transition-transform duration-300 group-hover:scale-105 ${toneClasses[tone]}`}>
-          <Icon className="h-[19px] w-[19px]" strokeWidth={1.65} />
+        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/55 blur-2xl transition-transform duration-500 group-hover:scale-110" />
+        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] text-white shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneIcon[tone]}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={1.85} />
         </span>
         <div className="relative flex shrink-0 flex-col items-end gap-2">{control}</div>
       </div>
 
       <div className="relative flex flex-1 items-end justify-between gap-3 px-5 pb-3 pt-3.5">
         <div className="min-w-0">
-          <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#8a7480]">{title}</div>
-          <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-[#1f1620] tabular-nums">{value}</div>
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#74616A]">{title}</div>
+          <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-[#2A2027] tabular-nums">{value}</div>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
-            <span className="rounded-full bg-[#fff4f8] px-2 py-0.5 font-medium text-[#77616b]">{detail}</span>
+            <span className="rounded-full bg-[#F7F6F6] px-2 py-0.5 font-medium text-[#5A4B53]">{detail}</span>
             {subDetail && (
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">{subDetail}</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">{subDetail}</span>
             )}
           </div>
         </div>
@@ -234,12 +246,12 @@ export function PanelSection({
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
       className={`${panelCardShell} ${className}`}
     >
-      <GoldHairline />
-      <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
+      <BrandHairline />
+      <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#F9A1B9]/35 blur-3xl" />
       <div className="relative flex items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div className="min-w-0">
-          {eyebrow && <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70">{eyebrow}</div>}
-          <h2 className="mt-0.5 truncate text-[15px] font-semibold tracking-tight text-[#241923]">{title}</h2>
+          {eyebrow && <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">{eyebrow}</div>}
+          <h2 className="mt-0.5 truncate text-[15px] font-semibold tracking-tight text-[#2A2027]">{title}</h2>
         </div>
         {action}
       </div>

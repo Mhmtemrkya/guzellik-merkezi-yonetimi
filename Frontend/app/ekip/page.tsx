@@ -11,7 +11,7 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { apiItems, guidOrUndefined, normalizeAppointment, normalizeStaff } from '@/lib/apiMappers'
 import {
-  DonutGauge, GoldHairline, PanelMetricCard, PanelSection, PeriodTabs,
+  DonutGauge, BrandHairline, PanelMetricCard, PanelSection, PeriodTabs,
   panelCardShell, panelListContainer, panelListRow, toneClasses, toneStroke, type PanelTone,
 } from '@/components/dashboard/PanelKit'
 import { motion } from 'framer-motion'
@@ -157,8 +157,8 @@ function PerformanceChart({
   if (!hasAny) {
     return (
       <div className="px-5 pb-8 pt-4 text-center">
-        <Activity className="mx-auto h-9 w-9 text-[#c85776]/30" strokeWidth={1.3} />
-        <div className="mt-3 text-[12.5px] text-[#77616b]">{emptyLabel}</div>
+        <Activity className="mx-auto h-9 w-9 text-[#A5556E]/30" strokeWidth={1.3} />
+        <div className="mt-3 text-[12.5px] text-[#5A4B53]">{emptyLabel}</div>
       </div>
     )
   }
@@ -170,8 +170,8 @@ function PerformanceChart({
         <div className="absolute inset-0 flex flex-col justify-between">
           {[max, Math.round(max / 2), 0].map((v, i) => (
             <div key={i} className="flex items-center gap-2">
-              <span className="w-6 shrink-0 text-right text-[9px] tabular-nums text-[#b3a0aa]">{v}</span>
-              <span className="h-px flex-1 bg-[#f4e7ec]" />
+              <span className="w-6 shrink-0 text-right text-[9px] tabular-nums text-[#8E7882]">{v}</span>
+              <span className="h-px flex-1 bg-[#EFEAEC]" />
             </div>
           ))}
         </div>
@@ -184,7 +184,7 @@ function PerformanceChart({
                 initial={{ height: 0 }}
                 animate={{ height: `${(v / max) * 100}%` }}
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: i * 0.02 }}
-                className={`w-full rounded-t-[4px] ${v > 0 ? 'bg-gradient-to-t from-[#f3c3d3] to-[#f8dde6]' : 'bg-transparent'}`}
+                className={`w-full rounded-t-[4px] ${v > 0 ? 'bg-gradient-to-t from-[#EBC3CF] to-[#F6DFE6]' : 'bg-transparent'}`}
               />
             </div>
           ))}
@@ -207,13 +207,13 @@ function PerformanceChart({
       {/* Gün/saat etiketleri */}
       <div className="mt-1.5 flex gap-[3px] pl-8">
         {buckets.map((b) => (
-          <span key={b.key} className="flex-1 truncate text-center text-[9px] font-mono text-[#a5909c]">{b.label}</span>
+          <span key={b.key} className="flex-1 truncate text-center text-[9px] font-mono text-[#74616A]">{b.label}</span>
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-center gap-4 border-t border-[#f4e7ec] pt-2.5 text-[10.5px] text-[#77616b]">
+      <div className="mt-3 flex items-center justify-center gap-4 border-t border-[#EFEAEC] pt-2.5 text-[10.5px] text-[#5A4B53]">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-4 rounded-sm bg-gradient-to-t from-[#f3c3d3] to-[#f8dde6]" /> Randevu
+          <span className="h-2 w-4 rounded-sm bg-gradient-to-t from-[#EBC3CF] to-[#F6DFE6]" /> Randevu
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-[2px] w-4 rounded-full" style={{ background: toneStroke.mint }} /> Tamamlanan
@@ -228,8 +228,8 @@ function ServiceBreakdown({ rows }: { rows: { name: string; count: number }[] })
   if (!rows.length) {
     return (
       <div className="px-5 pb-8 pt-2 text-center">
-        <Scissors className="mx-auto h-8 w-8 text-[#c85776]/30" strokeWidth={1.3} />
-        <div className="mt-2.5 text-[12.5px] text-[#77616b]">Bu dönemde tamamlanmış işlem yok.</div>
+        <Scissors className="mx-auto h-8 w-8 text-[#A5556E]/30" strokeWidth={1.3} />
+        <div className="mt-2.5 text-[12.5px] text-[#5A4B53]">Bu dönemde tamamlanmış işlem yok.</div>
       </div>
     )
   }
@@ -239,15 +239,15 @@ function ServiceBreakdown({ rows }: { rows: { name: string; count: number }[] })
       {rows.map((r, i) => (
         <div key={r.name}>
           <div className="mb-1 flex items-center justify-between gap-3 text-[11.5px]">
-            <span className="truncate text-[#4a3a44]">{r.name}</span>
-            <span className="shrink-0 font-semibold tabular-nums text-[#77616b]">{r.count}</span>
+            <span className="truncate text-[#3E343A]">{r.name}</span>
+            <span className="shrink-0 font-semibold tabular-nums text-[#5A4B53]">{r.count}</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-[#f6ecf0]">
+          <div className="h-2 overflow-hidden rounded-full bg-[#EFEAEC]">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${(r.count / max) * 100}%` }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: i * 0.05 }}
-              className="h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]"
+              className="h-full rounded-full bg-gradient-to-r from-[#A5556E] to-[#F9A1B9]"
             />
           </div>
         </div>
@@ -367,8 +367,8 @@ export default function PersonelDashboard() {
         subtitle={`${user?.fullName || user?.email || 'Personel'} · ${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'atanmış şube'}`}
         breadcrumbs={['Personel', 'Panelim']}
         actions={(
-          <div className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 text-[11px] font-medium text-[#7c6170]">
-            <MapPin className="h-3.5 w-3.5 text-[#c85776]" /> {selectedBranch?.name || 'Atanmış şube'}
+          <div className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 text-[11px] font-medium text-[#5A4B53]">
+            <MapPin className="h-3.5 w-3.5 text-[#A5556E]" /> {selectedBranch?.name || 'Atanmış şube'}
           </div>
         )}
       />
@@ -383,53 +383,53 @@ export default function PersonelDashboard() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className={`${panelCardShell} px-6 py-6 sm:px-8 sm:py-7`}
         >
-          <GoldHairline />
-          <span aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#ffdce8]/55 blur-3xl" />
-          <span aria-hidden className="pointer-events-none absolute -left-16 bottom-0 h-52 w-52 rounded-full bg-[#f0aac2]/18 blur-3xl" />
+          <BrandHairline />
+          <span aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#F9A1B9]/55 blur-3xl" />
+          <span aria-hidden className="pointer-events-none absolute -left-16 bottom-0 h-52 w-52 rounded-full bg-[#F9A1B9]/18 blur-3xl" />
           <div className="relative grid gap-6 lg:grid-cols-[1.25fr_.75fr] lg:items-center">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-[#f3d9e1] bg-[#fff2f6] px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-[#c85776]">
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#E3C6D1] bg-[#F6DFE6] px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-[#A5556E]">
                   <Sparkles className="h-3.5 w-3.5" /> {greeting(now?.getHours() ?? 9)}
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-white px-3 py-1 text-[10.5px] text-[#8a7480]">
-                  <Sunrise className="h-3.5 w-3.5 text-[#c79a45]" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4DEE0] bg-white px-3 py-1 text-[10.5px] text-[#74616A]">
+                  <Sunrise className="h-3.5 w-3.5 text-[#1E4E8C]" />
                   {now ? `${now.getDate()} ${MONTHS_TR[now.getMonth()]} ${now.getFullYear()}` : '—'}
-                  {now && <span className="font-semibold text-[#c85776]">{pad2(now.getHours())}:{pad2(now.getMinutes())}</span>}
+                  {now && <span className="font-semibold text-[#A5556E]">{pad2(now.getHours())}:{pad2(now.getMinutes())}</span>}
                 </span>
               </div>
-              <h1 className="mt-3 font-display text-3xl leading-tight tracking-tight text-[#241923] sm:text-4xl">
-                {(user?.fullName || 'Hoş geldin').split(' ')[0]}, bugün <span className="text-[#c85776]">{todayAppointments.length}</span> randevun var.
+              <h1 className="mt-3 font-display text-3xl leading-tight tracking-tight text-[#2A2027] sm:text-4xl">
+                {(user?.fullName || 'Hoş geldin').split(' ')[0]}, bugün <span className="text-[#A5556E]">{todayAppointments.length}</span> randevun var.
               </h1>
-              <p className="mt-2.5 max-w-xl text-[13px] leading-relaxed text-[#77616b]">
+              <p className="mt-2.5 max-w-xl text-[13px] leading-relaxed text-[#5A4B53]">
                 Bu panel yalnızca sana atanmış işleri gösterir. Sıradaki randevuna, dönem performansına ve
                 kişisel puanına buradan göz at.
               </p>
               <div className="mt-5 flex flex-wrap items-center gap-2.5">
-                <Link href="/ekip/randevular" className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-[#c85776] px-4 text-[12px] font-semibold text-white transition-opacity hover:opacity-90">
+                <Link href="/ekip/randevular" className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-[#A5556E] px-4 text-[12px] font-semibold text-white transition-opacity hover:opacity-90">
                   Randevularıma git <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
-                <div className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3.5 text-[12px] text-[#77616b]">
-                  <MapPin className="h-3.5 w-3.5 text-[#c85776]" /> {selectedBranch?.name || 'Atanmış şube'}
+                <div className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 text-[12px] text-[#5A4B53]">
+                  <MapPin className="h-3.5 w-3.5 text-[#A5556E]" /> {selectedBranch?.name || 'Atanmış şube'}
                 </div>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[18px] border border-[#efe1e7] bg-[#fffafc] p-4">
-                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70"><CalendarClock className="h-3.5 w-3.5" /> Sıradaki</div>
-                <div className="mt-2 font-display text-3xl tabular-nums text-[#241923]">{nextAppointment?.time || '—'}</div>
-                <div className="mt-1 truncate text-[11.5px] text-[#77616b]">{nextAppointment?.musteri || 'Planlanmış randevu yok'}</div>
+              <div className="rounded-[18px] border border-[#E4DEE0] bg-[#F7F6F6] p-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/70"><CalendarClock className="h-3.5 w-3.5" /> Sıradaki</div>
+                <div className="mt-2 font-display text-3xl tabular-nums text-[#2A2027]">{nextAppointment?.time || '—'}</div>
+                <div className="mt-1 truncate text-[11.5px] text-[#5A4B53]">{nextAppointment?.musteri || 'Planlanmış randevu yok'}</div>
               </div>
-              <div className="rounded-[18px] border border-[#efe1e7] bg-[#fffafc] p-4 text-center">
-                <div className="flex items-center justify-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70"><Star className="h-3.5 w-3.5" /> Müşteri puanım</div>
+              <div className="rounded-[18px] border border-[#E4DEE0] bg-[#F7F6F6] p-4 text-center">
+                <div className="flex items-center justify-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/70"><Star className="h-3.5 w-3.5" /> Müşteri puanım</div>
                 <div className="mt-2 flex items-center justify-center gap-1">
                   {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className="h-4 w-4" style={{ fill: i <= Math.round(rating ?? 0) ? '#f4b73e' : 'transparent', color: i <= Math.round(rating ?? 0) ? '#f4b73e' : '#e3cdd6' }} />
+                    <Star key={i} className="h-4 w-4" style={{ fill: i <= Math.round(rating ?? 0) ? '#1E4E8C' : 'transparent', color: i <= Math.round(rating ?? 0) ? '#1E4E8C' : '#E3C6D1' }} />
                   ))}
                 </div>
-                <div className="mt-1.5 font-display text-lg text-[#241923]">{rating != null ? `${rating.toFixed(1)} / 5` : 'Yeni'}</div>
-                <div className="text-[10px] text-[#77616b]">{me?.ratingCount ? `${me.ratingCount} değerlendirme` : 'henüz puan yok'}</div>
+                <div className="mt-1.5 font-display text-lg text-[#2A2027]">{rating != null ? `${rating.toFixed(1)} / 5` : 'Yeni'}</div>
+                <div className="text-[10px] text-[#5A4B53]">{me?.ratingCount ? `${me.ratingCount} değerlendirme` : 'henüz puan yok'}</div>
               </div>
             </div>
           </div>
@@ -496,21 +496,21 @@ export default function PersonelDashboard() {
               eyebrow="Günlük akış"
               title="Bugünkü programım"
               action={(
-                <Link href="/ekip/randevular" className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] font-medium text-[#7c6170] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                <Link href="/ekip/randevular" className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-medium text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                   Tümü <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               )}
             >
-              <motion.div variants={panelListContainer} initial="hidden" animate="visible" className="divide-y divide-[#f3e7ec]">
+              <motion.div variants={panelListContainer} initial="hidden" animate="visible" className="divide-y divide-[#EFEAEC]">
                 {todayAppointments.slice(0, 8).map((item) => {
                   const badge = statusBadge[item.status]
                   return (
-                    <motion.div key={item.id} variants={panelListRow} whileHover={{ x: 3 }} transition={{ type: 'spring', stiffness: 320, damping: 24 }} className="grid items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[#fffafc] md:grid-cols-[64px_auto_1fr_auto]">
-                      <div className="font-display text-lg tabular-nums text-[#241923]">{item.time}</div>
-                      <span className="hidden h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efd5dd] bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[10px] font-semibold text-[#7f4057] md:grid">{initials(item.musteri)}</span>
+                    <motion.div key={item.id} variants={panelListRow} whileHover={{ x: 3 }} transition={{ type: 'spring', stiffness: 320, damping: 24 }} className="grid items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[#F7F6F6] md:grid-cols-[64px_auto_1fr_auto]">
+                      <div className="font-display text-lg tabular-nums text-[#2A2027]">{item.time}</div>
+                      <span className="hidden h-9 w-9 shrink-0 place-items-center rounded-full border border-[#E3C6D1] bg-gradient-to-br from-[#FDE4EB] via-[#F6C9D6] to-[#EDAFC1] text-[10px] font-semibold text-[#7A3450] md:grid">{initials(item.musteri)}</span>
                       <div className="min-w-0">
-                        <div className="truncate text-[13.5px] font-medium text-[#2b1e29]">{item.musteri}</div>
-                        <div className="mt-0.5 truncate text-[11px] text-[#77616b]">{item.islem}</div>
+                        <div className="truncate text-[13.5px] font-medium text-[#2A2027]">{item.musteri}</div>
+                        <div className="mt-0.5 truncate text-[11px] text-[#5A4B53]">{item.islem}</div>
                       </div>
                       <span className={`inline-flex w-fit items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${badge.cls}`}>
                         <badge.icon className="h-3 w-3" /> {badge.label}
@@ -520,8 +520,8 @@ export default function PersonelDashboard() {
                 })}
                 {!todayAppointments.length && !loading && (
                   <div className="px-5 py-12 text-center">
-                    <CalendarClock className="mx-auto h-9 w-9 text-[#c85776]/35" strokeWidth={1.3} />
-                    <div className="mt-3 text-[13px] text-[#77616b]">Bugün sana atanmış randevu yok.</div>
+                    <CalendarClock className="mx-auto h-9 w-9 text-[#A5556E]/35" strokeWidth={1.3} />
+                    <div className="mt-3 text-[13px] text-[#5A4B53]">Bugün sana atanmış randevu yok.</div>
                   </div>
                 )}
               </motion.div>
@@ -531,25 +531,25 @@ export default function PersonelDashboard() {
           {/* SAĞ SÜTUN */}
           <div className="space-y-4">
             <PanelSection eyebrow="Sıradakiler" title="Yaklaşan randevularım">
-              <div className="divide-y divide-[#f3e7ec]">
+              <div className="divide-y divide-[#EFEAEC]">
                 {laterAppointments.map((item) => {
                   const d = new Date(`${item.date}T00:00:00`)
                   return (
-                    <Link key={item.id} href="/ekip/randevular" className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[#fffafc]">
-                      <div className="w-11 shrink-0 rounded-[10px] border border-[#efe1e7] bg-[#fffafc] py-1 text-center">
-                        <div className="text-[13px] font-semibold leading-none text-[#241923]">{d.getDate()}</div>
-                        <div className="mt-0.5 text-[9px] uppercase text-[#a5909c]">{MONTHS_TR[d.getMonth()].slice(0, 3)}</div>
+                    <Link key={item.id} href="/ekip/randevular" className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[#F7F6F6]">
+                      <div className="w-11 shrink-0 rounded-[10px] border border-[#E4DEE0] bg-[#F7F6F6] py-1 text-center">
+                        <div className="text-[13px] font-semibold leading-none text-[#2A2027]">{d.getDate()}</div>
+                        <div className="mt-0.5 text-[9px] uppercase text-[#74616A]">{MONTHS_TR[d.getMonth()].slice(0, 3)}</div>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12.5px] font-medium text-[#2b1e29]">{item.musteri}</div>
-                        <div className="truncate text-[11px] text-[#77616b]">{item.islem}</div>
+                        <div className="truncate text-[12.5px] font-medium text-[#2A2027]">{item.musteri}</div>
+                        <div className="truncate text-[11px] text-[#5A4B53]">{item.islem}</div>
                       </div>
-                      <span className="shrink-0 font-display text-[13px] tabular-nums text-[#c85776]">{item.time}</span>
+                      <span className="shrink-0 font-display text-[13px] tabular-nums text-[#A5556E]">{item.time}</span>
                     </Link>
                   )
                 })}
                 {!laterAppointments.length && !loading && (
-                  <div className="px-5 py-8 text-center text-[12.5px] text-[#77616b]">
+                  <div className="px-5 py-8 text-center text-[12.5px] text-[#5A4B53]">
                     Önümüzdeki 14 günde planlanmış randevun yok.
                   </div>
                 )}
@@ -573,12 +573,12 @@ export default function PersonelDashboard() {
             <PanelSection eyebrow="Profil" title="Yetkilerim">
               <div className="space-y-2 px-5 pb-5">
                 {(readablePermissions.length ? readablePermissions : ['Profil görüntüleme']).map((label) => (
-                  <div key={label} className="flex items-center gap-2 rounded-[12px] border border-[#efe1e7] bg-[#fffafc] px-3 py-2 text-[12px] text-[#5f4654]">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#c85776]" /> {label}
+                  <div key={label} className="flex items-center gap-2 rounded-[12px] border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-2 text-[12px] text-[#4E4048]">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" /> {label}
                   </div>
                 ))}
-                <div className="mt-1 rounded-[12px] border border-[#f3d9e1] bg-[#fff2f6] px-3 py-2.5 text-[11px] leading-relaxed text-[#9d4a66]">
-                  Şuben <span className="font-semibold text-[#b14d6c]">{selectedBranch?.name || 'atanmış şube'}</span> olarak sabit; değişiklik için kurum yöneticisine başvur.
+                <div className="mt-1 rounded-[12px] border border-[#E3C6D1] bg-[#F6DFE6] px-3 py-2.5 text-[11px] leading-relaxed text-[#8C4460]">
+                  Şuben <span className="font-semibold text-[#8C4460]">{selectedBranch?.name || 'atanmış şube'}</span> olarak sabit; değişiklik için kurum yöneticisine başvur.
                 </div>
               </div>
             </PanelSection>

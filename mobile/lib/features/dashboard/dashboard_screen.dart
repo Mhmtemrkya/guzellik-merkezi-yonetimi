@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -554,8 +555,8 @@ class _MetricGrid extends StatelessWidget {
           // Dönemin randevu dağılımı: tamamlanan / bekleyen / diğer.
           segments: [
             (const Color(0xFF39846F), completed.toDouble()),
-            (const Color(0xFFEF6F94), waiting.toDouble()),
-            (const Color(0xFFE3C9D4), other > 0 ? other.toDouble() : 0),
+            (const Color(0xFFA5556E), waiting.toDouble()),
+            (const Color(0xFFDFD9DC), other > 0 ? other.toDouble() : 0),
           ],
         ),
         _Metric(
@@ -564,7 +565,7 @@ class _MetricGrid extends StatelessWidget {
             data.summary['totalIncome'] ?? data.summary['income'],
           ),
           icon: Icons.trending_up_rounded,
-          tone: _MetricTone.mint,
+          tone: _MetricTone.gold,
           sub: 'Kasaya giren',
           // Son 6 ayın tahsilat eğrisi (kartın altında boydan boya).
           series: _monthlyIncomeSeries(data.cashEntries),
@@ -604,15 +605,22 @@ class _MetricGrid extends StatelessWidget {
 
 /// Metrik kartının renk ailesi — banttaki gradyan + rakam/rozet mürekkebi.
 enum _MetricTone {
-  rose(Color(0xFFFFE3EC), Color(0xFFFFD0E0), Color(0xFFA63E5F)),
-  mint(Color(0xFFE6F7EE), Color(0xFFD1F0E0), Color(0xFF2F7D54)),
-  violet(Color(0xFFEFE7FF), Color(0xFFE0D3FF), Color(0xFF6B45C0)),
-  gold(Color(0xFFFFF2DC), Color(0xFFFFE6BD), Color(0xFFA3701F));
+  // Bant AÇIK tonda kalır, doygunluk `chip` (dolu ikon rozeti) ile gelir.
+  // gold = TAHSİLAT/para => yeşil (kullanıcı talimatı).
+  rose(Color(0xFFF9E8ED), Color(0xFFF0D0DB), Color(0xFF7A3450), Color(0xFFA5556E)),
+  mint(Color(0xFFEDF4FB), Color(0xFFD8E7F6), Color(0xFF245C9E), Color(0xFF3A72B0)),
+  violet(Color(0xFFF3E1E9), Color(0xFFE4C7D4), Color(0xFF5F2A41), Color(0xFF723550)),
+  gold(Color(0xFFE9F6F0), Color(0xFFCDEBDD), Color(0xFF15694A), Color(0xFF1E8C60));
 
-  const _MetricTone(this.from, this.to, this.ink);
+  const _MetricTone(this.from, this.to, this.ink, this.chip);
   final Color from;
   final Color to;
+
+  /// Bant üstündeki koyu mürekkep (rozet yazısı, trend çizgisi).
   final Color ink;
+
+  /// İkon rozetinin dolu rengi (ikon beyaz).
+  final Color chip;
 }
 
 /// Pano metrik kartının içeriği. Görsel katman üç türden biri olur:
@@ -670,10 +678,10 @@ class _MetricCard extends StatelessWidget {
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .82),
+                    color: tone.chip,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(metric.icon, color: tone.ink, size: 17),
+                  child: Icon(metric.icon, color: Colors.white, size: 17),
                 ),
                 const Spacer(),
                 if (metric.ringPct != null)
@@ -782,7 +790,7 @@ class _SegmentBar extends StatelessWidget {
       child: SizedBox(
         height: 6,
         child: total <= 0
-            ? const ColoredBox(color: Color(0xFFF6E3EA))
+            ? const ColoredBox(color: Color(0xFFEFEAEC))
             : Row(
                 children: [
                   for (final s in segments)
@@ -969,13 +977,25 @@ class _DashboardHero extends StatefulWidget {
 }
 
 class _DashboardHeroState extends State<_DashboardHero>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late DateTime _now = DateTime.now();
   Timer? _clock;
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
   )..repeat(reverse: true);
+
+  /// Aurora lekelerinin süzülmesi (koyu zeminde bandı canlı tutar).
+  late final AnimationController _drift = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat();
+
+  /// Camın üstünden periyodik geçen ışık süpürmesi.
+  late final AnimationController _sweep = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 7),
+  )..repeat();
 
   @override
   void initState() {
@@ -989,6 +1009,8 @@ class _DashboardHeroState extends State<_DashboardHero>
   void dispose() {
     _clock?.cancel();
     _pulse.dispose();
+    _drift.dispose();
+    _sweep.dispose();
     super.dispose();
   }
 
@@ -1019,49 +1041,93 @@ class _DashboardHeroState extends State<_DashboardHero>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFF3DDE5)),
+        border: Border.all(color: const Color(0xFF4A2032)),
+        // KOYU taban (kullanıcı talebi): bordo ailesinin en derin tonları.
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFAFC), Color(0xFFFFF2F7), Color(0xFFFFE9F2)],
+          colors: [Color(0xFF2A1119), Color(0xFF3D1B2B), Color(0xFF2C1420)],
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF784758).withValues(alpha: .10),
-            blurRadius: 30,
-            offset: const Offset(0, 16),
+            color: const Color(0xFF2A1119).withValues(alpha: .40),
+            blurRadius: 34,
+            offset: const Offset(0, 18),
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // Aurora lekeleri — köşelerden süzülen yumuşak ışık.
-          Positioned(
-            left: -46,
-            top: -54,
-            child: _Blob(
-              color: const Color(0xFFFFC9DD).withValues(alpha: .55),
-              size: 176,
+          // Aurora lekeleri — koyu zeminde süzülerek dolaşır (animasyon).
+          AnimatedBuilder(
+            animation: _drift,
+            builder: (context, _) {
+              final t = _drift.value * 2 * math.pi;
+              return Stack(
+                children: [
+                  Positioned(
+                    left: -46 + math.sin(t) * 22,
+                    top: -54 + math.cos(t) * 16,
+                    child: _Blob(
+                      color: const Color(0xFFF9A1B9).withValues(alpha: .34),
+                      size: 176,
+                    ),
+                  ),
+                  Positioned(
+                    right: -40 + math.cos(t) * 26,
+                    top: -30 + math.sin(t) * 20,
+                    child: _Blob(
+                      color: const Color(0xFFA5556E).withValues(alpha: .62),
+                      size: 148,
+                    ),
+                  ),
+                  Positioned(
+                    left: 90 + math.sin(t + 1.6) * 24,
+                    bottom: -70 + math.cos(t + 1.6) * 14,
+                    child: _Blob(
+                      color: const Color(0xFF1E4E8C).withValues(alpha: .42),
+                      size: 162,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          // Periyodik ışık süpürmesi. Parıltı şeridi `child` olarak BİR KEZ kurulur;
+          // her karede yalnız Transform güncellenir (MediaQuery de builder dışında).
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Builder(
+                builder: (context) {
+                  final w = MediaQuery.sizeOf(context).width;
+                  return AnimatedBuilder(
+                    animation: _sweep,
+                    child: Transform.rotate(
+                      angle: -0.18,
+                      child: Container(
+                        width: 90,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withValues(alpha: 0),
+                              Colors.white.withValues(alpha: .10),
+                              Colors.white.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    builder: (context, child) => Transform.translate(
+                      offset: Offset((_sweep.value * 2.4 - 0.7) * w, 0),
+                      child: child,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
-          Positioned(
-            right: -40,
-            top: -30,
-            child: _Blob(
-              color: const Color(0xFFE3D4FF).withValues(alpha: .45),
-              size: 148,
-            ),
-          ),
-          Positioned(
-            left: 90,
-            bottom: -70,
-            child: _Blob(
-              color: const Color(0xFFFFE6C2).withValues(alpha: .45),
-              size: 162,
-            ),
-          ),
-          // Altın hairline
+          // Marka hairline'i
           Positioned(
             top: 0,
             left: 0,
@@ -1071,11 +1137,11 @@ class _DashboardHeroState extends State<_DashboardHero>
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color(0x00FFD3DF),
-                    Color(0xFFFFD3DF),
-                    Color(0xFFD9A441),
-                    Color(0xFFFFD3DF),
-                    Color(0x00FFD3DF),
+                    Color(0x00F9A1B9),
+                    Color(0xFFF9A1B9),
+                    Color(0xFFA5556E),
+                    Color(0xFFF9A1B9),
+                    Color(0x00F9A1B9),
                   ],
                   stops: [0, .18, .5, .82, 1],
                 ),
@@ -1095,9 +1161,11 @@ class _DashboardHeroState extends State<_DashboardHero>
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .8),
+                        color: Colors.white.withValues(alpha: .12),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: const Color(0xFFF0D9E2)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .25),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1122,7 +1190,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFFA3576F),
+                              color: Color(0xFFFBC9D7),
                             ),
                           ),
                         ],
@@ -1135,10 +1203,10 @@ class _DashboardHeroState extends State<_DashboardHero>
                 const SizedBox(height: 10),
                 Text(
                   DateFormat('d MMMM yyyy · EEEE', 'tr_TR').format(_now),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.muted,
+                    color: Colors.white.withValues(alpha: .80),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1150,14 +1218,14 @@ class _DashboardHeroState extends State<_DashboardHero>
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF2B1E29),
+                        color: Colors.white,
                         height: 1.15,
                       ),
                     ),
                     Flexible(
                       child: ShaderMask(
                         shaderCallback: (rect) => const LinearGradient(
-                          colors: [Color(0xFFC85776), Color(0xFF8E3F5B)],
+                          colors: [Color(0xFFF9A1B9), Color(0xFFFFFFFF)],
                         ).createShader(rect),
                         child: Text(
                           firstName,
@@ -1181,7 +1249,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                       const Icon(
                         Icons.auto_awesome_rounded,
                         size: 13,
-                        color: Color(0xFFD9A441),
+                        color: Color(0xFFF9A1B9),
                       ),
                       const SizedBox(width: 5),
                       Expanded(
@@ -1189,9 +1257,9 @@ class _DashboardHeroState extends State<_DashboardHero>
                           widget.institutionName!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: AppColors.muted,
+                            color: Colors.white.withValues(alpha: .85),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1224,7 +1292,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                       value: _compactMoney(widget.revenue),
                       sub: 'Kasaya giren',
                       icon: Icons.account_balance_wallet_rounded,
-                      tone: _MetricTone.mint,
+                      tone: _MetricTone.gold,
                       route: '/cash',
                     ),
                     _HeroTile(
@@ -1234,7 +1302,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                           ? 'İncelemeni bekliyor'
                           : 'Her şey onaylı',
                       icon: Icons.notifications_active_rounded,
-                      tone: _MetricTone.gold,
+                      tone: _MetricTone.mint,
                       route: '/approvals',
                     ),
                     _HeroTile(
@@ -1272,7 +1340,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Divider(height: 1, color: Color(0xFFF3DDE5)),
+                Divider(height: 1, color: Colors.white.withValues(alpha: .15)),
                 const SizedBox(height: 10),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1280,7 +1348,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                     const Icon(
                       Icons.trending_up_rounded,
                       size: 14,
-                      color: Color(0xFFC85776),
+                      color: Color(0xFFF9A1B9),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -1289,9 +1357,9 @@ class _DashboardHeroState extends State<_DashboardHero>
                             ? '${widget.periodLabel}: $total randevunun $completed tanesi tamamlandı'
                                 '${waiting > 0 ? ', $waiting tanesi sırada' : ''}.'
                             : '${widget.periodLabel}: planlanmış randevu yok — takvimden yeni randevu ekleyebilirsin.',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
-                          color: AppColors.muted,
+                          color: Colors.white.withValues(alpha: .85),
                           height: 1.35,
                         ),
                       ),
@@ -1314,13 +1382,17 @@ class _Blob extends StatelessWidget {
   final double size;
 
   @override
+  // RepaintBoundary: leke hero'da her karede sürükleniyor; katman önbelleğe
+  // alınmazsa 34 sigma'lık blur her karede yeniden hesaplanır.
   Widget build(BuildContext context) => IgnorePointer(
-    child: ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    child: RepaintBoundary(
+      child: ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
       ),
     ),
   );
@@ -1346,7 +1418,7 @@ class _HeroTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: .82),
+      color: Colors.white.withValues(alpha: .08),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -1355,7 +1427,7 @@ class _HeroTile extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: .75)),
+            border: Border.all(color: Colors.white.withValues(alpha: .16)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1365,14 +1437,10 @@ class _HeroTile extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [tone.from, tone.to],
-                  ),
+                  color: tone.chip,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 16, color: tone.ink),
+                child: Icon(icon, size: 16, color: Colors.white),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1382,11 +1450,11 @@ class _HeroTile extends StatelessWidget {
                     label.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: .4,
-                      color: AppColors.muted,
+                      color: Colors.white.withValues(alpha: .80),
                     ),
                   ),
                   Text(
@@ -1397,15 +1465,16 @@ class _HeroTile extends StatelessWidget {
                       fontSize: 19,
                       fontWeight: FontWeight.w900,
                       height: 1.15,
+                      color: Colors.white,
                     ),
                   ),
                   Text(
                     sub,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
-                      color: AppColors.muted,
+                      color: Colors.white.withValues(alpha: .80),
                     ),
                   ),
                 ],
@@ -1432,7 +1501,7 @@ class _HeroShortcut extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: .85),
+      color: Colors.white.withValues(alpha: .12),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -1441,19 +1510,19 @@ class _HeroShortcut extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFF0D9E2)),
+            border: Border.all(color: Colors.white.withValues(alpha: .25)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: const Color(0xFFA3576F)),
+              Icon(icon, size: 14, color: Colors.white),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: const TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFFA3576F),
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -3272,7 +3341,7 @@ class _CustomerReviewsCard extends StatelessWidget {
                   _AvgChip(
                     icon: Icons.person_rounded,
                     label: 'Personel ${staffAvg.toStringAsFixed(1)}',
-                    color: const Color(0xFF96702A),
+                    color: const Color(0xFF17406F),
                   ),
               ],
             ),
@@ -3304,7 +3373,7 @@ class _CustomerReviewsCard extends StatelessWidget {
                         _stars(numberOf(r, const ['salonStars']).toInt(), AppColors.primaryDark),
                         const SizedBox(width: 6),
                       ],
-                      _stars(numberOf(r, const ['staffStars']).toInt(), const Color(0xFFD8AD55)),
+                      _stars(numberOf(r, const ['staffStars']).toInt(), const Color(0xFF1E4E8C)),
                     ],
                   ),
                   if ('${r['comment'] ?? ''}'.trim().isNotEmpty)
@@ -3592,7 +3661,7 @@ class _RevenueTrendCard extends StatelessWidget {
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              colors: [Color(0xFFF7B7CD), Color(0xFFEF6F94)],
+                              colors: [Color(0xFF34B37E), Color(0xFF15694A)],
                             ),
                             borderRadius:
                                 BorderRadius.vertical(top: Radius.circular(6)),
@@ -3710,18 +3779,18 @@ class _InstallmentChartCard extends StatelessWidget {
                               children: [
                                 Container(
                                   height: barH - colH,
-                                  color: const Color(0xFFF3A6C0),
+                                  color: const Color(0xFFF9A1B9),
                                 ),
                                 // PEŞİN TAHSİLAT AYRI BANT (web paritesi): peşinat taksit satırı
                                 // üretmediği için grafikte hiç görünmüyordu. Tek renge katmak da
                                 // yetmez — "bu ay taksitler ödendi" diye okunurdu.
                                 Container(
                                   height: colH - depH,
-                                  color: const Color(0xFFD8B46D),
+                                  color: const Color(0xFF34B37E),
                                 ),
                                 Container(
                                   height: depH,
-                                  color: const Color(0xFF4E9E73),
+                                  color: const Color(0xFF15694A),
                                 ),
                               ],
                             ),
@@ -3745,11 +3814,11 @@ class _InstallmentChartCard extends StatelessWidget {
           const SizedBox(height: 12),
           const Row(
             children: [
-              _LegendDot(color: Color(0xFF4E9E73), label: 'Peşin'),
+              _LegendDot(color: Color(0xFF15694A), label: 'Peşin'),
               SizedBox(width: 14),
-              _LegendDot(color: Color(0xFFD8B46D), label: 'Taksit'),
+              _LegendDot(color: Color(0xFF34B37E), label: 'Taksit'),
               SizedBox(width: 14),
-              _LegendDot(color: Color(0xFFF3A6C0), label: 'Alınacak'),
+              _LegendDot(color: Color(0xFFF9A1B9), label: 'Alınacak'),
             ],
           ),
         ],

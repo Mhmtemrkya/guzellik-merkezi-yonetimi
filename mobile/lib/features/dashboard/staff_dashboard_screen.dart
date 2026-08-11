@@ -80,13 +80,13 @@ class _QuickAction {
 
 const _quickActions = <_QuickAction>[
   _QuickAction('Randevularım', '/appointments', Icons.event_rounded,
-      Color(0xFFC85776), 'Appointments'),
+      Color(0xFFA5556E), 'Appointments'),
   _QuickAction('Müşterilerim', '/customers', Icons.people_alt_rounded,
-      Color(0xFFBD6476), 'Customers'),
+      Color(0xFFE4577F), 'Customers'),
   _QuickAction('Seanslarım', '/sessions', Icons.layers_rounded,
-      Color(0xFFB08742), 'Services'),
+      Color(0xFF723550), 'Services'),
   _QuickAction('Günlük Kasa', '/cash', Icons.payments_rounded,
-      Color(0xFF39846F), 'CashRegister'),
+      Color(0xFF1E8C60), 'CashRegister'),
 ];
 
 String _greeting() {
@@ -500,14 +500,14 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             Expanded(
               child: _metric('Randevum', '${appts.length}',
                   '${_periodPhrase[_period]} atanmış', Icons.event_rounded,
-                  const Color(0xFFC85776),
+                  const Color(0xFFA5556E),
                   onTap: () => context.go('/appointments')),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: _metric('Tamamladığım', '$completed',
                   '${_periodPhrase[_period]} biten', Icons.check_circle_rounded,
-                  const Color(0xFF39846F)),
+                  const Color(0xFF1E8C60)),
             ),
           ],
         ),
@@ -517,13 +517,13 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             Expanded(
               child: _metric('Hizmet saatim', '$workedHours sa',
                   completed > 0 ? '$completed tamamlanan seans' : 'henüz veri yok',
-                  Icons.timelapse_rounded, const Color(0xFFB88938)),
+                  Icons.timelapse_rounded, const Color(0xFF3A72B0)),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: _metric('Müşterim', '$uniqueCustomers',
                   waiting > 0 ? '$waiting bekleyen işlem' : '${_periodPhrase[_period]} hizmet verilen',
-                  Icons.people_alt_rounded, const Color(0xFF8B5AA5),
+                  Icons.people_alt_rounded, const Color(0xFF723550),
                   onTap: () => context.go('/customers')),
             ),
           ],
@@ -701,13 +701,13 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF2F6),
+                  color: const Color(0xFFF6DFE6),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFF3D9E1)),
+                  border: Border.all(color: const Color(0xFFE3C6D1)),
                 ),
                 child: const Text(
                   'Şuben kurum yöneticisi tarafından atanmıştır; değişiklik için yöneticine başvur.',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFF9D4A66)),
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF7A3450)),
                 ),
               ),
             ],
@@ -766,7 +766,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFAFC),
+          color: const Color(0xFFF7F6F6),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),

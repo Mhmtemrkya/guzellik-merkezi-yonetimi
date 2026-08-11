@@ -41,6 +41,47 @@
     --arm-copper:    #c7768f;
     --arm-deep:      #8e3f5b;
 
+    /* ------------------------------------------------------------------
+       Dashboard paleti (Ağu 2026) — panel kartlarının kimlik renkleri.
+       Kural: zemin NÖTR (paper) kalır, renk doygun aksandan gelir; pastel
+       yüzeyler üst üste binince "soluk" görünüyordu. Kart yüzü beyaz,
+       kuyu/inset yüzeyler paper, vurgu plum/pink/blue.
+       ------------------------------------------------------------------ */
+    --bd-paper:   #F7F6F6;  /* nötr zemin: grafik kuyusu, lejant şeridi   */
+    --bd-mauve:   #8E7882;  /* ikincil metin, çizgi, nötr ton             */
+    --bd-pink:    #F9A1B9;  /* açık aksan                                 */
+    --bd-plum:    #A5556E;  /* ANA marka rengi (hero + birincil eylem)    */
+    --bd-blue:    #1E4E8C;  /* güçlü kontrast aksanı                      */
+    --bd-green:   #1E8C60;  /* TAHSİLAT/para — kullanıcı talimatı         */
+
+    /* Kart bantları bu renklerin TA KENDİSİDİR (açık tint değil); tint'ler
+       üst üste binince soluk görünüyordu. Açık olanlarda (#F9A1B9, #F7F6F6)
+       yazı koyu (#5A1730 / #3E343A), diğerlerinde beyazdır. */
+    --bd-green-700:#15694A;
+    --bd-green-400:#34B37E;
+    --bd-green-100:#DFF3EA;
+    --bd-hero-bg:  #2A1119;  /* hero bandının koyu tabanı (animasyonlu)   */
+
+    /* türevler — kod içinde de birebir bu hex'ler kullanılır */
+    --bd-plum-50:  #FBF0F3;
+    --bd-plum-100: #F6DFE6;
+    --bd-plum-200: #EBC3CF;
+    --bd-plum-400: #BE7690;
+    --bd-plum-600: #8C4460;
+    --bd-plum-700: #723550;
+    --bd-pink-100: #FDE4EB;
+    --bd-pink-200: #FBC9D7;
+    --bd-pink-500: #E4577F;
+    --bd-pink-600: #C93E67;
+    --bd-blue-100: #DCE7F5;
+    --bd-blue-200: #B8CCE8;
+    --bd-blue-600: #183F72;
+    --bd-mauve-200:#DFD9DC;
+    --bd-mauve-600:#74616A;  /* küçük ikincil metin (beyaz üstünde 5.7:1) */
+    --bd-mauve-700:#5A4B53;
+    --bd-ink:      #2A2027;  /* başlık/rakam                              */
+    --bd-border:   #EAD8DF;  /* kart kenarı (görünür, silik değil)        */
+
     /* type */
     --font-display:  'Manrope', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
     --font-sans:     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;

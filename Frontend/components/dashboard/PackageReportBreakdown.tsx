@@ -41,23 +41,23 @@ export default function PackageReportBreakdown({
   const hasData = categories.length > 0 || customers.length > 0
 
   return (
-    <div className={`rounded-[22px] border border-[#eadde3] bg-white/95 p-4 transition-opacity sm:p-5 ${loading ? 'opacity-60' : 'opacity-100'}`}>
+    <div className={`rounded-[22px] border border-[#EAD8DF] bg-white p-4 transition-opacity sm:p-5 ${loading ? 'opacity-60' : 'opacity-100'}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-[#f0d9e2] bg-[#fff1f6] text-[#c05277]">
+          <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
             <Layers className="h-4 w-4" strokeWidth={1.7} />
           </span>
           <div>
-            <div className="font-display text-[14px] font-semibold text-[#2f2230]">Satış Detayı</div>
-            <div className="text-[11px] text-[#705a66]">
+            <div className="font-display text-[14px] font-semibold text-[#2A2027]">Satış Detayı</div>
+            <div className="text-[11px] text-[#5A4B53]">
               Kategori · hizmet · müşteri kırılımı
-              {view === 'category' && periodLabel ? <span className="text-[#a3576f]"> · {periodLabel}</span> : ''}
+              {view === 'category' && periodLabel ? <span className="font-semibold text-[#8C4460]"> · {periodLabel}</span> : ''}
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
         {view === 'category' && periodTabs}
-        <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+        <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
           {(
             [
               ['category', 'Kategori Kırılımı'],
@@ -69,7 +69,7 @@ export default function PackageReportBreakdown({
               type="button"
               onClick={() => setView(key)}
               className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                view === key ? 'bg-[#c05277] text-white shadow-[0_10px_22px_-16px_rgba(192,82,119,0.9)]' : 'text-[#705a66] hover:text-[#a34a62]'
+                view === key ? 'bg-[#A5556E] text-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.8)]' : 'text-[#5A4B53] hover:text-[#8C4460]'
               }`}
             >
               {label}
@@ -80,7 +80,7 @@ export default function PackageReportBreakdown({
       </div>
 
       {!hasData ? (
-        <div className="mt-4 rounded-[16px] border border-dashed border-[#efe1e7] bg-[#fffafc] px-4 py-8 text-center text-[12px] text-[#705a66]">
+        <div className="mt-4 rounded-[16px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#5A4B53]">
           Seçili dönemde paket satışı bulunmuyor.
         </div>
       ) : (
@@ -115,35 +115,35 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
         const isOpen = open === cat.category
         const share = totalAmount > 0 ? Math.round((cat.amount / totalAmount) * 100) : 0
         return (
-          <div key={cat.category} className="overflow-hidden rounded-[16px] border border-[#efe1e7] bg-[#fffafc]">
+          <div key={cat.category} className="overflow-hidden rounded-[16px] border border-[#E4DEE0] bg-[#F7F6F6]">
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : cat.category)}
-              className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#fff2f6]"
+              className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#F6DFE6]"
             >
-              <ChevronDown className={`h-4 w-4 shrink-0 text-[#c05277] transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} strokeWidth={2} />
+              <ChevronDown className={`h-4 w-4 shrink-0 text-[#A5556E] transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} strokeWidth={2} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-[#2f2230]">{cat.category}</span>
-                <span className="mt-1 block text-[11px] text-[#705a66]">
+                <span className="block truncate text-[13px] font-semibold text-[#2A2027]">{cat.category}</span>
+                <span className="mt-1 block text-[11px] text-[#5A4B53]">
                   {cat.services.length} hizmet · {cat.soldCount} satış · {cat.customerCount} müşteri · {cat.sessionsUsed}/{cat.sessionsTotal} seans
                 </span>
                 {cat.sellers.length > 0 && (
-                  <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#a34a62]">
+                  <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#8C4460]">
                     <UserCheck className="h-3 w-3" strokeWidth={2} />
                     {cat.sellers[0].staffName}
                     {cat.sellers.length > 1 ? ` +${cat.sellers.length - 1} personel` : ''}
                   </span>
                 )}
-                <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-[#f6e3ea]">
+                <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-[#EFEAEC]">
                   <span
-                    className="block h-full rounded-full bg-[linear-gradient(90deg,#e78ba8,#c05277)]"
+                    className="block h-full rounded-full bg-[linear-gradient(90deg,#D69CAF,#A5556E)]"
                     style={{ width: `${Math.max(4, Math.round((cat.amount / maxAmount) * 100))}%` }}
                   />
                 </span>
               </span>
               <span className="shrink-0 text-right">
-                <span className="block font-display text-[14px] font-bold text-[#2f2230]">{formatTL(Math.round(cat.amount))}</span>
-                <span className="mt-0.5 block text-[10px] font-semibold text-[#a34a62]">%{share} pay</span>
+                <span className="block font-display text-[14px] font-bold text-[#2A2027]">{formatTL(Math.round(cat.amount))}</span>
+                <span className="mt-0.5 block text-[10px] font-semibold text-[#8C4460]">%{share} pay</span>
               </span>
             </button>
 
@@ -156,13 +156,13 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="border-t border-[#f2e6eb] bg-white px-3.5 pb-3 pt-3">
+                  <div className="border-t border-[#EFEAEC] bg-white px-3.5 pb-3 pt-3">
                     <SellerStrip sellers={cat.sellers} />
 
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full min-w-[680px] border-collapse text-left">
                         <thead>
-                          <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7480]">
+                          <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">
                             <th className="py-2 pr-3">Hizmet</th>
                             <th className="py-2 pr-3">Satan personel</th>
                             <th className="py-2 pr-3 text-right">Satış</th>
@@ -172,34 +172,34 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                             <th className="py-2 text-right">Tutar</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#f6ecf0]">
+                        <tbody className="divide-y divide-[#EFEAEC]">
                           {cat.services.map((svc) => (
-                            <tr key={`${cat.category}-${svc.serviceDefinitionId}-${svc.serviceName}`} className="text-[12px] text-[#4a3a44]">
+                            <tr key={`${cat.category}-${svc.serviceDefinitionId}-${svc.serviceName}`} className="text-[12px] text-[#3E343A]">
                               <td className="py-2 pr-3">
-                                <span className="block max-w-[220px] truncate font-medium text-[#2f2230]">{svc.serviceName}</span>
+                                <span className="block max-w-[220px] truncate font-medium text-[#2A2027]">{svc.serviceName}</span>
                               </td>
                               <td className="py-2 pr-3">
                                 <span className="flex flex-wrap gap-1">
                                   {svc.sellers.length === 0 ? (
-                                    <span className="text-[11px] text-[#705a66]">—</span>
+                                    <span className="text-[11px] text-[#5A4B53]">—</span>
                                   ) : (
                                     svc.sellers.slice(0, 3).map((s, i) => (
                                       <span
                                         // Yönetici satışlarında staffMemberId null gelir (personel kaydı yok) — sıra ekle.
                                         key={`${svc.serviceDefinitionId}-${s.staffMemberId ?? 'none'}-${i}`}
                                         title={`${s.staffName} · ${s.soldCount} satış · ${formatTL(Math.round(s.amount))}`}
-                                        className="inline-flex items-center gap-1 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2 py-0.5 text-[10px] font-semibold text-[#a34a62]"
+                                        className="inline-flex items-center gap-1 rounded-full border border-[#E3C6D1] bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-semibold text-[#8C4460]"
                                       >
-                                        <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-[#c05277] text-[8px] font-bold text-white">
+                                        <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-[#A5556E] text-[8px] font-bold text-white">
                                           {initials(s.staffName)}
                                         </span>
                                         {s.staffName}
-                                        <span className="text-[#705a66]">×{s.soldCount}</span>
+                                        <span className="text-[#5A4B53]">×{s.soldCount}</span>
                                       </span>
                                     ))
                                   )}
                                   {svc.sellers.length > 3 && (
-                                    <span className="text-[10px] font-semibold text-[#705a66]">+{svc.sellers.length - 3}</span>
+                                    <span className="text-[10px] font-semibold text-[#5A4B53]">+{svc.sellers.length - 3}</span>
                                   )}
                                 </span>
                               </td>
@@ -208,8 +208,8 @@ function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }
                               <td className="py-2 pr-3 text-right">
                                 {svc.sessionsUsed}/{svc.sessionsTotal}
                               </td>
-                              <td className="py-2 pr-3 text-right font-semibold text-[#2c7d63]">{svc.sessionsRemaining}</td>
-                              <td className="py-2 text-right font-semibold text-[#2f2230]">{formatTL(Math.round(svc.amount))}</td>
+                              <td className="py-2 pr-3 text-right font-semibold text-[#15694A]">{svc.sessionsRemaining}</td>
+                              <td className="py-2 text-right font-semibold text-[#2A2027]">{formatTL(Math.round(svc.amount))}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -236,8 +236,8 @@ function SellerStrip({ sellers }: { sellers: PackageSeller[] }) {
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#8a7480]">
-        <UserCheck className="h-3.5 w-3.5 text-[#c05277]" strokeWidth={1.9} /> Kim sattı
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">
+        <UserCheck className="h-3.5 w-3.5 text-[#A5556E]" strokeWidth={1.9} /> Kim sattı
       </div>
       <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
         {sellers.map((s, i) => {
@@ -245,26 +245,26 @@ function SellerStrip({ sellers }: { sellers: PackageSeller[] }) {
           return (
             <div
               key={s.staffMemberId ?? `none-${i}`}
-              className="min-w-[168px] shrink-0 rounded-[14px] border border-[#f2e6eb] bg-[#fffafc] px-3 py-2.5"
+              className="min-w-[168px] shrink-0 rounded-[14px] border border-[#E4DEE0] bg-white px-3 py-2.5"
             >
               <div className="flex items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(140deg,#e78ba8,#c05277)] text-[10px] font-bold text-white">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(140deg,#C57B92,#8C4460)] text-[10px] font-bold text-white">
                   {initials(s.staffName)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-semibold text-[#2f2230]">{s.staffName}</span>
-                  <span className="block text-[10px] text-[#705a66]">
+                  <span className="block truncate text-[12px] font-semibold text-[#2A2027]">{s.staffName}</span>
+                  <span className="block text-[10px] text-[#5A4B53]">
                     {s.soldCount} satış · {s.customerCount} müşteri
                   </span>
                 </span>
               </div>
               <div className="mt-2 flex items-baseline justify-between gap-2">
-                <span className="font-display text-[13px] font-bold text-[#2f2230]">{formatTL(Math.round(s.amount))}</span>
-                <span className="text-[10px] font-semibold text-[#a34a62]">%{share}</span>
+                <span className="font-display text-[13px] font-bold text-[#2A2027]">{formatTL(Math.round(s.amount))}</span>
+                <span className="text-[10px] font-semibold text-[#8C4460]">%{share}</span>
               </div>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#f6e3ea]">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#EFEAEC]">
                 <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,#e78ba8,#c05277)]"
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#D69CAF,#A5556E)]"
                   style={{ width: `${Math.max(4, share)}%` }}
                 />
               </div>
@@ -304,8 +304,8 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 rounded-[12px] border border-[#efe1e7] bg-[#fffafc] px-3 py-2">
-        <Search className="h-3.5 w-3.5 text-[#c05277]" strokeWidth={1.9} />
+      <div className="flex items-center gap-2 rounded-[12px] border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-2">
+        <Search className="h-3.5 w-3.5 text-[#A5556E]" strokeWidth={1.9} />
         <input
           value={q}
           onChange={(e) => {
@@ -313,9 +313,9 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
             setLimit(PAGE_SIZE)
           }}
           placeholder="Müşteri ya da paket adı ara"
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-[#352432] outline-none placeholder:text-[#b09ca5]"
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-[#2A2027] outline-none placeholder:text-[#8E7882]"
         />
-        <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">{filtered.length} müşteri</span>
+        <span className="shrink-0 text-[10px] font-semibold text-[#5A4B53]">{filtered.length} müşteri</span>
       </div>
 
       <div className="space-y-2">
@@ -324,21 +324,21 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
           const paidPct = c.totalAmount > 0 ? Math.min(100, Math.round((c.paidAmount / c.totalAmount) * 100)) : 0
           const sessionPct = c.sessionsTotal > 0 ? Math.min(100, Math.round((c.sessionsUsed / c.sessionsTotal) * 100)) : 0
           return (
-            <div key={c.customerId} className="overflow-hidden rounded-[16px] border border-[#efe1e7] bg-[#fffafc]">
+            <div key={c.customerId} className="overflow-hidden rounded-[16px] border border-[#E4DEE0] bg-[#F7F6F6]">
               <button
                 type="button"
                 onClick={() => setOpen(isOpen ? null : c.customerId)}
-                className="flex w-full flex-wrap items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#fff2f6]"
+                className="flex w-full flex-wrap items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#F6DFE6]"
               >
-                <ChevronDown className={`h-4 w-4 shrink-0 text-[#c05277] transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} strokeWidth={2} />
+                <ChevronDown className={`h-4 w-4 shrink-0 text-[#A5556E] transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} strokeWidth={2} />
                 <span className="min-w-[150px] flex-1">
-                  <span className="block truncate text-[13px] font-semibold text-[#2f2230]">{c.customerName}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-[#705a66]">
+                  <span className="block truncate text-[13px] font-semibold text-[#2A2027]">{c.customerName}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-[#5A4B53]">
                     {c.accountCount} satış · {c.packageNames[0] || 'Paket'}
                     {c.packageNames.length > 1 ? ` +${c.packageNames.length - 1}` : ''}
                   </span>
                   {c.sellers.length > 0 && (
-                    <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#a34a62]">
+                    <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#8C4460]">
                       <UserCheck className="h-3 w-3 shrink-0" strokeWidth={2} />
                       <span className="truncate">
                         Satan: {c.sellers[0].staffName}
@@ -362,21 +362,21 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="space-y-3 border-t border-[#f2e6eb] bg-white px-3.5 py-3">
+                    <div className="space-y-3 border-t border-[#EFEAEC] bg-white px-3.5 py-3">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <ProgressRow
                           icon={Wallet}
                           label="Tahsilat"
                           value={`${formatTL(Math.round(c.paidAmount))} / ${formatTL(Math.round(c.totalAmount))}`}
                           pct={paidPct}
-                          barClass="bg-[linear-gradient(90deg,#7fc7ad,#2c7d63)]"
+                          barClass="bg-[linear-gradient(90deg,#34B37E,#15694A)]"
                         />
                         <ProgressRow
                           icon={Activity}
                           label="Seans kullanımı"
                           value={`${c.sessionsUsed} / ${c.sessionsTotal} · ${c.sessionsRemaining} kalan`}
                           pct={sessionPct}
-                          barClass="bg-[linear-gradient(90deg,#b79ae0,#7b52ba)]"
+                          barClass="bg-[linear-gradient(90deg,#D69CAF,#A5556E)]"
                         />
                       </div>
 
@@ -402,7 +402,7 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
 
                       <div className="flex flex-wrap gap-1.5">
                         {c.packageNames.map((p) => (
-                          <span key={p} className="rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2.5 py-1 text-[10px] font-semibold text-[#705a66]">
+                          <span key={p} className="rounded-full border border-[#E4DEE0] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#5A4B53]">
                             {p}
                           </span>
                         ))}
@@ -416,7 +416,7 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
         })}
 
         {visible.length === 0 && (
-          <div className="rounded-[16px] border border-dashed border-[#efe1e7] bg-[#fffafc] px-4 py-6 text-center text-[12px] text-[#705a66]">
+          <div className="rounded-[16px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 py-6 text-center text-[12px] text-[#5A4B53]">
             Aramaya uygun müşteri bulunamadı.
           </div>
         )}
@@ -426,7 +426,7 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
         <button
           type="button"
           onClick={() => setLimit((v) => v + PAGE_SIZE)}
-          className="mx-auto flex w-max items-center gap-1 rounded-full border border-[#efe1e7] bg-white px-4 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:border-[#e7bccb] hover:bg-[#fff2f6]"
+          className="mx-auto flex w-max items-center gap-1 rounded-full border border-[#E4DEE0] bg-white px-4 py-1.5 text-[11px] font-semibold text-[#8C4460] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
         >
           {filtered.length - visible.length} müşteri daha göster
         </button>
@@ -438,10 +438,10 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
 // -------------------------------------------------------------- yardımcılar ---
 
 const MINI_TONES: Record<string, string> = {
-  rose: 'border-[#f3d3de] bg-[#fff2f6] text-[#a34a62]',
-  mint: 'border-[#cfe8dd] bg-[#f2fbf7] text-[#2c7d63]',
-  gold: 'border-[#f0e0bd] bg-[#fffaef] text-[#96702a]',
-  violet: 'border-[#e0d3f2] bg-[#faf6ff] text-[#6b4aa0]',
+  rose: 'border-[#DFAFBF] bg-[#F6DFE6] text-[#7A3450]',
+  mint: 'border-[#7FD3AC] bg-[#DFF3EA] text-[#15694A]',
+  gold: 'border-[#F6B7CA] bg-[#FDE4EB] text-[#BE3960]',
+  violet: 'border-[#CBC1C6] bg-[#EFECEE] text-[#4E4048]',
 }
 
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: keyof typeof MINI_TONES }) {
@@ -467,17 +467,17 @@ function ProgressRow({
   barClass: string
 }) {
   return (
-    <div className="rounded-[14px] border border-[#f2e6eb] bg-[#fffafc] px-3 py-2.5">
+    <div className="rounded-[14px] border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[#4a3a44]">
-          <Icon className="h-3.5 w-3.5 text-[#c05277]" strokeWidth={1.9} /> {label}
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[#3E343A]">
+          <Icon className="h-3.5 w-3.5 text-[#A5556E]" strokeWidth={1.9} /> {label}
         </span>
-        <span className="text-[11px] font-bold text-[#2f2230]">%{pct}</span>
+        <span className="text-[11px] font-bold text-[#2A2027]">%{pct}</span>
       </div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#f2e6eb]">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#EFEAEC]">
         <div className={`h-full rounded-full ${barClass}`} style={{ width: `${Math.max(2, pct)}%` }} />
       </div>
-      <div className="mt-1.5 text-[11px] text-[#705a66]">{value}</div>
+      <div className="mt-1.5 text-[11px] text-[#5A4B53]">{value}</div>
     </div>
   )
 }
@@ -486,7 +486,7 @@ function Chip({ icon: Icon, text, danger = false }: { icon: typeof Wallet; text:
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
-        danger ? 'border-[#f2c4c4] bg-[#fff4f4] text-[#b3453f]' : 'border-[#efe1e7] bg-[#fff8fa] text-[#705a66]'
+        danger ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-[#E4DEE0] bg-white text-[#5A4B53]'
       }`}
     >
       <Icon className="h-3 w-3" strokeWidth={1.9} /> {text}

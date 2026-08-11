@@ -130,36 +130,39 @@ interface QuickAction {
   tone: 'rose' | 'gold' | 'mint' | 'violet' | 'peach' | 'cream'
 }
 
+// DURUM renkleri kasıtlı olarak palet dışındadır: tamamlandı/bekliyor/iptal
+// evrensel yeşil-sarı-kırmızı okuması taşır, bordo tonlarına çevrilirse durum
+// ayrımı kaybolur. Yalnız kontrast yükseltildi (eski -50/-100 tonları soluktu).
 const statusBadge: Record<AppointmentStatusKey, StatusBadgeMeta> = {
   tamamlandi: {
     label: 'Tamamlandı',
     icon: CheckCircle2,
-    cls: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
+    cls: 'border border-emerald-300 bg-emerald-100 text-emerald-800',
   },
   devam: {
     label: 'Devam',
     icon: Activity,
-    cls: 'border border-sky-100 bg-sky-50 text-sky-700',
+    cls: 'border border-sky-300 bg-sky-100 text-sky-800',
   },
   bekliyor: {
     label: 'Bekliyor',
     icon: Clock,
-    cls: 'border border-amber-100 bg-amber-50 text-amber-700',
+    cls: 'border border-amber-300 bg-amber-100 text-amber-800',
   },
   iptal: {
     label: 'İptal',
     icon: FileWarning,
-    cls: 'border border-rose-100 bg-rose-50 text-rose-700',
+    cls: 'border border-rose-300 bg-rose-100 text-rose-800',
   },
   taslak: {
     label: 'Taslak',
     icon: Clock,
-    cls: 'border border-dashed border-indigo-200 bg-indigo-50 text-indigo-600',
+    cls: 'border border-dashed border-indigo-300 bg-indigo-100 text-indigo-700',
   },
   islemde: {
     label: 'İşlemde',
     icon: Activity,
-    cls: 'border border-violet-200 bg-violet-50 text-violet-700',
+    cls: 'border border-violet-300 bg-violet-100 text-violet-800',
   },
 }
 
@@ -172,13 +175,45 @@ const quickActions: QuickAction[] = [
   { label: 'Kampanya\nOluştur', href: '/panel/paketler?scope=packages#kampanyalar', icon: Tag, tone: 'gold' },
 ]
 
+// ---------------------------------------------------------------------------
+// DASHBOARD PALETİ (bkz. globals.css → "Dashboard paleti")
+//   #A5556E plum · #F9A1B9 pink · #1E4E8C blue · #8E7882 mauve · #F7F6F6 paper
+// Kural: kart YÜZÜ beyaz, kuyu/inset yüzeyler paper, renk doygun aksandan gelir.
+// Altı ton bu dört renkten türer (violet = koyu bordo, cream = açık mavi).
+// ---------------------------------------------------------------------------
+
+/** Dolu yüzeyli kartlar (hızlı işlem · takip kutuları): kenar · zemin · yazı. */
 const toneClasses: Record<QuickAction['tone'], string> = {
-  rose: 'border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]',
-  gold: 'border-[#f2dfbf] bg-[#fff8ea] text-[#b88938]',
-  mint: 'border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]',
-  violet: 'border-[#eadcf5] bg-[#faf4ff] text-[#8b5aa5]',
-  peach: 'border-[#f3dde0] bg-[#fff6f3] text-[#bd6476]',
-  cream: 'border-[#d9e8f6] bg-[#f3f9ff] text-[#3a7ca8]',
+  rose: 'border-[#DFAFBF] bg-[#F6DFE6] text-[#7A3450]',
+  gold: 'border-[#8FD5B4] bg-[#DFF3EA] text-[#15694A]',
+  mint: 'border-[#AFC9E6] bg-[#E7F0FA] text-[#245C9E]',
+  violet: 'border-[#D3A6B7] bg-[#F2DEE7] text-[#5F2A41]',
+  peach: 'border-[#F6B7CA] bg-[#FDE4EB] text-[#BE3960]',
+  cream: 'border-[#CBC1C6] bg-[#EFECEE] text-[#4E4048]',
+}
+
+/**
+ * İkon rozeti — DOLU renk, beyaz ikon.
+ * Rozet eskiden `bg-white/85` + ton rengi yazıydı; iki pastel üst üste binince
+ * ikon zeminden ayrışmıyordu. Bant açık kalır, doygunluk rozetten gelir.
+ */
+const toneIcon: Record<QuickAction['tone'], string> = {
+  rose: 'bg-[#A5556E]',
+  gold: 'bg-[#1E8C60]',
+  mint: 'bg-[#3A72B0]',
+  violet: 'bg-[#723550]',
+  peach: 'bg-[#E4577F]',
+  cream: 'bg-[#74616A]',
+}
+
+/** Kartın renkli başlık bandı (açık ton — rakam ve rozet öne çıksın diye). */
+const toneSurface: Record<QuickAction['tone'], string> = {
+  rose: 'from-[#F9E8ED] to-[#F0D0DB]',
+  gold: 'from-[#E9F6F0] to-[#CDEBDD]',
+  mint: 'from-[#EDF4FB] to-[#D8E7F6]',
+  violet: 'from-[#F3E1E9] to-[#E4C7D4]',
+  peach: 'from-[#FDECF1] to-[#FBD1DE]',
+  cream: 'from-[#F4F2F3] to-[#E4DEE1]',
 }
 
 type RangePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -376,13 +411,13 @@ function CategoryFilter({
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex max-w-[240px] items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11px] font-semibold leading-none transition-colors ${
           active
-            ? 'border-[#f0c2d2] bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a] shadow-sm'
-            : 'border-[#efe1e7] bg-white text-[#705a66] hover:border-[#e7c7d4] hover:bg-[#fff8fa]'
+            ? 'border-[#8C4460] bg-[#A5556E] text-white shadow-sm'
+            : 'border-[#E4DEE0] bg-white text-[#5A4B53] hover:border-[#BE7690] hover:bg-[#FBF0F3]'
         }`}
       >
         <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         <span className="truncate">{active ? value : allLabel}</span>
-        {active && subValue && <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-[1px] text-[10px]">{subValue}</span>}
+        {active && subValue && <span className="shrink-0 rounded-full bg-white/25 px-1.5 py-[1px] text-[10px]">{subValue}</span>}
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
       </button>
 
@@ -393,21 +428,21 @@ function CategoryFilter({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[14px] border border-[#efe1e7] bg-white shadow-[0_24px_50px_-28px_rgba(120,71,88,0.55)]"
+            className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[14px] border border-[#E4DEE0] bg-white shadow-[0_24px_50px_-28px_rgba(87,39,61,0.6)]"
           >
             <div className="max-h-64 overflow-y-auto p-1.5">
               <button
                 type="button"
                 onClick={() => { onChange(''); onSubChange(''); setOpen(false) }}
                 className={`flex w-full items-center justify-between gap-2 rounded-[9px] px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                  !active ? 'bg-[#fff1f6] font-semibold text-[#a34a62]' : 'text-[#4a3a44] hover:bg-[#fff8fa]'
+                  !active ? 'bg-[#F6DFE6] font-semibold text-[#7A3450]' : 'text-[#3E343A] hover:bg-[#F7F6F6]'
                 }`}
               >
                 <span>{allLabel}</span>
-                <span className="text-[10px] text-[#705a66]">{totalCount}</span>
+                <span className="text-[10px] text-[#74616A]">{totalCount}</span>
               </button>
               {options.length === 0 && (
-                <div className="px-2.5 py-3 text-center text-[11px] text-[#705a66]">Kategori tanımlı değil.</div>
+                <div className="px-2.5 py-3 text-center text-[11px] text-[#74616A]">Kategori tanımlı değil.</div>
               )}
               {options.map((o) => (
                 <button
@@ -415,25 +450,25 @@ function CategoryFilter({
                   type="button"
                   onClick={() => { onChange(o.name); onSubChange(''); if (o.subs.length === 0) setOpen(false) }}
                   className={`flex w-full items-center justify-between gap-2 rounded-[9px] px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                    value === o.name ? 'bg-[#fff1f6] font-semibold text-[#a34a62]' : 'text-[#4a3a44] hover:bg-[#fff8fa]'
+                    value === o.name ? 'bg-[#F6DFE6] font-semibold text-[#7A3450]' : 'text-[#3E343A] hover:bg-[#F7F6F6]'
                   }`}
                 >
                   <span className="truncate">{o.name}</span>
-                  <span className="shrink-0 text-[10px] text-[#705a66]">{o.count}</span>
+                  <span className="shrink-0 text-[10px] text-[#74616A]">{o.count}</span>
                 </button>
               ))}
             </div>
 
             {/* Alt kategoriler yalnızca seçili kategorinin altı varsa görünür. */}
             {subs.length > 0 && (
-              <div className="border-t border-[#f3e6ec] bg-[#fffafc] p-2">
-                <div className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#705a66]">Alt kategori</div>
+              <div className="border-t border-[#EFEAEC] bg-[#F7F6F6] p-2">
+                <div className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">Alt kategori</div>
                 <div className="flex flex-wrap gap-1">
                   <button
                     type="button"
                     onClick={() => { onSubChange(''); setOpen(false) }}
                     className={`rounded-full border px-2 py-[3px] text-[10px] font-medium transition-colors ${
-                      !subValue ? 'border-[#e7a9c0] bg-[#fff1f6] text-[#a34a62]' : 'border-[#efe1e7] bg-white text-[#705a66] hover:bg-[#fff8fa]'
+                      !subValue ? 'border-[#BE7690] bg-[#F6DFE6] text-[#7A3450]' : 'border-[#E4DEE0] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]'
                     }`}
                   >
                     Tümü
@@ -444,7 +479,7 @@ function CategoryFilter({
                       type="button"
                       onClick={() => { onSubChange(s); setOpen(false) }}
                       className={`rounded-full border px-2 py-[3px] text-[10px] font-medium transition-colors ${
-                        subValue === s ? 'border-[#e7a9c0] bg-[#fff1f6] text-[#a34a62]' : 'border-[#efe1e7] bg-white text-[#705a66] hover:bg-[#fff8fa]'
+                        subValue === s ? 'border-[#BE7690] bg-[#F6DFE6] text-[#7A3450]' : 'border-[#E4DEE0] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]'
                       }`}
                     >
                       {s}
@@ -473,7 +508,7 @@ function PeriodTabs({
   dimmed?: boolean
 }) {
   return (
-    <div className="inline-flex shrink-0 items-center rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+    <div className="inline-flex shrink-0 items-center rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
       {options.map((option) => (
         <button
           key={option.key}
@@ -481,8 +516,8 @@ function PeriodTabs({
           onClick={() => onChange(option.key)}
           className={`rounded-full px-2 py-[3px] text-[10px] font-semibold leading-none transition-colors ${
             value === option.key && !dimmed
-              ? 'bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a] shadow-sm'
-              : 'text-[#9a8590] hover:text-[#7a6570]'
+              ? 'bg-[#A5556E] text-white shadow-sm'
+              : 'text-[#74616A] hover:text-[#2A2027]'
           }`}
         >
           {option.label}
@@ -539,8 +574,8 @@ function DateRangeFilter({
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-[4px] text-[10px] font-semibold leading-none transition-colors ${
           value
-            ? 'border-[#e7a7bd] bg-gradient-to-r from-[#f7c6d5] to-[#f3aec3] text-[#7a2f4a]'
-            : 'border-[#efe1e7] bg-[#fff8fa] text-[#9a8590] hover:text-[#7a6570]'
+            ? 'border-[#8C4460] bg-[#A5556E] text-white'
+            : 'border-[#E4DEE0] bg-[#F7F6F6] text-[#5A4B53] hover:text-[#2A2027]'
         }`}
       >
         <CalendarRange className="h-3 w-3" strokeWidth={1.9} />
@@ -551,27 +586,27 @@ function DateRangeFilter({
         <>
           {/* Dışarı tıklayınca kapansın; panel bunun ÜSTÜNDE durur. */}
           <button type="button" aria-label="Kapat" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1.5 w-[248px] rounded-[14px] border border-[#efe1e7] bg-white p-3 shadow-[0_20px_50px_-25px_rgba(142,63,91,0.5)]">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#9a8590]">Tarih aralığı</div>
+          <div className="absolute right-0 z-50 mt-1.5 w-[248px] rounded-[14px] border border-[#E4DEE0] bg-white p-3 shadow-[0_20px_50px_-25px_rgba(87,39,61,0.55)]">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">Tarih aralığı</div>
             <div className="space-y-2">
               <label className="block">
-                <span className="mb-1 block text-[10px] font-medium text-[#705a66]">Başlangıç</span>
+                <span className="mb-1 block text-[10px] font-medium text-[#5A4B53]">Başlangıç</span>
                 <input
                   type="date"
                   value={from}
                   max={to || undefined}
                   onChange={(e) => setFrom(e.target.value)}
-                  className="w-full rounded-lg border border-[#efe1e7] bg-[#fffafc] px-2 py-1.5 text-[11px] text-[#4a3a44] outline-none focus:border-[#e7a7bd]"
+                  className="w-full rounded-lg border border-[#E4DEE0] bg-[#F7F6F6] px-2 py-1.5 text-[11px] text-[#3E343A] outline-none focus:border-[#A5556E]"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-medium text-[#705a66]">Bitiş</span>
+                <span className="mb-1 block text-[10px] font-medium text-[#5A4B53]">Bitiş</span>
                 <input
                   type="date"
                   value={to}
                   min={from || undefined}
                   onChange={(e) => setTo(e.target.value)}
-                  className="w-full rounded-lg border border-[#efe1e7] bg-[#fffafc] px-2 py-1.5 text-[11px] text-[#4a3a44] outline-none focus:border-[#e7a7bd]"
+                  className="w-full rounded-lg border border-[#E4DEE0] bg-[#F7F6F6] px-2 py-1.5 text-[11px] text-[#3E343A] outline-none focus:border-[#A5556E]"
                 />
               </label>
             </div>
@@ -580,7 +615,7 @@ function DateRangeFilter({
                 type="button"
                 onClick={apply}
                 disabled={!from || !to}
-                className="flex-1 rounded-lg bg-[#8e3f5b] px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#7a3350] disabled:opacity-45"
+                className="flex-1 rounded-lg bg-[#A5556E] px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#8C4460] disabled:opacity-45"
               >
                 Uygula
               </button>
@@ -588,13 +623,13 @@ function DateRangeFilter({
                 <button
                   type="button"
                   onClick={clear}
-                  className="rounded-lg border border-[#efe1e7] px-2 py-1.5 text-[11px] font-semibold text-[#9a8590] hover:text-[#7a2f4a]"
+                  className="rounded-lg border border-[#E4DEE0] px-2 py-1.5 text-[11px] font-semibold text-[#5A4B53] hover:text-[#7A3450]"
                 >
                   Temizle
                 </button>
               )}
             </div>
-            <p className="mt-2 text-[10px] leading-snug text-[#9a8590]">Seçilen iki tarih de dahildir.</p>
+            <p className="mt-2 text-[10px] leading-snug text-[#74616A]">Seçilen iki tarih de dahildir.</p>
           </div>
         </>
       )}
@@ -636,18 +671,18 @@ const listRow: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.34, ease: [0.22, 1, 0.36, 1] } },
 }
 
-// Panelin ortak kart dili: hero ile aynı — krem-beyaz yüzey, üstte altın hairline,
-// köşede yumuşak gül halesi ve hover'da hafif yükselme.
+// Panelin ortak kart dili: hero ile aynı — BEYAZ yüzey (renk aksandan gelir),
+// üstte marka hairline'ı, köşede yumuşak hale ve hover'da hafif yükselme.
 const cardShell =
-  'relative overflow-hidden rounded-[24px] border border-[#f3dde5] bg-gradient-to-br from-white via-white to-[#fffafc] shadow-[0_22px_58px_-38px_rgba(120,71,88,0.5)] transition-shadow hover:shadow-[0_28px_66px_-34px_rgba(120,71,88,0.55)]'
+  'relative overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white shadow-[0_22px_58px_-38px_rgba(87,39,61,0.55)] transition-shadow hover:shadow-[0_28px_66px_-34px_rgba(87,39,61,0.6)]'
 
-/** Kartın üst kenarındaki altın çizgi — marka imzası. */
-function GoldHairline() {
+/** Kartın üst kenarındaki marka çizgisi — pembe → bordo → pembe (eski altın imza). */
+function BrandHairline() {
   return (
     <span
       aria-hidden
       className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
-      style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 20%, #d9a441 50%, #ffd3df 80%, transparent)' }}
+      style={{ background: 'linear-gradient(90deg, transparent, #F9A1B9 20%, #A5556E 50%, #F9A1B9 80%, transparent)' }}
     />
   )
 }
@@ -681,11 +716,11 @@ function SectionCard({
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
       className={`${cardShell} ${className}`}
     >
-      <GoldHairline />
-      <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#ffdce8]/45 blur-3xl" />
+      <BrandHairline />
+      <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#F9A1B9]/35 blur-3xl" />
       <div className="relative flex items-center justify-between gap-3 px-5 pb-3 pt-5">
-        <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[#241923]">
-          <span aria-hidden className="h-4 w-[3px] rounded-full bg-gradient-to-b from-[#e0617f] to-[#8e3f5b]" />
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[#2A2027]">
+          <span aria-hidden className="h-4 w-[3px] rounded-full bg-gradient-to-b from-[#F9A1B9] to-[#A5556E]" />
           {title}
         </h2>
         {action}
@@ -699,7 +734,7 @@ function AvatarBubble({ name, size = 'md', photoUrl }: { name: string; size?: 's
   const dim = size === 'sm' ? 'h-7 w-7 text-[9px]' : 'h-8 w-8 text-[10px]'
   if (photoUrl) {
     return (
-      <span className={`${dim} shrink-0 overflow-hidden rounded-full border border-[#efd5dd] shadow-[0_10px_22px_-16px_rgba(190,91,125,0.8)]`}>
+      <span className={`${dim} shrink-0 overflow-hidden rounded-full border border-[#E3C6D1] shadow-[0_10px_22px_-16px_rgba(165,85,110,0.85)]`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
       </span>
@@ -707,7 +742,7 @@ function AvatarBubble({ name, size = 'md', photoUrl }: { name: string; size?: 's
   }
   return (
     <span
-      className={`${dim} grid shrink-0 place-items-center rounded-full border border-[#efd5dd] bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] font-semibold text-[#7f4057] shadow-[0_10px_22px_-16px_rgba(190,91,125,0.8)]`}
+      className={`${dim} grid shrink-0 place-items-center rounded-full border border-[#E3C6D1] bg-gradient-to-br from-[#FDE4EB] via-[#F6C9D6] to-[#EDAFC1] font-semibold text-[#7A3450] shadow-[0_10px_22px_-16px_rgba(165,85,110,0.85)]`}
     >
       {initials(name)}
     </span>
@@ -726,7 +761,7 @@ function MiniSparkline({ values = [10, 20, 16, 28, 24, 36] }: { values?: number[
 
   return (
     <svg viewBox="0 0 74 38" className="h-10 w-[82px]" aria-hidden>
-      <polyline points={points} fill="none" stroke="#b9658b" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points={points} fill="none" stroke="#A5556E" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       {points.split(' ').map((point, index, arr) => {
         const [cx, cy] = point.split(',')
         const isLast = index === arr.length - 1
@@ -736,8 +771,8 @@ function MiniSparkline({ values = [10, 20, 16, 28, 24, 36] }: { values?: number[
             cx={cx}
             cy={cy}
             r={isLast ? '2.6' : '1.8'}
-            fill={isLast ? '#b9658b' : '#fff'}
-            stroke="#b9658b"
+            fill={isLast ? '#A5556E' : '#fff'}
+            stroke="#A5556E"
             strokeWidth="1"
           />
         )
@@ -755,7 +790,7 @@ function MiniBars({ values = [28, 44, 36, 54, 68, 82] }: { values?: number[] }) 
         <span
           key={`${value}-${index}`}
           className={`min-w-[2px] flex-1 rounded-full bg-gradient-to-t ${
-            index === lastIndex ? 'from-[#e3b86c] to-[#c79a45]' : 'from-[#f3e3c6] to-[#e0c486]'
+            index === lastIndex ? 'from-[#A5556E] to-[#8C4460]' : 'from-[#F6DFE6] to-[#E0B2C2]'
           }`}
           style={{ height: `${Math.max(4, (value / max) * 54)}px` }}
         />
@@ -764,17 +799,9 @@ function MiniBars({ values = [28, 44, 36, 54, 68, 82] }: { values?: number[] }) 
   )
 }
 
-/** Kart tonuna göre başlık bandı yüzeyi ve grafik rengi. */
-const toneSurface: Record<QuickAction['tone'], string> = {
-  rose: 'from-[#fff1f6] to-[#ffe0eb]',
-  gold: 'from-[#fff8ea] to-[#ffedcd]',
-  violet: 'from-[#f6f1ff] to-[#eae0ff]',
-  mint: 'from-[#eefaf3] to-[#daf2e6]',
-  peach: 'from-[#fff4ee] to-[#ffe4d5]',
-  cream: 'from-[#f3f9ff] to-[#ddecfb]',
-}
+/** Kartın altındaki trend şeridinin çizgi rengi. */
 const toneStroke: Record<QuickAction['tone'], string> = {
-  rose: '#c85776', gold: '#c79a45', violet: '#7c5cbf', mint: '#2f9d6b', peach: '#d97845', cream: '#3a7ca8',
+  rose: '#A5556E', gold: '#1E8C60', violet: '#723550', mint: '#3A72B0', peach: '#E4577F', cream: '#74616A',
 }
 
 /** Kartın altını boydan boya kaplayan yumuşak alan grafiği (dönemin gerçek serisi). */
@@ -812,10 +839,10 @@ function DonutGauge({ value }: { value: number }) {
   return (
     <div
       className="grid h-[74px] w-[74px] place-items-center rounded-full"
-      style={{ background: `conic-gradient(#78bf93 ${percent * 3.6}deg, #edf7f1 0deg)` }}
+      style={{ background: `conic-gradient(#1E8C60 ${percent * 3.6}deg, #DFF3EA 0deg)` }}
       aria-label={`Doluluk oranı ${percent}%`}
     >
-      <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-white text-[15px] font-semibold text-[#2f6f53]">
+      <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-white text-[15px] font-semibold text-[#15694A]">
         {percent}%
       </div>
     </div>
@@ -852,13 +879,13 @@ function MetricCard({
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
       className={`${cardShell} group flex min-h-[188px] flex-col`}
     >
-      <GoldHairline />
+      <BrandHairline />
 
       {/* Renkli başlık bandı: ikon + dönem kontrolü */}
       <div className={`relative flex min-h-[76px] items-start justify-between gap-3 bg-gradient-to-br ${toneSurface[tone]} px-5 pb-4 pt-5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/45 blur-2xl transition-transform duration-500 group-hover:scale-110" />
-        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] bg-white/85 shadow-[0_12px_26px_-18px_rgba(120,71,88,0.9)] transition-transform duration-300 group-hover:scale-105 ${toneClasses[tone]}`}>
-          <Icon className="h-[19px] w-[19px]" strokeWidth={1.65} />
+        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/55 blur-2xl transition-transform duration-500 group-hover:scale-110" />
+        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] text-white shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneIcon[tone]}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={1.85} />
         </span>
         <div className="relative flex shrink-0 flex-col items-end gap-2">{control}</div>
       </div>
@@ -866,14 +893,14 @@ function MetricCard({
       {/* Gövde: başlık · büyük rakam · rozetler */}
       <div className="relative flex flex-1 items-end justify-between gap-3 px-5 pb-3 pt-3.5">
         <div className="min-w-0">
-          <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#8a7480]">{title}</div>
-          <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-[#1f1620] tabular-nums">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-[#74616A]">{title}</div>
+          <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-[#2A2027] tabular-nums">
             {value}
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
-            <span className="rounded-full bg-[#fff4f8] px-2 py-0.5 font-medium text-[#77616b]">{detail}</span>
+            <span className="rounded-full bg-[#F7F6F6] px-2 py-0.5 font-medium text-[#5A4B53]">{detail}</span>
             {subDetail && (
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">{subDetail}</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">{subDetail}</span>
             )}
           </div>
         </div>
@@ -937,11 +964,12 @@ function RevenueChart({
 
   return (
     <div className="px-5 pb-5">
-      <div className="relative mt-1 rounded-[18px] bg-gradient-to-b from-white to-[#fff8fa] px-4 pb-3 pt-7">
+      {/* Grafik kuyusu nötr paper zemin: pembe üstüne pembe çubuk soluk okunuyordu. */}
+      <div className="relative mt-1 rounded-[18px] border border-[#E9E5E6] bg-[#F7F6F6] px-4 pb-3 pt-7">
         {/* Tepe değer balonu — zirve çubuğunun üstünde */}
         {hasData && (
           <div
-            className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#2b2630] px-2 py-1 text-[10px] font-semibold text-white shadow-lg"
+            className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#15694A] px-2 py-1 text-[10px] font-semibold text-white shadow-lg"
             style={{ left: `calc(3rem + (100% - 3rem - 1rem) * ${(peakIndex + 0.5) / n})` }}
           >
             {formatTL(Math.round(peak.value))}
@@ -958,8 +986,8 @@ function RevenueChart({
               style={{ top: `${(i / 5) * 100}%` }}
               aria-hidden
             >
-              <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-[#a5909c]">{axisLabel(niceMax * (1 - i / 5))}</span>
-              <span className="h-px flex-1 bg-[#f1e5ea]" />
+              <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-[#74616A]">{axisLabel(niceMax * (1 - i / 5))}</span>
+              <span className="h-px flex-1 bg-[#E0D9DC]" />
             </div>
           ))}
 
@@ -971,7 +999,7 @@ function RevenueChart({
                 <div key={point.label} className="flex h-full flex-1 items-end justify-center">
                   <div
                     className={`w-full max-w-[30px] rounded-t-lg transition-[height] duration-500 ${
-                      isPeak ? 'bg-gradient-to-t from-[#f3a3bf] to-[#ffd9e6]' : 'bg-gradient-to-t from-[#ffe7ef] to-[#fff5f9]'
+                      isPeak ? 'bg-gradient-to-t from-[#15694A] to-[#34B37E]' : 'bg-gradient-to-t from-[#1E8C60] to-[#7FD3AC]'
                     }`}
                     style={{ height: `${(point.value / niceMax) * 100}%` }}
                   />
@@ -987,11 +1015,12 @@ function RevenueChart({
             className="pointer-events-none absolute inset-y-0 left-12 right-0 h-full w-[calc(100%-3rem)] overflow-visible"
             aria-hidden
           >
-            <polyline points={linePoints} fill="none" stroke="#d7839d" strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+            {/* Trend çizgisi lacivert: bordo çubukların üstünde tek başına okunur. */}
+            <polyline points={linePoints} fill="none" stroke="#A5556E" strokeWidth="1.8" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
             {data.map((point, i) => {
               const cx = ((i + 0.5) / n) * 100
               const cy = 100 - (point.value / niceMax) * 100
-              return <circle key={point.label} cx={cx} cy={cy} r="1.6" fill="#fff" stroke="#d7839d" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+              return <circle key={point.label} cx={cx} cy={cy} r="1.6" fill="#fff" stroke="#A5556E" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
             })}
           </svg>
         </div>
@@ -999,23 +1028,23 @@ function RevenueChart({
         {/* Gün etiketleri — çubuklarla hizalı */}
         <div className="mt-2 flex gap-1.5 pl-12">
           {data.map((point) => (
-            <span key={point.label} className="flex-1 text-center text-[10px] text-[#7d6a72]">{point.label}</span>
+            <span key={point.label} className="flex-1 text-center text-[10px] font-medium text-[#5A4B53]">{point.label}</span>
           ))}
         </div>
       </div>
 
       {/* Lejant / açıklama — ne neyi gösteriyor */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[14px] border border-[#f1e3e9] bg-[#fffafc] px-3.5 py-2.5 text-[11px] text-[#7d6a72]">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[14px] border border-[#E5DEE1] bg-[#F7F6F6] px-3.5 py-2.5 text-[11px] text-[#5A4B53]">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-[4px] bg-gradient-to-t from-[#f3a3bf] to-[#ffd9e6]" />
+          <span className="h-3 w-3 rounded-[4px] bg-gradient-to-t from-[#15694A] to-[#34B37E]" />
           Çubuk: {granularity} başına toplam gelir (tahsilat)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 rounded-full bg-[#d7839d]" />
+          <span className="h-0.5 w-4 rounded-full bg-[#A5556E]" />
           Çizgi: gelir trendi
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="font-mono text-[#a5909c]">↕</span>
+          <span className="font-mono text-[#74616A]">↕</span>
           Dikey eksen: {granularity} başına ciro (₺)
         </span>
       </div>
@@ -1034,19 +1063,19 @@ function InsightTile({ title, value, sub, medal, pie }: { title: string; value: 
     <motion.div
       whileHover={{ y: -3 }}
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-      className="group relative overflow-hidden rounded-[18px] border border-[#f3dde5] bg-gradient-to-br from-white to-[#fffafc] p-3.5 shadow-[0_16px_40px_-32px_rgba(120,71,88,0.55)]"
+      className="group relative overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white p-3.5 shadow-[0_16px_40px_-32px_rgba(87,39,61,0.6)]"
     >
-      <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#ffdce8]/40 blur-2xl transition-transform duration-500 group-hover:scale-125" />
-      <div className="relative text-[9.5px] font-semibold uppercase tracking-wide text-[#8a7480]">{title}</div>
-      <div className="relative mt-1.5 truncate text-[15px] font-semibold leading-tight text-[#1f1620]">{value}</div>
-      <div className="relative mt-1.5 inline-block rounded-full bg-[#fff4f8] px-2 py-0.5 text-[10.5px] font-semibold text-[#a3576f]">{sub}</div>
+      <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-[#F9A1B9]/30 blur-2xl transition-transform duration-500 group-hover:scale-125" />
+      <div className="relative text-[9.5px] font-semibold uppercase tracking-wide text-[#74616A]">{title}</div>
+      <div className="relative mt-1.5 truncate text-[15px] font-semibold leading-tight text-[#2A2027]">{value}</div>
+      <div className="relative mt-1.5 inline-block rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[10.5px] font-semibold text-[#7A3450]">{sub}</div>
       {medal && (
-        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#f7d774] to-[#d9a441] text-white shadow-[0_10px_20px_-14px_rgba(120,71,88,0.9)]">
+        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#F9A1B9] to-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(87,39,61,0.95)]">
           <Star className="h-4 w-4" fill="currentColor" strokeWidth={1.4} />
         </span>
       )}
       {pie && (
-        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-[conic-gradient(#9c70bb_0_70%,#f0e1f7_70%)]">
+        <span className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-[conic-gradient(#1E4E8C_0_70%,#DCE7F5_70%)]">
           <span className="h-4 w-4 rounded-full bg-white" />
         </span>
       )}
@@ -1055,9 +1084,9 @@ function InsightTile({ title, value, sub, medal, pie }: { title: string; value: 
 }
 
 function stockTone(product: Product): string {
-  if (product.status === 'out') return 'text-[#c05266]'
-  if (product.status === 'critical') return 'text-[#b88938]'
-  return 'text-[#8a7480]'
+  if (product.status === 'out') return 'text-[#b91c1c]'
+  if (product.status === 'critical') return 'text-[#a16207]'
+  return 'text-[#5A4B53]'
 }
 
 // Taksit çubuğu etiketleri için kısa biçim (5375 → "5,4B"); tam değer title'da gösterilir.
@@ -1092,23 +1121,23 @@ function ReportKpi({
       whileHover={{ y: -3 }}
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
       className={`group relative flex flex-col overflow-hidden rounded-[18px] border ${
-        danger ? 'border-rose-200' : 'border-[#f3dde5]'
-      } bg-white shadow-[0_16px_40px_-32px_rgba(120,71,88,0.55)] transition-shadow hover:shadow-[0_22px_46px_-30px_rgba(120,71,88,0.6)]`}
+        danger ? 'border-rose-300' : 'border-[#EAD8DF]'
+      } bg-white shadow-[0_16px_40px_-32px_rgba(87,39,61,0.6)] transition-shadow hover:shadow-[0_22px_46px_-30px_rgba(87,39,61,0.65)]`}
     >
-      {/* Tonlu üst bant */}
+      {/* Tonlu üst bant — paletin doğrudan rengi */}
       <div className={`relative flex items-center gap-2 bg-gradient-to-br ${toneSurface[tone]} px-3 py-2.5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-5 -top-6 h-16 w-16 rounded-full bg-white/50 blur-xl transition-transform duration-500 group-hover:scale-125" />
-        <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] bg-white/85 shadow-[0_10px_20px_-16px_rgba(120,71,88,0.9)] ${toneClasses[tone]}`}>
-          <Icon className="h-4 w-4" strokeWidth={1.6} />
+        <span aria-hidden className="pointer-events-none absolute -right-5 -top-6 h-16 w-16 rounded-full bg-white/55 blur-xl transition-transform duration-500 group-hover:scale-125" />
+        <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)] ${toneIcon[tone]}`}>
+          <Icon className="h-4 w-4" strokeWidth={1.85} />
         </span>
-        <span className="relative text-[10px] font-semibold uppercase leading-tight tracking-wide text-[#7a6470]">{label}</span>
+        <span className="relative text-[10px] font-semibold uppercase leading-tight tracking-wide text-[#4E4048]">{label}</span>
       </div>
       {/* Rakam + ipucu */}
       <div className="px-3 pb-3 pt-2.5">
-        <div className={`text-[22px] font-semibold leading-none tabular-nums tracking-tight ${danger ? 'text-[#c0506a]' : 'text-[#1f1620]'}`}>
+        <div className={`text-[22px] font-semibold leading-none tabular-nums tracking-tight ${danger ? 'text-[#B23252]' : 'text-[#2A2027]'}`}>
           {value}
         </div>
-        <div className="mt-1.5 inline-block rounded-full bg-[#fff4f8] px-2 py-0.5 text-[10px] font-medium text-[#77616b]">{hint}</div>
+        <div className="mt-1.5 inline-block rounded-full bg-[#F7F6F6] px-2 py-0.5 text-[10px] font-medium text-[#5A4B53]">{hint}</div>
       </div>
     </motion.div>
   )
@@ -1137,7 +1166,7 @@ interface InstallmentAxisTickProps {
 function InstallmentAxisTick({ x = 0, y = 0, payload }: InstallmentAxisTickProps) {
   const [month = '', year = '', state = ''] = String(payload?.value ?? '').split('|')
   const emphasized = state === 'current' || state === 'next'
-  const fill = state === 'next' ? '#c05277' : state === 'current' ? '#553442' : '#7d6a72'
+  const fill = state === 'next' ? '#BE3960' : state === 'current' ? '#723550' : '#5A4B53'
 
   return (
     <g transform={`translate(${x},${y})`}>
@@ -1148,14 +1177,14 @@ function InstallmentAxisTick({ x = 0, y = 0, payload }: InstallmentAxisTickProps
           width={48}
           height={23}
           rx={11.5}
-          fill={state === 'next' ? '#fff0f5' : '#f6eef1'}
-          stroke={state === 'next' ? '#f2b2c8' : '#e6d8de'}
+          fill={state === 'next' ? '#FDE4EB' : '#F7F6F6'}
+          stroke={state === 'next' ? '#F6B7CA' : '#E0D9DC'}
         />
       )}
       <text x={0} y={23} textAnchor="middle" fill={fill} fontSize={11} fontWeight={emphasized ? 700 : 600}>
         {month}
       </text>
-      <text x={0} y={44} textAnchor="middle" fill="#ad98a2" fontSize={9.5} fontWeight={500}>
+      <text x={0} y={44} textAnchor="middle" fill="#8E7882" fontSize={9.5} fontWeight={500}>
         {year}
       </text>
     </g>
@@ -1167,49 +1196,49 @@ function InstallmentTooltip({ active, payload }: TooltipProps<number, string>) {
   if (!active || !point) return null
 
   return (
-    <div className="min-w-[210px] rounded-[16px] border border-[#eadde3] bg-white/[0.98] p-3.5 shadow-[0_18px_48px_-18px_rgba(91,47,66,0.38)] backdrop-blur">
+    <div className="min-w-[210px] rounded-[16px] border border-[#E4DEE0] bg-white/[0.98] p-3.5 shadow-[0_18px_48px_-18px_rgba(87,39,61,0.42)] backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-[12px] font-bold text-[#2b1e29]">
+          <div className="text-[12px] font-bold text-[#2A2027]">
             {point.label} {point.year}
           </div>
-          <div className="mt-0.5 text-[10px] text-[#9a8590]">Aylık ödeme özeti</div>
+          <div className="mt-0.5 text-[10px] text-[#74616A]">Aylık ödeme özeti</div>
         </div>
-        <span className="rounded-full bg-[#f7f1f3] px-2 py-1 text-[10px] font-bold tabular-nums text-[#725966]">
+        <span className="rounded-full bg-[#F7F6F6] px-2 py-1 text-[10px] font-bold tabular-nums text-[#5A4B53]">
           %{Math.round(point.collectionRate)}
         </span>
       </div>
-      <div className="mt-3 space-y-2 border-t border-[#f2e7eb] pt-3">
+      <div className="mt-3 space-y-2 border-t border-[#EFEAEC] pt-3">
         {/* PEŞİN ayrı satır: kasaya giren en büyük kalem "taksit tahsilatı" gibi okunmasın. */}
         {point.deposit > 0.005 && (
           <div className="flex items-center justify-between gap-5 text-[11px]">
-            <span className="flex items-center gap-2 text-[#7d6a72]">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-[#4e9e73]" />
+            <span className="flex items-center gap-2 text-[#5A4B53]">
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-[#15694A]" />
               Peşin tahsilat
             </span>
-            <b className="tabular-nums text-[#2f6b4c]">{formatTL(Math.round(point.deposit))}</b>
+            <b className="tabular-nums text-[#15694A]">{formatTL(Math.round(point.deposit))}</b>
           </div>
         )}
         <div className="flex items-center justify-between gap-5 text-[11px]">
-          <span className="flex items-center gap-2 text-[#7d6a72]">
-            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#d8b46d]" />
+          <span className="flex items-center gap-2 text-[#5A4B53]">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#8CDCB8]" />
             {point.deposit > 0.005 ? 'Taksit tahsilatı' : 'Tahsil edildi'}
           </span>
-          <b className="tabular-nums text-[#3a2b33]">
+          <b className="tabular-nums text-[#2A2027]">
             {formatTL(Math.round(point.deposit > 0.005 ? point.installmentCollected : point.collected))}
           </b>
         </div>
         <div className="flex items-center justify-between gap-5 text-[11px]">
-          <span className="flex items-center gap-2 text-[#7d6a72]">
-            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#ed8eaf]" />
+          <span className="flex items-center gap-2 text-[#5A4B53]">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#F9A1B9]" />
             Alınacak
           </span>
-          <b className="tabular-nums text-[#c05277]">{formatTL(Math.round(point.remaining))}</b>
+          <b className="tabular-nums text-[#BE3960]">{formatTL(Math.round(point.remaining))}</b>
         </div>
-        <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#eadde3] pt-2 text-[11px]">
+        <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#E4DEE0] pt-2 text-[11px]">
           {/* "Vade" değil TAHAKKUK: peşinat o ay tahakkuk edip aynı anda tahsil edilir. */}
-          <span className="font-medium text-[#7d6a72]">Toplam tahakkuk</span>
-          <b className="tabular-nums text-[#2b1e29]">{formatTL(Math.round(point.due))}</b>
+          <span className="font-medium text-[#5A4B53]">Toplam tahakkuk</span>
+          <b className="tabular-nums text-[#2A2027]">{formatTL(Math.round(point.due))}</b>
         </div>
       </div>
     </div>
@@ -1228,19 +1257,19 @@ function InstallmentSummary({
   tone: 'rose' | 'gold' | 'neutral'
 }) {
   const toneClass = {
-    rose: 'bg-[#fff0f5] text-[#bd4e73] ring-[#f5ccda]',
-    gold: 'bg-[#fff8e9] text-[#9b712d] ring-[#f1dfb9]',
-    neutral: 'bg-[#f7f2f4] text-[#644a57] ring-[#e9dce2]',
+    rose: 'bg-[#F9A1B9] text-[#7A3450] ring-[#FBD1DE]',
+    gold: 'bg-[#1E8C60] text-[#15694A] ring-[#DFF3EA]',
+    neutral: 'bg-[#8CDCB8] text-[#15694A] ring-[#DFF3EA]',
   }[tone]
 
   return (
-    <div className="min-w-0 rounded-[15px] border border-[#eee2e7] bg-white px-3.5 py-3 shadow-[0_10px_24px_-22px_rgba(93,48,66,0.5)]">
-      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8590]">
+    <div className="min-w-0 rounded-[15px] border border-[#EAD8DF] bg-white px-3.5 py-3 shadow-[0_10px_24px_-22px_rgba(87,39,61,0.55)]">
+      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#74616A]">
         <span className={`h-2 w-2 rounded-full ring-4 ${toneClass}`} />
         {label}
       </div>
-      <div className="mt-2 truncate text-[16px] font-bold tabular-nums tracking-tight text-[#2b1e29]">{value}</div>
-      <div className="mt-0.5 truncate text-[10px] text-[#a08b95]">{detail}</div>
+      <div className="mt-2 truncate text-[16px] font-bold tabular-nums tracking-tight text-[#2A2027]">{value}</div>
+      <div className="mt-0.5 truncate text-[10px] text-[#74616A]">{detail}</div>
     </div>
   )
 }
@@ -1302,22 +1331,22 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
         : `${visible[0].label} ${visible[0].year} – ${visible[visible.length - 1].label} ${visible[visible.length - 1].year}`
 
   return (
-    <div data-guide="dash-taksit" className="relative overflow-hidden rounded-[22px] border border-[#eadde3] bg-[linear-gradient(145deg,#ffffff_0%,#fff9fb_54%,#fffdf9_100%)] p-4 shadow-[0_22px_55px_-42px_rgba(105,55,75,0.65)] sm:p-5">
-      <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-[#f9dbe6]/35 blur-3xl" />
+    <div data-guide="dash-taksit" className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white p-4 shadow-[0_22px_55px_-42px_rgba(87,39,61,0.7)] sm:p-5">
+      <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-[#F9A1B9]/25 blur-3xl" />
       <div className="relative flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-[#f0d9e2] bg-[#fff1f6] text-[#c05277]">
+            <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
               <BarChart3 className="h-4 w-4" strokeWidth={1.8} />
             </span>
             <div>
-              <div className="text-[13px] font-bold tracking-[-0.01em] text-[#2b1e29]">Aylık Taksit Performansı</div>
-              <div className="mt-0.5 text-[10.5px] text-[#9a8590]">{rangeLabel} · tahsilat ve kalan alacak dağılımı</div>
+              <div className="text-[13px] font-bold tracking-[-0.01em] text-[#2A2027]">Aylık Taksit Performansı</div>
+              <div className="mt-0.5 text-[10.5px] text-[#74616A]">{rangeLabel} · tahsilat ve kalan alacak dağılımı</div>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="mr-1 hidden rounded-full border border-[#eadde3] bg-white/80 px-3 py-1.5 text-[10px] font-semibold text-[#806b75] md:inline">
+          <span className="mr-1 hidden rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-1.5 text-[10px] font-semibold text-[#5A4B53] md:inline">
             {isYearly ? `${curY} yılı` : `${VISIBLE} aylık görünüm`}
           </span>
           <button
@@ -1325,7 +1354,7 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
             aria-label="Önceki aylar"
             disabled={!canPrev}
             onClick={() => setStart(Math.max(0, start - VISIBLE))}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[#eadde3] bg-white text-[#a34a62] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#e7bfd0] hover:bg-[#fff1f6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+            className="grid h-9 w-9 place-items-center rounded-full border border-[#E4DEE0] bg-white text-[#8C4460] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#BE7690] hover:bg-[#F6DFE6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -1334,7 +1363,7 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
             aria-label="Sonraki aylar"
             disabled={!canNext}
             onClick={() => setStart(Math.min(maxOffset, start + VISIBLE))}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[#eadde3] bg-white text-[#a34a62] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#e7bfd0] hover:bg-[#fff1f6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+            className="grid h-9 w-9 place-items-center rounded-full border border-[#E4DEE0] bg-white text-[#8C4460] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#BE7690] hover:bg-[#F6DFE6] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -1364,32 +1393,32 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
 
       {hasAny ? (
         <>
-          <div className="relative mt-3 overflow-x-auto rounded-[18px] border border-[#eee3e7] bg-white/75 px-1 pb-1 pt-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:px-3">
+          <div className="relative mt-3 overflow-x-auto rounded-[18px] border border-[#E9E5E6] bg-[#F7F6F6] px-1 pb-1 pt-4 sm:px-3">
             <div className="h-[280px] min-w-[560px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 26, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
                   <defs>
                     <linearGradient id="installmentDeposit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#bfe6cd" />
-                      <stop offset="55%" stopColor="#7fc79c" />
-                      <stop offset="100%" stopColor="#4e9e73" />
+                      <stop offset="0%" stopColor="#34B37E" />
+                      <stop offset="55%" stopColor="#1E8C60" />
+                      <stop offset="100%" stopColor="#15694A" />
                     </linearGradient>
                     <linearGradient id="installmentCollected" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f3dcae" />
-                      <stop offset="55%" stopColor="#e0bd76" />
-                      <stop offset="100%" stopColor="#c69b45" />
+                      <stop offset="0%" stopColor="#D6F2E5" />
+                      <stop offset="55%" stopColor="#B9E9D2" />
+                      <stop offset="100%" stopColor="#8CDCB8" />
                     </linearGradient>
                     <linearGradient id="installmentRemaining" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ffd0e0" />
-                      <stop offset="55%" stopColor="#f39cbb" />
-                      <stop offset="100%" stopColor="#d9648e" />
+                      <stop offset="0%" stopColor="#FBC9D7" />
+                      <stop offset="55%" stopColor="#F9A1B9" />
+                      <stop offset="100%" stopColor="#E4577F" />
                     </linearGradient>
                     <linearGradient id="installmentNext" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ffc3d7" />
-                      <stop offset="100%" stopColor="#d95d88" />
+                      <stop offset="0%" stopColor="#F9A1B9" />
+                      <stop offset="100%" stopColor="#C93E67" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} stroke="#f7ecf1" strokeDasharray="2 8" strokeWidth={1} />
+                  <CartesianGrid vertical={false} stroke="#E4DEE0" strokeDasharray="2 8" strokeWidth={1} />
                   <XAxis
                     dataKey="axisLabel"
                     axisLine={false}
@@ -1402,12 +1431,12 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     axisLine={false}
                     tickLine={false}
                     width={58}
-                    tick={{ fill: '#a18d96', fontSize: 9.5, fontWeight: 500 }}
+                    tick={{ fill: '#74616A', fontSize: 9.5, fontWeight: 500 }}
                     tickFormatter={(value: number) => formatChartCurrency(value)}
                   />
                   <Tooltip
                     content={<InstallmentTooltip />}
-                    cursor={{ fill: '#fff2f6', opacity: 0.9, radius: 14 }}
+                    cursor={{ fill: '#EFEAEC', opacity: 0.9, radius: 14 }}
                     wrapperStyle={{ outline: 'none' }}
                   />
                   {/* PEŞİN TAHSİLAT — en altta, kendi bandı.
@@ -1450,14 +1479,14 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                       <Cell
                         key={`remaining-${point.key}`}
                         fill={point.isNext ? 'url(#installmentNext)' : 'url(#installmentRemaining)'}
-                        stroke={point.isNext ? '#cc4e79' : 'transparent'}
+                        stroke={point.isNext ? '#C93E67' : 'transparent'}
                         strokeWidth={point.isNext ? 1.25 : 0}
                       />
                     ))}
                     <LabelList
                       dataKey="remaining"
                       position="top"
-                      fill="#806b75"
+                      fill="#5A4B53"
                       fontSize={10}
                       fontWeight={700}
                       formatter={(value: ReactNode) =>
@@ -1468,34 +1497,34 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="pointer-events-none absolute left-[70px] top-[18px] text-[9px] font-semibold uppercase tracking-[0.12em] text-[#b09ca5]">
+            <div className="pointer-events-none absolute left-[70px] top-[18px] text-[9px] font-semibold uppercase tracking-[0.12em] text-[#74616A]">
               Tutar
             </div>
           </div>
 
-          <div className="relative mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-[10px] text-[#8a7480]">
+          <div className="relative mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-[10px] text-[#5A4B53]">
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#f6b3ca] to-[#df769b]" /> Alınacak
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#F9A1B9] to-[#E4577F]" /> Alınacak
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#ebce92] to-[#cda34e]" /> Tahsil edildi
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#B9E9D2] to-[#15694A]" /> Tahsil edildi
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-5 rounded-full border border-[#e6d8de] bg-[#f6eef1] px-2 text-[9px] font-bold leading-[18px] text-[#553442]">Ay</span> Bu ay
+              <span className="h-5 rounded-full border border-[#E0D9DC] bg-[#F7F6F6] px-2 text-[9px] font-bold leading-[18px] text-[#723550]">Ay</span> Bu ay
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-5 rounded-full border border-[#f2b2c8] bg-[#fff0f5] px-2 text-[9px] font-bold leading-[18px] text-[#c05277]">Ay</span> Gelecek ay
+              <span className="h-5 rounded-full border border-[#F6B7CA] bg-[#FDE4EB] px-2 text-[9px] font-bold leading-[18px] text-[#BE3960]">Ay</span> Gelecek ay
             </span>
-            <span className="ml-auto hidden text-[#aa959f] sm:inline">Ayrıntı için sütunların üzerine gelin</span>
+            <span className="ml-auto hidden text-[#74616A] sm:inline">Ayrıntı için sütunların üzerine gelin</span>
           </div>
         </>
       ) : (
-        <div className="relative mt-4 flex min-h-[150px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#e7d8de] bg-white/60 px-4 text-center">
+        <div className="relative mt-4 flex min-h-[150px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 text-center">
           <span className="grid h-10 w-10 place-items-center rounded-full bg-[#edf8f2] text-[#4b8a68]">
             <CheckCircle2 className="h-5 w-5" />
           </span>
-          <div className="mt-3 text-[12px] font-semibold text-[#4f3c46]">Planlanmış taksit bulunmuyor</div>
-          <div className="mt-1 text-[10.5px] text-[#9a8590]">Önümüzdeki dönemde tahsil edilecek bir ödeme görünmüyor.</div>
+          <div className="mt-3 text-[12px] font-semibold text-[#3E343A]">Planlanmış taksit bulunmuyor</div>
+          <div className="mt-1 text-[10.5px] text-[#74616A]">Önümüzdeki dönemde tahsil edilecek bir ödeme görünmüyor.</div>
         </div>
       )}
     </div>
@@ -1909,14 +1938,14 @@ export default function AdminDashboard() {
           emptyMessage="Backend bağlantısı çalıştı fakat bu tenant için henüz kayıt yok."
         />
 
-        <div data-guide="dash-donem" className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#efe1e7] bg-white/85 px-4 py-3 shadow-[0_14px_40px_-32px_rgba(120,71,88,0.5)]">
+        <div data-guide="dash-donem" className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#EAD8DF] bg-white px-4 py-3 shadow-[0_14px_40px_-32px_rgba(87,39,61,0.55)]">
           <div className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-full border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
               <Calendar className="h-[18px] w-[18px]" strokeWidth={1.7} />
             </span>
             <div>
-              <div className="text-[12.5px] font-semibold leading-4 text-[#2b1e29]">Randevu Dönemi</div>
-              <div className="text-[11px] text-[#8a7480]">{apptRange.label}</div>
+              <div className="text-[12.5px] font-semibold leading-4 text-[#2A2027]">Randevu Dönemi</div>
+              <div className="text-[11px] text-[#74616A]">{apptRange.label}</div>
             </div>
           </div>
           <PeriodTabs value={globalPeriod} onChange={setGlobalPeriod} options={FULL_PERIOD_OPTIONS} />
@@ -1927,7 +1956,7 @@ export default function AdminDashboard() {
             icon={Calendar}
             title={globalPeriod === 'daily' ? 'Bugünkü Randevular' : 'Randevular'}
             value={<AnimatedNumber value={appointmentsTotal} />}
-            detail={<><b className="font-semibold text-[#2f2430]">{completed}</b> Tamamlandı</>}
+            detail={<><b className="font-semibold text-[#2A2027]">{completed}</b> Tamamlandı</>}
             subDetail={<>{waiting} Beklemede</>}
             series={appointmentSparkline}
             tone="rose"
@@ -1958,11 +1987,11 @@ export default function AdminDashboard() {
             subDetail={<>{formatTL(Math.round(report.totalCollected))} tahsil edildi</>}
             visual={<DonutGauge value={debtRate} />}
             control={
-              <span className="inline-flex shrink-0 items-center rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2 py-[3px] text-[10px] font-semibold text-[#9a8590]">
+              <span className="inline-flex shrink-0 items-center rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-2 py-[3px] text-[10px] font-semibold text-[#5A4B53]">
                 Cari hesaplar
               </span>
             }
-            tone="mint"
+            tone="gold"
           />
         </motion.div>
 
@@ -1975,11 +2004,11 @@ export default function AdminDashboard() {
               title={globalPeriod === 'daily' ? 'Bugünkü Randevu Akışı' : 'Randevu Akışı'}
               action={
                 <div className="flex items-center gap-2">
-                  <span className="hidden items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2.5 py-1 text-[10px] font-semibold text-[#9a8590] sm:inline-flex">
+                  <span className="hidden items-center gap-1.5 rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-2.5 py-1 text-[10px] font-semibold text-[#5A4B53] sm:inline-flex">
                     <Calendar className="h-3 w-3" strokeWidth={1.8} />
                     {apptRange.label}
                   </span>
-                  <Link href="/panel/randevular" className="hidden items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62] sm:flex">
+                  <Link href="/panel/randevular" className="hidden items-center gap-1 text-[12px] font-semibold text-[#A5556E] hover:text-[#723550] sm:flex">
                     Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
                 </div>
@@ -1989,7 +2018,7 @@ export default function AdminDashboard() {
                 {/* Zaman çizelgesi: solda saat, ortada müşteri+işlem, sağda uzman ve durum. */}
                 <div className="relative space-y-2">
                   {appointments.length > 0 && (
-                    <span aria-hidden className="pointer-events-none absolute bottom-3 left-[54px] top-3 w-px bg-gradient-to-b from-[#f7dbe5] via-[#f3dde5] to-transparent" />
+                    <span aria-hidden className="pointer-events-none absolute bottom-3 left-[54px] top-3 w-px bg-gradient-to-b from-[#D69CAF] via-[#EAD8DF] to-transparent" />
                   )}
                   {appointments.slice(0, 5).map((appointment) => {
                     const badge = statusBadge[appointment.status] || statusBadge.bekliyor
@@ -1998,10 +2027,10 @@ export default function AdminDashboard() {
                         key={appointment.id}
                         variants={listRow}
                         whileHover={{ x: 3 }}
-                        className="group relative flex items-center gap-3 rounded-[18px] border border-[#f3dde5] bg-white/90 px-3 py-2.5 transition-colors hover:border-[#efbfd0] hover:bg-[#fffafc]"
+                        className="group relative flex items-center gap-3 rounded-[18px] border border-[#EAD8DF] bg-white px-3 py-2.5 transition-colors hover:border-[#BE7690] hover:bg-[#FBF0F3]"
                       >
                         {/* Saat rozeti */}
-                        <span className="relative z-[1] grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-[#fff1f6] to-[#ffe0eb] text-[12px] font-bold tabular-nums text-[#a63e5f] ring-1 ring-white">
+                        <span className="relative z-[1] grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-[#F6DFE6] to-[#EBC3CF] text-[12px] font-bold tabular-nums text-[#7A3450] ring-1 ring-white">
                           {appointment.time || '—'}
                         </span>
 
@@ -2009,15 +2038,15 @@ export default function AdminDashboard() {
                         <span className="flex min-w-0 flex-1 items-center gap-2.5">
                           <AvatarBubble name={appointment.musteri} size="md" />
                           <span className="min-w-0">
-                            <span className="block truncate text-[13px] font-semibold text-[#2b1e29]">{appointment.musteri}</span>
-                            <span className="block truncate text-[11.5px] text-[#77616b]">{appointment.islem}</span>
+                            <span className="block truncate text-[13px] font-semibold text-[#2A2027]">{appointment.musteri}</span>
+                            <span className="block truncate text-[11.5px] text-[#5A4B53]">{appointment.islem}</span>
                           </span>
                         </span>
 
                         {/* Uzman */}
                         <span className="hidden min-w-0 items-center gap-2 sm:flex">
                           <AvatarBubble name={appointment.personel} size="sm" />
-                          <span className="truncate text-[11.5px] font-medium text-[#5d4a56]">{appointment.personel}</span>
+                          <span className="truncate text-[11.5px] font-medium text-[#4E4048]">{appointment.personel}</span>
                         </span>
 
                         {/* Durum */}
@@ -2028,7 +2057,7 @@ export default function AdminDashboard() {
                         <Link
                           href="/panel/randevular"
                           aria-label="Randevulara git"
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#c9b3bd] opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#a63e5f] group-hover:opacity-100"
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#8E7882] opacity-0 transition-opacity hover:bg-[#F6DFE6] hover:text-[#7A3450] group-hover:opacity-100"
                         >
                           <ArrowUpRight className="h-4 w-4" />
                         </Link>
@@ -2036,16 +2065,16 @@ export default function AdminDashboard() {
                     )
                   })}
                   {!appointments.length && (
-                    <div className="rounded-[18px] border border-dashed border-[#f3dde5] bg-[#fffafc] px-4 py-10 text-center">
-                      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]">
+                    <div className="rounded-[18px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 py-10 text-center">
+                      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#F6DFE6] text-[#A5556E]">
                         <Calendar className="h-6 w-6" strokeWidth={1.6} />
                       </span>
-                      <p className="mt-2 text-[12.5px] text-[#77616b]">
+                      <p className="mt-2 text-[12.5px] text-[#5A4B53]">
                         {globalPeriod === 'daily' ? 'Bugün için randevu kaydı yok.' : 'Seçili dönemde randevu kaydı yok.'}
                       </p>
                       <Link
                         href="/panel/randevular?action=new"
-                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)]"
+                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#A5556E] px-4 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_14px_26px_-14px_rgba(87,39,61,0.95)] transition-colors hover:bg-[#8C4460]"
                       >
                         <CalendarPlus className="h-3.5 w-3.5" /> Randevu oluştur
                       </Link>
@@ -2053,7 +2082,7 @@ export default function AdminDashboard() {
                   )}
                 </div>
                 {appointments.length > 0 && (
-                  <Link href="/panel/randevular" className="mx-auto mt-4 flex w-max items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
+                  <Link href="/panel/randevular" className="mx-auto mt-4 flex w-max items-center gap-1 text-[12px] font-semibold text-[#A5556E] hover:text-[#723550]">
                     Tüm randevuları görüntüle <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
                 )}
@@ -2072,7 +2101,7 @@ export default function AdminDashboard() {
                     dimmed={packageCustom !== null}
                   />
                   <DateRangeFilter value={packageCustom} onChange={setPackageCustom} />
-                  <Link href="/panel/on-muhasebe" className="hidden items-center gap-1 text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62] sm:inline-flex">
+                  <Link href="/panel/on-muhasebe" className="hidden items-center gap-1 text-[12px] font-semibold text-[#A5556E] hover:text-[#723550] sm:inline-flex">
                     Ön muhasebe <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
                 </div>
@@ -2080,7 +2109,7 @@ export default function AdminDashboard() {
             >
               <div className="space-y-4 px-5 pb-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fff8fa] px-2.5 py-1 text-[10px] font-semibold text-[#9a8590]">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-2.5 py-1 text-[10px] font-semibold text-[#5A4B53]">
                     <Calendar className="h-3 w-3" strokeWidth={1.8} />
                     {packageWindowLabel} · {selectedBranch?.name || 'Tüm şubeler'}
                     {packageCategory && ` · ${packageCategory}${packageSubCategory ? ` / ${packageSubCategory}` : ''}`}
@@ -2095,7 +2124,7 @@ export default function AdminDashboard() {
                       onChange={setPackageCategory}
                       onSubChange={setPackageSubCategory}
                     />
-                    <span className="text-[10px] text-[#b09ca5]">Dönemde satılan paketler</span>
+                    <span className="text-[10px] text-[#74616A]">Dönemde satılan paketler</span>
                   </div>
                 </div>
                 {/* .kpi-auto-grid: kolon sayısı kapsayıcıya göre belirlenir (bkz. globals.css). */}
@@ -2131,17 +2160,17 @@ export default function AdminDashboard() {
 
                 {/* HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok. Kendi dönemi ve kendi
                     (hizmet) kategorisi vardır; yukarıdaki paket seçimlerinden etkilenmez. */}
-                <div className="rounded-[16px] border border-[#efe1e7] bg-[#fffafc]/60 p-3 sm:p-4">
+                <div className="rounded-[16px] border border-[#E4DEE0] bg-[#F7F6F6] p-3 sm:p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#d6ece4] bg-[#f1fbf7] text-[#39846f]">
+                      <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#1E4E8C] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
                         <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
                       </span>
                       <div>
-                        <div className="text-[13px] font-semibold text-[#4a3a44]">Hizmet Raporu</div>
+                        <div className="text-[13px] font-semibold text-[#2A2027]">Hizmet Raporu</div>
                         {/* Kapsam ekranda yazılı: bu blok YALNIZ tekil hizmet satışlarını sayar,
                             paketten gelen seanslar Paket Raporu'nda okunur (ikisi ayrık küme). */}
-                        <div className="text-[10px] text-[#705a66]">
+                        <div className="text-[10px] text-[#5A4B53]">
                           Tekil hizmet satışları · {svcWindowLabel}
                           {serviceCategory && ` · ${serviceCategory}${serviceSubCategory ? ` / ${serviceSubCategory}` : ''}`}
                         </div>
@@ -2215,7 +2244,7 @@ export default function AdminDashboard() {
               <SectionCard
                 title="Takip Edilmesi Gereken Müşteriler"
                 action={
-                  <Link href="/panel/musteriler" className="text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
+                  <Link href="/panel/musteriler" className="text-[12px] font-semibold text-[#A5556E] hover:text-[#723550]">
                     Tümü <ChevronRight className="inline h-3.5 w-3.5" />
                   </Link>
                 }
@@ -2235,16 +2264,16 @@ export default function AdminDashboard() {
                         <Link
                           href={item.href}
                           className={`group relative flex h-full items-center gap-3 overflow-hidden rounded-[18px] border p-3 transition-shadow hover:shadow-[0_20px_38px_-28px_rgba(150,78,104,0.55)] ${
-                            urgent ? toneClasses[item.tone] : 'border-[#f3dde5] bg-white/90 text-[#8a7480]'
+                            urgent ? toneClasses[item.tone] : 'border-[#E4DEE0] bg-white text-[#5A4B53]'
                           }`}
                         >
                           <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
-                          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white/85 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)]">
-                            <Icon className="h-[18px] w-[18px]" strokeWidth={1.55} />
+                          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.55)]">
+                            <Icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                           </span>
                           <span className="relative min-w-0 flex-1">
                             <span className="block text-[22px] font-semibold leading-none tabular-nums">{item.count}</span>
-                            <span className="mt-1 block text-[11px] font-medium leading-snug opacity-90">{item.title}</span>
+                            <span className="mt-1 block text-[11px] font-semibold leading-snug">{item.title}</span>
                           </span>
                           <ArrowUpRight className="relative h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
                         </Link>
@@ -2274,8 +2303,8 @@ export default function AdminDashboard() {
                         className={`${toneClasses[action.tone]} group relative flex min-h-[96px] flex-col justify-between overflow-hidden rounded-[18px] border p-3 transition-shadow hover:shadow-[0_20px_38px_-26px_rgba(150,78,104,0.6)]`}
                       >
                         <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
-                        <span className="relative grid h-10 w-10 place-items-center rounded-[13px] bg-white/80 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)] transition-transform duration-300 group-hover:scale-105">
-                          <Icon className="h-[19px] w-[19px]" strokeWidth={1.6} />
+                        <span className="relative grid h-10 w-10 place-items-center rounded-[13px] bg-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.55)] transition-transform duration-300 group-hover:scale-105">
+                          <Icon className="h-[19px] w-[19px]" strokeWidth={1.9} />
                         </span>
                         <span className="relative flex items-end justify-between gap-2">
                           <span className="whitespace-pre-line text-[12px] font-semibold leading-4">{action.label}</span>
@@ -2290,12 +2319,12 @@ export default function AdminDashboard() {
 
             <SectionCard
               title="Personel Performansı"
-              action={<Star className="h-5 w-5 text-[#d8ad55]" fill="currentColor" strokeWidth={1.3} />}
+              action={<Star className="h-5 w-5 text-[#A5556E]" fill="currentColor" strokeWidth={1.3} />}
             >
               <div className="space-y-2 px-4 pb-5">
                 {(() => {
                   const topRevenue = Math.max(1, ...performanceRows.map((r) => r.revenue))
-                  const medals = ['from-[#f7d774] to-[#d9a441]', 'from-[#e3e3e8] to-[#b9bcc6]', 'from-[#eec59a] to-[#c98b53]']
+                  const medals = ['from-[#A5556E] to-[#723550]', 'from-[#F9A1B9] to-[#E4577F]', 'from-[#8E7882] to-[#5A4B53]']
                   return performanceRows.map((row, idx) => (
                     <motion.div
                       key={row.person.id}
@@ -2303,31 +2332,31 @@ export default function AdminDashboard() {
                       initial="hidden"
                       animate="visible"
                       whileHover={{ x: 3 }}
-                      className="group rounded-[18px] border border-[#f3dde5] bg-white/90 px-3 py-2.5 transition-colors hover:border-[#efbfd0] hover:bg-[#fffafc]"
+                      className="group rounded-[18px] border border-[#EAD8DF] bg-white px-3 py-2.5 transition-colors hover:border-[#BE7690] hover:bg-[#FBF0F3]"
                     >
                       <div className="flex items-center gap-2.5">
                         <span
                           className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white shadow-[0_8px_18px_-12px_rgba(120,71,88,0.9)] ${
-                            idx < 3 ? `bg-gradient-to-br ${medals[idx]}` : 'bg-[#e9d9e0] text-[#7f4057]'
+                            idx < 3 ? `bg-gradient-to-br ${medals[idx]}` : 'bg-[#DFD9DC] text-[#4E4048]'
                           }`}
                         >
                           {idx + 1}
                         </span>
                         <AvatarBubble name={row.person.name} size="md" photoUrl={row.person.photoUrl || undefined} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-[#2b1e29]">{row.person.name}</span>
-                          <span className="block text-[11px] text-[#77616b]">{row.count} randevu</span>
+                          <span className="block truncate text-[13px] font-semibold text-[#2A2027]">{row.person.name}</span>
+                          <span className="block text-[11px] text-[#5A4B53]">{row.count} randevu</span>
                         </span>
                         <span className="shrink-0 text-right">
-                          <span className="block text-[13.5px] font-semibold tabular-nums text-[#a63e5f]">{formatTL(Math.round(row.revenue))}</span>
-                          <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#fff7e6] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[#a3701f]">
+                          <span className="block text-[13.5px] font-semibold tabular-nums text-[#8C4460]">{formatTL(Math.round(row.revenue))}</span>
+                          <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#DCE7F5] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[#17406F]">
                             {row.score.toFixed(1)} <Star className="h-3 w-3" fill="currentColor" strokeWidth={1.2} />
                           </span>
                         </span>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]">
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#EFEAEC]">
                         <motion.span
-                          className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]"
+                          className="block h-full rounded-full bg-gradient-to-r from-[#A5556E] to-[#F9A1B9]"
                           initial={{ width: 0 }}
                           animate={{ width: `${Math.max(4, Math.round((row.revenue / topRevenue) * 100))}%` }}
                           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
@@ -2337,7 +2366,7 @@ export default function AdminDashboard() {
                   ))
                 })()}
                 {!performanceRows.length && (
-                  <div className="rounded-[18px] border border-dashed border-[#f3dde5] bg-[#fffafc] py-8 text-center text-[12px] text-[#77616b]">
+                  <div className="rounded-[18px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] py-8 text-center text-[12px] text-[#5A4B53]">
                     Personel performans verisi bekleniyor.
                   </div>
                 )}
@@ -2347,7 +2376,7 @@ export default function AdminDashboard() {
             <SectionCard
               title="Stok Uyarıları"
               action={
-                <Link href="/panel/stok" className="text-[12px] font-semibold text-[#d66d8a] hover:text-[#a34a62]">
+                <Link href="/panel/stok" className="text-[12px] font-semibold text-[#A5556E] hover:text-[#723550]">
                   Tümünü görüntüle <ArrowUpRight className="inline h-3.5 w-3.5" />
                 </Link>
               }
@@ -2360,27 +2389,27 @@ export default function AdminDashboard() {
                       key={product.id}
                       href="/panel/stok"
                       className={`group flex items-center gap-3 rounded-[18px] border px-3 py-2.5 transition-colors ${
-                        out ? 'border-rose-200 bg-rose-50/60 hover:bg-rose-50' : 'border-amber-200/70 bg-amber-50/50 hover:bg-amber-50'
+                        out ? 'border-rose-300 bg-rose-50 hover:bg-rose-100' : 'border-amber-300 bg-amber-50 hover:bg-amber-100'
                       }`}
                     >
-                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white/85 shadow-[0_10px_22px_-16px_rgba(120,71,88,0.9)] ${stockTone(product)}`}>
+                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.55)] ${stockTone(product)}`}>
                         <FileWarning className="h-[18px] w-[18px]" strokeWidth={1.6} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-semibold text-[#2b1e29]">{product.name}</span>
+                        <span className="block truncate text-[12.5px] font-semibold text-[#2A2027]">{product.name}</span>
                         <span className={`mt-0.5 block text-[11px] font-semibold ${stockTone(product)}`}>
                           {out ? 'Tükendi — sipariş ver' : `${product.currentStock} ${product.unit} kaldı`}
                         </span>
                       </span>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[9.5px] font-bold ${out ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                      <span className={`shrink-0 rounded-full px-2 py-1 text-[9.5px] font-bold ${out ? 'bg-rose-200 text-rose-800' : 'bg-amber-200 text-amber-800'}`}>
                         {out ? 'KRİTİK' : 'AZALDI'}
                       </span>
-                      <ArrowUpRight className="h-4 w-4 shrink-0 text-[#c9b3bd] opacity-0 transition-opacity group-hover:opacity-100" />
+                      <ArrowUpRight className="h-4 w-4 shrink-0 text-[#8E7882] opacity-0 transition-opacity group-hover:opacity-100" />
                     </Link>
                   )
                 })}
                 {!criticalProducts.length && (
-                  <div className="flex items-center justify-center gap-2 rounded-[18px] border border-dashed border-emerald-200 bg-emerald-50/50 py-6 text-[12px] font-medium text-emerald-700">
+                  <div className="flex items-center justify-center gap-2 rounded-[18px] border border-dashed border-emerald-300 bg-emerald-50 py-6 text-[12px] font-semibold text-emerald-800">
                     <CheckCircle2 className="h-4 w-4" /> Kritik stok uyarısı yok — her ürün yeterli.
                   </div>
                 )}
