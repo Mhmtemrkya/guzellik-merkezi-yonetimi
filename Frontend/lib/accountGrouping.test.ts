@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildInstallmentRows, buildMonthlySchedule, dueThisMonth, groupAccountsByCustomer } from './accountGrouping'
+import {
+  allocateAcrossAccounts, buildGlobalDueQueue, buildInstallmentRows, buildMonthlySchedule,
+  dueThisMonth, groupAccountsByCustomer, planCollectionCalls, summarizeAllAccounts,
+} from './accountGrouping'
 import type { AccountInstallmentItem, CustomerAccount } from './types'
 
 /**
@@ -254,5 +257,182 @@ describe('devir (düzensiz ödeme) — Ela senaryosu', () => {
     expect(march.carryIn).toBe(5000)
     expect(march.expected).toBe(10000) // ödenmesi gereken
     expect(march.status).toBe('overdue')
+  })
+})
+
+/**
+ * "TÜMÜ" — bir tutarın müşterinin BÜTÜN satışlarına dağıtılması.
+ *
+ * Sunucu tahsilatı tek hesaba yazar; bölüştürme istemcide yapılır ve her satış için ayrı
+ * tahsilat çağrısı gider. Buradaki testler dağıtım sırasını (global vade) ve kuruş
+ * bütünlüğünü (dağıtılan toplam = girilen tutar) sabitler.
+ */
+describe('allocateAcrossAccounts (Tümü)', () => {
+  const twoSales = (): CustomerAccount[] => [
+    acc({
+      id: 'a1', customerId: 'c1', servicePackageName: 'Lazer Paketi',
+      totalAmount: 3000, paidAmount: 0, remainingAmount: 3000,
+      installments: [
+        inst({ id: 'a1-1', no: 1, dueDate: '2026-01-10', amount: 1500 }),
+        inst({ id: 'a1-2', no: 2, dueDate: '2026-03-10', amount: 1500 }),
+      ],
+    }),
+    acc({
+      id: 'a2', customerId: 'c1', servicePackageName: 'Cilt Bakımı',
+      totalAmount: 2000, paidAmount: 0, remainingAmount: 2000,
+      installments: [
+        inst({ id: 'a2-1', no: 1, dueDate: '2026-02-10', amount: 1000 }),
+        inst({ id: 'a2-2', no: 2, dueDate: '2026-04-10', amount: 1000 }),
+      ],
+    }),
+  ]
+
+  it('GLOBAL vade sırası: en eski borç hangi satışta olursa olsun önce kapanır', () => {
+    // Kuyruk: 10 Oca (a1) · 10 Şub (a2) · 10 Mar (a1) · 10 Nis (a2)
+    const queue = buildGlobalDueQueue(twoSales(), '2026-05-15')
+    expect(queue.map((r) => `${r.accountId}:${r.dueDate}`)).toEqual([
+      'a1:2026-01-10', 'a2:2026-02-10', 'a1:2026-03-10', 'a2:2026-04-10',
+    ])
+  })
+
+  it('2.500 ödeme iki satışa bölünür: a1 1.500 + a2 1.000', () => {
+    const out = allocateAcrossAccounts(twoSales(), 2500, '2026-05-15')
+    expect(out).toHaveLength(2)
+    expect(out.find((r) => r.accountId === 'a1')!.amount).toBe(1500)
+    expect(out.find((r) => r.accountId === 'a2')!.amount).toBe(1000)
+  })
+
+  it('dağıtılan toplam girilen tutara BİREBİR eşittir (kuruş kaybı yok)', () => {
+    const out = allocateAcrossAccounts(twoSales(), 3333.33, '2026-05-15')
+    const sum = out.reduce((s, r) => s + r.amount, 0)
+    expect(Math.round(sum * 100) / 100).toBe(3333.33)
+  })
+
+  it('borçtan büyük ödeme yutulmaz — artan son satışa (kredi) yazılır', () => {
+    // Toplam borç 5.000; 6.000 girilirse 1.000 fazla da bir cariye yazılmalı, yoksa kasaya
+    // giren para ile carilere işlenen tutar tutmaz.
+    const out = allocateAcrossAccounts(twoSales(), 6000, '2026-05-15')
+    expect(out.reduce((s, r) => s + r.amount, 0)).toBe(6000)
+  })
+
+  it('PEŞİN satışın kalanı da kuyruğa girer (taksit satırı yok ama borç var)', () => {
+    const list = [
+      acc({ id: 'p1', customerId: 'c1', name: 'Ürün satışı', totalAmount: 800, paidAmount: 0, remainingAmount: 800, soldAtUtc: '2026-01-05T00:00:00Z' }),
+      acc({
+        id: 'p2', customerId: 'c1', totalAmount: 1000, paidAmount: 0, remainingAmount: 1000,
+        installments: [inst({ id: 'p2-1', no: 1, dueDate: '2026-03-10', amount: 1000 })],
+      }),
+    ]
+    const out = allocateAcrossAccounts(list, 800, '2026-05-15')
+    // Peşin satışın vadesi satış günü (5 Oca) → taksitten önce kapanır.
+    expect(out).toHaveLength(1)
+    expect(out[0].accountId).toBe('p1')
+    expect(out[0].amount).toBe(800)
+  })
+
+  it('kapanmış satışa para yazılmaz', () => {
+    const list = [
+      acc({ id: 'k1', customerId: 'c1', totalAmount: 1000, paidAmount: 1000, remainingAmount: 0 }),
+      acc({
+        id: 'k2', customerId: 'c1', totalAmount: 500, paidAmount: 0, remainingAmount: 500,
+        installments: [inst({ id: 'k2-1', no: 1, dueDate: '2026-03-10', amount: 500 })],
+      }),
+    ]
+    const out = allocateAcrossAccounts(list, 500, '2026-05-15')
+    expect(out.map((r) => r.accountId)).toEqual(['k2'])
+  })
+
+  it('dağıtım hesabın kalan borcunu AŞMAZ (kredi bakiyeli satışta taksit toplamı büyük olabilir)', () => {
+    // remainingAmount 400 ama taksit kalanları toplamı 1.000: sunucu 400'den fazlasını borç
+    // saymıyor, kuyruk da 400 ile sınırlanmalı.
+    const list = [
+      acc({
+        id: 'x1', customerId: 'c1', totalAmount: 1000, paidAmount: 600, remainingAmount: 400,
+        installments: [
+          inst({ id: 'x1-1', no: 1, dueDate: '2026-01-10', amount: 500 }),
+          inst({ id: 'x1-2', no: 2, dueDate: '2026-02-10', amount: 500 }),
+        ],
+      }),
+      acc({
+        id: 'x2', customerId: 'c1', totalAmount: 900, paidAmount: 0, remainingAmount: 900,
+        installments: [inst({ id: 'x2-1', no: 1, dueDate: '2026-03-10', amount: 900 })],
+      }),
+    ]
+    const out = allocateAcrossAccounts(list, 1300, '2026-05-15')
+    expect(out.find((r) => r.accountId === 'x1')!.amount).toBe(400)
+    expect(out.find((r) => r.accountId === 'x2')!.amount).toBe(900)
+  })
+
+  it('özet: kalan / bu ay ödenmesi gereken / gecikmiş ayrı ayrı toplanır', () => {
+    // 5 Şubat: 10 Şub taksiti BU AY ödenecek ama henüz GECİKMEDİ — iki kavram ayrı rakamdır.
+    const s = summarizeAllAccounts(twoSales(), '2026-02-05')
+    expect(s.remaining).toBe(5000)
+    expect(s.openCount).toBe(2)
+    // Bu ay ödenmesi gereken: 10 Oca (1.500, gecikmiş) + 10 Şub (1.000, bu ay). Mart/Nisan hariç.
+    expect(s.dueNow).toBe(2500)
+    // Gecikmiş: yalnız vadesi GEÇMİŞ olan 10 Oca.
+    expect(s.overdue).toBe(1500)
+  })
+
+  it('tutar 0 ise hiç çağrı üretilmez', () => {
+    expect(allocateAcrossAccounts(twoSales(), 0, '2026-05-15')).toEqual([])
+  })
+})
+
+/**
+ * SATIŞ DAĞITIMI × YÖNTEM KIRILIMI.
+ *
+ * En sinsi hata burada: yöntemleri tek tek dağıtmak aynı borcu iki kez sayar. Bu testler
+ * hem satış paylarının hem kasa yöntem toplamlarının korunduğunu sabitler.
+ */
+describe('planCollectionCalls', () => {
+  it('ÇİFT SAYIM YOK: iki yöntem iki satışa doğru bölünür', () => {
+    // A 1.500, B 1.500 pay aldı; ödeme 2.000 nakit + 1.000 kart.
+    const calls = planCollectionCalls(
+      [
+        { accountId: 'a', accountLabel: 'A', amount: 1500 },
+        { accountId: 'b', accountLabel: 'B', amount: 1500 },
+      ],
+      [{ method: 'cash', amount: 2000 }, { method: 'card', amount: 1000 }],
+    )
+    // A tamamı nakit; B 500 nakit + 1.000 kart.
+    expect(calls).toEqual([
+      { accountId: 'a', accountLabel: 'A', method: 'cash', amount: 1500 },
+      { accountId: 'b', accountLabel: 'B', method: 'cash', amount: 500 },
+      { accountId: 'b', accountLabel: 'B', method: 'card', amount: 1000 },
+    ])
+  })
+
+  it('satış payları ve yöntem toplamları AYNI ANDA korunur', () => {
+    const calls = planCollectionCalls(
+      [
+        { accountId: 'a', accountLabel: 'A', amount: 1200 },
+        { accountId: 'b', accountLabel: 'B', amount: 800 },
+      ],
+      [{ method: 'cash', amount: 1500 }, { method: 'transfer', amount: 500 }],
+    )
+    const perAccount = (id: string) => calls.filter((c) => c.accountId === id).reduce((s, c) => s + c.amount, 0)
+    const perMethod = (m: string) => calls.filter((c) => c.method === m).reduce((s, c) => s + c.amount, 0)
+    expect(perAccount('a')).toBe(1200)
+    expect(perAccount('b')).toBe(800)
+    expect(perMethod('cash')).toBe(1500)
+    expect(perMethod('transfer')).toBe(500)
+  })
+
+  it('tek satış + tek yöntem: çıktı girdinin aynısıdır (klasik tahsilat)', () => {
+    const calls = planCollectionCalls(
+      [{ accountId: 'a', accountLabel: 'A', amount: 750 }],
+      [{ method: 'cash', amount: 750 }],
+    )
+    expect(calls).toEqual([{ accountId: 'a', accountLabel: 'A', method: 'cash', amount: 750 }])
+  })
+
+  it('aynı satış + aynı yöntem TEK çağrıda toplanır', () => {
+    const calls = planCollectionCalls(
+      [{ accountId: 'a', accountLabel: 'A', amount: 1000 }],
+      [{ method: 'cash', amount: 400 }, { method: 'cash', amount: 600 }],
+    )
+    expect(calls).toHaveLength(1)
+    expect(calls[0].amount).toBe(1000)
   })
 })

@@ -25,6 +25,8 @@ Future<void> openCustomerLedgerSheet(
   /// Bu müşterinin İPTAL arşivi — iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR.
   List<Map<String, dynamic>> cancelledSales = const [],
   required Future<void> Function(Map<String, dynamic> account) onCollect,
+  /// "Tümünden tahsilat al" — sayfa TÜMÜ seçili açılır, para satışlara vade sırasıyla bölünür.
+  required Future<void> Function() onCollectAll,
   required Future<void> Function(Map<String, dynamic> account) onOpenSale,
   required Future<void> Function() onOpenSalesWorkspace,
   /// Defterin KENDİ verisini tazelemesi için: tahsilat sonrası açık kalan sayfa eski rakamları
@@ -37,6 +39,7 @@ Future<void> openCustomerLedgerSheet(
       group: group,
       cancelledSales: cancelledSales,
       onCollect: onCollect,
+      onCollectAll: onCollectAll,
       onOpenSale: onOpenSale,
       onOpenSalesWorkspace: onOpenSalesWorkspace,
       onRefresh: onRefresh,
@@ -84,6 +87,7 @@ class CustomerLedgerScreen extends StatefulWidget {
     required this.group,
     this.cancelledSales = const [],
     required this.onCollect,
+    required this.onCollectAll,
     required this.onOpenSale,
     required this.onOpenSalesWorkspace,
     this.onRefresh,
@@ -95,6 +99,7 @@ class CustomerLedgerScreen extends StatefulWidget {
   /// İptal arşivi: satırları canlı tablodan silinir, parası yalnız buradan okunur.
   final List<Map<String, dynamic>> cancelledSales;
   final Future<void> Function(Map<String, dynamic> account) onCollect;
+  final Future<void> Function() onCollectAll;
   final Future<void> Function(Map<String, dynamic> account) onOpenSale;
   final Future<void> Function() onOpenSalesWorkspace;
 
@@ -335,6 +340,11 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       );
 
   List<Widget> _salesTab(CustomerAccountGroup g) => [
+        // TOPLAM — satış satırlarının üstünde, müşterinin bütün satışlarının özeti. Buradan
+        // alınan tahsilat TEK satışa değil tümüne vade sırasıyla bölünür. Tek satışlı
+        // müşteride gösterilmez: toplam ile tek satır birebir aynı rakamları yazardı.
+        if (g.accounts.where((a) => numberOf(a, const ['remainingAmount']) > 0.005).length > 1)
+          _totalCard(g),
         for (final a in g.accounts) _saleRow(a),
         const SizedBox(height: 4),
         OutlinedButton.icon(
@@ -343,6 +353,76 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           label: const Text('Satış yönetimi — geçmiş satış, iptal', style: TextStyle(fontSize: 12)),
         ),
       ];
+
+  /// Müşterinin BÜTÜN satışlarının özeti + "Tümünden tahsilat al".
+  Widget _totalCard(CustomerAccountGroup g) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.primaryDark.withValues(alpha: .35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.layers_rounded, size: 16, color: AppColors.primaryDark),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('Toplam · ${g.saleCount} satış',
+                      style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryDark)),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(CalendarText.tl(g.remainingAmount),
+                        style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.danger)),
+                    const Text('toplam kalan',
+                        style: TextStyle(fontSize: 9.5, color: AppColors.muted)),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              children: [
+                Text('Satış ${CalendarText.tl(g.totalAmount)}',
+                    style: const TextStyle(fontSize: 11.5)),
+                Text('Tahsil ${CalendarText.tl(g.paidAmount)}',
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.success)),
+                if (g.hasOverdue)
+                  Text('${CalendarText.tl(g.overdueAmount)} gecikmiş',
+                      style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.danger)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _blocked
+                    ? null
+                    : () async { await widget.onCollectAll(); await _refresh(); },
+                style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.payments_rounded, size: 16),
+                label: const Text('Tümünden tahsilat al', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _ledgerTab(CustomerAccountGroup g) {
     // Birleşik ekstre: tüm satışların tahsilatları tek listede (hangi satıştan geldiği yazılı).

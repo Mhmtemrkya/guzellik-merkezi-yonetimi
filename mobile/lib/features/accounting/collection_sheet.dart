@@ -7,6 +7,7 @@ import '../../core/network/idempotency.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
+import 'account_grouping.dart';
 import 'account_installments.dart';
 
 /// TEK "Tahsilat Al" alt sayfası — web `CollectionDialog` paritesi.
@@ -69,6 +70,9 @@ Future<int?> showCollectionSheet(
   List<Map<String, dynamic>>? accounts,
   String? initialAccountId,
   bool lockAccount = false,
+  /// true ise sayfa TÜMÜ seçili açılır (defterdeki "Tümünden tahsilat al" bundan gelir).
+  /// Yalnız gerçekten birden çok AÇIK satış varken etkilidir.
+  bool defaultAll = false,
   String title = 'Yeni tahsilat',
 }) {
   return showModalBottomSheet<int>(
@@ -81,6 +85,7 @@ Future<int?> showCollectionSheet(
       accounts: accounts,
       initialAccountId: initialAccountId,
       lockAccount: lockAccount,
+      defaultAll: defaultAll,
       title: title,
     ),
   );
@@ -93,12 +98,14 @@ class _CollectionSheet extends StatefulWidget {
     required this.lockAccount,
     this.accounts,
     this.initialAccountId,
+    this.defaultAll = false,
   });
 
   final ApiClient api;
   final List<Map<String, dynamic>>? accounts;
   final String? initialAccountId;
   final bool lockAccount;
+  final bool defaultAll;
   final String title;
 
   @override
@@ -154,6 +161,17 @@ class _CollectionSheetState extends State<_CollectionSheet> {
             : const <String, dynamic>{},
       );
       if (initial.isNotEmpty) _pick(initial, rebuild: false);
+      // TÜMÜ ancak GERÇEKTEN birden çok açık satış varken açılır; tek satışta sıradan seçim.
+      final openCount = _accounts
+          .where((a) => numberOf(a, const ['remainingAmount']) > 0.005)
+          .length;
+      if (widget.defaultAll && _saleMode && openCount > 1) {
+        final s = summarizeAllAccounts(_accounts, _todayIso());
+        _allSelected = true;
+        _rows.first.method = 'cash';
+        _rows.first.amount.text =
+            _plain(_kurus(s.dueNow > 0.005 ? s.dueNow : s.remaining));
+      }
     });
   }
 
@@ -174,6 +192,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
 
   void _pick(Map<String, dynamic> account, {bool rebuild = true}) {
     _selected = account;
+    _allSelected = false;
     for (final r in _rows.skip(1)) {
       r.amount.dispose();
     }
@@ -220,6 +239,33 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     return _accounts.every((a) => '${a['customerId'] ?? ''}' == first);
   }
 
+  /// TÜMÜ seçili mi — tahsilat müşterinin bütün satışlarına dağıtılacak.
+  bool _allSelected = false;
+  bool get _allMode => _saleMode && _allSelected;
+
+  String _todayIso() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+  String _saleLabel(Map<String, dynamic> a) =>
+      valueOf(a, const ['servicePackageName', 'name'], fallback: 'Satış');
+
+  /// Tümü modunun özeti (toplam borç, bu ay ödenmesi gereken, gecikmiş, birleşik kuyruk).
+  AllAccountsSummary get _allSummary =>
+      summarizeAllAccounts(_accounts, _todayIso());
+
+  /// "Tümü" seçimi — tutar tüm satışların bu ay ödenmesi gereken toplamıyla açılır.
+  void _pickAll() {
+    for (final r in _rows.skip(1)) {
+      r.amount.dispose();
+    }
+    final s = _allSummary;
+    setState(() {
+      _allSelected = true;
+      _rows.removeRange(1, _rows.length);
+      _rows.first.method = 'cash';
+      _rows.first.amount.text =
+          _plain(_kurus(s.dueNow > 0.005 ? s.dueNow : s.remaining));
+    });
+  }
+
   /// Hazır tutar çipi: tutarı TEK satıra yazar (kırılım varsa sadeleşir).
   void _applyQuickAmount(double value) {
     for (final r in _rows.skip(1)) {
@@ -259,14 +305,26 @@ class _CollectionSheetState extends State<_CollectionSheet> {
   }
 
   Future<void> _pickAccount() async {
+    final summary = _saleMode ? _allSummary : null;
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AccountPicker(accounts: _accounts, saleMode: _saleMode),
+      builder: (_) => _AccountPicker(
+        accounts: _accounts,
+        saleMode: _saleMode,
+        // TÜMÜ satırı yalnız gerçekten birden çok AÇIK satış varken gösterilir.
+        allSummary: (summary != null && summary.openCount > 1) ? summary : null,
+      ),
     );
-    if (picked != null) _pick(picked);
+    if (picked == null) return;
+    // Sentinel: picker "Tümü" için özel bir işaret döndürür (gerçek cari değil).
+    if (picked['__all__'] == true) {
+      _pickAll();
+      return;
+    }
+    _pick(picked);
   }
 
   Future<void> _pickDate() async {
@@ -281,8 +339,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
   }
 
   Future<void> _submit() async {
-    final account = _selected;
-    if (account == null) {
+    if (!_allMode && _selected == null) {
       setState(() => _error = 'Cari hesap seçimi zorunlu.');
       return;
     }
@@ -294,6 +351,32 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     }
     if (merged.isEmpty) {
       setState(() => _error = 'Tutar 0’dan büyük olmalı.');
+      return;
+    }
+
+    /*
+     * ÇAĞRI PLANI — satış × yöntem.
+     *
+     * Tek satışta tek pay vardır ve plan yöntem satırlarının aynısıdır (eski davranış).
+     * TÜMÜ'de tutar önce satışlara global vade sırasıyla bölünür, sonra yöntem havuzları bu
+     * paylara doldurulur; yöntemleri ayrı ayrı dağıtmak aynı borcu iki kez sayardı.
+     */
+    final total = merged.values.fold<double>(0, (s, v) => s + v);
+    final allocations = _allMode
+        ? allocateAcrossAccounts(_accounts, total, _todayIso())
+        : [
+            AccountAllocation(
+              accountId: '${_selected!['id']}',
+              accountLabel: _saleLabel(_selected!),
+              amount: total,
+            )
+          ];
+    final calls = planCollectionCalls(
+      allocations,
+      merged.entries.map((e) => MethodAmount(e.key, e.value)).toList(),
+    );
+    if (calls.isEmpty) {
+      setState(() => _error = 'Tahsilat dağıtılamadı — açık borcu olan satış bulunamadı.');
       return;
     }
 
@@ -309,15 +392,15 @@ class _CollectionSheetState extends State<_CollectionSheet> {
         _reference.text.trim().isEmpty ? null : _reference.text.trim();
     var done = 0;
     try {
-      for (final entry in merged.entries) {
+      for (final call in calls) {
         final payload = CollectionPayload(
-          accountId: '${account['id']}',
-          amount: entry.value,
-          method: entry.key,
+          accountId: call.accountId,
+          amount: call.amount,
+          method: call.method,
           reference: reference,
           occurredAtUtc: stamp,
         );
-        // ANAHTAR YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL: kısmi hatadan sonra kullanıcı tekrar
+        // ANAHTAR SATIŞ+YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL: kısmi hatadan sonra kullanıcı tekrar
         // gönderdiğinde döngü BAŞARILI olanları da yeniden gönderir (satırlar budanmıyor);
         // aynı anahtar + aynı gövde sayesinde sunucu onları yazmak yerine oynatır.
         await widget.api.post(
@@ -325,8 +408,8 @@ class _CollectionSheetState extends State<_CollectionSheet> {
           payload.body,
           idempotencyKey(_salt, [
             payload.accountId,
-            entry.key,
-            entry.value,
+            call.method,
+            call.amount,
             stamp,
             reference,
           ]),
@@ -338,9 +421,11 @@ class _CollectionSheetState extends State<_CollectionSheet> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz.
+        // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz. TÜMÜ'de hangi satışların
+        // kaldığı da yazılır — para birden çok cariye gidiyor.
+        final left = calls.skip(done).map((c) => c.accountLabel).toSet().join(', ');
         _error = done > 0
-            ? '$e · $done/${merged.length} ödeme kaydedildi, kalanı tekrar deneyin.'
+            ? '$e · $done/${calls.length} ödeme kaydedildi. Kalan: $left. Tekrar deneyin.'
             : '$e';
       });
     }
@@ -375,7 +460,12 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _accountField(),
-                      if (_hasPlan) ...[
+                      if (_allMode) ...[
+                        const SizedBox(height: 14),
+                        _quickAmounts(),
+                        const SizedBox(height: 14),
+                        _allDistributionPanel(),
+                      ] else if (_hasPlan) ...[
                         const SizedBox(height: 14),
                         _quickAmounts(),
                         const SizedBox(height: 14),
@@ -488,7 +578,22 @@ class _CollectionSheetState extends State<_CollectionSheet> {
             child: Row(
               children: [
                 Expanded(
-                  child: selected == null
+                  child: _allMode
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('TÜMÜ · ${_allSummary.openCount} satış',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                    color: AppColors.primaryDark)),
+                            Text(
+                                '${CalendarText.tl(_allSummary.remaining)} toplam borç',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.muted)),
+                          ],
+                        )
+                      : selected == null
                       ? const Text('Cari hesap seç…',
                           style: TextStyle(color: AppColors.muted))
                       : Column(
@@ -526,7 +631,9 @@ class _CollectionSheetState extends State<_CollectionSheet> {
           Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Text(
-                'Bu müşterinin ${_accounts.length} açık satışı var. Tahsilat yalnız seçili satışın taksitlerine dağıtılır.',
+                _allMode
+                    ? 'Tahsilat ${_allSummary.openCount} satışa vade sırasıyla bölünür; her satış için ayrı tahsilat kaydı açılır.'
+                    : 'Bu müşterinin ${_accounts.length} açık satışı var. Tahsilat yalnız seçili satışın taksitlerine dağıtılır.',
                 style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
           ),
       ],
@@ -538,6 +645,18 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     final selected = _selected;
     if (selected == null) return const SizedBox.shrink();
     final items = <(String, double)>[];
+    // TÜMÜ: rakamlar TÜM satışların toplamıdır (tek satışın değil).
+    if (_allMode) {
+      final s = _allSummary;
+      if (s.dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(s.dueNow)));
+      if (s.overdue > 0.005 && (s.overdue - s.dueNow).abs() > 0.005) {
+        items.add(('Yalnız gecikmiş', _kurus(s.overdue)));
+      }
+      if (s.remaining > 0.005) {
+        items.add(('Tüm borcun tamamı', _kurus(s.remaining)));
+      }
+      return _quickChips(items, carryNote: s.overdue > 0.005);
+    }
     if (_dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(_dueNow)));
     if (_overdueSum > 0.005 && (_overdueSum - _dueNow).abs() > 0.005) {
       items.add(('Yalnız gecikmiş', _kurus(_overdueSum)));
@@ -548,8 +667,12 @@ class _CollectionSheetState extends State<_CollectionSheet> {
     }
     final remaining = _kurus(_remaining(selected));
     if (remaining > 0.005) items.add(('Kalan borcun tamamı', remaining));
-    if (items.isEmpty) return const SizedBox.shrink();
+    return _quickChips(items, carryNote: _overdueSum > 0.005);
+  }
 
+  /// Hazır tutar çipleri — tek satış ve TÜMÜ aynı görünümü paylaşır.
+  Widget _quickChips(List<(String, double)> items, {bool carryNote = false}) {
+    if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -572,12 +695,84 @@ class _CollectionSheetState extends State<_CollectionSheet> {
               ),
           ],
         ),
-        if (_overdueSum > 0.005) ...[
+        if (carryNote) ...[
           const SizedBox(height: 6),
           Text(
-              'Ödenmeyen aylar sonraki ayın taksitine eklenir — bu ay ödenmesi gereken ${CalendarText.tl(_dueNow)}.',
+              'Ödenmeyen aylar sonraki ayın taksitine eklenir — bu ay ödenmesi gereken ${CalendarText.tl(_allMode ? _allSummary.dueNow : _dueNow)}.',
               style: const TextStyle(fontSize: 11, color: AppColors.muted)),
         ],
+      ],
+    );
+  }
+
+  /// TÜMÜ: para hangi satışa ne kadar yazılacak — onaydan ÖNCE görünmeli.
+  /// Tek dokunuşla birden çok cariye yazılan tahsilatı sonradan geri almak zordur.
+  Widget _allDistributionPanel() {
+    final preview = allocateAcrossAccounts(_accounts, _total, _todayIso());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Hangi satışa ne kadar yazılacak?',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark)),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: preview.isEmpty
+              ? const Text('Tutar girin — dağıtım burada görünecek.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.muted))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final p in preview)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(p.accountLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11.5)),
+                            ),
+                            Text(CalendarText.tl(p.amount),
+                                style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primaryDark)),
+                          ],
+                        ),
+                      ),
+                    const Divider(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${preview.length} satışa yazılacak',
+                              style: const TextStyle(
+                                  fontSize: 11.5, fontWeight: FontWeight.w800)),
+                        ),
+                        Text(
+                            CalendarText.tl(preview.fold<double>(
+                                0, (s, p) => s + p.amount)),
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                        'Dağıtım en eski vadeden başlar; satış içinde de en eski taksit önce kapanır.',
+                        style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                  ],
+                ),
+        ),
       ],
     );
   }
@@ -812,11 +1007,18 @@ class _CollectionSheetState extends State<_CollectionSheet> {
 
 /// Aranabilir cari hesap seçici (web'deki dropdown + arama kutusunun karşılığı).
 class _AccountPicker extends StatefulWidget {
-  const _AccountPicker({required this.accounts, this.saleMode = false});
+  const _AccountPicker({
+    required this.accounts,
+    this.saleMode = false,
+    this.allSummary,
+  });
   final List<Map<String, dynamic>> accounts;
 
   /// true ise liste tek müşterinin satışlarıdır — başlıkta SATIŞ adı yazılır.
   final bool saleMode;
+
+  /// Doluysa listenin başına TÜMÜ satırı eklenir (birden çok açık satış var demektir).
+  final AllAccountsSummary? allSummary;
 
   @override
   State<_AccountPicker> createState() => _AccountPickerState();
@@ -863,6 +1065,36 @@ class _AccountPickerState extends State<_AccountPicker> {
                 ),
               ),
             ),
+            if (widget.allSummary != null && _query.trim().isEmpty)
+              // TÜMÜ en üstte: "hepsini kapat" en sık istenen işlem. Arama yazılınca gizlenir
+              // — kullanıcı o an belirli bir satış arıyordur.
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.layers_rounded,
+                    size: 20, color: AppColors.primaryDark),
+                title: Text('TÜMÜ · ${widget.allSummary!.openCount} satış',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                        color: AppColors.primaryDark)),
+                subtitle: Text(
+                    'Bu ay ödenmesi gereken ${CalendarText.tl(widget.allSummary!.dueNow)}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(CalendarText.tl(widget.allSummary!.remaining),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: AppColors.danger)),
+                    const Text('toplam',
+                        style: TextStyle(fontSize: 9, color: AppColors.muted)),
+                  ],
+                ),
+                onTap: () => Navigator.pop(context, <String, dynamic>{'__all__': true}),
+              ),
             Flexible(
               child: list.isEmpty
                   ? const Padding(

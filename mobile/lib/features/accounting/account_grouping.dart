@@ -159,7 +159,9 @@ List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso
   final firstDue = <String, String>{};
 
   for (final a in group.accounts) {
-    for (final i in parseInstallments(a).where((i) => !i.cancelled)) {
+    // TARİH GEÇİRİLİR: parser gecikmeyi kendi hesaplar; geçirilmezse takvim, verilen
+    // todayIso ile değil GERÇEK bugünle boyanır (web'de bu bayrak sunucudan gelir).
+    for (final i in parseInstallments(a, todayIso).where((i) => !i.cancelled)) {
       final key = _monthKeyOf(i.dueDate);
       if (key == null) continue;
       final cur = byMonth[key] ??= [0, 0, 0, 0, 0];
@@ -232,4 +234,266 @@ List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso
     }
   }
   return cells;
+}
+
+// ---------------------------------------------------------------------------
+// "TÜMÜ" — MÜŞTERİNİN BÜTÜN SATIŞLARINA TEK SEFERDE TAHSİLAT
+// (web `lib/accountGrouping.ts` içindeki aynı adlı fonksiyonların paritesi)
+// ---------------------------------------------------------------------------
+
+/// Tümü modunda birleşik vade kuyruğundaki tek sıra.
+class GlobalDueRow {
+  GlobalDueRow({
+    required this.accountId,
+    required this.accountLabel,
+    required this.installmentNo,
+    required this.dueDate,
+    required this.remaining,
+    required this.isOverdue,
+  });
+
+  final String accountId;
+
+  /// Satış adı — birleşik kuyrukta hangi satıştan geldiği yazılmalı.
+  final String accountLabel;
+
+  /// Taksit sırası; peşin satışın kalanı için null (sentetik satır).
+  final int? installmentNo;
+  final String dueDate;
+  final double remaining;
+  final bool isOverdue;
+}
+
+/// Tümü modunun özeti — sayfadaki rakamlar buradan okunur.
+class AllAccountsSummary {
+  AllAccountsSummary({
+    required this.remaining,
+    required this.dueNow,
+    required this.overdue,
+    required this.openCount,
+    required this.queue,
+  });
+
+  final double remaining;
+  final double dueNow;
+  final double overdue;
+  final int openCount;
+  final List<GlobalDueRow> queue;
+}
+
+double _accountRemaining(Map<String, dynamic> a) {
+  final v = numberOf(a, const ['remainingAmount', 'remaining']);
+  return v > 0 ? v : 0;
+}
+
+String _saleLabelOf(Map<String, dynamic> a) =>
+    valueOf(a, const ['servicePackageName', 'name'], fallback: 'Satış');
+
+/// Tüm satışların vadelerini TEK KUYRUKTA, global vade sırasıyla birleştirir.
+///
+/// Peşin satışın (taksit satırı olmayan) kalan borcu da kuyruğa girer: parası satış anında
+/// istenmiştir, yani vadesi satış günüdür. Kuyruğa alınmasaydı Tümü ile ödenen para peşin
+/// satışın borcunu hiç kapatmazdı.
+///
+/// Kuyruk hesap başına remainingAmount ile SINIRLANIR — taksit kalanları toplamı kredi
+/// bakiyesi yüzünden daha büyük olabilir ve sunucu fazlasını borç saymaz.
+List<GlobalDueRow> buildGlobalDueQueue(
+    List<Map<String, dynamic>> accounts, String todayIso) {
+  final today = todayIso.length >= 10 ? todayIso.substring(0, 10) : todayIso;
+  final rows = <GlobalDueRow>[];
+
+  for (final a in accounts) {
+    var budget = _accountRemaining(a);
+    if (budget <= 0.005) continue;
+    final label = _saleLabelOf(a);
+    final insts = parseInstallments(a, todayIso)
+        .where((i) => !i.cancelled && i.remaining > 0.005)
+        .toList()
+      ..sort((x, y) {
+        final c = x.dueDate.compareTo(y.dueDate);
+        return c != 0 ? c : x.no.compareTo(y.no);
+      });
+
+    for (final i in insts) {
+      if (budget <= 0.005) break;
+      final take = budget < i.remaining ? budget : i.remaining;
+      budget -= take;
+      rows.add(GlobalDueRow(
+        accountId: '${a['id']}',
+        accountLabel: label,
+        installmentNo: i.no,
+        dueDate: i.dueDate,
+        remaining: take,
+        isOverdue:
+            i.overdue || (i.dueDate.isNotEmpty && i.dueDate.compareTo(today) < 0),
+      ));
+    }
+
+    // Taksitle karşılanmayan kalan (peşin satış ya da plan dışı bakiye) — vadesi satış günü.
+    if (budget > 0.005) {
+      final soldRaw = valueOf(a, const ['soldAtUtc', 'createdAtUtc'], fallback: '');
+      final soldDay = soldRaw.length >= 10 ? soldRaw.substring(0, 10) : soldRaw;
+      rows.add(GlobalDueRow(
+        accountId: '${a['id']}',
+        accountLabel: label,
+        installmentNo: null,
+        dueDate: soldDay,
+        remaining: budget,
+        isOverdue: soldDay.isEmpty || soldDay.compareTo(today) < 0,
+      ));
+    }
+  }
+
+  // GLOBAL VADE SIRASI: en eski borç önce kapanır. Tarihsiz satır (bozuk veri) en başa alınır.
+  rows.sort((x, y) => (x.dueDate.isEmpty ? '0000-00-00' : x.dueDate)
+      .compareTo(y.dueDate.isEmpty ? '0000-00-00' : y.dueDate));
+  return rows;
+}
+
+/// Tümü modunun özet rakamları.
+AllAccountsSummary summarizeAllAccounts(
+    List<Map<String, dynamic>> accounts, String todayIso) {
+  final open = accounts.where((a) => _accountRemaining(a) > 0.005).toList();
+  final queue = buildGlobalDueQueue(accounts, todayIso);
+  var dueNow = 0.0;
+  for (final a in open) {
+    final plan = parseInstallments(a, todayIso).where((i) => !i.cancelled).toList();
+    // TARİH GEÇİRİLİR: geçirilmezse dueThisMonth bugüne bakar ve özet, verilen todayIso ile
+    // tutmaz (testte 2.500 yerine 5.000 çıkmıştı — sessiz bir web/mobil sapması).
+    dueNow += plan.isNotEmpty ? dueThisMonth(plan, todayIso) : _accountRemaining(a);
+  }
+  return AllAccountsSummary(
+    remaining: open.fold<double>(0, (s, a) => s + _accountRemaining(a)),
+    dueNow: dueNow,
+    overdue:
+        queue.where((r) => r.isOverdue).fold<double>(0, (s, r) => s + r.remaining),
+    openCount: open.length,
+    queue: queue,
+  );
+}
+
+/// Dağıtım sonucu — satış başına yazılacak tahsilat tutarı.
+class AccountAllocation {
+  AccountAllocation({
+    required this.accountId,
+    required this.accountLabel,
+    required this.amount,
+  });
+
+  final String accountId;
+  final String accountLabel;
+  double amount;
+}
+
+double _round2(double v) => (v * 100).round() / 100;
+
+/// Bir tutarı BİRDEN ÇOK satışa, GLOBAL VADE SIRASIYLA dağıtır.
+///
+/// Sunucu tahsilatı tek bir hesaba yazar; müşteri düzeyinde "hepsine öde" ucu yok. Bu yüzden
+/// bölüştürme İSTEMCİDE yapılır ve her satış için AYRI tahsilat çağrısı gider.
+///
+/// Kuruş artığı son satıra eklenir: dağıtılan toplam girilen tutara birebir eşit kalmalı.
+List<AccountAllocation> allocateAcrossAccounts(
+    List<Map<String, dynamic>> accounts, double amount, String todayIso) {
+  var pool = _round2(amount);
+  if (pool <= 0.005) return const [];
+
+  final byAccount = <String, AccountAllocation>{};
+  for (final row in buildGlobalDueQueue(accounts, todayIso)) {
+    if (pool <= 0.005) break;
+    final take = pool < row.remaining ? pool : row.remaining;
+    if (take <= 0.005) continue;
+    pool -= take;
+    final cur = byAccount[row.accountId];
+    if (cur != null) {
+      cur.amount += take;
+    } else {
+      byAccount[row.accountId] = AccountAllocation(
+          accountId: row.accountId, accountLabel: row.accountLabel, amount: take);
+    }
+  }
+
+  final out = byAccount.values.toList();
+  for (final r in out) {
+    r.amount = _round2(r.amount);
+  }
+  if (out.isEmpty) return out;
+
+  // FAZLA ÖDEME yutulmaz: borçtan büyük tutar artan son satışa yazılır (sunucuda kredi olur).
+  final distributed = out.fold<double>(0, (s, r) => s + r.amount);
+  final drift = _round2(_round2(amount) - distributed);
+  if (drift.abs() > 0.001) out.last.amount = _round2(out.last.amount + drift);
+
+  return out.where((r) => r.amount > 0.005).toList();
+}
+
+/// Sunucuya gidecek TEK tahsilat çağrısı (satış x yöntem).
+class CollectionCall {
+  CollectionCall({
+    required this.accountId,
+    required this.accountLabel,
+    required this.method,
+    required this.amount,
+  });
+
+  final String accountId;
+  final String accountLabel;
+  final String method;
+  double amount;
+}
+
+class _MethodPool {
+  _MethodPool(this.method, this.left);
+  final String method;
+  double left;
+}
+
+/// Satış dağıtımı ile ödeme yöntemi kırılımını ÇAKIŞTIRIR.
+///
+/// Yöntemleri tek tek dağıtmak borcu ÇİFT SAYAR: 1.500 borçlu A ve 2.000 borçlu B varken
+/// "2.000 nakit + 1.000 kart" girildiğinde her yöntem kuyruğun başından dağıtılsaydı A'ya hem
+/// nakitten 1.500 hem karttan 1.000 yazılırdı. Doğrusu: önce TOPLAM satışlara dağıtılır,
+/// sonra yöntem havuzları bu paylara sırayla doldurulur.
+List<CollectionCall> planCollectionCalls(
+  List<AccountAllocation> allocations,
+  List<MethodAmount> methodRows,
+) {
+  final pools = methodRows
+      .map((r) => _MethodPool(r.method, _round2(r.amount)))
+      .where((r) => r.left > 0.005)
+      .toList();
+  final calls = <CollectionCall>[];
+
+  for (final alloc in allocations) {
+    var need = _round2(alloc.amount);
+    for (final pool in pools) {
+      if (need <= 0.005) break;
+      if (pool.left <= 0.005) continue;
+      final take = _round2(need < pool.left ? need : pool.left);
+      pool.left = _round2(pool.left - take);
+      need = _round2(need - take);
+      // Aynı satış + aynı yöntem tek çağrıda toplanır.
+      final existing = calls
+          .where((c) => c.accountId == alloc.accountId && c.method == pool.method)
+          .toList();
+      if (existing.isNotEmpty) {
+        existing.first.amount = _round2(existing.first.amount + take);
+      } else {
+        calls.add(CollectionCall(
+            accountId: alloc.accountId,
+            accountLabel: alloc.accountLabel,
+            method: pool.method,
+            amount: take));
+      }
+    }
+  }
+
+  return calls.where((c) => c.amount > 0.005).toList();
+}
+
+/// Tahsilat sayfasındaki tek ödeme satırı (tutar + yöntem).
+class MethodAmount {
+  const MethodAmount(this.method, this.amount);
+  final String method;
+  final double amount;
 }

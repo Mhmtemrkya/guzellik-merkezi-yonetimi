@@ -131,6 +131,8 @@ function OnMuhasebePageInner() {
    * null = kapsam yok, tüm cariler listelenir (kasa/randevu gibi genel girişler).
    */
   const [collectScopeIds, setCollectScopeIds] = useState<string[] | null>(null)
+  /** Modal "Tümü" seçili mi açılsın (defterdeki Toplam kartından gelindiğinde). */
+  const [collectAllDefault, setCollectAllDefault] = useState(false)
   const [cancelledOpen, setCancelledOpen] = useState(false)
   /** Arşiv modalı hangi sekmeyle açılacak — "İptal edilenler" / "İade edilenler" butonları. */
   const [cancelledTab, setCancelledTab] = useState<CancelledTab>('all')
@@ -514,6 +516,17 @@ function OnMuhasebePageInner() {
     })[0]
     setCollectScopeIds(pool.map((a) => a.id))
     setSelectedAccountId(primary.id)
+    setCollectAllDefault(false)
+    setCollectOpen(true)
+  }
+
+  /** "Tümünden tahsilat al" — modal Tümü seçili açılır (para satışlara vade sırasıyla bölünür). */
+  const openCollectAllFor = (list: CustomerAccount[]): void => {
+    const open = list.filter((a) => a.remainingAmount > 0.005)
+    if (open.length === 0) return
+    setCollectScopeIds(open.map((a) => a.id))
+    setSelectedAccountId(open[0].id)
+    setCollectAllDefault(true)
     setCollectOpen(true)
   }
 
@@ -1367,8 +1380,10 @@ function OnMuhasebePageInner() {
               onCollect={(accountId) => {
                 setCollectScopeIds(selGroup ? selGroup.accounts.map((a) => a.id) : null)
                 setSelectedAccountId(accountId)
+                setCollectAllDefault(false)
                 setCollectOpen(true)
               }}
+              onCollectAll={() => { if (selGroup) openCollectAllFor(selGroup.accounts) }}
               onOpenSale={(accountId) => { setSelectedGroupId(null); openAccount(accountId) }}
               onOpenSalesWorkspace={() => {
                 if (!selGroup?.customerId) return
@@ -1419,9 +1434,10 @@ function OnMuhasebePageInner() {
                     : liveAccounts
                 }
                 initialAccountId={selAccount.id}
+                defaultAll={collectAllDefault}
                 hideTrigger
                 open={collectOpen}
-                onOpenChange={(next) => { setCollectOpen(next); if (!next) setCollectScopeIds(null) }}
+                onOpenChange={(next) => { setCollectOpen(next); if (!next) { setCollectScopeIds(null); setCollectAllDefault(false) } }}
                 onSubmit={registerCollection}
               />
             )}

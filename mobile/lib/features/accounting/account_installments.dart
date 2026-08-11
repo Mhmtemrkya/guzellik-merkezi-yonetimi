@@ -55,7 +55,13 @@ String _todayIso() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 /// Taksit listesi — durum ve GECİKME hesabı web'deki `normalizeAccount` ile aynı:
 /// bir taksit, BİR SONRAKİ taksitin vade günü gelene kadar "gecikti" sayılmaz
 /// (son taksit için kendi vadesine +1 ay tolerans).
-List<AccountInstallment> parseInstallments(Map<String, dynamic> account) {
+/// [todayIso] dışarıdan verilebilir: gecikme hesabı burada YAPILDIĞI için (sunucu bayrağı
+/// değil) sabit saate bağlanmazsa sonuç takvime göre değişir ve testler yılın ayına göre
+/// farklı sonuç verir.
+List<AccountInstallment> parseInstallments(
+  Map<String, dynamic> account, [
+  String? todayIso,
+]) {
   final raw = (account['installments'] as List? ?? const [])
       .whereType<Map>()
       .map((e) => e.cast<String, dynamic>())
@@ -77,7 +83,9 @@ List<AccountInstallment> parseInstallments(Map<String, dynamic> account) {
         .format(DateTime(parsed.year, parsed.month + 1, parsed.day));
   }
 
-  final today = _todayIso();
+  final today = (todayIso != null && todayIso.length >= 10)
+      ? todayIso.substring(0, 10)
+      : _todayIso();
   final list = <AccountInstallment>[];
   for (var idx = 0; idx < raw.length; idx++) {
     final i = raw[idx];
@@ -153,13 +161,21 @@ class InstallmentDueRow {
 /// Bir hesabın taksitlerini vade sırasıyla gezip devir bakiyesini hesaplar.
 /// HESAP BAZINDADIR: sunucu tahsilatı hesap havuzundan dağıtır, bir satışın gecikmesi
 /// başka satışın taksitine binmez.
-List<InstallmentDueRow> buildInstallmentRows(List<AccountInstallment> installments) {
+///
+/// [todayIso] DIŞARIDAN VERİLEBİLİR (web'deki eşi de öyle): içeride `DateTime.now()` sabitse
+/// sonuç takvime bağımlı olur ve testler yılın hangi ayında koştuğuna göre değişirdi.
+List<InstallmentDueRow> buildInstallmentRows(
+  List<AccountInstallment> installments, [
+  String? todayIso,
+]) {
   final ordered = installments.where((i) => !i.cancelled).toList()
     ..sort((a, b) {
       final c = a.dueDate.compareTo(b.dueDate);
       return c != 0 ? c : a.no.compareTo(b.no);
     });
-  final today = _todayIso();
+  final today = (todayIso != null && todayIso.length >= 10)
+      ? todayIso.substring(0, 10)
+      : _todayIso();
   var carry = 0.0;
   final out = <InstallmentDueRow>[];
   for (final i in ordered) {
@@ -181,9 +197,14 @@ List<InstallmentDueRow> buildInstallmentRows(List<AccountInstallment> installmen
 }
 
 /// "Bu ay ödenmesi gereken" — gecikmiş devir + içinde bulunulan ayın taksiti.
-double dueThisMonth(List<AccountInstallment> installments) {
-  final now = DateTime.now();
-  final limit = DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month + 1, 0));
+///
+/// [todayIso] dışarıdan verilebilir; verilmezse bugün. (Web'deki eşi tarihi ZORUNLU alır;
+/// burada isteğe bağlı çünkü çağrı yerlerinin çoğu canlı ekrandır.)
+double dueThisMonth(List<AccountInstallment> installments, [String? todayIso]) {
+  final base = (todayIso != null && todayIso.length >= 7)
+      ? DateTime(int.parse(todayIso.substring(0, 4)), int.parse(todayIso.substring(5, 7)))
+      : DateTime.now();
+  final limit = DateFormat('yyyy-MM-dd').format(DateTime(base.year, base.month + 1, 0));
   return installments
       .where((i) =>
           !i.cancelled &&

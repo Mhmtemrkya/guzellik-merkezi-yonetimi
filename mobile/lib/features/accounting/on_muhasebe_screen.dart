@@ -1016,7 +1016,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   /// Açılışta seçili gelen satış EN ACİL olandır: gecikmişi olan, yoksa vadesi en yakın,
   /// yoksa borcu en büyük. Tahsilat tek satışın carisine yazılır (bölüştürülmez), kullanıcı
   /// isterse sayfadaki seçiciden başka satışa geçer.
-  Future<void> _collectForGroup(CustomerAccountGroup g) async {
+  Future<void> _collectForGroup(CustomerAccountGroup g, {bool all = false}) async {
     final open = g.accounts
         .where((a) => numberOf(a, const ['remainingAmount']) > 0.005)
         .toList();
@@ -1037,6 +1037,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
       api: widget.api,
       accounts: pool,
       initialAccountId: '${sorted.first['id']}',
+      defaultAll: all,
       title: 'Tahsilat al',
     );
     if (saved == null || saved == 0) return;
@@ -1059,6 +1060,8 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           .where((c) => '${c['customerId']}' == g.customerId)
           .toList(),
       onCollect: (a) async => _openAccountDetail(a),
+      // TÜMÜ: sayfa müşterinin bütün satışlarıyla ve TÜMÜ seçili açılır.
+      onCollectAll: () async => _collectForGroup(g, all: true),
       onOpenSale: (a) async => _openAccountDetail(a),
       onOpenSalesWorkspace: () async {
         if (g.accounts.isEmpty) return;

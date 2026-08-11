@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  AlertTriangle, Banknote, CalendarClock, CalendarDays, ChevronRight, CreditCard,
+  AlertTriangle, Banknote, CalendarClock, CalendarDays, ChevronRight, CreditCard, Layers,
   Package, Phone, Receipt, TrendingUp, Wallet, X,
 } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
@@ -54,6 +54,7 @@ export default function CustomerLedgerModal({
   open,
   onClose,
   onCollect,
+  onCollectAll,
   onOpenSale,
   onOpenSalesWorkspace,
 }: {
@@ -68,6 +69,8 @@ export default function CustomerLedgerModal({
   onClose: () => void
   /** Tahsilat — SEÇİLEN satışın carisine yazılır (tek modal: aylık/genel ayrımı yok). */
   onCollect: (accountId: string) => void
+  /** "Tümünden tahsilat al" — modal Tümü seçili açılır, para satışlara vade sırasıyla bölünür. */
+  onCollectAll: () => void
   /** Satışın kendi detay modali (ekstre, taksit planı, seans). */
   onOpenSale: (accountId: string) => void
   /** Satış yönetimi (geçmiş satış ekle / iptal). */
@@ -191,6 +194,8 @@ export default function CustomerLedgerModal({
 
   if (!group) return null
 
+  /** Açık borcu olan satış adedi — "Toplam" satırı yalnız birden çoksa anlamlı. */
+  const openSaleCount = group.accounts.filter((a) => a.remainingAmount > 0.005).length
   const initials = group.customerName.trim().split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toLocaleUpperCase('tr')
   const paidPct = group.totalAmount > 0 ? Math.min(100, Math.round((group.paidAmount / group.totalAmount) * 100)) : 0
 
@@ -335,6 +340,44 @@ export default function CustomerLedgerModal({
 
                 {tab === 'sales' && (
                   <div className="space-y-2.5">
+                    {/* TOPLAM — satış satırlarının üstünde, müşterinin bütün satışlarının özeti.
+                        Buradan alınan tahsilat TEK satışa değil, tümüne vade sırasıyla bölünür
+                        (modal "Tümü" seçili açılır). Tek satışı olan müşteride gösterilmez:
+                        toplam satırı ile tek satış satırı birebir aynı rakamları yazardı. */}
+                    {openSaleCount > 1 && (
+                      <div className="rounded-[14px] border border-[#c85776]/35 bg-gradient-to-br from-[#fff1f6] to-white p-3.5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#a3576f]">
+                              <Layers className="h-3.5 w-3.5" /> Toplam · {group.saleCount} satış
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[#4a3a44]">
+                              <span>Satış <b className="text-[#352432]">{formatTL(Math.round(group.totalAmount))}</b></span>
+                              <span>Tahsil <b className="text-emerald-700">{formatTL(Math.round(group.paidAmount))}</b></span>
+                              {group.hasOverdue && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10.5px] font-bold text-rose-700">
+                                  <AlertTriangle className="h-3 w-3" /> {formatTL(Math.round(group.overdueAmount))} gecikmiş
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="font-display text-[19px] tabular-nums text-[#c85776]">
+                              {formatTL(Math.round(group.remainingAmount))}
+                            </div>
+                            <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">toplam kalan</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={onCollectAll}
+                          className="mt-2.5 inline-flex min-h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[12px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+                        >
+                          <Banknote className="h-4 w-4" /> Tümünden tahsilat al
+                        </button>
+                      </div>
+                    )}
+
                     {group.accounts.map((a) => (
                       <SaleRow
                         key={a.id}

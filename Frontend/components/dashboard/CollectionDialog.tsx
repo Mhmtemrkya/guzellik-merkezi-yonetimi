@@ -15,6 +15,7 @@ import {
   Check,
   CheckCircle2,
   FileText,
+  Layers,
   Loader2,
   Plus,
   Search,
@@ -24,7 +25,10 @@ import {
 } from 'lucide-react'
 import type { AccountInstallmentItem, CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
-import { buildInstallmentRows, dueThisMonth } from '@/lib/accountGrouping'
+import {
+  allocateAcrossAccounts, buildInstallmentRows, dueThisMonth, planCollectionCalls,
+  summarizeAllAccounts, type GlobalDueRow,
+} from '@/lib/accountGrouping'
 import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 
 // ---------------------------------------------------------------------------
@@ -71,6 +75,11 @@ interface CollectionDialogProps {
   accounts: CustomerAccount[]
   /** Dışarıdan ön-seçili cari (ön muhasebe cari sekmesi gibi). */
   initialAccountId?: string | null
+  /**
+   * true ise modal "Tümü" seçili açılır — defterdeki "Tümünden tahsilat al" bundan gelir.
+   * Yalnız satış seçimi modunda (tek müşterinin birden çok satışı) etkilidir.
+   */
+  defaultAll?: boolean
   onSubmit: (payload: CollectionSubmitPayload) => Promise<void> | void
   /** Kendi trigger'ını ver (asChild). Yoksa varsayılan buton çizilir. */
   trigger?: ReactNode
@@ -105,6 +114,12 @@ function formatDay(iso: string): string {
   return `${d} ${MONTHS_SHORT[Number(m) - 1] ?? ''} ${y}`
 }
 
+/**
+ * "TÜMÜ" seçiminin kimliği. Gerçek bir cari id'si olamayacağı için (GUID) çakışma riski yok.
+ * Seçiliyken tahsilat müşterinin BÜTÜN satışlarına global vade sırasıyla dağıtılır.
+ */
+const ALL_ACCOUNTS = '__all__'
+
 /** İptal edilmemiş taksitler — plan var mı sorusunun tek cevabı. */
 function planOf(account: CustomerAccount | null): AccountInstallmentItem[] {
   return account ? account.installments.filter((i) => i.status !== 'Cancelled') : []
@@ -135,6 +150,7 @@ function suggestedAmount(account: CustomerAccount): number {
 export default function CollectionDialog({
   accounts,
   initialAccountId,
+  defaultAll = false,
   onSubmit,
   trigger,
   triggerLabel = 'Tahsilat al',
@@ -178,19 +194,28 @@ export default function CollectionDialog({
 
   const selected = useMemo(() => accounts.find((a) => a.id === accountId) || null, [accounts, accountId])
 
-  // Modal her açılışta ilk cariye + önerilen tutara sıfırlanır.
+  // Modal her açılışta ilk cariye (ya da Tümü'ye) + önerilen tutara sıfırlanır.
   useEffect(() => {
     if (!open) return
-    const initial = accounts.find((a) => a.id === initialAccountId) || accounts[0] || null
-    setAccountId(initial?.id || '')
-    setRows([{ amount: initial ? suggestedAmount(initial) : '', method: 'cash' }])
+    const openAccounts = accounts.filter((a) => a.remainingAmount > 0.005)
+    // "Tümü" ancak GERÇEKTEN birden çok açık satış varken açılır; tek satışta sıradan seçim.
+    const wantsAll = defaultAll && openAccounts.length > 1
+    if (wantsAll) {
+      const summary = summarizeAllAccounts(accounts, todayIso())
+      setAccountId(ALL_ACCOUNTS)
+      setRows([{ amount: roundKurus(summary.dueNow > 0.005 ? summary.dueNow : summary.remaining), method: 'cash' }])
+    } else {
+      const initial = accounts.find((a) => a.id === initialAccountId) || accounts[0] || null
+      setAccountId(initial?.id || '')
+      setRows([{ amount: initial ? suggestedAmount(initial) : '', method: 'cash' }])
+    }
     setDate(todayIso())
     setReference('')
     setQuery('')
     setPickerOpen(false)
     setError('')
     setSaving(false)
-  }, [open, initialAccountId, accounts])
+  }, [open, initialAccountId, defaultAll, accounts])
 
   // Dışarı tıklayınca cari seçici kapansın.
   useEffect(() => {
@@ -214,6 +239,7 @@ export default function CollectionDialog({
    * SATIŞ SEÇİMİ MODU — liste tek bir müşterinin satışlarına daraltılmışsa (ön muhasebede
    * çok satışlı müşteride "Tahsilat al"), seçicide müşteri adı değil SATIŞ adı öne çıkar:
    * aynı ad üç kez alt alta yazınca hangi satışa para yazıldığı okunmuyordu.
+   * Bu modda seçiciye ayrıca "TÜMÜ" seçeneği eklenir.
    */
   const saleMode = useMemo(
     () => accounts.length > 1 && Boolean(accounts[0]?.customerId) && accounts.every((a) => a.customerId === accounts[0].customerId),
@@ -221,10 +247,28 @@ export default function CollectionDialog({
   )
   const saleLabel = (a: CustomerAccount): string => a.servicePackageName || a.name || 'Satış'
 
+  /** "Tümü" seçili mi — tahsilat tüm satışlara dağıtılacak. */
+  const allMode = saleMode && accountId === ALL_ACCOUNTS
+  /** Tümü modunun özeti: toplam borç, bu ay ödenmesi gereken, gecikmiş ve birleşik vade kuyruğu. */
+  const allSummary = useMemo(
+    () => (saleMode ? summarizeAllAccounts(accounts, todayIso()) : null),
+    [saleMode, accounts],
+  )
+
   const pickAccount = (a: CustomerAccount): void => {
     setAccountId(a.id)
     // Seçilen carinin önerilen tutarı tek satıra yazılır (kırılım varsa sıfırlanır).
     setRows([{ amount: suggestedAmount(a), method: 'cash' }])
+    setPickerOpen(false)
+    setQuery('')
+  }
+
+  /** "Tümü" seçimi — tutar tüm satışların bu ay ödenmesi gereken toplamıyla açılır. */
+  const pickAll = (): void => {
+    const s = allSummary
+    setAccountId(ALL_ACCOUNTS)
+    const suggested = s && s.dueNow > 0.005 ? s.dueNow : (s?.remaining ?? 0)
+    setRows([{ amount: roundKurus(suggested), method: 'cash' }])
     setPickerOpen(false)
     setQuery('')
   }
@@ -252,9 +296,31 @@ export default function CollectionDialog({
   const nextPending = pending[0]
 
   const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+  /** Ekranda "kalan borç" olarak gösterilecek taban — Tümü'de tüm satışların toplamı. */
+  const scopeRemaining = allMode ? (allSummary?.remaining ?? 0) : (selected?.remainingAmount ?? 0)
   /** Kalan borcun henüz satırlara dağıtılmamış kısmı — yeni satırın varsayılanı olur. */
   // Kuruş korunur: yuvarlarsak 999,50 ₺ borçta 0,50 ₺'lik hayali "dağıtılmamış" kalır.
-  const unallocated = selected ? Math.max(0, roundKurus(selected.remainingAmount - totalAmount)) : 0
+  const unallocated = Math.max(0, roundKurus(scopeRemaining - totalAmount))
+
+  /**
+   * TÜMÜ ÖNİZLEMESİ — girilen tutarın hangi satışa ne kadar yazılacağı.
+   * Kullanıcı onaylamadan önce parayı hangi carilerin alacağını görmeli: tek tuşla birden
+   * çok cariye yazılan bir tahsilat, sonradan geri almak zor bir işlemdir.
+   */
+  const allPreview = useMemo(
+    () => (allMode ? allocateAcrossAccounts(accounts, totalAmount, todayIso()) : []),
+    [allMode, accounts, totalAmount],
+  )
+  /** Tümü modunda birleşik vade kuyruğu + bu ödemeden düşecek pay (canlı). */
+  const allQueue = useMemo(() => {
+    if (!allMode || !allSummary) return [] as { row: GlobalDueRow; applied: number }[]
+    let pool = totalAmount
+    return allSummary.queue.map((row) => {
+      const applied = Math.min(pool, row.remaining)
+      pool = Math.max(0, pool - applied)
+      return { row, applied }
+    })
+  }, [allMode, allSummary, totalAmount])
 
   /** Girilen tutarın hangi taksitleri kapatacağı — vade sırasıyla canlı dağıtım. */
   const preview = useMemo(() => {
@@ -278,6 +344,22 @@ export default function CollectionDialog({
   /** Hızlı tutar çipleri — hepsi taksitli hesapta anlamlı. */
   const quickAmounts = useMemo(() => {
     const out: { key: string; label: string; value: number; hint?: string }[] = []
+    // TÜMÜ: rakamlar tüm satışların toplamıdır (tek satışın değil).
+    if (allMode && allSummary) {
+      if (allSummary.dueNow > 0.005) {
+        out.push({
+          key: 'all-due', label: 'Bu ay ödenmesi gereken', value: roundKurus(allSummary.dueNow),
+          hint: `${allSummary.openCount} satışın toplamı`,
+        })
+      }
+      if (allSummary.overdue > 0.005 && Math.abs(allSummary.overdue - allSummary.dueNow) > 0.005) {
+        out.push({ key: 'all-overdue', label: 'Yalnız gecikmiş', value: roundKurus(allSummary.overdue) })
+      }
+      if (allSummary.remaining > 0.005) {
+        out.push({ key: 'all-total', label: 'Tüm borcun tamamı', value: roundKurus(allSummary.remaining) })
+      }
+      return out
+    }
     if (!selected) return out
     if (hasPlan) {
       if (dueNow > 0.005) out.push({ key: 'due', label: 'Bu ay ödenmesi gereken', value: roundKurus(dueNow) })
@@ -295,7 +377,7 @@ export default function CollectionDialog({
       out.push({ key: 'all', label: 'Kalan borcun tamamı', value: roundKurus(selected.remainingAmount) })
     }
     return out
-  }, [selected, hasPlan, dueNow, overdueSum, nextPending])
+  }, [allMode, allSummary, selected, hasPlan, dueNow, overdueSum, nextPending])
 
   const setRow = (index: number, patch: Partial<{ amount: number | ''; method: string }>): void =>
     setRows((list) => list.map((r, i) => (i === index ? { ...r, ...patch } : r)))
@@ -327,6 +409,24 @@ export default function CollectionDialog({
     // Aynı yöntem iki kez girilirse tek satırda toplanır — kasa kırılımı sade kalsın.
     const merged = new Map<string, number>()
     for (const r of payable) merged.set(r.method, (merged.get(r.method) ?? 0) + Number(r.amount || 0))
+    const methodRows = [...merged].map(([method, amount]) => ({ method, amount }))
+
+    /*
+     * ÇAĞRI PLANI — satış × yöntem.
+     *
+     * Tek satışta tek pay vardır ve plan yöntem satırlarının aynısıdır (eski davranış).
+     * TÜMÜ'de tutar önce satışlara global vade sırasıyla bölünür, sonra yöntem havuzları bu
+     * paylara doldurulur; yöntemleri ayrı ayrı dağıtmak aynı borcu iki kez sayardı
+     * (bkz. planCollectionCalls).
+     */
+    const allocations = allMode
+      ? allocateAcrossAccounts(accounts, methodRows.reduce((s, r) => s + r.amount, 0), todayIso())
+      : [{ accountId, accountLabel: selected ? saleLabel(selected) : '', amount: methodRows.reduce((s, r) => s + r.amount, 0) }]
+    const calls = planCollectionCalls(allocations, methodRows)
+    if (calls.length === 0) {
+      setError('Tahsilat dağıtılamadı — açık borcu olan satış bulunamadı.')
+      return
+    }
 
     setSaving(true)
     // Tarihten TÜRETİLİR (öğlen sabitlenir) — yani aynı formun tekrar gönderimi aynı damgayı
@@ -336,19 +436,19 @@ export default function CollectionDialog({
     const trimmedReference = reference.trim() || null
     let done = 0
     try {
-      // Her yöntem AYRI tahsilat kaydı olur; sıralı gider ki kısmi hata net anlaşılsın.
-      for (const [m, amt] of merged) {
+      // Her (satış, yöntem) AYRI tahsilat kaydı olur; sıralı gider ki kısmi hata net anlaşılsın.
+      for (const call of calls) {
         await onSubmit({
-          accountId,
-          amount: amt,
-          method: m,
+          accountId: call.accountId,
+          amount: call.amount,
+          method: call.method,
           reference: trimmedReference,
           occurredAtUtc,
-          // ANAHTAR YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL. Kısmi hatada aşağıda satırlar kalanlarla
-          // yeniden kurulur; indeks tabanlı anahtar kayar ve BAŞARILI ilk tahsilatın anahtarı
-          // farklı bir gövdeye denk gelip 409 (KeyReuse) üretirdi. Yöntem parti içinde
-          // benzersizdir (merged yöntem bazında toplanır) ve tekrar denemede aynı kalır.
-          idempotencyKey: idempotencyKey(saltRef.current, accountId, m, amt, occurredAtUtc, trimmedReference),
+          // ANAHTAR SATIŞ+YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL. Kısmi hatada aşağıda satırlar
+          // kalanlarla yeniden kurulur; indeks tabanlı anahtar kayar ve BAŞARILI ilk tahsilatın
+          // anahtarı farklı bir gövdeye denk gelip 409 (KeyReuse) üretirdi. Çift (satış, yöntem)
+          // parti içinde benzersizdir ve tekrar denemede aynı kalır.
+          idempotencyKey: idempotencyKey(saltRef.current, call.accountId, call.method, call.amount, occurredAtUtc, trimmedReference),
         })
         done++
       }
@@ -356,21 +456,34 @@ export default function CollectionDialog({
     } catch (e) {
       const base = e instanceof Error ? e.message : 'Tahsilat kaydedilemedi.'
       // Kısmi başarı gizlenmez: kaydedilenler geri alınmaz, kullanıcı ne kaldığını bilmeli.
+      // TÜMÜ'de hangi satışların yazıldığı da yazılır — para birden çok cariye gidiyor.
+      const remainingCalls = calls.slice(done)
       setError(
         done > 0
-          ? `${base} · ${done}/${merged.size} ödeme kaydedildi; kalanı tekrar deneyin.`
+          ? `${base} · ${done}/${calls.length} ödeme kaydedildi. Kalan: ${remainingCalls.map((c) => `${c.accountLabel || 'satış'} ${formatTL(c.amount)}`).join(', ')}. Tekrar deneyin.`
           : base,
       )
-      if (done > 0) setRows(Array.from(merged).slice(done).map(([m, amt]) => ({ amount: amt, method: m })))
+      // Kalan çağrılar yöntem bazında toplanıp forma geri yazılır; kullanıcı aynı formdan
+      // devam edebilsin. (Satış dağılımı yeniden hesaplanır — bakiyeler değişmiş olabilir.)
+      if (done > 0) {
+        const byMethod = new Map<string, number>()
+        for (const c of remainingCalls) byMethod.set(c.method, (byMethod.get(c.method) ?? 0) + c.amount)
+        setRows([...byMethod].map(([method, amount]) => ({ amount, method })))
+      }
     } finally {
       setSaving(false)
     }
   }
 
   const headerNote = description
-    ?? (selected
-      ? `${selected.customerName || selected.name}${selected.servicePackageName ? ` · ${selected.servicePackageName}` : ''} · ${formatTL(selected.remainingAmount)} kalan borç`
-      : 'Cari hesabı olan bir müşteriden ödeme al.')
+    ?? (allMode && allSummary
+      ? `${accounts[0]?.customerName || 'Müşteri'} · ${allSummary.openCount} satış · ${formatTL(allSummary.remaining)} toplam borç`
+      : selected
+        ? `${selected.customerName || selected.name}${selected.servicePackageName ? ` · ${selected.servicePackageName}` : ''} · ${formatTL(selected.remainingAmount)} kalan borç`
+        : 'Cari hesabı olan bir müşteriden ödeme al.')
+
+  /** Sol panel (plan) Tümü'de de gösterilir: kuyruk birleşik olsa da vade sırası aynı. */
+  const showPlanPanel = allMode ? allQueue.length > 0 : hasPlan
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -391,7 +504,7 @@ export default function CollectionDialog({
           hesapta modal içeriği kadar kalır, uzun planda 92dvh'de durur (footer kırpılmaz). */}
       <DialogContent
         className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none"
-        style={{ width: hasPlan ? 'min(96vw, 900px)' : 'min(96vw, 520px)', maxHeight: '92dvh' }}
+        style={{ width: showPlanPanel ? 'min(96vw, 900px)' : 'min(96vw, 520px)', maxHeight: '92dvh' }}
       >
         {/* ---- Başlık ---- */}
         <div className="shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f8] via-white to-[#fff2f6] px-5 py-4">
@@ -409,8 +522,59 @@ export default function CollectionDialog({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:flex-row">
-          {/* ---- SOL: taksit planı (yalnız taksitli hesapta) ---- */}
-          {hasPlan && (
+          {/* ---- SOL (TÜMÜ): tüm satışların BİRLEŞİK vade kuyruğu ----
+               Hangi satışın hangi vadesinin kapanacağı burada okunur; tek satışlık planın
+               yerine geçer çünkü Tümü'de sıra satışlar arasında geziyor. */}
+          {allMode && allQueue.length > 0 && (
+            <div className="flex min-h-0 flex-col lg:w-[44%]">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Ödeme sırası (tüm satışlar)</span>
+                {allSummary && allSummary.overdue > 0.005 && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                    <AlertTriangle className="h-3 w-3" /> {formatTL(Math.round(allSummary.overdue))} gecikmiş
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 space-y-1.5 lg:max-h-[440px] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+                {allQueue.map(({ row, applied }, idx) => (
+                  <div
+                    key={`${row.accountId}-${row.installmentNo ?? 'peşin'}-${idx}`}
+                    className={`rounded-[12px] border px-3 py-2 transition-colors ${
+                      applied > 0.005 ? 'border-[#c85776]/45 bg-[#fff1f6] ring-1 ring-[#c85776]/20'
+                        : row.isOverdue ? 'border-rose-200 bg-rose-50/50'
+                        : 'border-[#f0e0e6] bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] font-semibold text-[#352432]">{row.accountLabel}</span>
+                        <span className="block truncate text-[10.5px] text-[#705a66]">
+                          {row.installmentNo !== null ? `${row.installmentNo}. taksit · ` : 'Peşin bakiye · '}
+                          {row.dueDate ? formatDay(row.dueDate) : 'vadesiz'}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-[13px] font-bold tabular-nums text-[#352432]">{formatTL(row.remaining)}</span>
+                        {row.isOverdue && (
+                          <span className="rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">GECİKTİ</span>
+                        )}
+                      </span>
+                    </div>
+                    {applied > 0.005 && (
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-[8px] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#a3576f]">
+                        <Banknote className="h-3 w-3" />
+                        Bu ödemeden {formatTL(applied)} düşecek
+                        {applied >= row.remaining - 0.005 ? ' · kapanır' : ' · kısmi kalır'}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ---- SOL: taksit planı (tek taksitli hesapta) ---- */}
+          {!allMode && hasPlan && (
             <div className="flex min-h-0 flex-col lg:w-[44%]">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Taksit planı</span>
@@ -487,7 +651,12 @@ export default function CollectionDialog({
                 onClick={() => setPickerOpen((o) => !o)}
                 className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-left text-[13px] text-[#352432] transition-colors hover:border-[#efbfd0]"
               >
-                {selected ? (
+                {allMode && allSummary ? (
+                  <span className="min-w-0 truncate">
+                    <span className="font-semibold text-[#a3576f]">TÜMÜ · {allSummary.openCount} satış</span>
+                    <span className="text-[#705a66]"> · {formatTL(allSummary.remaining)} toplam borç</span>
+                  </span>
+                ) : selected ? (
                   <span className="min-w-0 truncate">
                     <span className="font-semibold">
                       {saleMode ? saleLabel(selected) : selected.customerName || selected.name}
@@ -499,11 +668,13 @@ export default function CollectionDialog({
                 )}
                 <Search className="h-4 w-4 shrink-0 text-[#a3576f]" />
               </button>
-              {/* Tahsilat TEK satışın carisine yazılır; bölüştürme yok. Çok satışlı müşteride
-                  bunu yazmazsak "hepsinden düşer" sanılıyor. */}
+              {/* Kapsam açıkça yazılır: tek satışta para yalnız oraya gider, Tümü'de birden
+                  çok cariye BÖLÜNÜR (her satış için ayrı tahsilat kaydı açılır). */}
               {saleMode && (
                 <p className="mt-1 text-[10.5px] text-[#705a66]">
-                  Bu müşterinin <b>{accounts.length}</b> açık satışı var. Tahsilat yalnız <b>seçili satışın</b> taksitlerine dağıtılır.
+                  {allMode
+                    ? <>Tahsilat <b>{accounts.length} satışa</b> vade sırasıyla bölünür; her satış için ayrı tahsilat kaydı açılır.</>
+                    : <>Bu müşterinin <b>{accounts.length}</b> açık satışı var. Tahsilat yalnız <b>seçili satışın</b> taksitlerine dağıtılır.</>}
                 </p>
               )}
               {pickerOpen && (
@@ -519,6 +690,30 @@ export default function CollectionDialog({
                     />
                   </div>
                   <div className="max-h-56 overflow-y-auto py-1">
+                    {/* TÜMÜ en üstte: "hepsini kapat" en sık istenen işlem. Arama yazılınca
+                        gizlenir — kullanıcı o an belirli bir satış arıyordur. */}
+                    {saleMode && allSummary && allSummary.openCount > 1 && query.trim() === '' && (
+                      <button
+                        type="button"
+                        onClick={pickAll}
+                        className={`flex w-full items-center justify-between gap-2 border-b border-[#f2e6ec] px-3 py-2.5 text-left text-[12.5px] transition-colors hover:bg-[#fff2f6] ${allMode ? 'bg-[#fff1f6]' : ''}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 shrink-0 text-[#c05277]" />
+                            <span className="truncate font-bold text-[#a3576f]">TÜMÜ · {allSummary.openCount} satış</span>
+                          </span>
+                          <span className="block truncate text-[10.5px] text-[#705a66]">
+                            Bu ay ödenmesi gereken {formatTL(Math.round(allSummary.dueNow))}
+                            {allSummary.overdue > 0.005 ? ` · ${formatTL(Math.round(allSummary.overdue))} gecikmiş` : ''}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block font-bold tabular-nums text-rose-700">{formatTL(allSummary.remaining)}</span>
+                          <span className="block text-[10px] uppercase tracking-wide text-[#705a66]">toplam</span>
+                        </span>
+                      </button>
+                    )}
                     {filtered.length === 0 && (
                       <div className="px-3 py-4 text-center text-[11.5px] text-[#705a66]">
                         {saleMode ? 'Satış bulunamadı.' : 'Cari hesap bulunamadı.'}
@@ -681,8 +876,35 @@ export default function CollectionDialog({
               </div>
             </div>
 
+            {/* TÜMÜ: para hangi satışa ne kadar yazılacak — onaydan ÖNCE görünmeli.
+                Tek tuşla birden çok cariye yazılan tahsilatı sonradan geri almak zordur. */}
+            {allMode && (
+              <div className="rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Hangi satışa ne kadar yazılacak?</div>
+                {allPreview.length === 0 ? (
+                  <div className="mt-1.5 text-[11.5px] text-[#705a66]">Tutar girin — dağıtım burada görünecek.</div>
+                ) : (
+                  <ul className="mt-1.5 space-y-1">
+                    {allPreview.map((p) => (
+                      <li key={p.accountId} className="flex items-center justify-between gap-3 text-[11.5px] text-[#4a3a44]">
+                        <span className="min-w-0 truncate">{p.accountLabel}</span>
+                        <b className="shrink-0 tabular-nums text-[#a3576f]">{formatTL(p.amount)}</b>
+                      </li>
+                    ))}
+                    <li className="flex items-center justify-between gap-3 border-t border-dashed border-[#ead8df] pt-1 text-[11.5px] font-bold text-[#352432]">
+                      <span>{allPreview.length} satışa yazılacak</span>
+                      <span className="tabular-nums">{formatTL(allPreview.reduce((s, p) => s + p.amount, 0))}</span>
+                    </li>
+                  </ul>
+                )}
+                <div className="mt-1.5 text-[10.5px] text-[#705a66]">
+                  Dağıtım en eski vadeden başlar; satış içinde de en eski taksit önce kapanır.
+                </div>
+              </div>
+            )}
+
             {/* Canlı dağıtım özeti — tahsilat vade sırasıyla dağıtılır, kullanıcı ne olacağını görsün */}
-            {hasPlan && (
+            {!allMode && hasPlan && (
               <div className="rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Bu ödeme ne yapacak?</div>
                 <ul className="mt-1.5 space-y-1 text-[11.5px] text-[#4a3a44]">
@@ -721,7 +943,8 @@ export default function CollectionDialog({
         <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-[11px] text-[#705a66]">
-              Kalan toplam borç <b className="text-[#352432]">{formatTL(selected?.remainingAmount ?? 0)}</b>
+              {allMode ? 'Tüm satışların kalan borcu' : 'Kalan toplam borç'}{' '}
+              <b className="text-[#352432]">{formatTL(scopeRemaining)}</b>
             </div>
             <div className="flex items-center gap-2">
               <button

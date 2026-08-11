@@ -163,7 +163,7 @@ void main() {
     }
 
     test('2. ay odenmezse 3. ayda odenmesi gereken 10.000 olur', () {
-      final rows = buildInstallmentRows(plan([5000]));
+      final rows = buildInstallmentRows(plan([5000]), '2026-05-15');
       expect(rows[2].carryIn, 5000);
       expect(rows[2].expected, 10000);
       expect(rows[2].outstanding, 10000);
@@ -171,14 +171,14 @@ void main() {
 
     test('3. ayda 7.500 odenirse kalan 2.500 nisana devreder', () {
       // Sunucu vade sirasiyla dagitir: 12.500 -> i1 5.000, i2 5.000, i3 2.500.
-      final rows = buildInstallmentRows(plan([5000, 5000, 2500]));
+      final rows = buildInstallmentRows(plan([5000, 5000, 2500]), '2026-05-15');
       expect(rows[2].item.remaining, 2500);
       expect(rows[3].carryIn, 2500);
       expect(rows[3].expected, 7500);
     });
 
     test('devir birikir: iki ay ust uste odenmezse ucuncu ay uc taksit ister', () {
-      final rows = buildInstallmentRows(plan([5000]));
+      final rows = buildInstallmentRows(plan([5000]), '2026-05-15');
       expect(rows[3].carryIn, 10000);
       expect(rows[3].expected, 15000);
     });
@@ -189,7 +189,7 @@ void main() {
         inst(id: 'i2', no: 2, amount: 5000, due: '2026-02-10', status: 'cancelled'),
         inst(id: 'i3', no: 3, amount: 5000, due: '2026-03-10'),
       ]));
-      final rows = buildInstallmentRows(list);
+      final rows = buildInstallmentRows(list, '2026-05-15');
       expect(rows.length, 2);
       expect(rows[1].carryIn, 0);
     });

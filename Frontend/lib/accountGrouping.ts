@@ -313,3 +313,208 @@ export function dueThisMonth(installments: AccountInstallmentItem[], todayIso: s
     .filter((i) => i.status !== 'Cancelled' && i.remaining > 0.005 && (i.dueDate || '').slice(0, 10) <= limit)
     .reduce((sum, i) => sum + Math.max(0, i.remaining), 0)
 }
+
+// ---------------------------------------------------------------------------
+// "TÜMÜ" — MÜŞTERİNİN BÜTÜN SATIŞLARINA TEK SEFERDE TAHSİLAT
+// ---------------------------------------------------------------------------
+
+/** Tümü modunda bir satışın vade kuyruğundaki tek sırası. */
+export interface GlobalDueRow {
+  accountId: string
+  /** Satış adı — birleşik kuyrukta hangi satıştan geldiği yazılmalı. */
+  accountLabel: string
+  /** Taksit satırı; peşin satışın kalanı için sentetik satır üretilir (bkz. buildGlobalDueQueue). */
+  installmentNo: number | null
+  dueDate: string
+  remaining: number
+  isOverdue: boolean
+}
+
+/** Tümü modunun özeti — modaldeki rakamlar buradan okunur. */
+export interface AllAccountsSummary {
+  /** Tüm satışların kalan borcu (cari başına sıfırla sınırlı). */
+  remaining: number
+  /** Tüm satışların "bu ay ödenmesi gereken" toplamı. */
+  dueNow: number
+  /** Tüm satışların gecikmiş kalanı. */
+  overdue: number
+  /** Açık borcu olan satış adedi. */
+  openCount: number
+  /** Birleşik vade kuyruğu (global vade sırası) — dağıtım da bunu izler. */
+  queue: GlobalDueRow[]
+}
+
+/** Tek satışın "tahsilat dağıtımında" kullanılacak kalan borcu. */
+function accountRemaining(a: CustomerAccount): number {
+  return Math.max(0, a.remainingAmount)
+}
+
+/**
+ * Tüm satışların vadelerini TEK KUYRUKTA, global vade sırasıyla birleştirir.
+ *
+ * <p>Peşin satışın (taksit satırı olmayan) kalan borcu da kuyruğa girer: parası satış anında
+ * istenmiştir, yani vadesi satış günüdür — kuyrukta erken sıraya oturur ve gecikmiş sayılır.
+ * Kuyruğa alınmasaydı "Tümü" ile ödenen para peşin satışın borcunu hiç kapatmazdı.</p>
+ *
+ * <p>Taksit toplamı ile hesabın <c>remainingAmount</c>'ı kuruş farkıyla ayrışabilir (fazla
+ * ödeme / kredi bakiyesi); kuyruk hesap başına <c>remainingAmount</c> ile SINIRLANIR ki
+ * dağıtım sunucunun kabul edeceğinden fazlasını bir satışa yazmasın.</p>
+ */
+export function buildGlobalDueQueue(accounts: CustomerAccount[], todayIso: string): GlobalDueRow[] {
+  const today = todayIso.slice(0, 10)
+  const rows: GlobalDueRow[] = []
+
+  for (const a of accounts) {
+    let budget = accountRemaining(a)
+    if (budget <= 0.005) continue
+    const label = a.servicePackageName || a.name || 'Satış'
+    const insts = activeInstallments(a)
+      .filter((i) => i.remaining > 0.005)
+      .slice()
+      .sort((x, y) => (x.dueDate || '').localeCompare(y.dueDate || '') || x.no - y.no)
+
+    for (const i of insts) {
+      if (budget <= 0.005) break
+      const take = Math.min(budget, Math.max(0, i.remaining))
+      budget -= take
+      const due = (i.dueDate || '').slice(0, 10)
+      rows.push({
+        accountId: a.id,
+        accountLabel: label,
+        installmentNo: i.no,
+        dueDate: due,
+        remaining: take,
+        isOverdue: i.overdue || (due !== '' && due < today),
+      })
+    }
+
+    // Taksitle karşılanmayan kalan (peşin satış ya da plan dışı bakiye) — vadesi satış günüdür.
+    if (budget > 0.005) {
+      const soldDay = (a.soldAtUtc || a.createdAtUtc || '').slice(0, 10)
+      rows.push({
+        accountId: a.id,
+        accountLabel: label,
+        installmentNo: null,
+        dueDate: soldDay,
+        remaining: budget,
+        isOverdue: soldDay === '' || soldDay < today,
+      })
+    }
+  }
+
+  // GLOBAL VADE SIRASI: en eski borç önce kapanır. Tarihsiz satır (bozuk veri) en başa alınır —
+  // gizlenmesi, kullanıcının göremediği bir borcun ödenmemesi demek olurdu.
+  return rows.sort((x, y) => (x.dueDate || '0000-00-00').localeCompare(y.dueDate || '0000-00-00'))
+}
+
+/** Tümü modunun özet rakamları. */
+export function summarizeAllAccounts(accounts: CustomerAccount[], todayIso: string): AllAccountsSummary {
+  const open = accounts.filter((a) => accountRemaining(a) > 0.005)
+  const queue = buildGlobalDueQueue(accounts, todayIso)
+  return {
+    remaining: open.reduce((s, a) => s + accountRemaining(a), 0),
+    // Her satışın kendi "bu ay ödenmesi gereken"i toplanır; peşin satışta kalan borcun tamamı.
+    dueNow: open.reduce((s, a) => {
+      const plan = activeInstallments(a)
+      return s + (plan.length > 0 ? dueThisMonth(a.installments, todayIso) : accountRemaining(a))
+    }, 0),
+    overdue: queue.filter((r) => r.isOverdue).reduce((s, r) => s + r.remaining, 0),
+    openCount: open.length,
+    queue,
+  }
+}
+
+/** Dağıtım sonucu — satış başına yazılacak tahsilat tutarı. */
+export interface AccountAllocation {
+  accountId: string
+  accountLabel: string
+  amount: number
+}
+
+/**
+ * Bir tutarı BİRDEN ÇOK satışa, GLOBAL VADE SIRASIYLA dağıtır.
+ *
+ * <p>Sunucu tahsilatı tek bir hesaba yazar ve o hesabın taksitlerine dağıtır; müşteri düzeyinde
+ * "hepsine öde" diye bir uç yok. Bu yüzden bölüştürme İSTEMCİDE yapılır ve her satış için AYRI
+ * bir tahsilat çağrısı gider — para hangi satışa yazıldıysa oranın taksitini kapatır.</p>
+ *
+ * <p>Kuruş artığı: her satırda 2 haneye yuvarlanır, toplam sapması SON satıra eklenir; böylece
+ * dağıtılan toplam girilen tutara birebir eşit kalır (yoksa 0,01 ₺ eksik/fazla tahsilat).</p>
+ */
+export function allocateAcrossAccounts(
+  accounts: CustomerAccount[],
+  amount: number,
+  todayIso: string,
+): AccountAllocation[] {
+  let pool = Math.max(0, Math.round((Number(amount) || 0) * 100) / 100)
+  if (pool <= 0.005) return []
+
+  const byAccount = new Map<string, AccountAllocation>()
+  for (const row of buildGlobalDueQueue(accounts, todayIso)) {
+    if (pool <= 0.005) break
+    const take = Math.min(pool, row.remaining)
+    if (take <= 0.005) continue
+    pool -= take
+    const cur = byAccount.get(row.accountId)
+    if (cur) cur.amount += take
+    else byAccount.set(row.accountId, { accountId: row.accountId, accountLabel: row.accountLabel, amount: take })
+  }
+
+  const out = [...byAccount.values()].map((r) => ({ ...r, amount: Math.round(r.amount * 100) / 100 }))
+  if (out.length === 0) return out
+
+  // FAZLA ÖDEME: borçtan büyük tutar girildiyse artan son satışa yazılır (sunucuda kredi bakiyesi
+  // olur). Sessizce yutulsaydı kasaya giren para ile carilere yazılan tutar tutmazdı.
+  const distributed = out.reduce((s, r) => s + r.amount, 0)
+  const drift = Math.round((Math.round(amount * 100) / 100 - distributed) * 100) / 100
+  if (Math.abs(drift) > 0.001) out[out.length - 1].amount = Math.round((out[out.length - 1].amount + drift) * 100) / 100
+
+  return out.filter((r) => r.amount > 0.005)
+}
+
+/** Sunucuya gidecek TEK tahsilat çağrısı (satış × yöntem). */
+export interface CollectionCall {
+  accountId: string
+  accountLabel: string
+  method: string
+  amount: number
+}
+
+/**
+ * Satış dağıtımı ile ödeme yöntemi kırılımını ÇAKIŞTIRIR.
+ *
+ * <p>Neden ayrı bir adım: yöntemleri tek tek dağıtmak borcu ÇİFT SAYAR. 1.500 borçlu A ve
+ * 2.000 borçlu B varken "2.000 nakit + 1.000 kart" girildiğinde her yöntem kuyruğun başından
+ * dağıtılsaydı A'ya hem nakitten 1.500 hem karttan 1.000 yazılırdı. Doğrusu: önce TOPLAM
+ * satışlara dağıtılır (allocateAcrossAccounts), sonra yöntem havuzları bu paylara sırayla
+ * doldurulur — böylece hem satış payları hem kasa yöntem kırılımı korunur.</p>
+ *
+ * <p>Tek satışlı (klasik) tahsilatta da aynı fonksiyon kullanılır; orada tek pay vardır ve
+ * çıktı yöntem satırlarının aynısıdır.</p>
+ */
+export function planCollectionCalls(
+  allocations: AccountAllocation[],
+  methodRows: { method: string; amount: number }[],
+): CollectionCall[] {
+  const pools = methodRows
+    .map((r) => ({ method: r.method, left: Math.round((Number(r.amount) || 0) * 100) / 100 }))
+    .filter((r) => r.left > 0.005)
+  const calls: CollectionCall[] = []
+
+  for (const alloc of allocations) {
+    let need = Math.round(alloc.amount * 100) / 100
+    for (const pool of pools) {
+      if (need <= 0.005) break
+      if (pool.left <= 0.005) continue
+      const take = Math.round(Math.min(need, pool.left) * 100) / 100
+      pool.left = Math.round((pool.left - take) * 100) / 100
+      need = Math.round((need - take) * 100) / 100
+      // Aynı satış + aynı yöntem tek çağrıda toplanır: sunucuda gereksiz ikinci satır açılmasın.
+      const existing = calls.find((c) => c.accountId === alloc.accountId && c.method === pool.method)
+      if (existing) existing.amount = Math.round((existing.amount + take) * 100) / 100
+      else calls.push({ accountId: alloc.accountId, accountLabel: alloc.accountLabel, method: pool.method, amount: take })
+    }
+  }
+
+  return calls.filter((c) => c.amount > 0.005)
+}
