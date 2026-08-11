@@ -12,6 +12,7 @@
  */
 
 import { AnimatePresence, motion } from 'framer-motion'
+import { panelCardShell } from '@/components/dashboard/PanelKit'
 import { CalendarRange, ChevronLeft, ChevronRight, GitCompareArrows, History, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -55,7 +56,7 @@ export default function ReportFilterBar({
   const compareModes: CompareMode[] = ['none', 'previous', 'lastYear', 'twoYearsAgo', 'custom']
 
   return (
-    <div className="armo-card armo-card-luxury sticky top-2 z-30 p-3 sm:p-4">
+    <div className={`${panelCardShell} sticky top-2 z-30 p-3 sm:p-4`}>
       <div className="flex flex-wrap items-center gap-2">
         {/* --- dönem presetleri --- */}
         <div className="inline-flex flex-wrap rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">

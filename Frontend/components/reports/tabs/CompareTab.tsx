@@ -146,10 +146,12 @@ export default function CompareTab({
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {slots.map((slot, i) => (
+              /* Kurucu kartı da dönemin RENGİNİ taşır: aşağıdaki tabloda ve grafiklerde aynı
+                 renk kullanılır, kullanıcı "hangi kutu hangi eğri" diye aramaz. */
               <div
                 key={slot.id}
-                className="min-w-[212px] flex-1 rounded-[14px] border bg-white p-3"
-                style={{ borderColor: i === 0 ? '#c85776' : '#efe1e7' }}
+                className="min-w-[212px] flex-1 rounded-[14px] border-2 bg-white p-3"
+                style={{ borderColor: paletteAt(i), background: `${paletteAt(i)}0a` }}
               >
                 <div className="flex items-center gap-2">
                   <span
@@ -159,7 +161,8 @@ export default function CompareTab({
                   <input
                     value={slot.label}
                     onChange={(e) => setSlot(slot.id, { label: e.target.value })}
-                    className="min-w-0 flex-1 bg-transparent text-[13px] font-bold text-[#2f2230] outline-none"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] font-bold outline-none"
+                    style={{ color: paletteAt(i) }}
                   />
                   {i === 0 ? (
                     <Pill tone="good">Temel</Pill>
@@ -259,41 +262,62 @@ export default function CompareTab({
             subtitle={`Temel dönem: ${baseline?.label ?? '—'} · yüzdeler temele göre`}
             icon={BarChart3}
           >
+            {/* HER DÖNEM KENDİ RENGİNDE.
+                Önceden tüm sütunlar aynı mürekkeple yazılıyordu: başlıktaki küçük renk noktası
+                dışında hangi rakamın hangi döneme ait olduğu okunmuyordu ve beş dönemde tablo
+                karışıyordu. Artık sütunun ZEMİNİ o dönemin renginin çok açık tonu, RAKAMI da
+                dönemin kendi rengi — göz sütunu yukarıdan aşağı tek renkte takip ediyor.
+                Grafiklerdeki seri rengiyle aynı palet kullanılır (paletteAt), böylece tablodaki
+                sütun ile eğrideki çizgi aynı dönemi işaret eder.
+                FARK ROZETİ palet dışı kalır (yeşil/kırmızı): artış-azalış evrensel okumadır. */}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left" style={{ minWidth: 220 + periods.length * 160 }}>
                 <thead>
-                  <tr className="border-b border-[#f2e6eb]">
-                    <th className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-wide text-[#8a7480]">Metrik</th>
+                  <tr className="border-b border-[#EAD8DF]">
+                    <th className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-wide text-[#74616A]">Metrik</th>
                     {periods.map((p, i) => (
-                      <th key={p.key} className="px-2 py-2 text-right">
+                      <th
+                        key={p.key}
+                        className="px-2 py-2 text-right"
+                        style={{ background: `${paletteAt(i)}14`, borderTop: `2px solid ${paletteAt(i)}` }}
+                      >
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 rounded-full" style={{ background: paletteAt(i) }} />
-                          <span className="text-[11.5px] font-bold text-[#2f2230]">{p.label}</span>
-                          {p.isBaseline && <span className="text-[9.5px] font-semibold text-[#20705a]">temel</span>}
+                          <span className="text-[11.5px] font-bold" style={{ color: paletteAt(i) }}>{p.label}</span>
+                          {p.isBaseline && (
+                            <span className="rounded-full bg-white px-1.5 text-[9.5px] font-bold text-[#20705a]">temel</span>
+                          )}
                         </span>
-                        <span className="mt-0.5 block text-[9.5px] font-medium text-[#705a66]">{p.dayCount} gün</span>
+                        <span className="mt-0.5 block text-[10px] font-medium text-[#74616A]">{p.dayCount} gün</span>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#f7edf1]">
+                <tbody className="divide-y divide-[#F1E7EB]">
                   {metricRows.map((row) => (
-                    <tr key={row.key} className="hover:bg-[#fffafc]">
-                      <td className="px-2 py-2.5 text-[12px] font-semibold text-[#2f2230]">{row.label}</td>
+                    <tr key={row.key} className="hover:bg-[#FBF5F7]">
+                      <td className="px-2 py-2.5 text-[12px] font-semibold text-[#2A2027]">{row.label}</td>
                       {row.values.map((value, i) => {
                         const base = row.values[0]
                         const diff = value - base
                         const pct = base === 0 ? null : (diff / Math.abs(base)) * 100
                         return (
-                          <td key={`${row.key}-${i}`} className="px-2 py-2.5 text-right">
-                            <span className="block text-[12.5px] font-bold text-[#2f2230]">
+                          <td
+                            key={`${row.key}-${i}`}
+                            className="px-2 py-2.5 text-right"
+                            style={{ background: `${paletteAt(i)}0d` }}
+                          >
+                            <span
+                              className="block text-[12.5px] font-bold tabular-nums"
+                              style={{ color: paletteAt(i) }}
+                            >
                               {formatValue(value, row.unit)}
                             </span>
                             {i > 0 && (
                               <span
-                                className={`mt-0.5 block text-[10.5px] font-bold ${
+                                className={`mt-0.5 block text-[10.5px] font-bold tabular-nums ${
                                   Math.abs(diff) < 0.005
-                                    ? 'text-[#705a66]'
+                                    ? 'text-[#74616A]'
                                     : diff > 0
                                       ? 'text-[#20705a]'
                                       : 'text-[#a83a35]'

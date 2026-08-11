@@ -9,6 +9,7 @@ import { motion } from 'framer-motion'
 import { ArrowDownRight, ArrowUpRight, Info, Minus, type LucideIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
+import { BrandHairline, panelCardShell } from '@/components/dashboard/PanelKit'
 import { formatTL } from '@/lib/apiMappers'
 import { MiniSpark } from '@/components/reports/ReportCharts'
 
@@ -124,27 +125,30 @@ export function KpiTile({
       }
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
-      className={`armo-card armo-lift group relative overflow-hidden p-4 ${
-        onOpen ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e78ba8]' : ''
+      /* PANEL KART DİLİ: beyaz yüzey + DOLU ikon rozeti. Açık tint zeminler (bg-[#fff0f5]
+         gibi) paletten çıkarıldı — soluk görünüyor ve panodaki kartlarla aynı dili konuşmuyordu. */
+      className={`${panelCardShell} group relative p-4 ${
+        onOpen ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#BE7690]' : ''
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[11px] border ${style.icon}`}>
-          <Icon className="h-4 w-4" strokeWidth={1.75} />
+      <BrandHairline />
+      <div className="relative flex items-start justify-between gap-2">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[11px] shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)] ${style.icon}`}>
+          <Icon className="h-4 w-4" strokeWidth={1.85} />
         </span>
         {previous !== undefined && (
           <DeltaBadge current={value} previous={previous} unit={unit} compareLabel={compareLabel} invert={invert} />
         )}
       </div>
 
-      <div className="mt-3 text-[11.5px] font-semibold text-[#6a4f5c]">{label}</div>
-      <div className="mt-1 armo-stat-value text-[24px] leading-none sm:text-[27px]">
+      <div className="relative mt-3 text-[11.5px] font-semibold text-[#5A4B53]">{label}</div>
+      <div className="relative mt-1 armo-stat-value text-[24px] leading-none sm:text-[27px]">
         <AnimatedNumber value={value} format={(n) => formatValue(n, unit)} />
       </div>
-      {hint && <div className="mt-1.5 text-[10.5px] text-[#705a66]">{hint}</div>}
+      {hint && <div className="relative mt-1.5 text-[10.5px] text-[#74616A]">{hint}</div>}
 
       {spark && spark.length > 1 && (
-        <div className="mt-2 -mx-1 opacity-90">
+        <div className="relative mt-2 -mx-1 opacity-90">
           <MiniSpark values={spark} color={style.spark} height={30} />
         </div>
       )}
@@ -158,13 +162,15 @@ export function KpiTile({
   )
 }
 
+/* İkon rozetleri paletin DOLU rengiyle (pano diliyle aynı); spark rengi grafik paletinden.
+   YEŞİL para rengidir → mint yalnız parasal kartlarda kullanılmalı. */
 const toneStyles = {
-  rose: { icon: 'border-[#f4b9c9] bg-[#fff0f5] text-[#c05277]', spark: '#c85776' },
-  mint: { icon: 'border-[#cfe8dd] bg-[#f2fbf7] text-[#2c7d63]', spark: '#2c7d63' },
-  gold: { icon: 'border-[#f0e0bd] bg-[#fffaef] text-[#96702a]', spark: '#c99a2e' },
-  violet: { icon: 'border-[#e0d3f2] bg-[#faf6ff] text-[#6b4aa0]', spark: '#7b52ba' },
-  peach: { icon: 'border-[#f6d6c4] bg-[#fff6f0] text-[#b3653f]', spark: '#b3453f' },
-  slate: { icon: 'border-[#d6dfe8] bg-[#f5f8fb] text-[#4a7fb5]', spark: '#4a7fb5' },
+  rose: { icon: 'bg-[#A5556E] text-white', spark: '#A5556E' },
+  mint: { icon: 'bg-[#1E8C60] text-white', spark: '#1E8C60' },
+  gold: { icon: 'bg-[#C99A2E] text-white', spark: '#c99a2e' },
+  violet: { icon: 'bg-[#8E7882] text-white', spark: '#7b52ba' },
+  peach: { icon: 'bg-[#F9A1B9] text-[#5A1730]', spark: '#E4577F' },
+  slate: { icon: 'bg-[#1E4E8C] text-white', spark: '#1E4E8C' },
 } as const
 
 // ---------------------------------------------------------------------------
@@ -196,17 +202,22 @@ export function ReportCard({
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-      className={`armo-card armo-card-luxury ${className}`}
+      /* PANEL KART DİLİ (bkz. PanelKit → panelCardShell): raporlar da panonun beyaz yüzeyli,
+         marka hairline'lı kart dilini kullanır. Tek yerden değişince bütün rapor sekmeleri
+         (genel bakış, karşılaştırma, katalog, personel, şube, müşteri, stok) birlikte döner. */
+      className={`${panelCardShell} ${className}`}
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f2e6eb] px-4 py-3 sm:px-5">
+      <BrandHairline />
+      <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-[#F9A1B9]/25 blur-3xl" />
+      <header className="relative flex flex-wrap items-center justify-between gap-3 border-b border-[#EAD8DF] px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           {Icon && (
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-[#f0d9e2] bg-[#fff1f6] text-[#c05277]">
-              <Icon className="h-4 w-4" strokeWidth={1.7} />
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
+              <Icon className="h-4 w-4" strokeWidth={1.8} />
             </span>
           )}
           <div className="min-w-0">
-            <h3 className="flex items-center gap-1.5 truncate font-display text-[14.5px] font-semibold text-[#2f2230]">
+            <h3 className="flex items-center gap-1.5 truncate font-display text-[14.5px] font-semibold text-[#2A2027]">
               {title}
               {onOpen && (
                 <button
@@ -214,18 +225,18 @@ export function ReportCard({
                   onClick={onOpen}
                   title="Bu kart nedir?"
                   aria-label={`${title} — açıklama`}
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#a3576f] transition-colors hover:border-[#e7bccb] hover:bg-[#fff2f6] hover:text-[#c05277]"
+                  className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[#E4DEE0] bg-white text-[#8C4460] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                 >
                   <Info className="h-3 w-3" strokeWidth={2.2} />
                 </button>
               )}
             </h3>
-            {subtitle && <p className="mt-0.5 truncate text-[11px] text-[#705a66]">{subtitle}</p>}
+            {subtitle && <p className="mt-0.5 truncate text-[11px] text-[#74616A]">{subtitle}</p>}
           </div>
         </div>
         {action}
       </header>
-      <div className={padded ? 'p-4 sm:p-5' : ''}>{children}</div>
+      <div className={`relative ${padded ? 'p-4 sm:p-5' : ''}`}>{children}</div>
     </motion.section>
   )
 }

@@ -268,3 +268,124 @@ export function PanelSection({
     </motion.section>
   )
 }
+
+// ---------------------------------------------------------------------------
+// SAYFA İSKELETİ VE ORTAK KONTROLLER
+//
+// Aşağıdakiler panel sayfaları tek tek bu dile geçirilirken eklendi. Amaç, her sayfada
+// yeniden yazılan üç şeyi tek yerde toplamak: gövde genişliği, form alanı stili ve
+// "kayıt yok / yükleniyor" görünümleri. Aynı stringi 15 sayfada tutmak, birinde yapılan
+// okunabilirlik düzeltmesinin diğerlerine geçmemesini üretiyordu.
+// ---------------------------------------------------------------------------
+
+/** Form alanı ve seçicilerin ortak stili (input/select/textarea). */
+export const panelField =
+  'rounded-[12px] border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-2 text-[12px] text-[#2A2027] outline-none transition-colors placeholder:text-[#74616A] focus:border-[#A5556E] focus:bg-white'
+
+/** Birincil eylem düğmesi. */
+export const panelPrimaryBtn =
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[#A5556E] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(87,39,61,0.95)] transition-all hover:-translate-y-0.5 hover:bg-[#8C4460] disabled:opacity-60 disabled:hover:translate-y-0'
+
+/** İkincil (çerçeveli) düğme. */
+export const panelGhostBtn =
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-semibold text-[#8C4460] transition-all hover:-translate-y-0.5 hover:border-[#BE7690] hover:bg-[#F6DFE6]'
+
+/**
+ * Sayfa gövdesi — genişlik sınırı ve kenar boşluğu tek yerde.
+ * 14" MacBook hedefi: `max-w-[1600px]` sayesinde 27"da satır sonsuza uzamaz (uzun satır göz
+ * takibini bozuyordu), 14"da kenar boşluğu ince kalır.
+ */
+export function PanelPage({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Sekme çipleri — seçili dolgu `layoutId` ile kayar.
+ *
+ * `idPrefix` ZORUNLU: aynı ekranda iki çip grubu varsa ortak bir layoutId dolguyu gruplar
+ * arasında uçurur (sidebar yeniden tasarımında birebir bu tuzağa düşülmüştü).
+ */
+export function PanelTabs<T extends string>({
+  value,
+  onChange,
+  options,
+  idPrefix,
+}: {
+  value: T
+  onChange: (next: T) => void
+  options: { key: T; label: string; count?: number }[]
+  idPrefix: string
+}) {
+  return (
+    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-1">
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          onClick={() => onChange(option.key)}
+          className="relative shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors"
+        >
+          {value === option.key && (
+            <motion.span
+              aria-hidden
+              layoutId={`${idPrefix}-tab-pill`}
+              className="absolute inset-0 rounded-full bg-[#A5556E] shadow-[0_8px_18px_-12px_rgba(87,39,61,0.9)]"
+              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            />
+          )}
+          <span className={`relative ${value === option.key ? 'text-white' : 'text-[#74616A] hover:text-[#2A2027]'}`}>
+            {option.label}
+            {option.count !== undefined && (
+              <span className={`ml-1 tabular-nums ${value === option.key ? 'text-white/80' : 'text-[#8E7882]'}`}>
+                {option.count}
+              </span>
+            )}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Listelerin ortak "kayıt yok" görünümü. */
+export function PanelEmpty({
+  icon: Icon,
+  title,
+  hint,
+  action,
+}: {
+  icon: LucideIcon
+  title: string
+  hint?: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-full bg-[#F7F6F6] text-[#A5556E]">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="mt-3 text-[13px] font-semibold text-[#2A2027]">{title}</div>
+      {hint && <div className="mt-1 max-w-[46ch] text-[11px] text-[#74616A]">{hint}</div>}
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  )
+}
+
+/** Yükleniyor iskeleti — ilk açılışta boş ekran yerine satır siluetleri. */
+export function PanelSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="divide-y divide-[#F1E7EB]">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+          <span className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-[#F1E7EB]" />
+          <span className="h-3.5 flex-1 animate-pulse rounded-full bg-[#F1E7EB]" />
+          <span className="hidden h-3.5 w-24 animate-pulse rounded-full bg-[#F1E7EB] lg:block" />
+        </div>
+      ))}
+    </div>
+  )
+}

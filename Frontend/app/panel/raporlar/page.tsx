@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import { PanelPage, panelCardShell } from '@/components/dashboard/PanelKit'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature, useFeatureContext } from '@/components/dashboard/FeatureContext'
@@ -357,12 +358,12 @@ function RaporlarPageInner() {
         breadcrumbs={isStaffUser ? ['Personel', 'Finans', 'Raporlarım', meta.label] : ['Admin', 'Finans', 'Raporlar', meta.label]}
       />
 
-      <div className="relative space-y-4 p-4 sm:p-6 lg:p-8">
+      <PanelPage className="space-y-4">
         {/* SEKMELER */}
         <motion.nav
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap gap-1 border-b border-[#ead8df]"
+          className="flex flex-wrap gap-1 border-b border-[#EAD8DF]"
         >
           {allowed.map((key) => {
             const t = tabs[key]
@@ -374,7 +375,7 @@ function RaporlarPageInner() {
                 type="button"
                 onClick={() => goTab(key)}
                 className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11.5px] font-semibold transition-colors sm:px-4 ${
-                  isActive ? 'text-[#c05277]' : 'text-[#705a66] hover:text-[#352432]'
+                  isActive ? 'text-[#8C4460]' : 'text-[#74616A] hover:text-[#2A2027]'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" strokeWidth={1.7} />
@@ -382,7 +383,7 @@ function RaporlarPageInner() {
                 {isActive && (
                   <motion.span
                     layoutId="reports-tab-underline"
-                    className="absolute -bottom-px left-2 right-2 h-[2px] rounded-full bg-[linear-gradient(90deg,transparent,#e78ba8,#c05277,#e78ba8,transparent)]"
+                    className="absolute -bottom-px left-2 right-2 h-[2px] rounded-full bg-[linear-gradient(90deg,transparent,#F9A1B9,#A5556E,#F9A1B9,transparent)]"
                   />
                 )}
               </button>
@@ -399,7 +400,7 @@ function RaporlarPageInner() {
             Karşılaştırma sekmesinde dönem/kıyas seçicileri gizlenir — o sekme kendi dönem
             kurucusunu kullanır; iki farklı dönem kaynağı aynı anda görünürse kafa karıştırır. */}
         {tab === 'compare' ? (
-          <div className="armo-card armo-card-luxury sticky top-2 z-30 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
+          <div className={`${panelCardShell} sticky top-2 z-30 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4`}>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e0d3f2] bg-[#faf6ff] px-2.5 py-1 text-[10.5px] font-semibold text-[#6b4aa0]">
               <GitCompareArrows className="h-3 w-3" strokeWidth={1.9} />
               Dönemleri aşağıdaki kartlardan seçin — 2 ile 5 dönem karşılaştırılabilir
@@ -449,7 +450,7 @@ function RaporlarPageInner() {
             {tab === 'giftcards' && <GiftCardsTab data={inventoryQ.data} rangeLabel={range.label} />}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </PanelPage>
     </>
   )
 }
