@@ -401,7 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         api: widget.api,
                       ),
                       const SizedBox(height: 22),
-                      _InstallmentChartCard(report: data.report),
+                      _MonthlyRevenueCard(report: data.report),
                       const SizedBox(height: 22),
                       _StaffPerformanceCard(
                         staff: data.staff,
@@ -3688,62 +3688,73 @@ class _RevenueTrendCard extends StatelessWidget {
   }
 }
 
-/// Aylık taksit tahsilat/kalan dağılımı (web 'Aylık Taksit Performansı' sade hâli).
-class _InstallmentChartCard extends StatelessWidget {
-  const _InstallmentChartCard({required this.report});
+/// Ay ay gerçekleşen ciro (web 'Aylık Ciro' kartının sade hâli).
+///
+/// Eskiden burada üç bantlı taksit performansı vardı (peşin · taksit · kalan alacak); vade
+/// takibi Ön Muhasebe'nin işi olduğu için grafik TEK seriye indi: her sütun o ayın tahsil
+/// edilen tutarı. `collected` peşinatı zaten içerir — ayrıca eklenmez, çift sayım olmaz.
+class _MonthlyRevenueCard extends StatelessWidget {
+  const _MonthlyRevenueCard({required this.report});
   final Map<String, dynamic> report;
 
   @override
   Widget build(BuildContext context) {
     final raw = report['monthlyInstallments'];
+    final now = DateTime.now();
+    // GELECEK AYLAR ELENİR: rapor penceresi son taksit vadesine kadar ileri uzanır; ciro
+    // grafiğinde henüz yaşanmamış aylar boş sütun olarak diziliyordu.
     final months = (raw is List ? raw : const [])
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
+        .where((m) {
+          final year = numberOf(m, const ['year']).toInt();
+          final month = numberOf(m, const ['month']).toInt();
+          return year < now.year || (year == now.year && month <= now.month);
+        })
         .toList();
-    final visible = months.length > 6 ? months.sublist(0, 6) : months;
-    final hasAny = visible.any(
-      (m) =>
-          numberOf(m, const ['due']) > 0 ||
-          numberOf(m, const ['collected']) > 0 ||
-          numberOf(m, const ['remaining']) > 0,
-    );
+    // Pencere EN SON 6 ay: ciro grafiğinde ilk bakılan yer içinde bulunulan aydır.
+    final visible =
+        months.length > 6 ? months.sublist(months.length - 6) : months;
+    final hasAny = visible.any((m) => numberOf(m, const ['collected']) > 0);
     if (!hasAny) {
       return const _DashCard(
         icon: Icons.bar_chart_rounded,
-        title: 'Aylık Taksit Performansı',
+        title: 'Aylık Ciro',
         child: Text(
-          'Planlanmış taksit bulunmuyor.',
+          'Henüz ciro kaydı yok.',
           style: TextStyle(color: AppColors.muted, fontSize: 12.5),
         ),
       );
     }
-    final collectedSum =
+    final total =
         visible.fold<double>(0, (s, m) => s + numberOf(m, const ['collected']));
-    final remainingSum =
-        visible.fold<double>(0, (s, m) => s + numberOf(m, const ['remaining']));
-    final dueSum =
-        visible.fold<double>(0, (s, m) => s + numberOf(m, const ['due']));
-    final rate = dueSum > 0 ? ((collectedSum / dueSum) * 100).round() : 0;
-    final maxTotal = visible.fold<double>(0, (mx, m) {
-      final t =
-          numberOf(m, const ['collected']) + numberOf(m, const ['remaining']);
-      return t > mx ? t : mx;
-    });
+    final average = total / visible.length;
+    // Zirve İNDEKSLE bulunur: eşitlikte ilk ay kazanır (web'deki reduce ile aynı kural),
+    // yoksa aynı tutarlı bütün aylar birden çerçeveleniyordu.
+    var peakIndex = 0;
+    for (var i = 1; i < visible.length; i++) {
+      if (numberOf(visible[i], const ['collected']) >
+          numberOf(visible[peakIndex], const ['collected'])) {
+        peakIndex = i;
+      }
+    }
+    final peak = numberOf(visible[peakIndex], const ['collected']);
     return _DashCard(
       icon: Icons.bar_chart_rounded,
-      title: 'Aylık Taksit Performansı',
+      title: 'Aylık Ciro',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              _InstallmentSummary(
-                  label: 'Tahsilat', value: _compactMoney(collectedSum)),
+              _RevenueSummaryTile(
+                  label: 'Dönem cirosu', value: _compactMoney(total)),
               const SizedBox(width: 8),
-              _InstallmentSummary(
-                  label: 'Kalan', value: _compactMoney(remainingSum)),
+              _RevenueSummaryTile(
+                  label: 'Ortalama', value: _compactMoney(average)),
               const SizedBox(width: 8),
-              _InstallmentSummary(label: 'Oran', value: '%$rate'),
+              _RevenueSummaryTile(
+                  label: 'En yüksek', value: _compactMoney(peak)),
             ],
           ),
           const SizedBox(height: 16),
@@ -3751,74 +3762,75 @@ class _InstallmentChartCard extends StatelessWidget {
             height: 112,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: visible.map((m) {
-                final col = numberOf(m, const ['collected']);
-                final rem = numberOf(m, const ['remaining']);
-                final total = col + rem;
-                final frac = maxTotal > 0 ? total / maxTotal : 0.0;
+              children: List.generate(visible.length, (index) {
+                final m = visible[index];
+                final value = numberOf(m, const ['collected']);
+                final frac = peak > 0 ? value / peak : 0.0;
                 final barH = 6 + frac * 76;
-                final colH = total > 0 ? (col / total) * barH : 0.0;
-                // Peşinat, tahsilatın İÇİNDEKİ paydır; bandı ondan pay alır (çift sayım yok).
-                final dep = numberOf(m, const ['deposit']);
-                final depH = (total > 0 ? (dep / total) * barH : 0.0).clamp(0.0, colH);
                 final monthIdx = numberOf(m, const ['month']).toInt();
+                final isCurrent =
+                    numberOf(m, const ['year']).toInt() == now.year &&
+                    monthIdx == now.month;
+                final isPeak = peak > 0 && index == peakIndex;
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6),
-                          ),
-                          child: SizedBox(
-                            width: double.infinity,
-                            height: barH,
-                            child: Column(
-                              children: [
-                                Container(
-                                  height: barH - colH,
-                                  color: const Color(0xFFF9A1B9),
-                                ),
-                                // PEŞİN TAHSİLAT AYRI BANT (web paritesi): peşinat taksit satırı
-                                // üretmediği için grafikte hiç görünmüyordu. Tek renge katmak da
-                                // yetmez — "bu ay taksitler ödendi" diye okunurdu.
-                                Container(
-                                  height: colH - depH,
-                                  color: const Color(0xFF34B37E),
-                                ),
-                                Container(
-                                  height: depH,
-                                  color: const Color(0xFF15694A),
-                                ),
-                              ],
+                        Container(
+                          width: double.infinity,
+                          height: barH,
+                          decoration: BoxDecoration(
+                            // Bu ay AÇIK ton: henüz kapanmamış ay, tamamlanmış aylarla aynı
+                            // koyulukta çizilirse "ciro düştü" diye yanlış okunuyor.
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: isCurrent
+                                  ? const [Color(0xFFB9E9D2), Color(0xFF34B37E)]
+                                  : const [
+                                      Color(0xFF34B37E),
+                                      Color(0xFF15694A),
+                                    ],
                             ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(6),
+                            ),
+                            border: isPeak
+                                ? Border.all(
+                                    color: const Color(0xFF15694A),
+                                    width: 1.5,
+                                  )
+                                : null,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           _monthsShort[(monthIdx - 1).clamp(0, 11)],
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 9.5,
-                            color: AppColors.muted,
+                            fontWeight: isCurrent
+                                ? FontWeight.w800
+                                : FontWeight.w400,
+                            color: isCurrent
+                                ? const Color(0xFF15694A)
+                                : AppColors.muted,
                           ),
                         ),
                       ],
                     ),
                   ),
                 );
-              }).toList(),
+              }),
             ),
           ),
           const SizedBox(height: 12),
           const Row(
             children: [
-              _LegendDot(color: Color(0xFF15694A), label: 'Peşin'),
+              _LegendDot(color: Color(0xFF15694A), label: 'Ciro'),
               SizedBox(width: 14),
-              _LegendDot(color: Color(0xFF34B37E), label: 'Taksit'),
-              SizedBox(width: 14),
-              _LegendDot(color: Color(0xFFF9A1B9), label: 'Alınacak'),
+              _LegendDot(color: Color(0xFFB9E9D2), label: 'Bu ay'),
             ],
           ),
         ],
@@ -3827,8 +3839,8 @@ class _InstallmentChartCard extends StatelessWidget {
   }
 }
 
-class _InstallmentSummary extends StatelessWidget {
-  const _InstallmentSummary({required this.label, required this.value});
+class _RevenueSummaryTile extends StatelessWidget {
+  const _RevenueSummaryTile({required this.label, required this.value});
   final String label;
   final String value;
 

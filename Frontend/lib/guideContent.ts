@@ -113,10 +113,10 @@ const guides: Record<string, PageGuide> = {
       },
       {
         icon: BarChart3,
-        title: 'Dönem tahsilatı & Aylık Taksit Performansı',
-        anchor: 'dash-taksit',
+        title: 'Aylık Ciro',
+        anchor: 'dash-ciro',
         desc:
-          'Sütun grafik, ay ay planlanan taksitler ile gerçekleşen tahsilatı karşılaştırır. Sütunların üzerine gelince ayrıntı (toplam vade, ödenen, kalan) açılır. Ok butonlarıyla önceki/sonraki aylara kaydırabilirsiniz.',
+          'Sütun grafik ay ay tahsil ettiğiniz tutarı (ciroyu) gösterir; üstteki kartlarda dönem toplamı, aylık ortalama ve en yüksek ay yazar. Sütunların üzerine gelince ayrıntı (ciro, peşin alınan, önceki aya göre değişim) açılır. Ok butonlarıyla geçmiş aylara kaydırabilirsiniz.',
       },
       {
         icon: Crown,

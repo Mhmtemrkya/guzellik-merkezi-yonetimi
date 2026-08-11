@@ -1154,45 +1154,49 @@ function ReportKpi({
   )
 }
 
-interface InstallmentChartPoint extends AccountMonthlyInstallment {
+/**
+ * Aylık ciro grafiğinin tek noktası. Çizilen değer `collected` — o ay KASAYA GİREN para,
+ * peşinat DAHİL (bkz. AccountMonthlyInstallment.collected). Peşinat ayrıca eklenmez ya da
+ * çıkarılmaz: tek bant çizildiği için çift sayım riski yok.
+ *
+ * `due`/`remaining` alanları taşınmaya devam eder ama grafiğe girmez — alacak/vade takibi
+ * Ön Muhasebe'nin işi; bu kart yalnız "bu ay ne kadar ciro yaptım" sorusunu yanıtlar.
+ */
+interface MonthlyRevenuePoint extends AccountMonthlyInstallment {
   key: string
   axisLabel: string
-  isNext: boolean
-  collectionRate: number
-  /**
-   * Peşinat DIŞINDAKİ tahsilat — yani gerçekten TAKSİT olarak ödenen kısım.
-   *
-   * Grafik üç bant yığar: peşin · taksit · kalan. `collected` peşinatı DA içerdiği için
-   * doğrudan yığılamaz; peşinat iki kez sayılır ve bar toplamı vadeyi aşardı.
-   */
-  installmentCollected: number
+  /** İçinde bulunulan ay — henüz tamamlanmadığı için ayrı tonla çizilir. */
+  isCurrent: boolean
+  /** Penceredeki en yüksek cirolu ay (sıfır ciroda hiçbiri zirve sayılmaz). */
+  isPeak: boolean
+  /** Bir önceki aya göre değişim (%). İlk ayda ya da önceki ay sıfırken null. */
+  changePct: number | null
+  /** Pencere toplamı içindeki pay (%) — ipucundaki rozet. */
+  sharePct: number
 }
 
-interface InstallmentAxisTickProps {
+interface RevenueAxisTickProps {
   x?: number
   y?: number
   payload?: { value?: string }
 }
 
-function InstallmentAxisTick({ x = 0, y = 0, payload }: InstallmentAxisTickProps) {
+// Eksen etiketi "Ay|Yıl|durum" biçiminde tek string gelir (Recharts tek dataKey taşır).
+function RevenueAxisTick({ x = 0, y = 0, payload }: RevenueAxisTickProps) {
   const [month = '', year = '', state = ''] = String(payload?.value ?? '').split('|')
-  const emphasized = state === 'current' || state === 'next'
-  const fill = state === 'next' ? '#BE3960' : state === 'current' ? '#723550' : '#5A4B53'
+  const isCurrent = state === 'current'
 
   return (
     <g transform={`translate(${x},${y})`}>
-      {emphasized && (
-        <rect
-          x={-24}
-          y={8}
-          width={48}
-          height={23}
-          rx={11.5}
-          fill={state === 'next' ? '#FDE4EB' : '#F7F6F6'}
-          stroke={state === 'next' ? '#F6B7CA' : '#E0D9DC'}
-        />
-      )}
-      <text x={0} y={23} textAnchor="middle" fill={fill} fontSize={11} fontWeight={emphasized ? 700 : 600}>
+      {isCurrent && <rect x={-24} y={8} width={48} height={23} rx={11.5} fill="#DFF3EA" stroke="#8CDCB8" />}
+      <text
+        x={0}
+        y={23}
+        textAnchor="middle"
+        fill={isCurrent ? '#15694A' : '#5A4B53'}
+        fontSize={11}
+        fontWeight={isCurrent ? 700 : 600}
+      >
         {month}
       </text>
       <text x={0} y={44} textAnchor="middle" fill="#8E7882" fontSize={9.5} fontWeight={500}>
@@ -1202,9 +1206,10 @@ function InstallmentAxisTick({ x = 0, y = 0, payload }: InstallmentAxisTickProps
   )
 }
 
-function InstallmentTooltip({ active, payload }: TooltipProps<number, string>) {
-  const point = payload?.[0]?.payload as InstallmentChartPoint | undefined
+function RevenueTooltip({ active, payload }: TooltipProps<number, string>) {
+  const point = payload?.[0]?.payload as MonthlyRevenuePoint | undefined
   if (!active || !point) return null
+  const rising = (point.changePct ?? 0) >= 0
 
   return (
     <div className="min-w-[210px] rounded-[16px] border border-[#E4DEE0] bg-white/[0.98] p-3.5 shadow-[0_18px_48px_-18px_rgba(87,39,61,0.42)] backdrop-blur">
@@ -1213,50 +1218,44 @@ function InstallmentTooltip({ active, payload }: TooltipProps<number, string>) {
           <div className="text-[12px] font-bold text-[#2A2027]">
             {point.label} {point.year}
           </div>
-          <div className="mt-0.5 text-[10px] text-[#74616A]">Aylık ödeme özeti</div>
+          <div className="mt-0.5 text-[10px] text-[#74616A]">
+            {point.isCurrent ? 'Bu ay · henüz devam ediyor' : 'Aylık ciro'}
+          </div>
         </div>
+        {/* Rozet: bu ayın görünen dönem cirosundaki payı. */}
         <span className="rounded-full bg-[#F7F6F6] px-2 py-1 text-[10px] font-bold tabular-nums text-[#5A4B53]">
-          %{Math.round(point.collectionRate)}
+          %{Math.round(point.sharePct)}
         </span>
       </div>
       <div className="mt-3 space-y-2 border-t border-[#EFEAEC] pt-3">
-        {/* PEŞİN ayrı satır: kasaya giren en büyük kalem "taksit tahsilatı" gibi okunmasın. */}
+        <div className="flex items-center justify-between gap-5 text-[11px]">
+          <span className="flex items-center gap-2 text-[#5A4B53]">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1E8C60]" />
+            Ciro
+          </span>
+          <b className="tabular-nums text-[#15694A]">{formatTL(Math.round(point.collected))}</b>
+        </div>
+        {/* Peşinat cironun İÇİNDEDİR — ayrı bant değil, yalnız kırılım satırı. */}
         {point.deposit > 0.005 && (
           <div className="flex items-center justify-between gap-5 text-[11px]">
-            <span className="flex items-center gap-2 text-[#5A4B53]">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-[#15694A]" />
-              Peşin tahsilat
-            </span>
-            <b className="tabular-nums text-[#15694A]">{formatTL(Math.round(point.deposit))}</b>
+            <span className="pl-[18px] text-[#74616A]">Peşin alınan</span>
+            <b className="tabular-nums text-[#5A4B53]">{formatTL(Math.round(point.deposit))}</b>
           </div>
         )}
-        <div className="flex items-center justify-between gap-5 text-[11px]">
-          <span className="flex items-center gap-2 text-[#5A4B53]">
-            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#8CDCB8]" />
-            {point.deposit > 0.005 ? 'Taksit tahsilatı' : 'Tahsil edildi'}
-          </span>
-          <b className="tabular-nums text-[#2A2027]">
-            {formatTL(Math.round(point.deposit > 0.005 ? point.installmentCollected : point.collected))}
-          </b>
-        </div>
-        <div className="flex items-center justify-between gap-5 text-[11px]">
-          <span className="flex items-center gap-2 text-[#5A4B53]">
-            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#F9A1B9]" />
-            Alınacak
-          </span>
-          <b className="tabular-nums text-[#BE3960]">{formatTL(Math.round(point.remaining))}</b>
-        </div>
-        <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#E4DEE0] pt-2 text-[11px]">
-          {/* "Vade" değil TAHAKKUK: peşinat o ay tahakkuk edip aynı anda tahsil edilir. */}
-          <span className="font-medium text-[#5A4B53]">Toplam tahakkuk</span>
-          <b className="tabular-nums text-[#2A2027]">{formatTL(Math.round(point.due))}</b>
-        </div>
+        {point.changePct !== null && (
+          <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#E4DEE0] pt-2 text-[11px]">
+            <span className="font-medium text-[#5A4B53]">Önceki aya göre</span>
+            <b className={`tabular-nums ${rising ? 'text-[#15694A]' : 'text-[#BE3960]'}`}>
+              {rising ? '+' : ''}%{Math.round(point.changePct)}
+            </b>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function InstallmentSummary({
+function RevenueSummary({
   label,
   value,
   detail,
@@ -1265,12 +1264,12 @@ function InstallmentSummary({
   label: string
   value: string
   detail: string
-  tone: 'rose' | 'gold' | 'neutral'
+  tone: 'gold' | 'mint' | 'violet'
 }) {
   const toneClass = {
-    rose: 'bg-[#F9A1B9] text-[#7A3450] ring-[#FBD1DE]',
     gold: 'bg-[#1E8C60] text-[#15694A] ring-[#DFF3EA]',
-    neutral: 'bg-[#8CDCB8] text-[#15694A] ring-[#DFF3EA]',
+    mint: 'bg-[#1E4E8C] text-[#17406F] ring-[#DCE7F5]',
+    violet: 'bg-[#8E7882] text-[#4E4048] ring-[#EFEAEC]',
   }[tone]
 
   return (
@@ -1285,55 +1284,61 @@ function InstallmentSummary({
   )
 }
 
-function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstallment[]; period: RangePeriod }) {
+/**
+ * AYLIK CİRO — ay ay gerçekleşen tahsilat (kasaya giren para).
+ *
+ * Bu kart eskiden üç bantlı "Aylık Taksit Performansı" idi (peşin · taksit · kalan alacak).
+ * Vade/alacak takibi Ön Muhasebe'nin işi olduğu için grafik TEK seriye indirildi: her sütun
+ * o ayın cirosu. Sadeleşmenin iki doğrudan sonucu var:
+ *   • Peşinat ayrı banttan çıkarıldı — `collected` onu zaten içeriyor, tek bantta çift sayım olmaz.
+ *   • GELECEK AYLAR ELENİR: rapor penceresi son taksit vadesine kadar ileri uzanır, ciro
+ *     grafiğinde ise henüz yaşanmamış aylar boş sütun olarak dizilirdi.
+ */
+function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstallment[]; period: RangePeriod }) {
   const now = new Date()
   const curY = now.getFullYear()
   const curM = now.getMonth() + 1
-  const nextY = curM === 12 ? curY + 1 : curY
-  const nextMo = curM === 12 ? 1 : curM + 1
   const isYearly = period === 'yearly'
   const VISIBLE = isYearly ? 12 : 6
-  // Takvim geçmiş ayları da içerir; "bu ay" index ile değil yıl/ay eşleşmesiyle bulunur.
-  const currentIndex = useMemo(() => {
-    const i = months.findIndex((m) => m.year === curY && m.month === curM)
-    return i >= 0 ? i : 0
-  }, [months, curY, curM])
-  // Varsayılan pencere: yıllık → yılın Ocak ayı; aylık → 1 geçmiş + bu ay + gelecek görünsün.
-  const defaultStart = useMemo(() => {
-    if (isYearly) {
-      const jan = months.findIndex((m) => m.year === curY && m.month === 1)
-      return Math.max(0, jan >= 0 ? jan : currentIndex)
-    }
-    return Math.max(0, currentIndex - 1)
-  }, [isYearly, months, curY, currentIndex])
-  const maxOffset = Math.max(0, months.length - VISIBLE)
+  const elapsed = useMemo(
+    () => months.filter((month) => month.year < curY || (month.year === curY && month.month <= curM)),
+    [months, curY, curM],
+  )
+  const maxOffset = Math.max(0, elapsed.length - VISIBLE)
   const [start, setStart] = useState(0)
+  // Varsayılan pencere EN SON aylardır: ciro grafiğinde ilk bakılan yer içinde bulunulan aydır.
   useEffect(() => {
-    setStart(Math.min(defaultStart, maxOffset))
-  }, [defaultStart, maxOffset])
-  const visible = months.slice(start, start + VISIBLE)
-  const chartData: InstallmentChartPoint[] = visible.map((month) => {
-    const isCurrent = month.year === curY && month.month === curM
-    const isNextMonth = month.year === nextY && month.month === nextMo
-    const state = isCurrent ? 'current' : isNextMonth ? 'next' : 'default'
+    setStart(maxOffset)
+  }, [maxOffset])
+  const visible = elapsed.slice(start, start + VISIBLE)
+
+  const windowTotal = visible.reduce((sum, month) => sum + month.collected, 0)
+  const monthAverage = visible.length > 0 ? windowTotal / visible.length : 0
+  const peak = visible.reduce<AccountMonthlyInstallment | null>(
+    (best, month) => (best === null || month.collected > best.collected ? month : best),
+    null,
+  )
+  const hasPeak = peak !== null && peak.collected > 0
+
+  const chartData: MonthlyRevenuePoint[] = visible.map((month, index) => {
+    // Kıyas penceredeki değil TAKVİMDEKİ önceki aydır: pencerenin ilk sütunu da
+    // "önceki aya göre" bilgisini taşısın (kaydırınca kıyas kaybolmasın).
+    const previousMonth = elapsed[start + index - 1]
+    const previous = previousMonth ? previousMonth.collected : null
     return {
       ...month,
       key: `${month.year}-${month.month}`,
-      axisLabel: `${month.label}|${month.year}|${state}`,
-      isNext: isNextMonth,
-      collectionRate: month.due > 0 ? Math.min(100, (month.collected / month.due) * 100) : 0,
-      // Peşinat ayrı bant çizildiği için taksit bandı ondan ARINDIRILIR (çift sayım olmasın).
-      installmentCollected: Math.max(0, month.collected - month.deposit),
+      axisLabel: `${month.label}|${month.year}|${month.year === curY && month.month === curM ? 'current' : 'default'}`,
+      isCurrent: month.year === curY && month.month === curM,
+      isPeak: hasPeak && month.year === peak!.year && month.month === peak!.month,
+      changePct: previous !== null && previous > 0 ? ((month.collected - previous) / previous) * 100 : null,
+      sharePct: windowTotal > 0 ? (month.collected / windowTotal) * 100 : 0,
     }
   })
-  const windowDue = visible.reduce((sum, month) => sum + month.due, 0)
-  const windowCollected = visible.reduce((sum, month) => sum + month.collected, 0)
-  const windowRemaining = visible.reduce((sum, month) => sum + month.remaining, 0)
-  const windowCollectionRate = windowDue > 0 ? Math.min(100, (windowCollected / windowDue) * 100) : 0
-  const nextMonth = months.find((m) => m.year === nextY && m.month === nextMo) ?? null
-  const hasAny = months.some((month) => month.due > 0 || month.collected > 0 || month.remaining > 0)
+
+  const hasAny = elapsed.some((month) => month.collected > 0)
   const canPrev = start > 0
-  const canNext = start + VISIBLE < months.length
+  const canNext = start + VISIBLE < elapsed.length
   const rangeLabel =
     visible.length === 0
       ? '—'
@@ -1342,23 +1347,23 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
         : `${visible[0].label} ${visible[0].year} – ${visible[visible.length - 1].label} ${visible[visible.length - 1].year}`
 
   return (
-    <div data-guide="dash-taksit" className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white p-4 shadow-[0_22px_55px_-42px_rgba(87,39,61,0.7)] sm:p-5">
-      <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-[#F9A1B9]/25 blur-3xl" />
+    <div data-guide="dash-ciro" className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white p-4 shadow-[0_22px_55px_-42px_rgba(87,39,61,0.7)] sm:p-5">
+      <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-[#8CDCB8]/30 blur-3xl" />
       <div className="relative flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
+            <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#1E8C60] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
               <BarChart3 className="h-4 w-4" strokeWidth={1.8} />
             </span>
             <div>
-              <div className="text-[13px] font-bold tracking-[-0.01em] text-[#2A2027]">Aylık Taksit Performansı</div>
-              <div className="mt-0.5 text-[10.5px] text-[#74616A]">{rangeLabel} · tahsilat ve kalan alacak dağılımı</div>
+              <div className="text-[13px] font-bold tracking-[-0.01em] text-[#2A2027]">Aylık Ciro</div>
+              <div className="mt-0.5 text-[10.5px] text-[#74616A]">{rangeLabel} · ay ay tahsil edilen tutar</div>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="mr-1 hidden rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-3 py-1.5 text-[10px] font-semibold text-[#5A4B53] md:inline">
-            {isYearly ? `${curY} yılı` : `${VISIBLE} aylık görünüm`}
+            {isYearly ? `Son ${VISIBLE} ay` : `${VISIBLE} aylık görünüm`}
           </span>
           <button
             type="button"
@@ -1382,23 +1387,23 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
       </div>
 
       <div className="relative mt-4 grid gap-2.5 sm:grid-cols-3">
-        <InstallmentSummary
-          label="Dönem tahsilatı"
-          value={formatTL(Math.round(windowCollected))}
+        <RevenueSummary
+          label="Dönem cirosu"
+          value={formatTL(Math.round(windowTotal))}
           detail={`${visible.length} aylık toplam`}
           tone="gold"
         />
-        <InstallmentSummary
-          label="Kalan alacak"
-          value={formatTL(Math.round(windowRemaining))}
-          detail={nextMonth ? `Gelecek ay ${formatTL(Math.round(nextMonth.remaining))}` : 'Planlanmış alacak'}
-          tone="rose"
+        <RevenueSummary
+          label="Aylık ortalama"
+          value={formatTL(Math.round(monthAverage))}
+          detail="Ay başına düşen ciro"
+          tone="mint"
         />
-        <InstallmentSummary
-          label="Tahsilat oranı"
-          value={`%${Math.round(windowCollectionRate)}`}
-          detail={`${formatTL(Math.round(windowDue))} toplam vade`}
-          tone="neutral"
+        <RevenueSummary
+          label="En yüksek ay"
+          value={hasPeak ? formatTL(Math.round(peak!.collected)) : '—'}
+          detail={hasPeak ? `${peak!.label} ${peak!.year}` : 'Henüz ciro yok'}
+          tone="violet"
         />
       </div>
 
@@ -1409,24 +1414,16 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 26, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
                   <defs>
-                    <linearGradient id="installmentDeposit" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="monthlyRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#34B37E" />
                       <stop offset="55%" stopColor="#1E8C60" />
                       <stop offset="100%" stopColor="#15694A" />
                     </linearGradient>
-                    <linearGradient id="installmentCollected" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D6F2E5" />
-                      <stop offset="55%" stopColor="#B9E9D2" />
-                      <stop offset="100%" stopColor="#8CDCB8" />
-                    </linearGradient>
-                    <linearGradient id="installmentRemaining" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#FBC9D7" />
-                      <stop offset="55%" stopColor="#F9A1B9" />
-                      <stop offset="100%" stopColor="#E4577F" />
-                    </linearGradient>
-                    <linearGradient id="installmentNext" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#F9A1B9" />
-                      <stop offset="100%" stopColor="#C93E67" />
+                    {/* Bu ay AÇIK tonda: henüz kapanmamış bir ayın sütunu, tamamlanmış aylarla
+                        aynı doluluğa sahip görünürse "ciro düştü" diye yanlış okunuyor. */}
+                    <linearGradient id="monthlyRevenueCurrent" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#B9E9D2" />
+                      <stop offset="100%" stopColor="#34B37E" />
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} stroke="#E4DEE0" strokeDasharray="2 8" strokeWidth={1} />
@@ -1436,7 +1433,7 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     tickLine={false}
                     interval={0}
                     height={58}
-                    tick={<InstallmentAxisTick />}
+                    tick={<RevenueAxisTick />}
                   />
                   <YAxis
                     axisLine={false}
@@ -1446,58 +1443,33 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
                     tickFormatter={(value: number) => formatChartCurrency(value)}
                   />
                   <Tooltip
-                    content={<InstallmentTooltip />}
+                    content={<RevenueTooltip />}
                     cursor={{ fill: '#EFEAEC', opacity: 0.9, radius: 14 }}
                     wrapperStyle={{ outline: 'none' }}
                   />
-                  {/* PEŞİN TAHSİLAT — en altta, kendi bandı.
-                      Peşinat taksit satırı üretmediği için grafikte HİÇ görünmüyordu: 30.000'lik
-                      satışın peşin alınan 10.000'i, kasaya giren en büyük kalem olmasına rağmen
-                      yoktu. Ayrı bant olmasının sebebi, toplama katmanın yetmemesi: taksit
-                      tahsilatıyla aynı renge girerse "bu ay taksitler ödendi" diye okunur. */}
+                  {/* TEK SERİ: o ayın cirosu. `collected` peşinatı zaten içerdiği için ayrı
+                      bant/ek toplama yok — peşinat yalnız ipucunda kırılım olarak görünür. */}
                   <Bar
-                    dataKey="deposit"
-                    name="Peşin tahsilat"
-                    stackId="installments"
-                    fill="url(#installmentDeposit)"
-                    maxBarSize={34}
-                    radius={[0, 0, 10, 10]}
-                    animationDuration={850}
-                    animationEasing="ease-out"
-                  />
-                  {/* TAKSİT TAHSİLATI — peşinattan ARINDIRILMIŞ kısım (bkz. installmentCollected). */}
-                  <Bar
-                    dataKey="installmentCollected"
-                    name="Taksit tahsilatı"
-                    stackId="installments"
-                    fill="url(#installmentCollected)"
-                    maxBarSize={34}
-                    radius={[0, 0, 0, 0]}
-                    animationDuration={850}
-                    animationEasing="ease-out"
-                  />
-                  <Bar
-                    dataKey="remaining"
-                    name="Alınacak"
-                    stackId="installments"
-                    fill="url(#installmentRemaining)"
-                    maxBarSize={34}
-                    radius={[12, 12, 0, 0]}
+                    dataKey="collected"
+                    name="Ciro"
+                    fill="url(#monthlyRevenue)"
+                    maxBarSize={38}
+                    radius={[12, 12, 4, 4]}
                     animationDuration={850}
                     animationEasing="ease-out"
                   >
                     {chartData.map((point) => (
                       <Cell
-                        key={`remaining-${point.key}`}
-                        fill={point.isNext ? 'url(#installmentNext)' : 'url(#installmentRemaining)'}
-                        stroke={point.isNext ? '#C93E67' : 'transparent'}
-                        strokeWidth={point.isNext ? 1.25 : 0}
+                        key={`revenue-${point.key}`}
+                        fill={point.isCurrent ? 'url(#monthlyRevenueCurrent)' : 'url(#monthlyRevenue)'}
+                        stroke={point.isPeak ? '#15694A' : 'transparent'}
+                        strokeWidth={point.isPeak ? 1.5 : 0}
                       />
                     ))}
                     <LabelList
-                      dataKey="remaining"
+                      dataKey="collected"
                       position="top"
-                      fill="#5A4B53"
+                      fill="#15694A"
                       fontSize={10}
                       fontWeight={700}
                       formatter={(value: ReactNode) =>
@@ -1515,16 +1487,13 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
 
           <div className="relative mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-[10px] text-[#5A4B53]">
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#F9A1B9] to-[#E4577F]" /> Alınacak
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#34B37E] to-[#15694A]" /> Sütun: o ayın cirosu
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#B9E9D2] to-[#15694A]" /> Tahsil edildi
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-gradient-to-b from-[#B9E9D2] to-[#34B37E]" /> Bu ay (devam ediyor)
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-5 rounded-full border border-[#E0D9DC] bg-[#F7F6F6] px-2 text-[9px] font-bold leading-[18px] text-[#723550]">Ay</span> Bu ay
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-5 rounded-full border border-[#F6B7CA] bg-[#FDE4EB] px-2 text-[9px] font-bold leading-[18px] text-[#BE3960]">Ay</span> Gelecek ay
+              <span className="h-2.5 w-2.5 rounded-[3px] border-[1.5px] border-[#15694A] bg-white" /> En yüksek ay
             </span>
             <span className="ml-auto hidden text-[#74616A] sm:inline">Ayrıntı için sütunların üzerine gelin</span>
           </div>
@@ -1534,8 +1503,8 @@ function InstallmentCalendar({ months, period }: { months: AccountMonthlyInstall
           <span className="grid h-10 w-10 place-items-center rounded-full bg-[#edf8f2] text-[#4b8a68]">
             <CheckCircle2 className="h-5 w-5" />
           </span>
-          <div className="mt-3 text-[12px] font-semibold text-[#3E343A]">Planlanmış taksit bulunmuyor</div>
-          <div className="mt-1 text-[10.5px] text-[#74616A]">Önümüzdeki dönemde tahsil edilecek bir ödeme görünmüyor.</div>
+          <div className="mt-3 text-[12px] font-semibold text-[#3E343A]">Henüz ciro kaydı yok</div>
+          <div className="mt-1 text-[10.5px] text-[#74616A]">Tahsilat girildikçe aylık ciro burada ay ay oluşur.</div>
         </div>
       )}
     </div>
@@ -2167,7 +2136,9 @@ export default function AdminDashboard() {
                   <ReportKpi icon={FileWarning} tone="peach" label="Vadesi Geçmiş" value={formatTL(Math.round(packageReport.overdueAmount))} hint="Gecikmiş tahsilat" danger={packageReport.overdueAmount > 0} />
                 </div>
 
-                <InstallmentCalendar months={reportMonths} period={packagePeriod} />
+                {/* Ciro grafiği dönem çipinden yalnız pencere genişliğini alır (6 ay / 12 ay);
+                    veri her zaman genel rapordan gelir, kategori süzgeciyle daralmaz. */}
+                <MonthlyRevenueChart months={reportMonths} period={packagePeriod} />
 
                 {/* HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok. Kendi dönemi ve kendi
                     (hizmet) kategorisi vardır; yukarıdaki paket seçimlerinden etkilenmez. */}
