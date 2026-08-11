@@ -538,7 +538,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             {
                 await CreateHistoricalSessionAppointmentsAsync(
                     tenantId, account, consumedByService, request.AppliedByStaffMemberId,
-                    soldAtUtc, request.SessionIntervalDays, cancellationToken);
+                    soldAtUtc, request.SessionIntervalDays, request.Sessions, cancellationToken);
             }
         }
 
@@ -578,16 +578,22 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         Guid? staffMemberId,
         DateTime soldAtUtc,
         int intervalDays,
+        IReadOnlyList<HistoricalSessionRequest>? sessions,
         CancellationToken cancellationToken)
     {
         if (account.BranchId is not { } branchId) return;
 
-        // Personel: seçilen ya da (yoksa) satışı yapan. İkisi de yoksa randevu açılamaz.
-        var staffId = staffMemberId is { } s && s != Guid.Empty ? s : account.SoldByStaffMemberId;
-        if (staffId is not { } staff || staff == Guid.Empty) return;
-        var staffExists = await _db.StaffMembers.AsNoTracking()
-            .AnyAsync(x => x.TenantId == tenantId && x.Id == staff, cancellationToken);
-        if (!staffExists) return;
+        // Personel VARSAYILANI: seçilen ya da (yoksa) satışı yapan. Seans başına personel
+        // verilmişse o kazanır (aşağıda); ikisi de yoksa o seansın randevusu açılmaz.
+        var fallbackStaff = staffMemberId is { } s && s != Guid.Empty ? s : account.SoldByStaffMemberId;
+
+        // GEÇERLİ PERSONEL KÜMESİ tek sorguda: seans başına personel verilebildiği için
+        // her satır için ayrı EXISTS atmak N sorgu üretirdi.
+        var validStaff = (await _db.StaffMembers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken)).ToHashSet();
+        if (fallbackStaff is { } fb && !validStaff.Contains(fb)) fallbackStaff = null;
 
         // DİKKAT: Guid listesiyle `.Contains()` MySql.EntityFrameworkCore'da SQL'e çevrilemiyor (500).
         // Kurumun hizmetleri çekilip bellekte süzülür.
@@ -610,7 +616,21 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         for (var i = 0; i < consumedServiceIds.Count; i++)
         {
             var serviceId = consumedServiceIds[i];
-            var start = soldAtUtc.AddDays((double)step * i);
+            // Seans başına detay (varsa) — sıra tüketilen seansların sırasıdır.
+            var detail = sessions is not null && i < sessions.Count ? sessions[i] : null;
+
+            // PERSONEL: seansın kendi personeli > satış geneli > satışı yapan. Hiçbiri yoksa
+            // bu seansın randevusu AÇILMAZ (randevunun personeli zorunlu) ama diğerleri açılır —
+            // eskiden tek personel yoksa hiçbir randevu açılmıyordu.
+            var perSession = detail?.StaffMemberId is { } ps && ps != Guid.Empty && validStaff.Contains(ps)
+                ? ps
+                : (Guid?)null;
+            if ((perSession ?? fallbackStaff) is not { } staff || staff == Guid.Empty) continue;
+
+            // TARİH: seansın kendi tarihi > satış tarihi + sıra × aralık.
+            var start = detail?.PerformedAtUtc is { } performed && performed != default
+                ? performed
+                : soldAtUtc.AddDays((double)step * i);
             // Geçmiş kayıt geleceğe düşmesin: taşarsa bugüne (bir saat öncesine) çekilir.
             if (start > now) start = now.AddHours(-1);
             start = DateTime.SpecifyKind(start, DateTimeKind.Utc);

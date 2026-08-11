@@ -1400,6 +1400,12 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   String? _appliedStaffId;
   /// Yapılan seanslar için tamamlanmış geçmiş randevu açılsın mı.
   bool _makeAppointments = true;
+
+  /// SEANS SEANS düzenleme. Kapalıyken tarihler "satış günü + n × aralık" ile üretilir ve
+  /// hepsini tek personel yapmış sayılır. Açılınca her seansın tarihi ve personeli ayrı girilir
+  /// — gerçek geçmişte seansları farklı kişiler farklı günlerde yapmış olur.
+  bool _perSession = false;
+  final List<({DateTime? date, String? staffId})> _sessionRows = [];
   final _sessionInterval = TextEditingController(text: '15');
 
   @override
@@ -1459,6 +1465,27 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
       (int.tryParse(_sessionsUsed.text) ?? 0).clamp(0, _sessionsTotalNum);
   bool get _sessionsDone => _sessionsTotalNum > 0 && _sessionsUsedNum >= _sessionsTotalNum;
   int get _intervalNum => (int.tryParse(_sessionInterval.text) ?? 15).clamp(1, 365);
+
+  /// Aralık kuralının o seans için önereceği tarih — satır varsayılanı.
+  DateTime? _defaultSessionDate(int index) {
+    final soldAt = _soldAt;
+    if (soldAt == null) return null;
+    final d = soldAt.add(Duration(days: _intervalNum * index));
+    final now = DateTime.now();
+    return d.isAfter(now) ? now : d;
+  }
+
+  /// Satır sayısını seans adedine eşitler; KULLANICI GİRDİSİ KORUNUR (baştan kurmak, seans
+  /// sayısını artıran kullanıcının önceki satırlarda girdiği tarih/personeli siliyordu).
+  void _syncSessionRows() {
+    final want = _sessionsUsedNum;
+    while (_sessionRows.length > want) {
+      _sessionRows.removeLast();
+    }
+    while (_sessionRows.length < want) {
+      _sessionRows.add((date: _defaultSessionDate(_sessionRows.length), staffId: null));
+    }
+  }
 
   /// Oluşacak geçmiş randevuların tarihleri (önizleme) — bugünü aşan tarih bugüne çekilir.
   List<DateTime> get _appointmentDates {
@@ -1557,6 +1584,20 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
         'appliedByStaffMemberId': _appliedStaffId,
         'createSessionAppointments': _makeAppointments && su > 0,
         'sessionIntervalDays': _intervalNum,
+        // SEANS DETAYLARI yalnız kullanıcı açtıysa gider; kapalıyken sunucu eski davranışa
+        // (eşit aralık + tek personel) düşer. Boş alan null gider ve varsayılana düşer.
+        if (_perSession && _makeAppointments && su > 0)
+          'sessions': [
+            for (final r in _sessionRows.take(su))
+              {
+                'performedAtUtc': r.date == null
+                    ? null
+                    : DateTime(r.date!.year, r.date!.month, r.date!.day, 12)
+                        .toUtc()
+                        .toIso8601String(),
+                'staffMemberId': r.staffId,
+              },
+          ],
         'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       });
       if (mounted) Navigator.pop(context, true);
@@ -1766,7 +1807,9 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                               child: TextField(
                                 controller: _sessionsUsed,
                                 keyboardType: TextInputType.number,
-                                onChanged: (_) => setState(() {}),
+                                // Seans adedi değişince detay satırları da eşitlenir; yoksa
+                                // 3'ten 5'e çıkan kullanıcıya hâlâ 3 satır gösterilirdi.
+                                onChanged: (_) => setState(_syncSessionRows),
                                 decoration: const InputDecoration(labelText: 'Kullanılan seans'),
                               ),
                             ),
@@ -1920,32 +1963,133 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                     ),
                   ),
                   if (_makeAppointments) ...[
-                    const SizedBox(height: 6),
-                    Row(
+                    const SizedBox(height: 8),
+                    // SEANS SEANS mi, eşit aralık mı? Varsayılan eşit aralık — çoğu geçmiş
+                    // kayıtta kullanıcı tek tek tarih girmek istemiyor.
+                    Wrap(
+                      spacing: 6,
                       children: [
-                        SizedBox(
-                          width: 120,
-                          child: TextField(
-                            controller: _sessionInterval,
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                                isDense: true, labelText: 'Aralık (gün)'),
-                          ),
+                        ChoiceChip(
+                          selected: !_perSession,
+                          onSelected: (_) => setState(() => _perSession = false),
+                          label: const Text('Eşit aralıkla üret',
+                              style: TextStyle(fontSize: 11.5)),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            dates.isEmpty
-                                ? 'Satış tarihini girin.'
-                                : dates
-                                    .map((d) => DateFormat('d MMM yyyy', 'tr_TR').format(d))
-                                    .join(' · '),
-                            style: const TextStyle(fontSize: 11, color: AppColors.muted),
-                          ),
+                        ChoiceChip(
+                          selected: _perSession,
+                          onSelected: (_) => setState(() {
+                            _perSession = true;
+                            _syncSessionRows();
+                          }),
+                          label: const Text('Seansları tek tek gir',
+                              style: TextStyle(fontSize: 11.5)),
                         ),
                       ],
                     ),
+                    if (!_perSession) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 120,
+                            child: TextField(
+                              controller: _sessionInterval,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                  isDense: true, labelText: 'Aralık (gün)'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              dates.isEmpty
+                                  ? 'Satış tarihini girin.'
+                                  : dates
+                                      .map((d) => DateFormat('d MMM yyyy', 'tr_TR').format(d))
+                                      .join(' · '),
+                              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                          'Her seansın ne zaman ve kim tarafından yapıldığını girin. Boş bıraktığınız alan varsayılana düşer.',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.muted, height: 1.35)),
+                      const SizedBox(height: 6),
+                      for (var i = 0; i < _sessionRows.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.surfaceSoft,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text('${i + 1}',
+                                    style: const TextStyle(
+                                        fontSize: 10.5, fontWeight: FontWeight.w800)),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: _sessionRows[i].date ??
+                                          _defaultSessionDate(i) ??
+                                          DateTime.now(),
+                                      firstDate: DateTime(2015),
+                                      lastDate: DateTime.now(),
+                                    );
+                                    if (picked == null) return;
+                                    setState(() => _sessionRows[i] = (
+                                          date: picked,
+                                          staffId: _sessionRows[i].staffId
+                                        ));
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact),
+                                  child: Text(
+                                      _sessionRows[i].date == null
+                                          ? 'Tarih seç'
+                                          : DateFormat('d MMM yyyy', 'tr_TR')
+                                              .format(_sessionRows[i].date!),
+                                      style: const TextStyle(fontSize: 11.5)),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _sessionRows[i].staffId,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(isDense: true),
+                                  items: [
+                                    const DropdownMenuItem(
+                                        value: null, child: Text('Varsayılan')),
+                                    for (final st in _staff)
+                                      DropdownMenuItem(
+                                        value: valueOf(st, const ['id']),
+                                        child: Text(
+                                            valueOf(st, const ['fullName', 'name']),
+                                            overflow: TextOverflow.ellipsis),
+                                      ),
+                                  ],
+                                  onChanged: (v) => setState(() => _sessionRows[i] =
+                                      (date: _sessionRows[i].date, staffId: v)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ],
                 ],
               ),

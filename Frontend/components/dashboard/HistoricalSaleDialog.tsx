@@ -59,6 +59,17 @@ export interface HistoricalSaleValues {
   createSessionAppointments: boolean
   /** Geçmiş randevular arasındaki gün aralığı. */
   sessionIntervalDays: number
+  /**
+   * SEANS SEANS detay — her seansın tarihi ve uygulayan personeli. Sıra = seans sırası.
+   * Boş bırakılırsa (undefined) eski davranış: eşit aralıklı tarih + tek personel.
+   */
+  sessions?: { performedAtUtc: string | null; staffMemberId: string | null }[]
+}
+
+/** Seans detay satırının form hâli (tarih + personel; ikisi de opsiyonel). */
+interface SessionDetailRow {
+  date: string
+  staffId: string
 }
 
 const FIELD = 'w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#9d8590]'
@@ -135,6 +146,13 @@ export default function HistoricalSaleDialog({
   const [appliedStaffId, setAppliedStaffId] = useState('')
   const [makeAppointments, setMakeAppointments] = useState(true)
   const [sessionInterval, setSessionInterval] = useState('15')
+  /**
+   * SEANS SEANS düzenleme. Kapalıyken (varsayılan) tarihler "satış günü + n × aralık" ile
+   * üretilir ve hepsini tek personel yapmış sayılır. Açılınca her seansın tarihi ve personeli
+   * ayrı ayrı girilebilir — gerçek geçmişte seansları farklı kişiler farklı günlerde yapmış olur.
+   */
+  const [perSession, setPerSession] = useState(false)
+  const [sessionRows, setSessionRows] = useState<SessionDetailRow[]>([])
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -231,6 +249,35 @@ export default function HistoricalSaleDialog({
     return out
   }, [makeAppointments, sessionsUsedNum, soldAt, intervalNum])
 
+  /** Aralık kuralının o seans için önereceği tarih (YYYY-MM-DD) — satır varsayılanı. */
+  const defaultSessionDate = (index: number): string => {
+    if (!soldAt) return ''
+    const d = new Date(`${soldAt}T12:00:00`)
+    d.setDate(d.getDate() + intervalNum * index)
+    const today = new Date()
+    const use = d > today ? today : d
+    return `${use.getFullYear()}-${String(use.getMonth() + 1).padStart(2, '0')}-${String(use.getDate()).padStart(2, '0')}`
+  }
+
+  /**
+   * Satır sayısını seans adedine eşitler; KULLANICI GİRDİSİ KORUNUR.
+   * Baştan kurmak, seans sayısını 3'ten 4'e çıkaran kullanıcının önceki üç satırda girdiği
+   * tarih/personeli siliyordu.
+   */
+  useEffect(() => {
+    if (!perSession) return
+    setSessionRows((prev) => {
+      if (prev.length === sessionsUsedNum) return prev
+      const next: SessionDetailRow[] = []
+      for (let i = 0; i < sessionsUsedNum; i++) {
+        next.push(prev[i] ?? { date: defaultSessionDate(i), staffId: '' })
+      }
+      return next
+    })
+    // defaultSessionDate soldAt/intervalNum'a bağlı; onlar değişince yeni satırlar doğru açılır.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perSession, sessionsUsedNum, soldAt, intervalNum])
+
   const effectiveName = useMemo(() => {
     if (kind === 'package') return packageOptions.find((p) => p.id === packageId)?.name || name
     if (kind === 'service') return serviceOptions.find((s) => s.id === serviceId)?.name || name
@@ -268,6 +315,15 @@ export default function HistoricalSaleDialog({
         appliedByStaffMemberId: appliedStaffId || null,
         createSessionAppointments: makeAppointments && su > 0,
         sessionIntervalDays: intervalNum,
+        // SEANS DETAYLARI yalnız kullanıcı açtıysa gider; kapalıyken sunucu eski davranışa
+        // (eşit aralık + tek personel) düşer. Boş bırakılan alan da null gider ve satır
+        // bazında varsayılana düşer — kısmi doldurma desteklenir.
+        sessions: perSession && makeAppointments && su > 0
+          ? sessionRows.slice(0, su).map((r) => ({
+              performedAtUtc: r.date ? new Date(`${r.date}T12:00:00`).toISOString() : null,
+              staffMemberId: r.staffId || null,
+            }))
+          : undefined,
         installmentCount: payKind === 'installment' ? instCount : 0,
         firstDueDate: payKind === 'installment' ? (firstDue || null) : null,
         paidInstallmentCount: payKind === 'installment' ? paidCount : 0,
@@ -577,18 +633,78 @@ export default function HistoricalSaleDialog({
                         </label>
 
                         {makeAppointments && (
-                          <div className="mt-2.5 flex flex-wrap items-end gap-3">
-                            <label className="block w-32">
-                              <span className={LABEL}>Seans aralığı (gün)</span>
-                              <input type="number" min={1} max={365} value={sessionInterval} onChange={(e) => setSessionInterval(e.target.value)} className={`${FIELD} tabular-nums`} />
-                            </label>
-                            {appointmentDates.length > 0 && (
-                              <span className={`flex-1 ${HINT}`}>
-                                Tarihler: {appointmentDates.join(' · ')}
-                                {sessionsUsedNum > appointmentDates.length ? ` … (+${sessionsUsedNum - appointmentDates.length})` : ''}
-                              </span>
+                          <>
+                            {/* SEANS SEANS mi, eşit aralık mı? Varsayılan eşit aralık —
+                                çoğu geçmiş kayıtta kullanıcı tek tek tarih girmek istemiyor. */}
+                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                              {[
+                                { key: false, label: 'Eşit aralıkla üret' },
+                                { key: true, label: 'Seansları tek tek gir' },
+                              ].map((opt) => (
+                                <button
+                                  key={String(opt.key)}
+                                  type="button"
+                                  onClick={() => setPerSession(opt.key)}
+                                  className={`rounded-[9px] border px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
+                                    perSession === opt.key
+                                      ? 'border-[#c85776] bg-[#c85776] text-white'
+                                      : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            {!perSession && (
+                              <div className="mt-2.5 flex flex-wrap items-end gap-3">
+                                <label className="block w-32">
+                                  <span className={LABEL}>Seans aralığı (gün)</span>
+                                  <input type="number" min={1} max={365} value={sessionInterval} onChange={(e) => setSessionInterval(e.target.value)} className={`${FIELD} tabular-nums`} />
+                                </label>
+                                {appointmentDates.length > 0 && (
+                                  <span className={`flex-1 ${HINT}`}>
+                                    Tarihler: {appointmentDates.join(' · ')}
+                                    {sessionsUsedNum > appointmentDates.length ? ` … (+${sessionsUsedNum - appointmentDates.length})` : ''}
+                                  </span>
+                                )}
+                              </div>
                             )}
-                          </div>
+
+                            {perSession && (
+                              <div className="mt-2.5">
+                                <div className={`mb-1.5 ${HINT}`}>
+                                  Her seansın <b className="font-semibold text-[#4a3a44]">ne zaman</b> ve
+                                  <b className="font-semibold text-[#4a3a44]"> kim tarafından</b> yapıldığını girin.
+                                  Boş bıraktığınız alan üstteki varsayılana düşer.
+                                </div>
+                                <div className="max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
+                                  {sessionRows.slice(0, sessionsUsedNum).map((row, i) => (
+                                    <div key={i} className="flex items-center gap-2 rounded-[10px] border border-[#f0e0e6] bg-white px-2 py-1.5">
+                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[10.5px] font-bold text-[#a3576f]">
+                                        {i + 1}
+                                      </span>
+                                      <input
+                                        type="date"
+                                        max={todayIso}
+                                        value={row.date}
+                                        onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, date: e.target.value } : r)))}
+                                        className={`${FIELD} w-[150px] shrink-0 tabular-nums`}
+                                      />
+                                      <select
+                                        value={row.staffId}
+                                        onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, staffId: e.target.value } : r)))}
+                                        className={`${FIELD} min-w-0 flex-1`}
+                                      >
+                                        <option value="">Varsayılan personel</option>
+                                        {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                      </select>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </>

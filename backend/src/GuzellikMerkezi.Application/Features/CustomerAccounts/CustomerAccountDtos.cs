@@ -107,8 +107,33 @@ public sealed record CreateHistoricalSaleRequest(
     /// zaten caride, randevuya da yazılsa ciro iki kez sayılırdı.
     /// </summary>
     bool CreateSessionAppointments = false,
-    /// <summary>Geçmiş randevular arasındaki gün aralığı (varsayılan 15).</summary>
-    int SessionIntervalDays = 15);
+    /// <summary>
+    /// Geçmiş randevular arasındaki gün aralığı (varsayılan 15). Yalnız <see cref="Sessions"/>
+    /// verilmeyen seanslar için kullanılır — tarihi elle girilen seans bu aralığa uymaz.
+    /// </summary>
+    int SessionIntervalDays = 15,
+    /// <summary>
+    /// SEANS SEANS detay: her seansın ne zaman yapıldığı ve kimin yaptığı. Sıra, tüketilen
+    /// seansların sırasıdır (1. eleman 1. seans).
+    ///
+    /// <para>Neden liste: seansları farklı tarihlerde ve farklı personel yapmış olabilir.
+    /// Tek <see cref="AppliedByStaffMemberId"/> + sabit <see cref="SessionIntervalDays"/> ile
+    /// üretilen randevular gerçek geçmişi temsil etmiyordu (hepsi aynı kişiye, eşit aralıkla).</para>
+    ///
+    /// <para>TAMAMEN OPSİYONEL ve KISMİ olabilir: verilmeyen ya da alanları boş bırakılan
+    /// seanslar eski davranışa (aralıklı tarih + genel personel) düşer.</para>
+    /// </summary>
+    IReadOnlyList<HistoricalSessionRequest>? Sessions = null);
+
+/// <summary>
+/// Geçmiş satışta kullanılmış TEK bir seansın detayı. İkisi de opsiyoneldir; boş bırakılan
+/// alan satış genelindeki varsayılana düşer.
+/// </summary>
+public sealed record HistoricalSessionRequest(
+    /// <summary>Seansın YAPILDIĞI an. Boşsa satış tarihi + sıra × aralık.</summary>
+    DateTime? PerformedAtUtc = null,
+    /// <summary>Seansı uygulayan personel. Boşsa <c>AppliedByStaffMemberId</c>, o da boşsa satışı yapan.</summary>
+    Guid? StaffMemberId = null);
 
 /// <summary>
 /// Satış iptali. İptalde cari kaydı (taksit/tahsilat/seans dahil) canlı tablolardan silinip

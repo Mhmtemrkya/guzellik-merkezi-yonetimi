@@ -150,6 +150,8 @@ export default function CariSalesWorkspace({
       appliedByStaffMemberId: values.appliedByStaffMemberId,
       createSessionAppointments: values.createSessionAppointments,
       sessionIntervalDays: values.sessionIntervalDays,
+      // Seans seans tarih/personel (opsiyonel) — verilmezse sunucu eşit aralık + tek personele düşer.
+      sessions: values.sessions,
       notes: values.notes,
       branchId: branchId ?? null,
     }, tenantId))
