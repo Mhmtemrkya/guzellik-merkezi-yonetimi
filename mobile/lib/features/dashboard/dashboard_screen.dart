@@ -605,22 +605,22 @@ class _MetricGrid extends StatelessWidget {
 
 /// Metrik kartının renk ailesi — banttaki gradyan + rakam/rozet mürekkebi.
 enum _MetricTone {
-  // Bant AÇIK tonda kalır, doygunluk `chip` (dolu ikon rozeti) ile gelir.
+  // Bant PALETİN KENDİ RENGİ (açık tint değil), kart gövdesi beyaz kalır.
   // gold = TAHSİLAT/para => yeşil (kullanıcı talimatı).
-  rose(Color(0xFFF9E8ED), Color(0xFFF0D0DB), Color(0xFF7A3450), Color(0xFFA5556E)),
-  mint(Color(0xFFEDF4FB), Color(0xFFD8E7F6), Color(0xFF245C9E), Color(0xFF3A72B0)),
-  violet(Color(0xFFF3E1E9), Color(0xFFE4C7D4), Color(0xFF5F2A41), Color(0xFF723550)),
-  gold(Color(0xFFE9F6F0), Color(0xFFCDEBDD), Color(0xFF15694A), Color(0xFF1E8C60));
+  rose(Color(0xFFA5556E), Color(0xFF8C4460), Color(0xFF7A3450), Colors.white),
+  mint(Color(0xFF1E4E8C), Color(0xFF17406F), Color(0xFF17406F), Colors.white),
+  violet(Color(0xFF8E7882), Color(0xFF74616A), Color(0xFF4E4048), Colors.white),
+  gold(Color(0xFF1E8C60), Color(0xFF15694A), Color(0xFF15694A), Colors.white);
 
-  const _MetricTone(this.from, this.to, this.ink, this.chip);
+  const _MetricTone(this.from, this.to, this.ink, this.onBand);
   final Color from;
   final Color to;
 
-  /// Bant üstündeki koyu mürekkep (rozet yazısı, trend çizgisi).
+  /// Beyaz zeminde kullanılacak koyu mürekkep (trend çizgisi, rozet yazısı).
   final Color ink;
 
-  /// İkon rozetinin dolu rengi (ikon beyaz).
-  final Color chip;
+  /// Renkli bandın üstündeki yazı/ikon rengi.
+  final Color onBand;
 }
 
 /// Pano metrik kartının içeriği. Görsel katman üç türden biri olur:
@@ -678,10 +678,10 @@ class _MetricCard extends StatelessWidget {
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: tone.chip,
+                    color: Colors.white.withValues(alpha: .22),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(metric.icon, color: Colors.white, size: 17),
+                  child: Icon(metric.icon, color: tone.onBand, size: 17),
                 ),
                 const Spacer(),
                 if (metric.ringPct != null)
@@ -691,7 +691,7 @@ class _MetricCard extends StatelessWidget {
                     child: CustomPaint(
                       painter: _RingPainter(
                         pct: metric.ringPct!.clamp(0, 100) / 100,
-                        color: tone.ink,
+                        color: tone.onBand,
                       ),
                     ),
                   ),
@@ -734,7 +734,7 @@ class _MetricCard extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: tone.from.withValues(alpha: .55),
+                        color: const Color(0xFFF7F6F6),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -1437,7 +1437,7 @@ class _HeroTile extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: tone.chip,
+                  color: tone.from,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, size: 16, color: Colors.white),

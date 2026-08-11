@@ -182,38 +182,49 @@ const quickActions: QuickAction[] = [
 // Altı ton bu dört renkten türer (violet = koyu bordo, cream = açık mavi).
 // ---------------------------------------------------------------------------
 
-/** Dolu yüzeyli kartlar (hızlı işlem · takip kutuları): kenar · zemin · yazı. */
+/**
+ * Dolu yüzeyli kartlar (hızlı işlem · takip kutuları): kenar · zemin · yazı.
+ * Zemin PALETİN KENDİ RENGİDİR — açık tint değil (tint'ler soluk görünüyordu).
+ */
 const toneClasses: Record<QuickAction['tone'], string> = {
-  rose: 'border-[#DFAFBF] bg-[#F6DFE6] text-[#7A3450]',
-  gold: 'border-[#8FD5B4] bg-[#DFF3EA] text-[#15694A]',
-  mint: 'border-[#AFC9E6] bg-[#E7F0FA] text-[#245C9E]',
-  violet: 'border-[#D3A6B7] bg-[#F2DEE7] text-[#5F2A41]',
-  peach: 'border-[#F6B7CA] bg-[#FDE4EB] text-[#BE3960]',
-  cream: 'border-[#CBC1C6] bg-[#EFECEE] text-[#4E4048]',
+  rose: 'border-[#8C4460] bg-[#A5556E] text-white',
+  gold: 'border-[#15694A] bg-[#1E8C60] text-white',
+  mint: 'border-[#17406F] bg-[#1E4E8C] text-white',
+  violet: 'border-[#74616A] bg-[#8E7882] text-white',
+  peach: 'border-[#E4577F] bg-[#F9A1B9] text-[#5A1730]',
+  cream: 'border-[#CBC1C6] bg-[#F7F6F6] text-[#3E343A]',
 }
 
 /**
- * İkon rozeti — DOLU renk, beyaz ikon.
- * Rozet eskiden `bg-white/85` + ton rengi yazıydı; iki pastel üst üste binince
- * ikon zeminden ayrışmıyordu. Bant açık kalır, doygunluk rozetten gelir.
+ * Kartın başlık bandı — yine paletin DOĞRUDAN rengi; gövde beyaz kalır.
+ * `toneOnBand` bandın üstündeki yazı, `toneChip` ikon rozetidir: #F9A1B9 ve
+ * #F7F6F6 açık olduğu için onlarda mürekkep koyu olur.
  */
-const toneIcon: Record<QuickAction['tone'], string> = {
+const toneSurface: Record<QuickAction['tone'], string> = {
   rose: 'bg-[#A5556E]',
   gold: 'bg-[#1E8C60]',
-  mint: 'bg-[#3A72B0]',
-  violet: 'bg-[#723550]',
-  peach: 'bg-[#E4577F]',
-  cream: 'bg-[#74616A]',
+  mint: 'bg-[#1E4E8C]',
+  violet: 'bg-[#8E7882]',
+  peach: 'bg-[#F9A1B9]',
+  cream: 'bg-[#F7F6F6]',
 }
 
-/** Kartın renkli başlık bandı (açık ton — rakam ve rozet öne çıksın diye). */
-const toneSurface: Record<QuickAction['tone'], string> = {
-  rose: 'from-[#F9E8ED] to-[#F0D0DB]',
-  gold: 'from-[#E9F6F0] to-[#CDEBDD]',
-  mint: 'from-[#EDF4FB] to-[#D8E7F6]',
-  violet: 'from-[#F3E1E9] to-[#E4C7D4]',
-  peach: 'from-[#FDECF1] to-[#FBD1DE]',
-  cream: 'from-[#F4F2F3] to-[#E4DEE1]',
+const toneOnBand: Record<QuickAction['tone'], string> = {
+  rose: 'text-white',
+  gold: 'text-white',
+  mint: 'text-white',
+  violet: 'text-white',
+  peach: 'text-[#5A1730]',
+  cream: 'text-[#3E343A]',
+}
+
+const toneChip: Record<QuickAction['tone'], string> = {
+  rose: 'bg-white/20 text-white',
+  gold: 'bg-white/20 text-white',
+  mint: 'bg-white/20 text-white',
+  violet: 'bg-white/22 text-white',
+  peach: 'bg-white/45 text-[#5A1730]',
+  cream: 'bg-[#8E7882] text-white',
 }
 
 type RangePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -801,7 +812,7 @@ function MiniBars({ values = [28, 44, 36, 54, 68, 82] }: { values?: number[] }) 
 
 /** Kartın altındaki trend şeridinin çizgi rengi. */
 const toneStroke: Record<QuickAction['tone'], string> = {
-  rose: '#A5556E', gold: '#1E8C60', violet: '#723550', mint: '#3A72B0', peach: '#E4577F', cream: '#74616A',
+  rose: '#A5556E', gold: '#1E8C60', violet: '#8E7882', mint: '#1E4E8C', peach: '#E4577F', cream: '#8E7882',
 }
 
 /** Kartın altını boydan boya kaplayan yumuşak alan grafiği (dönemin gerçek serisi). */
@@ -882,10 +893,10 @@ function MetricCard({
       <BrandHairline />
 
       {/* Renkli başlık bandı: ikon + dönem kontrolü */}
-      <div className={`relative flex min-h-[76px] items-start justify-between gap-3 bg-gradient-to-br ${toneSurface[tone]} px-5 pb-4 pt-5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/55 blur-2xl transition-transform duration-500 group-hover:scale-110" />
-        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] text-white shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneIcon[tone]}`}>
-          <Icon className="h-[19px] w-[19px]" strokeWidth={1.85} />
+      <div className={`relative flex min-h-[76px] items-start justify-between gap-3 ${toneSurface[tone]} ${toneOnBand[tone]} px-5 pb-4 pt-5`}>
+        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/20 blur-2xl transition-transform duration-500 group-hover:scale-110" />
+        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneChip[tone]}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={1.9} />
         </span>
         <div className="relative flex shrink-0 flex-col items-end gap-2">{control}</div>
       </div>
@@ -1125,12 +1136,12 @@ function ReportKpi({
       } bg-white shadow-[0_16px_40px_-32px_rgba(87,39,61,0.6)] transition-shadow hover:shadow-[0_22px_46px_-30px_rgba(87,39,61,0.65)]`}
     >
       {/* Tonlu üst bant — paletin doğrudan rengi */}
-      <div className={`relative flex items-center gap-2 bg-gradient-to-br ${toneSurface[tone]} px-3 py-2.5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-5 -top-6 h-16 w-16 rounded-full bg-white/55 blur-xl transition-transform duration-500 group-hover:scale-125" />
-        <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)] ${toneIcon[tone]}`}>
-          <Icon className="h-4 w-4" strokeWidth={1.85} />
+      <div className={`relative flex items-center gap-2 ${toneSurface[tone]} ${toneOnBand[tone]} px-3 py-2.5`}>
+        <span aria-hidden className="pointer-events-none absolute -right-5 -top-6 h-16 w-16 rounded-full bg-white/20 blur-xl transition-transform duration-500 group-hover:scale-125" />
+        <span className={`relative grid h-8 w-8 shrink-0 place-items-center rounded-[11px] shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)] ${toneChip[tone]}`}>
+          <Icon className="h-4 w-4" strokeWidth={1.9} />
         </span>
-        <span className="relative text-[10px] font-semibold uppercase leading-tight tracking-wide text-[#4E4048]">{label}</span>
+        <span className="relative text-[10px] font-semibold uppercase leading-tight tracking-wide">{label}</span>
       </div>
       {/* Rakam + ipucu */}
       <div className="px-3 pb-3 pt-2.5">
@@ -2267,8 +2278,8 @@ export default function AdminDashboard() {
                             urgent ? toneClasses[item.tone] : 'border-[#E4DEE0] bg-white text-[#5A4B53]'
                           }`}
                         >
-                          <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
-                          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.55)]">
+                          <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/25 blur-xl transition-transform duration-500 group-hover:scale-125" />
+                          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-white/25 ring-1 ring-white/30">
                             <Icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                           </span>
                           <span className="relative min-w-0 flex-1">
@@ -2302,8 +2313,8 @@ export default function AdminDashboard() {
                         href={action.href}
                         className={`${toneClasses[action.tone]} group relative flex min-h-[96px] flex-col justify-between overflow-hidden rounded-[18px] border p-3 transition-shadow hover:shadow-[0_20px_38px_-26px_rgba(150,78,104,0.6)]`}
                       >
-                        <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/45 blur-xl transition-transform duration-500 group-hover:scale-125" />
-                        <span className="relative grid h-10 w-10 place-items-center rounded-[13px] bg-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.55)] transition-transform duration-300 group-hover:scale-105">
+                        <span aria-hidden className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/25 blur-xl transition-transform duration-500 group-hover:scale-125" />
+                        <span className="relative grid h-10 w-10 place-items-center rounded-[13px] bg-white/25 ring-1 ring-white/30 transition-transform duration-300 group-hover:scale-105">
                           <Icon className="h-[19px] w-[19px]" strokeWidth={1.9} />
                         </span>
                         <span className="relative flex items-end justify-between gap-2">

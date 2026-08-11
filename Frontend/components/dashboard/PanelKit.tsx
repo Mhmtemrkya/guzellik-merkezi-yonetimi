@@ -22,37 +22,46 @@ export type PanelTone = 'rose' | 'gold' | 'mint' | 'violet' | 'peach' | 'cream'
 
 /** İkon kutusu + kısayol yüzeyleri (kenarlık · zemin · yazı). */
 export const toneClasses: Record<PanelTone, string> = {
-  rose: 'border-[#DFAFBF] bg-[#F6DFE6] text-[#7A3450]',
-  gold: 'border-[#8FD5B4] bg-[#DFF3EA] text-[#15694A]',
-  mint: 'border-[#AFC9E6] bg-[#E7F0FA] text-[#245C9E]',
-  violet: 'border-[#D3A6B7] bg-[#F2DEE7] text-[#5F2A41]',
-  peach: 'border-[#F6B7CA] bg-[#FDE4EB] text-[#BE3960]',
-  cream: 'border-[#CBC1C6] bg-[#EFECEE] text-[#4E4048]',
+  rose: 'border-[#8C4460] bg-[#A5556E] text-white',
+  gold: 'border-[#15694A] bg-[#1E8C60] text-white',
+  mint: 'border-[#17406F] bg-[#1E4E8C] text-white',
+  violet: 'border-[#74616A] bg-[#8E7882] text-white',
+  peach: 'border-[#E4577F] bg-[#F9A1B9] text-[#5A1730]',
+  cream: 'border-[#CBC1C6] bg-[#F7F6F6] text-[#3E343A]',
 }
 
-/** İkon rozeti — dolu renk, beyaz ikon (bant açık, doygunluk rozetten gelir). */
-export const toneIcon: Record<PanelTone, string> = {
-  rose: 'bg-[#A5556E]',
-  gold: 'bg-[#1E8C60]',
-  mint: 'bg-[#3A72B0]',
-  violet: 'bg-[#723550]',
-  peach: 'bg-[#E4577F]',
-  cream: 'bg-[#74616A]',
+/** Bant üstündeki yazı ve ikon rozeti (açık renklerde mürekkep koyudur). */
+export const toneOnBand: Record<PanelTone, string> = {
+  rose: 'text-white',
+  gold: 'text-white',
+  mint: 'text-white',
+  violet: 'text-white',
+  peach: 'text-[#5A1730]',
+  cream: 'text-[#3E343A]',
+}
+
+export const toneChip: Record<PanelTone, string> = {
+  rose: 'bg-white/20 text-white',
+  gold: 'bg-white/20 text-white',
+  mint: 'bg-white/20 text-white',
+  violet: 'bg-white/22 text-white',
+  peach: 'bg-white/45 text-[#5A1730]',
+  cream: 'bg-[#8E7882] text-white',
 }
 
 /** Kartın renkli başlık bandı. */
 export const toneSurface: Record<PanelTone, string> = {
-  rose: 'from-[#F9E8ED] to-[#F0D0DB]',
-  gold: 'from-[#E9F6F0] to-[#CDEBDD]',
-  violet: 'from-[#F3E1E9] to-[#E4C7D4]',
-  mint: 'from-[#EDF4FB] to-[#D8E7F6]',
-  peach: 'from-[#FDECF1] to-[#FBD1DE]',
-  cream: 'from-[#F4F2F3] to-[#E4DEE1]',
+  rose: 'bg-[#A5556E]',
+  gold: 'bg-[#1E8C60]',
+  violet: 'bg-[#8E7882]',
+  mint: 'bg-[#1E4E8C]',
+  peach: 'bg-[#F9A1B9]',
+  cream: 'bg-[#F7F6F6]',
 }
 
 /** Trend şeridinin çizgi rengi. */
 export const toneStroke: Record<PanelTone, string> = {
-  rose: '#A5556E', gold: '#1E8C60', violet: '#723550', mint: '#3A72B0', peach: '#E4577F', cream: '#74616A',
+  rose: '#A5556E', gold: '#1E8C60', violet: '#8E7882', mint: '#1E4E8C', peach: '#E4577F', cream: '#8E7882',
 }
 
 export const panelCardShell =
@@ -192,10 +201,10 @@ export function PanelMetricCard({
     >
       <BrandHairline />
 
-      <div className={`relative flex min-h-[76px] items-start justify-between gap-3 bg-gradient-to-br ${toneSurface[tone]} px-5 pb-4 pt-5`}>
-        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/55 blur-2xl transition-transform duration-500 group-hover:scale-110" />
-        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] text-white shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneIcon[tone]}`}>
-          <Icon className="h-[19px] w-[19px]" strokeWidth={1.85} />
+      <div className={`relative flex min-h-[76px] items-start justify-between gap-3 ${toneSurface[tone]} ${toneOnBand[tone]} px-5 pb-4 pt-5`}>
+        <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/20 blur-2xl transition-transform duration-500 group-hover:scale-110" />
+        <span className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-[15px] shadow-[0_12px_26px_-14px_rgba(42,32,39,0.75)] transition-transform duration-300 group-hover:scale-105 ${toneChip[tone]}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={1.9} />
         </span>
         <div className="relative flex shrink-0 flex-col items-end gap-2">{control}</div>
       </div>
