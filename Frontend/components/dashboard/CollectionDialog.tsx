@@ -344,19 +344,34 @@ export default function CollectionDialog({
   /** Hızlı tutar çipleri — hepsi taksitli hesapta anlamlı. */
   const quickAmounts = useMemo(() => {
     const out: { key: string; label: string; value: number; hint?: string }[] = []
-    // TÜMÜ: rakamlar tüm satışların toplamıdır (tek satışın değil).
+    /*
+     * TÜMÜ'DE İKİ ANA KIRILIM: "bu ayın taksitleri" ↔ "tüm borç".
+     *
+     * Birincisi HER SATIŞTAN o ayki taksiti kapatır (para tek satışa yığılmaz) — dağıtım
+     * global vade sırasıyla yapıldığı için üç satışın da 1. taksiti aynı anda kapanır.
+     * Etiketler bunu açıkça yazar: "bu ay ödenmesi gereken" tek başına, kaç satıştan kaç
+     * taksit kapanacağını söylemiyordu.
+     */
     if (allMode && allSummary) {
       if (allSummary.dueNow > 0.005) {
         out.push({
-          key: 'all-due', label: 'Bu ay ödenmesi gereken', value: roundKurus(allSummary.dueNow),
-          hint: `${allSummary.openCount} satışın toplamı`,
+          key: 'all-due',
+          label: 'Bu ayın taksitleri',
+          value: roundKurus(allSummary.dueNow),
+          hint: `${allSummary.openCount} satışın her birinden bu ayki taksit`,
         })
       }
       if (allSummary.overdue > 0.005 && Math.abs(allSummary.overdue - allSummary.dueNow) > 0.005) {
-        out.push({ key: 'all-overdue', label: 'Yalnız gecikmiş', value: roundKurus(allSummary.overdue) })
+        out.push({
+          key: 'all-overdue', label: 'Yalnız gecikmiş', value: roundKurus(allSummary.overdue),
+          hint: 'vadesi geçmiş borçlar',
+        })
       }
       if (allSummary.remaining > 0.005) {
-        out.push({ key: 'all-total', label: 'Tüm borcun tamamı', value: roundKurus(allSummary.remaining) })
+        out.push({
+          key: 'all-total', label: 'Tüm borç', value: roundKurus(allSummary.remaining),
+          hint: `${allSummary.openCount} satışın kalanının tamamı`,
+        })
       }
       return out
     }

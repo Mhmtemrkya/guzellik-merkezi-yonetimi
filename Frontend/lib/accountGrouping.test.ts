@@ -436,3 +436,64 @@ describe('planCollectionCalls', () => {
     expect(calls[0].amount).toBe(1000)
   })
 })
+
+/**
+ * "TÜMÜ + bu ayın taksitleri" — kullanıcının tarif ettiği beklenti.
+ *
+ * Beklenen: Tümü'de iki kırılım vardır (tüm borç ↔ bu ayın taksit toplamı) ve ikincisi
+ * seçilince HER SATIŞIN o ayki taksiti kapanır — para tek satışa yığılmaz.
+ */
+describe('Tümü kırılımı: bu ayın taksitleri her satıştan birer taksit kapatır', () => {
+  /** Üç satış, her biri 5 × 1.000 aylık taksit; hiçbiri gecikmemiş. */
+  const threeSales = (): CustomerAccount[] =>
+    ['A Paketi', 'B Paketi', 'C Paketi'].map((label, s) =>
+      acc({
+        id: `s${s + 1}`,
+        customerId: 'c1',
+        servicePackageName: label,
+        totalAmount: 5000,
+        paidAmount: 0,
+        remainingAmount: 5000,
+        installments: [1, 2, 3, 4, 5].map((no) =>
+          inst({ id: `s${s + 1}-i${no}`, no, dueDate: `2026-0${no}-15`, amount: 1000 }),
+        ),
+      }),
+    )
+
+  it('kırılım-1 "tüm borç": üç satışın toplamı', () => {
+    const s = summarizeAllAccounts(threeSales(), '2026-01-10')
+    expect(s.remaining).toBe(15000)
+  })
+
+  it('kırılım-2 "bu ayın taksitleri": her satıştan BİR taksit = 3 × 1.000', () => {
+    const s = summarizeAllAccounts(threeSales(), '2026-01-10')
+    expect(s.dueNow).toBe(3000)
+  })
+
+  it('3.000 ödenince her satışa 1.000 yazılır (biri diğerini yemez)', () => {
+    const out = allocateAcrossAccounts(threeSales(), 3000, '2026-01-10')
+    expect(out).toHaveLength(3)
+    expect(out.map((r) => r.amount)).toEqual([1000, 1000, 1000])
+    expect(out.map((r) => r.accountId).sort()).toEqual(['s1', 's2', 's3'])
+  })
+
+  it('kapanan taksit HER SATIŞIN 1. taksitidir (2. aya geçilmez)', () => {
+    // Kuyruk global vade sırasında: üç satışın da 15 Oca taksiti, sonra 15 Şub'lar.
+    const queue = buildGlobalDueQueue(threeSales(), '2026-01-10')
+    const firstThree = queue.slice(0, 3)
+    expect(firstThree.every((r) => r.installmentNo === 1)).toBe(true)
+    expect(firstThree.map((r) => r.accountId).sort()).toEqual(['s1', 's2', 's3'])
+    // 4. sıra artık şubat: 3.000 girildiğinde oraya para gitmez.
+    expect(queue[3].installmentNo).toBe(2)
+  })
+
+  it('bir satış gecikmişse "bu ayın taksitleri" o gecikmeyi de kapsar', () => {
+    // s1 iki ay gecikmiş (Oca+Şub ödenmemiş), diğerleri güncel; bugün 10 Şubat.
+    const list = threeSales()
+    const s = summarizeAllAccounts(list, '2026-02-10')
+    // Her satış için Oca+Şub = 2.000 → 3 satış × 2.000.
+    expect(s.dueNow).toBe(6000)
+    const out = allocateAcrossAccounts(list, 6000, '2026-02-10')
+    expect(out.map((r) => r.amount)).toEqual([2000, 2000, 2000])
+  })
+})

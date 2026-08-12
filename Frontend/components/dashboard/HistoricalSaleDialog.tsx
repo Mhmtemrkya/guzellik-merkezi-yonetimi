@@ -348,7 +348,7 @@ export default function HistoricalSaleDialog({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97 }}
         onClick={(e) => e.stopPropagation()}
-        className="my-auto flex max-h-[94dvh] w-full max-w-[940px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] sm:rounded-[26px]"
+        className="my-auto flex max-h-[94dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] sm:rounded-[26px]"
       >
         <header className="relative shrink-0 overflow-hidden border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fbf7ff] to-[#f6efff] px-4 py-4 sm:px-6">
           <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-52 w-52 rounded-full bg-[#c7a8ef]/25 blur-3xl" />
@@ -369,7 +369,7 @@ export default function HistoricalSaleDialog({
         </header>
 
         {/* GÖVDE — geniş ekranda solda form, sağda canlı kayıt özeti */}
-        <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] px-3.5 py-4 sm:px-5 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start lg:gap-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] px-3.5 py-4 sm:px-5 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
           <div className="space-y-3.5">
             {/* Katalogdan açıldığında müşteri burada seçilir (sunucu-taraflı arama). */}
             {needsCustomer && (
@@ -673,34 +673,72 @@ export default function HistoricalSaleDialog({
 
                             {perSession && (
                               <div className="mt-2.5">
-                                <div className={`mb-1.5 ${HINT}`}>
+                                <div className={`mb-2 ${HINT}`}>
                                   Her seansın <b className="font-semibold text-[#3E343A]">ne zaman</b> ve
                                   <b className="font-semibold text-[#3E343A]"> kim tarafından</b> yapıldığını girin.
                                   Boş bıraktığınız alan üstteki varsayılana düşer.
                                 </div>
-                                <div className="max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
-                                  {sessionRows.slice(0, sessionsUsedNum).map((row, i) => (
-                                    <div key={i} className="flex items-center gap-2 rounded-[10px] border border-[#f0e0e6] bg-white px-2 py-1.5">
-                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#F6DFE6] text-[10.5px] font-bold text-[#8C4460]">
-                                        {i + 1}
-                                      </span>
-                                      <input
-                                        type="date"
-                                        max={todayIso}
-                                        value={row.date}
-                                        onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, date: e.target.value } : r)))}
-                                        className={`${FIELD} w-[150px] shrink-0 tabular-nums`}
-                                      />
-                                      <select
-                                        value={row.staffId}
-                                        onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, staffId: e.target.value } : r)))}
-                                        className={`${FIELD} min-w-0 flex-1`}
-                                      >
-                                        <option value="">Varsayılan personel</option>
-                                        {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                      </select>
-                                    </div>
-                                  ))}
+
+                                {/* HEPSİNE UYGULA — seansların çoğunu tek kişi yapmışsa satır satır
+                                    seçtirmek gereksiz iş. Seçim sonrası tek tek düzeltilebilir. */}
+                                {staffOptions.length > 0 && sessionsUsedNum > 1 && (
+                                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-2">
+                                    <span className="text-[11px] font-semibold text-[#5A4B53]">Hepsini yapan:</span>
+                                    <select
+                                      value=""
+                                      onChange={(e) => {
+                                        const id = e.target.value
+                                        if (!id) return
+                                        setSessionRows((list) => list.map((r) => ({ ...r, staffId: id })))
+                                      }}
+                                      className={`${FIELD} min-w-0 flex-1`}
+                                    >
+                                      <option value="">Personel seçin — hepsine uygulanır</option>
+                                      {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Satır: sıra · tarih · personel. Dar kolonda alt alta, geniş
+                                    ekranda yan yana — personel kutusu kırpılmasın diye ızgara. */}
+                                <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+                                  {sessionRows.slice(0, sessionsUsedNum).map((row, i) => {
+                                    const staffName = staffOptions.find((s) => s.id === row.staffId)?.name
+                                    return (
+                                      <div key={i} className="rounded-[12px] border border-[#EAD8DF] bg-white p-2.5">
+                                        <div className="mb-1.5 flex items-center gap-2">
+                                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#A5556E] text-[10.5px] font-bold text-white">
+                                            {i + 1}
+                                          </span>
+                                          <span className="text-[11.5px] font-semibold text-[#2A2027]">{i + 1}. seans</span>
+                                          {/* Seçilen personel ROZETLE de yazılır: dar select'te ad
+                                              kırpılınca kimin seçildiği okunmuyordu. */}
+                                          <span className={`ml-auto truncate rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                                            staffName ? 'bg-[#F6DFE6] text-[#8C4460]' : 'bg-[#F7F6F6] text-[#74616A]'
+                                          }`}>
+                                            {staffName || 'Varsayılan personel'}
+                                          </span>
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-[minmax(0,150px)_minmax(0,1fr)]">
+                                          <input
+                                            type="date"
+                                            max={todayIso}
+                                            value={row.date}
+                                            onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, date: e.target.value } : r)))}
+                                            className={`${FIELD} tabular-nums`}
+                                          />
+                                          <select
+                                            value={row.staffId}
+                                            onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, staffId: e.target.value } : r)))}
+                                            className={`${FIELD} min-w-0`}
+                                          >
+                                            <option value="">Varsayılan personel</option>
+                                            {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                          </select>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               </div>
                             )}

@@ -1610,10 +1610,12 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Sayfa neredeyse tam ekran açılır: seans seans tarih/personel girilirken .9'luk
+    // yükseklikte form sürekli kaydırılıyordu (web modalinin genişletilmesinin karşılığı).
     return DraggableScrollableSheet(
-      initialChildSize: .9,
+      initialChildSize: .95,
       minChildSize: .5,
-      maxChildSize: .95,
+      maxChildSize: .98,
       expand: false,
       builder: (context, controller) => Container(
         decoration: const BoxDecoration(
@@ -2019,61 +2021,135 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                           'Her seansın ne zaman ve kim tarafından yapıldığını girin. Boş bıraktığınız alan varsayılana düşer.',
                           style: TextStyle(
                               fontSize: 11, color: AppColors.muted, height: 1.35)),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
+                      // HEPSİNE UYGULA — seansların çoğunu tek kişi yapmışsa satır satır
+                      // seçtirmek gereksiz iş. Seçim sonrası tek tek düzeltilebilir.
+                      if (_staff.isNotEmpty && _sessionRows.length > 1) ...[
+                        DropdownButtonFormField<String>(
+                          initialValue: null,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            labelText: 'Hepsini yapan personel',
+                            helperText: 'Seçince tüm seanslara uygulanır',
+                          ),
+                          items: [
+                            for (final st in _staff)
+                              DropdownMenuItem(
+                                value: valueOf(st, const ['id']),
+                                child: Text(valueOf(st, const ['fullName', 'name']),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              for (var i = 0; i < _sessionRows.length; i++) {
+                                _sessionRows[i] =
+                                    (date: _sessionRows[i].date, staffId: v);
+                              }
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      // Satır: sıra + seçili personel rozeti üstte, tarih ve personel altta
+                      // ALT ALTA. Telefonda yan yana konunca personel adı kırpılıyordu.
                       for (var i = 0; i < _sessionRows.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 22,
-                                height: 22,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.surfaceSoft,
-                                  shape: BoxShape.circle,
+                        Builder(builder: (_) {
+                          final staffName = _staff
+                              .where((st) =>
+                                  valueOf(st, const ['id']) == _sessionRows[i].staffId)
+                              .map((st) => valueOf(st, const ['fullName', 'name']))
+                              .firstOrNull;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      alignment: Alignment.center,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.primary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text('${i + 1}',
+                                          style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text('${i + 1}. seans',
+                                        style: const TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700)),
+                                    const Spacer(),
+                                    // Seçilen personel ROZETLE de yazılır: dar açılır listede
+                                    // ad kırpılınca kimin seçildiği okunmuyordu.
+                                    Flexible(
+                                      child: Text(staffName ?? 'Varsayılan personel',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: staffName == null
+                                                  ? AppColors.muted
+                                                  : AppColors.primaryDark)),
+                                    ),
+                                  ],
                                 ),
-                                child: Text('${i + 1}',
-                                    style: const TextStyle(
-                                        fontSize: 10.5, fontWeight: FontWeight.w800)),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () async {
-                                    final picked = await showDatePicker(
-                                      context: context,
-                                      initialDate: _sessionRows[i].date ??
-                                          _defaultSessionDate(i) ??
-                                          DateTime.now(),
-                                      firstDate: DateTime(2015),
-                                      lastDate: DateTime.now(),
-                                    );
-                                    if (picked == null) return;
-                                    setState(() => _sessionRows[i] = (
-                                          date: picked,
-                                          staffId: _sessionRows[i].staffId
-                                        ));
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                      visualDensity: VisualDensity.compact),
-                                  child: Text(
-                                      _sessionRows[i].date == null
-                                          ? 'Tarih seç'
-                                          : DateFormat('d MMM yyyy', 'tr_TR')
-                                              .format(_sessionRows[i].date!),
-                                      style: const TextStyle(fontSize: 11.5)),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: _sessionRows[i].date ??
+                                            _defaultSessionDate(i) ??
+                                            DateTime.now(),
+                                        firstDate: DateTime(2015),
+                                        lastDate: DateTime.now(),
+                                      );
+                                      if (picked == null) return;
+                                      setState(() => _sessionRows[i] = (
+                                            date: picked,
+                                            staffId: _sessionRows[i].staffId
+                                          ));
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact),
+                                    icon: const Icon(Icons.event_rounded, size: 15),
+                                    label: Text(
+                                        _sessionRows[i].date == null
+                                            ? 'Tarih seç'
+                                            : DateFormat('d MMM yyyy', 'tr_TR')
+                                                .format(_sessionRows[i].date!),
+                                        style: const TextStyle(fontSize: 11.5)),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
+                                const SizedBox(height: 6),
+                                DropdownButtonFormField<String>(
                                   initialValue: _sessionRows[i].staffId,
                                   isExpanded: true,
-                                  decoration: const InputDecoration(isDense: true),
+                                  decoration: const InputDecoration(
+                                      isDense: true, labelText: 'Seansı yapan'),
                                   items: [
                                     const DropdownMenuItem(
-                                        value: null, child: Text('Varsayılan')),
+                                        value: null, child: Text('Varsayılan personel')),
                                     for (final st in _staff)
                                       DropdownMenuItem(
                                         value: valueOf(st, const ['id']),
@@ -2085,10 +2161,10 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                                   onChanged: (v) => setState(() => _sessionRows[i] =
                                       (date: _sessionRows[i].date, staffId: v)),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              ],
+                            ),
+                          );
+                        }),
                     ],
                   ],
                 ],
