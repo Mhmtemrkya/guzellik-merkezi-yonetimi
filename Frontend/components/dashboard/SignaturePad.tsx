@@ -111,7 +111,7 @@ export default function SignaturePad({
 
   return (
     <div>
-      <div className="relative overflow-hidden rounded-[16px] border-2 border-dashed border-[#efbfd0] bg-white">
+      <div className="relative overflow-hidden rounded-[16px] border-2 border-dashed border-[#BE7690] bg-white">
         <canvas
           ref={canvasRef}
           style={{ height, touchAction: 'none' }}
@@ -124,7 +124,7 @@ export default function SignaturePad({
         />
         {empty && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="flex flex-col items-center gap-1.5 text-[#b14d6c]">
+            <div className="flex flex-col items-center gap-1.5 text-[#8C4460]">
               <PenLine className="h-7 w-7" />
               <span className="text-[13px] font-medium">Parmağınız veya kalemle buraya imzalayın</span>
             </div>
@@ -132,12 +132,12 @@ export default function SignaturePad({
         )}
       </div>
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-[12px] text-[#705a66]">İmzanız belgeye tarih ve saat bilgisiyle birlikte işlenir.</span>
+        <span className="text-[12px] text-[#74616A]">İmzanız belgeye tarih ve saat bilgisiyle birlikte işlenir.</span>
         <button
           type="button"
           onClick={clear}
           disabled={empty || disabled}
-          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4a3a44] transition-colors hover:bg-[#fff4f8] disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[12px] font-medium text-[#3E343A] transition-colors hover:bg-[#F7F6F6] disabled:opacity-40"
         >
           <Eraser className="h-3.5 w-3.5" /> Temizle
         </button>

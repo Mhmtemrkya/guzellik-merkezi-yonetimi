@@ -73,7 +73,7 @@ export default function CustomerVipToggle({
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-60 ${
         isVip
           ? 'border-[#e5c46a]/70 bg-[#fdf6e3] text-[#9a7420] hover:bg-[#faeecb]'
-          : 'border-[#ead8df] bg-white text-[#352432]/40 hover:border-[#e5c46a]/70 hover:text-[#9a7420]'
+          : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#e5c46a]/70 hover:text-[#9a7420]'
       }`}
     >
       {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Crown className={`h-3 w-3 ${isVip ? 'fill-[#e5c46a] text-[#c9a13c]' : ''}`} />}

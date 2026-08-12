@@ -448,7 +448,7 @@ export default function CategoryExplorer({
             { label: 'Hizmet', value: totals.services, icon: Sparkles, tone: 'bg-[#A5556E] text-white' },
             { label: 'Paket', value: totals.packages, icon: Package, tone: 'bg-violet-50 text-violet-600' },
           ].map((s) => (
-            <div key={s.label} className="flex items-center gap-3 rounded-[16px] border border-[#EAD8DF] bg-white/90 px-4 py-3 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+            <div key={s.label} className="flex items-center gap-3 rounded-[16px] border border-[#EAD8DF] bg-white px-4 py-3 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
               <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[12px] ${s.tone}`}><s.icon className="h-5 w-5" /></span>
               <div className="min-w-0">
                 <div className="text-[11px] font-medium text-[#74616A]">{s.label}</div>
@@ -616,7 +616,7 @@ export default function CategoryExplorer({
                             <button type="button" disabled={busy || !renameValue.trim()} onClick={applyRename}
                               className="rounded-[10px] bg-[#A5556E] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Kaydet</button>
                             <button type="button" onClick={() => setRenaming(false)}
-                              className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#F7F6F6]">Vazgeç</button>
+                              className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#3E343A] hover:bg-[#F7F6F6]">Vazgeç</button>
                           </div>
                         ) : (
                           <div className="mt-0.5 truncate font-display text-[26px] leading-tight tracking-tight text-[#2A2027]">{subject.name}</div>
@@ -649,19 +649,19 @@ export default function CategoryExplorer({
                         )}
                         {canManage && (
                           <button type="button" onClick={startRename}
-                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                             <Pencil className="h-3.5 w-3.5" /> Yeniden adlandır
                           </button>
                         )}
                         {canReorder && (
                           <span className="inline-flex overflow-hidden rounded-[10px] border border-[#EAD8DF] bg-white">
                             <button type="button" disabled={busy || orderIndex === 0} onClick={() => move(-1)} title="Sırada yukarı taşı"
-                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
+                              className="grid h-[38px] w-9 place-items-center text-[#3E343A] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
                               <ArrowUp className="h-4 w-4" />
                             </button>
                             <span className="w-px bg-[#f1e5ea]" />
                             <button type="button" disabled={busy || orderIndex === siblingIds.length - 1} onClick={() => move(1)} title="Sırada aşağı taşı"
-                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
+                              className="grid h-[38px] w-9 place-items-center text-[#3E343A] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
                               <ArrowDown className="h-4 w-4" />
                             </button>
                           </span>
@@ -698,14 +698,14 @@ export default function CategoryExplorer({
                           <button type="button" disabled={busy || !newSubName.trim()} onClick={createSubCat}
                             className="rounded-[9px] bg-[#A5556E] px-3.5 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
                           <button type="button" onClick={() => { setAddingSub(false); setNewSubName('') }}
-                            className="rounded-[9px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-white">Vazgeç</button>
+                            className="rounded-[9px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#3E343A] hover:bg-white">Vazgeç</button>
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   {isUncategorized && (
-                    <div className="mt-4 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-2.5 text-[12px] text-[#4a3a44]">
+                    <div className="mt-4 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-2.5 text-[12px] text-[#3E343A]">
                       Bu, kategorisi girilmemiş kayıtların toplandığı sistem grubudur — adlandırılamaz, silinemez.
                       Kayıtları bir kategoriye taşımak için hizmet/paket formundan kategori seçin.
                     </div>
@@ -723,7 +723,7 @@ export default function CategoryExplorer({
                             key={t.key}
                             type="button"
                             onClick={() => setTypeTab(t.key)}
-                            className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${typeTab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#4a3a44] hover:bg-white'}`}
+                            className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${typeTab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#3E343A] hover:bg-white'}`}
                           >
                             {t.label} <span className="tabular-nums opacity-80">{count}</span>
                           </button>
@@ -779,10 +779,10 @@ export default function CategoryExplorer({
                         </div>
                         <div className="min-w-0">
                           {r.sub
-                            ? <span className="inline-flex max-w-full truncate rounded-md border border-[#EAD8DF] bg-white px-2 py-0.5 text-[11px] font-medium text-[#4a3a44]">{r.sub}</span>
+                            ? <span className="inline-flex max-w-full truncate rounded-md border border-[#EAD8DF] bg-white px-2 py-0.5 text-[11px] font-medium text-[#3E343A]">{r.sub}</span>
                             : <span className="text-[12px] text-[#74616A]">—</span>}
                         </div>
-                        <div className="text-[12px] font-medium text-[#4a3a44]">{r.meta}</div>
+                        <div className="text-[12px] font-medium text-[#3E343A]">{r.meta}</div>
                         <div>
                           <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${r.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                             {r.active ? 'Aktif' : 'Pasif'}
@@ -869,7 +869,7 @@ export default function CategoryExplorer({
                   </div>
                 </div>
 
-                <div className="space-y-2 px-5 py-4 text-[12px] text-[#4a3a44]">
+                <div className="space-y-2 px-5 py-4 text-[12px] text-[#3E343A]">
                   {pendingDelete.kind === 'derived' ? (
                     <p>
                       Bu {pendingDelete.level === 'sub' ? 'alt kategorinin' : 'kategorinin'} ayrı bir kaydı yok; adı{' '}
@@ -895,7 +895,7 @@ export default function CategoryExplorer({
                     type="button"
                     disabled={busy}
                     onClick={() => setPendingDelete(null)}
-                    className="rounded-[11px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#F7F6F6] disabled:opacity-50"
+                    className="rounded-[11px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-medium text-[#3E343A] hover:bg-[#F7F6F6] disabled:opacity-50"
                   >
                     Vazgeç
                   </button>
@@ -924,7 +924,7 @@ function SubRow({ label, count, active, onClick }: { label: string; count: numbe
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition-colors ${
-        active ? 'bg-[#F6DFE6] text-[#8C4460]' : 'text-[#4a3a44] hover:bg-[#F7F6F6]'
+        active ? 'bg-[#F6DFE6] text-[#8C4460]' : 'text-[#3E343A] hover:bg-[#F7F6F6]'
       }`}
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-[#A5556E]' : 'bg-[#D9CBD1]'}`} />

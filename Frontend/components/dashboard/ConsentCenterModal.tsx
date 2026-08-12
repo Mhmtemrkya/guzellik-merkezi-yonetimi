@@ -212,16 +212,16 @@ export default function ConsentCenterModal({
           {/* Başlık */}
           <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#f6e8ee] px-6 py-5">
             <div className="flex items-start gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#fff1f6] text-[#c85776]"><FileSignature className="h-5 w-5" /></span>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#A5556E] text-white"><FileSignature className="h-5 w-5" /></span>
               <div className="min-w-0">
-                <div className="font-display text-xl leading-tight tracking-tight text-[#352432]">Onam Formları</div>
-                <div className="mt-0.5 truncate text-[12.5px] text-[#705a66]">
+                <div className="font-display text-xl leading-tight tracking-tight text-[#2A2027]">Onam Formları</div>
+                <div className="mt-0.5 truncate text-[12.5px] text-[#74616A]">
                   {customerName || 'Müşteri'}
                   {status ? ` · ${status.signedCount ?? 0}/${status.requiredCount ?? 0} imzalı` : ''}
                 </div>
               </div>
             </div>
-            <button type="button" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff4f8] text-[#705a66] transition-colors hover:text-[#c85776]">
+            <button type="button" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F7F6F6] text-[#74616A] transition-colors hover:text-[#A5556E]">
               <X className="h-4.5 w-4.5" />
             </button>
           </header>
@@ -260,12 +260,12 @@ export default function ConsentCenterModal({
 
             {/* Gerekli formlar */}
             {loading ? (
-              <div className="grid place-items-center py-14 text-[#705a66]"><Loader2 className="h-6 w-6 animate-spin" /></div>
+              <div className="grid place-items-center py-14 text-[#74616A]"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : requirements.length === 0 ? (
-              <div className="rounded-[16px] border border-dashed border-[#ead8df] bg-[#fffafc] px-5 py-12 text-center">
-                <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><ClipboardList className="h-6 w-6" /></span>
-                <div className="mt-3 text-[13.5px] font-semibold text-[#352432]">Bu işlem için tanımlı onam formu yok</div>
-                <div className="mx-auto mt-1 max-w-sm text-[12.5px] leading-relaxed text-[#705a66]">
+              <div className="rounded-[16px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-5 py-12 text-center">
+                <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#A5556E] text-white"><ClipboardList className="h-6 w-6" /></span>
+                <div className="mt-3 text-[13.5px] font-semibold text-[#2A2027]">Bu işlem için tanımlı onam formu yok</div>
+                <div className="mx-auto mt-1 max-w-sm text-[12.5px] leading-relaxed text-[#74616A]">
                   Hizmet formundan “Onam formları” bölümüne form bağlarsanız burada listelenir ve randevu
                   tamamlanmadan önce imza istenir.
                 </div>
@@ -277,16 +277,16 @@ export default function ConsentCenterModal({
                   const key = consentStatusKey(form?.status)
                   const busy = busyId === req.templateId || (form?.id ? busyId === form.id : false)
                   return (
-                    <div key={req.templateId} className="rounded-[16px] border border-[#ead8df] bg-white p-4">
+                    <div key={req.templateId} className="rounded-[16px] border border-[#EAD8DF] bg-white p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[14px] font-semibold text-[#352432]">{req.title}</span>
-                            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${key ? CONSENT_STATUS_TONE[key] : 'border-[#ead8df] bg-[#fffafc] text-[#705a66]'}`}>
+                            <span className="text-[14px] font-semibold text-[#2A2027]">{req.title}</span>
+                            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${key ? CONSENT_STATUS_TONE[key] : 'border-[#EAD8DF] bg-[#F7F6F6] text-[#74616A]'}`}>
                               {key ? CONSENT_STATUS_LABEL[key] : 'Alınmadı'}
                             </span>
                           </div>
-                          <div className="mt-1 text-[12px] text-[#705a66]">
+                          <div className="mt-1 text-[12px] text-[#74616A]">
                             {req.serviceName ? `${req.serviceName} · ` : ''}
                             {form?.signedAtUtc
                               ? `İmza: ${new Date(form.signedAtUtc).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
@@ -300,11 +300,11 @@ export default function ConsentCenterModal({
                           {isSigned(form) ? (
                             <>
                               <button type="button" onClick={() => downloadPdf(form!)}
-                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                                 <Download className="h-3.5 w-3.5" /> PDF indir
                               </button>
                               <button type="button" disabled={busy} onClick={() => void openTemplate(req.templateId!, req.serviceDefinitionId)}
-                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#705a66] transition-colors hover:text-[#c85776] disabled:opacity-50">
+                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#74616A] transition-colors hover:text-[#A5556E] disabled:opacity-50">
                                 <RotateCcw className="h-3.5 w-3.5" /> Yeniden al
                               </button>
                             </>
@@ -314,13 +314,13 @@ export default function ConsentCenterModal({
                                 <Tablet className="h-3.5 w-3.5" /> {form.stationName || 'Tablet'}
                               </span>
                               <button type="button" disabled={busy} onClick={() => void run(form.id!, () => consentApi.cancelSession(form.id!, tenantId))}
-                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#705a66] transition-colors hover:text-[#c85776] disabled:opacity-50">
+                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#74616A] transition-colors hover:text-[#A5556E] disabled:opacity-50">
                                 Geri al
                               </button>
                             </>
                           ) : (
                             <button type="button" disabled={busy} onClick={() => void openTemplate(req.templateId!, req.serviceDefinitionId)}
-                              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50">
+                              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50">
                               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PenLine className="h-3.5 w-3.5" />} Formu doldur
                             </button>
                           )}
@@ -352,16 +352,16 @@ export default function ConsentCenterModal({
 
             {/* Bu işlem dışındaki geçmiş imzalı formlar */}
             {forms.some((f) => isSigned(f) && !requirements.some((r) => r.templateId === f.templateId)) && (
-              <div className="rounded-[16px] border border-[#ead8df] bg-[#fffafc] p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-[#705a66]">Diğer imzalı formlar</div>
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-[#74616A]">Diğer imzalı formlar</div>
                 <div className="mt-2 space-y-1.5">
                   {forms.filter((f) => isSigned(f) && !requirements.some((r) => r.templateId === f.templateId)).map((f) => (
                     <div key={f.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[12.5px] text-[#4a3a44]">
+                      <span className="truncate text-[12.5px] text-[#3E343A]">
                         {f.title}
                         {f.signedAtUtc ? ` · ${new Date(f.signedAtUtc).toLocaleDateString('tr-TR')}` : ''}
                       </span>
-                      <button type="button" onClick={() => downloadPdf(f)} className="inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-[#c85776] hover:underline">
+                      <button type="button" onClick={() => downloadPdf(f)} className="inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-[#A5556E] hover:underline">
                         <Download className="h-3.5 w-3.5" /> PDF
                       </button>
                     </div>
@@ -408,8 +408,8 @@ function ConsentEditor({
   return (
     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
       <div className="mt-4 space-y-3 border-t border-[#f6e8ee] pt-4">
-        <div className="max-h-40 overflow-y-auto rounded-[12px] border border-[#f1e5ea] bg-[#fffafc] px-4 py-3">
-          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#4a3a44]">
+        <div className="max-h-40 overflow-y-auto rounded-[12px] border border-[#f1e5ea] bg-[#F7F6F6] px-4 py-3">
+          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[#3E343A]">
             {fillConsentPlaceholders(form.body || '', {
               customerName: form.customerName || customerName,
               serviceName: form.serviceName,
@@ -422,26 +422,26 @@ function ConsentEditor({
         {/* Sorular: imzalanmışsa yanıtlar, değilse müşteriye sorulacaklar listesi. */}
         {(form.questions?.length ?? 0) > 0 && (
           <div className="rounded-[12px] border border-[#f1e5ea] bg-white px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#b14d6c]">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#8C4460]">
               {(form.answers?.length ?? 0) > 0 ? 'Soru yanıtları' : 'Müşteriye sorulacak'}
             </div>
             <ul className="mt-1.5 space-y-1.5">
               {(form.questions || []).map((q) => {
                 const hit = (form.answers || []).find((a) => a.id === q.id)
                 return (
-                  <li key={q.id} className="flex flex-wrap items-start justify-between gap-2 text-[12.5px] text-[#4a3a44]">
+                  <li key={q.id} className="flex flex-wrap items-start justify-between gap-2 text-[12.5px] text-[#3E343A]">
                     <span className="min-w-0 flex-1">
                       {q.text}
-                      {hit?.note && <span className="mt-0.5 block text-[11.5px] text-[#705a66]">{hit.note}</span>}
+                      {hit?.note && <span className="mt-0.5 block text-[11.5px] text-[#74616A]">{hit.note}</span>}
                     </span>
                     {hit ? (
                       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
-                        hit.answer ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#efbfd0] bg-[#fff1f6] text-[#a34a62]'
+                        hit.answer ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#BE7690] bg-[#F6DFE6] text-[#a34a62]'
                       }`}>
                         {hit.answer ? 'Evet' : 'Hayır'}
                       </span>
                     ) : (
-                      <span className="shrink-0 text-[11.5px] text-[#705a66]">Evet / Hayır</span>
+                      <span className="shrink-0 text-[11.5px] text-[#74616A]">Evet / Hayır</span>
                     )}
                   </li>
                 )
@@ -452,10 +452,10 @@ function ConsentEditor({
 
         {(form.checkItems?.length ?? 0) > 0 && (
           <div className="rounded-[12px] border border-[#f1e5ea] bg-white px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#b14d6c]">Müşteri onaylayacak</div>
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#8C4460]">Müşteri onaylayacak</div>
             <ul className="mt-1.5 space-y-1">
               {(form.checkItems || []).map((item) => (
-                <li key={item} className="flex items-start gap-2 text-[12.5px] text-[#4a3a44]">
+                <li key={item} className="flex items-start gap-2 text-[12.5px] text-[#3E343A]">
                   <span className="mt-1 h-3 w-3 shrink-0 rounded-[3px] border border-[#dcc2ce]" /> {item}
                 </li>
               ))}
@@ -464,28 +464,28 @@ function ConsentEditor({
         )}
 
         <div>
-          <label className="text-[12px] font-semibold text-[#4a3a44]">
-            Uygulama notu <span className="font-normal text-[#705a66]">(doz, bölge, uyarı…)</span>
+          <label className="text-[12px] font-semibold text-[#3E343A]">
+            Uygulama notu <span className="font-normal text-[#74616A]">(doz, bölge, uyarı…)</span>
           </label>
           <textarea
             value={notes}
             onChange={(e) => onNotesChange(e.target.value)}
             rows={2}
             placeholder="Örn. 3. seans, sol bacak, 18 J/cm²"
-            className="mt-1.5 w-full rounded-[12px] border border-[#ead8df] bg-white px-3.5 py-2.5 text-[13px] outline-none focus:border-[#c85776]"
+            className="mt-1.5 w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 py-2.5 text-[13px] outline-none focus:border-[#A5556E]"
           />
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[180px] flex-1">
-            <label className="text-[12px] font-semibold text-[#4a3a44]">Tablet adı</label>
+            <label className="text-[12px] font-semibold text-[#3E343A]">Tablet adı</label>
             <div className="relative mt-1.5">
-              <MonitorSmartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+              <MonitorSmartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
               <input
                 value={station}
                 onChange={(e) => onStationChange(e.target.value)}
                 placeholder="Kabin 1"
-                className="w-full rounded-[12px] border border-[#ead8df] bg-white px-10 py-2.5 text-[13px] outline-none focus:border-[#c85776]"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-10 py-2.5 text-[13px] outline-none focus:border-[#A5556E]"
               />
             </div>
           </div>
@@ -493,15 +493,15 @@ function ConsentEditor({
             type="button"
             disabled={busy || !station.trim()}
             onClick={onSend}
-            className="inline-flex items-center gap-2 rounded-[12px] bg-[#c85776] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-[12px] bg-[#A5556E] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tablet className="h-4 w-4" />} Tablete Aktar
           </button>
-          <button type="button" onClick={onClose} className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-3 text-[13px] font-medium text-[#4a3a44] hover:bg-[#fff4f8]">
+          <button type="button" onClick={onClose} className="rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-3 text-[13px] font-medium text-[#3E343A] hover:bg-[#F7F6F6]">
             Kapat
           </button>
         </div>
-        <p className="text-[11.5px] text-[#705a66]">
+        <p className="text-[11.5px] text-[#74616A]">
           Form tablette açılır; müşteri onay kutularını işaretleyip imzalayınca bu ekrana anında bildirim düşer.
         </p>
       </div>

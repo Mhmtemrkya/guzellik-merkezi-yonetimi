@@ -140,7 +140,7 @@ export interface AppointmentEditorProps {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const control =
-  'min-h-11 w-full rounded-xl border border-[#efe1e7] bg-white px-3.5 py-2.5 text-[13.5px] text-[#2b1e29] outline-none transition-colors placeholder:text-[#b09ca5] hover:border-[#e8c2d1] focus:border-[#c7768f] focus:ring-4 focus:ring-[#ffdce8]/60 disabled:cursor-not-allowed disabled:bg-[#fbf5f7] disabled:text-[#705a66]'
+  'min-h-11 w-full rounded-xl border border-[#EAD8DF] bg-white px-3.5 py-2.5 text-[13.5px] text-[#2b1e29] outline-none transition-colors placeholder:text-[#b09ca5] hover:border-[#e8c2d1] focus:border-[#c7768f] focus:ring-4 focus:ring-[#ffdce8]/60 disabled:cursor-not-allowed disabled:bg-[#fbf5f7] disabled:text-[#74616A]'
 
 /** Numaralı adım bloğu. `done` işareti tamamlanmayı, `locked` önkoşulu gösterir. */
 function Step({
@@ -179,8 +179,8 @@ function Step({
           done
             ? 'border-[#8e3f5b] bg-[#8e3f5b] text-white'
             : locked
-              ? 'border-[#efe1e7] bg-white text-[#b09ca5]'
-              : 'border-[#e8c2d1] bg-[#fff4f8] text-[#8e3f5b]'
+              ? 'border-[#EAD8DF] bg-white text-[#b09ca5]'
+              : 'border-[#e8c2d1] bg-[#F7F6F6] text-[#8e3f5b]'
         }`}
       >
         {done ? <Check className="h-4 w-4" strokeWidth={2.6} /> : n}
@@ -188,7 +188,7 @@ function Step({
 
       <div className="flex min-h-8 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
         <h3 className="font-display text-[15px] font-extrabold tracking-[-0.02em] text-[#2b1e29]">{title}</h3>
-        {hint && <span className="text-[11.5px] leading-snug text-[#705a66]">{hint}</span>}
+        {hint && <span className="text-[11.5px] leading-snug text-[#74616A]">{hint}</span>}
       </div>
 
       <div className="mt-3">{children}</div>
@@ -211,12 +211,12 @@ function Field({
 }) {
   return (
     <div className={wide ? 'sm:col-span-2' : ''}>
-      <label className="mb-1.5 block text-[12px] font-semibold text-[#4a3a44]">
+      <label className="mb-1.5 block text-[12px] font-semibold text-[#3E343A]">
         {label}
         {required && <span className="ml-0.5 text-[#c7768f]">*</span>}
       </label>
       {children}
-      {helper && <p className="mt-1.5 text-[11.5px] leading-snug text-[#705a66]">{helper}</p>}
+      {helper && <p className="mt-1.5 text-[11.5px] leading-snug text-[#74616A]">{helper}</p>}
     </div>
   )
 }
@@ -275,14 +275,14 @@ function Ticket({
         )}
       </AnimatePresence>
 
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a3576f]">{dateLabel}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8C4460]">{dateLabel}</div>
 
       {/* Kahraman: saat */}
       <div className="mt-1 flex items-baseline gap-2">
         <span className="font-display text-[38px] font-extrabold leading-none tracking-[-0.045em] tabular-nums text-[#2b1e29]">
           {time || '—:—'}
         </span>
-        <span className="text-[12px] font-medium tabular-nums text-[#705a66]">{duration} dk</span>
+        <span className="text-[12px] font-medium tabular-nums text-[#74616A]">{duration} dk</span>
       </div>
 
       <div className="mt-3 space-y-1.5 border-t border-[#f4e8ee] pt-3">
@@ -292,7 +292,7 @@ function Ticket({
       </div>
 
       {statusLabel && (
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-[#fff4f8] px-2.5 py-1 text-[11.5px] font-semibold text-[#8e3f5b]">
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-[#F7F6F6] px-2.5 py-1 text-[11.5px] font-semibold text-[#8e3f5b]">
           {statusLabel}
         </div>
       )}
@@ -316,7 +316,7 @@ function TicketRow({
       <Icon className={`mt-[3px] h-3.5 w-3.5 shrink-0 ${value ? 'text-[#c7768f]' : 'text-[#c2adb6]'}`} strokeWidth={1.8} />
       <span
         className={`min-w-0 break-words text-[13px] leading-snug ${
-          value ? (strong ? 'font-semibold text-[#2b1e29]' : 'text-[#4a3a44]') : 'text-[#705a66]'
+          value ? (strong ? 'font-semibold text-[#2b1e29]' : 'text-[#3E343A]') : 'text-[#74616A]'
         }`}
       >
         {value || empty}
@@ -365,7 +365,7 @@ function OwnedPackageCard({
   return (
     <div
       className={`overflow-hidden rounded-2xl border ${
-        depleted ? 'border-[#efe1e7] bg-[#fbf5f7]' : 'border-[#e8c2d1] bg-white'
+        depleted ? 'border-[#EAD8DF] bg-[#fbf5f7]' : 'border-[#e8c2d1] bg-white'
       }`}
     >
       <div className="flex items-baseline justify-between gap-2 border-b border-[#f4e8ee] px-3.5 py-2.5">
@@ -373,7 +373,7 @@ function OwnedPackageCard({
           {name}
         </span>
         {/* NET CEVAP: "3 / 4 seans" hangi sayının kalan olduğunu söylemiyordu. */}
-        <span className={`shrink-0 text-[11px] font-semibold tabular-nums ${depleted ? 'text-[#705a66]' : 'text-[#8e3f5b]'}`}>
+        <span className={`shrink-0 text-[11px] font-semibold tabular-nums ${depleted ? 'text-[#74616A]' : 'text-[#8e3f5b]'}`}>
           {depleted ? 'Seans kalmadı' : `${remainingTotal} seans kaldı`}
         </span>
       </div>
@@ -393,7 +393,7 @@ function OwnedPackageCard({
                 aria-pressed={active}
                 onClick={() => onPick(r)}
                 className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors ${
-                  active ? 'bg-[#fff4f8]' : usable ? 'hover:bg-[#fdf6f9]' : 'cursor-not-allowed opacity-60'
+                  active ? 'bg-[#F7F6F6]' : usable ? 'hover:bg-[#fdf6f9]' : 'cursor-not-allowed opacity-60'
                 }`}
               >
                 <span
@@ -423,9 +423,9 @@ function OwnedPackageCard({
                       {r.remaining} <span className="text-[11px] font-semibold">seans kaldı</span>
                     </span>
                   ) : (
-                    <span className="block text-[11.5px] font-bold leading-none text-[#705a66]">Seans kalmadı</span>
+                    <span className="block text-[11.5px] font-bold leading-none text-[#74616A]">Seans kalmadı</span>
                   )}
-                  <span className="mt-1 block text-[10px] text-[#705a66] tabular-nums">
+                  <span className="mt-1 block text-[10px] text-[#74616A] tabular-nums">
                     {r.total} seanslık · {Math.max(0, r.total - r.remaining)} kullanıldı
                   </span>
                 </span>
@@ -485,7 +485,7 @@ function StaffPicker({
         ) : (
           <span className="flex-1 text-[#b09ca5]">Personel seç</span>
         )}
-        <ChevronDown className={`h-4 w-4 shrink-0 text-[#a3576f] transition-transform ${openList ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[#8C4460] transition-transform ${openList ? 'rotate-180' : ''}`} />
       </button>
 
       {openList && !disabled && (
@@ -493,7 +493,7 @@ function StaffPicker({
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16 }}
-          className="absolute z-30 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-[#efe1e7] bg-white py-1 shadow-[0_24px_50px_-24px_rgba(120,71,88,0.5)]"
+          className="absolute z-30 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-[#EAD8DF] bg-white py-1 shadow-[0_24px_50px_-24px_rgba(120,71,88,0.5)]"
         >
           {staff.map((s) => {
             const leave = isOnLeave(s)
@@ -510,14 +510,14 @@ function StaffPicker({
                   setOpenList(false)
                 }}
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                  active ? 'bg-[#fff4f8]' : unavailable ? 'opacity-55' : 'hover:bg-[#fdf6f9]'
+                  active ? 'bg-[#F7F6F6]' : unavailable ? 'opacity-55' : 'hover:bg-[#fdf6f9]'
                 } ${unavailable ? 'cursor-not-allowed' : ''}`}
               >
                 <Avatar name={s.name} dim={unavailable} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium text-[#2b1e29]">{s.name}</span>
                   {(leave || blocked) && (
-                    <span className="block text-[11px] text-[#705a66]">{leave ? 'İzinli' : 'Bu kategoride yetkisiz'}</span>
+                    <span className="block text-[11px] text-[#74616A]">{leave ? 'İzinli' : 'Bu kategoride yetkisiz'}</span>
                   )}
                 </span>
                 {active && <Check className="h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={2.6} />}
@@ -553,10 +553,10 @@ function Avatar({ name, dim }: { name: string; dim?: boolean }) {
 /** Salt-okunur bilgi satırı — edit modunda değiştirilemeyen alanlar. */
 function LockedFact({ icon: Icon, label, value }: { icon: typeof User; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-[#efe1e7] bg-[#fbf5f7] px-3.5 py-2.5">
+    <div className="flex items-center gap-2.5 rounded-xl border border-[#EAD8DF] bg-[#fbf5f7] px-3.5 py-2.5">
       <Icon className="h-4 w-4 shrink-0 text-[#c7768f]" strokeWidth={1.8} />
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-semibold text-[#705a66]">{label}</div>
+        <div className="text-[11px] font-semibold text-[#74616A]">{label}</div>
         <div className="truncate text-[13.5px] font-medium text-[#2b1e29]">{value || '—'}</div>
       </div>
       <Lock className="h-3.5 w-3.5 shrink-0 text-[#b09ca5]" strokeWidth={1.8} />
@@ -1111,18 +1111,18 @@ export default function AppointmentEditor({
       <Dialog open={open} onOpenChange={onOpenChange}>
         {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
         <DialogContent
-          className="flex flex-col overflow-hidden rounded-3xl border border-[#efe1e7] bg-white !p-0 text-[#2b1e29] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+          className="flex flex-col overflow-hidden rounded-3xl border border-[#EAD8DF] bg-white !p-0 text-[#2b1e29] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
           /* Genişletildi: adımlar iki sütuna yayıldığında form kısmı tek ekrana sığsın
              (eskiden 1440px'de tek sütun uzayıp dikey kaydırma gerektiriyordu). */
           style={{ width: 'min(98vw, 1800px)', height: 'min(95dvh, 1060px)', maxHeight: '95dvh' }}
         >
           {/* ── BAŞLIK ───────────────────────────────────────────────────── */}
-          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#efe1e7] px-6 py-4 sm:px-7">
+          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#EAD8DF] px-6 py-4 sm:px-7">
             <div className="min-w-0">
               <DialogTitle className="font-display text-[22px] font-extrabold leading-none tracking-[-0.035em] text-[#2b1e29]">
                 {headline}
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-[12.5px] leading-snug text-[#705a66]">
+              <DialogDescription className="mt-1.5 text-[12.5px] leading-snug text-[#74616A]">
                 {noteOnly
                   ? 'Salonun iç notu — müşteri görmez.'
                   : mode === 'create'
@@ -1134,7 +1134,7 @@ export default function AppointmentEditor({
                   {[customerLabel, serviceLabel, staffLabel].filter(Boolean).map((l) => (
                     <span
                       key={l}
-                      className="rounded-full border border-[#efe1e7] bg-[#fbf5f7] px-2.5 py-0.5 text-[11px] font-medium text-[#705a66]"
+                      className="rounded-full border border-[#EAD8DF] bg-[#fbf5f7] px-2.5 py-0.5 text-[11px] font-medium text-[#74616A]"
                     >
                       {l}
                     </span>
@@ -1147,7 +1147,7 @@ export default function AppointmentEditor({
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                 >
                   <HelpCircle className="h-4 w-4" strokeWidth={1.9} />
                   Nasıl çalışır?
@@ -1157,7 +1157,7 @@ export default function AppointmentEditor({
                 type="button"
                 onClick={() => !saving && onOpenChange(false)}
                 aria-label="Kapat"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#705a66] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1217,7 +1217,7 @@ export default function AppointmentEditor({
                                 <button
                                   type="button"
                                   onClick={() => setQuickCustomerOpen(true)}
-                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                                 >
                                   <UserPlus className="h-4 w-4" strokeWidth={1.9} />
                                   Yeni
@@ -1225,7 +1225,7 @@ export default function AppointmentEditor({
                               )}
                             </div>
                             {selectedCustomer?.phone && (
-                              <p className="mt-1.5 text-[11.5px] tabular-nums text-[#705a66]">{selectedCustomer.phone}</p>
+                              <p className="mt-1.5 text-[11.5px] tabular-nums text-[#74616A]">{selectedCustomer.phone}</p>
                             )}
                           </>
                         )}
@@ -1265,7 +1265,7 @@ export default function AppointmentEditor({
                         ) : (
                           <>
                             {/* HİZMET / PAKET — tek soruluk seçim. */}
-                            <div className="mb-3 flex items-center rounded-full border border-[#efe1e7] bg-white p-0.5">
+                            <div className="mb-3 flex items-center rounded-full border border-[#EAD8DF] bg-white p-0.5">
                               {([
                                 // Sayaç = SATIN ALINMIŞ kayıt adedi; iki sekmede de aynı anlam.
                                 ['service', `Hizmet${ownedServices.length ? ` (${ownedServices.length})` : ''}`, Scissors],
@@ -1281,7 +1281,7 @@ export default function AppointmentEditor({
                                     clearWorkSelection()
                                   }}
                                   className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                                    workKind === v ? 'bg-[#8e3f5b] text-white' : 'text-[#705a66] hover:text-[#2b1e29]'
+                                    workKind === v ? 'bg-[#8e3f5b] text-white' : 'text-[#74616A] hover:text-[#2b1e29]'
                                   }`}
                                 >
                                   <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
@@ -1309,7 +1309,7 @@ export default function AppointmentEditor({
 
                                 {/* Katalog hizmet arama/seçme — satış modalındaki bileşenin aynısı. */}
                                 {ownedServices.length > 0 && (
-                                  <div className="flex items-center gap-2 pt-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                                  <div className="flex items-center gap-2 pt-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
                                     <span className="h-px flex-1 bg-[#f4e8ee]" /> Yeni hizmet sat
                                     <span className="h-px flex-1 bg-[#f4e8ee]" />
                                   </div>
@@ -1355,7 +1355,7 @@ export default function AppointmentEditor({
                                   ) : (
                                     <div className="flex items-start gap-2.5 rounded-2xl border border-[#e8c2d1] bg-[#fff6f9] px-3.5 py-3">
                                       <ShoppingBag className="mt-0.5 h-4 w-4 shrink-0 text-[#8e3f5b]" strokeWidth={1.9} />
-                                      <p className="text-[12px] leading-snug text-[#4a3a44]">
+                                      <p className="text-[12px] leading-snug text-[#3E343A]">
                                         <strong>{pickedService.name}</strong> — <strong>{formatTL(pickedService.price)}</strong>
                                         <br />
                                         Müşterinin bu hizmete hakkı yok. &ldquo;Randevuyu oluştur&rdquo; dediğinde{' '}
@@ -1518,7 +1518,7 @@ export default function AppointmentEditor({
                 </div>
 
                 {/* ── SAĞ RAY: randevu kartı + müşteri ── */}
-                <aside className="shrink-0 space-y-4 overflow-y-auto border-t border-[#efe1e7] bg-[#fdf9fb] px-6 py-6 lg:w-[400px] lg:border-l lg:border-t-0">
+                <aside className="shrink-0 space-y-4 overflow-y-auto border-t border-[#EAD8DF] bg-[#fdf9fb] px-6 py-6 lg:w-[400px] lg:border-l lg:border-t-0">
                   <Ticket
                     customerName={selectedCustomer?.name}
                     serviceName={selectedService?.name}
@@ -1574,9 +1574,9 @@ export default function AppointmentEditor({
                         ].map((i) => (
                           <li key={i.label} className="flex items-start gap-2.5">
                             <i.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#c7768f]" strokeWidth={1.8} />
-                            <span className="text-[12.5px] leading-snug text-[#4a3a44]">
+                            <span className="text-[12.5px] leading-snug text-[#3E343A]">
                               <span className="font-semibold">{i.label}</span>
-                              <span className="text-[#705a66]"> — {i.note}</span>
+                              <span className="text-[#74616A]"> — {i.note}</span>
                             </span>
                           </li>
                         ))}
@@ -1586,13 +1586,13 @@ export default function AppointmentEditor({
 
                   {/* Müşteri işlemleri — randevuya değil MÜŞTERİYE yapılan işler */}
                   {selectedCustomer && (
-                    <div className="rounded-2xl border border-[#efe1e7] bg-white p-4">
+                    <div className="rounded-2xl border border-[#EAD8DF] bg-white p-4">
                       <div className="flex items-baseline justify-between gap-2">
                         <h4 className="font-display text-[13.5px] font-extrabold tracking-[-0.01em] text-[#2b1e29]">
                           {selectedCustomer.name.split(' ')[0]} için
                         </h4>
                         {openDebt > 0 && (
-                          <span className="text-[11px] font-semibold text-[#705a66]">
+                          <span className="text-[11px] font-semibold text-[#74616A]">
                             borç{' '}
                             <span className="font-display text-[13px] font-extrabold tabular-nums text-[#8e3f5b]">
                               {formatTL(openDebt)}
@@ -1620,7 +1620,7 @@ export default function AppointmentEditor({
                             presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
                             onDone={() => setSessRefreshKey((k) => k + 1)}
                             triggerLabel="Paket sat"
-                            triggerClassName="inline-flex !min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-2 !py-2 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                            triggerClassName="inline-flex !min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-2 !py-2 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                           />
                           <PackageSaleDialog
                             tenantId={tenantId}
@@ -1629,14 +1629,14 @@ export default function AppointmentEditor({
                             presetCustomer={{ id: selectedCustomer.id, name: selectedCustomer.name, branchId: selectedCustomer.branchId ?? null }}
                             onDone={() => setSessRefreshKey((k) => k + 1)}
                             triggerLabel="Hizmet sat"
-                            triggerClassName="inline-flex !min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-2 !py-2 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                            triggerClassName="inline-flex !min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#e8c2d1] bg-white px-2 !py-2 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                           />
                         </div>
 
                         <button
                           type="button"
                           onClick={() => setAdisyonOpen(true)}
-                          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e8c2d1] bg-white px-3 text-[12.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                         >
                           <ReceiptText className="h-4 w-4" strokeWidth={1.9} />
                           Adisyon aç
@@ -1650,7 +1650,7 @@ export default function AppointmentEditor({
           </div>
 
           {/* ── ALT ÇUBUK ────────────────────────────────────────────────── */}
-          <footer className="shrink-0 border-t border-[#efe1e7] bg-white px-6 py-4 sm:px-7">
+          <footer className="shrink-0 border-t border-[#EAD8DF] bg-white px-6 py-4 sm:px-7">
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
@@ -1711,7 +1711,7 @@ export default function AppointmentEditor({
                 type="button"
                 onClick={() => !saving && onOpenChange(false)}
                 disabled={saving}
-                className="rounded-xl border border-[#efe1e7] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#705a66] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29] disabled:opacity-50"
+                className="rounded-xl border border-[#EAD8DF] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#74616A] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29] disabled:opacity-50"
               >
                 Vazgeç
               </button>
@@ -1813,7 +1813,7 @@ export default function AppointmentEditor({
 
 function EmptyNote({ icon: Icon, spin, children }: { icon: typeof User; spin?: boolean; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-dashed border-[#e8d5de] bg-white/70 px-4 py-5 text-[12.5px] text-[#705a66]">
+    <div className="flex items-center gap-2.5 rounded-2xl border border-dashed border-[#e8d5de] bg-white/70 px-4 py-5 text-[12.5px] text-[#74616A]">
       <Icon className={`h-4 w-4 shrink-0 text-[#c7768f] ${spin ? 'animate-spin' : ''}`} strokeWidth={1.8} />
       {children}
     </div>
@@ -1850,8 +1850,8 @@ function Warn({
 /** Rayda iki sütunlu küçük sayı kutusu (borç / tahsil edilen). */
 function Metric({ label, value, tone }: { label: string; value: string; tone: 'debt' | 'plain' }) {
   return (
-    <div className={`rounded-xl border px-3 py-2 ${tone === 'debt' ? 'border-[#e8c2d1] bg-[#fff4f8]' : 'border-[#efe1e7] bg-[#fdf9fb]'}`}>
-      <div className="text-[11px] font-semibold text-[#705a66]">{label}</div>
+    <div className={`rounded-xl border px-3 py-2 ${tone === 'debt' ? 'border-[#e8c2d1] bg-[#F7F6F6]' : 'border-[#EAD8DF] bg-[#fdf9fb]'}`}>
+      <div className="text-[11px] font-semibold text-[#74616A]">{label}</div>
       <div
         className={`mt-0.5 font-display text-[15px] font-extrabold tabular-nums leading-none ${
           tone === 'debt' ? 'text-[#8e3f5b]' : 'text-[#2b1e29]'
@@ -1870,19 +1870,19 @@ function SelectedSessionNote({
 }) {
   if (!bookable) return null
   return (
-    <div className="rounded-2xl border border-[#efe1e7] bg-white px-4 py-3">
-      <div className="text-[11.5px] font-semibold text-[#705a66]">Seçili işlemin bakiyesi</div>
+    <div className="rounded-2xl border border-[#EAD8DF] bg-white px-4 py-3">
+      <div className="text-[11.5px] font-semibold text-[#74616A]">Seçili işlemin bakiyesi</div>
       {/* "3 / 4 seans" hangi sayının kalan olduğunu söylemiyordu; cevap net yazılır. */}
       <div className="mt-1 flex items-baseline gap-1.5">
         <span className="font-display text-[24px] font-extrabold leading-none tabular-nums text-[#8e3f5b]">
           {bookable.remaining}
         </span>
-        <span className="text-[12px] font-semibold text-[#705a66]">seans kaldı</span>
+        <span className="text-[12px] font-semibold text-[#74616A]">seans kaldı</span>
       </div>
-      <div className="mt-0.5 text-[11px] tabular-nums text-[#705a66]">
+      <div className="mt-0.5 text-[11px] tabular-nums text-[#74616A]">
         {bookable.total} seanslık · {Math.max(0, bookable.total - bookable.remaining)} kullanıldı
       </div>
-      <p className="mt-1.5 text-[11.5px] leading-snug text-[#705a66]">
+      <p className="mt-1.5 text-[11.5px] leading-snug text-[#74616A]">
         Randevu “Tamamlandı” olunca 1 seans düşer.
       </p>
     </div>

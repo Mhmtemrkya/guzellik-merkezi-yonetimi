@@ -173,7 +173,7 @@ function fieldLabel(field: string): string {
 }
 
 const inputCls =
-  'min-h-11 w-full border border-[#ead8df]/[0.70] bg-white/[0.90] px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors placeholder:text-[#352432]/[0.25] focus:border-[#efbfd0]/[0.75]'
+  'min-h-11 w-full border border-[#EAD8DF]/[0.70] bg-white/[0.90] px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors placeholder:text-[#2A2027]/[0.25] focus:border-[#BE7690]/[0.75]'
 
 export default function CreateTenantDialog({ plans, onCreate, onCredentials }: CreateTenantDialogProps) {
   const defaultPlan = plans[0]?.name || 'Profesyonel'
@@ -520,7 +520,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
       </DialogTrigger>
 
       <DialogContent
-        className="flex h-[94dvh] grid-rows-none flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex h-[94dvh] grid-rows-none flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF]/[0.90] bg-white/[0.96] p-0 text-[#2A2027] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 1320px)', maxWidth: 'min(96vw, 1320px)', height: '94dvh', maxHeight: '94dvh' }}
       >
         <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
@@ -528,10 +528,10 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
           <span aria-hidden className="pointer-events-none absolute -left-20 bottom-20 h-60 w-60 rounded-full bg-[#ffd3df]/[0.18] blur-3xl" />
           <span aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-[0.045]" />
 
-          <header className="relative shrink-0 border-b border-[#ead8df]/[0.70] p-4 pr-12 text-left sm:px-7 sm:py-4 sm:pr-14 lg:px-8">
+          <header className="relative shrink-0 border-b border-[#EAD8DF]/[0.70] p-4 pr-12 text-left sm:px-7 sm:py-4 sm:pr-14 lg:px-8">
             <div className="flex items-start gap-3.5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
-                <Sparkles className="h-4 w-4 text-[#c85776]" strokeWidth={1.6} />
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#BE7690]/[0.80] bg-white text-[#A5556E] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
+                <Sparkles className="h-4 w-4 text-[#A5556E]" strokeWidth={1.6} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="armo-pill !text-[9px]">
@@ -541,7 +541,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                 <DialogTitle className="armo-heading mt-1.5 break-words text-2xl tracking-tight lg:text-3xl">
                   <span className="armo-shimmer">Yeni kurum oluştur</span>
                 </DialogTitle>
-                <DialogDescription className="mt-1.5 max-w-3xl text-[11.5px] leading-relaxed text-[#352432]/[0.55]">
+                <DialogDescription className="mt-1.5 max-w-3xl text-[11.5px] leading-relaxed text-[#2A2027]/[0.55]">
                   Kurum adı ve yetkili adına göre slug, domain ve yetkili e-postası otomatik önerilir; backend gerçek kayıtlarla çakışma kontrolü yapar.
                 </DialogDescription>
               </div>
@@ -551,8 +551,8 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
           <div className="relative min-h-0 flex-1 overflow-y-auto p-5 sm:p-7 lg:p-8">
             <div className="grid gap-5 lg:grid-cols-[1fr_330px]">
               <section className="space-y-5">
-                <div className="border border-[#efbfd0]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] via-[#fff4f8]/[0.02] to-transparent p-3 text-[11px] leading-relaxed text-[#352432]/[0.70]">
-                  <Sparkles className="mr-1 inline h-3 w-3 text-[#c85776]" />
+                <div className="border border-[#BE7690]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] via-[#fff4f8]/[0.02] to-transparent p-3 text-[11px] leading-relaxed text-[#2A2027]/[0.70]">
+                  <Sparkles className="mr-1 inline h-3 w-3 text-[#A5556E]" />
                   Kurum adını yazdıkça slug ve domain; yetkili adını yazdıkça yetkili e-postası anlık (her tuşta) güncellenir. Kullanılmış değer varsa uyarı ve öneri gösterilir. Bir alanı elle değiştirirsen o alan sabit kalır.
                 </div>
 
@@ -647,13 +647,13 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                 </div>
 
                 {/* Ek kurum yöneticileri (opsiyonel) */}
-                <div className="border border-[#ead8df]/[0.70] bg-white/[0.62] p-4">
+                <div className="border border-[#EAD8DF]/[0.70] bg-white/[0.62] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65]">
-                        Ek kurum yöneticileri <span className="text-[#352432]/[0.35]">(opsiyonel)</span>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.65]">
+                        Ek kurum yöneticileri <span className="text-[#2A2027]/[0.35]">(opsiyonel)</span>
                       </div>
-                      <div className="mt-1 text-[10px] leading-relaxed text-[#352432]/[0.40]">
+                      <div className="mt-1 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">
                         Her ek yönetici için ayrı hesap + geçici şifre oluşturulur; giriş bilgileri modalda yönetici sayısı kadar PDF ile gösterilir.
                         E-postayı boş bırakırsan ada göre otomatik üretilir; elle yazarsan benzersizliği anlık denetlenir.
                       </div>
@@ -661,7 +661,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                     <button
                       type="button"
                       onClick={addOwnerRow}
-                      className="inline-flex shrink-0 items-center gap-1.5 border border-[#efbfd0]/[0.75] bg-[#fff4f8] px-3 py-2 text-[9.5px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#ffd3df]/[0.45]"
+                      className="inline-flex shrink-0 items-center gap-1.5 border border-[#BE7690]/[0.75] bg-[#F7F6F6] px-3 py-2 text-[9.5px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#ffd3df]/[0.45]"
                     >
                       <UserPlus className="h-3.5 w-3.5" /> Yönetici ekle
                     </button>
@@ -672,7 +672,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                       {values.additionalOwners.map((owner, index) => {
                         const check = ownerChecks[index]
                         return (
-                          <div key={index} className="border border-[#ead8df]/[0.60] bg-white/[0.72] p-3">
+                          <div key={index} className="border border-[#EAD8DF]/[0.60] bg-white/[0.72] p-3">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.2fr_auto]">
                               <FormInput
                                 label={`${index + 2}. yönetici adı`}
@@ -690,7 +690,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                               <button
                                 type="button"
                                 onClick={() => removeOwnerRow(index)}
-                                className="mt-6 grid h-11 w-11 shrink-0 place-items-center self-start border border-[#ead8df]/[0.70] bg-white/[0.72] text-[#7e5f6e] transition-colors hover:border-rose-300/[0.60] hover:text-rose-600"
+                                className="mt-6 grid h-11 w-11 shrink-0 place-items-center self-start border border-[#EAD8DF]/[0.70] bg-white/[0.72] text-[#7e5f6e] transition-colors hover:border-rose-300/[0.60] hover:text-rose-600"
                                 aria-label="Yöneticiyi kaldır"
                                 title="Yöneticiyi kaldır"
                               >
@@ -703,7 +703,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                                   check.status === 'ok'
                                     ? 'text-emerald-700'
                                     : check.status === 'checking'
-                                      ? 'text-[#352432]/[0.45]'
+                                      ? 'text-[#2A2027]/[0.45]'
                                       : 'text-rose-600'
                                 }`}
                               >
@@ -792,7 +792,7 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                 )}
               </section>
 
-              <aside className="h-fit border border-[#ead8df]/[0.70] bg-white/[0.72] p-4 lg:sticky lg:top-0">
+              <aside className="h-fit border border-[#EAD8DF]/[0.70] bg-white/[0.72] p-4 lg:sticky lg:top-0">
                 <div className="armo-pill !text-[9px]">
                   <span className="armo-pill-dot" />
                   Canlı öneri
@@ -819,12 +819,12 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
             </div>
           </div>
 
-          <footer className="relative shrink-0 border-t border-[#ead8df]/[0.75] bg-white/[0.78] p-4 shadow-[0_-18px_46px_-36px_rgba(120,71,88,0.45)] backdrop-blur-xl sm:px-7 sm:py-4 lg:px-10 lg:py-5">
+          <footer className="relative shrink-0 border-t border-[#EAD8DF]/[0.75] bg-white/[0.78] p-4 shadow-[0_-18px_46px_-36px_rgba(120,71,88,0.45)] backdrop-blur-xl sm:px-7 sm:py-4 lg:px-10 lg:py-5">
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="min-h-11 border border-[#ead8df]/[0.70] bg-white/[0.72] px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.72] transition-colors hover:border-[#efbfd0]/[0.75] hover:bg-[#f0aac2]/[0.08] hover:text-[#352432]"
+                className="min-h-11 border border-[#EAD8DF]/[0.70] bg-white/[0.72] px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.72] transition-colors hover:border-[#BE7690]/[0.75] hover:bg-[#f0aac2]/[0.08] hover:text-[#2A2027]"
               >
                 Vazgeç
               </button>
@@ -832,10 +832,10 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                 type="button"
                 onClick={handleSubmit}
                 disabled={saving || checking || saved}
-                className="group relative inline-flex min-h-11 items-center justify-center gap-2 overflow-hidden border border-[#efbfd0]/[0.75] bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-7 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2f1724] shadow-[0_10px_28px_-8px_rgba(240,170,194,0.65)] transition-shadow disabled:opacity-70"
+                className="group relative inline-flex min-h-11 items-center justify-center gap-2 overflow-hidden border border-[#BE7690]/[0.75] bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-7 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2f1724] shadow-[0_10px_28px_-8px_rgba(240,170,194,0.65)] transition-shadow disabled:opacity-70"
               >
                 <span aria-hidden className="absolute inset-0 translate-y-full bg-white transition-transform duration-500 group-hover:translate-y-0" />
-                <span className="relative z-10 flex items-center gap-2 transition-colors duration-500 group-hover:text-[#352432]">
+                <span className="relative z-10 flex items-center gap-2 transition-colors duration-500 group-hover:text-[#2A2027]">
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   {saving ? 'Oluşturuluyor' : 'Kurum oluştur'}
                 </span>
@@ -867,11 +867,11 @@ function FormInput({
 }) {
   return (
     <label className="group min-w-0">
-      <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65] transition-colors group-focus-within:text-[#c85776]">
+      <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.65] transition-colors group-focus-within:text-[#A5556E]">
         {label}
       </div>
       <input type={type} value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder || ''} className={inputCls} />
-      {helper && <div className="mt-1.5 text-[10px] leading-relaxed text-[#352432]/[0.40]">{helper}</div>}
+      {helper && <div className="mt-1.5 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">{helper}</div>}
     </label>
   )
 }
@@ -892,7 +892,7 @@ function FormSelect({
   const normalized = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o))
   return (
     <label className="group min-w-0">
-      <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65] transition-colors group-focus-within:text-[#c85776]">
+      <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.65] transition-colors group-focus-within:text-[#A5556E]">
         {label}
       </div>
       <select value={value} onChange={(event) => onChange(event.target.value)} className={`${inputCls} appearance-none`}>
@@ -902,16 +902,16 @@ function FormSelect({
           </option>
         ))}
       </select>
-      {helper && <div className="mt-1.5 text-[10px] leading-relaxed text-[#352432]/[0.40]">{helper}</div>}
+      {helper && <div className="mt-1.5 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">{helper}</div>}
     </label>
   )
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-[#ead8df]/[0.65] bg-white/[0.74] px-2.5 py-2">
-      <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.40]">{label}</div>
-      <div className="mt-1 break-words text-[12px] leading-tight text-[#c85776]/[0.90]">{value}</div>
+    <div className="border border-[#EAD8DF]/[0.65] bg-white/[0.74] px-2.5 py-2">
+      <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.40]">{label}</div>
+      <div className="mt-1 break-words text-[12px] leading-tight text-[#A5556E]/[0.90]">{value}</div>
     </div>
   )
 }

@@ -67,13 +67,13 @@ export default function RealtimeToast() {
                   {ok ? <CheckCircle2 className="h-5 w-5" strokeWidth={1.8} /> : <ShieldAlert className="h-5 w-5" strokeWidth={1.8} />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-semibold text-[#352432]">{n.title}</div>
+                  <div className="text-[12px] font-semibold text-[#2A2027]">{n.title}</div>
                   {n.message && <div className="mt-0.5 text-[11px] leading-relaxed text-[#7c6170]">{n.message}</div>}
                 </div>
                 <button
                   type="button"
                   onClick={() => setNotices((prev) => prev.filter((x) => x.id !== n.id))}
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
                   aria-label="Kapat"
                 >
                   <X className="h-3.5 w-3.5" />

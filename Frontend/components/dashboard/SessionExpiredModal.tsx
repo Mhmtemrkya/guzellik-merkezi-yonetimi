@@ -35,17 +35,17 @@ export default function SessionExpiredModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) goLogin() }}>
       <DialogContent
-        className="border-[#ead8df]/90 bg-white sm:max-w-[420px]"
+        className="border-[#EAD8DF]/90 bg-white sm:max-w-[420px]"
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <div className="flex flex-col items-center px-1 py-2 text-center sm:px-2">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-[#fff1f6] text-[#c85776] shadow-[0_14px_34px_-22px_rgba(200,87,118,0.8)]">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-[#A5556E] text-white shadow-[0_14px_34px_-22px_rgba(200,87,118,0.8)]">
             <ShieldCheck className="h-7 w-7" strokeWidth={1.6} />
           </span>
-          <DialogTitle className="mt-4 font-display text-xl tracking-tight text-[#352432]">
+          <DialogTitle className="mt-4 font-display text-xl tracking-tight text-[#2A2027]">
             Güvenli çıkış yapıldı
           </DialogTitle>
-          <DialogDescription className="mt-2 max-w-xs text-[13px] leading-relaxed text-[#352432]/60">
+          <DialogDescription className="mt-2 max-w-xs text-[13px] leading-relaxed text-[#5A4B53]">
             Oturumunuzun güvenliği için çıkış yapıldı. Devam etmek için lütfen tekrar giriş yapın.
           </DialogDescription>
           <button

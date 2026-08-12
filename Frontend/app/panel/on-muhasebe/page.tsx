@@ -71,7 +71,7 @@ const EXPENSE_TONES: Record<string, string> = {
   Supplies: 'bg-teal-50 text-teal-600', Inventory: 'bg-indigo-50 text-indigo-600',
   Marketing: 'bg-fuchsia-50 text-fuchsia-600', Maintenance: 'bg-orange-50 text-orange-600',
   Professional: 'bg-emerald-50 text-emerald-600', Equipment: 'bg-cyan-50 text-cyan-600',
-  Office: 'bg-rose-50 text-rose-600', Other: 'bg-[#fff1f6] text-[#c85776]',
+  Office: 'bg-rose-50 text-rose-600', Other: 'bg-[#A5556E] text-white',
 }
 
 const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
@@ -638,7 +638,7 @@ function OnMuhasebePageInner() {
         <button
           type="button"
           onClick={() => setNewAdisyonOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
         >
           <Plus className="h-3.5 w-3.5" /> Yeni Adisyon
         </button>
@@ -649,7 +649,7 @@ function OnMuhasebePageInner() {
         <ExpenseFormDialog
           customCategories={customExpenseCats} onCreateCustomCategory={handleCreateExpenseCat} onDeleteCustomCategory={handleDeleteExpenseCat}
           onSubmit={handleCreateExpense}
-          trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><TrendingDown className="h-3.5 w-3.5" /> Yeni Gider</button>}
+          trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><TrendingDown className="h-3.5 w-3.5" /> Yeni Gider</button>}
         />
       )
     }
@@ -668,7 +668,7 @@ function OnMuhasebePageInner() {
             }, tenantId)
             await reload()
           }}
-          trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><Users className="h-3.5 w-3.5" /> Maaş Öde</button>}
+          trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><Users className="h-3.5 w-3.5" /> Maaş Öde</button>}
         />
       )
     }
@@ -680,7 +680,7 @@ function OnMuhasebePageInner() {
         <button
           type="button"
           onClick={() => { setPickerValue(''); setSalesPickerOpen(true) }}
-          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-white px-3.5 py-2 text-[11px] font-medium text-[#c85776] hover:bg-[#fff4f8]"
+          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BE7690] bg-white px-3.5 py-2 text-[11px] font-medium text-[#A5556E] hover:bg-[#F7F6F6]"
         >
           <History className="h-3.5 w-3.5" /> Geçmiş Satış
         </button>
@@ -695,17 +695,17 @@ function OnMuhasebePageInner() {
           }, tenantId)
           await reload()
         }}
-        trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><CreditCard className="h-3.5 w-3.5" /> Yeni Cari</button>}
+        trigger={<button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white hover:opacity-90"><CreditCard className="h-3.5 w-3.5" /> Yeni Cari</button>}
       />
       </div>
     )
   })()
 
   const monthNav = (
-    <div className="ml-auto inline-flex items-center gap-1 rounded-[12px] border border-[#ead8df] bg-white p-1">
-      <button type="button" onClick={() => setMonthOffset((o) => o - 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#352432]/55 hover:bg-[#fff4f8]"><ChevronLeft className="h-4 w-4" /></button>
-      <span className="flex items-center gap-1.5 px-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]"><CalendarDays className="h-3.5 w-3.5" /> {monthLabel}</span>
-      <button type="button" onClick={() => setMonthOffset((o) => o + 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#352432]/55 hover:bg-[#fff4f8]"><ChevronRight className="h-4 w-4" /></button>
+    <div className="ml-auto inline-flex items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-white p-1">
+      <button type="button" onClick={() => setMonthOffset((o) => o - 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#5A4B53] hover:bg-[#F7F6F6]"><ChevronLeft className="h-4 w-4" /></button>
+      <span className="flex items-center gap-1.5 px-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]"><CalendarDays className="h-3.5 w-3.5" /> {monthLabel}</span>
+      <button type="button" onClick={() => setMonthOffset((o) => o + 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#5A4B53] hover:bg-[#F7F6F6]"><ChevronRight className="h-4 w-4" /></button>
     </div>
   )
 
@@ -718,14 +718,14 @@ function OnMuhasebePageInner() {
         actions={<div className="flex flex-wrap items-center gap-2">{topAction}</div>}
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         {/* SEKMELER */}
-        <div className="flex flex-wrap items-center gap-1 border-b border-[#ead8df]/70">
+        <div className="flex flex-wrap items-center gap-1 border-b border-[#EAD8DF]">
           {TABS.filter((t) => t.key !== 'adisyon' || canAdisyon).map((t) => (
             <button key={t.key} type="button" onClick={() => goScope(t.key)}
-              className={`relative -mb-px inline-flex items-center gap-2 px-4 py-3 text-[12px] font-medium uppercase tracking-wide transition-colors ${tab === t.key ? 'text-[#c85776]' : 'text-[#352432]/50 hover:text-[#352432]/75'}`}>
+              className={`relative -mb-px inline-flex items-center gap-2 px-4 py-3 text-[12px] font-medium uppercase tracking-wide transition-colors ${tab === t.key ? 'text-[#A5556E]' : 'text-[#5A4B53] hover:text-[#3E343A]'}`}>
               <t.icon className="h-4 w-4" /> {t.label}
-              {tab === t.key && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[#c85776]" />}
+              {tab === t.key && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[#A5556E]" />}
             </button>
           ))}
         </div>
@@ -747,12 +747,12 @@ function OnMuhasebePageInner() {
 
             <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr]">
               {/* Nakit akışı — giren/çıkan tek bakışta */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+              <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Nakit akışı · {monthLabel}</div>
-                    <div className={`font-display text-3xl tracking-tight ${netMonth < 0 ? 'text-rose-700' : 'text-[#352432]'}`}>{formatTL(netMonth)}</div>
-                    <div className="text-[11px] text-[#705a66]">{netMonth >= 0 ? 'Kasada kalan' : 'Kasa açığı'}</div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Nakit akışı · {monthLabel}</div>
+                    <div className={`font-display text-3xl tracking-tight ${netMonth < 0 ? 'text-rose-700' : 'text-[#2A2027]'}`}>{formatTL(netMonth)}</div>
+                    <div className="text-[11px] text-[#74616A]">{netMonth >= 0 ? 'Kasada kalan' : 'Kasa açığı'}</div>
                   </div>
                   <span className={`grid h-10 w-10 place-items-center rounded-[12px] ${netMonth >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                     <Wallet className="h-5 w-5" />
@@ -770,7 +770,7 @@ function OnMuhasebePageInner() {
                       {rows.map(([label, value, bar, tone]) => (
                         <div key={label}>
                           <div className="flex items-center justify-between text-[12px]">
-                            <span className="text-[#4a3a44]">{label}</span>
+                            <span className="text-[#3E343A]">{label}</span>
                             <span className={`font-display tabular-nums ${tone}`}>{formatTL(value)}</span>
                           </div>
                           <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#f7e9ee]">
@@ -791,8 +791,8 @@ function OnMuhasebePageInner() {
                     const I = Icon as typeof Wallet
                     return (
                       <div key={String(l)} className="bg-white px-2 py-2.5">
-                        <span className="mx-auto mb-1 grid h-7 w-7 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><I className="h-3.5 w-3.5" /></span>
-                        <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">{String(l)}</div>
+                        <span className="mx-auto mb-1 grid h-7 w-7 place-items-center rounded-[9px] bg-[#A5556E] text-white"><I className="h-3.5 w-3.5" /></span>
+                        <div className="text-[9px] font-mono uppercase tracking-wide text-[#8C4460]">{String(l)}</div>
                         <div className="font-display text-[15px] tabular-nums">{String(v)}</div>
                       </div>
                     )
@@ -801,14 +801,14 @@ function OnMuhasebePageInner() {
               </div>
 
               {/* Gider dağılımı */}
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+              <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Gider dağılımı</div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Gider dağılımı</div>
                     <div className="font-display text-3xl tracking-tight">{formatTL(expenseMonth)}</div>
-                    <div className="text-[11px] text-[#705a66]">{expenses.length} kalem · {monthLabel}</div>
+                    <div className="text-[11px] text-[#74616A]">{expenses.length} kalem · {monthLabel}</div>
                   </div>
-                  <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><PieChart className="h-5 w-5" /></span>
+                  <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#A5556E] text-white"><PieChart className="h-5 w-5" /></span>
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {Object.entries(expenses.reduce<Record<string, { sum: number; count: number }>>((m, e) => {
@@ -823,26 +823,26 @@ function OnMuhasebePageInner() {
                       return (
                         <div key={cat}>
                           <div className="flex items-center justify-between gap-2 text-[12px]">
-                            <span className="flex min-w-0 items-center gap-2 text-[#4a3a44]">
-                              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${EXPENSE_TONES[cat] || 'bg-[#fff1f6] text-[#c85776]'}`}>
+                            <span className="flex min-w-0 items-center gap-2 text-[#3E343A]">
+                              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${EXPENSE_TONES[cat] || 'bg-[#A5556E] text-white'}`}>
                                 <Icon className="h-3.5 w-3.5" />
                               </span>
                               <span className="truncate">{expenseCategoryLabels[cat as keyof typeof expenseCategoryLabels] || cat}</span>
-                              <span className="shrink-0 text-[10px] text-[#705a66]">{v.count} kalem</span>
+                              <span className="shrink-0 text-[10px] text-[#74616A]">{v.count} kalem</span>
                             </span>
-                            <span className="shrink-0 font-display tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
+                            <span className="shrink-0 font-display tabular-nums text-[#A5556E]">{formatTL(v.sum)}</span>
                           </div>
                           <div className="mt-1 flex items-center gap-2">
                             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
                               <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} />
                             </span>
-                            <span className="w-9 shrink-0 text-right text-[10px] font-semibold text-[#705a66]">%{pct}</span>
+                            <span className="w-9 shrink-0 text-right text-[10px] font-semibold text-[#74616A]">%{pct}</span>
                           </div>
                         </div>
                       )
                     })}
                   {expenses.length === 0 && (
-                    <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#705a66]">
+                    <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-8 text-center text-[12px] text-[#74616A]">
                       Bu ay gider kaydı yok.
                     </div>
                   )}
@@ -851,12 +851,12 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* Personel maaş yükü */}
-            <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+            <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Personel maaş yükü</div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Personel maaş yükü</div>
                   <div className="font-display text-3xl tracking-tight">{formatTL(salaryTotal)}</div>
-                  <div className="text-[11px] text-[#705a66]">{salaryExpenses.length} ödeme · {monthLabel}</div>
+                  <div className="text-[11px] text-[#74616A]">{salaryExpenses.length} ödeme · {monthLabel}</div>
                 </div>
                 <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-violet-50 text-violet-600"><Users className="h-5 w-5" /></span>
               </div>
@@ -868,19 +868,19 @@ function OnMuhasebePageInner() {
                 }, {}))
                   .sort((a, b) => b[1].sum - a[1].sum)
                   .map(([name, v]) => (
-                    <div key={name} className="flex items-center gap-2.5 rounded-[14px] border border-[#f0e0e6] bg-[#fffafc] px-3 py-2.5">
+                    <div key={name} className="flex items-center gap-2.5 rounded-[14px] border border-[#f0e0e6] bg-[#F7F6F6] px-3 py-2.5">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-violet-50 text-[11px] font-bold text-violet-700">
                         {name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr') || '—'}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-semibold text-[#352432]">{name}</span>
-                        <span className="block text-[10px] text-[#705a66]">{v.count} ödeme</span>
+                        <span className="block truncate text-[12.5px] font-semibold text-[#2A2027]">{name}</span>
+                        <span className="block text-[10px] text-[#74616A]">{v.count} ödeme</span>
                       </span>
-                      <span className="shrink-0 font-display text-[14px] tabular-nums text-[#c85776]">{formatTL(v.sum)}</span>
+                      <span className="shrink-0 font-display text-[14px] tabular-nums text-[#A5556E]">{formatTL(v.sum)}</span>
                     </div>
                   ))}
                 {salaryExpenses.length === 0 && (
-                  <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-8 text-center text-[12px] text-[#705a66] sm:col-span-2 xl:col-span-3">
+                  <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-8 text-center text-[12px] text-[#74616A] sm:col-span-2 xl:col-span-3">
                     Bu ay maaş ödemesi yok.
                   </div>
                 )}
@@ -893,13 +893,13 @@ function OnMuhasebePageInner() {
         {tab === 'adisyon' && canAdisyon && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
+              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2.5 text-[11px] text-[#8C4460]">
                 <ReceiptText className="h-4 w-4" /> Açık hesap fişleri. Kalemler önce adisyona düşer; yönetici onaylayınca borç cariye, tahsilat kasaya işlenir.
               </div>
               <button
                 type="button"
                 onClick={() => setDailyOpen(true)}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+                className="inline-flex items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
               >
                 <CalendarDays className="h-4 w-4" /> Bugünün Kartı
               </button>
@@ -914,7 +914,7 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* Akış şeridi — üç adım tek satırda */}
-            <div className="flex flex-wrap items-center gap-1.5 rounded-[14px] border border-[#ead8df]/70 bg-white/70 px-3 py-2 text-[10.5px]">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-[14px] border border-[#EAD8DF] bg-white/70 px-3 py-2 text-[10.5px]">
               {[
                 ['1', 'Adisyon açılır, kalemler toplanır', 'bg-amber-50 text-amber-700'],
                 ['2', 'Yönetici onaylar', 'bg-emerald-50 text-emerald-700'],
@@ -931,20 +931,20 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* ---- Araç çubuğu ---- */}
-            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
-              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#EAD8DF] bg-white p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#74616A]" />
                 <input
                   value={adisyonQuery}
                   onChange={(e) => setAdisyonQuery(e.target.value)}
                   placeholder="Müşteri veya kalem ara…"
-                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                  className="w-full bg-transparent text-[12.5px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
                 />
                 {adisyonQuery && (
-                  <button type="button" onClick={() => setAdisyonQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
+                  <button type="button" onClick={() => setAdisyonQuery('')} className="shrink-0 text-[10px] font-semibold text-[#8C4460]">Temizle</button>
                 )}
               </div>
-              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6]/50 p-1">
                 {([
                   ['all', 'Tümü', adisyonCounts.all],
                   ['Open', 'Açık', adisyonCounts.Open],
@@ -953,9 +953,9 @@ function OnMuhasebePageInner() {
                 ] as const).map(([k, l, n]) => (
                   <button
                     key={k} type="button" onClick={() => setAdisyonFilter(k)}
-                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${adisyonFilter === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${adisyonFilter === k ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:bg-white'}`}
                   >
-                    {l} <span className={adisyonFilter === k ? 'opacity-80' : 'text-[#a3576f]'}>{n}</span>
+                    {l} <span className={adisyonFilter === k ? 'opacity-80' : 'text-[#8C4460]'}>{n}</span>
                   </button>
                 ))}
               </div>
@@ -973,25 +973,25 @@ function OnMuhasebePageInner() {
                   <div
                     key={a.id}
                     className={`rounded-[18px] border bg-white p-4 transition-shadow hover:shadow-[0_22px_46px_-34px_rgba(150,78,104,0.5)] ${
-                      isOpen ? 'border-amber-200' : a.status === 'Approved' ? 'border-[#ead8df]/80' : 'border-rose-200/70'
+                      isOpen ? 'border-amber-200' : a.status === 'Approved' ? 'border-[#EAD8DF]/80' : 'border-rose-200/70'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <button type="button" onClick={() => openAdisyonDetail(a)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#a3576f]">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#8C4460]">
                           {initials || '—'}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate text-[14px] font-semibold text-[#352432]">{a.customerName || 'Müşteri'}</span>
-                          <span className="block truncate text-[11px] text-[#705a66]">
+                          <span className="block truncate text-[14px] font-semibold text-[#2A2027]">{a.customerName || 'Müşteri'}</span>
+                          <span className="block truncate text-[11px] text-[#74616A]">
                             {shortDay(a.openedAtUtc)} · {a.items.length} kalem
                             {a.items.length > 0 ? ` · ${a.items.slice(0, 2).map((i) => i.description).join(', ')}${a.items.length > 2 ? '…' : ''}` : ''}
                           </span>
                         </span>
                       </button>
                       <div className="shrink-0 text-right">
-                        <div className="font-display text-[19px] tabular-nums text-[#c85776]">{formatTL(a.chargeTotal)}</div>
-                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">borç</div>
+                        <div className="font-display text-[19px] tabular-nums text-[#A5556E]">{formatTL(a.chargeTotal)}</div>
+                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#74616A]">borç</div>
                       </div>
                     </div>
 
@@ -1001,9 +1001,9 @@ function OnMuhasebePageInner() {
                       }`}>
                         ● {isOpen ? 'AÇIK' : a.status === 'Approved' ? 'ONAYLANDI' : 'İPTAL'}
                       </span>
-                      <span className="text-[10.5px] text-[#705a66]">
+                      <span className="text-[10.5px] text-[#74616A]">
                         Tahsilat <b className="text-emerald-700">{formatTL(a.paymentTotal)}</b>
-                        {' · '}{net >= 0 ? 'Kalan' : 'Fazla'} <b className="text-[#4a3a44]">{formatTL(Math.abs(net))}</b>
+                        {' · '}{net >= 0 ? 'Kalan' : 'Fazla'} <b className="text-[#3E343A]">{formatTL(Math.abs(net))}</b>
                       </span>
                       {saleCancelled && (
                         <span className="rounded-md bg-rose-50 px-2 py-0.5 text-[9.5px] font-bold text-rose-600">SATIŞ İPTAL</span>
@@ -1021,7 +1021,7 @@ function OnMuhasebePageInner() {
                         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
                           <span className="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{ width: `${paidPct}%` }} />
                         </span>
-                        <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">%{paidPct} tahsil</span>
+                        <span className="shrink-0 text-[10px] font-semibold text-[#74616A]">%{paidPct} tahsil</span>
                       </div>
                     )}
 
@@ -1029,14 +1029,14 @@ function OnMuhasebePageInner() {
                       {isOpen ? (
                         <button
                           type="button" onClick={() => openAdisyonDetail(a)}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
                         >
                           <ReceiptText className="h-3.5 w-3.5" /> Adisyonu aç
                         </button>
                       ) : (
                         <button
                           type="button" onClick={() => openAdisyonDetail(a)}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 text-[11.5px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690]"
                         >
                           <ReceiptText className="h-3.5 w-3.5" /> Fişi gör
                         </button>
@@ -1052,7 +1052,7 @@ function OnMuhasebePageInner() {
                 )
               })}
               {filteredAdisyonlar.length === 0 && (
-                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66] lg:col-span-2">
+                <div className="rounded-[18px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-12 text-center text-[12.5px] text-[#74616A] lg:col-span-2">
                   {adisyonQuery ? 'Aramaya uyan adisyon yok.' : 'Bu dönemde adisyon yok. Üstten “Yeni Adisyon” ile açabilirsin.'}
                 </div>
               )}
@@ -1120,7 +1120,7 @@ function OnMuhasebePageInner() {
         {tab === 'accounts' && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
+              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2.5 text-[11px] text-[#8C4460]">
                 <CreditCard className="h-4 w-4" /> Müşterilerin kalan borcu, taksit planı ve tahsilatları. Peşin satışta tek tahsilat, taksitlide aylık taksit ya da genel tahsilat alınır.
               </div>
               {monthNav}
@@ -1134,20 +1134,20 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* ---- Araç çubuğu: arama · filtre · iptal edilenler ---- */}
-            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
-              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#EAD8DF] bg-white p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#74616A]" />
                 <input
                   value={accountQuery}
                   onChange={(e) => setAccountQuery(e.target.value)}
                   placeholder="Müşteri, paket veya telefon ara…"
-                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                  className="w-full bg-transparent text-[12.5px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
                 />
                 {accountQuery && (
-                  <button type="button" onClick={() => setAccountQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
+                  <button type="button" onClick={() => setAccountQuery('')} className="shrink-0 text-[10px] font-semibold text-[#8C4460]">Temizle</button>
                 )}
               </div>
-              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6]/50 p-1">
                 {([
                   ['all', 'Tümü', accountCounts.all],
                   ['overdue', 'Geciken', accountCounts.overdue],
@@ -1157,9 +1157,9 @@ function OnMuhasebePageInner() {
                 ] as const).map(([k, l, n]) => (
                   <button
                     key={k} type="button" onClick={() => setAccountFilter(k)}
-                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${accountFilter === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${accountFilter === k ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:bg-white'}`}
                   >
-                    {l} <span className={accountFilter === k ? 'opacity-80' : 'text-[#a3576f]'}>{n}</span>
+                    {l} <span className={accountFilter === k ? 'opacity-80' : 'text-[#8C4460]'}>{n}</span>
                   </button>
                 ))}
               </div>
@@ -1188,11 +1188,11 @@ function OnMuhasebePageInner() {
             {/* ---- Cari TABLOSU (müşteri bazında) ----
                 Kart ızgarası yerine tablo: aynı müşterinin birden çok satışı tek satırda
                 toplanır, satıra tıklayınca müşterinin cari defteri (tam sayfa) açılır. */}
-            <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/80 bg-white">
+            <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF]/80 bg-white">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] border-collapse text-[12.5px]">
                   <thead className="sticky top-0 z-10 bg-[#fff7fa]">
-                    <tr className="border-b border-[#f0dce5] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                    <tr className="border-b border-[#f0dce5] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
                       <th className="px-4 py-2.5">Müşteri</th>
                       <th className="px-3 py-2.5 text-center">Satış</th>
                       <th className="px-3 py-2.5 text-right">Toplam</th>
@@ -1217,12 +1217,12 @@ function OnMuhasebePageInner() {
                         >
                           <td className="px-4 py-2.5">
                             <div className="flex min-w-0 items-center gap-2.5">
-                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[11px] font-bold text-[#a3576f]">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[11px] font-bold text-[#8C4460]">
                                 {initials || '—'}
                               </span>
                               <span className="min-w-0">
-                                <span className="block truncate font-semibold text-[#352432]">{g.customerName}</span>
-                                <span className="block truncate text-[11px] text-[#705a66]">
+                                <span className="block truncate font-semibold text-[#2A2027]">{g.customerName}</span>
+                                <span className="block truncate text-[11px] text-[#74616A]">
                                   {g.saleCount === 1 ? (g.accounts[0].servicePackageName || g.accounts[0].name) : `${g.saleCount} satış`}
                                   {g.customerPhone ? ` · ${g.customerPhone}` : ''}
                                 </span>
@@ -1230,13 +1230,13 @@ function OnMuhasebePageInner() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] font-bold tabular-nums text-[#a3576f]">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10.5px] font-bold tabular-nums text-[#8C4460]">
                               {g.saleCount}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-[#4a3a44]">{formatTL(Math.round(g.totalAmount))}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-[#3E343A]">{formatTL(Math.round(g.totalAmount))}</td>
                           <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-emerald-700">{formatTL(Math.round(g.paidAmount))}</td>
-                          <td className={`px-3 py-2.5 text-right font-display text-[15px] tabular-nums ${isOpen ? (g.hasOverdue ? 'text-rose-700' : 'text-[#c85776]') : 'text-emerald-700'}`}>
+                          <td className={`px-3 py-2.5 text-right font-display text-[15px] tabular-nums ${isOpen ? (g.hasOverdue ? 'text-rose-700' : 'text-[#A5556E]') : 'text-emerald-700'}`}>
                             {formatTL(Math.round(g.remainingAmount))}
                           </td>
                           <td className="px-3 py-2.5">
@@ -1244,7 +1244,7 @@ function OnMuhasebePageInner() {
                               <span className="h-1.5 w-20 overflow-hidden rounded-full bg-[#f7e9ee]">
                                 <span className={`block h-full rounded-full ${isOpen ? 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]' : 'bg-gradient-to-r from-[#7fc7ad] to-[#2c7d63]'}`} style={{ width: `${Math.max(3, pct)}%` }} />
                               </span>
-                              <span className="shrink-0 text-[10.5px] font-semibold tabular-nums text-[#705a66]">%{pct}</span>
+                              <span className="shrink-0 text-[10.5px] font-semibold tabular-nums text-[#74616A]">%{pct}</span>
                               {g.hasOverdue && (
                                 <span className="shrink-0 rounded-md bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700">GECİKMİŞ</span>
                               )}
@@ -1253,11 +1253,11 @@ function OnMuhasebePageInner() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2.5 text-[11.5px] text-[#705a66]">
+                          <td className="px-3 py-2.5 text-[11.5px] text-[#74616A]">
                             {isOpen && g.nextDueDate ? (
                               <span className="inline-flex items-center gap-1">
-                                <CalendarDays className="h-3 w-3 text-[#c85776]" /> {shortDay(g.nextDueDate)}
-                                <b className="text-[#4a3a44]">{formatTL(g.nextDueAmount)}</b>
+                                <CalendarDays className="h-3 w-3 text-[#A5556E]" /> {shortDay(g.nextDueDate)}
+                                <b className="text-[#3E343A]">{formatTL(g.nextDueAmount)}</b>
                               </span>
                             ) : isOpen ? '—' : <span className="text-emerald-700">kapandı</span>}
                           </td>
@@ -1270,7 +1270,7 @@ function OnMuhasebePageInner() {
                                 <button
                                   type="button"
                                   onClick={() => openCollectFor(g.accounts)}
-                                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+                                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5"
                                 >
                                   <Banknote className="h-3.5 w-3.5" /> Tahsilat al
                                   {g.accounts.filter((a) => a.remainingAmount > 0.005).length > 1 && (
@@ -1283,7 +1283,7 @@ function OnMuhasebePageInner() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedGroupId(rowKey)}
-                                className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 text-[11px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]"
+                                className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 text-[11px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690]"
                               >
                                 Defter <ChevronRight className="h-3.5 w-3.5" />
                               </button>
@@ -1295,12 +1295,12 @@ function OnMuhasebePageInner() {
                   </tbody>
                   {accountGroups.length > 0 && (
                     <tfoot>
-                      <tr className="border-t border-[#f0dce5] bg-[#fff7fa] text-[11.5px] font-bold text-[#352432]">
+                      <tr className="border-t border-[#f0dce5] bg-[#fff7fa] text-[11.5px] font-bold text-[#2A2027]">
                         <td className="px-4 py-2.5">{accountGroups.length} müşteri</td>
                         <td className="px-3 py-2.5 text-center tabular-nums">{accountGroups.reduce((s, g) => s + g.saleCount, 0)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.totalAmount, 0)))}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.paidAmount, 0)))}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-[#c85776]">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.remainingAmount, 0)))}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-[#A5556E]">{formatTL(Math.round(accountGroups.reduce((s, g) => s + g.remainingAmount, 0)))}</td>
                         <td className="px-3 py-2.5" colSpan={3} />
                       </tr>
                     </tfoot>
@@ -1308,7 +1308,7 @@ function OnMuhasebePageInner() {
                 </table>
               </div>
               {accountGroups.length === 0 && (
-                <div className="px-4 py-12 text-center text-[12.5px] text-[#705a66]">
+                <div className="px-4 py-12 text-center text-[12.5px] text-[#74616A]">
                   {accountQuery ? 'Aramaya uyan cari hesap yok.' : 'Bu kapsamda cari hesap yok.'}
                 </div>
               )}
@@ -1341,9 +1341,9 @@ function OnMuhasebePageInner() {
                   <button type="button" aria-label="Kapat" onClick={() => setSalesPickerOpen(false)}
                     className="absolute inset-0 cursor-default bg-[#2a141f]/50 backdrop-blur-[3px]" />
                   <div role="dialog" aria-modal="true" aria-label="Geçmiş satış için müşteri seç"
-                    className="relative z-10 w-full max-w-[440px] rounded-[20px] border border-[#ead8df] bg-white p-5 shadow-[0_40px_120px_-50px_rgba(90,40,60,0.65)]">
-                    <div className="text-[14px] font-semibold text-[#352432]">Geçmiş satış · müşteri seç</div>
-                    <p className="mt-1 text-[11.5px] text-[#705a66]">
+                    className="relative z-10 w-full max-w-[440px] rounded-[20px] border border-[#EAD8DF] bg-white p-5 shadow-[0_40px_120px_-50px_rgba(90,40,60,0.65)]">
+                    <div className="text-[14px] font-semibold text-[#2A2027]">Geçmiş satış · müşteri seç</div>
+                    <p className="mt-1 text-[11.5px] text-[#74616A]">
                       Yazılıma geçmeden önce yapılmış bir satışı kaydedeceksin. Müşteriyi seç, satış
                       penceresi açılsın.
                     </p>
@@ -1360,7 +1360,7 @@ function OnMuhasebePageInner() {
                       />
                     </div>
                     <button type="button" onClick={() => setSalesPickerOpen(false)}
-                      className="mt-4 w-full rounded-[11px] border border-[#ead8df] px-3 py-2 text-[12px] font-semibold text-[#705a66] hover:bg-[#fff4f8]">
+                      className="mt-4 w-full rounded-[11px] border border-[#EAD8DF] px-3 py-2 text-[12px] font-semibold text-[#74616A] hover:bg-[#F7F6F6]">
                       Vazgeç
                     </button>
                   </div>
@@ -1458,7 +1458,7 @@ function OnMuhasebePageInner() {
           return (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[11px] text-[#b14d6c]">
+              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2.5 text-[11px] text-[#8C4460]">
                 {tab === 'salary'
                   ? <><Users className="h-4 w-4" /> Personel maaş ve avans ödemeleri. Kayıtlar gider olarak kasaya işlenir.</>
                   : <><TrendingDown className="h-4 w-4" /> Tüm işletme giderleri: kira, sarf, fatura, ekipman ve diğerleri.</>}
@@ -1474,38 +1474,38 @@ function OnMuhasebePageInner() {
             </div>
 
             {/* Araç çubuğu */}
-            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-3">
-              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-[#b499a6]" />
+            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#EAD8DF] bg-white p-3">
+              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#74616A]" />
                 <input
                   value={expenseQuery}
                   onChange={(e) => setExpenseQuery(e.target.value)}
                   placeholder={tab === 'salary' ? 'Personel veya dönem ara…' : 'Açıklama veya kategori ara…'}
-                  className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#b499a6]"
+                  className="w-full bg-transparent text-[12.5px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
                 />
                 {expenseQuery && (
-                  <button type="button" onClick={() => setExpenseQuery('')} className="shrink-0 text-[10px] font-semibold text-[#a3576f]">Temizle</button>
+                  <button type="button" onClick={() => setExpenseQuery('')} className="shrink-0 text-[10px] font-semibold text-[#8C4460]">Temizle</button>
                 )}
               </div>
               {tab === 'expenses' && cats.length > 1 && (
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6]/50 p-1">
                   <button
                     type="button" onClick={() => setExpenseCat('all')}
-                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === 'all' ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === 'all' ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:bg-white'}`}
                   >
                     Tümü {source.length}
                   </button>
                   {cats.map((c) => (
                     <button
                       key={c} type="button" onClick={() => setExpenseCat(c)}
-                      className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === c ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:bg-white'}`}
+                      className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${expenseCat === c ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:bg-white'}`}
                     >
                       {expenseCategoryLabels[c] || c} {source.filter((e) => e.category === c).length}
                     </button>
                   ))}
                 </div>
               )}
-              <span className="ml-auto rounded-[10px] bg-[#fff1f6] px-3 py-1.5 text-[11.5px] font-semibold text-[#a3576f]">
+              <span className="ml-auto rounded-[10px] bg-[#F6DFE6] px-3 py-1.5 text-[11.5px] font-semibold text-[#8C4460]">
                 {list.length} kalem · {formatTL(listTotal)}
               </span>
             </div>
@@ -1515,20 +1515,20 @@ function OnMuhasebePageInner() {
               {list.map((e) => {
                 const Icon = EXPENSE_ICONS[e.category] || Receipt
                 return (
-                  <div key={e.id} className="flex flex-wrap items-center gap-3 rounded-[16px] border border-[#ead8df]/80 bg-white px-4 py-3 transition-shadow hover:shadow-[0_20px_40px_-34px_rgba(150,78,104,0.5)]">
-                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[13px] ${EXPENSE_TONES[e.category] || 'bg-[#fff1f6] text-[#c85776]'}`}>
+                  <div key={e.id} className="flex flex-wrap items-center gap-3 rounded-[16px] border border-[#EAD8DF]/80 bg-white px-4 py-3 transition-shadow hover:shadow-[0_20px_40px_-34px_rgba(150,78,104,0.5)]">
+                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[13px] ${EXPENSE_TONES[e.category] || 'bg-[#A5556E] text-white'}`}>
                       <Icon className="h-5 w-5" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13.5px] font-semibold text-[#352432]">
+                      <div className="truncate text-[13.5px] font-semibold text-[#2A2027]">
                         {e.description || expenseCategoryLabels[e.category]}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[#705a66]">
-                        <span className="rounded-md bg-[#fff4f8] px-1.5 py-0.5 font-semibold text-[#a3576f]">{expenseCategoryLabels[e.category]}</span>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[#74616A]">
+                        <span className="rounded-md bg-[#F7F6F6] px-1.5 py-0.5 font-semibold text-[#8C4460]">{expenseCategoryLabels[e.category]}</span>
                         {e.staffName && <span>· {e.staffName}</span>}
                         {e.periodLabel && <span>· dönem {e.periodLabel}</span>}
-                        <span className="inline-flex items-center gap-1">· <CalendarDays className="h-3 w-3 text-[#c85776]" />{shortDay(e.occurredAt)}</span>
-                        <span className="inline-flex items-center gap-1">· <Landmark className="h-3 w-3 text-[#c85776]" />{METHOD_LABEL[e.paymentMethod] || e.paymentMethod}</span>
+                        <span className="inline-flex items-center gap-1">· <CalendarDays className="h-3 w-3 text-[#A5556E]" />{shortDay(e.occurredAt)}</span>
+                        <span className="inline-flex items-center gap-1">· <Landmark className="h-3 w-3 text-[#A5556E]" />{METHOD_LABEL[e.paymentMethod] || e.paymentMethod}</span>
                       </div>
                     </div>
                     {/* Sistem üretimi satır (müşteri iadesi): gider ÖZETİNDE zaten sayılıyordu,
@@ -1548,7 +1548,7 @@ function OnMuhasebePageInner() {
                         <CheckCircle2 className="h-3 w-3" /> ONAYLA
                       </button>
                     )}
-                    <span className="shrink-0 font-display text-[18px] tabular-nums text-[#c85776]">{formatTL(e.amount)}</span>
+                    <span className="shrink-0 font-display text-[18px] tabular-nums text-[#A5556E]">{formatTL(e.amount)}</span>
                     {e.isSystemGenerated ? (
                       // İade kaydı buradan silinemez: kaynağı iptal edilmiş satıştır (defter kaydı).
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#f0e6ea] bg-[#faf6f8] text-[#c9b7c0]" title="Sistem kaydı — buradan silinemez">
@@ -1561,7 +1561,7 @@ function OnMuhasebePageInner() {
                         confirmLabel="Sil"
                         onConfirm={() => deleteExpense(e)}
                         trigger={
-                          <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                          <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         }
@@ -1571,7 +1571,7 @@ function OnMuhasebePageInner() {
                 )
               })}
               {list.length === 0 && (
-                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66]">
+                <div className="rounded-[18px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-12 text-center text-[12.5px] text-[#74616A]">
                   {expenseQuery
                     ? 'Aramaya uyan kayıt yok.'
                     : tab === 'salary' ? 'Bu ay maaş ödemesi yok. Üstten “Maaş Öde” ile başla.' : 'Bu ay gider kaydı yok. Üstten “Yeni Gider” ile başla.'}
@@ -1602,27 +1602,27 @@ function OverviewCard({ icon: Icon, label, value, chip, chipTone, bars, valueTon
   icon: typeof Wallet; label: string; value: string; chip?: string; chipTone?: string; bars: number[]; valueTone?: string
 }) {
   return (
-    <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+    <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
       <div className="flex items-start justify-between gap-2">
-        <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-5 w-5" /></span>
+        <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[#A5556E] text-white"><Icon className="h-5 w-5" /></span>
         <MiniBars values={bars} />
       </div>
-      <div className="mt-3 text-[11px] text-[#352432]/55">{label}</div>
-      <div className={`font-display text-3xl tabular-nums tracking-tight ${valueTone || 'text-[#352432]'}`}>{value}</div>
-      {chip && <span className={`mt-2 inline-block rounded-full border border-transparent px-2 py-0.5 text-[9px] font-medium ${chipTone || 'bg-[#fff1f6] text-[#b14d6c]'}`}>{chip}</span>}
+      <div className="mt-3 text-[11px] text-[#5A4B53]">{label}</div>
+      <div className={`font-display text-3xl tabular-nums tracking-tight ${valueTone || 'text-[#2A2027]'}`}>{value}</div>
+      {chip && <span className={`mt-2 inline-block rounded-full border border-transparent px-2 py-0.5 text-[9px] font-medium ${chipTone || 'bg-[#F6DFE6] text-[#8C4460]'}`}>{chip}</span>}
     </div>
   )
 }
 
 function BottomCard({ label, value, sub, icon: Icon }: { label: string; value: string; sub: string; icon: typeof Wallet }) {
   return (
-    <div className="flex items-center justify-between rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+    <div className="flex items-center justify-between rounded-[18px] border border-[#EAD8DF] bg-white p-5">
       <div>
-        <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{label}</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">{label}</div>
         <div className="mt-1 font-display text-3xl tabular-nums tracking-tight">{value}</div>
-        <div className="text-[10px] text-[#352432]/45">{sub}</div>
+        <div className="text-[10px] text-[#74616A]">{sub}</div>
       </div>
-      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#fff1f6] text-[#e0a18f]"><Icon className="h-6 w-6" /></span>
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#F6DFE6] text-[#e0a18f]"><Icon className="h-6 w-6" /></span>
     </div>
   )
 }

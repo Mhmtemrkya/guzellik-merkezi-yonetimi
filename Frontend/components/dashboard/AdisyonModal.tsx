@@ -48,12 +48,12 @@ export default function AdisyonModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[26px] border border-[#EAD8DF] bg-white !p-0 text-[#2A2027] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 900px)', height: 'min(94dvh, 940px)', maxHeight: '94dvh' }}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* HEADER */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/70 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] px-5 py-4">
+          <header className="relative shrink-0 border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] px-5 py-4">
             <span
               aria-hidden
               className="pointer-events-none absolute inset-x-0 top-0 h-[3px]"
@@ -66,17 +66,17 @@ export default function AdisyonModal({
                   <button
                     type="button"
                     onClick={() => setPicked(null)}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ead8df]/80 bg-white/86 text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#c85776]"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#EAD8DF]/80 bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#A5556E]"
                     aria-label="Müşteri değiştir"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                 )}
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+                  <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/80">
                     <ReceiptText className="h-3.5 w-3.5" /> Adisyon
                   </div>
-                  <DialogTitle className="mt-0.5 truncate font-display text-xl tracking-tight text-[#352432]">
+                  <DialogTitle className="mt-0.5 truncate font-display text-xl tracking-tight text-[#2A2027]">
                     {effectiveName || (allowPick && !effectiveId ? 'Müşteri adisyonu aç' : 'Müşteri adisyonu')}
                   </DialogTitle>
                 </div>
@@ -84,7 +84,7 @@ export default function AdisyonModal({
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df]/80 bg-white/86 text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF]/80 bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#3b2330]"
                 aria-label="Kapat"
               >
                 <X className="h-4 w-4" />
@@ -93,7 +93,7 @@ export default function AdisyonModal({
           </header>
 
           {/* GÖVDE */}
-          <div className="min-h-0 flex-auto overflow-y-auto bg-[#fffafb] p-4">
+          <div className="min-h-0 flex-auto overflow-y-auto bg-[#F7F6F6] p-4">
             {effectiveId ? (
               <>
                 {/* Onam formu eksikse adisyonun başında uyarı — imzasız işlem gözden kaçmasın. */}
@@ -109,11 +109,11 @@ export default function AdisyonModal({
               // Müşteri seçimi: arama kutusu ve sonuç listesi rahat sığsın diye ortada geniş bir alan.
               <div className="mx-auto w-full max-w-[560px] pt-6">
                 <div className="text-center">
-                  <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c05277]">
+                  <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#A5556E] text-white">
                     <Users className="h-6 w-6" />
                   </span>
-                  <div className="mt-2 text-[15px] font-bold text-[#352432]">Adisyon açılacak müşteri</div>
-                  <div className="mt-0.5 text-[11.5px] text-[#705a66]">
+                  <div className="mt-2 text-[15px] font-bold text-[#2A2027]">Adisyon açılacak müşteri</div>
+                  <div className="mt-0.5 text-[11.5px] text-[#74616A]">
                     İsim ya da telefon ile arayın; seçtiğiniz müşterinin adisyon kartı hemen açılır.
                   </div>
                 </div>
@@ -129,7 +129,7 @@ export default function AdisyonModal({
                 </div>
               </div>
             ) : (
-              <div className="grid place-items-center py-16 text-sm text-[#705a66]">Müşteri seçili değil.</div>
+              <div className="grid place-items-center py-16 text-sm text-[#74616A]">Müşteri seçili değil.</div>
             )}
           </div>
         </div>

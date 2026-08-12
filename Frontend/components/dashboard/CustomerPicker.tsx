@@ -96,7 +96,7 @@ export default function CustomerPicker({
 
   const fieldCls =
     className ||
-    'min-h-11 w-full rounded-xl border border-[#efe1e7] bg-white px-4 py-3 text-sm text-[#4a3a44] shadow-sm outline-none transition-all hover:border-[#efbfd0] focus:border-[#e9a6bf] focus:ring-2 focus:ring-[#f0aac2]/50'
+    'min-h-11 w-full rounded-xl border border-[#EAD8DF] bg-white px-4 py-3 text-sm text-[#3E343A] shadow-sm outline-none transition-all hover:border-[#BE7690] focus:border-[#e9a6bf] focus:ring-2 focus:ring-[#f0aac2]/50'
 
   // Sunucu aramasında seçilen kayıt parent'ın items listesinde olmayabilir — yerelde tut.
   const [lastPicked, setLastPicked] = useState<CustomerPickerItem | null>(null)
@@ -144,7 +144,7 @@ export default function CustomerPicker({
   return (
     <div ref={rootRef} className="relative w-full">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#c85776]/[0.55]" strokeWidth={2} />
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A5556E]/[0.55]" strokeWidth={2} />
         <input
           type="text"
           className={`${fieldCls} pl-9 ${selected && !openList ? 'font-medium' : ''}`}
@@ -174,7 +174,7 @@ export default function CustomerPicker({
             type="button"
             aria-label="Seçimi temizle"
             onClick={() => onChange('')}
-            className="absolute right-3 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#fbe5eb] hover:text-[#c85776]"
+            className="absolute right-3 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#fbe5eb] hover:text-[#A5556E]"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -182,12 +182,12 @@ export default function CustomerPicker({
       </div>
 
       {openList && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-[#efe1e7] bg-white shadow-[0_24px_60px_-24px_rgba(120,71,88,0.45)]">
+        <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-[#EAD8DF] bg-white shadow-[0_24px_60px_-24px_rgba(120,71,88,0.45)]">
           <div className="max-h-64 overflow-y-auto overscroll-contain py-1">
             {onSearch && remoteLoading && filtered.length === 0 ? (
-              <div className="px-4 py-5 text-center text-[12px] text-[#705a66]">Aranıyor…</div>
+              <div className="px-4 py-5 text-center text-[12px] text-[#74616A]">Aranıyor…</div>
             ) : filtered.length === 0 ? (
-              <div className="px-4 py-5 text-center text-[12px] text-[#705a66]">Eşleşen müşteri bulunamadı.</div>
+              <div className="px-4 py-5 text-center text-[12px] text-[#74616A]">Eşleşen müşteri bulunamadı.</div>
             ) : (
               filtered.map((c) => (
                 <button
@@ -199,20 +199,20 @@ export default function CustomerPicker({
                     onSelectItem?.(c)
                     setOpenList(false)
                   }}
-                  className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fff4f8] ${
+                  className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F7F6F6] ${
                     c.id === value ? 'bg-[#fdf4f8]' : ''
                   }`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-[#4a3a44]">{c.name}</span>
-                    {c.phone && <span className="mt-0.5 block text-[11px] font-mono text-[#705a66]">{c.phone}</span>}
+                    <span className="block truncate text-[13px] font-medium text-[#3E343A]">{c.name}</span>
+                    {c.phone && <span className="mt-0.5 block text-[11px] font-mono text-[#74616A]">{c.phone}</span>}
                   </span>
-                  {c.id === value && <Check className="h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={2.2} />}
+                  {c.id === value && <Check className="h-4 w-4 shrink-0 text-[#A5556E]" strokeWidth={2.2} />}
                 </button>
               ))
             )}
           </div>
-          <div className="border-t border-[#f4e8ed] bg-[#fffafc] px-4 py-1.5 text-[10px] text-[#9d7386]">
+          <div className="border-t border-[#f4e8ed] bg-[#F7F6F6] px-4 py-1.5 text-[10px] text-[#9d7386]">
             {onSearch
               ? remoteLoading
                 ? 'Aranıyor…'

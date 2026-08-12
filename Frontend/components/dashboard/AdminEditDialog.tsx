@@ -205,7 +205,7 @@ const primaryTrigger =
   'group relative inline-flex min-h-10 w-full items-center justify-center gap-2 overflow-hidden bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-4 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-60 sm:w-auto sm:text-[11px]'
 
 const ghostTrigger =
-  'group relative inline-flex min-h-10 w-full items-center justify-center gap-2 overflow-hidden border border-[#ead8df]/[0.70] px-3 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.72] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] sm:w-auto'
+  'group relative inline-flex min-h-10 w-full items-center justify-center gap-2 overflow-hidden border border-[#EAD8DF]/[0.70] px-3 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.72] transition-colors hover:border-[#BE7690]/[0.75] hover:text-[#2A2027] sm:w-auto'
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -344,8 +344,8 @@ export default function AdminEditDialog({
               className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#f0aac2]/[0.12] via-[#fff4f8]/[0.04] to-transparent transition-transform duration-500 group-hover:translate-x-0"
             />
           )}
-          <TriggerIcon className="relative z-10 h-3.5 w-3.5 transition-colors group-hover:text-[#352432]" />
-          <span className="relative z-10 transition-colors duration-500 group-hover:text-[#352432]">
+          <TriggerIcon className="relative z-10 h-3.5 w-3.5 transition-colors group-hover:text-[#2A2027]" />
+          <span className="relative z-10 transition-colors duration-500 group-hover:text-[#2A2027]">
             {triggerLabel}
           </span>
         </button>
@@ -353,7 +353,7 @@ export default function AdminEditDialog({
       )}
 
       <DialogContent
-        className="flex h-[94dvh] grid-rows-none flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex h-[94dvh] grid-rows-none flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF]/[0.90] bg-white/[0.96] p-0 text-[#2A2027] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: widthPx, maxWidth: widthPx, height: '94dvh', maxHeight: '94dvh' }}
       >
         <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
@@ -386,7 +386,7 @@ export default function AdminEditDialog({
           />
 
           {/* HEADER — kompakt, armo-shimmer başlık */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/[0.70] p-4 pr-12 text-left sm:px-7 sm:py-4 sm:pr-14 lg:px-8">
+          <header className="relative shrink-0 border-b border-[#EAD8DF]/[0.70] p-4 pr-12 text-left sm:px-7 sm:py-4 sm:pr-14 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -396,9 +396,9 @@ export default function AdminEditDialog({
               <motion.span
                 whileHover={{ rotate: -8, scale: 1.06 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#BE7690]/[0.80] bg-white text-[#A5556E] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
               >
-                <TitleIcon className="h-4 w-4 text-[#c85776]" strokeWidth={1.6} />
+                <TitleIcon className="h-4 w-4 text-[#A5556E]" strokeWidth={1.6} />
               </motion.span>
               <div className="min-w-0 flex-1">
                 <div className="armo-pill !text-[9px]">
@@ -409,7 +409,7 @@ export default function AdminEditDialog({
                   <span className="armo-shimmer">{title}</span>
                 </DialogTitle>
                 {description && (
-                  <DialogDescription className="mt-1.5 max-w-3xl text-[11.5px] leading-relaxed text-[#352432]/[0.55]">
+                  <DialogDescription className="mt-1.5 max-w-3xl text-[11.5px] leading-relaxed text-[#2A2027]/[0.55]">
                     {description}
                   </DialogDescription>
                 )}
@@ -421,7 +421,7 @@ export default function AdminEditDialog({
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <div className="flex h-full flex-col lg:flex-row">
               {/* SOL — Canlı form özeti. Mobil/tablet'te gizli (scroll bozulmasın), lg+ ekranlarda görünür. */}
-              <aside className="relative hidden shrink-0 overflow-y-auto bg-gradient-to-b from-white/[0.80] to-[#fff0f5]/[0.82] p-5 lg:flex lg:w-[300px] lg:flex-col lg:border-r lg:border-[#ead8df]/[0.70] lg:p-6">
+              <aside className="relative hidden shrink-0 overflow-y-auto bg-gradient-to-b from-white/[0.80] to-[#fff0f5]/[0.82] p-5 lg:flex lg:w-[300px] lg:flex-col lg:border-r lg:border-[#EAD8DF]/[0.70] lg:p-6">
                 <div className="armo-pill !text-[9px]">
                   <span className="armo-pill-dot" />
                   Form özeti
@@ -435,8 +435,8 @@ export default function AdminEditDialog({
               <div className="relative flex-1 overflow-y-auto overscroll-contain p-5 sm:p-7 lg:p-8">
                 <motion.div variants={sectionContainer} initial="hidden" animate="visible" className="space-y-6">
                   {note && (
-                    <div className="border border-[#efbfd0]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] via-[#fff4f8]/[0.02] to-transparent p-3 text-[11px] leading-relaxed text-[#352432]/[0.70]">
-                      <Sparkles className="mr-1 inline h-3 w-3 text-[#c85776]" />
+                    <div className="border border-[#BE7690]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] via-[#fff4f8]/[0.02] to-transparent p-3 text-[11px] leading-relaxed text-[#2A2027]/[0.70]">
+                      <Sparkles className="mr-1 inline h-3 w-3 text-[#A5556E]" />
                       {note}
                     </div>
                   )}
@@ -487,10 +487,10 @@ export default function AdminEditDialog({
           </div>
 
           {/* FOOTER — premium gradient submit */}
-          <footer className="relative shrink-0 border-t border-[#ead8df]/[0.75] bg-white/[0.78] p-4 shadow-[0_-18px_46px_-36px_rgba(120,71,88,0.45)] backdrop-blur-xl sm:px-7 sm:py-4 lg:px-10 lg:py-5">
+          <footer className="relative shrink-0 border-t border-[#EAD8DF]/[0.75] bg-white/[0.78] p-4 shadow-[0_-18px_46px_-36px_rgba(120,71,88,0.45)] backdrop-blur-xl sm:px-7 sm:py-4 lg:px-10 lg:py-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="hidden items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.40] sm:inline-flex">
-                <kbd className="border border-[#ead8df]/[0.70] bg-white/[0.78] px-1.5 py-0.5 text-[8.5px] tracking-normal text-[#352432]/[0.55]">
+              <span className="hidden items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.22em] text-[#2A2027]/[0.40] sm:inline-flex">
+                <kbd className="border border-[#EAD8DF]/[0.70] bg-white/[0.78] px-1.5 py-0.5 text-[8.5px] tracking-normal text-[#2A2027]/[0.55]">
                   ESC
                 </kbd>
                 ile kapat
@@ -499,7 +499,7 @@ export default function AdminEditDialog({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="min-h-11 border border-[#ead8df]/[0.70] bg-white/[0.72] px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.72] transition-colors hover:border-[#efbfd0]/[0.75] hover:bg-[#f0aac2]/[0.08] hover:text-[#352432]"
+                  className="min-h-11 border border-[#EAD8DF]/[0.70] bg-white/[0.72] px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.72] transition-colors hover:border-[#BE7690]/[0.75] hover:bg-[#f0aac2]/[0.08] hover:text-[#2A2027]"
                 >
                   Vazgeç
                 </button>
@@ -509,13 +509,13 @@ export default function AdminEditDialog({
                   whileHover={{ y: -1 }}
                   onClick={handleSubmit}
                   disabled={saving || saved}
-                  className="group relative inline-flex min-h-11 items-center justify-center gap-2 overflow-hidden border border-[#efbfd0]/[0.75] bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-7 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2f1724] shadow-[0_10px_28px_-8px_rgba(240,170,194,0.65)] transition-shadow disabled:opacity-70"
+                  className="group relative inline-flex min-h-11 items-center justify-center gap-2 overflow-hidden border border-[#BE7690]/[0.75] bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-7 py-2.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#2f1724] shadow-[0_10px_28px_-8px_rgba(240,170,194,0.65)] transition-shadow disabled:opacity-70"
                 >
                   <span
                     aria-hidden
                     className="absolute inset-0 translate-y-full bg-white transition-transform duration-500 group-hover:translate-y-0"
                   />
-                  <span className="relative z-10 flex items-center gap-2 transition-colors duration-500 group-hover:text-[#352432]">
+                  <span className="relative z-10 flex items-center gap-2 transition-colors duration-500 group-hover:text-[#2A2027]">
                     {saving ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Kaydediliyor
@@ -588,7 +588,7 @@ function FormSummary({
 
   if (filled.length === 0) {
     return (
-      <div className="border border-dashed border-[#ead8df]/[0.70] bg-[#fff4f8]/[0.012] p-4 text-center text-[11px] text-[#352432]/[0.35]">
+      <div className="border border-dashed border-[#EAD8DF]/[0.70] bg-[#F7F6F6]/[0.012] p-4 text-center text-[11px] text-[#2A2027]/[0.35]">
         Form doldukça burada özet görünecek
       </div>
     )
@@ -609,20 +609,20 @@ function FormSummary({
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.22, delay: i * 0.02 }}
-            className="border border-[#ead8df]/[0.65] bg-white/[0.74] px-2.5 py-2"
+            className="border border-[#EAD8DF]/[0.65] bg-white/[0.74] px-2.5 py-2"
           >
-            <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.45]">
+            <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.45]">
               {Icon && <Icon className="h-2.5 w-2.5" strokeWidth={1.7} />}
               {field.label}
             </div>
-            <div className="mt-1 line-clamp-2 break-words text-[12px] leading-tight text-[#c85776]/[0.90]">
+            <div className="mt-1 line-clamp-2 break-words text-[12px] leading-tight text-[#A5556E]/[0.90]">
               {display}
             </div>
           </motion.div>
         )
       })}
       {filled.length > 14 && (
-        <div className="pt-1 text-center text-[10px] font-mono text-[#352432]/[0.40]">
+        <div className="pt-1 text-center text-[10px] font-mono text-[#2A2027]/[0.40]">
           +{filled.length - 14} alan daha
         </div>
       )}
@@ -646,7 +646,7 @@ function FieldBlock({ field, value, setField }: FieldBlockProps) {
     field.fullWidth || field.type === 'textarea' || field.type === 'multiselect' || field.type === 'list'
 
   const commonInputCls =
-    'min-h-11 w-full bg-white/[0.90] border border-[#ead8df]/[0.70] px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]/[0.75] placeholder:text-[#352432]/[0.25]'
+    'min-h-11 w-full bg-white/[0.90] border border-[#EAD8DF]/[0.70] px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#BE7690]/[0.75] placeholder:text-[#2A2027]/[0.25]'
 
   return (
     <motion.label
@@ -655,11 +655,11 @@ function FieldBlock({ field, value, setField }: FieldBlockProps) {
     >
       <div className="mb-2 flex items-center gap-2">
         {Icon && (
-          <span className="grid h-5 w-5 place-items-center border border-[#efbfd0]/[0.75] bg-white text-[#c85776] text-[#c85776]">
+          <span className="grid h-5 w-5 place-items-center border border-[#BE7690]/[0.75] bg-white text-[#A5556E] text-[#A5556E]">
             <Icon className="h-2.5 w-2.5" strokeWidth={1.8} />
           </span>
         )}
-        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#352432]/[0.65] transition-colors group-focus-within:text-[#c85776]">
+        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.65] transition-colors group-focus-within:text-[#A5556E]">
           {field.label}
           {field.required && (
             <span className="ml-1 text-rose-700" aria-hidden="true">
@@ -672,7 +672,7 @@ function FieldBlock({ field, value, setField }: FieldBlockProps) {
       <FieldControl field={field} value={value} setField={setField} commonInputCls={commonInputCls} />
 
       {field.helper && (
-        <div className="mt-1.5 text-[10px] leading-relaxed text-[#352432]/[0.40]">{field.helper}</div>
+        <div className="mt-1.5 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">{field.helper}</div>
       )}
     </motion.label>
   )
@@ -730,7 +730,7 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
           ))}
         </select>
         <ChevronDown
-          className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/[0.45]"
+          className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#2A2027]/[0.45]"
           strokeWidth={1.6}
         />
       </div>
@@ -760,10 +760,10 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
         onClick={() => setField(key, !value)}
         className={`${commonInputCls} flex items-center justify-between text-left`}
       >
-        <span className="text-[#352432]/[0.85]">{value ? 'Evet' : 'Hayır'}</span>
+        <span className="text-[#2A2027]/[0.85]">{value ? 'Evet' : 'Hayır'}</span>
         <span
           className={`relative h-5 w-10 border transition-colors ${
-            value ? 'border-[#f0aac2] bg-[#f0aac2]/[0.25]' : 'border-[#ead8df]/[0.70] bg-transparent'
+            value ? 'border-[#f0aac2] bg-[#f0aac2]/[0.25]' : 'border-[#EAD8DF]/[0.70] bg-transparent'
           }`}
         >
           <motion.span
@@ -798,9 +798,9 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
   // text / email / tel / date / time / number
   if (field.prefix || field.suffix) {
     return (
-      <div className="relative flex items-stretch border border-[#ead8df]/[0.70] bg-white/[0.90] transition-colors focus-within:border-[#efbfd0]/[0.75]">
+      <div className="relative flex items-stretch border border-[#EAD8DF]/[0.70] bg-white/[0.90] transition-colors focus-within:border-[#BE7690]/[0.75]">
         {field.prefix && (
-          <span className="grid place-items-center border-r border-[#ead8df]/[0.70] bg-white/[0.72] px-3 text-[12px] font-mono text-[#c85776]">
+          <span className="grid place-items-center border-r border-[#EAD8DF]/[0.70] bg-white/[0.72] px-3 text-[12px] font-mono text-[#A5556E]">
             {field.prefix}
           </span>
         )}
@@ -811,10 +811,10 @@ function FieldControl({ field, value, setField, commonInputCls }: FieldControlPr
             setField(key, field.type === 'number' ? Number(e.target.value || 0) : e.target.value)
           }
           placeholder={field.placeholder || ''}
-          className="min-h-11 w-full bg-transparent px-3 py-2.5 text-[13px] text-[#352432] outline-none placeholder:text-[#352432]/[0.25]"
+          className="min-h-11 w-full bg-transparent px-3 py-2.5 text-[13px] text-[#2A2027] outline-none placeholder:text-[#2A2027]/[0.25]"
         />
         {field.suffix && (
-          <span className="grid place-items-center border-l border-[#ead8df]/[0.70] bg-white/[0.72] px-3 text-[12px] font-mono text-[#c85776]">
+          <span className="grid place-items-center border-l border-[#EAD8DF]/[0.70] bg-white/[0.72] px-3 text-[12px] font-mono text-[#A5556E]">
             {field.suffix}
           </span>
         )}
@@ -857,13 +857,13 @@ function ImageField({ value, onChange }: { value: string; onChange: (next: strin
     <div className="flex items-center gap-3">
       <label
         title="Görsel yükle"
-        className={`group relative grid h-16 w-16 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#ead8df]/[0.70] bg-[#fff4f8]/[0.50] ${busy ? 'opacity-60' : ''}`}
+        className={`group relative grid h-16 w-16 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#EAD8DF]/[0.70] bg-[#F7F6F6]/[0.50] ${busy ? 'opacity-60' : ''}`}
       >
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={value} alt="" className="h-full w-full object-cover" />
         ) : (
-          <ImagePlus className="h-5 w-5 text-[#c85776]/[0.55]" />
+          <ImagePlus className="h-5 w-5 text-[#A5556E]/[0.55]" />
         )}
         <span className="absolute inset-0 grid place-items-center bg-black/[0.40] opacity-0 transition-opacity group-hover:opacity-100">
           <ImagePlus className="h-5 w-5 text-white" />
@@ -879,7 +879,7 @@ function ImageField({ value, onChange }: { value: string; onChange: (next: strin
           }}
         />
       </label>
-      <div className="min-w-0 text-[11px] text-[#352432]/[0.55]">
+      <div className="min-w-0 text-[11px] text-[#2A2027]/[0.55]">
         <div>{value ? 'Görseli değiştirmek için tıkla' : 'Görsel seç (kare, ≤320px)'}</div>
         {value && (
           <button
@@ -921,8 +921,8 @@ function MultiSelect({ field, value, onChange }: MultiSelectProps) {
               onClick={() => onChange(checked ? value.filter((v) => v !== optValue) : [...value, optValue])}
               className={`inline-flex items-center gap-1.5 border px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-widest transition-colors ${
                 checked
-                  ? 'border-[#f0aac2] bg-[#f0aac2]/[0.18] text-[#c85776]'
-                  : 'border-[#ead8df]/[0.70] bg-white/[0.72] text-[#352432]/[0.55] hover:border-[#efbfd0]/[0.75] hover:text-[#352432]'
+                  ? 'border-[#f0aac2] bg-[#f0aac2]/[0.18] text-[#A5556E]'
+                  : 'border-[#EAD8DF]/[0.70] bg-white/[0.72] text-[#2A2027]/[0.55] hover:border-[#BE7690]/[0.75] hover:text-[#2A2027]'
               }`}
             >
               {checked && (
@@ -939,7 +939,7 @@ function MultiSelect({ field, value, onChange }: MultiSelectProps) {
         })}
       </div>
       {value.length > 0 && (
-        <div className="text-[10px] font-mono text-[#352432]/[0.45]">{value.length} öğe seçildi</div>
+        <div className="text-[10px] font-mono text-[#2A2027]/[0.45]">{value.length} öğe seçildi</div>
       )}
     </div>
   )
@@ -962,7 +962,7 @@ function ListEditor({ field, rows, commonCls, onChange }: ListEditorProps) {
     <div className="space-y-2">
       <div className="space-y-2">
         {rows.length === 0 && (
-          <div className="border border-dashed border-[#ead8df]/[0.70] px-3 py-3 text-[11px] text-[#352432]/[0.40]">
+          <div className="border border-dashed border-[#EAD8DF]/[0.70] px-3 py-3 text-[11px] text-[#2A2027]/[0.40]">
             {field.emptyLabel || 'Henüz satır eklenmedi.'}
           </div>
         )}
@@ -985,10 +985,10 @@ function ListEditor({ field, rows, commonCls, onChange }: ListEditorProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                className="border border-[#ead8df]/[0.70] bg-white/[0.72] p-3"
+                className="border border-[#EAD8DF]/[0.70] bg-white/[0.72] p-3"
               >
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-[#c85776]/[0.65]">
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-[#A5556E]/[0.65]">
                     {field.rowLabel ? `${field.rowLabel} ${rowIndex + 1}` : `Satır ${rowIndex + 1}`}
                   </span>
                   <button
@@ -1016,7 +1016,7 @@ function ListEditor({ field, rows, commonCls, onChange }: ListEditorProps) {
                         updateRow({ ...rowObject, [subKey]: next })
                       return (
                         <label key={subKey} className={`min-w-0 ${sub.type === 'textarea' ? 'sm:col-span-2' : ''}`}>
-                          <span className="block mb-1.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                          <span className="block mb-1.5 text-[9px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">
                             {sub.label}
                           </span>
                           {sub.type === 'select' ? (
@@ -1072,7 +1072,7 @@ function ListEditor({ field, rows, commonCls, onChange }: ListEditorProps) {
         whileTap={{ scale: 0.97 }}
         type="button"
         onClick={() => onChange([...rows, emptyListItem(field)])}
-        className="inline-flex min-h-10 w-full items-center justify-center gap-2 border border-dashed border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.08] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#f0aac2]/[0.14] sm:w-auto"
+        className="inline-flex min-h-10 w-full items-center justify-center gap-2 border border-dashed border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.08] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#f0aac2]/[0.14] sm:w-auto"
       >
         <Plus className="h-3.5 w-3.5" strokeWidth={1.8} /> {field.addLabel || 'Satır ekle'}
       </motion.button>

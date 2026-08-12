@@ -72,10 +72,10 @@ interface SessionDetailRow {
   staffId: string
 }
 
-const FIELD = 'w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#9d8590]'
-const LABEL = 'mb-1 block text-[11.5px] font-semibold text-[#4a3a44]'
-const HINT = 'text-[10.5px] text-[#705a66]'
-const CARD = 'rounded-[16px] border border-[#ead8df] bg-white p-3.5'
+const FIELD = 'w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#74616A]'
+const LABEL = 'mb-1 block text-[11.5px] font-semibold text-[#3E343A]'
+const HINT = 'text-[10.5px] text-[#74616A]'
+const CARD = 'rounded-[16px] border border-[#EAD8DF] bg-white p-3.5'
 
 const METHODS: { value: string; label: string }[] = [
   { value: 'cash', label: 'Nakit' },
@@ -348,9 +348,9 @@ export default function HistoricalSaleDialog({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97 }}
         onClick={(e) => e.stopPropagation()}
-        className="my-auto flex max-h-[94dvh] w-full max-w-[940px] flex-col overflow-hidden rounded-[22px] border border-[#ead8df] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] sm:rounded-[26px]"
+        className="my-auto flex max-h-[94dvh] w-full max-w-[940px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] sm:rounded-[26px]"
       >
-        <header className="relative shrink-0 overflow-hidden border-b border-[#ead8df] bg-gradient-to-br from-white via-[#fbf7ff] to-[#f6efff] px-4 py-4 sm:px-6">
+        <header className="relative shrink-0 overflow-hidden border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fbf7ff] to-[#f6efff] px-4 py-4 sm:px-6">
           <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-52 w-52 rounded-full bg-[#c7a8ef]/25 blur-3xl" />
           <div className="relative flex items-start gap-3">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[15px] border border-[#e0d3f2] bg-[#faf6ff] text-[#6b4aa0]">
@@ -358,11 +358,11 @@ export default function HistoricalSaleDialog({
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-[19px] font-bold leading-tight tracking-tight text-[#241923] sm:text-[21px]">Geçmiş satış ekle</h2>
-              <div className="mt-1 text-[11.5px] text-[#705a66]">
-                <b className="font-semibold text-[#4a3a44]">{customerName}</b> · eski satışı, ödeme geçmişiyle birlikte sisteme işleyin
+              <div className="mt-1 text-[11.5px] text-[#74616A]">
+                <b className="font-semibold text-[#3E343A]">{customerName}</b> · eski satışı, ödeme geçmişiyle birlikte sisteme işleyin
               </div>
             </div>
-            <button type="button" onClick={onClose} aria-label="Kapat" className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] shadow-sm transition-colors hover:bg-[#faf6ff] hover:text-[#6b4aa0]">
+            <button type="button" onClick={onClose} aria-label="Kapat" className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] shadow-sm transition-colors hover:bg-[#faf6ff] hover:text-[#6b4aa0]">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -374,7 +374,7 @@ export default function HistoricalSaleDialog({
             {/* Katalogdan açıldığında müşteri burada seçilir (sunucu-taraflı arama). */}
             {needsCustomer && (
               <div className={CARD}>
-                <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Müşteri *</span>
+                <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#A5556E]" />Müşteri *</span>
                 <CustomerPicker
                   items={[]}
                   value={customerId}
@@ -383,7 +383,7 @@ export default function HistoricalSaleDialog({
                   onSearch={customerSearch}
                   placeholder="İsim veya telefonla ara…"
                 />
-                {customerLabel && <p className={`mt-1 ${HINT}`}>Seçili: <b className="font-semibold text-[#4a3a44]">{customerLabel}</b></p>}
+                {customerLabel && <p className={`mt-1 ${HINT}`}>Seçili: <b className="font-semibold text-[#3E343A]">{customerLabel}</b></p>}
               </div>
             )}
 
@@ -391,20 +391,20 @@ export default function HistoricalSaleDialog({
             <div className={CARD}>
               <span className={LABEL}>Ne satıldı? *</span>
               {preset ? (
-                <div className="flex items-center gap-2 rounded-[11px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2">
-                  {preset.kind === 'package' ? <Package className="h-4 w-4 shrink-0 text-[#c85776]" /> : <Scissors className="h-4 w-4 shrink-0 text-[#c85776]" />}
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#352432]">{preset.name}</span>
+                <div className="flex items-center gap-2 rounded-[11px] border border-[#BE7690] bg-[#F6DFE6] px-3 py-2">
+                  {preset.kind === 'package' ? <Package className="h-4 w-4 shrink-0 text-[#A5556E]" /> : <Scissors className="h-4 w-4 shrink-0 text-[#A5556E]" />}
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#2A2027]">{preset.name}</span>
                   <span className="shrink-0 text-[11.5px] font-semibold text-[#a34a62]">{formatTL(preset.price)}</span>
                 </div>
               ) : (
                 <>
-                  <div className="mb-1 inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+                  <div className="mb-1 inline-flex rounded-full border border-[#EAD8DF] bg-[#fff8fa] p-0.5">
                     {([['package', 'Paket', Package], ['service', 'Hizmet', Scissors], ['free', 'Elle yaz', Archive]] as const).map(([k, label, Icon]) => (
                       <button
                         key={k}
                         type="button"
                         onClick={() => setKind(k)}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${kind === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:text-[#a34a62]'}`}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${kind === k ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:text-[#a34a62]'}`}
                       >
                         <Icon className="h-3.5 w-3.5" /> {label}
                       </button>
@@ -436,11 +436,11 @@ export default function HistoricalSaleDialog({
             <div className={CARD}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className={LABEL}><CalendarClock className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Satış tarihi *</span>
+                  <span className={LABEL}><CalendarClock className="mr-1 inline h-3.5 w-3.5 text-[#A5556E]" />Satış tarihi *</span>
                   <input type="date" value={soldAt} max={todayIso} onChange={(e) => setSoldAt(e.target.value)} className={FIELD} />
                 </label>
                 <label className="block">
-                  <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Satan personel</span>
+                  <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#A5556E]" />Satan personel</span>
                   <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className={FIELD}>
                     <option value="">Belirtilmedi</option>
                     {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -455,26 +455,26 @@ export default function HistoricalSaleDialog({
 
             {/* ÖDEME — peşin mi, taksitli mi; taksitliyse hangi aylar ödendi */}
             <div className={CARD}>
-              <span className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+              <span className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
                 <Wallet className="h-3.5 w-3.5" /> Nasıl ödendi?
               </span>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+                <div className="inline-flex rounded-full border border-[#EAD8DF] bg-[#fff8fa] p-0.5">
                   {([['cash', 'Peşin', Banknote], ['installment', 'Taksitli', CreditCard]] as const).map(([k, label, Icon]) => (
                     <button
                       key={k}
                       type="button"
                       onClick={() => setPayKind(k)}
-                      className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${payKind === k ? 'bg-[#c85776] text-white' : 'text-[#705a66] hover:text-[#a34a62]'}`}
+                      className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${payKind === k ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:text-[#a34a62]'}`}
                     >
                       <Icon className="h-3.5 w-3.5" /> {label}
                     </button>
                   ))}
                 </div>
                 <label className="flex items-center gap-1.5">
-                  <span className="text-[11.5px] font-semibold text-[#4a3a44]">Yöntem</span>
-                  <select value={method} onChange={(e) => setMethod(e.target.value)} className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#ef9ab5]">
+                  <span className="text-[11.5px] font-semibold text-[#3E343A]">Yöntem</span>
+                  <select value={method} onChange={(e) => setMethod(e.target.value)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#ef9ab5]">
                     {METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </label>
@@ -495,7 +495,7 @@ export default function HistoricalSaleDialog({
                     />
                   </label>
                   <p className={`mt-1 ${HINT}`}>
-                    Boş bırakırsanız <b className="font-semibold text-[#4a3a44]">tamamı ödendi</b> sayılır. Tahsilat, satış tarihine yazılır.
+                    Boş bırakırsanız <b className="font-semibold text-[#3E343A]">tamamı ödendi</b> sayılır. Tahsilat, satış tarihine yazılır.
                   </p>
                 </div>
               ) : (
@@ -513,18 +513,18 @@ export default function HistoricalSaleDialog({
                   </div>
 
                   {plan.length === 0 ? (
-                    <div className={`rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[11.5px] ${HINT}`}>
+                    <div className={`rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-4 text-center text-[11.5px] ${HINT}`}>
                       Plan için satış tarihi, tutar ve taksit sayısını girin.
                     </div>
                   ) : (
-                    <div className="rounded-[13px] border border-[#efd6df] bg-[#fffafc] p-3">
+                    <div className="rounded-[13px] border border-[#efd6df] bg-[#F7F6F6] p-3">
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11.5px] font-semibold text-[#4a3a44]">
-                          Hangi aylar ödendi? <span className="font-bold text-[#c85776]">{paidCount}/{plan.length}</span>
+                        <span className="text-[11.5px] font-semibold text-[#3E343A]">
+                          Hangi aylar ödendi? <span className="font-bold text-[#A5556E]">{paidCount}/{plan.length}</span>
                         </span>
                         <span className="flex gap-1.5">
                           <button type="button" onClick={() => setPaidCount(plan.length)} className="cursor-pointer rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100">Tümü ödendi</button>
-                          <button type="button" onClick={() => setPaidCount(0)} className="cursor-pointer rounded-full border border-[#ead8df] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#705a66] transition-colors hover:bg-[#fff4f8]">Hiçbiri</button>
+                          <button type="button" onClick={() => setPaidCount(0)} className="cursor-pointer rounded-full border border-[#EAD8DF] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#74616A] transition-colors hover:bg-[#F7F6F6]">Hiçbiri</button>
                         </span>
                       </div>
 
@@ -538,15 +538,15 @@ export default function HistoricalSaleDialog({
                               type="button"
                               onClick={() => setPaidCount(paidCount === p.no ? p.no - 1 : p.no)}
                               className={`flex cursor-pointer items-center gap-2 rounded-[11px] border px-2.5 py-1.5 text-left transition-colors ${
-                                isPaid ? 'border-emerald-200 bg-emerald-50' : 'border-[#ead8df] bg-white hover:border-[#efbfd0]'
+                                isPaid ? 'border-emerald-200 bg-emerald-50' : 'border-[#EAD8DF] bg-white hover:border-[#BE7690]'
                               }`}
                             >
-                              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${isPaid ? 'bg-emerald-500 text-white' : 'bg-[#f4e7ec] text-[#705a66]'}`}>
+                              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${isPaid ? 'bg-emerald-500 text-white' : 'bg-[#f4e7ec] text-[#74616A]'}`}>
                                 {isPaid ? <Check className="h-3 w-3" strokeWidth={3} /> : p.no}
                               </span>
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[11.5px] font-semibold text-[#352432]">{p.label}</span>
-                                <span className={`block text-[10.5px] tabular-nums ${isPaid ? 'text-emerald-700' : 'text-[#705a66]'}`}>
+                                <span className="block truncate text-[11.5px] font-semibold text-[#2A2027]">{p.label}</span>
+                                <span className={`block text-[10.5px] tabular-nums ${isPaid ? 'text-emerald-700' : 'text-[#74616A]'}`}>
                                   {formatTL(Math.round(p.amount))} {isPaid ? '· ödendi' : ''}
                                 </span>
                               </span>
@@ -563,7 +563,7 @@ export default function HistoricalSaleDialog({
 
             {/* Seanslar */}
             <div className={CARD}>
-              <span className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+              <span className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
                 <Sparkles className="h-3.5 w-3.5" /> Seanslar
               </span>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -580,8 +580,8 @@ export default function HistoricalSaleDialog({
               {sessionsTotalNum > 0 && (
                 <div className="mt-2.5 space-y-2.5">
                   {/* Seanslar bitti mi? Tek dokunuşla "hepsi yapıldı". */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[#efd6df] bg-[#fffafc] px-3 py-2">
-                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[#efd6df] bg-[#F7F6F6] px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#3E343A]">
                       <CheckCircle2 className={`h-4 w-4 ${sessionsDone ? 'text-emerald-600' : 'text-[#c9b3bd]'}`} />
                       {sessionsDone
                         ? 'Tüm seanslar tamamlandı'
@@ -592,7 +592,7 @@ export default function HistoricalSaleDialog({
                       onClick={() => setSessionsUsed(sessionsDone ? '0' : String(sessionsTotalNum))}
                       className={`cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
                         sessionsDone
-                          ? 'border-[#ead8df] bg-white text-[#705a66] hover:bg-[#fff4f8]'
+                          ? 'border-[#EAD8DF] bg-white text-[#74616A] hover:bg-[#F7F6F6]'
                           : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                       }`}
                     >
@@ -603,7 +603,7 @@ export default function HistoricalSaleDialog({
                   {sessionsUsedNum > 0 && (
                     <>
                       <label className="block">
-                        <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Seansları uygulayan personel</span>
+                        <span className={LABEL}><User className="mr-1 inline h-3.5 w-3.5 text-[#A5556E]" />Seansları uygulayan personel</span>
                         <select value={appliedStaffId} onChange={(e) => setAppliedStaffId(e.target.value)} className={FIELD}>
                           <option value="">Belirtilmedi{staffId ? ' — satan personel yazılır' : ''}</option>
                           {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -611,21 +611,21 @@ export default function HistoricalSaleDialog({
                       </label>
 
                       {/* Geçmiş seanslar randevular sayfasında da görünsün. */}
-                      <div className="rounded-[12px] border border-[#efd6df] bg-[#fffafc] p-3">
+                      <div className="rounded-[12px] border border-[#efd6df] bg-[#F7F6F6] p-3">
                         <label className="flex cursor-pointer items-start gap-2">
                           <input
                             type="checkbox"
                             checked={makeAppointments}
                             onChange={(e) => setMakeAppointments(e.target.checked)}
-                            className="mt-0.5 h-4 w-4 accent-[#c85776]"
+                            className="mt-0.5 h-4 w-4 accent-[#A5556E]"
                           />
                           <span>
-                            <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#352432]">
-                              <CalendarCheck className="h-4 w-4 text-[#c85776]" />
+                            <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#2A2027]">
+                              <CalendarCheck className="h-4 w-4 text-[#A5556E]" />
                               Yapılan seanslar randevu geçmişine işlensin
                             </span>
                             <span className={`mt-0.5 block ${HINT}`}>
-                              {sessionsUsedNum} adet <b className="font-semibold text-[#4a3a44]">tamamlanmış</b> geçmiş randevu
+                              {sessionsUsedNum} adet <b className="font-semibold text-[#3E343A]">tamamlanmış</b> geçmiş randevu
                               açılır; randevular sayfasında ve müşteri kartında görünür. Ciro iki kez sayılmasın diye
                               randevu tutarı 0 yazılır.
                             </span>
@@ -647,8 +647,8 @@ export default function HistoricalSaleDialog({
                                   onClick={() => setPerSession(opt.key)}
                                   className={`rounded-[9px] border px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
                                     perSession === opt.key
-                                      ? 'border-[#c85776] bg-[#c85776] text-white'
-                                      : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                                      ? 'border-[#8C4460] bg-[#A5556E] text-white'
+                                      : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690]'
                                   }`}
                                 >
                                   {opt.label}
@@ -674,14 +674,14 @@ export default function HistoricalSaleDialog({
                             {perSession && (
                               <div className="mt-2.5">
                                 <div className={`mb-1.5 ${HINT}`}>
-                                  Her seansın <b className="font-semibold text-[#4a3a44]">ne zaman</b> ve
-                                  <b className="font-semibold text-[#4a3a44]"> kim tarafından</b> yapıldığını girin.
+                                  Her seansın <b className="font-semibold text-[#3E343A]">ne zaman</b> ve
+                                  <b className="font-semibold text-[#3E343A]"> kim tarafından</b> yapıldığını girin.
                                   Boş bıraktığınız alan üstteki varsayılana düşer.
                                 </div>
                                 <div className="max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
                                   {sessionRows.slice(0, sessionsUsedNum).map((row, i) => (
                                     <div key={i} className="flex items-center gap-2 rounded-[10px] border border-[#f0e0e6] bg-white px-2 py-1.5">
-                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[10.5px] font-bold text-[#a3576f]">
+                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#F6DFE6] text-[10.5px] font-bold text-[#8C4460]">
                                         {i + 1}
                                       </span>
                                       <input
@@ -719,7 +719,7 @@ export default function HistoricalSaleDialog({
                   seansın hangi hizmetten düşeceği seçilmeli (yoksa kalan seans takip edilemez). */}
               {kind === 'free' && Number(sessionsTotal) > 0 && (
                 <div className="mt-3">
-                  <span className={LABEL}><Scissors className="mr-1 inline h-3.5 w-3.5 text-[#c85776]" />Seanslar hangi hizmetten düşülsün? *</span>
+                  <span className={LABEL}><Scissors className="mr-1 inline h-3.5 w-3.5 text-[#A5556E]" />Seanslar hangi hizmetten düşülsün? *</span>
                   <CatalogPicker items={servicePickerItems} value={serviceId} onChange={setServiceId} emptyText="Hizmet bulunamadı." clearable />
                   <span className={`mt-1 block ${HINT}`}>Randevu tamamlandıkça seans buradan düşer.</span>
                 </div>
@@ -735,7 +735,7 @@ export default function HistoricalSaleDialog({
           </div>
 
           {/* CANLI ÖZET — yazdıkça güncellenir, kaydetmeden önce kontrol imkânı verir */}
-          <aside className="mt-4 rounded-[16px] border border-[#ead8df] bg-white p-4 lg:sticky lg:top-0 lg:mt-0">
+          <aside className="mt-4 rounded-[16px] border border-[#EAD8DF] bg-white p-4 lg:sticky lg:top-0 lg:mt-0">
             <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#6b4aa0]">
               <Archive className="h-3.5 w-3.5" /> Kayıt özeti
             </span>
@@ -757,7 +757,7 @@ export default function HistoricalSaleDialog({
                     style={{ width: `${Math.max(3, paidPct)}%` }}
                   />
                 </span>
-                <span className="shrink-0 text-[11px] font-bold tabular-nums text-[#4a3a44]">%{paidPct}</span>
+                <span className="shrink-0 text-[11px] font-bold tabular-nums text-[#3E343A]">%{paidPct}</span>
               </div>
             )}
 
@@ -803,13 +803,13 @@ export default function HistoricalSaleDialog({
           </aside>
         </div>
 
-        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-[#ead8df] bg-white px-4 py-3 sm:px-6">
-          <button type="button" onClick={onClose} disabled={working} className="cursor-pointer rounded-[11px] border border-[#ead8df] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#705a66] transition-colors hover:bg-[#fff4f8] disabled:opacity-60">Vazgeç</button>
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-[#EAD8DF] bg-white px-4 py-3 sm:px-6">
+          <button type="button" onClick={onClose} disabled={working} className="cursor-pointer rounded-[11px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#74616A] transition-colors hover:bg-[#F7F6F6] disabled:opacity-60">Vazgeç</button>
           <button
             type="button"
             onClick={submit}
             disabled={working}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-[11px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-5 py-2 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(214,95,131,0.95)] transition-opacity hover:opacity-95 disabled:opacity-60"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-[11px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 py-2 text-[12.5px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(214,95,131,0.95)] transition-opacity hover:opacity-95 disabled:opacity-60"
           >
             {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Kaydet
           </button>
@@ -823,8 +823,8 @@ export default function HistoricalSaleDialog({
 function SummaryRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[#705a66]">{label}</span>
-      <span className={`font-bold tabular-nums ${tone || 'text-[#352432]'}`}>{value}</span>
+      <span className="text-[#74616A]">{label}</span>
+      <span className={`font-bold tabular-nums ${tone || 'text-[#2A2027]'}`}>{value}</span>
     </div>
   )
 }

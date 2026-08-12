@@ -60,7 +60,7 @@ const STATUS_TONE: Record<string, string> = {
   devam: 'bg-sky-50 text-sky-700 border-sky-200/60',
 }
 // Net ayrışan, marka uyumlu palet — yan yana dilimler birbirinden bariz farklı görünsün.
-const DONUT_COLORS = ['#c85776', '#7c5cbf', '#2fae8e', '#e8932f', '#4a9fe0', '#d65a8e']
+const DONUT_COLORS = ['#A5556E', '#7c5cbf', '#2fae8e', '#e8932f', '#4a9fe0', '#d65a8e']
 
 /**
  * OKUNABİLİRLİK NOTU: bu modal `ModalPortal` ile <body>'ye taşınır, yani `globals.css`'teki
@@ -68,8 +68,8 @@ const DONUT_COLORS = ['#c85776', '#7c5cbf', '#2fae8e', '#e8932f', '#4a9fe0', '#d
  * metinlerde `#352432/45` gibi opaklıklar yerine doğrudan okunur tonlar kullanılır:
  * birincil #352432 · yarı-muted #4a3a44 · muted #705a66 (en küçük punto 10px).
  */
-const MUTED = 'text-[#705a66]'
-const SEMI = 'text-[#4a3a44]'
+const MUTED = 'text-[#74616A]'
+const SEMI = 'text-[#3E343A]'
 
 type ApptFilterKey = 'all' | 'tamamlandi' | 'devam' | 'bekliyor' | 'iptal'
 const APPT_FILTERS: { key: ApptFilterKey; label: string }[] = [
@@ -129,22 +129,22 @@ function MiniLineChart({ values, labels }: { values: number[]; labels: string[] 
       <svg viewBox="0 0 100 42" preserveAspectRatio="none" className="h-32 w-full overflow-visible xl:h-36">
         <defs>
           <linearGradient id="cdm-spark" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c85776" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#c85776" stopOpacity="0" />
+            <stop offset="0%" stopColor="#A5556E" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#A5556E" stopOpacity="0" />
           </linearGradient>
         </defs>
         {!allZero && <polygon points={area} fill="url(#cdm-spark)" />}
         <polyline
           points={line}
           fill="none"
-          stroke="#c85776"
+          stroke="#A5556E"
           strokeWidth="1.6"
           vectorEffect="non-scaling-stroke"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         {pts.map((p, i) => (
-          <circle key={i} cx={p[0]} cy={p[1]} r="1.4" fill="#c85776" vectorEffect="non-scaling-stroke" />
+          <circle key={i} cx={p[0]} cy={p[1]} r="1.4" fill="#A5556E" vectorEffect="non-scaling-stroke" />
         ))}
       </svg>
       <div className={`mt-1.5 flex justify-between text-[10px] font-semibold uppercase tracking-wide ${MUTED}`}>
@@ -188,14 +188,14 @@ function MiniDonut({ segments, centerLabel, centerValue, formatValue }: { segmen
           })}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="font-display text-[19px] leading-none tracking-tight text-[#352432]">{centerValue}</span>
+          <span className="font-display text-[19px] leading-none tracking-tight text-[#2A2027]">{centerValue}</span>
           <span className={`mt-1 text-[10px] font-semibold uppercase tracking-wide ${MUTED}`}>{centerLabel}</span>
         </div>
       </div>
 
       <div className="mt-3 space-y-2">
         {segments.length === 0 ? (
-          <div className={`rounded-[10px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-3 text-center text-[11.5px] ${MUTED}`}>Veri yok</div>
+          <div className={`rounded-[10px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-3 text-center text-[11.5px] ${MUTED}`}>Veri yok</div>
         ) : segments.map((seg, i) => {
           const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
           return (
@@ -228,16 +228,16 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-2">
       <span className={`shrink-0 text-[11.5px] ${MUTED}`}>{label}</span>
-      <span className="min-w-0 truncate text-right text-[12.5px] font-medium text-[#352432]">{value}</span>
+      <span className="min-w-0 truncate text-right text-[12.5px] font-medium text-[#2A2027]">{value}</span>
     </div>
   )
 }
 
 function SectionCard({ title, icon: Icon, action, children }: { title: string; icon: typeof User; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-[16px] border border-[#ead8df] bg-white p-4 shadow-[0_14px_40px_-36px_rgba(142,63,91,0.5)]">
+    <div className="rounded-[16px] border border-[#EAD8DF] bg-white p-4 shadow-[0_14px_40px_-36px_rgba(142,63,91,0.5)]">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
           <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{title}</span>
         </div>
         {action}
@@ -261,7 +261,7 @@ function SalesSummaryCard({
       title="Paket & Hizmet Satışları"
       icon={Package}
       action={
-        <button type="button" onClick={onOpen} className="shrink-0 cursor-pointer text-[11px] font-bold text-[#c85776] hover:underline">
+        <button type="button" onClick={onOpen} className="shrink-0 cursor-pointer text-[11px] font-bold text-[#A5556E] hover:underline">
           Tümünü aç
         </button>
       }
@@ -270,19 +270,19 @@ function SalesSummaryCard({
         <button
           type="button"
           onClick={onOpen}
-          className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] transition-colors hover:border-[#efbfd0] hover:bg-[#fff5f8] ${MUTED}`}
+          className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] transition-colors hover:border-[#BE7690] hover:bg-[#fff5f8] ${MUTED}`}
         >
           Satış kaydı yok.
-          <span className="font-bold text-[#c85776]">Geçmiş satış ekle →</span>
+          <span className="font-bold text-[#A5556E]">Geçmiş satış ekle →</span>
         </button>
       ) : (
         <button type="button" onClick={onOpen} className="group w-full cursor-pointer text-left">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <div className={`text-[10.5px] font-semibold uppercase tracking-wider ${MUTED}`}>Toplam satış tutarı</div>
-              <div className="font-display text-[24px] leading-tight tracking-tight tabular-nums text-[#352432]">{formatTL(Math.round(summary.total))}</div>
+              <div className="font-display text-[24px] leading-tight tracking-tight tabular-nums text-[#2A2027]">{formatTL(Math.round(summary.total))}</div>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#ead8df] bg-[#fffafc] px-2.5 py-1 text-[11px] font-bold text-[#a34a62] transition-colors group-hover:border-[#efbfd0] group-hover:bg-[#fff1f6]">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1 text-[11px] font-bold text-[#a34a62] transition-colors group-hover:border-[#BE7690] group-hover:bg-[#F6DFE6]">
               {summary.count} satış <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </span>
           </div>
@@ -316,7 +316,7 @@ function SalesSummaryCard({
               <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10.5px] font-bold text-rose-600">İptal {summary.cancelled}</span>
             )}
             {summary.sessionsTotal > 0 && (
-              <span className="rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] font-bold text-[#a34a62]">
+              <span className="rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10.5px] font-bold text-[#a34a62]">
                 {Math.max(0, summary.sessionsTotal - summary.sessionsUsed)} seans kaldı
               </span>
             )}
@@ -754,16 +754,16 @@ export default function CustomerDetailModal({
             /* Genişlik 1440 → 1760: bu turda KPI şeridi 6 karta çıkınca başlıkta ad/soyad ile
                kartlar aynı satırda yarışmaya başladı ve uzun isimler kırpılıyordu. Geniş
                ekranda ikisi de tam sığar; dar ekranda zaten alt alta iner (xl:flex-row). */
-            className="relative z-10 my-auto flex max-h-[96dvh] w-full max-w-[1760px] flex-col overflow-hidden rounded-[20px] border border-[#ead8df] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.6)] sm:rounded-[26px] lg:h-[92dvh]"
+            className="relative z-10 my-auto flex max-h-[96dvh] w-full max-w-[1760px] flex-col overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.6)] sm:rounded-[26px] lg:h-[92dvh]"
           >
             {/* HEADER */}
-            <header className="relative shrink-0 overflow-hidden border-b border-[#ead8df] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 pb-0 pt-3.5 sm:px-6 sm:pt-4">
+            <header className="relative shrink-0 overflow-hidden border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 pb-0 pt-3.5 sm:px-6 sm:pt-4">
               <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-[#f0aac2]/25 blur-3xl" />
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Kapat"
-                className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] shadow-sm transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] shadow-sm transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -771,7 +771,7 @@ export default function CustomerDetailModal({
               <div className="relative flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between xl:gap-5 xl:pr-12">
                 {/* Kimlik */}
                 <div className="flex min-w-0 items-center gap-3.5 pr-10 xl:pr-0">
-                  <label title="Fotoğraf yükle" className="group relative grid h-14 w-14 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#efbfd0] bg-gradient-to-br from-[#3a1a2a] to-[#c85776] font-display text-lg text-white sm:h-16 sm:w-16 sm:text-xl">
+                  <label title="Fotoğraf yükle" className="group relative grid h-14 w-14 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#BE7690] bg-gradient-to-br from-[#3a1a2a] to-[#A5556E] font-display text-lg text-white sm:h-16 sm:w-16 sm:text-xl">
                     {detailPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={detailPhoto} alt={customer.name} className="h-full w-full object-cover" />
@@ -784,8 +784,8 @@ export default function CustomerDetailModal({
                       {/* AD KIRPILMAZ: uzun ad-soyad "Ayşe Nur Yıldırımoğ…" gibi kesiliyordu.
                           `truncate` yerine sarma — yer darsa ikinci satıra iner, kimlik hep
                           tam okunur (rozetler zaten flex-wrap ile alta geçiyor). */}
-                      <h2 className="min-w-0 font-display text-xl leading-tight tracking-tight text-[#352432] sm:text-2xl" title={customer.name}>{customer.name}</h2>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${active90 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#ead8df] bg-white text-[#705a66]'}`}>
+                      <h2 className="min-w-0 font-display text-xl leading-tight tracking-tight text-[#2A2027] sm:text-2xl" title={customer.name}>{customer.name}</h2>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${active90 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-[#EAD8DF] bg-white text-[#74616A]'}`}>
                         {active90 ? 'Aktif Müşteri' : 'Pasif'}
                       </span>
                       {customer.isVip && (
@@ -811,16 +811,16 @@ export default function CustomerDetailModal({
                         <span className="flex items-center gap-1">
                           <a
                             href={telHref(customer.phone)}
-                            className={`flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] ${SEMI}`}
+                            className={`flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] ${SEMI}`}
                             title="Ara"
                           >
-                            <Phone className="h-3.5 w-3.5 shrink-0 text-[#c85776]" /> {customer.phone}
+                            <Phone className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" /> {customer.phone}
                           </a>
                           <button
                             type="button"
                             onClick={() => void copyToClipboard(customer.phone, 'phone')}
                             title="Numarayı kopyala"
-                            className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] ${MUTED}`}
+                            className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] ${MUTED}`}
                           >
                             {copied === 'phone' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                           </button>
@@ -830,22 +830,22 @@ export default function CustomerDetailModal({
                         <span className="flex min-w-0 items-center gap-1">
                           <a
                             href={`mailto:${customer.email}`}
-                            className={`flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] ${SEMI}`}
+                            className={`flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] ${SEMI}`}
                             title="E-posta gönder"
                           >
-                            <Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]" /> <span className="truncate">{customer.email}</span>
+                            <Mail className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" /> <span className="truncate">{customer.email}</span>
                           </a>
                           <button
                             type="button"
                             onClick={() => void copyToClipboard(customer.email, 'email')}
                             title="E-postayı kopyala"
-                            className={`grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] ${MUTED}`}
+                            className={`grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] ${MUTED}`}
                           >
                             {copied === 'email' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                           </button>
                         </span>
                       ) : (
-                        <span className={`flex items-center gap-1.5 px-1 ${MUTED}`}><Mail className="h-3.5 w-3.5 shrink-0 text-[#c85776]" /> —</span>
+                        <span className={`flex items-center gap-1.5 px-1 ${MUTED}`}><Mail className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" /> —</span>
                       )}
                     </div>
                   </div>
@@ -863,12 +863,12 @@ export default function CustomerDetailModal({
                         {...(k.onClick ? { type: 'button' as const, onClick: k.onClick, title: 'Ayrıntıya git' } : {})}
                         /* Modal genişlediği için asgari genişlik eski değerine döndü: 104px'te
                            uzun tutarlar (₺123.456) kırpılıyordu. */
-                        className={`min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 text-left xl:min-w-[118px] ${
-                          k.onClick ? 'cursor-pointer transition-colors hover:border-[#efbfd0] hover:bg-white' : ''
+                        className={`min-w-0 rounded-[14px] border border-[#EAD8DF] bg-white/80 px-3 py-2 text-left xl:min-w-[118px] ${
+                          k.onClick ? 'cursor-pointer transition-colors hover:border-[#BE7690] hover:bg-white' : ''
                         }`}
                       >
                         <div className={`text-[10px] font-bold uppercase tracking-wider ${MUTED}`}>{k.label}</div>
-                        <div className={`mt-0.5 truncate font-display tracking-tight tabular-nums ${k.small ? 'text-[13.5px]' : 'text-lg'} ${k.tone || 'text-[#352432]'}`}>{k.value}</div>
+                        <div className={`mt-0.5 truncate font-display tracking-tight tabular-nums ${k.small ? 'text-[13.5px]' : 'text-lg'} ${k.tone || 'text-[#2A2027]'}`}>{k.value}</div>
                         {k.sub && <div className={`truncate text-[10.5px] ${MUTED}`}>{k.sub}</div>}
                       </Tag>
                     )
@@ -897,16 +897,16 @@ export default function CustomerDetailModal({
                     aria-selected={tab === t.key}
                     tabIndex={tab === t.key ? 0 : -1}
                     onClick={() => setTab(t.key)}
-                    className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-[10px] px-3.5 py-2.5 text-[12.5px] font-semibold transition-colors ${tab === t.key ? 'text-[#c85776]' : `${MUTED} hover:text-[#352432]`}`}
+                    className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-[10px] px-3.5 py-2.5 text-[12.5px] font-semibold transition-colors ${tab === t.key ? 'text-[#A5556E]' : `${MUTED} hover:text-[#2A2027]`}`}
                   >
                     {t.label}
                     {typeof t.count === 'number' && t.count > 0 && (
-                      <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${tab === t.key ? 'bg-[#fff1f6] text-[#c85776]' : 'bg-[#f3e9ed] text-[#705a66]'}`}>
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${tab === t.key ? 'bg-[#A5556E] text-white' : 'bg-[#f3e9ed] text-[#74616A]'}`}>
                         {t.count}
                       </span>
                     )}
-                    {t.dot && <span className="h-1.5 w-1.5 rounded-full bg-[#c85776]" title="Not var" />}
-                    {tab === t.key && <motion.span layoutId="cdm-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#c85776]" />}
+                    {t.dot && <span className="h-1.5 w-1.5 rounded-full bg-[#A5556E]" title="Not var" />}
+                    {tab === t.key && <motion.span layoutId="cdm-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#A5556E]" />}
                   </button>
                 ))}
               </div>
@@ -929,7 +929,7 @@ export default function CustomerDetailModal({
                   {/* SOL: Müşteri bilgileri + hızlı işlemler */}
                   <div className="space-y-4 xl:col-span-3">
                     <SectionCard title="Müşteri Bilgileri" icon={User} action={editSlot}>
-                      <div className="divide-y divide-[#f1e5ea]">
+                      <div className="divide-y divide-[#F1E7EB]">
                         <InfoRow label="Ad Soyad" value={customer.name} />
                         <InfoRow label="Telefon" value={customer.phone} />
                         <InfoRow label="E-posta" value={customer.email || '—'} />
@@ -957,9 +957,9 @@ export default function CustomerDetailModal({
                         <button
                           type="button"
                           onClick={onCreateAppointment}
-                          className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3 py-2.5 text-[12.5px] font-semibold text-[#352432] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6]"
+                          className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                         >
-                          <span className="flex items-center gap-2"><CalendarPlus className="h-4 w-4 text-[#c85776]" /> Randevu Oluştur</span>
+                          <span className="flex items-center gap-2"><CalendarPlus className="h-4 w-4 text-[#A5556E]" /> Randevu Oluştur</span>
                           <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
                         </button>
                         {saleSlot}
@@ -982,18 +982,18 @@ export default function CustomerDetailModal({
                           <button
                             type="button"
                             onClick={() => setSalesOpen(true)}
-                            className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3 py-2.5 text-[12.5px] font-semibold text-[#352432] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6]"
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                           >
-                            <span className="flex items-center gap-2"><Package className="h-4 w-4 text-[#c85776]" /> Satışları Görüntüle</span>
+                            <span className="flex items-center gap-2"><Package className="h-4 w-4 text-[#A5556E]" /> Satışları Görüntüle</span>
                             <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
                           </button>
                         )}
                         <button
                           type="button"
                           onClick={() => setTab('notes')}
-                          className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3 py-2.5 text-[12.5px] font-semibold text-[#352432] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6]"
+                          className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                         >
-                          <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#c85776]" /> Not Ekle</span>
+                          <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#A5556E]" /> Not Ekle</span>
                           <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
                         </button>
                         <CustomerVipToggle variant="row" customerId={customer.id} tenantId={tenantId} isVip={Boolean(customer.isVip)} onChanged={onReload} />
@@ -1015,7 +1015,7 @@ export default function CustomerDetailModal({
                       <MiniLineChart values={spendValues} labels={spendLabels} />
                       <div className={`mt-2 flex items-center justify-between border-t border-[#f4e7ec] pt-2 text-[11.5px] ${MUTED}`}>
                         <span>Son 6 ay tahsilat</span>
-                        <span className="font-display text-[15px] tabular-nums text-[#c85776]">{formatTL(spendValues.reduce((s, v) => s + v, 0))}</span>
+                        <span className="font-display text-[15px] tabular-nums text-[#A5556E]">{formatTL(spendValues.reduce((s, v) => s + v, 0))}</span>
                       </div>
                     </SectionCard>
 
@@ -1036,18 +1036,18 @@ export default function CustomerDetailModal({
                     <SectionCard
                       title="Son Randevular"
                       icon={CalendarPlus}
-                      action={customerAppts.length > 6 ? <button type="button" onClick={() => setTab('appointments')} className="shrink-0 cursor-pointer text-[11px] font-bold text-[#c85776] hover:underline">Tümünü gör</button> : undefined}
+                      action={customerAppts.length > 6 ? <button type="button" onClick={() => setTab('appointments')} className="shrink-0 cursor-pointer text-[11px] font-bold text-[#A5556E] hover:underline">Tümünü gör</button> : undefined}
                     >
                       <div className="space-y-2">
                         {customerAppts.length === 0 ? (
-                          <div className={`rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] ${MUTED}`}>Randevu kaydı yok.</div>
+                          <div className={`rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] ${MUTED}`}>Randevu kaydı yok.</div>
                         ) : customerAppts.slice(0, 6).map((a) => (
                           <div key={a.id} className="flex items-center justify-between gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2">
                             <div className="min-w-0">
-                              <div className="truncate text-[12.5px] font-medium text-[#352432]">{a.islem}</div>
+                              <div className="truncate text-[12.5px] font-medium text-[#2A2027]">{a.islem}</div>
                               <div className={`flex items-center gap-2 text-[11px] ${MUTED}`}>
                                 <span className="tabular-nums">{a.date}</span>
-                                {a.personel && <span className="flex items-center gap-0.5"><User className="h-3 w-3 text-[#c85776]" /> {a.personel}</span>}
+                                {a.personel && <span className="flex items-center gap-0.5"><User className="h-3 w-3 text-[#A5556E]" /> {a.personel}</span>}
                               </div>
                             </div>
                             <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold ${STATUS_TONE[a.status] || 'bg-slate-50 text-slate-600 border-slate-200/60'}`}>
@@ -1093,14 +1093,14 @@ export default function CustomerDetailModal({
                             value={apptQuery}
                             onChange={(e) => setApptQuery(e.target.value)}
                             placeholder="İşlem, personel veya tarih ara…"
-                            className="w-full rounded-[10px] border border-[#ead8df] bg-[#fffafc] py-2 pl-8 pr-8 text-[12.5px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#9d8590]"
+                            className="w-full rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] py-2 pl-8 pr-8 text-[12.5px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E] placeholder:text-[#74616A]"
                           />
                           {apptQuery && (
                             <button
                               type="button"
                               onClick={() => setApptQuery('')}
                               aria-label="Aramayı temizle"
-                              className={`absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] ${MUTED}`}
+                              className={`absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] ${MUTED}`}
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -1118,8 +1118,8 @@ export default function CustomerDetailModal({
                                 onClick={() => setApptStatus(f.key)}
                                 className={`cursor-pointer rounded-full border px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
                                   on
-                                    ? 'border-[#c85776] bg-[#c85776] text-white'
-                                    : `border-[#ead8df] bg-white hover:border-[#efbfd0] hover:text-[#352432] ${MUTED}`
+                                    ? 'border-[#8C4460] bg-[#A5556E] text-white'
+                                    : `border-[#EAD8DF] bg-white hover:border-[#BE7690] hover:text-[#2A2027] ${MUTED}`
                                 }`}
                               >
                                 {f.label} <span className="tabular-nums opacity-70">{n}</span>
@@ -1132,14 +1132,14 @@ export default function CustomerDetailModal({
                     {/* Geniş modalda randevu geçmişi iki sütuna açılır. */}
                     <div className="grid gap-1.5 2xl:grid-cols-2">
                       {customerAppts.length === 0 ? (
-                        <div className={`rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] 2xl:col-span-2 ${MUTED}`}>Randevu kaydı yok.</div>
+                        <div className={`rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] 2xl:col-span-2 ${MUTED}`}>Randevu kaydı yok.</div>
                       ) : filteredAppts.length === 0 ? (
-                        <div className={`rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] 2xl:col-span-2 ${MUTED}`}>
+                        <div className={`rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] 2xl:col-span-2 ${MUTED}`}>
                           Süzgeçle eşleşen randevu yok.
                           <button
                             type="button"
                             onClick={() => { setApptQuery(''); setApptStatus('all') }}
-                            className="ml-1.5 cursor-pointer font-bold text-[#c85776] hover:underline"
+                            className="ml-1.5 cursor-pointer font-bold text-[#A5556E] hover:underline"
                           >
                             Temizle
                           </button>
@@ -1147,12 +1147,12 @@ export default function CustomerDetailModal({
                       ) : filteredAppts.map((a) => (
                         <div key={a.id} className="flex items-center justify-between gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-3 py-2">
                           <div className="flex min-w-0 items-center gap-2.5">
-                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><CalendarPlus className="h-4 w-4" /></span>
+                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#A5556E] text-white"><CalendarPlus className="h-4 w-4" /></span>
                             <div className="min-w-0">
-                              <div className="truncate text-[12.5px] font-medium text-[#352432]">{a.islem}</div>
+                              <div className="truncate text-[12.5px] font-medium text-[#2A2027]">{a.islem}</div>
                               <div className={`flex items-center gap-2 text-[11px] ${MUTED}`}>
                                 <span className="tabular-nums">{a.date} · {a.time}</span>
-                                {a.personel && <span className="flex items-center gap-0.5"><User className="h-3 w-3 text-[#c85776]" /> {a.personel}</span>}
+                                {a.personel && <span className="flex items-center gap-0.5"><User className="h-3 w-3 text-[#A5556E]" /> {a.personel}</span>}
                               </div>
                             </div>
                           </div>
@@ -1200,7 +1200,7 @@ export default function CustomerDetailModal({
                       onBlur={() => void saveNote(noteDraft)}
                       rows={7}
                       placeholder="Tercih, cilt tipi, alerji, kampanya isteği vb."
-                      className="w-full resize-none rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#9d8590]"
+                      className="w-full resize-none rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E] placeholder:text-[#74616A]"
                     />
                     <div className="mt-1.5 flex items-center justify-between gap-2">
                       <span className={`text-[11px] ${MUTED}`}>Alandan çıkınca otomatik kaydedilir.</span>
@@ -1208,7 +1208,7 @@ export default function CustomerDetailModal({
                         <button
                           type="button"
                           onClick={() => void saveNote(noteDraft)}
-                          className="cursor-pointer rounded-[9px] bg-[#c85776] px-3 py-1.5 text-[11.5px] font-semibold text-white transition-opacity hover:opacity-90"
+                          className="cursor-pointer rounded-[9px] bg-[#A5556E] px-3 py-1.5 text-[11.5px] font-semibold text-white transition-opacity hover:opacity-90"
                         >
                           Kaydet
                         </button>
@@ -1224,32 +1224,32 @@ export default function CustomerDetailModal({
             </div>
 
             {/* FOOTER */}
-            <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#ead8df] bg-white/80 px-4 py-3 sm:px-6">
+            <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#EAD8DF] bg-white/80 px-4 py-3 sm:px-6">
               <span className={`hidden items-center gap-1.5 text-[11.5px] sm:flex ${MUTED}`}>
-                <ReceiptText className="h-3.5 w-3.5 text-[#c85776]" /> {customer.lastService && customer.lastService !== '—' ? `Son işlem: ${customer.lastService}` : 'Danışan kartı'}
+                <ReceiptText className="h-3.5 w-3.5 text-[#A5556E]" /> {customer.lastService && customer.lastService !== '—' ? `Son işlem: ${customer.lastService}` : 'Danışan kartı'}
               </span>
               <div className="flex items-center gap-2">
                 {hasSalesPanel && (
                   <button
                     type="button"
                     onClick={() => setSalesOpen(true)}
-                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[12.5px] font-semibold transition-colors hover:border-[#efbfd0] hover:text-[#c85776] ${SEMI}`}
+                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12.5px] font-semibold transition-colors hover:border-[#BE7690] hover:text-[#A5556E] ${SEMI}`}
                   >
-                    <Package className="h-3.5 w-3.5 text-[#c85776]" /> Satışlar
-                    {salesSummary.count > 0 && <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-[#a34a62]">{salesSummary.count}</span>}
+                    <Package className="h-3.5 w-3.5 text-[#A5556E]" /> Satışlar
+                    {salesSummary.count > 0 && <span className="rounded-full bg-[#F6DFE6] px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-[#a34a62]">{salesSummary.count}</span>}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={onClose}
-                  className={`cursor-pointer rounded-[10px] border border-[#ead8df] bg-white px-4 py-2 text-[12.5px] font-semibold transition-colors hover:bg-[#fff4f8] ${SEMI}`}
+                  className={`cursor-pointer rounded-[10px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-semibold transition-colors hover:bg-[#F7F6F6] ${SEMI}`}
                 >
                   Kapat
                 </button>
                 <button
                   type="button"
                   onClick={onCreateAppointment}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-[#c85776] px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
                 >
                   <CalendarPlus className="h-3.5 w-3.5" /> Randevu Oluştur
                 </button>

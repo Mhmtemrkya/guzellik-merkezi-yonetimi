@@ -86,12 +86,12 @@ export interface ExpenseFormDialogProps {
 }
 
 const fieldStyle =
-  'min-h-11 w-full rounded-[14px] border border-[#ead8df]/[0.80] bg-white/[0.88] px-3 py-2 text-sm text-[#352432] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors placeholder:text-[#8f7784]/[0.45] hover:border-[#efbfd0]/[0.85] focus:border-[#f0aac2]/[0.85] focus:bg-white focus:outline-none'
+  'min-h-11 w-full rounded-[14px] border border-[#EAD8DF]/[0.80] bg-white/[0.88] px-3 py-2 text-sm text-[#2A2027] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors placeholder:text-[#8f7784]/[0.45] hover:border-[#BE7690]/[0.85] focus:border-[#f0aac2]/[0.85] focus:bg-white focus:outline-none'
 
 const labelStyle =
-  'flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#c85776]/[0.70]'
+  'flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#A5556E]/[0.70]'
 
-const helperStyle = 'mt-1 text-[10px] leading-relaxed text-[#352432]/[0.40]'
+const helperStyle = 'mt-1 text-[10px] leading-relaxed text-[#2A2027]/[0.40]'
 
 function periodLabelFromDate(iso: string): string {
   const d = iso ? new Date(iso) : new Date()
@@ -203,28 +203,28 @@ export default function ExpenseFormDialog({
     [customCategories],
   )
 
-  const categoryTone = 'bg-[#fff1f6] text-[#c05277]'
+  const categoryTone = 'bg-[#A5556E] text-white'
   const field =
-    'w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#b499a6]'
+    'w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E] placeholder:text-[#74616A]'
   const label = 'mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]'
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[26px] border border-[#EAD8DF] bg-white !p-0 text-[#2A2027] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 720px)', maxHeight: '90dvh' }}
       >
         {/* ---- Başlık ---- */}
         <div className="shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f8] via-white to-[#fff2f6] px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#A5556E]">
                 <TrendingDown className="h-5 w-5" />
               </span>
               <div className="min-w-0">
                 <DialogTitle className="text-[16px] font-bold text-[#2b1e29]">{title}</DialogTitle>
-                <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#705a66]">
+                <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#74616A]">
                   Kira, fatura, sarf gibi tüm para çıkışları burada toplanır. Personel maaşı için “Personel Maaşları” sekmesini kullan.
                 </DialogDescription>
               </div>
@@ -232,7 +232,7 @@ export default function ExpenseFormDialog({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#3b2330]"
               aria-label="Kapat"
             >
               <X className="h-4 w-4" />
@@ -244,7 +244,7 @@ export default function ExpenseFormDialog({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {/* Kategori kartları */}
           <div>
-            <span className={label}><Tag className="h-3.5 w-3.5 text-[#c05277]" /> Kategori</span>
+            <span className={label}><Tag className="h-3.5 w-3.5 text-[#A5556E]" /> Kategori</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {visiblePredefined.map((key) => {
                 const Icon = categoryIcons[key] || ScrollText
@@ -255,13 +255,13 @@ export default function ExpenseFormDialog({
                     type="button"
                     onClick={() => setValues((v) => ({ ...v, category: key, customCategoryName: key === 'Other' ? v.customCategoryName : null }))}
                     className={`flex items-center gap-2 rounded-[13px] border px-2.5 py-2 text-left transition-colors ${
-                      on ? 'border-[#c85776] bg-[#fff1f6]' : 'border-[#ead8df] bg-white hover:border-[#efbfd0]'
+                      on ? 'border-[#8C4460] bg-[#F6DFE6]' : 'border-[#EAD8DF] bg-white hover:border-[#BE7690]'
                     }`}
                   >
-                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${on ? 'bg-[#c85776] text-white' : categoryTone}`}>
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[9px] ${on ? 'bg-[#A5556E] text-white' : categoryTone}`}>
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="truncate text-[11.5px] font-semibold text-[#4a3a44]">{expenseCategoryLabels[key]}</span>
+                    <span className="truncate text-[11.5px] font-semibold text-[#3E343A]">{expenseCategoryLabels[key]}</span>
                   </button>
                 )
               })}
@@ -278,8 +278,8 @@ export default function ExpenseFormDialog({
                 transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                 className="overflow-hidden"
               >
-                <div className="rounded-[14px] border border-[#f0e0e6] bg-[#fffafc] p-3">
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">
+                <div className="rounded-[14px] border border-[#f0e0e6] bg-[#F7F6F6] p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">
                     <Sparkles className="h-3.5 w-3.5" /> Özel kategori
                   </div>
                   {sortedCustomCategories.length > 0 && (
@@ -292,7 +292,7 @@ export default function ExpenseFormDialog({
                               type="button"
                               onClick={() => setValues((v) => ({ ...v, customCategoryName: c.name }))}
                               className={`rounded-l-[10px] border px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
-                                on ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                                on ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690]'
                               }`}
                             >
                               {c.name}
@@ -301,7 +301,7 @@ export default function ExpenseFormDialog({
                               <button
                                 type="button"
                                 onClick={() => void onDeleteCustomCategory(c.id)}
-                                className="rounded-r-[10px] border border-l-0 border-[#ead8df] bg-white px-1.5 py-1.5 text-[#b499a6] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                className="rounded-r-[10px] border border-l-0 border-[#EAD8DF] bg-white px-1.5 py-1.5 text-[#74616A] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                                 aria-label={`${c.name} kategorisini sil`}
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -325,7 +325,7 @@ export default function ExpenseFormDialog({
                         type="button"
                         disabled={creatingCategory || !newCategoryName.trim()}
                         onClick={() => void handleCreateCategory()}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-[12px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2.5 text-[11.5px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef] disabled:opacity-40"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-[12px] border border-[#8C4460]/45 bg-[#F6DFE6] px-3 py-2.5 text-[11.5px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6] disabled:opacity-40"
                       >
                         {creatingCategory ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Ekle
                       </button>
@@ -333,7 +333,7 @@ export default function ExpenseFormDialog({
                   )}
                   {categoryError && <div className="mt-1.5 text-[11px] font-medium text-rose-600">{categoryError}</div>}
                   {showCustomList && sortedCustomCategories.length === 0 && !onCreateCustomCategory && (
-                    <div className="mt-1.5 text-[11px] text-[#705a66]">Tanımlı özel kategori yok.</div>
+                    <div className="mt-1.5 text-[11px] text-[#74616A]">Tanımlı özel kategori yok.</div>
                   )}
                 </div>
               </motion.div>
@@ -343,9 +343,9 @@ export default function ExpenseFormDialog({
           {/* Tutar + yöntem */}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className={label}><Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar</span>
-              <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#c85776]">
-                <span className="text-[13px] font-semibold text-[#705a66]">₺</span>
+              <span className={label}><Wallet className="h-3.5 w-3.5 text-[#A5556E]" /> Tutar</span>
+              <div className="flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 focus-within:border-[#8C4460]">
+                <span className="text-[13px] font-semibold text-[#74616A]">₺</span>
                 <input
                   type="number"
                   min={0}
@@ -353,12 +353,12 @@ export default function ExpenseFormDialog({
                   value={values.amount || ''}
                   placeholder="0"
                   onChange={(e) => setValues((v) => ({ ...v, amount: Number(e.target.value) }))}
-                  className="w-full bg-transparent text-[15px] font-bold tabular-nums text-[#352432] outline-none"
+                  className="w-full bg-transparent text-[15px] font-bold tabular-nums text-[#2A2027] outline-none"
                 />
               </div>
             </label>
             <div>
-              <span className={label}><CreditCard className="h-3.5 w-3.5 text-[#c05277]" /> Ödeme yöntemi</span>
+              <span className={label}><CreditCard className="h-3.5 w-3.5 text-[#A5556E]" /> Ödeme yöntemi</span>
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(paymentMethodLabels) as ExpensePaymentMethodKey[]).map((m) => {
                   const on = values.paymentMethod === m
@@ -368,7 +368,7 @@ export default function ExpenseFormDialog({
                       type="button"
                       onClick={() => setValues((v) => ({ ...v, paymentMethod: m }))}
                       className={`rounded-[11px] border px-2.5 py-2 text-[11.5px] font-semibold transition-colors ${
-                        on ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                        on ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690]'
                       }`}
                     >
                       {paymentMethodLabels[m]}
@@ -382,7 +382,7 @@ export default function ExpenseFormDialog({
           {/* Tarih + dönem */}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className={label}><Calendar className="h-3.5 w-3.5 text-[#c05277]" /> Tarih</span>
+              <span className={label}><Calendar className="h-3.5 w-3.5 text-[#A5556E]" /> Tarih</span>
               <input
                 type="date"
                 value={values.occurredAt}
@@ -391,21 +391,21 @@ export default function ExpenseFormDialog({
               />
             </label>
             <label className="block">
-              <span className={label}><CalendarClock className="h-3.5 w-3.5 text-[#c05277]" /> Dönem</span>
+              <span className={label}><CalendarClock className="h-3.5 w-3.5 text-[#A5556E]" /> Dönem</span>
               <input
                 type="month"
                 value={values.periodLabel}
                 onChange={(e) => setValues((v) => ({ ...v, periodLabel: e.target.value }))}
                 className={field}
               />
-              <span className="mt-1 block text-[10.5px] text-[#705a66]">Faturanın hangi aya ait olduğu</span>
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">Faturanın hangi aya ait olduğu</span>
             </label>
           </div>
 
           {/* Açıklama + fiş no */}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className={label}><PenLine className="h-3.5 w-3.5 text-[#c05277]" /> Açıklama</span>
+              <span className={label}><PenLine className="h-3.5 w-3.5 text-[#A5556E]" /> Açıklama</span>
               <input
                 value={values.description}
                 onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
@@ -414,7 +414,7 @@ export default function ExpenseFormDialog({
               />
             </label>
             <label className="block">
-              <span className={label}><Hash className="h-3.5 w-3.5 text-[#c05277]" /> Fiş / fatura no</span>
+              <span className={label}><Hash className="h-3.5 w-3.5 text-[#A5556E]" /> Fiş / fatura no</span>
               <input
                 value={values.reference}
                 onChange={(e) => setValues((v) => ({ ...v, reference: e.target.value }))}
@@ -437,8 +437,8 @@ export default function ExpenseFormDialog({
         {/* ---- Alt bar ---- */}
         <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 text-[11px] text-[#705a66]">
-              <b className="text-[#352432]">
+            <div className="min-w-0 text-[11px] text-[#74616A]">
+              <b className="text-[#2A2027]">
                 {values.category === 'Other' ? values.customCategoryName || 'Özel kategori' : expenseCategoryLabels[values.category]}
               </b>
               {values.amount > 0 ? ` · ₺${values.amount.toLocaleString('tr-TR')}` : ''}
@@ -447,7 +447,7 @@ export default function ExpenseFormDialog({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="inline-flex min-h-10 items-center rounded-[12px] border border-[#ead8df] bg-white px-4 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0]"
+                className="inline-flex min-h-10 items-center rounded-[12px] border border-[#EAD8DF] bg-white px-4 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#BE7690]"
               >
                 Vazgeç
               </button>
@@ -455,7 +455,7 @@ export default function ExpenseFormDialog({
                 type="button"
                 disabled={busy}
                 onClick={() => void handleSubmit()}
-                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {submitLabel}
               </button>

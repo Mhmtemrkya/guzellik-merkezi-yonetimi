@@ -271,7 +271,7 @@ function Stat({
       >
         {value}
       </span>
-      <span className="text-[11.5px] text-[#705a66]">{label}</span>
+      <span className="text-[11.5px] text-[#74616A]">{label}</span>
     </span>
   )
 }
@@ -823,30 +823,30 @@ export default function DayScheduleModal({
             exit={{ opacity: 0, y: 12, scale: 0.99 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative flex h-full w-full max-w-[1680px] flex-col overflow-hidden rounded-[22px] border border-[#ead8df]/80 bg-white shadow-[0_50px_140px_-40px_rgba(120,71,88,0.6)]"
+            className="relative flex h-full w-full max-w-[1680px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF]/80 bg-white shadow-[0_50px_140px_-40px_rgba(120,71,88,0.6)]"
           >
             <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-30 h-px bg-gradient-to-r from-transparent via-[#f0aac2] to-transparent" />
 
             {/* ===================== ÜST BAR ===================== */}
-            <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb] px-4 py-3 sm:px-5">
+            <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fff9fb] px-4 py-3 sm:px-5">
               <div className="flex items-center gap-2.5">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#f8d8e2] bg-gradient-to-br from-[#fff2f6] to-[#ffd9e4] text-[#c85776] shadow-[0_12px_28px_-18px_rgba(190,91,125,0.9)]">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#f8d8e2] bg-gradient-to-br from-[#fff2f6] to-[#ffd9e4] text-[#A5556E] shadow-[0_12px_28px_-18px_rgba(190,91,125,0.9)]">
                   <CalendarDays className="h-5 w-5" strokeWidth={1.7} />
                 </span>
                 {onChangeDate && (
-                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, -1) : view === 'week' ? shiftDayIso(date, -7) : monthShiftIso(date, -1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label={view === 'day' ? 'Önceki gün' : view === 'week' ? 'Önceki hafta' : 'Önceki ay'}>
+                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, -1) : view === 'week' ? shiftDayIso(date, -7) : monthShiftIso(date, -1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]" aria-label={view === 'day' ? 'Önceki gün' : view === 'week' ? 'Önceki hafta' : 'Önceki ay'}>
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                 )}
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-display text-[20px] font-bold leading-none tracking-tight text-[#241923]">{headTitle}</h2>
-                    {isTodayInView && <span className="rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2 py-0.5 text-[10px] font-semibold text-[#c85776]">{badgeLabel}</span>}
+                    {isTodayInView && <span className="rounded-full border border-[#BE7690] bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-semibold text-[#A5556E]">{badgeLabel}</span>}
                   </div>
-                  <div className="mt-1 text-[11.5px] capitalize text-[#8a7480]">{headSubtitle}</div>
+                  <div className="mt-1 text-[11.5px] capitalize text-[#74616A]">{headSubtitle}</div>
                 </div>
                 {onChangeDate && (
-                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, 1) : view === 'week' ? shiftDayIso(date, 7) : monthShiftIso(date, 1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]" aria-label={view === 'day' ? 'Sonraki gün' : view === 'week' ? 'Sonraki hafta' : 'Sonraki ay'}>
+                  <button type="button" onClick={() => onChangeDate(view === 'day' ? shiftDayIso(date, 1) : view === 'week' ? shiftDayIso(date, 7) : monthShiftIso(date, 1))} className="grid h-8 w-8 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]" aria-label={view === 'day' ? 'Sonraki gün' : view === 'week' ? 'Sonraki hafta' : 'Sonraki ay'}>
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 )}
@@ -854,14 +854,14 @@ export default function DayScheduleModal({
 
               <div className="flex items-center gap-2">
                 {/* Görünüm sekmeleri — Gün · Hafta · Ay (modal içinde geçiş yapar) */}
-                <div className="flex items-center rounded-full border border-[#ead8df] bg-white p-0.5">
+                <div className="flex items-center rounded-full border border-[#EAD8DF] bg-white p-0.5">
                   {([['day', 'Gün'], ['week', 'Hafta'], ['month', 'Ay']] as [CalView, string][]).map(([v, label]) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => setView(v)}
                       aria-pressed={view === v}
-                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${view === v ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#c85776]'}`}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${view === v ? 'bg-[#A5556E] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#A5556E]'}`}
                     >
                       {label}
                     </button>
@@ -869,18 +869,18 @@ export default function DayScheduleModal({
                 </div>
                 {/* Arama */}
                 <div className="relative hidden sm:block">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#c85776]/60" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A5556E]/60" />
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Müşteri, hizmet, personel…"
-                    className="w-52 rounded-full border border-[#ead8df] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                    className="w-52 rounded-full border border-[#EAD8DF] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:bg-[#fff7fa] hover:text-[#c85776]"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:bg-[#fff7fa] hover:text-[#A5556E]"
                   aria-label="Kapat"
                 >
                   <X className="h-4 w-4" />
@@ -894,8 +894,8 @@ export default function DayScheduleModal({
                 bir içgörü değil gürültüydü. Bu modalın işi ÇİZELGEYİ göstermek —
                 alan çizelgeye verildi. Sayılar tek satırda, SIFIR OLANLAR GİZLİ:
                 ekranda kalan her sayı gerçekten bir şey söylüyor. */}
-            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[#ead8df]/70 bg-[#fffafc] px-4 py-2 sm:px-5">
-              <Stat icon={CalendarDays} tone="text-[#c85776]" value={String(cur.randevu)} label="randevu" strong />
+            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2 sm:px-5">
+              <Stat icon={CalendarDays} tone="text-[#A5556E]" value={String(cur.randevu)} label="randevu" strong />
               {cur.completed > 0 && (
                 <Stat icon={CheckCircle2} tone="text-emerald-600" value={String(cur.completed)} label="tamamlandı" />
               )}
@@ -910,7 +910,7 @@ export default function DayScheduleModal({
 
               {/* Doluluk — tek anlamlı oran; ince çubukla, halka yerine. */}
               <div className="ml-auto flex items-center gap-2">
-                <span className="text-[11.5px] font-medium text-[#705a66]">{ringLabel}</span>
+                <span className="text-[11.5px] font-medium text-[#74616A]">{ringLabel}</span>
                 <span className="h-1.5 w-20 overflow-hidden rounded-full bg-[#f3e4ea]">
                   <span
                     className="block h-full rounded-full bg-gradient-to-r from-[#c7768f] to-[#8e3f5b] transition-[width] duration-500"
@@ -930,11 +930,11 @@ export default function DayScheduleModal({
             </div>
 
             {/* ===================== FİLTRE ŞERİDİ ===================== */}
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#ead8df]/70 bg-white px-4 py-2.5 sm:px-5">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#EAD8DF] bg-white px-4 py-2.5 sm:px-5">
               <select
                 value={staffFilter}
                 onChange={(e) => setStaffFilter(e.target.value)}
-                className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
               >
                 <option value="">Personel: Tümü</option>
                 {staffChoices.map((c) => (
@@ -944,7 +944,7 @@ export default function DayScheduleModal({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as AppointmentStatusKey | '')}
-                className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
               >
                 <option value="">Durum: Tümü</option>
                 {statusOrder.map((k) => (
@@ -952,23 +952,23 @@ export default function DayScheduleModal({
                 ))}
               </select>
               {view === 'day' && (
-                <button type="button" onClick={() => setChipBos((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipBos ? 'border-sky-300 bg-sky-50 text-sky-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
+                <button type="button" onClick={() => setChipBos((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipBos ? 'border-sky-300 bg-sky-50 text-sky-700' : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690]'}`}>
                   <CalendarClock className="h-3.5 w-3.5" /> Sadece boş slotlar
                 </button>
               )}
-              <button type="button" onClick={() => setChipOnaysiz((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipOnaysiz ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
+              <button type="button" onClick={() => setChipOnaysiz((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipOnaysiz ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690]'}`}>
                 Onaysız {cur.onay > 0 && <span className="rounded-full bg-indigo-500 px-1.5 text-[9px] text-white">{cur.onay}</span>}
               </button>
-              <button type="button" onClick={() => setChipVip((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipVip ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
+              <button type="button" onClick={() => setChipVip((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipVip ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690]'}`}>
                 <Star className="h-3.5 w-3.5" /> VIP müşteriler
               </button>
               {debtCount > 0 && (
-                <button type="button" onClick={() => setChipOdeme((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipOdeme ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-[#ead8df] bg-white text-[#8a7480] hover:border-[#efbfd0]'}`}>
+                <button type="button" onClick={() => setChipOdeme((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${chipOdeme ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690]'}`}>
                   <Wallet className="h-3.5 w-3.5" /> Ödeme bekleyenler <span className="rounded-full bg-rose-500 px-1.5 text-[9px] text-white">{debtCount}</span>
                 </button>
               )}
               {anyFilter && (
-                <button type="button" onClick={() => { setStaffFilter(''); setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="text-[11px] font-semibold text-[#c85776] hover:underline">
+                <button type="button" onClick={() => { setStaffFilter(''); setStatusFilter(''); setSearch(''); setChipBos(false); setChipOnaysiz(false); setChipVip(false); setChipOdeme(false) }} className="text-[11px] font-semibold text-[#A5556E] hover:underline">
                   Filtreleri temizle
                 </button>
               )}
@@ -981,7 +981,7 @@ export default function DayScheduleModal({
                   onClick={() => setClosePanelOpen(true)}
                   disabled={busy}
                   title="Seçtiğin personelin bu gündeki saatlerini randevuya kapat"
-                  className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#e0b6c7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#c85776] hover:bg-[#fff1f6] hover:text-[#c85776] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#e0b6c7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#8C4460] hover:bg-[#F6DFE6] hover:text-[#A5556E] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Lock className="h-3.5 w-3.5" /> Gün Kapat
                 </button>
@@ -1017,13 +1017,13 @@ export default function DayScheduleModal({
                 {view === 'day' ? (
                   dayAppts.length === 0 && columns.length === 0 ? (
                   <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
-                    <span className="grid h-14 w-14 place-items-center rounded-full border border-[#f3d7e0] bg-[#fff4f8] text-[#c85776]">
+                    <span className="grid h-14 w-14 place-items-center rounded-full border border-[#f3d7e0] bg-[#F7F6F6] text-[#A5556E]">
                       <Clock className="h-6 w-6" strokeWidth={1.6} />
                     </span>
                     <div className="font-display text-lg text-[#241923]">Bu günde randevu yok</div>
-                    <div className="max-w-xs text-[12px] text-[#8a7480]">Boş bir güne hızlıca randevu ekleyebilirsin.</div>
+                    <div className="max-w-xs text-[12px] text-[#74616A]">Boş bir güne hızlıca randevu ekleyebilirsin.</div>
                     {onCreateAt && (
-                      <button type="button" onClick={() => onCreateAt({ date })} className="mt-1 inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                      <button type="button" onClick={() => onCreateAt({ date })} className="mt-1 inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
                         <Plus className="h-4 w-4" /> Yeni randevu
                       </button>
                     )}
@@ -1031,7 +1031,7 @@ export default function DayScheduleModal({
                 ) : (
                   <div style={{ minWidth: innerMinWidth }}>
                     {/* Personel başlık satırı (sticky) — dikey merkezli kart */}
-                    <div className="sticky top-0 z-20 flex border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+                    <div className="sticky top-0 z-20 flex border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
                       <div className="grid w-16 shrink-0 place-items-center border-r border-[#f3e4ea] text-[#c9aeba]">
                         <Clock className="h-3.5 w-3.5" strokeWidth={1.8} />
                       </div>
@@ -1048,7 +1048,7 @@ export default function DayScheduleModal({
                                   onClick={() => { if (col.id && date) onToggleLeave?.(col.id, date, onLeave) }}
                                   title={onLeave ? 'İzni kaldır — randevuya yeniden açılır' : 'Bu personeli bugün izinli yap'}
                                   aria-label={onLeave ? 'İzni kaldır' : 'İzinli yap'}
-                                  className={`absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${onLeave ? 'border-rose-200 bg-rose-100 text-rose-600 hover:bg-rose-200' : 'border-[#ead8df] bg-white/85 text-[#c2a2b0] hover:border-[#efbfd0] hover:bg-[#fff1f6] hover:text-[#c85776]'}`}
+                                  className={`absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${onLeave ? 'border-rose-200 bg-rose-100 text-rose-600 hover:bg-rose-200' : 'border-[#EAD8DF] bg-white/85 text-[#c2a2b0] hover:border-[#BE7690] hover:bg-[#F6DFE6] hover:text-[#A5556E]'}`}
                                 >
                                   {onLeave ? <X className="h-3 w-3" /> : <Plane className="h-3 w-3" />}
                                 </button>
@@ -1063,7 +1063,7 @@ export default function DayScheduleModal({
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={col.photoUrl} alt={col.name} className={`h-9 w-9 shrink-0 rounded-full border-2 border-white object-cover shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)] ring-1 ring-[#efbfd0]/60 ${onLeave ? 'opacity-60 grayscale' : ''}`} />
                               ) : col.id === null ? (
-                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#fff4f8] text-[#b08aa0]">
+                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-dashed border-[#d8b9c5] bg-[#F7F6F6] text-[#b08aa0]">
                                   <UserRound className="h-4 w-4" />
                                 </span>
                               ) : (
@@ -1084,7 +1084,7 @@ export default function DayScheduleModal({
                                   0,
                                 )
                                 return (
-                                  <div className="flex w-full items-center justify-center gap-1.5 text-[10px] tabular-nums text-[#705a66]">
+                                  <div className="flex w-full items-center justify-center gap-1.5 text-[10px] tabular-nums text-[#74616A]">
                                     <span className="font-semibold text-[#241923]">{live.length}</span>
                                     <span>iş</span>
                                     {mins > 0 && (
@@ -1122,7 +1122,7 @@ export default function DayScheduleModal({
                                 {occ != null && (
                                   <span
                                     title="Günlük doluluk"
-                                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${occ >= 80 ? 'bg-emerald-50 text-emerald-600' : occ >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#a58d99]'}`}
+                                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${occ >= 80 ? 'bg-emerald-50 text-emerald-600' : occ >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#74616A]'}`}
                                   >
                                     %{occ} dolu
                                   </span>
@@ -1180,16 +1180,16 @@ export default function DayScheduleModal({
                                    hangi saate düşeceğini bilmiyordu. */
                                 onMouseMove={!draggingId && !onLeave && onCreateAt ? (e) => setHoverSlot({ colKey, startMin: snappedMinFrom(e) }) : undefined}
                                 onMouseLeave={() => setHoverSlot((h) => (h?.colKey === colKey ? null : h))}
-                                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${onLeave || hoverBlocked ? 'cursor-not-allowed' : onCreateAt ? 'cursor-copy' : ''} ${draggingId && dropInfo?.colKey === colKey ? 'bg-[#fff1f6]/50' : ''}`}
+                                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${onLeave || hoverBlocked ? 'cursor-not-allowed' : onCreateAt ? 'cursor-copy' : ''} ${draggingId && dropInfo?.colKey === colKey ? 'bg-[#F6DFE6]/60' : ''}`}
                                 style={onLeave ? { backgroundImage: 'repeating-linear-gradient(45deg, rgba(244,63,94,0.07) 0, rgba(244,63,94,0.07) 6px, transparent 6px, transparent 12px)' } : undefined}
                                 title={onLeave ? 'Bu personel bugün izinli — randevu verilemez' : onCreateAt ? 'Boş saate tıklayıp randevu ekle' : undefined}
                               >
                                 {/* Sürükle-bırak bırakma göstergesi (kapalı aralığa bırakılamaz) */}
                                 {draggingId && !onLeave && dropInfo?.colKey === colKey && !isRangeClosed(col.id, dropInfo.startMin, dropInfo.startMin + draggingDur) && (
                                   <div className="pointer-events-none absolute inset-x-1 z-[4]" style={{ top: ((dropInfo.startMin - startHour * 60) / 60) * PX_PER_HOUR }} aria-hidden>
-                                    <div className="relative h-0.5 rounded bg-[#c85776]">
-                                      <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[#c85776]" />
-                                      <span className="absolute -top-4 left-1 rounded bg-[#c85776] px-1.5 py-0.5 text-[9px] font-bold text-white">{minutesToLabel(dropInfo.startMin)}</span>
+                                    <div className="relative h-0.5 rounded bg-[#A5556E]">
+                                      <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[#A5556E]" />
+                                      <span className="absolute -top-4 left-1 rounded bg-[#A5556E] px-1.5 py-0.5 text-[9px] font-bold text-white">{minutesToLabel(dropInfo.startMin)}</span>
                                     </div>
                                   </div>
                                 )}
@@ -1213,7 +1213,7 @@ export default function DayScheduleModal({
                                       title={t.reason ? `Kapalı: ${label} · ${t.reason}` : `Kapalı saat: ${label}`}
                                     >
                                       <div className="pointer-events-none flex h-full flex-col items-center justify-center px-1 text-center">
-                                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[#e2c3d0] bg-white/90 px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums text-[#8a4e69]">
+                                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-[#e2c3d0] bg-white px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums text-[#8a4e69]">
                                           <Lock className="h-2.5 w-2.5 shrink-0" /> {label}
                                         </span>
                                         {height >= 44 && t.reason && (
@@ -1227,7 +1227,7 @@ export default function DayScheduleModal({
                                           onClick={(e) => { e.stopPropagation(); void onRemoveTimeOff(t.id) }}
                                           title="Kapalı saati kaldır — randevuya yeniden açılır"
                                           aria-label="Kapalı saati kaldır"
-                                          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#e2c3d0] bg-white/95 text-[#a45a75] opacity-0 transition-opacity hover:bg-[#fff1f6] hover:text-[#c85776] focus:opacity-100 group-hover/closed:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#e2c3d0] bg-white/95 text-[#a45a75] opacity-0 transition-opacity hover:bg-[#F6DFE6] hover:text-[#A5556E] focus:opacity-100 group-hover/closed:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                           <X className="h-3 w-3" />
                                         </button>
@@ -1242,9 +1242,9 @@ export default function DayScheduleModal({
                                     style={{ top: ((hoverSlot.startMin - startHour * 60) / 60) * PX_PER_HOUR }}
                                     aria-hidden
                                   >
-                                    <div className="flex items-center gap-1.5 rounded-md border border-dashed border-[#e0b6c7] bg-white/90 px-1.5 py-0.5">
-                                      <Plus className="h-3 w-3 text-[#c85776]" strokeWidth={2.4} />
-                                      <span className="text-[10px] font-bold tabular-nums text-[#c85776]">
+                                    <div className="flex items-center gap-1.5 rounded-md border border-dashed border-[#e0b6c7] bg-white px-1.5 py-0.5">
+                                      <Plus className="h-3 w-3 text-[#A5556E]" strokeWidth={2.4} />
+                                      <span className="text-[10px] font-bold tabular-nums text-[#A5556E]">
                                         {minutesToLabel(hoverSlot.startMin)}
                                       </span>
                                     </div>
@@ -1289,7 +1289,7 @@ export default function DayScheduleModal({
                                         title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}${canDragThis ? ' · sürükle: saat/ekip değiştir' : ''}`}
                                         /* Komple renk dolgusu yerine BEYAZ KART + renkli sol şerit: durum yine
                                            tek bakışta okunuyor ama VIP/borç rozetleri ve metin boğulmuyor. */
-                                        className={`flex h-full w-full flex-col overflow-hidden rounded-[10px] border border-[#eadfe4] bg-white pl-2.5 pr-2 text-left shadow-[0_6px_16px_-12px_rgba(120,71,88,0.5)] transition-all hover:border-[#e0c2ce] hover:shadow-[0_10px_22px_-12px_rgba(120,71,88,0.55)] ${tiny ? 'py-0.5' : 'py-1'} ${isSel ? 'border-[#c85776] ring-2 ring-[#c85776]/35' : ''} ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''} ${appt.status === 'iptal' ? 'opacity-70' : ''}`}
+                                        className={`flex h-full w-full flex-col overflow-hidden rounded-[10px] border border-[#eadfe4] bg-white pl-2.5 pr-2 text-left shadow-[0_6px_16px_-12px_rgba(120,71,88,0.5)] transition-all hover:border-[#e0c2ce] hover:shadow-[0_10px_22px_-12px_rgba(120,71,88,0.55)] ${tiny ? 'py-0.5' : 'py-1'} ${isSel ? 'border-[#8C4460] ring-2 ring-[#A5556E]/35' : ''} ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''} ${appt.status === 'iptal' ? 'opacity-70' : ''}`}
                                       >
                                         <span aria-hidden className={`absolute left-0 top-0 h-full w-1.5 rounded-l-[10px] ${st.bar}`} />
 
@@ -1304,13 +1304,13 @@ export default function DayScheduleModal({
                                         </div>
 
                                         {!tiny && (
-                                          <div className="mt-0.5 truncate text-[10.5px] leading-tight text-[#705a66]">
+                                          <div className="mt-0.5 truncate text-[10.5px] leading-tight text-[#74616A]">
                                             {appt.islem}
                                           </div>
                                         )}
 
                                         {!compact && (
-                                          <div className="mt-auto flex items-center gap-1.5 text-[10px] tabular-nums text-[#8a7480]">
+                                          <div className="mt-auto flex items-center gap-1.5 text-[10px] tabular-nums text-[#74616A]">
                                             <span className="font-semibold text-[#5d4a56]">
                                               {minutesToLabel(startMin)}–{minutesToLabel(startMin + dur)}
                                             </span>
@@ -1342,7 +1342,7 @@ export default function DayScheduleModal({
                                               rel="noreferrer"
                                               onClick={(e) => e.stopPropagation()}
                                               title="WhatsApp'tan yaz"
-                                              className="grid h-6 w-6 place-items-center rounded-full border border-[#ead8df] bg-white text-[#c85776] shadow-sm transition-colors hover:bg-[#fff1f6]"
+                                              className="grid h-6 w-6 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#A5556E] shadow-sm transition-colors hover:bg-[#F6DFE6]"
                                             >
                                               <MessageCircle className="h-3.5 w-3.5" />
                                             </a>
@@ -1389,7 +1389,7 @@ export default function DayScheduleModal({
               </div>
 
               {/* Detay paneli */}
-              <aside className="hidden w-[340px] shrink-0 flex-col overflow-y-auto border-l border-[#ead8df]/70 bg-[#fffafc] lg:flex">
+              <aside className="hidden w-[340px] shrink-0 flex-col overflow-y-auto border-l border-[#EAD8DF] bg-[#F7F6F6] lg:flex">
                 {selectedAppt ? (
                   <DetailPanel
                     appt={selectedAppt}
@@ -1422,21 +1422,21 @@ export default function DayScheduleModal({
             </div>
 
             {/* ===================== ALT BAR ===================== */}
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 bg-[#fff8fa]/80 px-4 py-2.5 sm:px-5">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] bg-[#fff8fa]/80 px-4 py-2.5 sm:px-5">
               <div className="flex flex-wrap items-center gap-3">
                 {statusOrder.map((k) => (
-                  <span key={k} className="flex items-center gap-1.5 text-[10px] text-[#8a7480]">
+                  <span key={k} className="flex items-center gap-1.5 text-[10px] text-[#74616A]">
                     <span className={`h-2 w-2 rounded-full ${statusStyle[k].dot}`} /> {statusStyle[k].label}
                   </span>
                 ))}
                 {canDrag && view === 'day' && (
-                  <span className="hidden items-center gap-1.5 rounded-full border border-[#ead8df] bg-white px-2 py-0.5 text-[10px] font-medium text-[#9d7386] md:inline-flex">
-                    <GripVertical className="h-3 w-3 text-[#c85776]" /> Sürükle: saat değiştir · farklı sütun = personel aktar
+                  <span className="hidden items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-2 py-0.5 text-[10px] font-medium text-[#9d7386] md:inline-flex">
+                    <GripVertical className="h-3 w-3 text-[#A5556E]" /> Sürükle: saat değiştir · farklı sütun = personel aktar
                   </span>
                 )}
               </div>
               {onCreateAt && (
-                <button type="button" onClick={() => onCreateAt({ date })} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                <button type="button" onClick={() => onCreateAt({ date })} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
                   <Plus className="h-4 w-4" /> Yeni randevu
                 </button>
               )}
@@ -1514,9 +1514,9 @@ function DetailPanel({
   return (
     <div className="flex flex-col">
       {/* Panel başlığı */}
-      <div className="flex items-center justify-between border-b border-[#ead8df]/70 px-4 py-3">
-        <span className="text-[12px] font-bold uppercase tracking-wide text-[#8a7480]">Randevu Detayı</span>
-        <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-white hover:text-[#c85776]" aria-label="Detayı kapat">
+      <div className="flex items-center justify-between border-b border-[#EAD8DF] px-4 py-3">
+        <span className="text-[12px] font-bold uppercase tracking-wide text-[#74616A]">Randevu Detayı</span>
+        <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-white hover:text-[#A5556E]" aria-label="Detayı kapat">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -1526,30 +1526,30 @@ function DetailPanel({
           <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${st.chipBg} ${st.chipText}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} /> {st.label}
           </span>
-          <span className="font-mono text-[10.5px] text-[#a58d99]">{shortNo}</span>
+          <span className="font-mono text-[10.5px] text-[#74616A]">{shortNo}</span>
         </div>
 
         {/* Zaman */}
-        <div className="flex items-center gap-2 rounded-[12px] border border-[#efe1e7] bg-white px-3 py-2.5">
-          <Clock className="h-4 w-4 shrink-0 text-[#c85776]" />
+        <div className="flex items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5">
+          <Clock className="h-4 w-4 shrink-0 text-[#A5556E]" />
           <div>
-            <div className="text-[13px] font-bold text-[#241923]">{minutesToLabel(startMin)} – {minutesToLabel(startMin + dur)} <span className="text-[11px] font-normal text-[#8a7480]">({dur} dk)</span></div>
-            <div className="text-[11px] text-[#8a7480]">{dateLabel}</div>
+            <div className="text-[13px] font-bold text-[#241923]">{minutesToLabel(startMin)} – {minutesToLabel(startMin + dur)} <span className="text-[11px] font-normal text-[#74616A]">({dur} dk)</span></div>
+            <div className="text-[11px] text-[#74616A]">{dateLabel}</div>
           </div>
           {appt.isOnline && <span className="ml-auto rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-semibold text-sky-600">Online</span>}
         </div>
 
         {/* Hizmet */}
-        <div className="flex items-center justify-between rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3 py-2.5">
+        <div className="flex items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <Scissors className="h-4 w-4 shrink-0 text-[#c85776]" />
+            <Scissors className="h-4 w-4 shrink-0 text-[#A5556E]" />
             <span className="text-[13px] font-semibold text-[#241923]">{appt.islem}</span>
           </div>
-          {appt.price > 0 && <span className="font-display text-[15px] font-bold tabular-nums text-[#b14d6c]">{formatTL(appt.price)}</span>}
+          {appt.price > 0 && <span className="font-display text-[15px] font-bold tabular-nums text-[#8C4460]">{formatTL(appt.price)}</span>}
         </div>
 
         {/* Müşteri */}
-        <div className="rounded-[12px] border border-[#efe1e7] bg-white px-3 py-3">
+        <div className="rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-3">
           <div className="flex items-center gap-2.5">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[12px] font-bold text-[#7f4057] shadow-[0_5px_14px_-6px_rgba(190,91,125,0.6)]">
               {initialsOf(appt.musteri)}
@@ -1560,7 +1560,7 @@ function DetailPanel({
                 {customer?.isVip && <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-600"><Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" /> VIP</span>}
               </div>
               {(appt.customerPhone || customer?.phone) && (
-                <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-[#8a7480]"><Phone className="h-3 w-3" /> {appt.customerPhone || customer?.phone}</div>
+                <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-[#74616A]"><Phone className="h-3 w-3" /> {appt.customerPhone || customer?.phone}</div>
               )}
               {customer && (customer.isBlacklisted || customer.remainingSessions > 0) && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -1578,17 +1578,17 @@ function DetailPanel({
         </div>
 
         {/* Detay satırları */}
-        <div className="space-y-1.5 rounded-[12px] border border-[#efe1e7] bg-white px-3 py-2.5 text-[12px]">
+        <div className="space-y-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[12px]">
           <Row label="Personel" value={appt.personel || '—'} />
         </div>
 
         {/* Ödeme · cari — açık adisyon toplamları + (varsa) cari hesap borcu (tahsilat butonu aksiyonlarda) */}
-        <div className="rounded-[12px] border border-[#efe1e7] bg-white px-3 py-2.5">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8a7480]">
-            <Wallet className="h-3 w-3 text-[#c85776]" /> Ödeme · Cari
+        <div className="rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#74616A]">
+            <Wallet className="h-3 w-3 text-[#A5556E]" /> Ödeme · Cari
           </div>
           {payment === 'loading' ? (
-            <div className="py-1 text-[11.5px] text-[#a58d99]">Yükleniyor…</div>
+            <div className="py-1 text-[11.5px] text-[#74616A]">Yükleniyor…</div>
           ) : payment && (payment.chargeTotal > 0 || payment.paymentTotal > 0 || (payment.cariRemaining ?? 0) > 0) ? (
             <div className="space-y-1.5 text-[12px]">
               {(payment.chargeTotal > 0 || payment.paymentTotal > 0) && (() => {
@@ -1596,7 +1596,7 @@ function DetailPanel({
                 return (
                   <>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#8a7480]">Açık adisyon</span>
+                      <span className="text-[#74616A]">Açık adisyon</span>
                       {kalan > 0 ? (
                         <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">Ödeme bekliyor</span>
                       ) : (
@@ -1606,21 +1606,21 @@ function DetailPanel({
                     <Row label="Toplam Tutar" value={formatTL(payment.chargeTotal)} />
                     <Row label="Ödenen" value={formatTL(payment.paymentTotal)} />
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#8a7480]">Kalan</span>
+                      <span className="text-[#74616A]">Kalan</span>
                       <span className={`font-bold tabular-nums ${kalan > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatTL(kalan)}</span>
                     </div>
                   </>
                 )
               })()}
               {(payment.cariRemaining ?? 0) > 0 && (
-                <div className={`flex items-center justify-between gap-2 ${payment.chargeTotal > 0 || payment.paymentTotal > 0 ? 'border-t border-[#f2e6eb] pt-1.5' : ''}`}>
-                  <span className="text-[#8a7480]">Cari borç (toplam kalan)</span>
+                <div className={`flex items-center justify-between gap-2 ${payment.chargeTotal > 0 || payment.paymentTotal > 0 ? 'border-t border-[#EAD8DF] pt-1.5' : ''}`}>
+                  <span className="text-[#74616A]">Cari borç (toplam kalan)</span>
                   <span className="font-bold tabular-nums text-rose-600">{formatTL(payment.cariRemaining ?? 0)}</span>
                 </div>
               )}
             </div>
           ) : (
-            <div className="py-1 text-[11.5px] text-[#a58d99]">Bekleyen ödeme / cari borç görünmüyor.</div>
+            <div className="py-1 text-[11.5px] text-[#74616A]">Bekleyen ödeme / cari borç görünmüyor.</div>
           )}
         </div>
 
@@ -1634,10 +1634,10 @@ function DetailPanel({
       </div>
 
       {/* Aksiyonlar */}
-      <div className="mt-auto space-y-2 border-t border-[#ead8df]/70 px-4 py-3">
+      <div className="mt-auto space-y-2 border-t border-[#EAD8DF] px-4 py-3">
         <div className="grid grid-cols-2 gap-2">
           {onEdit && (
-            <button type="button" onClick={() => onEdit(appt.id)} className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-semibold text-[#5d4a56] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+            <button type="button" onClick={() => onEdit(appt.id)} className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-semibold text-[#5d4a56] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
               <Pencil className="h-3.5 w-3.5" /> Düzenle
             </button>
           )}
@@ -1646,7 +1646,7 @@ function DetailPanel({
               <MessageCircle className="h-3.5 w-3.5" /> Mesaj Gönder
             </a>
           ) : (
-            <span className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-semibold text-[#c9aeba]">
+            <span className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-semibold text-[#c9aeba]">
               <MessageCircle className="h-3.5 w-3.5" /> Mesaj
             </span>
           )}
@@ -1657,7 +1657,7 @@ function DetailPanel({
               <button
                 type="button"
                 onClick={() => onOpenAdisyon(appt.customerId as string, appt.musteri, appt.staffMemberId)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-[#8C4460]/40 bg-[#F6DFE6] px-3 py-2 text-[12px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
               >
                 <ReceiptText className="h-3.5 w-3.5" /> Adisyon
               </button>
@@ -1666,7 +1666,7 @@ function DetailPanel({
               <button
                 type="button"
                 onClick={() => onCollect(appt.customerId as string, appt.musteri, cariAccountId)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
               >
                 <Wallet className="h-3.5 w-3.5" /> Ödeme Al
               </button>
@@ -1694,7 +1694,7 @@ function DetailPanel({
         {canManage && (canApprove || canCancel) && (
           <div className="grid grid-cols-2 gap-2">
             {canApprove && onApprove && (
-              <button type="button" onClick={() => void onApprove(appt.id)} className="inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+              <button type="button" onClick={() => void onApprove(appt.id)} className="inline-flex items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_12px_22px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Onayla
               </button>
             )}
@@ -1721,7 +1721,7 @@ function DetailPanel({
                     type="button"
                     disabled={deleting}
                     onClick={() => setConfirmDelete(false)}
-                    className="inline-flex items-center justify-center rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#fff4f8] disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#F7F6F6] disabled:opacity-60"
                   >
                     Vazgeç
                   </button>
@@ -1762,7 +1762,7 @@ function DetailPanel({
 function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[#8a7480]">{label}</span>
+      <span className="text-[#74616A]">{label}</span>
       <span className={`font-medium ${muted ? 'text-[#c2a2b0]' : 'text-[#241923]'}`}>{value}</span>
     </div>
   )
@@ -1812,18 +1812,18 @@ function DaySummary({
       {waitlist && waitlist.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <Hourglass className="h-4 w-4 text-[#c85776]" />
+            <Hourglass className="h-4 w-4 text-[#A5556E]" />
             <span className="text-[13px] font-bold text-[#241923]">Bekleme Listesi</span>
-            <span className="rounded-full bg-[#fff1f6] px-1.5 text-[10px] font-bold text-[#c85776]">{waitlist.length}</span>
+            <span className="rounded-full bg-[#F6DFE6] px-1.5 text-[10px] font-bold text-[#A5556E]">{waitlist.length}</span>
           </div>
-          <div className="rounded-[14px] border border-[#efe1e7] bg-white p-1.5">
+          <div className="rounded-[14px] border border-[#EAD8DF] bg-white p-1.5">
             <div className="space-y-0.5">
               {waitlist.slice(0, 5).map((w, i) => (
                 <div key={w.id} className="flex items-center gap-2 rounded-[9px] px-2 py-1.5">
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#f47699] to-[#ef6088] text-[10px] font-bold text-white">{i + 1}</span>
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-[10px] font-bold text-white">{i + 1}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-semibold text-[#241923]">{w.customerName}</span>
-                    {w.serviceName && <span className="block truncate text-[10.5px] text-[#8a7480]">{w.serviceName}</span>}
+                    {w.serviceName && <span className="block truncate text-[10.5px] text-[#74616A]">{w.serviceName}</span>}
                   </span>
                 </div>
               ))}
@@ -1839,17 +1839,17 @@ function DaySummary({
           <span className="text-[13px] font-bold text-[#241923]">Yaklaşan Hatırlatmalar</span>
           {reminders.length > 0 && <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-bold text-amber-600">{reminders.length}</span>}
         </div>
-        <div className="rounded-[14px] border border-[#efe1e7] bg-white p-1.5">
+        <div className="rounded-[14px] border border-[#EAD8DF] bg-white p-1.5">
           {reminders.length === 0 ? (
-            <div className="px-2 py-3 text-center text-[11.5px] text-[#a58d99]">Bekleyen hatırlatma yok — tümü bilgilendirilmiş.</div>
+            <div className="px-2 py-3 text-center text-[11.5px] text-[#74616A]">Bekleyen hatırlatma yok — tümü bilgilendirilmiş.</div>
           ) : (
             <div className="space-y-0.5">
               {reminders.map((r) => (
                 <button key={r.id} type="button" onClick={() => onSelect(r.id)} className="flex w-full items-center gap-2 rounded-[9px] px-2 py-1.5 text-left transition-colors hover:bg-[#fff7fa]">
-                  <span className="w-11 shrink-0 font-mono text-[11px] font-bold tabular-nums text-[#c85776]">{r.time}</span>
+                  <span className="w-11 shrink-0 font-mono text-[11px] font-bold tabular-nums text-[#A5556E]">{r.time}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-semibold text-[#241923]">{r.musteri}</span>
-                    <span className="block truncate text-[10.5px] text-[#8a7480]">{r.islem}</span>
+                    <span className="block truncate text-[10.5px] text-[#74616A]">{r.islem}</span>
                   </span>
                   <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${r.customerConfirmation === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' : r.customerConfirmation === 'Pending' ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#9d8592]'}`}>
                     {r.customerConfirmation === 'Confirmed' ? 'Onaylı' : r.customerConfirmation === 'Pending' ? 'Bekliyor' : 'Gönderilecek'}
@@ -1868,9 +1868,9 @@ function DaySummary({
           <span className="text-[13px] font-bold text-[#241923]">No-show Riski</span>
           {noShowRisk.length > 0 && <span className="rounded-full bg-rose-50 px-1.5 text-[10px] font-bold text-rose-600">{noShowRisk.length}</span>}
         </div>
-        <div className="rounded-[14px] border border-[#efe1e7] bg-white p-1.5">
+        <div className="rounded-[14px] border border-[#EAD8DF] bg-white p-1.5">
           {noShowRisk.length === 0 ? (
-            <div className="px-2 py-3 text-center text-[11.5px] text-[#a58d99]">Bugünkü müşterilerde geçmiş gelmedi/iptal kaydı yok.</div>
+            <div className="px-2 py-3 text-center text-[11.5px] text-[#74616A]">Bugünkü müşterilerde geçmiş gelmedi/iptal kaydı yok.</div>
           ) : (
             <div className="space-y-0.5">
               {noShowRisk.map((r) => {
@@ -1880,7 +1880,7 @@ function DaySummary({
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-white bg-gradient-to-br from-[#fff5f8] via-[#f8d6e1] to-[#f2b9ca] text-[9.5px] font-bold text-[#7f4057]">{initialsOf(r.name)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12px] font-semibold text-[#241923]">{r.name}</span>
-                      <span className="block truncate text-[10.5px] text-[#8a7480]">{r.noshow > 0 && `${r.noshow} gelmedi`}{r.noshow > 0 && r.cancel > 0 && ' · '}{r.cancel > 0 && `${r.cancel} iptal`}</span>
+                      <span className="block truncate text-[10.5px] text-[#74616A]">{r.noshow > 0 && `${r.noshow} gelmedi`}{r.noshow > 0 && r.cancel > 0 && ' · '}{r.cancel > 0 && `${r.cancel} iptal`}</span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${high ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{high ? 'Yüksek' : 'Orta'}</span>
                   </div>
@@ -1965,7 +1965,7 @@ function WeekView({
   return (
     <div style={{ minWidth: innerMinWidth }}>
       {/* Gün başlıkları (sticky) */}
-      <div className="sticky top-0 z-20 flex border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+      <div className="sticky top-0 z-20 flex border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
         <div className="grid w-16 shrink-0 place-items-center border-r border-[#f3e4ea] text-[#c9aeba]">
           <Clock className="h-3.5 w-3.5" strokeWidth={1.8} />
         </div>
@@ -1981,12 +1981,12 @@ function WeekView({
                 type="button"
                 onClick={() => onOpenDay(iso)}
                 title={`${dFmt.format(d)} — gün görünümünü aç`}
-                className={`group/hd flex flex-col items-center gap-1 border-l border-[#f3e4ea] px-2 py-2.5 text-center transition-colors first:border-l-0 ${isTod ? 'bg-[#fff1f6]' : weekend ? 'bg-[#fffafc] hover:bg-[#fff7fa]' : 'hover:bg-[#fff7fa]'}`}
+                className={`group/hd flex flex-col items-center gap-1 border-l border-[#f3e4ea] px-2 py-2.5 text-center transition-colors first:border-l-0 ${isTod ? 'bg-[#F6DFE6]' : weekend ? 'bg-[#F7F6F6] hover:bg-[#fff7fa]' : 'hover:bg-[#fff7fa]'}`}
               >
-                <span className={`text-[10.5px] font-semibold uppercase tracking-wide ${weekend ? 'text-[#c85776]/70' : 'text-[#9d8592]'}`}>{wdFmt.format(d)}</span>
-                <span className={`grid h-8 w-8 place-items-center rounded-full font-display text-[15px] font-bold tabular-nums transition-colors ${isTod ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#241923] group-hover/hd:bg-[#fff1f6]'}`}>{d.getDate()}</span>
+                <span className={`text-[10.5px] font-semibold uppercase tracking-wide ${weekend ? 'text-[#A5556E]/70' : 'text-[#9d8592]'}`}>{wdFmt.format(d)}</span>
+                <span className={`grid h-8 w-8 place-items-center rounded-full font-display text-[15px] font-bold tabular-nums transition-colors ${isTod ? 'bg-[#A5556E] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#241923] group-hover/hd:bg-[#F6DFE6]'}`}>{d.getDate()}</span>
                 {count > 0 ? (
-                  <span className="rounded-full bg-[#f0aac2]/25 px-1.5 text-[9px] font-bold text-[#c85776]">{count} randevu</span>
+                  <span className="rounded-full bg-[#f0aac2]/25 px-1.5 text-[9px] font-bold text-[#A5556E]">{count} randevu</span>
                 ) : (
                   <span className="text-[9px] text-[#c2adb6]">—</span>
                 )}
@@ -2019,7 +2019,7 @@ function WeekView({
               <div
                 key={iso}
                 onClick={(e) => handleColClick(iso, e)}
-                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${iso === todayKey ? 'bg-[#fff7fa]/40' : ci >= 5 ? 'bg-[#fffafc]/50' : ''} ${onCreateAt ? 'cursor-copy' : ''}`}
+                className={`relative border-l border-[#f3e4ea] first:border-l-0 ${iso === todayKey ? 'bg-[#fff7fa]/40' : ci >= 5 ? 'bg-[#F7F6F6]/50' : ''} ${onCreateAt ? 'cursor-copy' : ''}`}
                 title={onCreateAt ? 'Boş saate tıklayıp randevu ekle' : undefined}
               >
                 {laid.map(({ appt, startMin, dur, lane, lanes }) => {
@@ -2038,7 +2038,7 @@ function WeekView({
                       onClick={(e) => { e.stopPropagation(); onSelect(appt.id) }}
                       title={`${appt.time} · ${appt.musteri} · ${appt.islem}${appt.personel ? ` · ${appt.personel}` : ''}`}
                       style={{ top, height, left: `calc(${lane * widthPct}% + 2px)`, width: `calc(${widthPct}% - 4px)` }}
-                      className={`group absolute z-[2] flex flex-col overflow-hidden rounded-[9px] border px-1.5 py-1 text-left shadow-[0_8px_20px_-14px_rgba(120,71,88,0.55)] transition-all ${st.block} ${isSel ? 'z-[3] ring-2 ring-[#c85776] ring-offset-1' : ''}`}
+                      className={`group absolute z-[2] flex flex-col overflow-hidden rounded-[9px] border px-1.5 py-1 text-left shadow-[0_8px_20px_-14px_rgba(120,71,88,0.55)] transition-all ${st.block} ${isSel ? 'z-[3] ring-2 ring-[#A5556E] ring-offset-1' : ''}`}
                     >
                       <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${st.bar}`} />
                       <div className="flex items-center gap-1 pl-1">
@@ -2106,9 +2106,9 @@ function MonthView({
   return (
     <div className="min-w-[720px]">
       {/* Haftagünü başlığı (sticky) */}
-      <div className="sticky top-0 z-20 grid grid-cols-7 border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
+      <div className="sticky top-0 z-20 grid grid-cols-7 border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fff9fb]/95 backdrop-blur">
         {weekdays.map((d, i) => (
-          <div key={d} className={`px-3 py-2 text-center text-[10.5px] font-semibold uppercase tracking-wide ${i >= 5 ? 'text-[#c85776]/70' : 'text-[#9d8592]'}`}>{d}</div>
+          <div key={d} className={`px-3 py-2 text-center text-[10.5px] font-semibold uppercase tracking-wide ${i >= 5 ? 'text-[#A5556E]/70' : 'text-[#9d8592]'}`}>{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7">
@@ -2122,15 +2122,15 @@ function MonthView({
             <div
               key={cell.iso + i}
               onClick={() => onOpenDay(cell.iso)}
-              className={`group/cell relative min-h-[104px] cursor-pointer border-b border-l border-[#f3e4ea] p-2 transition-colors [&:nth-child(7n+1)]:border-l-0 ${!cell.inMonth ? 'bg-[#fdf7f9]/50 opacity-55 hover:opacity-80' : isTod ? 'bg-[#fff1f6]/70' : weekend ? 'bg-[#fffafc] hover:bg-[#fff7fa]' : 'bg-white hover:bg-[#fff7fa]'}`}
+              className={`group/cell relative min-h-[104px] cursor-pointer border-b border-l border-[#f3e4ea] p-2 transition-colors [&:nth-child(7n+1)]:border-l-0 ${!cell.inMonth ? 'bg-[#fdf7f9]/50 opacity-55 hover:opacity-80' : isTod ? 'bg-[#F6DFE6]/70' : weekend ? 'bg-[#F7F6F6] hover:bg-[#fff7fa]' : 'bg-white hover:bg-[#fff7fa]'}`}
               title={cell.inMonth ? `${dFmt.format(d)} — gün görünümünü aç` : undefined}
             >
               <div className="flex items-center justify-between">
-                <span className={`grid h-7 w-7 place-items-center rounded-full font-display text-[13px] font-bold tabular-nums ${isTod ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : !cell.inMonth ? 'text-[#c2adb6]' : weekend ? 'text-[#c85776]/80' : 'text-[#241923]'}`}>{d.getDate()}</span>
+                <span className={`grid h-7 w-7 place-items-center rounded-full font-display text-[13px] font-bold tabular-nums ${isTod ? 'bg-[#A5556E] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : !cell.inMonth ? 'text-[#c2adb6]' : weekend ? 'text-[#A5556E]/80' : 'text-[#241923]'}`}>{d.getDate()}</span>
                 {list.length > 0 && (
                   <span
                     title={`${list.length} randevu · ${completed} tamamlandı`}
-                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-bold ${completed === list.length ? 'bg-emerald-50 text-emerald-600' : list.length >= 5 ? 'bg-gradient-to-br from-[#f0aac2] to-[#d48aa7] text-white' : 'bg-[#f0aac2]/25 text-[#c85776]'}`}
+                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-bold ${completed === list.length ? 'bg-emerald-50 text-emerald-600' : list.length >= 5 ? 'bg-gradient-to-br from-[#f0aac2] to-[#d48aa7] text-white' : 'bg-[#f0aac2]/25 text-[#A5556E]'}`}
                   >
                     {list.length}
                   </span>
@@ -2147,7 +2147,7 @@ function MonthView({
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onSelect(a.id) }}
                         title={`${a.time} · ${a.musteri} · ${a.islem}`}
-                        className={`flex w-full items-center gap-1 overflow-hidden rounded-[7px] border px-1.5 py-0.5 text-left transition-all ${st.block} ${isSel ? 'ring-2 ring-[#c85776]' : ''}`}
+                        className={`flex w-full items-center gap-1 overflow-hidden rounded-[7px] border px-1.5 py-0.5 text-left transition-all ${st.block} ${isSel ? 'ring-2 ring-[#A5556E]' : ''}`}
                       >
                         <span aria-hidden className={`h-3 w-0.5 shrink-0 rounded ${st.bar}`} />
                         <span className="font-mono text-[9px] font-semibold tabular-nums text-[#3d2f3a]">{a.time}</span>
@@ -2156,12 +2156,12 @@ function MonthView({
                       </button>
                     )
                   })}
-                  {list.length > 3 && <div className="pl-1 text-[9px] font-semibold text-[#a58d99]">+{list.length - 3} randevu</div>}
+                  {list.length > 3 && <div className="pl-1 text-[9px] font-semibold text-[#74616A]">+{list.length - 3} randevu</div>}
                   {list.length === 0 && onCreateAt && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onCreateAt({ date: cell.iso }) }}
-                      className="mt-0.5 hidden w-full items-center justify-center gap-1 rounded-[7px] border border-dashed border-[#efbfd0] py-1 text-[9px] font-semibold text-[#c85776] transition-colors hover:bg-[#fff1f6] group-hover/cell:flex"
+                      className="mt-0.5 hidden w-full items-center justify-center gap-1 rounded-[7px] border border-dashed border-[#BE7690] py-1 text-[9px] font-semibold text-[#A5556E] transition-colors hover:bg-[#F6DFE6] group-hover/cell:flex"
                     >
                       <Plus className="h-2.5 w-2.5" /> Ekle
                     </button>
@@ -2302,20 +2302,20 @@ function CloseHoursPanel({
         exit={{ opacity: 0, y: -8, scale: 0.99 }}
         transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
         onClick={(e) => e.stopPropagation()}
-        className="my-4 w-full max-w-[620px] overflow-hidden rounded-[20px] border border-[#ead8df] bg-white shadow-[0_40px_100px_-40px_rgba(120,71,88,0.65)]"
+        className="my-4 w-full max-w-[620px] overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white shadow-[0_40px_100px_-40px_rgba(120,71,88,0.65)]"
       >
-        <div className="flex items-center gap-2.5 border-b border-[#ead8df]/70 bg-gradient-to-b from-white to-[#fff9fb] px-5 py-3.5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f8d8e2] bg-gradient-to-br from-[#fff2f6] to-[#ffd9e4] text-[#c85776]">
+        <div className="flex items-center gap-2.5 border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fff9fb] px-5 py-3.5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f8d8e2] bg-gradient-to-br from-[#fff2f6] to-[#ffd9e4] text-[#A5556E]">
             <Lock className="h-5 w-5" strokeWidth={1.7} />
           </span>
           <div className="min-w-0">
             <h3 className="font-display text-[17px] font-bold leading-none tracking-tight text-[#241923]">Gün / Saat Kapat</h3>
-            <div className="mt-1 truncate text-[11.5px] text-[#705a66]">{dayTitle}</div>
+            <div className="mt-1 truncate text-[11.5px] text-[#74616A]">{dayTitle}</div>
           </div>
           <button
             type="button"
             onClick={onCancel}
-            className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+            className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#9d7386] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
             aria-label="Kapat"
           >
             <X className="h-4 w-4" />
@@ -2331,14 +2331,14 @@ function CloseHoursPanel({
                 <button
                   type="button"
                   onClick={() => setStaffIds(allSelected ? [] : staffChoices.map((c) => c.id))}
-                  className="text-[11px] font-semibold text-[#c85776] hover:underline"
+                  className="text-[11px] font-semibold text-[#A5556E] hover:underline"
                 >
                   {allSelected ? 'Seçimi kaldır' : 'Tümünü seç'}
                 </button>
               )}
             </div>
             {staffChoices.length === 0 ? (
-              <div className="rounded-[12px] border border-dashed border-[#ead8df] px-3 py-4 text-center text-[12px] text-[#705a66]">
+              <div className="rounded-[12px] border border-dashed border-[#EAD8DF] px-3 py-4 text-center text-[12px] text-[#74616A]">
                 Bu günde listelenen personel yok.
               </div>
             ) : (
@@ -2354,8 +2354,8 @@ function CloseHoursPanel({
                       onClick={() => toggleStaff(c.id)}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                         on
-                          ? 'border-[#c85776] bg-[#c85776] text-white'
-                          : 'border-[#ead8df] bg-white text-[#5d4a56] hover:border-[#efbfd0] hover:bg-[#fff7fa]'
+                          ? 'border-[#8C4460] bg-[#A5556E] text-white'
+                          : 'border-[#EAD8DF] bg-white text-[#5d4a56] hover:border-[#BE7690] hover:bg-[#fff7fa]'
                       }`}
                     >
                       {on ? <CheckCircle2 className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
@@ -2375,7 +2375,7 @@ function CloseHoursPanel({
           {/* Kapatma aralığı */}
           <div>
             <label className="mb-1.5 block text-[12px] font-semibold text-[#3b2330]">Kapatılacak zaman</label>
-            <div className="flex items-center rounded-full border border-[#ead8df] bg-white p-0.5">
+            <div className="flex items-center rounded-full border border-[#EAD8DF] bg-white p-0.5">
               {([[false, 'Saat aralığı'], [true, 'Tüm gün']] as [boolean, string][]).map(([v, label]) => (
                 <button
                   key={label}
@@ -2384,7 +2384,7 @@ function CloseHoursPanel({
                   onClick={() => { setAllDay(v); setError('') }}
                   aria-pressed={allDay === v}
                   className={`flex-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed ${
-                    allDay === v ? 'bg-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#c85776]'
+                    allDay === v ? 'bg-[#A5556E] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]' : 'text-[#9d7386] hover:text-[#A5556E]'
                   }`}
                 >
                   {label}
@@ -2396,14 +2396,14 @@ function CloseHoursPanel({
               <div className="mt-2.5 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-[#c85776]" />
+                    <Clock className="h-3.5 w-3.5 text-[#A5556E]" />
                     <input
                       type="time"
                       step={900}
                       value={start}
                       disabled={disabled}
                       onChange={(e) => { setStart(e.target.value); setError('') }}
-                      className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                      className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
                     />
                   </div>
                   <span className="text-[12px] font-semibold text-[#9d7386]">→</span>
@@ -2413,10 +2413,10 @@ function CloseHoursPanel({
                     value={end}
                     disabled={disabled}
                     onChange={(e) => { setEnd(e.target.value); setError('') }}
-                    className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+                    className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[13px] tabular-nums text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
                   />
                   {rangeValid && !allDay && (
-                    <span className="text-[11.5px] font-medium text-[#705a66]">
+                    <span className="text-[11.5px] font-medium text-[#74616A]">
                       {Math.round((((endMin as number) - (startMin as number)) / 60) * 10) / 10} saat kapanacak
                     </span>
                   )}
@@ -2428,7 +2428,7 @@ function CloseHoursPanel({
                       type="button"
                       disabled={disabled}
                       onClick={() => { setStart(p.start); setEnd(p.end); setError('') }}
-                      className="rounded-full border border-dashed border-[#e0b6c7] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#c85776] hover:bg-[#fff1f6] hover:text-[#c85776] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-full border border-dashed border-[#e0b6c7] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#a45a75] transition-colors hover:border-[#8C4460] hover:bg-[#F6DFE6] hover:text-[#A5556E] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {p.label} · {p.start}–{p.end}
                     </button>
@@ -2441,7 +2441,7 @@ function CloseHoursPanel({
           {/* Sebep */}
           <div>
             <label className="mb-1.5 block text-[12px] font-semibold text-[#3b2330]">
-              Sebep <span className="font-medium text-[#705a66]">(isteğe bağlı)</span>
+              Sebep <span className="font-medium text-[#74616A]">(isteğe bağlı)</span>
             </label>
             <input
               value={reason}
@@ -2449,7 +2449,7 @@ function CloseHoursPanel({
               maxLength={300}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Eğitim, izin, bakım…"
-              className="w-full rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
+              className="w-full rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[13px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]"
             />
           </div>
 
@@ -2476,12 +2476,12 @@ function CloseHoursPanel({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[#ead8df]/70 bg-[#fffafc] px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-[#EAD8DF] bg-[#F7F6F6] px-5 py-3">
           <button
             type="button"
             onClick={onCancel}
             disabled={disabled}
-            className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5d4a56] transition-colors hover:border-[#efbfd0] hover:bg-[#fff7fa] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-semibold text-[#5d4a56] transition-colors hover:border-[#BE7690] hover:bg-[#fff7fa] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Vazgeç
           </button>
@@ -2489,7 +2489,7 @@ function CloseHoursPanel({
             type="button"
             onClick={() => void submit()}
             disabled={disabled || !staffIds.length || !rangeValid}
-            className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12.5px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+            className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2 text-[12.5px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             <Lock className="h-4 w-4" />
             {saving ? 'Kapatılıyor…' : allDay ? 'Günü kapat' : 'Saatleri kapat'}

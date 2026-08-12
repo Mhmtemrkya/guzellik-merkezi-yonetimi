@@ -179,19 +179,19 @@ export default function CustomerOperationsJournal({
   }
 
   return (
-    <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+    <div className="rounded-[20px] border border-[#EAD8DF] bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       {/* Başlık + gün/hafta/ay süzgeci */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
+        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]/80">
           <ClipboardList className="h-3.5 w-3.5" /> İşlem Defteri
         </div>
-        <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+        <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
           {([['day', 'Gün'], ['week', 'Hafta'], ['month', 'Ay']] as const).map(([k, l]) => (
             <button
               key={k}
               type="button"
               onClick={() => { setGran(k); setOffset(0) }}
-              className={`rounded-[8px] px-2.5 py-1 text-[10px] font-medium transition-colors ${gran === k ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}
+              className={`rounded-[8px] px-2.5 py-1 text-[10px] font-medium transition-colors ${gran === k ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:bg-white'}`}
             >
               {l}
             </button>
@@ -200,31 +200,31 @@ export default function CustomerOperationsJournal({
       </div>
 
       {/* Dönem gezgini */}
-      <div className="mb-3 flex items-center justify-between rounded-[12px] border border-[#ead8df]/70 bg-white px-2 py-1.5">
-        <button type="button" onClick={() => setOffset((o) => o - 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#352432]/55 hover:bg-[#fff4f8]" aria-label="Önceki dönem">
+      <div className="mb-3 flex items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-white px-2 py-1.5">
+        <button type="button" onClick={() => setOffset((o) => o - 1)} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#5A4B53] hover:bg-[#F7F6F6]" aria-label="Önceki dönem">
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="flex items-center gap-1.5 text-[12px] font-medium text-[#352432]">
-          <CalendarDays className="h-3.5 w-3.5 text-[#c85776]" /> {label}
-          {offset === 0 && <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[9px] font-mono uppercase text-[#c85776]">Bu {gran === 'day' ? 'gün' : gran === 'week' ? 'hafta' : 'ay'}</span>}
+        <span className="flex items-center gap-1.5 text-[12px] font-medium text-[#2A2027]">
+          <CalendarDays className="h-3.5 w-3.5 text-[#A5556E]" /> {label}
+          {offset === 0 && <span className="rounded-full bg-[#F6DFE6] px-1.5 py-0.5 text-[9px] font-mono uppercase text-[#A5556E]">Bu {gran === 'day' ? 'gün' : gran === 'week' ? 'hafta' : 'ay'}</span>}
         </span>
-        <button type="button" disabled={offset >= 0} onClick={() => setOffset((o) => Math.min(0, o + 1))} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#352432]/55 hover:bg-[#fff4f8] disabled:opacity-30" aria-label="Sonraki dönem">
+        <button type="button" disabled={offset >= 0} onClick={() => setOffset((o) => Math.min(0, o + 1))} className="grid h-7 w-7 place-items-center rounded-[8px] text-[#5A4B53] hover:bg-[#F7F6F6] disabled:opacity-30" aria-label="Sonraki dönem">
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
       {/* Dönem özeti */}
-      <div className="mb-3 grid grid-cols-3 gap-px overflow-hidden rounded-[12px] border border-[#ead8df]/65 bg-[#fff1f6]/72 text-center">
+      <div className="mb-3 grid grid-cols-3 gap-px overflow-hidden rounded-[12px] border border-[#EAD8DF]/65 bg-[#F6DFE6]/72 text-center">
         <div className="bg-white p-2">
-          <div className="text-[8px] font-mono uppercase text-[#352432]/40">İşlem</div>
-          <div className="mt-0.5 font-display text-[14px] tabular-nums text-[#352432]">{summary.count}</div>
+          <div className="text-[8px] font-mono uppercase text-[#74616A]">İşlem</div>
+          <div className="mt-0.5 font-display text-[14px] tabular-nums text-[#2A2027]">{summary.count}</div>
         </div>
         <div className="bg-white p-2">
-          <div className="text-[8px] font-mono uppercase text-[#352432]/40">Satış / borç</div>
-          <div className="mt-0.5 font-display text-[14px] tabular-nums text-[#c85776]">{formatTL(summary.charged)}</div>
+          <div className="text-[8px] font-mono uppercase text-[#74616A]">Satış / borç</div>
+          <div className="mt-0.5 font-display text-[14px] tabular-nums text-[#A5556E]">{formatTL(summary.charged)}</div>
         </div>
         <div className="bg-white p-2">
-          <div className="text-[8px] font-mono uppercase text-[#352432]/40">Tahsilat</div>
+          <div className="text-[8px] font-mono uppercase text-[#74616A]">Tahsilat</div>
           <div className="mt-0.5 font-display text-[14px] tabular-nums text-emerald-700">{formatTL(summary.collected)}</div>
         </div>
       </div>
@@ -232,7 +232,7 @@ export default function CustomerOperationsJournal({
       {/* Satırlar */}
       <div className="space-y-1.5">
         {rows.length === 0 ? (
-          <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11px] text-[#352432]/45">
+          <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11px] text-[#74616A]">
             {loading ? 'Yükleniyor…' : 'Bu dönemde işlem yok.'}
           </div>
         ) : (
@@ -243,16 +243,16 @@ export default function CustomerOperationsJournal({
                 <div className="flex min-w-0 items-center gap-2">
                   <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] font-mono uppercase ${tone}`}>{opLabel(r.kind, r.covered)}</span>
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] text-[#352432]">{r.desc}</div>
-                    <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wide text-[#352432]/40">
+                    <div className="truncate text-[12px] text-[#2A2027]">{r.desc}</div>
+                    <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-wide text-[#74616A]">
                       <span>{fmtTime(r.ts)}</span>
                       {r.staff && (
-                        <span className="flex items-center gap-0.5 text-[#b14d6c]/70"><User className="h-2.5 w-2.5" /> {r.staff}</span>
+                        <span className="flex items-center gap-0.5 text-[#8C4460]/70"><User className="h-2.5 w-2.5" /> {r.staff}</span>
                       )}
                     </div>
                   </div>
                 </div>
-                <span className={`shrink-0 font-mono text-[12px] tabular-nums ${r.kind === 'Payment' ? 'text-emerald-700' : r.kind === 'Discount' ? 'text-rose-700' : r.covered ? 'text-amber-700' : r.kind === 'Session' ? 'text-[#352432]/45' : 'text-[#352432]'}`}>
+                <span className={`shrink-0 font-mono text-[12px] tabular-nums ${r.kind === 'Payment' ? 'text-emerald-700' : r.kind === 'Discount' ? 'text-rose-700' : r.covered ? 'text-amber-700' : r.kind === 'Session' ? 'text-[#74616A]' : 'text-[#2A2027]'}`}>
                   {r.covered ? 'paket' : `${r.kind === 'Payment' ? '+' : r.kind === 'Discount' ? '−' : ''}${formatTL(r.amount)}`}
                 </span>
               </div>
@@ -263,25 +263,25 @@ export default function CustomerOperationsJournal({
 
       {/* Taksit / cari durumu — bu müşterinin açık carileri */}
       {activeAccounts.length > 0 && (
-        <div className="mt-3 space-y-1.5 rounded-[14px] border border-[#efbfd0]/50 bg-[#fff1f6]/40 p-2.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#b14d6c]">
+        <div className="mt-3 space-y-1.5 rounded-[14px] border border-[#BE7690]/50 bg-[#F7F6F6] p-2.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">
             <CreditCard className="h-3.5 w-3.5" /> Taksit / Cari Durumu
           </div>
           {activeAccounts.map((a) => {
             const overdue = a.installments.some((i) => i.overdue)
             const plannedCount = a.installments.filter((i) => i.status !== 'Cancelled').length
             return (
-              <div key={a.id} className="flex items-center justify-between gap-2 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2">
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2">
                 <div className="min-w-0">
-                  <div className="truncate text-[12px] text-[#352432]">{a.servicePackageName || a.name}</div>
-                  <div className="text-[9px] font-mono uppercase tracking-wide text-[#352432]/45">
+                  <div className="truncate text-[12px] text-[#2A2027]">{a.servicePackageName || a.name}</div>
+                  <div className="text-[9px] font-mono uppercase tracking-wide text-[#74616A]">
                     {plannedCount > 0 ? `${plannedCount} taksit` : 'Peşin'}
                     {a.nextDueDate ? ` · vade ${a.nextDueDate}` : ''}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className={`font-display text-[14px] tabular-nums ${overdue ? 'text-rose-700' : 'text-[#c85776]'}`}>{formatTL(a.remainingAmount)}</div>
-                  <div className="text-[8px] font-mono uppercase text-[#352432]/40">{overdue ? 'geciken' : 'kalan'}</div>
+                  <div className={`font-display text-[14px] tabular-nums ${overdue ? 'text-rose-700' : 'text-[#A5556E]'}`}>{formatTL(a.remainingAmount)}</div>
+                  <div className="text-[8px] font-mono uppercase text-[#74616A]">{overdue ? 'geciken' : 'kalan'}</div>
                 </div>
               </div>
             )
@@ -289,7 +289,7 @@ export default function CustomerOperationsJournal({
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-1.5 px-1 text-[9px] text-[#352432]/40">
+      <div className="mt-2 flex items-center gap-1.5 px-1 text-[9px] text-[#74616A]">
         <Scissors className="h-2.5 w-2.5" /> Seans gelişleri tamamlanan randevulardan, satış/tahsilat adisyondan gelir.
       </div>
     </div>

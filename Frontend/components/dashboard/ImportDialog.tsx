@@ -266,16 +266,16 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
             exit={{ opacity: 0, y: -10, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-[#ead8df]/85 bg-white/97 shadow-[0_36px_110px_rgba(150,78,104,0.24)]"
+            className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-[#EAD8DF]/85 bg-white/97 shadow-[0_36px_110px_rgba(150,78,104,0.24)]"
           >
             {/* başlık */}
-            <div className="flex items-center justify-between border-b border-[#ead8df]/75 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-[#EAD8DF]/75 px-6 py-4">
               <div className="flex items-center gap-2.5">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fff1f6] text-[#c85776]">
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#A5556E] text-white">
                   <FileSpreadsheet className="h-4.5 w-4.5" strokeWidth={1.7} />
                 </span>
                 <div>
-                  <div className="text-[14px] font-semibold text-[#352432]">
+                  <div className="text-[14px] font-semibold text-[#2A2027]">
                     {entityType ? `${ENTITY_LABELS[entityType]} İçeri Aktar` : 'Excel İçeri Aktar'}
                   </div>
                   <div className="text-[11px] text-[#7c6170]">
@@ -290,7 +290,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                 onClick={close}
                 disabled={step === 'importing'}
                 aria-label="Kapat"
-                className="grid h-8 w-8 place-items-center rounded-lg text-[#9d7386] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] disabled:opacity-40"
+                className="grid h-8 w-8 place-items-center rounded-lg text-[#9d7386] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] disabled:opacity-40"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -320,7 +320,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                   }}
                   onClick={() => fileInputRef.current?.click()}
                   className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
-                    dragOver ? 'border-[#ef6f94] bg-[#fff1f6]' : 'border-[#ead8df] bg-[#fffafc] hover:border-[#ef9ab5] hover:bg-[#fff7fa]'
+                    dragOver ? 'border-[#ef6f94] bg-[#F6DFE6]' : 'border-[#EAD8DF] bg-[#F7F6F6] hover:border-[#ef9ab5] hover:bg-[#fff7fa]'
                   }`}
                 >
                   <input
@@ -334,10 +334,10 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                       e.target.value = ''
                     }}
                   />
-                  <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#fff1f6] text-[#c85776]">
+                  <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#A5556E] text-white">
                     <Upload className="h-6 w-6" strokeWidth={1.6} />
                   </span>
-                  <div className="text-[13px] font-semibold text-[#352432]">
+                  <div className="text-[13px] font-semibold text-[#2A2027]">
                     Excel dosyasını sürükleyin ya da seçmek için tıklayın
                   </div>
                   <div className="max-w-sm text-[11px] leading-relaxed text-[#7c6170]">
@@ -350,16 +350,16 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
               {/* 2 — ÖNİZLEME */}
               {step === 'preview' && analyzed && (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ead8df]/80 bg-[#fffafc] px-3.5 py-2.5">
-                    <div className="flex items-center gap-2 text-[12px] text-[#352432]">
-                      <FileSpreadsheet className="h-4 w-4 text-[#c85776]" />
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#EAD8DF]/80 bg-[#F7F6F6] px-3.5 py-2.5">
+                    <div className="flex items-center gap-2 text-[12px] text-[#2A2027]">
+                      <FileSpreadsheet className="h-4 w-4 text-[#A5556E]" />
                       <span className="max-w-[240px] truncate font-semibold">{fileName}</span>
                       <span className="text-[#7c6170]">· {analyzed.totalRows.toLocaleString('tr-TR')} satır</span>
                     </div>
                     <button
                       type="button"
                       onClick={reset}
-                      className="text-[11px] font-semibold text-[#c85776] hover:underline"
+                      className="text-[11px] font-semibold text-[#A5556E] hover:underline"
                     >
                       Farklı dosya seç
                     </button>
@@ -367,7 +367,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
 
                   {/* tip seçimi — sayfaya özel aktarımda tür zaten belli, seçici gösterilmez */}
                   {entityType ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-[#ef6f94]/40 bg-[#fff1f6] px-3.5 py-2.5 text-[12px] font-semibold text-[#c85776]">
+                    <div className="flex items-center gap-2 rounded-xl border border-[#ef6f94]/40 bg-[#F6DFE6] px-3.5 py-2.5 text-[12px] font-semibold text-[#A5556E]">
                       {(() => {
                         const Icon = ENTITY_ICONS[entityType]
                         return <Icon className="h-4 w-4" />
@@ -390,8 +390,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                               onClick={() => changeType(type)}
                               className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors ${
                                 active
-                                  ? 'border-[#ef6f94] bg-[#fff1f6] text-[#c85776]'
-                                  : 'border-[#ead8df] bg-white text-[#7c6170] hover:border-[#ef9ab5]'
+                                  ? 'border-[#ef6f94] bg-[#A5556E] text-white'
+                                  : 'border-[#EAD8DF] bg-white text-[#7c6170] hover:border-[#ef9ab5]'
                               }`}
                             >
                               <Icon className="h-3.5 w-3.5" />
@@ -411,9 +411,9 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                         {Object.entries(analyzed.mapping).map(([field, header]) => (
                           <span
                             key={field}
-                            className="inline-flex items-center gap-1 rounded-full border border-[#efbfd0]/70 bg-[#fff7fa] px-2 py-1 text-[10px] text-[#7c6170]"
+                            className="inline-flex items-center gap-1 rounded-full border border-[#EAD8DF] bg-[#fff7fa] px-2 py-1 text-[10px] text-[#7c6170]"
                           >
-                            <span className="font-semibold text-[#c85776]">{FIELD_LABELS[field] ?? field}</span>
+                            <span className="font-semibold text-[#A5556E]">{FIELD_LABELS[field] ?? field}</span>
                             ← {header}
                           </span>
                         ))}
@@ -422,10 +422,10 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                   )}
 
                   {/* örnek satırlar */}
-                  <div className="overflow-x-auto rounded-xl border border-[#ead8df]/80">
+                  <div className="overflow-x-auto rounded-xl border border-[#EAD8DF]/80">
                     <table className="w-full text-left text-[11px]">
                       <thead>
-                        <tr className="border-b border-[#ead8df]/70 bg-[#fff7fa] text-[#9d2449]">
+                        <tr className="border-b border-[#EAD8DF] bg-[#fff7fa] text-[#9d2449]">
                           {previewHeaders.map((h) => (
                             <th key={h} className="px-3 py-2 font-semibold">{h}</th>
                           ))}
@@ -435,7 +435,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                         {previewRows.map((cells, i) => (
                           <tr key={i} className="border-b border-[#f5eaef] last:border-0">
                             {cells.map((c, j) => (
-                              <td key={j} className="max-w-[180px] truncate px-3 py-1.5 text-[#4a3a44]">{c}</td>
+                              <td key={j} className="max-w-[180px] truncate px-3 py-1.5 text-[#3E343A]">{c}</td>
                             ))}
                           </tr>
                         ))}
@@ -452,14 +452,14 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <div className="text-[11px] text-[#7c6170]">
-                      <span className="font-semibold text-[#352432]">{analyzed.validRows.toLocaleString('tr-TR')}</span>{' '}
+                      <span className="font-semibold text-[#2A2027]">{analyzed.validRows.toLocaleString('tr-TR')}</span>{' '}
                       {ENTITY_LABELS[analyzed.entityType].toLocaleLowerCase('tr-TR')} kaydı aktarılacak; mükerrer kayıtlar otomatik atlanır.
                     </div>
                     <button
                       type="button"
                       onClick={() => void runImport()}
                       disabled={analyzed.validRows === 0}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[#c85776] px-4 py-2.5 text-[12px] font-semibold text-white shadow-[0_14px_28px_-16px_rgba(200,87,118,0.8)] transition-opacity hover:opacity-92 disabled:opacity-40"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#A5556E] px-4 py-2.5 text-[12px] font-semibold text-white shadow-[0_14px_28px_-16px_rgba(200,87,118,0.8)] transition-opacity hover:opacity-92 disabled:opacity-40"
                     >
                       <Upload className="h-3.5 w-3.5" />
                       İçeri Aktar
@@ -471,11 +471,11 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
               {/* 3 — AKTARILIYOR */}
               {step === 'importing' && (
                 <div className="flex flex-col items-center gap-4 py-10">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#c85776]" />
-                  <div className="text-[13px] font-semibold text-[#352432]">Kayıtlar aktarılıyor… %{progress}</div>
+                  <Loader2 className="h-8 w-8 animate-spin text-[#A5556E]" />
+                  <div className="text-[13px] font-semibold text-[#2A2027]">Kayıtlar aktarılıyor… %{progress}</div>
                   <div className="h-2 w-64 overflow-hidden rounded-full bg-[#f5e5eb]">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-[#ef6f94] to-[#c85776]"
+                      className="h-full rounded-full bg-gradient-to-r from-[#ef6f94] to-[#A5556E]"
                       animate={{ width: `${progress}%` }}
                       transition={{ ease: 'easeOut' }}
                     />
@@ -491,7 +491,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                     <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600">
                       <CheckCircle2 className="h-7 w-7" strokeWidth={1.8} />
                     </span>
-                    <div className="text-[15px] font-semibold text-[#352432]">Aktarım tamamlandı</div>
+                    <div className="text-[15px] font-semibold text-[#2A2027]">Aktarım tamamlandı</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-3">
@@ -508,7 +508,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                     </div>
                   </div>
                   {totals.errors.length > 0 && (
-                    <div className="max-h-32 overflow-y-auto rounded-xl border border-[#ead8df]/80 bg-[#fffafc] px-3 py-2 text-[11px] text-[#7c6170]">
+                    <div className="max-h-32 overflow-y-auto rounded-xl border border-[#EAD8DF]/80 bg-[#F7F6F6] px-3 py-2 text-[11px] text-[#7c6170]">
                       {totals.errors.map((e, i) => (
                         <div key={i} className="py-0.5">• {e}</div>
                       ))}
@@ -518,7 +518,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                     <button
                       type="button"
                       onClick={reset}
-                      className="rounded-xl border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                      className="rounded-xl border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
                     >
                       Yeni dosya aktar
                     </button>
@@ -530,7 +530,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                         // Sayfadaki listeler taze veriyi çeksin
                         window.location.reload()
                       }}
-                      className="rounded-xl bg-[#c85776] px-4 py-2.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-92"
+                      className="rounded-xl bg-[#A5556E] px-4 py-2.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-92"
                     >
                       Kapat
                     </button>

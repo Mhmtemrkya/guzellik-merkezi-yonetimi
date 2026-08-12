@@ -193,7 +193,7 @@ export default function ProductLibrary({
               mode="create"
               onSubmit={async (v) => { await adminApi.createProduct(productPayload(v as unknown as FV), tenantId); await reload() }}
               trigger={
-                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
                   <PackagePlus className="h-4 w-4" strokeWidth={2.1} /> Ürün Ekle
                 </button>
               }
@@ -224,7 +224,7 @@ export default function ProductLibrary({
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
             >
               <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
             </button>
@@ -232,7 +232,7 @@ export default function ProductLibrary({
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && products.length === 0} emptyMessage="Ürün kaydı yok." />
         {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
         {actionMsg && <div className="rounded-[12px] border border-emerald-300/30 bg-emerald-50 px-4 py-2.5 text-[12px] text-emerald-700">{actionMsg}</div>}
@@ -245,106 +245,106 @@ export default function ProductLibrary({
             { label: 'Stok maliyeti', value: formatTL(costValue), sub: 'Bu ay toplamı', icon: Layers3 },
             { label: 'Satış değeri (perakende)', value: formatTL(saleValue), sub: 'Tahmini perakende değer', icon: TrendingUp },
           ].map((c) => (
-            <div key={c.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+            <div key={c.label} className="rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
               <div className="flex items-start justify-between gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><c.icon className="h-4 w-4" /></span>
+                <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#A5556E] text-white"><c.icon className="h-4 w-4" /></span>
                 <BarSpark values={moveSeries} />
               </div>
-              <div className="mt-2 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{c.label}</div>
+              <div className="mt-2 text-[11px] font-mono uppercase tracking-widest text-[#74616A]">{c.label}</div>
               <div className="font-display text-3xl tabular-nums tracking-tight">{c.value}</div>
-              <div className="mt-0.5 text-[10px] text-[#352432]/45">{c.sub}</div>
+              <div className="mt-0.5 text-[10px] text-[#74616A]">{c.sub}</div>
             </div>
           ))}
         </div>
 
         {/* MAIN: TABLE + DETAIL */}
         <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-          <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-            <div className="border-b border-[#ead8df]/70 px-5 py-4">
-              <div className="font-display text-xl tracking-tight">Ürün Kütüphanesi <span className="ml-1 rounded-full bg-[#fff1f6] px-2 py-0.5 text-[12px] text-[#b14d6c]">{filtered.length}</span></div>
+          <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white">
+            <div className="border-b border-[#EAD8DF] px-5 py-4">
+              <div className="font-display text-xl tracking-tight">Ürün Kütüphanesi <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
                   {TABS.map((t) => (
                     <button key={t.key} type="button" onClick={() => setTab(t.key)}
-                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{t.label}</button>
+                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:bg-white'}`}>{t.label}</button>
                   ))}
                 </div>
                 <div className="relative ml-auto">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ürün adı, barkod…" className="w-44 rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ürün adı, barkod…" className="w-44 rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#A5556E]" />
                 </div>
-                <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
+                <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E]">
                   <option value="">Kategori</option>{(Object.keys(productCategoryLabels) as ProductCategoryKey[]).map((k) => <option key={k} value={k}>{productCategoryLabels[k]}</option>)}
                 </select>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E]">
                   <option value="">Durum</option><option value="sufficient">Aktif</option><option value="critical">Kritik</option><option value="out">Tükenen</option>
                 </select>
               </div>
             </div>
 
-            <div className="hidden grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
+            <div className="hidden grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] gap-2 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
               <span>Ürün</span><span>Kategori</span><span>Stok / Adet</span><span>Min. Stok</span><span>Maliyet</span><span>Satış Fiyatı</span><span>Durum</span><span>Güncelleme</span><span className="text-right">İşlem</span>
             </div>
 
-            <div className="divide-y divide-[#f1e5ea]">
+            <div className="divide-y divide-[#F1E7EB]">
               {pageRows.map((p) => (
                 <button key={p.id} type="button" onClick={() => setSelectedId(p.id)}
-                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] lg:items-center ${sel?.id === p.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] lg:items-center ${sel?.id === p.id ? 'bg-[#F6DFE6]/60' : ''}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
                     {p.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.imageUrl} alt={p.name} className="h-10 w-10 shrink-0 rounded-[10px] border border-[#efbfd0]/50 object-cover" />
+                      <img src={p.imageUrl} alt={p.name} className="h-10 w-10 shrink-0 rounded-[10px] border border-[#BE7690]/50 object-cover" />
                     ) : (
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><Package className="h-4 w-4" /></span>
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><Package className="h-4 w-4" /></span>
                     )}
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-medium text-[#352432]">{p.name}</div>
-                      <div className="truncate text-[9px] font-mono text-[#352432]/40">BARKOD {p.barcode || '—'}</div>
+                      <div className="truncate text-[13px] font-medium text-[#2A2027]">{p.name}</div>
+                      <div className="truncate text-[9px] font-mono text-[#74616A]">BARKOD {p.barcode || '—'}</div>
                     </div>
                   </div>
-                  <div><span className="inline-flex rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-2 py-0.5 text-[10px] text-[#b14d6c]">{p.categoryLabel}</span></div>
+                  <div><span className="inline-flex rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10px] text-[#8C4460]">{p.categoryLabel}</span></div>
                   <div className={`font-display text-[15px] tabular-nums ${stockTone(p)}`}>{p.currentStock}</div>
-                  <div className="text-[12px] tabular-nums text-[#352432]/55">{p.minStockLevel}</div>
-                  <div className="text-[12px] tabular-nums text-[#352432]/65">{formatTL(p.cost)}</div>
+                  <div className="text-[12px] tabular-nums text-[#5A4B53]">{p.minStockLevel}</div>
+                  <div className="text-[12px] tabular-nums text-[#5A4B53]">{formatTL(p.cost)}</div>
                   <div className="font-display text-[13px] tabular-nums">{formatTL(p.salePrice)}</div>
                   <div><span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase ${STATUS_TONE[p.status]}`}>{STATUS_LABEL[p.status]}</span></div>
-                  <div className="text-[10px] font-mono text-[#352432]/45">{p.updatedAt || '—'}</div>
-                  <div className="flex justify-end"><span className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45"><PencilLine className="h-3.5 w-3.5" /></span></div>
+                  <div className="text-[10px] font-mono text-[#74616A]">{p.updatedAt || '—'}</div>
+                  <div className="flex justify-end"><span className="grid h-7 w-7 place-items-center rounded-md border border-[#EAD8DF] bg-white text-[#74616A]"><PencilLine className="h-3.5 w-3.5" /></span></div>
                 </button>
               ))}
-              {!pageRows.length && !loading && <div className="px-5 py-12 text-center text-sm text-[#352432]/45">Eşleşen ürün yok.</div>}
+              {!pageRows.length && !loading && <div className="px-5 py-12 text-center text-sm text-[#74616A]">Eşleşen ürün yok.</div>}
             </div>
 
             {filtered.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 px-5 py-3.5">
-                <div className="text-[11px] text-[#352432]/50">Toplam {filtered.length} ürün</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
+                <div className="text-[11px] text-[#5A4B53]">Toplam {filtered.length} ürün</div>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#352432]/35">…</span> : (
-                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fff4f8]/50'}`}>{p}</button>
+                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#74616A]">…</span> : (
+                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'}`}>{p}</button>
                   ))}
-                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
-                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[11px] text-[#352432]/65 outline-none focus:border-[#c85776]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
+                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
                 </div>
               </div>
             )}
           </div>
 
           {/* DETAIL PANEL */}
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
             {sel ? (
               <>
-                <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]/75">Seçili ürün</div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">Seçili ürün</div>
                 <div className="mt-3 flex items-start gap-3">
                   {sel.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={sel.imageUrl} alt={sel.name} className="h-20 w-20 shrink-0 rounded-2xl border border-[#efbfd0]/60 object-cover" />
+                    <img src={sel.imageUrl} alt={sel.name} className="h-20 w-20 shrink-0 rounded-2xl border border-[#EAD8DF] object-cover" />
                   ) : (
-                    <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><Package className="h-8 w-8" /></span>
+                    <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-[#A5556E] text-white"><Package className="h-8 w-8" /></span>
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2"><span className="truncate font-display text-2xl tracking-tight">{sel.name}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[sel.status]}`}>{STATUS_LABEL[sel.status]}</span></div>
-                    <div className="text-[11px] text-[#352432]/55">{sel.categoryLabel} · BARKOD {sel.barcode || '—'}</div>
+                    <div className="text-[11px] text-[#5A4B53]">{sel.categoryLabel} · BARKOD {sel.barcode || '—'}</div>
                   </div>
                 </div>
 
@@ -381,7 +381,7 @@ export default function ProductLibrary({
                     }}
                     onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as unknown as FV, sel), tenantId); await reload() }}
                     trigger={
-                      <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                      <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                         <PencilLine className="h-3.5 w-3.5" /> Düzenle
                       </button>
                     }
@@ -402,89 +402,89 @@ export default function ProductLibrary({
                 </div>
 
                 {moveDialog && (
-                  <div className="mt-3 rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
+                  <div className="mt-3 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-[#352432]">{MOVE_LABEL[moveDialog.type]} · {sel.name}</span>
-                      <button type="button" onClick={() => setMoveDialog(null)} className="text-[#352432]/40 hover:text-rose-600"><X className="h-4 w-4" /></button>
+                      <span className="text-[11px] font-medium text-[#2A2027]">{MOVE_LABEL[moveDialog.type]} · {sel.name}</span>
+                      <button type="button" onClick={() => setMoveDialog(null)} className="text-[#74616A] hover:text-rose-600"><X className="h-4 w-4" /></button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="text-[9px] font-mono uppercase text-[#352432]/45">Miktar
-                        <input type="number" min={1} value={moveDialog.qty} onChange={(e) => setMoveDialog((m) => m && { ...m, qty: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]" />
+                      <label className="text-[9px] font-mono uppercase text-[#74616A]">Miktar
+                        <input type="number" min={1} value={moveDialog.qty} onChange={(e) => setMoveDialog((m) => m && { ...m, qty: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
                       </label>
-                      <label className="text-[9px] font-mono uppercase text-[#352432]/45">Birim maliyet (₺)
-                        <input type="number" min={0} value={moveDialog.unitCost || ''} onChange={(e) => setMoveDialog((m) => m && { ...m, unitCost: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]" />
+                      <label className="text-[9px] font-mono uppercase text-[#74616A]">Birim maliyet (₺)
+                        <input type="number" min={0} value={moveDialog.unitCost || ''} onChange={(e) => setMoveDialog((m) => m && { ...m, unitCost: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
                       </label>
                       {/* HAREKET TARİHİ: mal dün/geçen hafta girdiyse stok raporu o güne yazsın.
                           Varsayılan bugün; ileri tarih kabul edilmez. */}
-                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#352432]/45">Hareket tarihi
+                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#74616A]">Hareket tarihi
                         <input
                           type="date"
                           value={moveDialog.date}
                           max={localDateKey(new Date())}
                           onChange={(e) => setMoveDialog((m) => m && { ...m, date: e.target.value })}
-                          className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]"
+                          className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                         />
                       </label>
-                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#352432]/45">Not
-                        <input value={moveDialog.notes} onChange={(e) => setMoveDialog((m) => m && { ...m, notes: e.target.value })} className="mt-0.5 w-full rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[13px] text-[#352432] outline-none focus:border-[#c85776]" />
+                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#74616A]">Not
+                        <input value={moveDialog.notes} onChange={(e) => setMoveDialog((m) => m && { ...m, notes: e.target.value })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
                       </label>
                     </div>
                     <button type="button" disabled={moveBusy} onClick={submitMove}
-                      className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#c85776] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">
+                      className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">
                       {moveBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Repeat className="h-3.5 w-3.5" />} {isStaff ? 'Onaya gönder' : 'Hareketi kaydet'}
                     </button>
                   </div>
                 )}
               </>
-            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#352432]/45">Ürün seçimi yok.</div>}
+            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#74616A]">Ürün seçimi yok.</div>}
           </div>
         </div>
 
         {/* ALT BLOKLAR */}
         <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr_1fr]">
           {/* Son Stok Hareketleri */}
-          <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-            <div className="border-b border-[#ead8df]/70 px-5 py-3.5 font-display text-lg tracking-tight">Son Stok Hareketleri <span className="ml-1 rounded-full bg-[#fff1f6] px-2 py-0.5 text-[11px] text-[#b14d6c]">{Math.min(8, movements.length)}</span></div>
-            <div className="hidden grid-cols-[0.9fr_1.2fr_0.9fr_0.5fr_0.6fr_0.9fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 sm:grid">
+          <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white">
+            <div className="border-b border-[#EAD8DF] px-5 py-3.5 font-display text-lg tracking-tight">Son Stok Hareketleri <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[11px] text-[#8C4460]">{Math.min(8, movements.length)}</span></div>
+            <div className="hidden grid-cols-[0.9fr_1.2fr_0.9fr_0.5fr_0.6fr_0.9fr] gap-2 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2 text-[9px] font-mono uppercase tracking-widest text-[#74616A] sm:grid">
               <span>Tarih</span><span>Ürün</span><span>İşlem</span><span>Miktar</span><span>Stok</span><span>Kullanıcı</span>
             </div>
-            <div className="divide-y divide-[#f1e5ea]">
+            <div className="divide-y divide-[#F1E7EB]">
               {movements.slice(0, 8).map((m) => {
                 const prod = productById.get(m.productId)
                 const inbound = m.type === 'Inbound' || m.type === 'Adjustment'
                 return (
                   <div key={m.id} className="grid grid-cols-1 gap-2 px-5 py-2.5 text-[12px] sm:grid-cols-[0.9fr_1.2fr_0.9fr_0.5fr_0.6fr_0.9fr] sm:items-center">
-                    <span className="font-mono text-[10px] text-[#352432]/50">{m.date.split('-').reverse().join('.')} {m.time}</span>
-                    <span className="truncate text-[#352432]">{m.productName || prod?.name || '—'}</span>
+                    <span className="font-mono text-[10px] text-[#5A4B53]">{m.date.split('-').reverse().join('.')} {m.time}</span>
+                    <span className="truncate text-[#2A2027]">{m.productName || prod?.name || '—'}</span>
                     <span><span className={`rounded-md px-1.5 py-0.5 text-[9px] font-medium ${MOVE_TONE[m.type] || 'bg-slate-50 text-slate-600'}`}>{MOVE_LABEL[m.type] || m.type}</span></span>
                     <span className={`tabular-nums ${inbound ? 'text-emerald-700' : 'text-rose-600'}`}>{inbound ? '+' : '-'}{m.quantity}</span>
-                    <span className="tabular-nums text-[#352432]/55">{prod?.currentStock ?? '—'}</span>
-                    <span className="truncate text-[#352432]/55">{m.staffName || '—'}</span>
+                    <span className="tabular-nums text-[#5A4B53]">{prod?.currentStock ?? '—'}</span>
+                    <span className="truncate text-[#5A4B53]">{m.staffName || '—'}</span>
                   </div>
                 )
               })}
-              {movements.length === 0 && <div className="px-5 py-8 text-center text-[12px] text-[#352432]/45">Hareket kaydı yok.</div>}
+              {movements.length === 0 && <div className="px-5 py-8 text-center text-[12px] text-[#74616A]">Hareket kaydı yok.</div>}
             </div>
           </div>
 
           {/* Kategori Bazlı Stok Değeri */}
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
             <div className="mb-3 font-display text-lg tracking-tight">Kategori Bazlı Stok Değeri</div>
             <div className="space-y-2.5">
               {catValues.slice(0, 6).map((c) => (
                 <div key={c.name}>
-                  <div className="flex items-center justify-between text-[11px]"><span className="text-[#352432]/70">{c.name}</span><span className="tabular-nums text-[#352432]">{formatTL(c.value)} <span className="text-[#352432]/40">%{c.pct}</span></span></div>
+                  <div className="flex items-center justify-between text-[11px]"><span className="text-[#5A4B53]">{c.name}</span><span className="tabular-nums text-[#2A2027]">{formatTL(c.value)} <span className="text-[#74616A]">%{c.pct}</span></span></div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]">
                     <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${c.pct}%` }} />
                   </div>
                 </div>
               ))}
-              {catValues.length === 0 && <div className="py-6 text-center text-[12px] text-[#352432]/45">Veri yok.</div>}
+              {catValues.length === 0 && <div className="py-6 text-center text-[12px] text-[#74616A]">Veri yok.</div>}
             </div>
           </div>
 
           {/* Stok Özeti */}
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
             <div className="mb-3 font-display text-lg tracking-tight">Stok Özeti</div>
             <div className="grid grid-cols-2 gap-2.5">
               <Tile icon={Boxes} tone="text-emerald-600 bg-emerald-50" k="Toplam Stok Adedi" v={`${Math.round(totalUnits)} adet`} />
@@ -508,20 +508,20 @@ export default function ProductLibrary({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-3 rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3">
-      <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{title}</div>
+    <div className="mt-3 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
+      <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{title}</div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">{children}</div>
     </div>
   )
 }
 function Cell({ k, v, tone }: { k: string; v: string; tone?: string }) {
-  return <div className="min-w-0"><div className="text-[9px] font-mono uppercase text-[#352432]/40">{k}</div><div className={`mt-0.5 truncate text-[12.5px] font-medium ${tone || 'text-[#352432]'}`}>{v}</div></div>
+  return <div className="min-w-0"><div className="text-[9px] font-mono uppercase text-[#74616A]">{k}</div><div className={`mt-0.5 truncate text-[12.5px] font-medium ${tone || 'text-[#2A2027]'}`}>{v}</div></div>
 }
 function Tile({ icon: Icon, tone, k, v }: { icon: typeof Boxes; tone: string; k: string; v: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-[12px] border border-[#ead8df]/60 bg-white px-3 py-2.5">
+    <div className="flex items-center gap-2.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5">
       <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-4 w-4" /></span>
-      <div className="min-w-0"><div className="truncate text-[9px] font-mono uppercase text-[#352432]/40">{k}</div><div className="truncate font-display text-[15px] text-[#352432]">{v}</div></div>
+      <div className="min-w-0"><div className="truncate text-[9px] font-mono uppercase text-[#74616A]">{k}</div><div className="truncate font-display text-[15px] text-[#2A2027]">{v}</div></div>
     </div>
   )
 }

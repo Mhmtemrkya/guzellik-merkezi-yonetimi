@@ -78,20 +78,20 @@ export default function KvkkSettingsCard({ tenantId }: { tenantId?: string }) {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
-      className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
+      className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/75">
+          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/75">
             <ShieldCheck className="h-4 w-4" /> KVKK Aydınlatma Metni
           </div>
           <h3 className="mt-2 font-display text-2xl tracking-tight">Yasal Metin</h3>
-          <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-[#352432]/55">
-            Yeni müşteri ekleme ekranında gösterilen KVKK aydınlatma metni. <code className="rounded bg-[#fff1f6] px-1 text-[#c85776]">{'{KURUM}'}</code> yazdığınız yere kurum adı otomatik yerleşir.
+          <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-[#5A4B53]">
+            Yeni müşteri ekleme ekranında gösterilen KVKK aydınlatma metni. <code className="rounded bg-[#F6DFE6] px-1 text-[#A5556E]">{'{KURUM}'}</code> yazdığınız yere kurum adı otomatik yerleşir.
             {isCustom ? ' Şu an özel metin kullanılıyor.' : ' Şu an yerleşik varsayılan metin kullanılıyor.'}
           </p>
         </div>
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-[#fff1f6] text-[#c85776]">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-[#A5556E] text-white">
           <FileText className="h-5 w-5" />
         </span>
       </div>
@@ -107,7 +107,7 @@ export default function KvkkSettingsCard({ tenantId }: { tenantId?: string }) {
             onChange={(e) => { setText(e.target.value); setSaved(false) }}
             rows={14}
             spellCheck={false}
-            className="mt-5 w-full resize-y rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-4 text-[12px] leading-relaxed text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+            className="mt-5 w-full resize-y rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-4 text-[12px] leading-relaxed text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
           />
 
           {error && (
@@ -119,21 +119,21 @@ export default function KvkkSettingsCard({ tenantId }: { tenantId?: string }) {
               type="button"
               onClick={save}
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-5 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-70"
             >
               {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</> : saved ? <><CheckCircle2 className="h-4 w-4" /> Kaydedildi</> : <><Save className="h-4 w-4" /> Metni kaydet</>}
             </button>
             <button
               type="button"
               onClick={previewPdf}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-[#efbfd0]/75 bg-[#fff1f6] px-4 py-2.5 text-[12px] font-semibold text-[#c85776] transition-colors hover:bg-[#ffe6ef]"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-[#BE7690]/75 bg-[#F6DFE6] px-4 py-2.5 text-[12px] font-semibold text-[#A5556E] transition-colors hover:bg-[#F6DFE6]"
             >
               <Download className="h-4 w-4" /> PDF önizle / indir
             </button>
             <button
               type="button"
               onClick={resetToDefault}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
             >
               <RotateCcw className="h-4 w-4" /> Varsayılana dön
             </button>

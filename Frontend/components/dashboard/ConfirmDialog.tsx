@@ -70,7 +70,7 @@ export default function ConfirmDialog({
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-md flex-col overflow-hidden rounded-[26px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_28px_90px_-48px_rgba(120,71,88,0.62)] backdrop-blur-2xl [&>button:last-child]:hidden">
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-md flex-col overflow-hidden rounded-[26px] border border-[#EAD8DF]/[0.90] bg-white/[0.96] p-0 text-[#2A2027] shadow-[0_28px_90px_-48px_rgba(120,71,88,0.62)] backdrop-blur-2xl [&>button:last-child]:hidden">
         <div className="relative bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-6">
           <motion.span
             aria-hidden
@@ -88,7 +88,7 @@ export default function ConfirmDialog({
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border shadow-[0_14px_34px_-24px_rgba(120,71,88,0.55)] ${
                 destructive
                   ? 'border-rose-200/[0.90] bg-rose-50/[0.90] text-rose-700'
-                  : 'border-[#efbfd0]/[0.75] bg-white/[0.82] text-[#c85776]'
+                  : 'border-[#BE7690]/[0.75] bg-white/[0.82] text-[#A5556E]'
               }`}
             >
               <Icon className="h-4 w-4" strokeWidth={1.6} />
@@ -96,7 +96,7 @@ export default function ConfirmDialog({
             <div className="min-w-0 flex-1">
               <DialogTitle className="font-display text-2xl tracking-tight">{title}</DialogTitle>
               {description && (
-                <DialogDescription className="mt-2 text-[12px] leading-relaxed text-[#352432]/[0.65]">
+                <DialogDescription className="mt-2 text-[12px] leading-relaxed text-[#2A2027]/[0.65]">
                   {description}
                 </DialogDescription>
               )}
@@ -104,7 +104,7 @@ export default function ConfirmDialog({
             <button
               type="button"
               onClick={() => !busy && setOpen(false)}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.82] text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.82] text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#BE7690]/[0.90] hover:text-[#2A2027]"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -112,13 +112,13 @@ export default function ConfirmDialog({
 
           {reasonLabel && (
             <div className="relative mt-4">
-              <label className="block text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.75]">{reasonLabel}</label>
+              <label className="block text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.75]">{reasonLabel}</label>
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder={reasonPlaceholder}
                 disabled={busy}
-                className="mt-1.5 w-full rounded-[14px] border border-[#ead8df]/[0.85] bg-white px-3 py-2 text-[12px] text-[#352432] outline-none transition-colors focus:border-[#c85776] disabled:opacity-60"
+                className="mt-1.5 w-full rounded-[14px] border border-[#EAD8DF]/[0.85] bg-white px-3 py-2 text-[12px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E] disabled:opacity-60"
               />
             </div>
           )}
@@ -138,7 +138,7 @@ export default function ConfirmDialog({
               type="button"
               onClick={() => !busy && setOpen(false)}
               disabled={busy}
-              className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-50"
+              className="rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.65] transition-colors hover:border-[#BE7690]/[0.75] hover:text-[#2A2027] disabled:opacity-50"
             >
               {cancelLabel}
             </button>
@@ -149,7 +149,7 @@ export default function ConfirmDialog({
               className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-mono uppercase tracking-widest shadow-[0_12px_28px_-18px_rgba(120,71,88,0.55)] transition-colors disabled:opacity-60 ${
                 destructive
                   ? 'border border-rose-200/[0.90] bg-rose-50/[0.95] text-rose-700 hover:bg-rose-100/[0.85]'
-                  : 'border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] text-[#2f1724]'
+                  : 'border border-[#BE7690]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] text-[#2f1724]'
               }`}
             >
               {busy && <Loader2 className="h-3 w-3 animate-spin" />}

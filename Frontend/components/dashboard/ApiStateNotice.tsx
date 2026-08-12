@@ -26,22 +26,22 @@ export default function ApiStateNotice({
   const Icon: LucideIcon = loading ? Loader2 : error ? ServerOff : AlertTriangle
   const tone = loading ? 'loading' : error ? 'error' : missingModule ? 'pending' : 'empty'
   const toneClasses: Record<string, string> = {
-    loading: 'border-[#efbfd0] bg-[#fff1f6]/82 text-[#4a3542]',
+    loading: 'border-[#BE7690] bg-[#F6DFE6]/82 text-[#4a3542]',
     error: 'border-rose-200 bg-rose-50/88 text-rose-900',
     pending: 'border-amber-200 bg-amber-50/88 text-amber-900',
-    empty: 'border-[#ead8df] bg-white/78 text-[#4a3542]',
+    empty: 'border-[#EAD8DF] bg-white/78 text-[#4a3542]',
   }
   const iconTone: Record<string, string> = {
-    loading: 'border-[#efbfd0] bg-white text-[#c85776]',
+    loading: 'border-[#BE7690] bg-white text-[#A5556E]',
     error: 'border-rose-200 bg-white text-rose-600',
     pending: 'border-amber-200 bg-white text-amber-600',
-    empty: 'border-[#ead8df] bg-white text-[#9d7386]',
+    empty: 'border-[#EAD8DF] bg-white text-[#9d7386]',
   }
   const orbColor: Record<string, string> = {
     loading: 'bg-[#ffdce8]/80',
     error: 'bg-rose-100/70',
     pending: 'bg-amber-100/70',
-    empty: 'bg-[#fff1f6]/90',
+    empty: 'bg-[#F6DFE6]/90',
   }
   const title = loading
     ? 'Backend verisi yükleniyor'
@@ -82,7 +82,7 @@ export default function ApiStateNotice({
           <Icon className="h-4 w-4" strokeWidth={1.7} />
         </motion.span>
         <div className="min-w-0 pt-0.5">
-          <div className="text-[11px] font-semibold tracking-tight text-[#c85776]">{title}</div>
+          <div className="text-[11px] font-semibold tracking-tight text-[#A5556E]">{title}</div>
           <div className="mt-1 text-[12px] leading-5 text-[#6a4f5c]">{message}</div>
         </div>
       </div>

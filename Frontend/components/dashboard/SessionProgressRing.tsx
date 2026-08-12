@@ -65,8 +65,8 @@ export default function SessionProgressRing({
         ) : (
           /* Punto halka boyuna göre ölçeklenir: kompakt ızgarada (44px) sabit 17px taşıyordu. */
           <div className="text-center leading-none">
-            <div className="font-display tabular-nums text-[#c85776]" style={{ fontSize: Math.max(12, size * 0.3) }}>{remaining}</div>
-            <div className="tracking-wide text-[#705a66]" style={{ fontSize: Math.max(9, size * 0.17) }}>/ {total}</div>
+            <div className="font-display tabular-nums text-[#A5556E]" style={{ fontSize: Math.max(12, size * 0.3) }}>{remaining}</div>
+            <div className="tracking-wide text-[#74616A]" style={{ fontSize: Math.max(9, size * 0.17) }}>/ {total}</div>
           </div>
         )}
       </div>

@@ -143,8 +143,8 @@ function Ring({ value, size = 74, stroke = 7, tone = '#e0617f', title, sub }: {
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div className="leading-tight">
-          <div className="font-display text-[15px] tracking-tight text-[#352432]">{title}</div>
-          {sub && <div className="text-[10px] text-[#705a66]">{sub}</div>}
+          <div className="font-display text-[15px] tracking-tight text-[#2A2027]">{title}</div>
+          {sub && <div className="text-[10px] text-[#74616A]">{sub}</div>}
         </div>
       </div>
     </div>
@@ -180,16 +180,16 @@ function WeeklyBars({ values }: { values: number[] }) {
     <div className="flex items-end justify-between gap-1.5">
       {values.map((v, i) => (
         <div key={i} className="group flex flex-1 flex-col items-center gap-1">
-          <span className="text-[10px] tabular-nums text-[#705a66] opacity-0 transition-opacity group-hover:opacity-100">{v}</span>
+          <span className="text-[10px] tabular-nums text-[#74616A] opacity-0 transition-opacity group-hover:opacity-100">{v}</span>
           {/* iz sabit yükseklikte: veri sıfırken de grafik alanı çökmesin */}
           <span className="flex w-full items-end" style={{ height: BAR_TRACK }}>
             <motion.span
-              className={`w-full rounded-t-[4px] ${i === peak && values[peak] > 0 ? 'bg-gradient-to-t from-[#c85776] to-[#f3a3bf]' : 'bg-gradient-to-t from-[#e0617f]/75 to-[#f3a3bf]/70'}`}
+              className={`w-full rounded-t-[4px] ${i === peak && values[peak] > 0 ? 'bg-gradient-to-t from-[#A5556E] to-[#f3a3bf]' : 'bg-gradient-to-t from-[#e0617f]/75 to-[#f3a3bf]/70'}`}
               initial={{ height: 0 }} animate={{ height: Math.max(4, (v / max) * BAR_TRACK) }}
               transition={{ duration: 0.5, delay: i * 0.04, ease: 'easeOut' }}
             />
           </span>
-          <span className="text-[10px] text-[#705a66]">{DAYS[i]}</span>
+          <span className="text-[10px] text-[#74616A]">{DAYS[i]}</span>
         </div>
       ))}
     </div>
@@ -201,14 +201,14 @@ function CellBadge({ cell, compact = false }: { cell: PermCell; compact?: boolea
   const box = compact ? 'h-7 w-7' : 'h-8 w-8'
   if (cell.state === 'full') {
     return (
-      <span className={`grid ${box} place-items-center rounded-[10px] bg-gradient-to-br from-[#e0617f] to-[#c85776] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]`}>
+      <span className={`grid ${box} place-items-center rounded-[10px] bg-gradient-to-br from-[#e0617f] to-[#A5556E] text-white shadow-[0_6px_14px_-8px_rgba(200,87,118,0.9)]`}>
         <Check className="h-4 w-4" strokeWidth={3} />
       </span>
     )
   }
   if (cell.state === 'partial') {
     return (
-      <span className={`grid ${box} place-items-center rounded-[10px] border border-[#e0617f]/55 bg-[#fff1f6] text-[11px] font-semibold tabular-nums text-[#b14d6c]`}>
+      <span className={`grid ${box} place-items-center rounded-[10px] border border-[#e0617f]/55 bg-[#F6DFE6] text-[11px] font-semibold tabular-nums text-[#8C4460]`}>
         {cell.granted}/{cell.total}
       </span>
     )
@@ -507,7 +507,7 @@ function PersonelPageInner() {
               mode="create" branches={branchOptions} tenantId={tenantId} tenantName={selectedInstitution?.name}
               onSubmitted={async () => { await reload() }}
               trigger={
-                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#e0617f] to-[#c85776] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_12px_26px_-16px_rgba(200,87,118,0.95)] transition-transform hover:-translate-y-0.5">
+                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#e0617f] to-[#A5556E] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_12px_26px_-16px_rgba(200,87,118,0.95)] transition-transform hover:-translate-y-0.5">
                   <UserPlus className="h-4 w-4" strokeWidth={2.1} /> Personel Ekle
                 </button>
               }
@@ -533,7 +533,7 @@ function PersonelPageInner() {
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
             >
               <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
             </button>
@@ -541,37 +541,37 @@ function PersonelPageInner() {
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && allStaff.length === 0} emptyMessage="Personel kaydı yok." />
         {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
 
         {/* ══════════════════════ EKİP PANOSU ══════════════════════ */}
         <motion.section
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-[24px] border border-[#ead8df]/80 bg-white/92 p-5 shadow-[0_26px_60px_-44px_rgba(150,78,104,0.55)] sm:p-6"
+          className="relative overflow-hidden rounded-[24px] border border-[#EAD8DF]/80 bg-white/92 p-5 shadow-[0_26px_60px_-44px_rgba(150,78,104,0.55)] sm:p-6"
         >
           {/* gül + altın ışık lekeleri */}
           <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden opacity-[0.16]">
-            <div className="absolute -left-24 -top-28 h-56 w-56 rounded-full bg-[#c85776] blur-[70px]" />
+            <div className="absolute -left-24 -top-28 h-56 w-56 rounded-full bg-[#A5556E] blur-[70px]" />
             <div className="absolute -bottom-28 right-10 h-56 w-56 rounded-full bg-[#b88938] blur-[80px]" />
           </div>
 
           <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-7">
             {/* — sol: kadro kimliği */}
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]">
+              <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]">
                 <Sparkles className="h-4 w-4" /> Ekip Panosu
               </div>
               <div className="mt-1.5 flex flex-wrap items-end gap-x-3 gap-y-1">
-                <span className="font-display text-4xl tabular-nums tracking-tight text-[#352432]"><CountUp value={allStaff.length} /></span>
-                <span className="pb-1 text-[13px] font-medium text-[#4a3a44]">kişilik kadro</span>
+                <span className="font-display text-4xl tabular-nums tracking-tight text-[#2A2027]"><CountUp value={allStaff.length} /></span>
+                <span className="pb-1 text-[13px] font-medium text-[#3E343A]">kişilik kadro</span>
               </div>
 
               {/* aktif / pasif oranı */}
               <div className="mt-4">
                 <div className="flex items-center justify-between text-[11px] font-medium">
                   <span className="text-[#2f9e72]">{activeCount} aktif</span>
-                  <span className="text-[#705a66]">{allStaff.length - activeCount} pasif / izinli</span>
+                  <span className="text-[#74616A]">{allStaff.length - activeCount} pasif / izinli</span>
                 </div>
                 <div className="mt-1.5 flex h-2.5 overflow-hidden rounded-full bg-[#f4e6ec]">
                   <motion.span
@@ -596,28 +596,28 @@ function PersonelPageInner() {
                     </motion.span>
                   ))}
                   {allStaff.length > 7 && (
-                    <span className="grid h-9 w-9 place-items-center rounded-full border-2 border-white bg-[#fff1f6] text-[11px] font-semibold text-[#b14d6c]">
+                    <span className="grid h-9 w-9 place-items-center rounded-full border-2 border-white bg-[#F6DFE6] text-[11px] font-semibold text-[#8C4460]">
                       +{allStaff.length - 7}
                     </span>
                   )}
                 </div>
-                {allStaff.length === 0 && <span className="text-[12px] text-[#705a66]">Henüz personel eklenmedi.</span>}
+                {allStaff.length === 0 && <span className="text-[12px] text-[#74616A]">Henüz personel eklenmedi.</span>}
               </div>
 
               {/* kapsam görünümü sekmeleri */}
-              <div className="mt-5 inline-flex flex-wrap gap-1 rounded-[14px] border border-[#ead8df]/80 bg-[#fffafc] p-1">
+              <div className="mt-5 inline-flex flex-wrap gap-1 rounded-[14px] border border-[#EAD8DF]/80 bg-[#F7F6F6] p-1">
                 {SCOPE_TABS.map((t) => {
                   const on = scope === t.key
                   return (
                     <Link
                       key={t.key}
                       href={`/panel/ekip?scope=${t.key}`}
-                      className={`relative inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[11.5px] font-medium transition-colors ${on ? 'text-white' : 'text-[#4a3a44] hover:text-[#c85776]'}`}
+                      className={`relative inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[11.5px] font-medium transition-colors ${on ? 'text-white' : 'text-[#3E343A] hover:text-[#A5556E]'}`}
                     >
                       {on && (
                         <motion.span
                           layoutId="personel-scope-pill"
-                          className="absolute inset-0 rounded-[10px] bg-gradient-to-r from-[#e0617f] to-[#c85776]"
+                          className="absolute inset-0 rounded-[10px] bg-gradient-to-r from-[#e0617f] to-[#A5556E]"
                           transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                         />
                       )}
@@ -631,44 +631,44 @@ function PersonelPageInner() {
 
             {/* — sağ: 4 gerçek metrik */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]">
-                  <TrendingUp className="h-3.5 w-3.5 text-[#c85776]" /> Bu ay tamamlanan iş
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]">
+                  <TrendingUp className="h-3.5 w-3.5 text-[#A5556E]" /> Bu ay tamamlanan iş
                 </div>
-                <div className="mt-1 font-display text-3xl tabular-nums tracking-tight text-[#352432]"><CountUp value={teamPulse.monthCompleted} /></div>
-                <div className="text-[11px] text-[#705a66]">tüm ekip · randevu bazlı</div>
+                <div className="mt-1 font-display text-3xl tabular-nums tracking-tight text-[#2A2027]"><CountUp value={teamPulse.monthCompleted} /></div>
+                <div className="text-[11px] text-[#74616A]">tüm ekip · randevu bazlı</div>
               </div>
 
               {/* Başarı oranı yerine ÜRETİLEN TUTAR: müşteri kaynaklı iptal/gelmedi personeli
                   cezalandırmasın (bkz. scoreOf). */}
-              <div className="rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]">
-                  <Wallet className="h-3.5 w-3.5 text-[#c85776]" /> Bu ay üretilen tutar
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]">
+                  <Wallet className="h-3.5 w-3.5 text-[#A5556E]" /> Bu ay üretilen tutar
                 </div>
-                <div className="mt-1 font-display text-3xl tabular-nums tracking-tight text-[#352432]">
+                <div className="mt-1 font-display text-3xl tabular-nums tracking-tight text-[#2A2027]">
                   {formatTL(teamPulse.monthRevenue)}
                 </div>
-                <div className="text-[11px] text-[#705a66]">tüm ekip · uygulama + satış</div>
+                <div className="text-[11px] text-[#74616A]">tüm ekip · uygulama + satış</div>
               </div>
 
-              <div className="rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]">
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]">
                   <Star className="h-3.5 w-3.5 text-[#d8ad55]" /> Ortalama müşteri puanı
                 </div>
                 <div className="mt-1 flex items-center gap-2">
-                  <span className="font-display text-3xl tabular-nums tracking-tight text-[#352432]">
+                  <span className="font-display text-3xl tabular-nums tracking-tight text-[#2A2027]">
                     {teamPulse.ratingCount ? <CountUp value={teamPulse.rating} decimals={1} /> : '—'}
                   </span>
                   <Stars value={teamPulse.rating} />
                 </div>
-                <div className="text-[11px] text-[#705a66]">{teamPulse.ratingCount ? `${teamPulse.ratingCount} değerlendirme` : 'Henüz puan yok'}</div>
+                <div className="text-[11px] text-[#74616A]">{teamPulse.ratingCount ? `${teamPulse.ratingCount} değerlendirme` : 'Henüz puan yok'}</div>
               </div>
 
-              <div className="flex items-center gap-3 rounded-[16px] border border-[#ead8df]/70 bg-[#fffafc] p-4">
+              <div className="flex items-center gap-3 rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
                 <Ring value={teamPulse.coverage} tone="#b88938" title={`${teamPulse.coveredPages}/${teamPulse.catalogPages}`} />
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-[#705a66]">Yetki kapsamı</div>
-                  <div className="mt-0.5 text-[12px] leading-snug text-[#4a3a44]">En az bir kişiye açık sayfa</div>
+                  <div className="text-[11px] font-medium text-[#74616A]">Yetki kapsamı</div>
+                  <div className="mt-0.5 text-[12px] leading-snug text-[#3E343A]">En az bir kişiye açık sayfa</div>
                 </div>
               </div>
             </div>
@@ -678,19 +678,19 @@ function PersonelPageInner() {
         {scope === 'permissions' ? (
           /* ═══════════════════ YETKİ MATRİSİ ═══════════════════ */
           <div className="space-y-4">
-            <div className="min-w-0 rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
+            <div className="min-w-0 rounded-[22px] border border-[#EAD8DF] bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]">
+                  <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]">
                     <ShieldCheck className="h-4 w-4" /> Yetki Matrisi
                   </div>
-                  <div className="mt-1 font-display text-2xl tracking-tight text-[#352432]">
+                  <div className="mt-1 font-display text-2xl tracking-tight text-[#2A2027]">
                     {catalog.length} panel sayfası × {allStaff.length} personel
                   </div>
-                  <div className="text-[12px] text-[#705a66]">Satıra tıklayınca sayfanın işlem kırılımı aşağıda açılır.</div>
+                  <div className="text-[12px] text-[#74616A]">Satıra tıklayınca sayfanın işlem kırılımı aşağıda açılır.</div>
                 </div>
                 {/* açıklama */}
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#4a3a44]">
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#3E343A]">
                   <span className="inline-flex items-center gap-1.5"><CellBadge cell={{ state: 'full', granted: 0, total: 0, legacy: false }} compact /> Tam yetki</span>
                   <span className="inline-flex items-center gap-1.5"><CellBadge cell={{ state: 'partial', granted: 2, total: 4, legacy: false }} compact /> Kısmi (açık/toplam işlem)</span>
                   <span className="inline-flex items-center gap-1.5"><CellBadge cell={{ state: 'none', granted: 0, total: 0, legacy: false }} compact /> Kapalı</span>
@@ -698,7 +698,7 @@ function PersonelPageInner() {
               </div>
 
               {allStaff.length === 0 || catalog.length === 0 ? (
-                <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center text-[12.5px] text-[#705a66]">
+                <div className="rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-12 text-center text-[12.5px] text-[#74616A]">
                   Matris için personel ve yetki kataloğu gerekiyor. Personel ekleyip “Rol Düzenle” ile yetki verin.
                 </div>
               ) : (
@@ -708,7 +708,7 @@ function PersonelPageInner() {
                     style={{ display: 'grid', gridTemplateColumns: `minmax(var(--matrix-head), 1.3fr) repeat(${allStaff.length}, minmax(58px, 1fr))` }}
                   >
                     {/* başlık satırı */}
-                    <div className="sticky left-0 z-20 flex items-end bg-white px-1 pb-2.5 text-[10px] font-mono uppercase tracking-widest text-[#705a66]">
+                    <div className="sticky left-0 z-20 flex items-end bg-white px-1 pb-2.5 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">
                       Sayfa \ Personel
                     </div>
                     {allStaff.map((p) => (
@@ -718,13 +718,13 @@ function PersonelPageInner() {
                         onMouseEnter={() => setHoverCol(p.id)}
                         onMouseLeave={() => setHoverCol(null)}
                         onClick={() => setHoverCol(hoverCol === p.id ? null : p.id)}
-                        className={`flex flex-col items-center gap-1 rounded-t-[12px] px-1 pb-2.5 pt-1 transition-colors ${hoverCol === p.id ? 'bg-[#fff1f6]' : ''}`}
+                        className={`flex flex-col items-center gap-1 rounded-t-[12px] px-1 pb-2.5 pt-1 transition-colors ${hoverCol === p.id ? 'bg-[#F6DFE6]' : ''}`}
                         title={`${p.name} · ${p.role}`}
                       >
                         <span className="overflow-hidden rounded-full border-2 border-white shadow-[0_4px_10px_-6px_rgba(120,71,88,0.8)]">
                           <Avatar name={p.name} photoUrl={p.photoUrl || undefined} size={34} radius={999} />
                         </span>
-                        <span className="max-w-[70px] truncate text-[10px] font-medium text-[#4a3a44]">{p.name.split(' ')[0]}</span>
+                        <span className="max-w-[70px] truncate text-[10px] font-medium text-[#3E343A]">{p.name.split(' ')[0]}</span>
                       </button>
                     ))}
 
@@ -738,15 +738,15 @@ function PersonelPageInner() {
                             type="button"
                             onClick={() => setSelectedPerm(row.page.key)}
                             className={`sticky left-0 z-10 flex items-center gap-2.5 rounded-l-[12px] border-l-2 py-2 pl-2 pr-3 text-left transition-colors ${
-                              on ? 'border-[#c85776] bg-[#fff1f6]' : `border-transparent ${ri % 2 ? 'bg-[#fffafc]' : 'bg-white'} hover:bg-[#fff7fa]`
+                              on ? 'border-[#8C4460] bg-[#F6DFE6]' : `border-transparent ${ri % 2 ? 'bg-[#F7F6F6]' : 'bg-white'} hover:bg-[#fff7fa]`
                             }`}
                           >
-                            <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] ${on ? 'bg-[#c85776] text-white' : 'bg-[#fff1f6] text-[#c85776]'}`}>
+                            <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] ${on ? 'bg-[#A5556E] text-white' : 'bg-[#A5556E] text-white'}`}>
                               <Icon className="h-4 w-4" />
                             </span>
                             <span className="min-w-0">
-                              <span className="block truncate text-[12.5px] font-medium text-[#352432]">{row.page.label}</span>
-                              <span className="block text-[10.5px] text-[#705a66]">
+                              <span className="block truncate text-[12.5px] font-medium text-[#2A2027]">{row.page.label}</span>
+                              <span className="block text-[10.5px] text-[#74616A]">
                                 {row.holders.length ? `${row.holders.length} personel${row.partial ? ` · ${row.partial} kısmi` : ''}` : 'Kimseye açık değil'}
                               </span>
                             </span>
@@ -760,7 +760,7 @@ function PersonelPageInner() {
                                 onMouseLeave={() => setHoverCol(null)}
                                 title={`${p.name} · ${row.page.label} → ${cell.state === 'none' ? 'kapalı' : cell.state === 'full' ? (cell.legacy ? 'tam yetki (eski kayıt)' : 'tam yetki') : `${cell.granted}/${cell.total} işlem`}`}
                                 className={`grid place-items-center py-2 transition-colors ${
-                                  on ? 'bg-[#fff1f6]' : hoverCol === p.id ? 'bg-[#fff7fa]' : ri % 2 ? 'bg-[#fffafc]' : 'bg-white'
+                                  on ? 'bg-[#F6DFE6]' : hoverCol === p.id ? 'bg-[#fff7fa]' : ri % 2 ? 'bg-[#F7F6F6]' : 'bg-white'
                                 }`}
                               >
                                 <CellBadge cell={cell} />
@@ -772,7 +772,7 @@ function PersonelPageInner() {
                     })}
 
                     {/* toplam satırı */}
-                    <div className="sticky left-0 z-10 flex items-center gap-2 rounded-bl-[12px] border-t border-[#ead8df]/70 bg-white px-2 py-2.5 text-[11px] font-medium text-[#705a66]">
+                    <div className="sticky left-0 z-10 flex items-center gap-2 rounded-bl-[12px] border-t border-[#EAD8DF] bg-white px-2 py-2.5 text-[11px] font-medium text-[#74616A]">
                       Açık sayfa sayısı
                     </div>
                     {allStaff.map((p) => {
@@ -780,9 +780,9 @@ function PersonelPageInner() {
                       return (
                         <div
                           key={p.id}
-                          className={`grid place-items-center border-t border-[#ead8df]/70 py-2.5 ${hoverCol === p.id ? 'bg-[#fff7fa]' : ''}`}
+                          className={`grid place-items-center border-t border-[#EAD8DF] py-2.5 ${hoverCol === p.id ? 'bg-[#fff7fa]' : ''}`}
                         >
-                          <span className={`font-display text-[15px] tabular-nums ${count ? 'text-[#c85776]' : 'text-[#b9a3ad]'}`}>{count}</span>
+                          <span className={`font-display text-[15px] tabular-nums ${count ? 'text-[#A5556E]' : 'text-[#b9a3ad]'}`}>{count}</span>
                         </div>
                       )
                     })}
@@ -791,33 +791,33 @@ function PersonelPageInner() {
               )}
 
               {allStaff.length > 1 && (
-                <div className="mt-2 text-[11px] text-[#705a66] lg:hidden">Diğer personel kolonları için tabloyu yana kaydırın →</div>
+                <div className="mt-2 text-[11px] text-[#74616A] lg:hidden">Diğer personel kolonları için tabloyu yana kaydırın →</div>
               )}
 
               {orphanKeys.length > 0 && (
-                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#ead8df]/70 bg-[#fffafc] px-3 py-2.5">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]"><Shield className="h-3.5 w-3.5" /> Katalog dışı anahtar:</span>
+                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]"><Shield className="h-3.5 w-3.5" /> Katalog dışı anahtar:</span>
                   {orphanKeys.map((k) => (
-                    <span key={k} className="rounded-md border border-[#ead8df] bg-white px-2 py-0.5 text-[10.5px] text-[#4a3a44]">{k}</span>
+                    <span key={k} className="rounded-md border border-[#EAD8DF] bg-white px-2 py-0.5 text-[10.5px] text-[#3E343A]">{k}</span>
                   ))}
-                  <span className="text-[11px] text-[#705a66]">Personeli düzenleyip kaydedince temizlenir.</span>
+                  <span className="text-[11px] text-[#74616A]">Personeli düzenleyip kaydedince temizlenir.</span>
                 </div>
               )}
             </div>
 
             {/* sayfa dosyası + kapsam sıralaması */}
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-              <div className="min-w-0 rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
+              <div className="min-w-0 rounded-[22px] border border-[#EAD8DF] bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
                 <AnimatePresence mode="wait">
                   {selPage ? (
                     <motion.div key={selPage.page.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
                       <div className="flex items-start gap-3">
-                        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-[#fff1f6] to-[#ffe4ec] text-[#c85776]">
+                        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-[#fff1f6] to-[#ffe4ec] text-[#A5556E]">
                           {(() => { const I = pageIcon(selPage.page.key); return <I className="h-6 w-6" /> })()}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="font-display text-xl tracking-tight text-[#352432]">{selPage.page.label}</div>
-                          <div className="mt-0.5 text-[12px] leading-relaxed text-[#4a3a44]">{selPage.page.description}</div>
+                          <div className="font-display text-xl tracking-tight text-[#2A2027]">{selPage.page.label}</div>
+                          <div className="mt-0.5 text-[12px] leading-relaxed text-[#3E343A]">{selPage.page.description}</div>
                         </div>
                         <Ring
                           value={activeCount ? (selPage.holders.filter((h) => h.active).length / activeCount) * 100 : 0}
@@ -828,27 +828,27 @@ function PersonelPageInner() {
 
                       {/* sayfayı görebilenler */}
                       <div className="mt-5">
-                        <div className="text-[11px] font-mono uppercase tracking-widest text-[#705a66]">Sayfayı görebilenler ({selPage.holders.length})</div>
+                        <div className="text-[11px] font-mono uppercase tracking-widest text-[#74616A]">Sayfayı görebilenler ({selPage.holders.length})</div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {selPage.holders.map((h) => {
                             const cell = permCell(permSets.get(h.id) ?? new Set(), selPage.page)
                             return (
-                              <span key={h.id} className="inline-flex items-center gap-1.5 rounded-full border border-[#ead8df] bg-white py-1 pl-1 pr-2.5 text-[11.5px] text-[#4a3a44]">
+                              <span key={h.id} className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white py-1 pl-1 pr-2.5 text-[11.5px] text-[#3E343A]">
                                 <Avatar name={h.name} photoUrl={h.photoUrl || undefined} size={20} radius={999} />
                                 {h.name}
-                                {cell.state === 'partial' && <span className="rounded bg-[#fff1f6] px-1 text-[10px] font-semibold text-[#b14d6c]">{cell.granted}/{cell.total}</span>}
+                                {cell.state === 'partial' && <span className="rounded bg-[#F6DFE6] px-1 text-[10px] font-semibold text-[#8C4460]">{cell.granted}/{cell.total}</span>}
                               </span>
                             )
                           })}
-                          {!selPage.holders.length && <span className="text-[12px] text-[#705a66]">Bu sayfa hiçbir personele açık değil.</span>}
+                          {!selPage.holders.length && <span className="text-[12px] text-[#74616A]">Bu sayfa hiçbir personele açık değil.</span>}
                         </div>
                       </div>
 
                       {/* işlem kırılımı */}
                       <div className="mt-5">
-                        <div className="text-[11px] font-mono uppercase tracking-widest text-[#705a66]">İşlem yetkileri</div>
+                        <div className="text-[11px] font-mono uppercase tracking-widest text-[#74616A]">İşlem yetkileri</div>
                         {(selPage.page.actions ?? []).length === 0 ? (
-                          <div className="mt-2 rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-3 text-[12px] text-[#705a66]">
+                          <div className="mt-2 rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-3 text-[12px] text-[#74616A]">
                             Bu sayfada ayrı işlem yetkisi yok — sayfa açıksa tam erişim verilir.
                           </div>
                         ) : (
@@ -861,10 +861,10 @@ function PersonelPageInner() {
                               })
                               const pct = selPage.holders.length ? Math.round((owners.length / selPage.holders.length) * 100) : 0
                               return (
-                                <div key={a.key} className="rounded-[12px] border border-[#ead8df]/70 bg-[#fffafc] px-3 py-2.5">
+                                <div key={a.key} className="rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
                                   <div className="flex items-center justify-between gap-3">
-                                    <span className="text-[12.5px] font-medium text-[#352432]">{a.label}</span>
-                                    <span className="shrink-0 text-[11px] tabular-nums text-[#705a66]">{owners.length}/{selPage.holders.length}</span>
+                                    <span className="text-[12.5px] font-medium text-[#2A2027]">{a.label}</span>
+                                    <span className="shrink-0 text-[11px] tabular-nums text-[#74616A]">{owners.length}/{selPage.holders.length}</span>
                                   </div>
                                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#f4e6ec]">
                                     <motion.span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} />
@@ -872,7 +872,7 @@ function PersonelPageInner() {
                                   {owners.length > 0 && (
                                     <div className="mt-2 flex flex-wrap gap-1">
                                       {owners.map((o) => (
-                                        <span key={o.id} className="rounded-md bg-white px-1.5 py-0.5 text-[10.5px] text-[#4a3a44] ring-1 ring-[#ead8df]">{o.name.split(' ')[0]}</span>
+                                        <span key={o.id} className="rounded-md bg-white px-1.5 py-0.5 text-[10.5px] text-[#3E343A] ring-1 ring-[#ead8df]">{o.name.split(' ')[0]}</span>
                                       ))}
                                     </div>
                                   )}
@@ -884,15 +884,15 @@ function PersonelPageInner() {
                       </div>
                     </motion.div>
                   ) : (
-                    <div className="grid h-full place-items-center py-16 text-[13px] text-[#705a66]">Yetki kataloğu yüklenemedi.</div>
+                    <div className="grid h-full place-items-center py-16 text-[13px] text-[#74616A]">Yetki kataloğu yüklenemedi.</div>
                   )}
                 </AnimatePresence>
               </div>
 
               {/* kapsam sıralaması */}
-              <div className="min-w-0 rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-[#c85776]">Sayfa Kapsamı</div>
-                <div className="mt-1 font-display text-xl tracking-tight text-[#352432]">Hangi sayfa kaç kişide açık?</div>
+              <div className="min-w-0 rounded-[22px] border border-[#EAD8DF] bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
+                <div className="text-[11px] font-mono uppercase tracking-widest text-[#A5556E]">Sayfa Kapsamı</div>
+                <div className="mt-1 font-display text-xl tracking-tight text-[#2A2027]">Hangi sayfa kaç kişide açık?</div>
                 <div className="mt-4 space-y-2">
                   {[...pageRows].sort((a, b) => b.holders.length - a.holders.length).map((row) => {
                     const Icon = pageIcon(row.page.key)
@@ -903,16 +903,16 @@ function PersonelPageInner() {
                         key={row.page.key}
                         type="button"
                         onClick={() => setSelectedPerm(row.page.key)}
-                        className={`flex w-full items-center gap-3 rounded-[14px] border px-3 py-2.5 text-left transition-colors ${on ? 'border-[#c85776]/60 bg-[#fff1f6]/60' : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0]'}`}
+                        className={`flex w-full items-center gap-3 rounded-[14px] border px-3 py-2.5 text-left transition-colors ${on ? 'border-[#8C4460]/60 bg-[#F7F6F6]' : 'border-[#EAD8DF] bg-white hover:border-[#BE7690]'}`}
                       >
-                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-4 w-4" /></span>
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><Icon className="h-4 w-4" /></span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[12.5px] font-medium text-[#352432]">{row.page.label}</span>
-                            <span className="shrink-0 text-[11px] tabular-nums text-[#705a66]">{row.holders.length} kişi</span>
+                            <span className="truncate text-[12.5px] font-medium text-[#2A2027]">{row.page.label}</span>
+                            <span className="shrink-0 text-[11px] tabular-nums text-[#74616A]">{row.holders.length} kişi</span>
                           </span>
                           <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-[#f4e6ec]">
-                            <motion.span className="block h-full rounded-full bg-gradient-to-r from-[#c85776] to-[#f3a3bf]" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.7, ease: 'easeOut' }} />
+                            <motion.span className="block h-full rounded-full bg-gradient-to-r from-[#A5556E] to-[#f3a3bf]" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.7, ease: 'easeOut' }} />
                           </span>
                         </span>
                       </button>
@@ -926,31 +926,31 @@ function PersonelPageInner() {
           /* ═══════════════════ KADRO + PERSONEL DOSYASI ═══════════════════ */
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             {/* KADRO */}
-            <div className="min-w-0 rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
+            <div className="min-w-0 rounded-[22px] border border-[#EAD8DF] bg-white/92 p-4 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)] sm:p-5">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-mono uppercase tracking-widest text-[#c85776]">Kadro</div>
-                  <div className="font-display text-2xl tracking-tight text-[#352432]">{staff.length} personel</div>
+                  <div className="text-[11px] font-mono uppercase tracking-widest text-[#A5556E]">Kadro</div>
+                  <div className="font-display text-2xl tracking-tight text-[#2A2027]">{staff.length} personel</div>
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                   <div className="relative min-w-[150px] flex-1 sm:flex-none">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
                     <input
                       value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Personel ara"
-                      className="w-full rounded-[10px] border border-[#ead8df] bg-white py-1.5 pl-8 pr-2.5 text-[12px] text-[#352432] outline-none transition-colors placeholder:text-[#705a66] focus:border-[#c85776] sm:w-40"
+                      className="w-full rounded-[10px] border border-[#EAD8DF] bg-white py-1.5 pl-8 pr-2.5 text-[12px] text-[#2A2027] outline-none transition-colors placeholder:text-[#74616A] focus:border-[#A5556E] sm:w-40"
                     />
                   </div>
                   <select
                     value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-                    className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776] sm:flex-none"
+                    className="min-w-0 flex-1 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E] sm:flex-none"
                   >
                     <option value="">Tüm durumlar</option><option value="active">Aktif</option><option value="inactive">Pasif</option>
                   </select>
                   <div className="relative min-w-[170px] flex-1 sm:flex-none">
-                    <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                    <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
                     <select
                       value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}
-                      className="w-full appearance-none rounded-[10px] border border-[#ead8df] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                      className="w-full appearance-none rounded-[10px] border border-[#EAD8DF] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                     >
                       {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => <option key={k} value={k}>{SORT_LABEL[k]}</option>)}
                     </select>
@@ -973,15 +973,15 @@ function PersonelPageInner() {
                       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.4) }}
                       whileHover={{ y: -3 }} onClick={() => setSelectedId(p.id)}
                       className={`group relative overflow-hidden rounded-[18px] border p-3.5 text-left transition-colors ${
-                        on ? 'border-[#c85776]/70 bg-[#fff1f6]/45 shadow-[0_18px_40px_-30px_rgba(200,87,118,0.85)]' : 'border-[#ead8df]/80 bg-white hover:border-[#efbfd0]'
+                        on ? 'border-[#8C4460]/70 bg-[#F6DFE6]/45 shadow-[0_18px_40px_-30px_rgba(200,87,118,0.85)]' : 'border-[#EAD8DF]/80 bg-white hover:border-[#BE7690]'
                       }`}
                     >
                       {/* seçili göstergesi */}
-                      <span className={`absolute inset-y-0 left-0 w-1 rounded-r bg-gradient-to-b from-[#e0617f] to-[#c85776] transition-opacity ${on ? 'opacity-100' : 'opacity-0'}`} />
+                      <span className={`absolute inset-y-0 left-0 w-1 rounded-r bg-gradient-to-b from-[#e0617f] to-[#A5556E] transition-opacity ${on ? 'opacity-100' : 'opacity-0'}`} />
 
                       <div className="flex items-start gap-3">
                         <label
-                          className="group/photo relative h-[74px] w-[74px] shrink-0 cursor-pointer overflow-hidden rounded-[16px] border border-[#efbfd0]/70 bg-gradient-to-br from-[#fbd2dc] to-[#fff0f5]"
+                          className="group/photo relative h-[74px] w-[74px] shrink-0 cursor-pointer overflow-hidden rounded-[16px] border border-[#EAD8DF] bg-gradient-to-br from-[#fbd2dc] to-[#fff0f5]"
                           onClick={(e) => e.stopPropagation()}
                           title="Fotoğraf yükle / değiştir"
                         >
@@ -999,14 +999,14 @@ function PersonelPageInner() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="truncate font-display text-[17px] tracking-tight text-[#352432]">{p.name}</span>
+                                <span className="truncate font-display text-[17px] tracking-tight text-[#2A2027]">{p.name}</span>
                                 {topPerformerId === p.id && (
                                   <span title="Bu ayın en çok iş bitiren personeli" className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-[#e7c169] to-[#b88938] px-1.5 py-0.5 text-[10px] font-semibold text-white">
                                     <Crown className="h-3 w-3" /> Ayın 1.
                                   </span>
                                 )}
                               </div>
-                              <div className="truncate text-[11px] font-medium text-[#c85776]">{p.role}</div>
+                              <div className="truncate text-[11px] font-medium text-[#A5556E]">{p.role}</div>
                             </div>
                             <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${p.active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${p.active ? 'bg-emerald-500' : 'bg-rose-500'}`} /> {p.active ? 'Aktif' : 'Pasif'}
@@ -1014,27 +1014,27 @@ function PersonelPageInner() {
                           </div>
                           <div className="mt-1 flex items-center gap-1.5">
                             <Stars value={p.averageRating ?? 0} size={12} />
-                            <span className="text-[11px] text-[#705a66]">
+                            <span className="text-[11px] text-[#74616A]">
                               {p.averageRating != null ? `${p.averageRating.toFixed(1)}${p.ratingCount ? ` · ${p.ratingCount} oy` : ''}` : 'puan yok'}
                             </span>
                           </div>
-                          <div className="mt-1 truncate text-[11px] text-[#705a66]">{p.dept}</div>
+                          <div className="mt-1 truncate text-[11px] text-[#74616A]">{p.dept}</div>
                         </div>
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-2">
-                        <div className="rounded-[10px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1.5">
+                        <div className="rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1.5">
                           {/* Sayaç son 1 yıllık pencereden gelir (metrik penceresi) — "tüm zamanlar" değil. */}
-                          <div className="text-[10px] text-[#705a66]">Randevu (1 yıl)</div>
-                          <div className="font-display text-[15px] tabular-nums text-[#352432]">{st?.total ?? 0}</div>
+                          <div className="text-[10px] text-[#74616A]">Randevu (1 yıl)</div>
+                          <div className="font-display text-[15px] tabular-nums text-[#2A2027]">{st?.total ?? 0}</div>
                         </div>
-                        <div className="rounded-[10px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1.5">
-                          <div className="text-[10px] text-[#705a66]">Bu ay</div>
-                          <div className="font-display text-[15px] tabular-nums text-[#352432]">{sc.monthCompleted}</div>
+                        <div className="rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1.5">
+                          <div className="text-[10px] text-[#74616A]">Bu ay</div>
+                          <div className="font-display text-[15px] tabular-nums text-[#2A2027]">{sc.monthCompleted}</div>
                         </div>
-                        <div className="rounded-[10px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1.5" title={`${pages} sayfa yetkisi · ${actions} işlem yetkisi`}>
-                          <div className="text-[10px] text-[#705a66]">Sayfa yetkisi</div>
-                          <div className="font-display text-[15px] tabular-nums text-[#352432]">{pages}</div>
+                        <div className="rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1.5" title={`${pages} sayfa yetkisi · ${actions} işlem yetkisi`}>
+                          <div className="text-[10px] text-[#74616A]">Sayfa yetkisi</div>
+                          <div className="font-display text-[15px] tabular-nums text-[#2A2027]">{pages}</div>
                         </div>
                       </div>
 
@@ -1042,12 +1042,12 @@ function PersonelPageInner() {
                           Uygulama (tamamlanan randevu cirosu) ve satış ayrı ayrı okunabilir. */}
                       <div className="mt-2.5">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-[#705a66]">Bu ay üretim</span>
-                          <span className="font-semibold text-[#352432]">
+                          <span className="text-[#74616A]">Bu ay üretim</span>
+                          <span className="font-semibold text-[#2A2027]">
                             {sc.monthCompleted} işlem · {formatTL(sc.revenue)}
                           </span>
                         </div>
-                        <div className="mt-1 flex items-center gap-1 text-[10.5px] text-[#705a66]">
+                        <div className="mt-1 flex items-center gap-1 text-[10.5px] text-[#74616A]">
                           <span>Uygulama {formatTL(sc.serviceRevenue)}</span>
                           <span aria-hidden>·</span>
                           <span>Satış {formatTL(sc.salesAmount)}</span>
@@ -1056,20 +1056,20 @@ function PersonelPageInner() {
 
                       <div className="mt-2.5 flex flex-wrap gap-1">
                         {topServices(p.id).map((s) => (
-                          <span key={s} className="rounded-md border border-[#ead8df]/80 bg-white px-1.5 py-0.5 text-[10.5px] text-[#4a3a44]">{s}</span>
+                          <span key={s} className="rounded-md border border-[#EAD8DF]/80 bg-white px-1.5 py-0.5 text-[10.5px] text-[#3E343A]">{s}</span>
                         ))}
                         {topServices(p.id).length === 0 && p.dept && (
-                          <span className="rounded-md border border-[#ead8df]/80 bg-white px-1.5 py-0.5 text-[10.5px] text-[#4a3a44]">{p.dept}</span>
+                          <span className="rounded-md border border-[#EAD8DF]/80 bg-white px-1.5 py-0.5 text-[10.5px] text-[#3E343A]">{p.dept}</span>
                         )}
                       </div>
                     </motion.button>
                   )
                 })}
                 {!staff.length && (
-                  <div className="col-span-full rounded-[16px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-12 text-center">
+                  <div className="col-span-full rounded-[16px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-12 text-center">
                     <Users className="mx-auto h-8 w-8 text-[#efbfd0]" />
-                    <div className="mt-2 text-[13px] font-medium text-[#352432]">Personel bulunamadı</div>
-                    <div className="mt-0.5 text-[12px] text-[#705a66]">Arama/filtreyi değiştirin ya da “Personel Ekle” ile kadroya kişi tanımlayın.</div>
+                    <div className="mt-2 text-[13px] font-medium text-[#2A2027]">Personel bulunamadı</div>
+                    <div className="mt-0.5 text-[12px] text-[#74616A]">Arama/filtreyi değiştirin ya da “Personel Ekle” ile kadroya kişi tanımlayın.</div>
                   </div>
                 )}
               </div>
@@ -1077,7 +1077,7 @@ function PersonelPageInner() {
 
             {/* PERSONEL DOSYASI */}
             <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
-              <div className="overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)]">
+              <div className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 shadow-[0_20px_48px_-38px_rgba(150,78,104,0.5)]">
                 {selected ? (() => {
                   const st = staffStats.get(selected.id)
                   const sc = scoreOf(selected.id)
@@ -1086,7 +1086,7 @@ function PersonelPageInner() {
                       <motion.div key={selected.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.24 }}>
                         {/* başlık bandı */}
                         <div className="relative overflow-hidden bg-gradient-to-br from-[#fff1f6] via-[#ffe8f0] to-[#fff7f2] px-5 pb-5 pt-5">
-                          <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#c85776] opacity-[0.10] blur-[50px]" />
+                          <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#A5556E] opacity-[0.10] blur-[50px]" />
                           <div className="relative flex gap-4">
                             <label className="group relative h-[92px] w-[82px] shrink-0 cursor-pointer overflow-hidden rounded-[18px] border-2 border-white bg-gradient-to-br from-[#fbd2dc] to-[#fff0f5] shadow-[0_12px_28px_-18px_rgba(120,71,88,0.9)]" title="Fotoğraf yükle / değiştir">
                               {selected.photoUrl ? (
@@ -1101,16 +1101,16 @@ function PersonelPageInner() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <div className="truncate font-display text-xl tracking-tight text-[#352432] sm:text-2xl">{selected.name}</div>
-                                  <div className="truncate text-[12px] font-medium text-[#c85776]">{selected.role}</div>
+                                  <div className="truncate font-display text-xl tracking-tight text-[#2A2027] sm:text-2xl">{selected.name}</div>
+                                  <div className="truncate text-[12px] font-medium text-[#A5556E]">{selected.role}</div>
                                 </div>
                                 <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${selected.active ? 'bg-white text-emerald-700' : 'bg-white text-rose-700'}`}>
                                   <span className={`h-1.5 w-1.5 rounded-full ${selected.active ? 'bg-emerald-500' : 'bg-rose-500'}`} /> {selected.active ? 'Aktif' : 'Pasif'}
                                 </span>
                               </div>
                               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                                {selected.dept && <span className="rounded-full bg-white/85 px-2 py-0.5 text-[#4a3a44]">{selected.dept}</span>}
-                                {selected.phone && <span className="rounded-full bg-white/85 px-2 py-0.5 text-[#4a3a44]">{selected.phone}</span>}
+                                {selected.dept && <span className="rounded-full bg-white/85 px-2 py-0.5 text-[#3E343A]">{selected.dept}</span>}
+                                {selected.phone && <span className="rounded-full bg-white/85 px-2 py-0.5 text-[#3E343A]">{selected.phone}</span>}
                                 {selected.commissionRate ? <span className="rounded-full bg-white/85 px-2 py-0.5 font-medium text-[#b88938]">%{selected.commissionRate} prim</span> : null}
                               </div>
                             </div>
@@ -1125,8 +1125,8 @@ function PersonelPageInner() {
                               { k: 'Yetki', v: String(selected.permissions.filter((x) => !x.includes('.')).length) },
                             ].map((m) => (
                               <div key={m.k} className="rounded-[12px] border border-white/70 bg-white/80 px-2 py-2 text-center">
-                                <div className="font-display text-[17px] tabular-nums tracking-tight text-[#352432]">{m.v}</div>
-                                <div className="text-[10px] text-[#705a66]">{m.k}</div>
+                                <div className="font-display text-[17px] tabular-nums tracking-tight text-[#2A2027]">{m.v}</div>
+                                <div className="text-[10px] text-[#74616A]">{m.k}</div>
                               </div>
                             ))}
                           </div>
@@ -1135,38 +1135,38 @@ function PersonelPageInner() {
                         <div className="space-y-4 p-5">
                           {/* aktivite + puan */}
                           <div className="grid gap-3 sm:grid-cols-[1.5fr_1fr]">
-                            <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
-                              <div className="text-[11px] font-medium text-[#705a66]">Haftalık aktivite <span className="text-[10.5px]">(son 30 gün)</span></div>
+                            <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
+                              <div className="text-[11px] font-medium text-[#74616A]">Haftalık aktivite <span className="text-[10.5px]">(son 30 gün)</span></div>
                               <div className="mt-2"><WeeklyBars values={st?.weekly || Array(7).fill(0)} /></div>
                             </div>
-                            <div className="flex flex-col items-center justify-center gap-1.5 rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
-                              <div className="text-[11px] font-medium text-[#705a66]">Müşteri puanı</div>
+                            <div className="flex flex-col items-center justify-center gap-1.5 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
+                              <div className="text-[11px] font-medium text-[#74616A]">Müşteri puanı</div>
                               <Ring
                                 value={((selected.averageRating ?? 0) / 5) * 100} tone="#d8ad55" size={68}
                                 title={selected.averageRating != null ? selected.averageRating.toFixed(1) : '—'}
                               />
                               <Stars value={selected.averageRating ?? 0} size={12} />
-                              <div className="text-[10.5px] text-[#705a66]">{selected.ratingCount ? `${selected.ratingCount} değerlendirme` : 'Henüz puan yok'}</div>
+                              <div className="text-[10.5px] text-[#74616A]">{selected.ratingCount ? `${selected.ratingCount} değerlendirme` : 'Henüz puan yok'}</div>
                             </div>
                           </div>
 
                           {/* yetki dosyası — gerçek katalog etiketleriyle */}
-                          <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
+                          <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#705a66]"><ShieldCheck className="h-3.5 w-3.5 text-[#c85776]" /> Yetki dosyası</div>
-                              <Link href="/panel/ekip?scope=permissions" className="text-[11px] font-medium text-[#c85776] transition-opacity hover:opacity-75">Matriste gör →</Link>
+                              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]"><ShieldCheck className="h-3.5 w-3.5 text-[#A5556E]" /> Yetki dosyası</div>
+                              <Link href="/panel/ekip?scope=permissions" className="text-[11px] font-medium text-[#A5556E] transition-opacity hover:opacity-75">Matriste gör →</Link>
                             </div>
                             {selectedCells.length === 0 ? (
-                              <div className="mt-2 text-[12px] text-[#705a66]">Henüz yetki tanımlı değil — “Rol Düzenle” ile sayfa ve işlem yetkilerini açın.</div>
+                              <div className="mt-2 text-[12px] text-[#74616A]">Henüz yetki tanımlı değil — “Rol Düzenle” ile sayfa ve işlem yetkilerini açın.</div>
                             ) : (
                               <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                                 {selectedCells.map(({ page, cell }) => {
                                   const Icon = pageIcon(page.key)
                                   return (
-                                    <div key={page.key} className="flex items-center gap-2 rounded-[10px] border border-[#ead8df]/70 bg-white px-2 py-1.5">
-                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-3.5 w-3.5" /></span>
-                                      <span className="min-w-0 flex-1 truncate text-[11.5px] text-[#352432]">{page.label}</span>
-                                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${cell.state === 'full' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#fff1f6] text-[#b14d6c]'}`}>
+                                    <div key={page.key} className="flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-2 py-1.5">
+                                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-[#A5556E] text-white"><Icon className="h-3.5 w-3.5" /></span>
+                                      <span className="min-w-0 flex-1 truncate text-[11.5px] text-[#2A2027]">{page.label}</span>
+                                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${cell.state === 'full' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#F6DFE6] text-[#8C4460]'}`}>
                                         {cell.state === 'full' ? 'tam' : `${cell.granted}/${cell.total}`}
                                       </span>
                                     </div>
@@ -1189,7 +1189,7 @@ function PersonelPageInner() {
                               }}
                               onSubmitted={async () => { await reload() }}
                               trigger={
-                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#e0617f] to-[#c85776] px-3.5 py-2 text-[11.5px] font-semibold text-white shadow-[0_10px_22px_-14px_rgba(200,87,118,0.95)] transition-transform hover:-translate-y-0.5">
+                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#e0617f] to-[#A5556E] px-3.5 py-2 text-[11.5px] font-semibold text-white shadow-[0_10px_22px_-14px_rgba(200,87,118,0.95)] transition-transform hover:-translate-y-0.5">
                                   <UserCog className="h-3.5 w-3.5" /> Rol Düzenle
                                 </button>
                               }
@@ -1199,7 +1199,7 @@ function PersonelPageInner() {
                               staffName={selected.name}
                               tenantId={tenantId}
                               trigger={
-                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                                   <CalendarClock className="h-3.5 w-3.5" /> Çalışma Saatleri
                                 </button>
                               }
@@ -1209,7 +1209,7 @@ function PersonelPageInner() {
                               <button
                                 type="button"
                                 onClick={() => { setTransferBranchId(''); setTransferOpen(true) }}
-                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
                               >
                                 <ArrowLeftRight className="h-3.5 w-3.5" /> Şube Aktar
                               </button>
@@ -1218,7 +1218,7 @@ function PersonelPageInner() {
                               <button
                                 type="button"
                                 onClick={() => setDeviceDialogOpen(true)}
-                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
                               >
                                 <MonitorSmartphone className="h-3.5 w-3.5" /> Cihazlar
                               </button>
@@ -1244,7 +1244,7 @@ function PersonelPageInner() {
                                 } catch (e: unknown) { setActionError(e instanceof Error ? e.message : 'Şifre sıfırlanamadı.') }
                               }}
                               trigger={
-                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[11.5px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                                   <KeyRound className="h-3.5 w-3.5" /> Şifre Sıfırla
                                 </button>
                               }
@@ -1266,8 +1266,8 @@ function PersonelPageInner() {
                 })() : (
                   <div className="grid place-items-center px-5 py-20 text-center">
                     <UserCog className="h-8 w-8 text-[#efbfd0]" />
-                    <div className="mt-2 text-[13px] font-medium text-[#352432]">Personel seçilmedi</div>
-                    <div className="mt-0.5 text-[12px] text-[#705a66]">Soldaki kadrodan bir kişiye tıklayın.</div>
+                    <div className="mt-2 text-[13px] font-medium text-[#2A2027]">Personel seçilmedi</div>
+                    <div className="mt-0.5 text-[12px] text-[#74616A]">Soldaki kadrodan bir kişiye tıklayın.</div>
                   </div>
                 )}
               </div>
@@ -1290,25 +1290,25 @@ function PersonelPageInner() {
 
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent
-          className="overflow-hidden rounded-[24px] border border-[#ead8df]/90 bg-white p-0 text-[#352432] shadow-[0_34px_110px_-50px_rgba(120,71,88,0.6)]"
+          className="overflow-hidden rounded-[24px] border border-[#EAD8DF]/90 bg-white p-0 text-[#2A2027] shadow-[0_34px_110px_-50px_rgba(120,71,88,0.6)]"
           style={{ width: 'min(94vw, 460px)', maxWidth: 'min(94vw, 460px)' }}
         >
           <div className="p-6">
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><ArrowLeftRight className="h-4 w-4" /></span>
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#A5556E] text-white"><ArrowLeftRight className="h-4 w-4" /></span>
               <div>
                 <DialogTitle className="font-display text-xl tracking-tight">Şube Aktar</DialogTitle>
-                <DialogDescription className="mt-0.5 text-[12px] text-[#705a66]">
+                <DialogDescription className="mt-0.5 text-[12px] text-[#74616A]">
                   {selected?.name ? `${selected.name} adlı personeli` : 'Personeli'} başka bir şubeye aktar. Giriş kapsamı da yeni şubeye taşınır.
                 </DialogDescription>
               </div>
             </div>
             <div className="mt-5">
-              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-widest text-[#705a66]">Hedef şube</label>
+              <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Hedef şube</label>
               <select
                 value={transferBranchId}
                 onChange={(e) => setTransferBranchId(e.target.value)}
-                className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] outline-none focus:border-[#c85776]"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] outline-none focus:border-[#A5556E]"
               >
                 <option value="">Hedef şube seçin…</option>
                 {branchOptions.filter((b) => b.id !== selected?.branchId).map((b) => (
@@ -1317,8 +1317,8 @@ function PersonelPageInner() {
               </select>
             </div>
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setTransferOpen(false)} className="rounded-[10px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:text-[#352432]">Vazgeç</button>
-              <button type="button" onClick={handleTransfer} disabled={!transferBranchId} className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-4 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50">
+              <button type="button" onClick={() => setTransferOpen(false)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-medium text-[#3E343A] transition-colors hover:text-[#2A2027]">Vazgeç</button>
+              <button type="button" onClick={handleTransfer} disabled={!transferBranchId} className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-4 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50">
                 <ArrowLeftRight className="h-3.5 w-3.5" /> Aktar
               </button>
             </div>

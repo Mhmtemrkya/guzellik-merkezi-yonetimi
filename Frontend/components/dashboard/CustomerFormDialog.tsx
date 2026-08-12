@@ -61,8 +61,8 @@ const GENDER_OPTIONS: { value: CustomerGender; label: string }[] = [
 ]
 
 const INPUT =
-  'w-full rounded-[12px] border border-[#ead8df] bg-white px-3.5 py-3 text-[13.5px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#c9b3bd]'
-const LABEL = 'mb-1.5 block text-[11px] font-semibold text-[#705a66]'
+  'w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 py-3 text-[13.5px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#c9b3bd]'
+const LABEL = 'mb-1.5 block text-[11px] font-semibold text-[#74616A]'
 
 function initials(name: string): string {
   const p = (name || '').trim().split(/\s+/).filter(Boolean)
@@ -152,7 +152,7 @@ export default function CustomerFormDialog({
     <Dialog open={isOpen} onOpenChange={setOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
-        className="flex max-h-[92dvh] flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/90 bg-white p-0 text-[#352432] shadow-[0_40px_120px_-60px_rgba(120,71,88,0.7)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex max-h-[92dvh] flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF]/90 bg-white p-0 text-[#2A2027] shadow-[0_40px_120px_-60px_rgba(120,71,88,0.7)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 860px)' }}
       >
         {/* Atmosfer */}
@@ -164,8 +164,8 @@ export default function CustomerFormDialog({
         />
 
         {/* HEADER */}
-        <header className="relative flex shrink-0 items-start gap-4 border-b border-[#f2e6eb] p-6 pr-14 sm:px-8">
-          <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-[#efbfd0] bg-[#fff1f6] text-[#c85776] shadow-[0_14px_30px_-20px_rgba(200,87,118,0.9)]">
+        <header className="relative flex shrink-0 items-start gap-4 border-b border-[#EAD8DF] p-6 pr-14 sm:px-8">
+          <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-[#BE7690] bg-[#A5556E] text-white shadow-[0_14px_30px_-20px_rgba(200,87,118,0.9)]">
             {values.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={values.photoUrl} alt="" className="h-full w-full object-cover" />
@@ -176,17 +176,17 @@ export default function CustomerFormDialog({
             )}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#c85776]">
+            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#A5556E]">
               Müşteri · {mode === 'edit' ? 'Düzenle' : 'Yeni kayıt'}
             </div>
             <DialogTitle className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#241923]">{heading}</DialogTitle>
-            <DialogDescription className="mt-1 text-[12px] leading-relaxed text-[#705a66]">{sub}</DialogDescription>
+            <DialogDescription className="mt-1 text-[12px] leading-relaxed text-[#74616A]">{sub}</DialogDescription>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Kapat"
-            className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+            className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -213,9 +213,9 @@ export default function CustomerFormDialog({
                   </div>
                   <div>
                     <label className={LABEL}>Telefon *</label>
-                    <div className="flex items-stretch overflow-hidden rounded-[12px] border border-[#ead8df] bg-white transition focus-within:border-[#ef9ab5] focus-within:ring-2 focus-within:ring-[#f4b6cb]/40">
-                      <span className="grid place-items-center border-r border-[#ead8df] bg-[#fff7fa] px-3.5 text-[13.5px] font-semibold text-[#c85776]">+90</span>
-                      <input value={values.phone || ''} onChange={(e) => set({ phone: e.target.value })} placeholder="5__ ___ __ __" className="min-w-0 flex-1 bg-transparent px-3.5 py-3 text-[13.5px] text-[#352432] outline-none placeholder:text-[#c9b3bd]" />
+                    <div className="flex items-stretch overflow-hidden rounded-[12px] border border-[#EAD8DF] bg-white transition focus-within:border-[#ef9ab5] focus-within:ring-2 focus-within:ring-[#f4b6cb]/40">
+                      <span className="grid place-items-center border-r border-[#EAD8DF] bg-[#fff7fa] px-3.5 text-[13.5px] font-semibold text-[#A5556E]">+90</span>
+                      <input value={values.phone || ''} onChange={(e) => set({ phone: e.target.value })} placeholder="5__ ___ __ __" className="min-w-0 flex-1 bg-transparent px-3.5 py-3 text-[13.5px] text-[#2A2027] outline-none placeholder:text-[#c9b3bd]" />
                     </div>
                   </div>
                 </div>
@@ -248,16 +248,16 @@ export default function CustomerFormDialog({
               <button
                 type="button"
                 onClick={() => set({ kvkkConsent: !values.kvkkConsent })}
-                className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3.5 py-3 text-left transition-colors hover:border-[#efbfd0]"
+                className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-3 text-left transition-colors hover:border-[#BE7690]"
               >
                 <span className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><ShieldCheck className="h-4 w-4" /></span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#A5556E] text-white"><ShieldCheck className="h-4 w-4" /></span>
                   <span>
                     <span className="block text-[13px] font-semibold text-[#241923]">KVKK onayı alındı</span>
-                    <span className="block text-[11px] text-[#705a66]">Müşteri aydınlatma metnini onayladı.</span>
+                    <span className="block text-[11px] text-[#74616A]">Müşteri aydınlatma metnini onayladı.</span>
                   </span>
                 </span>
-                <span className={`relative h-6 w-11 shrink-0 self-center rounded-full transition-colors ${values.kvkkConsent ? 'bg-gradient-to-r from-[#f47699] to-[#ef6088]' : 'bg-[#e7d6de]'}`}>
+                <span className={`relative h-6 w-11 shrink-0 self-center rounded-full transition-colors ${values.kvkkConsent ? 'bg-gradient-to-r from-[#A5556E] to-[#8C4460]' : 'bg-[#e7d6de]'}`}>
                   <motion.span animate={{ x: values.kvkkConsent ? 24 : 4 }} transition={{ type: 'spring', stiffness: 360, damping: 24 }} className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
                 </span>
               </button>
@@ -301,17 +301,17 @@ export default function CustomerFormDialog({
         </div>
 
         {/* FOOTER */}
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#f2e6eb] bg-white/80 p-4 sm:px-8 sm:py-4">
+        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#EAD8DF] bg-white/80 p-4 sm:px-8 sm:py-4">
           <span className="hidden text-[10px] font-mono uppercase tracking-[0.18em] text-[#9d7386] sm:inline">ESC ile kapat</span>
           <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
-            <button type="button" onClick={() => setOpen(false)} className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+            <button type="button" onClick={() => setOpen(false)} className="rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
               Vazgeç
             </button>
             <button
               type="button"
               disabled={saving || saved}
               onClick={submit}
-              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-70"
+              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-70"
             >
               {saving ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</>
@@ -332,7 +332,7 @@ function Section({ icon: Icon, title, children }: { icon: LucideIcon; title: str
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#c85776]">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-[#A5556E]">
           <Icon className="h-3.5 w-3.5" /> {title}
         </span>
         <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-[#f0aac2]/45 to-transparent" />
@@ -350,7 +350,7 @@ function PhotoPicker({ value, busy, onPick, onClear }: { value: string; busy: bo
           // eslint-disable-next-line @next/next/no-img-element
           <img src={value} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="flex flex-col items-center gap-1 text-[#c85776]">
+          <span className="flex flex-col items-center gap-1 text-[#A5556E]">
             <ImagePlus className="h-5 w-5" />
             <span className="text-[10px] font-medium">Görsel seç</span>
           </span>

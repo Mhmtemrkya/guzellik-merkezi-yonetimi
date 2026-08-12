@@ -59,7 +59,7 @@ export default function AppointmentReminderControl({
       >
         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />} Hatırlat
       </button>
-      {msg && <span className="text-[10px] font-medium text-[#352432]/55">{msg}</span>}
+      {msg && <span className="text-[10px] font-medium text-[#5A4B53]">{msg}</span>}
     </div>
   )
 }

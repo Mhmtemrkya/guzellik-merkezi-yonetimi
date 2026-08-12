@@ -34,9 +34,9 @@ import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiCustomServiceCategory, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
 
-const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-[#352432]/45'
+const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-[#74616A]'
 const inputCls =
-  'mt-1 w-full rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776]'
+  'mt-1 w-full rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E]'
 
 /**
  * Peşinat ödeme yöntemleri — CollectionDialog'daki METHOD_OPTIONS ile AYNI değerler.
@@ -742,7 +742,7 @@ export default function PackageSaleDialog({
           type="button"
           className={
             triggerClassName ||
-            'inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#c85776]/40 bg-[#fff1f6] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]'
+            'inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#8C4460]/40 bg-[#F6DFE6] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#8C4460] transition-colors hover:bg-[#F6DFE6]'
           }
         >
           <TriggerIcon className="h-3.5 w-3.5" /> {triggerLabel || title}
@@ -750,7 +750,7 @@ export default function PackageSaleDialog({
       </DialogTrigger>
 
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] !p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF]/[0.90] bg-white/[0.96] !p-0 text-[#2A2027] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(94vw, 780px)', maxWidth: 'min(94vw, 780px)', maxHeight: '94dvh' }}
       >
         <div className="relative flex min-h-0 max-h-[94dvh] flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
@@ -775,7 +775,7 @@ export default function PackageSaleDialog({
           />
 
           {/* HEADER */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/[0.70] px-6 py-4 pr-12 sm:px-7">
+          <header className="relative shrink-0 border-b border-[#EAD8DF]/[0.70] px-6 py-4 pr-12 sm:px-7">
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -785,18 +785,18 @@ export default function PackageSaleDialog({
               <motion.span
                 whileHover={{ rotate: -8, scale: 1.06 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#BE7690]/[0.80] bg-white text-[#A5556E] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
               >
                 {step === 'confirm' ? <ShieldCheck className="h-4 w-4" strokeWidth={1.6} /> : <TriggerIcon className="h-4 w-4" strokeWidth={1.6} />}
               </motion.span>
               <div className="min-w-0 flex-1">
-                <div className="text-[9px] font-mono uppercase tracking-[0.26em] text-[#c85776]/75">
+                <div className="text-[9px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">
                   {step === 'confirm' ? 'Adisyon API · onay' : step === 'done' ? 'Adisyon · tamamlandı' : 'Adisyon API · POST'}
                 </div>
-                <DialogTitle className="mt-0.5 font-display text-2xl font-normal tracking-tight text-[#352432]">
+                <DialogTitle className="mt-0.5 font-display text-2xl font-normal tracking-tight text-[#2A2027]">
                   {step === 'confirm' ? 'Satışı onayla' : title}
                 </DialogTitle>
-                <DialogDescription className="mt-0.5 text-[11px] text-[#352432]/50">
+                <DialogDescription className="mt-0.5 text-[11px] text-[#5A4B53]">
                   {step === 'confirm'
                     ? 'Ek hizmet, paket veya ürün ekleyebilirsiniz. Kaydedince adisyon kartı açılmaz.'
                     : `Satış adisyona düşer; peşinat alındıysa kaydedince cariye işlenir${isProductSale ? ' ve stoktan düşer.' : isServiceSale ? '.' : ' + seans bakiyesi tanımlanır.'}`}
@@ -816,17 +816,17 @@ export default function PackageSaleDialog({
               >
                 {deferred ? <CalendarDays className="h-8 w-8" /> : pendingApproval ? <ReceiptText className="h-8 w-8" /> : <CheckCircle2 className="h-8 w-8" />}
               </motion.span>
-              <h4 className="mt-4 font-display text-xl tracking-tight text-[#352432]">
+              <h4 className="mt-4 font-display text-xl tracking-tight text-[#2A2027]">
                 {deferred
                   ? 'Satış kaydedildi · ilk randevuda işlenecek'
                   : pendingApproval
                     ? 'Satış oluşturuldu · onay bekliyor'
                     : 'Satış tamamlandı · cariye işlendi'}
               </h4>
-              <p className="mx-auto mt-1.5 max-w-sm text-[12px] text-[#352432]/55">
+              <p className="mx-auto mt-1.5 max-w-sm text-[12px] text-[#5A4B53]">
                 {deferred ? (
                   <>
-                    Peşinat alınmadığı için tutar cariye <strong className="font-semibold text-[#352432]/75">şimdi işlenmedi</strong>.
+                    Peşinat alınmadığı için tutar cariye <strong className="font-semibold text-[#3E343A]">şimdi işlenmedi</strong>.
                     Müşteri ilk randevusunu tamamladığında otomatik olarak cariye işlenip
                     {isServiceSale ? ' hizmet seansı' : ' paket seansları'} tanımlanacak — randevu şimdiden verilebilir.
                   </>
@@ -850,7 +850,7 @@ export default function PackageSaleDialog({
                 <button
                   type="button"
                   onClick={finishAndClose}
-                  className="rounded-[12px] bg-[#c85776] px-6 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+                  className="rounded-[12px] bg-[#A5556E] px-6 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
                 >
                   {stayOnPage ? 'Tamam' : 'Müşteri kartına git'}
                 </button>
@@ -861,7 +861,7 @@ export default function PackageSaleDialog({
                   <button
                     type="button"
                     onClick={openSavedCard}
-                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
                   >
                     <ReceiptText className="h-4 w-4" /> Adisyon kartını aç
                   </button>
@@ -882,25 +882,25 @@ export default function PackageSaleDialog({
                 tenantId={tenantId}
               />
 
-              <div className="rounded-[16px] border border-[#efbfd0]/60 bg-white/80 p-4">
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-white/80 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/70">
                       {isProductSale ? 'Ürün' : isServiceSale ? 'Hizmet' : 'Paket'}
                     </div>
-                    <div className="mt-0.5 truncate font-display text-lg tracking-tight text-[#352432]">{soldName}</div>
-                    <div className="mt-0.5 text-[11px] text-[#352432]/50">
+                    <div className="mt-0.5 truncate font-display text-lg tracking-tight text-[#2A2027]">{soldName}</div>
+                    <div className="mt-0.5 text-[11px] text-[#5A4B53]">
                       {presetCustomer?.name || customerName || 'Müşteri'} · {qty > 1 ? `${qty} adet · ` : ''}birim {formatTL(unitPrice)}
                     </div>
                     {/* Geçmişe dönük satışta tarih onayda da görünsün — yanlış tarih fark edilsin. */}
                     {isProductSale && saleDate && (
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#ead8df] bg-[#fffafc] px-2 py-0.5 text-[10.5px] text-[#8a7480]">
-                        <CalendarDays className="h-3 w-3 text-[#c85776]" />
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10.5px] text-[#74616A]">
+                        <CalendarDays className="h-3 w-3 text-[#A5556E]" />
                         Satış tarihi: {new Date(`${saleDate}T12:00:00`).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </div>
                     )}
                   </div>
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#A5556E] text-white">
                     {isProductSale ? <Box className="h-5 w-5" /> : isServiceSale ? <Sparkles className="h-5 w-5" /> : <Package className="h-5 w-5" />}
                   </span>
                 </div>
@@ -908,7 +908,7 @@ export default function PackageSaleDialog({
                 {!isProductSale && !isServiceSale && selectedPackage && selectedPackage.items.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[#f1e5ea] pt-3">
                     {selectedPackage.items.map((it, i) => (
-                      <span key={i} className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-2 py-1 text-[10.5px] text-[#b14d6c]">
+                      <span key={i} className="rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1 text-[10.5px] text-[#8C4460]">
                         {it.serviceName} × {it.sessionCount} seans
                       </span>
                     ))}
@@ -917,12 +917,12 @@ export default function PackageSaleDialog({
               </div>
 
               {/* ---------- EK KALEMLER (adisyon kartındaki "Kalem ekle" ile aynı mantık) ---------- */}
-              <div className="rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3.5">
+              <div className="rounded-[16px] border border-[#f0e0e6] bg-[#F7F6F6] p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">
                     <Plus className="h-3.5 w-3.5" /> Ek kalem
                     {extras.length > 0 && (
-                      <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[10px] font-semibold text-[#b14d6c]">{extras.length}</span>
+                      <span className="rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-semibold text-[#8C4460]">{extras.length}</span>
                     )}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -944,7 +944,7 @@ export default function PackageSaleDialog({
                             setExtraError('')
                           }}
                           className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-colors disabled:opacity-40 ${
-                            on ? extraKindTones[k] : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-[#fff4f8]'
+                            on ? extraKindTones[k] : 'border-[#EAD8DF] bg-white text-[#74616A] hover:bg-[#F7F6F6]'
                           }`}
                         >
                           <Icon className="h-3.5 w-3.5" /> {extraKindLabels[k]}
@@ -962,7 +962,7 @@ export default function PackageSaleDialog({
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-3 space-y-2.5 rounded-[13px] border border-[#ead8df]/70 bg-white p-3">
+                      <div className="mt-3 space-y-2.5 rounded-[13px] border border-[#EAD8DF] bg-white p-3">
                         {extraError && (
                           <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11.5px] text-rose-700">{extraError}</div>
                         )}
@@ -1015,18 +1015,18 @@ export default function PackageSaleDialog({
                           <button
                             type="button"
                             onClick={clearExtraForm}
-                            className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[11.5px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                            className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11.5px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
                           >
                             <X className="h-3.5 w-3.5" /> Vazgeç
                           </button>
                           <button
                             type="button"
                             onClick={addExtra}
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-[11px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2 text-[11.5px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef]"
+                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-[11px] border border-[#8C4460]/45 bg-[#F6DFE6] px-3 py-2 text-[11.5px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
                           >
                             <Plus className="h-3.5 w-3.5" /> Satışa ekle
                             {extraUnitPreview > 0 && (
-                              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#4a3a44]">{formatTL(extraUnitPreview)}</span>
+                              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#3E343A]">{formatTL(extraUnitPreview)}</span>
                             )}
                           </button>
                         </div>
@@ -1045,21 +1045,21 @@ export default function PackageSaleDialog({
                             <Icon className="h-3.5 w-3.5" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[12.5px] font-medium text-[#352432]">{e.name}</span>
-                            <span className="block truncate text-[10px] text-[#705a66]">
+                            <span className="block truncate text-[12.5px] font-medium text-[#2A2027]">{e.name}</span>
+                            <span className="block truncate text-[10px] text-[#74616A]">
                               {extraKindLabels[e.kind]}
                               {e.quantity > 1 ? ` · ${e.quantity} × ${formatTL(e.unitPrice)}` : ''}
                               {e.staffMemberId ? ` · ${staff.find((s) => s.id === e.staffMemberId)?.name || ''}` : ''}
                             </span>
                           </span>
-                          <span className="shrink-0 font-display text-[14px] tabular-nums text-[#352432]">
+                          <span className="shrink-0 font-display text-[14px] tabular-nums text-[#2A2027]">
                             {formatTL(Math.round(e.unitPrice * e.quantity * 100) / 100)}
                           </span>
                           <button
                             type="button"
                             disabled={busy || !!savedAdisyonId}
                             onClick={() => removeExtra(e.key)}
-                            className="shrink-0 rounded-md p-1 text-[#c2a8b4] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                            className="shrink-0 rounded-md p-1 text-[#74616A] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
                             aria-label="Ek kalemi kaldır"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1072,11 +1072,11 @@ export default function PackageSaleDialog({
               </div>
 
               <div className="grid gap-2.5 sm:grid-cols-2">
-                <div className="rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">Adisyona yazılacak</div>
-                  <div className="mt-1 font-display text-xl tabular-nums text-[#352432]">Borç {formatTL(total)}</div>
+                <div className="rounded-[14px] border border-[#EAD8DF] bg-white px-3.5 py-3">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Adisyona yazılacak</div>
+                  <div className="mt-1 font-display text-xl tabular-nums text-[#2A2027]">Borç {formatTL(total)}</div>
                   {extrasTotal > 0 && (
-                    <div className="text-[11px] text-[#8a7480]">
+                    <div className="text-[11px] text-[#74616A]">
                       Satış {formatTL(mainTotal)} + ek kalem {formatTL(extrasTotal)}
                     </div>
                   )}
@@ -1088,13 +1088,13 @@ export default function PackageSaleDialog({
                     </div>
                   )}
                 </div>
-                <div className="rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">Ödeme planı</div>
-                  <div className="mt-1 font-display text-xl tracking-tight text-[#352432]">
+                <div className="rounded-[14px] border border-[#EAD8DF] bg-white px-3.5 py-3">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Ödeme planı</div>
+                  <div className="mt-1 font-display text-xl tracking-tight text-[#2A2027]">
                     {isInstallment ? `${installmentCount}× taksit` : 'Peşin'}
                   </div>
                   {isInstallment && perInstallment > 0 && (
-                    <div className="text-[11px] text-[#b14d6c]">{formatTL(perInstallment)} / ay · ilk {new Date(firstDueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</div>
+                    <div className="text-[11px] text-[#8C4460]">{formatTL(perInstallment)} / ay · ilk {new Date(firstDueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</div>
                   )}
                 </div>
               </div>
@@ -1103,7 +1103,7 @@ export default function PackageSaleDialog({
                   formda hep görünür olduğu için "alan açıldı" uyarısına gerek kalmadı; burada
                   yalnız geri dönüp tahsilat girme yolu gösterilir. */}
               {pay === 0 && canDefer && (
-                <div className="flex items-start gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3.5 py-2.5 text-[11.5px] leading-snug text-[#b14d6c]">
+                <div className="flex items-start gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-2.5 text-[11.5px] leading-snug text-[#8C4460]">
                   <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                   <span>
                     Tahsilat alacaksanız <strong className="font-semibold">Düzenle</strong>’ye dönüp peşinat girin —
@@ -1156,13 +1156,13 @@ export default function PackageSaleDialog({
 
               {/* Müşteri */}
               {presetCustomer ? (
-                <div className="flex items-center gap-2.5 rounded-[14px] border border-[#ead8df]/70 bg-white px-3 py-2.5">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#fff1f6] font-display text-[13px] text-[#c85776]">
+                <div className="flex items-center gap-2.5 rounded-[14px] border border-[#EAD8DF] bg-white px-3 py-2.5">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#F6DFE6] font-display text-[13px] text-[#A5556E]">
                     {presetCustomer.name.slice(0, 1).toUpperCase()}
                   </span>
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Müşteri</div>
-                    <div className="text-[13.5px] font-medium text-[#352432]">{presetCustomer.name}</div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Müşteri</div>
+                    <div className="text-[13.5px] font-medium text-[#2A2027]">{presetCustomer.name}</div>
                   </div>
                 </div>
               ) : (
@@ -1214,12 +1214,12 @@ export default function PackageSaleDialog({
                           <div className="text-[10px] font-mono uppercase tracking-widest text-violet-600/70">
                             {selectedProduct.brand || selectedProduct.categoryLabel}
                           </div>
-                          <div className="text-[13.5px] font-medium text-[#352432]">{selectedProduct.name}</div>
+                          <div className="text-[13.5px] font-medium text-[#2A2027]">{selectedProduct.name}</div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="font-display text-[15px] tabular-nums text-violet-700">{formatTL(selectedProduct.salePrice)}</div>
-                        <div className={`text-[10px] ${selectedProduct.isCritical ? 'text-amber-700' : 'text-[#352432]/45'}`}>
+                        <div className={`text-[10px] ${selectedProduct.isCritical ? 'text-amber-700' : 'text-[#74616A]'}`}>
                           Stok {selectedProduct.currentStock} {selectedProduct.unit}
                         </div>
                       </div>
@@ -1234,17 +1234,17 @@ export default function PackageSaleDialog({
                 </>
               ) : isServiceSale ? (
                 presetService ? (
-                  <div className="flex items-center justify-between gap-2.5 rounded-[14px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2.5 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
-                      <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white text-[#c85776]">
+                      <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white text-[#A5556E]">
                         <Sparkles className="h-4 w-4" />
                       </span>
                       <div>
-                        <div className="text-[10px] font-mono uppercase tracking-widest text-[#b14d6c]/70">Hizmet</div>
-                        <div className="text-[13.5px] font-medium text-[#352432]">{presetService.name}</div>
+                        <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]/70">Hizmet</div>
+                        <div className="text-[13.5px] font-medium text-[#2A2027]">{presetService.name}</div>
                       </div>
                     </div>
-                    <div className="font-display text-[15px] tabular-nums text-[#b14d6c]">{formatTL(Number(presetService.price || 0))}</div>
+                    <div className="font-display text-[15px] tabular-nums text-[#8C4460]">{formatTL(Number(presetService.price || 0))}</div>
                   </div>
                 ) : (
                   <div>
@@ -1320,19 +1320,19 @@ export default function PackageSaleDialog({
                 )}
               </div>
               {showDownPayment && pay > 0 && (
-                <p className="mt-1 text-[10.5px] text-[#705a66]">
+                <p className="mt-1 text-[10.5px] text-[#74616A]">
                   Peşinat <b>{DOWN_PAYMENT_METHODS.find((m) => m.value === downPaymentMethod)?.label}</b> olarak
                   kasaya işlenir; gün sonu kasa kapanışındaki yöntem kırılımı buna göre oluşur.
                 </p>
               )}
 
               {/* Ödeme planı: peşin ya da taksit — taksit cariye onayda kurulur */}
-              <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] p-3">
+              <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
                 {/* SATIŞ TARİHİ — yalnız üründe. Hizmet/paket satışı ertelenebildiği için orada
                     kullanıcının verdiği tarih anlamını yitirir. */}
                 {isProductSale && (
                   <div className="mb-4">
-                    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+                    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
                       <CalendarDays className="h-3.5 w-3.5" /> Satış tarihi
                     </div>
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,220px)_1fr] sm:items-center">
@@ -1343,23 +1343,23 @@ export default function PackageSaleDialog({
                         onChange={(e) => setSaleDate(e.target.value)}
                         className={inputCls}
                       />
-                      <span className="text-[11px] leading-snug text-[#8a7480]">
+                      <span className="text-[11px] leading-snug text-[#74616A]">
                         Geçmişe dönük satış girebilirsin. Cari kaydı ve peşinat tahsilatı bu tarihe yazılır.
                       </span>
                     </div>
                   </div>
                 )}
 
-                <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+                <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
                   <Wallet className="h-3.5 w-3.5" /> Ödeme planı
                 </div>
-                <div className="inline-flex rounded-[10px] border border-[#ead8df] bg-white p-1">
+                <div className="inline-flex rounded-[10px] border border-[#EAD8DF] bg-white p-1">
                   {([['pesin', 'Peşin'], ['taksit', 'Taksit']] as const).map(([k, l]) => (
                     <button
                       key={k}
                       type="button"
                       onClick={() => setPayMode(k)}
-                      className={`rounded-[8px] px-5 py-1.5 text-[11px] font-medium transition-colors ${payMode === k ? 'bg-[#c85776] text-white shadow-sm' : 'text-[#352432]/55 hover:bg-[#fff4f8]'}`}
+                      className={`rounded-[8px] px-5 py-1.5 text-[11px] font-medium transition-colors ${payMode === k ? 'bg-[#A5556E] text-white shadow-sm' : 'text-[#5A4B53] hover:bg-[#F7F6F6]'}`}
                     >
                       {l}
                     </button>
@@ -1390,7 +1390,7 @@ export default function PackageSaleDialog({
                       />
                     </label>
                     {perInstallment > 0 && (
-                      <div className="flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0]/50 bg-[#fff1f6]/50 px-3 py-2 text-[11px] text-[#b14d6c] sm:col-span-2">
+                      <div className="flex items-center gap-1.5 rounded-[10px] border border-[#BE7690]/50 bg-[#F6DFE6]/60 px-3 py-2 text-[11px] text-[#8C4460] sm:col-span-2">
                         <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                         <span>
                           {installmentCount} taksit × {formatTL(perInstallment)}
@@ -1425,17 +1425,17 @@ export default function PackageSaleDialog({
                 </label>
               </div>
 
-              <div className="flex items-center justify-between rounded-[14px] border border-[#ead8df]/70 bg-white px-3.5 py-2.5">
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-[#352432]/55">
-                  <ReceiptText className="h-3.5 w-3.5 text-[#c85776]" /> Adisyona yazılacak
+              <div className="flex items-center justify-between rounded-[14px] border border-[#EAD8DF] bg-white px-3.5 py-2.5">
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-[#5A4B53]">
+                  <ReceiptText className="h-3.5 w-3.5 text-[#A5556E]" /> Adisyona yazılacak
                 </span>
-                <span className="font-display text-[15px] tabular-nums text-[#352432]">
+                <span className="font-display text-[15px] tabular-nums text-[#2A2027]">
                   Borç {formatTL(total)}
                   {pay > 0 && (
                     <span className="text-emerald-700"> · Tahsilat {formatTL(pay)}</span>
                   )}
                   {isInstallment && (
-                    <span className="text-[#b14d6c]"> · {installmentCount}× taksit</span>
+                    <span className="text-[#8C4460]"> · {installmentCount}× taksit</span>
                   )}
                 </span>
               </div>
@@ -1444,11 +1444,11 @@ export default function PackageSaleDialog({
 
           {/* FOOTER */}
           {step === 'form' && (
-            <footer className="relative shrink-0 border-t border-[#ead8df]/[0.70] px-6 py-4 sm:px-7">
+            <footer className="relative shrink-0 border-t border-[#EAD8DF]/[0.70] px-6 py-4 sm:px-7">
               <button
                 type="button"
                 onClick={goToConfirm}
-                className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
+                className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[14px] bg-[#A5556E] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
               >
                 <ShieldCheck className="h-4 w-4" />
                 Satışı incele ve onayla
@@ -1456,14 +1456,14 @@ export default function PackageSaleDialog({
             </footer>
           )}
           {step === 'confirm' && (
-            <footer className="relative flex shrink-0 items-center gap-2.5 border-t border-[#ead8df]/[0.70] px-6 py-4 sm:px-7">
+            <footer className="relative flex shrink-0 items-center gap-2.5 border-t border-[#EAD8DF]/[0.70] px-6 py-4 sm:px-7">
               {savedAdisyonId ? (
                 // Onay düştü ama fiş yazıldı: tek çıkış yolu kartı açmaktır (tekrar kaydetmek
                 // aynı satışı ikinci kez yazardı).
                 <button
                   type="button"
                   onClick={openSavedCard}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#A5556E] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
                 >
                   <ReceiptText className="h-4 w-4" /> Adisyon kartını aç
                 </button>
@@ -1473,7 +1473,7 @@ export default function PackageSaleDialog({
                     type="button"
                     disabled={busy}
                     onClick={() => { setError(''); clearExtraForm(); setStep('form') }}
-                    className="inline-flex items-center gap-1.5 rounded-[14px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-50"
                   >
                     <ChevronLeft className="h-4 w-4" /> Düzenle
                   </button>
@@ -1481,7 +1481,7 @@ export default function PackageSaleDialog({
                     type="button"
                     disabled={busy}
                     onClick={submitSale}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#A5556E] px-4 py-2.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                     {busy

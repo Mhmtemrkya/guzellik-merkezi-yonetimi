@@ -62,7 +62,7 @@ export function FeatureLockedNotice({ title, description }: { title?: string; de
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-lg overflow-hidden border border-[#efbfd0]/75 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-8 text-center shadow-[0_32px_84px_-48px_rgba(150,78,104,0.58)]"
+        className="relative w-full max-w-lg overflow-hidden border border-[#BE7690]/75 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-8 text-center shadow-[0_32px_84px_-48px_rgba(150,78,104,0.58)]"
       >
         <motion.span
           aria-hidden
@@ -72,23 +72,23 @@ export function FeatureLockedNotice({ title, description }: { title?: string; de
         />
         <span aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-[0.04]" />
 
-        <div className="relative mx-auto grid h-14 w-14 place-items-center border border-[#efbfd0]/75 bg-white text-[#c85776] shadow-[0_0_28px_rgba(240,170,194,0.35)]">
-          <Lock className="h-5 w-5 text-[#c85776]" strokeWidth={1.6} />
+        <div className="relative mx-auto grid h-14 w-14 place-items-center border border-[#BE7690]/75 bg-white text-[#A5556E] shadow-[0_0_28px_rgba(240,170,194,0.35)]">
+          <Lock className="h-5 w-5 text-[#A5556E]" strokeWidth={1.6} />
         </div>
 
-        <div className="relative mt-5 inline-flex items-center gap-1.5 border border-[#efbfd0]/75 bg-[#f0aac2]/10 px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.22em] text-[#c85776]">
+        <div className="relative mt-5 inline-flex items-center gap-1.5 border border-[#BE7690]/75 bg-[#f0aac2]/10 px-2.5 py-1 text-[9px] font-mono uppercase tracking-[0.22em] text-[#A5556E]">
           <Sparkles className="h-3 w-3" /> Pakete dahil değil
         </div>
 
-        <h2 className="relative mt-3 font-display text-2xl tracking-tight text-[#352432]">
+        <h2 className="relative mt-3 font-display text-2xl tracking-tight text-[#2A2027]">
           {title || 'Bu özellik mevcut paketinizde bulunmuyor'}
         </h2>
-        <p className="relative mt-2 text-[12.5px] leading-relaxed text-[#352432]/60">
+        <p className="relative mt-2 text-[12.5px] leading-relaxed text-[#5A4B53]">
           {description ||
             'Bu modülü kullanmak için kurumunuzun aboneliğini bu özelliği içeren bir pakete yükseltmeniz gerekir. Detaylar için sistem yöneticinizle iletişime geçin.'}
         </p>
 
-        <div className="relative mt-6 inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+        <div className="relative mt-6 inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/80">
           <ArrowUpRight className="h-3.5 w-3.5" /> Paket yükseltme gerektirir
         </div>
       </motion.div>

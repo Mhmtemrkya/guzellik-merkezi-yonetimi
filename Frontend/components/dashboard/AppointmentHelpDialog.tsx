@@ -34,10 +34,10 @@ export default function AppointmentHelpDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-3xl border border-[#efe1e7] bg-white !p-0 text-[#2b1e29] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-3xl border border-[#EAD8DF] bg-white !p-0 text-[#2b1e29] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 860px)', maxHeight: '92dvh' }}
       >
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#efe1e7] bg-gradient-to-b from-white to-[#fdf9fb] px-6 py-4">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#EAD8DF] bg-gradient-to-b from-white to-[#fdf9fb] px-6 py-4">
           <div className="flex items-start gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#f3d7e0] bg-gradient-to-br from-[#fff4f8] to-[#ffdfe9] text-[#8e3f5b]">
               <CalendarClock className="h-5 w-5" strokeWidth={1.8} />
@@ -46,7 +46,7 @@ export default function AppointmentHelpDialog({
               <DialogTitle className="font-display text-[20px] font-extrabold leading-none tracking-[-0.03em] text-[#2b1e29]">
                 Bu modal nasıl çalışır?
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-[12.5px] leading-snug text-[#705a66]">
+              <DialogDescription className="mt-1.5 text-[12.5px] leading-snug text-[#74616A]">
                 Randevu açmanın sırası, kuralları ve sık takılınan noktalar.
               </DialogDescription>
             </div>
@@ -55,7 +55,7 @@ export default function AppointmentHelpDialog({
             type="button"
             onClick={() => onOpenChange(false)}
             aria-label="Kapat"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white text-[#705a66] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#e8c2d1] hover:text-[#2b1e29]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -68,7 +68,7 @@ export default function AppointmentHelpDialog({
               <ShoppingBag className="h-4 w-4" strokeWidth={2} />
               Altın kural: önce satış, sonra randevu
             </h3>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-[#4a3a44]">
+            <p className="mt-2 text-[12.5px] leading-relaxed text-[#3E343A]">
               Randevu her zaman bir <strong>seanstan</strong> açılır, seans da <strong>satıştan</strong>{' '}
               doğar. Sıra şudur:
             </p>
@@ -88,7 +88,7 @@ export default function AppointmentHelpDialog({
                 </span>
               ))}
             </div>
-            <p className="mt-3 text-[12.5px] leading-relaxed text-[#4a3a44]">
+            <p className="mt-3 text-[12.5px] leading-relaxed text-[#3E343A]">
               Müşterinin hakkı yoksa modalı kapatmana gerek yok. 2. adımda hizmeti (ya da paketi) seç —
               &ldquo;Randevuyu oluştur&rdquo; dediğinde <strong>satış otomatik açılır</strong> ve randevu
               hemen ardından oluşturulur. Hakkı VARSA satış açılmaz, randevu mevcut seansa yazılır.
@@ -162,14 +162,14 @@ export default function AppointmentHelpDialog({
             <h3 className="font-display text-[13.5px] font-extrabold tracking-[-0.01em] text-[#2b1e29]">
               Personel olarak açıyorsan
             </h3>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#4a3a44]">
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[#3E343A]">
               Randevu <strong>taslak</strong> olarak kaydedilir ve kurum yöneticisinin onayına düşer.
               Yalnızca kendi takvimine randevu açabilirsin.
             </p>
           </section>
         </div>
 
-        <footer className="flex shrink-0 justify-end border-t border-[#efe1e7] bg-white px-6 py-3.5">
+        <footer className="flex shrink-0 justify-end border-t border-[#EAD8DF] bg-white px-6 py-3.5">
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -196,7 +196,7 @@ function HelpStep({
 }) {
   return (
     <li className="flex gap-3">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#e8c2d1] bg-[#fff4f8] text-[12.5px] font-bold text-[#8e3f5b]">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#e8c2d1] bg-[#F7F6F6] text-[12.5px] font-bold text-[#8e3f5b]">
         {n}
       </span>
       <div className="min-w-0 pt-0.5">
@@ -204,7 +204,7 @@ function HelpStep({
           <Icon className="h-4 w-4 shrink-0 text-[#c7768f]" strokeWidth={1.9} />
           <h4 className="text-[13px] font-bold text-[#2b1e29]">{title}</h4>
         </div>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-[#4a3a44]">{children}</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[#3E343A]">{children}</p>
       </div>
     </li>
   )
@@ -220,12 +220,12 @@ function HelpTip({
   children: ReactNode
 }) {
   return (
-    <li className="rounded-2xl border border-[#efe1e7] bg-white p-3.5">
+    <li className="rounded-2xl border border-[#EAD8DF] bg-white p-3.5">
       <div className="flex items-center gap-1.5">
         <Icon className="h-4 w-4 shrink-0 text-[#c7768f]" strokeWidth={1.9} />
         <h4 className="text-[12.5px] font-bold text-[#2b1e29]">{title}</h4>
       </div>
-      <p className="mt-1 text-[12px] leading-relaxed text-[#4a3a44]">{children}</p>
+      <p className="mt-1 text-[12px] leading-relaxed text-[#3E343A]">{children}</p>
     </li>
   )
 }

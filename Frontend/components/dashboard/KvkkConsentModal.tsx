@@ -52,25 +52,25 @@ export default function KvkkConsentModal({ triggerClassName }: { triggerClassNam
       <DialogTrigger asChild>
         <button
           type="button"
-          className={triggerClassName || 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#c85776] underline-offset-2 hover:underline'}
+          className={triggerClassName || 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#A5556E] underline-offset-2 hover:underline'}
         >
           <FileText className="h-3.5 w-3.5" /> KVKK aydınlatma metnini görüntüle
         </button>
       </DialogTrigger>
       <DialogContent
-        className="flex max-h-[90dvh] flex-col overflow-hidden rounded-[24px] border border-[#ead8df]/90 bg-white p-0 text-[#352432] shadow-[0_40px_120px_-60px_rgba(120,71,88,0.7)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex max-h-[90dvh] flex-col overflow-hidden rounded-[24px] border border-[#EAD8DF]/90 bg-white p-0 text-[#2A2027] shadow-[0_40px_120px_-60px_rgba(120,71,88,0.7)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 780px)' }}
       >
-        <header className="relative flex shrink-0 items-start gap-3 border-b border-[#f2e6eb] p-5 pr-14 sm:px-7">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#efbfd0] bg-[#fff1f6] text-[#c85776]">
+        <header className="relative flex shrink-0 items-start gap-3 border-b border-[#EAD8DF] p-5 pr-14 sm:px-7">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#BE7690] bg-[#A5556E] text-white">
             <ShieldCheck className="h-5 w-5" strokeWidth={1.7} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#c85776]">Yasal · KVKK</div>
+            <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#A5556E]">Yasal · KVKK</div>
             <DialogTitle className="mt-0.5 font-display text-xl font-bold tracking-tight text-[#241923]">
               Aydınlatma Metni
             </DialogTitle>
-            <DialogDescription className="mt-0.5 text-[12px] text-[#705a66]">
+            <DialogDescription className="mt-0.5 text-[12px] text-[#74616A]">
               {institutionName} · Kişisel verilerin korunması
             </DialogDescription>
           </div>
@@ -78,7 +78,7 @@ export default function KvkkConsentModal({ triggerClassName }: { triggerClassNam
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Kapat"
-            className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+            className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -94,13 +94,13 @@ export default function KvkkConsentModal({ triggerClassName }: { triggerClassNam
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#f2e6eb] bg-white/80 p-4 sm:px-7">
+        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#EAD8DF] bg-white/80 p-4 sm:px-7">
           <span className="hidden text-[10px] text-[#9d7386] sm:inline">Metni Ayarlar sayfasından düzenleyebilirsiniz.</span>
           <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+              className="rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
             >
               Kapat
             </button>
@@ -108,7 +108,7 @@ export default function KvkkConsentModal({ triggerClassName }: { triggerClassNam
               type="button"
               onClick={downloadPdf}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-5 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 py-2.5 text-[12px] font-semibold text-white shadow-[0_15px_26px_-15px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
             >
               <Download className="h-4 w-4" /> PDF indir
             </button>

@@ -138,17 +138,17 @@ export default function StaffWorkingHoursDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-lg rounded-[22px] border border-[#efe1e7] bg-white p-0 text-[#4a3a44] [&>button:last-child]:hidden">
-        <div className="flex items-start justify-between border-b border-[#efe1e7] px-6 py-4">
+      <DialogContent className="max-w-lg rounded-[22px] border border-[#EAD8DF] bg-white p-0 text-[#3E343A] [&>button:last-child]:hidden">
+        <div className="flex items-start justify-between border-b border-[#EAD8DF] px-6 py-4">
           <div>
             <DialogTitle className="flex items-center gap-2 font-display text-xl text-[#241923]">
-              <CalendarClock className="h-5 w-5 text-[#c85776]" /> Çalışma Saatleri
+              <CalendarClock className="h-5 w-5 text-[#A5556E]" /> Çalışma Saatleri
             </DialogTitle>
-            <DialogDescription className="mt-0.5 text-xs text-[#705a66]">
+            <DialogDescription className="mt-0.5 text-xs text-[#74616A]">
               {staffName} · mesai penceresi dışına (online dahil) randevu alınamaz
             </DialogDescription>
           </div>
-          <button type="button" onClick={() => setOpen(false)} className="grid h-8 w-8 place-items-center rounded-full text-[#705a66] hover:bg-[#f7ecf1] hover:text-[#c85776]" aria-label="Kapat">
+          <button type="button" onClick={() => setOpen(false)} className="grid h-8 w-8 place-items-center rounded-full text-[#74616A] hover:bg-[#f7ecf1] hover:text-[#A5556E]" aria-label="Kapat">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -159,21 +159,21 @@ export default function StaffWorkingHoursDialog({
             type="button"
             onClick={toggleEnforcement}
             disabled={enforceBusy}
-            className="mb-1 flex w-full items-center justify-between rounded-[12px] border border-[#efe1e7] bg-[#fffafc] px-3 py-2.5 text-left transition-colors hover:border-[#efbfd0] disabled:opacity-60"
+            className="mb-1 flex w-full items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-left transition-colors hover:border-[#BE7690] disabled:opacity-60"
           >
             <span>
               <span className="block text-[12.5px] font-semibold text-[#241923]">Çalışma saatleri kısıtı (kurum geneli)</span>
-              <span className="mt-0.5 block text-[10.5px] text-[#705a66]">
+              <span className="mt-0.5 block text-[10.5px] text-[#74616A]">
                 {enforced ? 'Açık — mesai dışına randevu alınamaz' : 'Kapalı — şablonlar saklanır ama denetlenmez'}
               </span>
             </span>
-            <span className={`relative inline-block h-5 w-10 shrink-0 rounded-full transition-colors ${enforced ? 'bg-[#c85776]' : 'bg-[#efe1e7]'}`}>
+            <span className={`relative inline-block h-5 w-10 shrink-0 rounded-full transition-colors ${enforced ? 'bg-[#A5556E]' : 'bg-[#efe1e7]'}`}>
               <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${enforced ? 'left-[22px]' : 'left-0.5'}`} />
             </span>
           </button>
 
           {loading ? (
-            <div className="grid h-40 place-items-center"><Loader2 className="h-5 w-5 animate-spin text-[#c85776]" /></div>
+            <div className="grid h-40 place-items-center"><Loader2 className="h-5 w-5 animate-spin text-[#A5556E]" /></div>
           ) : (
             <>
               {!hasTemplate && (
@@ -182,21 +182,21 @@ export default function StaffWorkingHoursDialog({
                 </div>
               )}
               {rows.map((r, i) => (
-                <div key={r.dayOfWeek} className={`flex items-center gap-3 rounded-[12px] border px-3 py-2 ${r.isDayOff ? 'border-[#efe1e7] bg-[#faf5f7]' : 'border-[#efe1e7] bg-white'}`}>
+                <div key={r.dayOfWeek} className={`flex items-center gap-3 rounded-[12px] border px-3 py-2 ${r.isDayOff ? 'border-[#EAD8DF] bg-[#faf5f7]' : 'border-[#EAD8DF] bg-white'}`}>
                   <span className="w-20 text-[12.5px] font-semibold text-[#241923]">{DAY_LABELS[i]}</span>
                   {r.isDayOff ? (
                     <span className="flex flex-1 items-center gap-1.5 text-[12px] text-[#9d7386]"><Moon className="h-3.5 w-3.5" /> Tatil — randevu alınamaz</span>
                   ) : (
                     <span className="flex flex-1 items-center gap-2">
                       <input type="time" value={minutesToHHMM(r.startMinute)} onChange={(e) => setRow(i, { startMinute: hhmmToMinutes(e.target.value) })}
-                        className="rounded-[10px] border border-[#efe1e7] bg-white px-2 py-1 text-[12px] outline-none focus:border-[#c85776]" />
+                        className="rounded-[10px] border border-[#EAD8DF] bg-white px-2 py-1 text-[12px] outline-none focus:border-[#A5556E]" />
                       <span className="text-[#9d7386]">–</span>
                       <input type="time" value={minutesToHHMM(r.endMinute)} onChange={(e) => setRow(i, { endMinute: hhmmToMinutes(e.target.value) })}
-                        className="rounded-[10px] border border-[#efe1e7] bg-white px-2 py-1 text-[12px] outline-none focus:border-[#c85776]" />
+                        className="rounded-[10px] border border-[#EAD8DF] bg-white px-2 py-1 text-[12px] outline-none focus:border-[#A5556E]" />
                     </span>
                   )}
                   <button type="button" onClick={() => setRow(i, { isDayOff: !r.isDayOff })}
-                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[10.5px] font-semibold transition-colors ${r.isDayOff ? 'border-[#efbfd0] bg-white text-[#c85776] hover:bg-[#fff4f8]' : 'border-[#efe1e7] bg-white text-[#705a66] hover:border-[#efbfd0] hover:text-[#c85776]'}`}>
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[10.5px] font-semibold transition-colors ${r.isDayOff ? 'border-[#BE7690] bg-white text-[#A5556E] hover:bg-[#F7F6F6]' : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690] hover:text-[#A5556E]'}`}>
                     {r.isDayOff ? 'Çalışsın' : 'Tatil yap'}
                   </button>
                 </div>
@@ -206,20 +206,20 @@ export default function StaffWorkingHoursDialog({
           {error && <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] text-rose-700">{error}</div>}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-[#efe1e7] px-6 py-3.5">
+        <div className="flex items-center justify-between gap-2 border-t border-[#EAD8DF] px-6 py-3.5">
           {hasTemplate ? (
             <button type="button" disabled={busy} onClick={() => save([])}
-              className="text-[11.5px] font-medium text-[#9d7386] transition-colors hover:text-[#c85776] disabled:opacity-50">
+              className="text-[11.5px] font-medium text-[#9d7386] transition-colors hover:text-[#A5556E] disabled:opacity-50">
               Şablonu temizle (kısıtsız çalışsın)
             </button>
           ) : <span />}
           <div className="flex gap-2">
             <button type="button" onClick={() => setOpen(false)} disabled={busy}
-              className="rounded-lg border border-[#efe1e7] bg-white px-4 py-2 text-[12.5px] font-medium text-[#4a3a44] hover:bg-[#f7ecf1] disabled:opacity-50">
+              className="rounded-lg border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-medium text-[#3E343A] hover:bg-[#f7ecf1] disabled:opacity-50">
               Vazgeç
             </button>
             <button type="button" disabled={busy || loading} onClick={() => save(rows)}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-5 py-2 text-[12.5px] font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.5)] disabled:opacity-60">
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 py-2 text-[12.5px] font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.5)] disabled:opacity-60">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CalendarClock className="h-3.5 w-3.5" />}
               {saved ? 'Kaydedildi' : 'Kaydet'}
             </button>

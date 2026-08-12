@@ -257,7 +257,7 @@ export default function PageGuide() {
         }}
         aria-label="Bu sayfanın kullanım kılavuzunu aç"
         title="Sayfa kılavuzu"
-        className="group relative grid min-h-10 min-w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+        className="group relative grid min-h-10 min-w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[#EAD8DF]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
       >
         <span
           aria-hidden
@@ -301,7 +301,7 @@ export default function PageGuide() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 40 }}
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-x-3 bottom-3 z-[300] mx-auto max-w-xl overflow-hidden rounded-[24px] border border-[#ead8df] bg-white/98 shadow-[0_30px_90px_-30px_rgba(150,78,104,0.55)] backdrop-blur-xl sm:inset-x-6 sm:bottom-5"
+              className="fixed inset-x-3 bottom-3 z-[300] mx-auto max-w-xl overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white/98 shadow-[0_30px_90px_-30px_rgba(150,78,104,0.55)] backdrop-blur-xl sm:inset-x-6 sm:bottom-5"
             >
               {/* İlerleme çubuğu */}
               <div className="relative h-1 bg-[#f6e6ec]">
@@ -319,13 +319,13 @@ export default function PageGuide() {
                     initial={{ scale: 0.6, rotate: -12 }}
                     animate={{ scale: 1, rotate: 0 }}
                     transition={{ type: 'spring', stiffness: 380, damping: 20 }}
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#efbfd0] bg-gradient-to-br from-[#fff1f6] to-[#ffe1ea] text-[#c85776]"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#BE7690] bg-gradient-to-br from-[#fff1f6] to-[#ffe1ea] text-[#A5556E]"
                   >
                     <Icon className="h-5 w-5" strokeWidth={1.7} />
                   </motion.span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-widest text-[#c85776]">
+                      <div className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-widest text-[#A5556E]">
                         <BookOpenText className="h-3 w-3" strokeWidth={1.8} />
                         {guide.title} · Adım {step + 1}/{total}
                       </div>
@@ -333,7 +333,7 @@ export default function PageGuide() {
                         type="button"
                         onClick={() => close()}
                         aria-label="Kılavuzu kapat"
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-xl text-[#9d7386] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-xl text-[#9d7386] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -346,7 +346,7 @@ export default function PageGuide() {
                         exit={{ opacity: 0, x: -14 }}
                         transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                       >
-                        <h3 className="mt-0.5 text-[14.5px] font-semibold leading-snug text-[#352432]">
+                        <h3 className="mt-0.5 text-[14.5px] font-semibold leading-snug text-[#2A2027]">
                           {current.title}
                         </h3>
                         <p className="mt-1 max-h-28 overflow-y-auto text-[12px] leading-relaxed text-[#5f4855]">
@@ -362,7 +362,7 @@ export default function PageGuide() {
                   <button
                     type="button"
                     onClick={() => close(true)}
-                    className="text-[10.5px] font-semibold text-[#9d7386] transition-colors hover:text-[#c85776]"
+                    className="text-[10.5px] font-semibold text-[#9d7386] transition-colors hover:text-[#A5556E]"
                   >
                     Atla — bir daha gösterme
                   </button>
@@ -389,7 +389,7 @@ export default function PageGuide() {
                       <button
                         type="button"
                         onClick={() => setStep((s) => Math.max(0, s - 1))}
-                        className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-[#ead8df] bg-white px-3 text-[11.5px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                        className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-[#EAD8DF] bg-white px-3 text-[11.5px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
                       >
                         <ArrowLeft className="h-3.5 w-3.5" /> Geri
                       </button>

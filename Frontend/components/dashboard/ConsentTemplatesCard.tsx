@@ -225,14 +225,14 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
-      className="rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
+      className="rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#fff1f6] text-[#c85776]"><FileSignature className="h-5 w-5" /></span>
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#A5556E] text-white"><FileSignature className="h-5 w-5" /></span>
           <div>
-            <div className="font-display text-xl tracking-tight text-[#352432]">Onam Formları</div>
-            <div className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-[#705a66]">
+            <div className="font-display text-xl tracking-tight text-[#2A2027]">Onam Formları</div>
+            <div className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-[#74616A]">
               Hizmetlere bağladığınız onam formları, randevu “Tamamlandı” yapılırken imzalı mı diye kontrol edilir.
               Müşteri formu tabletten okuyup imzalar; imzalı belge logolu PDF olarak dosyasına eklenir.
             </div>
@@ -240,7 +240,7 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
         </div>
         {!draft && (
           <button type="button" onClick={startNew}
-            className="inline-flex items-center gap-1.5 rounded-[12px] bg-[#c85776] px-4 py-2.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90">
+            className="inline-flex items-center gap-1.5 rounded-[12px] bg-[#A5556E] px-4 py-2.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90">
             <Plus className="h-4 w-4" /> Yeni form
           </button>
         )}
@@ -256,12 +256,12 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
       {/* Liste */}
       {!draft && (
         loading ? (
-          <div className="grid place-items-center py-12 text-[#705a66]"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          <div className="grid place-items-center py-12 text-[#74616A]"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : templates.length === 0 ? (
-          <div className="mt-5 rounded-[16px] border border-dashed border-[#ead8df] bg-[#fffafc] px-5 py-12 text-center">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><FileSignature className="h-6 w-6" /></span>
-            <div className="mt-3 text-[13.5px] font-semibold text-[#352432]">Henüz onam formu yok</div>
-            <div className="mx-auto mt-1 max-w-md text-[12.5px] leading-relaxed text-[#705a66]">
+          <div className="mt-5 rounded-[16px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-5 py-12 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#A5556E] text-white"><FileSignature className="h-6 w-6" /></span>
+            <div className="mt-3 text-[13.5px] font-semibold text-[#2A2027]">Henüz onam formu yok</div>
+            <div className="mx-auto mt-1 max-w-md text-[12.5px] leading-relaxed text-[#74616A]">
               “Yeni form” ile hazır iskeletten başlayın; metni kendinize göre düzenleyip hangi hizmetlerde
               zorunlu olacağını seçin.
             </div>
@@ -269,25 +269,25 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
         ) : (
           <div className="mt-5 space-y-2.5">
             {templates.map((t) => (
-              <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#ead8df] bg-white p-4">
+              <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#EAD8DF] bg-white p-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[14px] font-semibold text-[#352432]">{t.title}</span>
+                    <span className="text-[14px] font-semibold text-[#2A2027]">{t.title}</span>
                     {t.isActive === false && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Pasif</span>}
-                    {t.requiresSignature === false && <span className="rounded-md bg-[#fff1f6] px-2 py-0.5 text-[11px] font-semibold text-[#b14d6c]">İmzasız</span>}
+                    {t.requiresSignature === false && <span className="rounded-md bg-[#F6DFE6] px-2 py-0.5 text-[11px] font-semibold text-[#8C4460]">İmzasız</span>}
                   </div>
-                  <div className="mt-1 text-[12px] text-[#705a66]">
+                  <div className="mt-1 text-[12px] text-[#74616A]">
                     {(t.checkItems?.length ?? 0)} onay maddesi · {(t.questions?.length ?? 0)} soru ·{' '}
                     {(t.serviceNames?.length ?? 0) > 0 ? `Hizmetler: ${t.serviceNames!.join(', ')}` : 'Hiçbir hizmete bağlı değil'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => preview(t)}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                    className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                     <Download className="h-3.5 w-3.5" /> Önizle
                   </button>
                   <button type="button" onClick={() => startEdit(t)}
-                    className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                    className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                     Düzenle
                   </button>
                   <button type="button" disabled={saving} onClick={() => void remove(t.id!)} title="Formu sil"
@@ -303,38 +303,38 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
 
       {/* Düzenleyici */}
       {draft && (
-        <div className="mt-5 space-y-4 rounded-[18px] border border-[#efbfd0]/70 bg-[#fffafc] p-5">
+        <div className="mt-5 space-y-4 rounded-[18px] border border-[#EAD8DF] bg-[#F7F6F6] p-5">
           <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
             <div>
-              <label className="text-[12px] font-semibold text-[#4a3a44]">Form başlığı</label>
+              <label className="text-[12px] font-semibold text-[#3E343A]">Form başlığı</label>
               <input
                 value={draft.title}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                 placeholder="Güzellik Uygulaması Onay Formu"
-                className="mt-1.5 w-full rounded-[12px] border border-[#ead8df] bg-white px-3.5 py-2.5 text-[13.5px] outline-none focus:border-[#c85776]"
+                className="mt-1.5 w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 py-2.5 text-[13.5px] outline-none focus:border-[#A5556E]"
               />
             </div>
             <div className="flex items-end gap-4">
-              <label className="flex items-center gap-2 text-[12.5px] font-medium text-[#4a3a44]">
-                <input type="checkbox" checked={draft.requiresSignature} onChange={(e) => setDraft({ ...draft, requiresSignature: e.target.checked })} className="h-4 w-4 accent-[#c85776]" />
+              <label className="flex items-center gap-2 text-[12.5px] font-medium text-[#3E343A]">
+                <input type="checkbox" checked={draft.requiresSignature} onChange={(e) => setDraft({ ...draft, requiresSignature: e.target.checked })} className="h-4 w-4 accent-[#A5556E]" />
                 İmza zorunlu
               </label>
-              <label className="flex items-center gap-2 text-[12.5px] font-medium text-[#4a3a44]">
-                <input type="checkbox" checked={draft.isActive} onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })} className="h-4 w-4 accent-[#c85776]" />
+              <label className="flex items-center gap-2 text-[12.5px] font-medium text-[#3E343A]">
+                <input type="checkbox" checked={draft.isActive} onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })} className="h-4 w-4 accent-[#A5556E]" />
                 Aktif
               </label>
             </div>
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-[#4a3a44]">Form metni</label>
+            <label className="text-[12px] font-semibold text-[#3E343A]">Form metni</label>
             <textarea
               value={draft.body}
               onChange={(e) => setDraft({ ...draft, body: e.target.value })}
               rows={14}
-              className="mt-1.5 w-full rounded-[12px] border border-[#ead8df] bg-white px-3.5 py-3 font-mono text-[12.5px] leading-relaxed outline-none focus:border-[#c85776]"
+              className="mt-1.5 w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 py-3 font-mono text-[12.5px] leading-relaxed outline-none focus:border-[#A5556E]"
             />
-            <p className="mt-1.5 text-[11.5px] text-[#705a66]">
+            <p className="mt-1.5 text-[11.5px] text-[#74616A]">
               Yer tutucular: <code className="rounded bg-white px-1">{'{{musteri}}'}</code>{' '}
               <code className="rounded bg-white px-1">{'{{hizmet}}'}</code>{' '}
               <code className="rounded bg-white px-1">{'{{tarih}}'}</code>{' '}
@@ -344,14 +344,14 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-[#4a3a44]">Onay maddeleri <span className="font-normal text-[#705a66]">(müşteri tablette tek tek işaretler)</span></label>
+            <label className="text-[12px] font-semibold text-[#3E343A]">Onay maddeleri <span className="font-normal text-[#74616A]">(müşteri tablette tek tek işaretler)</span></label>
             <div className="mt-2 space-y-1.5">
               {draft.checkItems.map((item, index) => (
-                <div key={`${item}-${index}`} className="flex items-center gap-2 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2">
+                <div key={`${item}-${index}`} className="flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2">
                   <span className="h-3.5 w-3.5 shrink-0 rounded-[3px] border-2 border-[#dcc2ce]" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#4a3a44]">{item}</span>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#3E343A]">{item}</span>
                   <button type="button" onClick={() => setDraft({ ...draft, checkItems: draft.checkItems.filter((_, i) => i !== index) })}
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#705a66] hover:bg-rose-50 hover:text-rose-600">
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#74616A] hover:bg-rose-50 hover:text-rose-600">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -362,10 +362,10 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
                   onChange={(e) => setNewItem(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addItem() } }}
                   placeholder="Yeni onay maddesi…"
-                  className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#c85776]"
+                  className="min-w-0 flex-1 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#A5556E]"
                 />
                 <button type="button" onClick={addItem} disabled={!newItem.trim()}
-                  className="inline-flex items-center gap-1 rounded-[10px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2 text-[12.5px] font-semibold text-[#b14d6c] disabled:opacity-50">
+                  className="inline-flex items-center gap-1 rounded-[10px] border border-[#BE7690] bg-[#F6DFE6] px-3 py-2 text-[12.5px] font-semibold text-[#8C4460] disabled:opacity-50">
                   <Plus className="h-3.5 w-3.5" /> Ekle
                 </button>
               </div>
@@ -374,24 +374,24 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
 
           {/* EVET / HAYIR SORULARI — anamnez beyanı formun kendi içinde alınır. */}
           <div>
-            <label className="flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
-              <HelpCircle className="h-3.5 w-3.5 text-[#c85776]" /> Evet / Hayır soruları
-              <span className="font-normal text-[#705a66]">(müşteri tablette her soruyu Evet ya da Hayır olarak yanıtlar)</span>
+            <label className="flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-[#3E343A]">
+              <HelpCircle className="h-3.5 w-3.5 text-[#A5556E]" /> Evet / Hayır soruları
+              <span className="font-normal text-[#74616A]">(müşteri tablette her soruyu Evet ya da Hayır olarak yanıtlar)</span>
             </label>
             <div className="mt-2 space-y-1.5">
               {draft.questions.map((q, index) => (
-                <div key={q.id || index} className="rounded-[12px] border border-[#ead8df] bg-white p-3">
+                <div key={q.id || index} className="rounded-[12px] border border-[#EAD8DF] bg-white p-3">
                   <div className="flex items-start gap-2">
-                    <span className="mt-2 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[11px] font-bold text-[#a34a62]">{index + 1}</span>
+                    <span className="mt-2 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#F6DFE6] text-[11px] font-bold text-[#a34a62]">{index + 1}</span>
                     <input
                       value={q.text}
                       onChange={(e) => patchQuestion(index, { text: e.target.value })}
                       placeholder="Soru metni…"
-                      className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#c85776]"
+                      className="min-w-0 flex-1 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#A5556E]"
                     />
                     <button type="button" onClick={() => setDraft({ ...draft, questions: draft.questions.filter((_, i) => i !== index) })}
                       title="Soruyu sil"
-                      className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#705a66] hover:bg-rose-50 hover:text-rose-600">
+                      className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#74616A] hover:bg-rose-50 hover:text-rose-600">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -399,14 +399,14 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
                     {/* Önizleme: müşteri tablette bu iki düğmeyi görecek. */}
                     <span className="flex items-center gap-1">
                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Evet</span>
-                      <span className="rounded-full border border-[#ead8df] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#705a66]">Hayır</span>
+                      <span className="rounded-full border border-[#EAD8DF] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#74616A]">Hayır</span>
                     </span>
-                    <label className="flex items-center gap-1.5 text-[12px] text-[#4a3a44]">
-                      <input type="checkbox" checked={q.required !== false} onChange={(e) => patchQuestion(index, { required: e.target.checked })} className="h-3.5 w-3.5 accent-[#c85776]" />
+                    <label className="flex items-center gap-1.5 text-[12px] text-[#3E343A]">
+                      <input type="checkbox" checked={q.required !== false} onChange={(e) => patchQuestion(index, { required: e.target.checked })} className="h-3.5 w-3.5 accent-[#A5556E]" />
                       Zorunlu
                     </label>
-                    <label className="flex items-center gap-1.5 text-[12px] text-[#4a3a44]">
-                      <input type="checkbox" checked={Boolean(q.note)} onChange={(e) => patchQuestion(index, { note: e.target.checked })} className="h-3.5 w-3.5 accent-[#c85776]" />
+                    <label className="flex items-center gap-1.5 text-[12px] text-[#3E343A]">
+                      <input type="checkbox" checked={Boolean(q.note)} onChange={(e) => patchQuestion(index, { note: e.target.checked })} className="h-3.5 w-3.5 accent-[#A5556E]" />
                       Açıklama alanı ekle
                     </label>
                   </div>
@@ -418,35 +418,35 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
                   onChange={(e) => setNewQuestion(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addQuestion() } }}
                   placeholder="Yeni soru… (ör. Hamile misiniz?)"
-                  className="min-w-0 flex-1 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#c85776]"
+                  className="min-w-0 flex-1 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#A5556E]"
                 />
                 <button type="button" onClick={addQuestion} disabled={!newQuestion.trim()}
-                  className="inline-flex items-center gap-1 rounded-[10px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2 text-[12.5px] font-semibold text-[#b14d6c] disabled:opacity-50">
+                  className="inline-flex items-center gap-1 rounded-[10px] border border-[#BE7690] bg-[#F6DFE6] px-3 py-2 text-[12.5px] font-semibold text-[#8C4460] disabled:opacity-50">
                   <Plus className="h-3.5 w-3.5" /> Soru ekle
                 </button>
               </div>
               {draft.questions.length === 0 && (
-                <p className="text-[11.5px] text-[#705a66]">Soru eklemezseniz formda yalnız onay maddeleri görünür.</p>
+                <p className="text-[11.5px] text-[#74616A]">Soru eklemezseniz formda yalnız onay maddeleri görünür.</p>
               )}
             </div>
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-[#4a3a44]">
-              Bu form hangi hizmetlerde zorunlu? <span className="font-normal text-[#705a66]">({draft.serviceIds.length} seçili)</span>
+            <label className="text-[12px] font-semibold text-[#3E343A]">
+              Bu form hangi hizmetlerde zorunlu? <span className="font-normal text-[#74616A]">({draft.serviceIds.length} seçili)</span>
             </label>
-            <div className="mt-2 max-h-52 space-y-3 overflow-y-auto rounded-[12px] border border-[#ead8df] bg-white p-3">
-              {grouped.length === 0 && <div className="py-6 text-center text-[12.5px] text-[#705a66]">Hizmet kaydı yok.</div>}
+            <div className="mt-2 max-h-52 space-y-3 overflow-y-auto rounded-[12px] border border-[#EAD8DF] bg-white p-3">
+              {grouped.length === 0 && <div className="py-6 text-center text-[12.5px] text-[#74616A]">Hizmet kaydı yok.</div>}
               {grouped.map(([group, list]) => (
                 <div key={group}>
-                  <div className="text-[11px] font-semibold uppercase tracking-widest text-[#b14d6c]">{group}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-[#8C4460]">{group}</div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {list.map((s) => {
                       const on = draft.serviceIds.includes(s.id)
                       return (
                         <button key={s.id} type="button" onClick={() => toggleService(s.id)}
                           className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                            on ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0] hover:text-[#c85776]'
+                            on ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690] hover:text-[#A5556E]'
                           }`}>
                           {s.name}
                         </button>
@@ -460,15 +460,15 @@ export default function ConsentTemplatesCard({ tenantId }: { tenantId?: string }
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button type="button" onClick={() => preview(draft)}
-              className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+              className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
               <Download className="h-4 w-4" /> PDF önizle
             </button>
             <button type="button" onClick={() => setDraft(null)}
-              className="rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#4a3a44] hover:bg-[#fff4f8]">
+              className="rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12.5px] font-medium text-[#3E343A] hover:bg-[#F7F6F6]">
               Vazgeç
             </button>
             <button type="button" disabled={saving} onClick={() => void save()}
-              className="inline-flex items-center gap-1.5 rounded-[12px] bg-[#c85776] px-5 py-2.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 rounded-[12px] bg-[#A5556E] px-5 py-2.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Kaydet
             </button>
           </div>

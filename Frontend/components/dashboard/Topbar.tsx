@@ -284,7 +284,7 @@ export default function Topbar({
 
   return (
     <>
-      <header className="relative z-20 border-b border-[#ead8df]/70 bg-white/75 shadow-[0_18px_46px_-36px_rgba(150,78,104,0.42)] backdrop-blur-2xl">
+      <header className="relative z-20 border-b border-[#EAD8DF] bg-white/75 shadow-[0_18px_46px_-36px_rgba(150,78,104,0.42)] backdrop-blur-2xl">
         {/* Üstte yumuşak gold flare */}
         <span
           aria-hidden
@@ -320,7 +320,7 @@ export default function Topbar({
                     {i > 0 && (
                       <span aria-hidden className="inline-block h-1 w-1 rounded-full bg-[#f0aac2]/55" />
                     )}
-                    <span className={i === breadcrumbs.length - 1 ? 'text-[#c85776]' : ''}>{b}</span>
+                    <span className={i === breadcrumbs.length - 1 ? 'text-[#A5556E]' : ''}>{b}</span>
                   </span>
                 ))}
               </div>
@@ -365,31 +365,31 @@ export default function Topbar({
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => setPaletteOpen(true)}
-              className={`group relative items-center gap-2 overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] ${compact ? 'flex min-h-11 min-w-[240px] flex-1 lg:max-w-[640px]' : 'hidden w-[220px] min-w-0 shrink md:flex xl:w-[300px]'}`}
+              className={`group relative items-center gap-2 overflow-hidden rounded-2xl border border-[#EAD8DF]/80 bg-white/82 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] ${compact ? 'flex min-h-11 min-w-[240px] flex-1 lg:max-w-[640px]' : 'hidden w-[220px] min-w-0 shrink md:flex xl:w-[300px]'}`}
             >
               <span
                 aria-hidden
                 className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-[#ffdce8]/55 via-white/60 to-transparent transition-transform duration-500 group-hover:translate-x-0"
               />
-              <Search className="relative z-10 h-3.5 w-3.5 text-[#9d7386] transition-colors group-hover:text-[#c85776]" />
+              <Search className="relative z-10 h-3.5 w-3.5 text-[#9d7386] transition-colors group-hover:text-[#A5556E]" />
               <span className="relative z-10 flex-1 truncate text-[12px] text-[#7c6170]/70 group-hover:text-[#4a3542]">
                 {compact ? 'Danışan, randevu, işlem veya personel ara...' : placeholder}
               </span>
-              <kbd className="relative z-10 rounded-md border border-[#ead8df] bg-[#fff7fa] px-1.5 text-[9px] font-semibold text-[#9d7386] transition-colors group-hover:border-[#ef9ab5] group-hover:text-[#c85776]">
+              <kbd className="relative z-10 rounded-md border border-[#EAD8DF] bg-[#fff7fa] px-1.5 text-[9px] font-semibold text-[#9d7386] transition-colors group-hover:border-[#ef9ab5] group-hover:text-[#A5556E]">
                 ⌘K
               </kbd>
             </motion.button>
 
             {/* TIME — tarih çipi */}
             {!compact && (
-              <span className="hidden min-h-10 items-center gap-2 rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3 text-[11px] font-semibold tracking-tight text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] xl:flex">
+              <span className="hidden min-h-10 items-center gap-2 rounded-2xl border border-[#EAD8DF]/80 bg-white/82 px-3 text-[11px] font-semibold tracking-tight text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] xl:flex">
                 <motion.span
                   aria-hidden
                   animate={{ opacity: [0.55, 1, 0.55] }}
                   transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                   className="inline-flex"
                 >
-                  <CalendarDays className="h-3.5 w-3.5 text-[#c85776]" strokeWidth={1.7} />
+                  <CalendarDays className="h-3.5 w-3.5 text-[#A5556E]" strokeWidth={1.7} />
                 </motion.span>
                 {time}
               </span>
@@ -404,7 +404,7 @@ export default function Topbar({
                 onClick={() => router.push(`${scope === 'personel' ? '/ekip' : '/panel'}/randevular?action=new`)}
                 aria-label="Randevu oluştur"
                 title="Randevu oluştur"
-                className="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#c85776]/30 bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[11px] font-semibold text-white shadow-[0_14px_30px_-18px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                className="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#8C4460]/30 bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 text-[11px] font-semibold text-white shadow-[0_14px_30px_-18px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
               >
                 <CalendarPlus className="relative z-10 h-3.5 w-3.5" strokeWidth={1.8} />
                 <span className="relative z-10 hidden md:inline">Randevu Oluştur</span>
@@ -421,7 +421,7 @@ export default function Topbar({
               <PackageSaleDialog
                 tenantId={tenantId}
                 triggerLabel={<span className="hidden lg:inline">Paket Sat</span>}
-                triggerClassName="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#efbfd0] bg-white/82 px-3 text-[11px] font-semibold text-[#c85776] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#c85776] hover:bg-[#fff4f8]"
+                triggerClassName="group relative flex min-h-10 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border border-[#BE7690] bg-white/82 px-3 text-[11px] font-semibold text-[#A5556E] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#8C4460] hover:bg-[#F7F6F6]"
               />
             )}
 
@@ -434,7 +434,7 @@ export default function Topbar({
                 onClick={() => setImportOpen(true)}
                 aria-label="Excel içeri aktar"
                 title="Excel içeri aktar"
-                className="group relative flex min-h-10 items-center gap-2 overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 px-3 text-[11px] font-semibold text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                className="group relative flex min-h-10 items-center gap-2 overflow-hidden rounded-2xl border border-[#EAD8DF]/80 bg-white/82 px-3 text-[11px] font-semibold text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
               >
                 <span
                   aria-hidden
@@ -456,7 +456,7 @@ export default function Topbar({
                 aria-label="Bildirimleri göster"
                 aria-expanded={noticeOpen}
                 onClick={() => setNoticeOpen((value) => !value)}
-                className="group relative grid min-h-10 min-w-10 place-items-center overflow-hidden rounded-2xl border border-[#ead8df]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                className="group relative grid min-h-10 min-w-10 place-items-center overflow-hidden rounded-2xl border border-[#EAD8DF]/80 bg-white/82 text-[#7c6170] shadow-[0_14px_32px_-28px_rgba(150,78,104,0.45)] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
               >
                 <span
                   aria-hidden
@@ -498,16 +498,16 @@ export default function Topbar({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
                     transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="absolute right-0 top-[calc(100%+10px)] z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-[22px] border border-[#ead8df]/80 bg-white/96 shadow-2xl shadow-[#b86a87]/18 backdrop-blur-xl"
+                    className="absolute right-0 top-[calc(100%+10px)] z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-[22px] border border-[#EAD8DF]/80 bg-white/96 shadow-2xl shadow-[#b86a87]/18 backdrop-blur-xl"
                   >
                     <div className="relative">
                       <span
                         aria-hidden
                         className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-[#f0aac2]/15 blur-3xl"
                       />
-                      <div className="relative flex items-center justify-between border-b border-[#ead8df]/70 px-4 py-3">
+                      <div className="relative flex items-center justify-between border-b border-[#EAD8DF] px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <Sparkles className="h-3.5 w-3.5 text-[#c85776]" />
+                          <Sparkles className="h-3.5 w-3.5 text-[#A5556E]" />
                           <span className="text-[11px] font-semibold tracking-tight text-[#7c6170]/82">
                             Bildirimler
                           </span>
@@ -531,7 +531,7 @@ export default function Topbar({
                                     <div className="truncate text-[12px] font-semibold text-[#241923]">{a.musteri}</div>
                                     <div className="truncate text-[11px] text-[#7c6170]/75">{a.islem} · {a.date.slice(5)} {a.time} · {a.personel}</div>
                                     <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                      <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.approve(a.id))} className="inline-flex items-center gap-1 rounded-md bg-[#c85776] px-2 py-1 text-[10px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"><Check className="h-3 w-3" /> Onayla</button>
+                                      <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.approve(a.id))} className="inline-flex items-center gap-1 rounded-md bg-[#A5556E] px-2 py-1 text-[10px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"><Check className="h-3 w-3" /> Onayla</button>
                                       <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.reject(a.id))} className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[10px] font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-50"><X className="h-3 w-3" /> Reddet</button>
                                     </div>
                                   </div>
@@ -541,7 +541,7 @@ export default function Topbar({
                           )}
                           {managerInbox.awaitingOutcome.length > 0 && (
                             <div className="px-4 py-2.5">
-                              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#b14d6c]/80">
+                              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]/80">
                                 <Clock3 className="h-3 w-3" /> Saati gelen randevular
                               </div>
                               <div className="space-y-2">
@@ -552,7 +552,7 @@ export default function Topbar({
                                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                                       <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.complete(a.id))} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"><CheckCircle2 className="h-3 w-3" /> Tamamlandı</button>
                                       <button type="button" disabled={inboxBusyId === a.id} onClick={() => runInboxAction(a.id, () => managerInbox.noShow(a.id))} className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"><UserX className="h-3 w-3" /> Gelmedi</button>
-                                      <button type="button" onClick={() => { setNoticeOpen(false); router.push('/panel/randevular') }} className="inline-flex items-center gap-1 rounded-md border border-[#ead8df] bg-white px-2 py-1 text-[10px] font-semibold text-[#7c6170] transition-colors hover:bg-[#fff4f8]"><CalendarClock className="h-3 w-3" /> Ertele</button>
+                                      <button type="button" onClick={() => { setNoticeOpen(false); router.push('/panel/randevular') }} className="inline-flex items-center gap-1 rounded-md border border-[#EAD8DF] bg-white px-2 py-1 text-[10px] font-semibold text-[#7c6170] transition-colors hover:bg-[#F7F6F6]"><CalendarClock className="h-3 w-3" /> Ertele</button>
                                     </div>
                                   </div>
                                 ))}
@@ -574,11 +574,11 @@ export default function Topbar({
                             const body = (
                               <>
                                 <div className="flex items-start justify-between gap-3">
-                                  <div className="text-[12px] font-semibold leading-5 text-[#352432]">
+                                  <div className="text-[12px] font-semibold leading-5 text-[#2A2027]">
                                     {item.title}
                                   </div>
                                   {item.meta && (
-                                    <span className="shrink-0 rounded-full border border-[#efbfd0] bg-[#fff1f6] px-1.5 py-0.5 text-[9px] font-semibold text-[#c85776]">
+                                    <span className="shrink-0 rounded-full border border-[#BE7690] bg-[#F6DFE6] px-1.5 py-0.5 text-[9px] font-semibold text-[#A5556E]">
                                       {item.meta}
                                     </span>
                                   )}
@@ -631,7 +631,7 @@ export default function Topbar({
 
             {compact && (
               <div className="hidden shrink-0 items-center gap-2.5 pl-1 md:flex">
-                <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[#efbfd0] bg-gradient-to-br from-[#fff3f7] to-[#f4bfd0] text-[12px] font-semibold text-[#8c415b] shadow-[0_14px_28px_-20px_rgba(190,91,125,0.75)]">
+                <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[#BE7690] bg-gradient-to-br from-[#fff3f7] to-[#f4bfd0] text-[12px] font-semibold text-[#8c415b] shadow-[0_14px_28px_-20px_rgba(190,91,125,0.75)]">
                   {avatarText}
                 </div>
                 <div className="min-w-0 leading-tight">
@@ -669,7 +669,7 @@ export default function Topbar({
               exit={{ opacity: 0, y: -10, scale: 0.97 }}
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-[#ead8df]/85 bg-white/96 shadow-[0_36px_110px_rgba(150,78,104,0.22)] backdrop-blur-2xl"
+              className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-[#EAD8DF]/85 bg-white/96 shadow-[0_36px_110px_rgba(150,78,104,0.22)] backdrop-blur-2xl"
             >
               {/* aurora wash */}
               <span
@@ -682,8 +682,8 @@ export default function Topbar({
               />
 
               {/* input */}
-              <div className="relative flex items-center gap-3 border-b border-[#ead8df]/75 px-5 py-4">
-                <Search className="h-4 w-4 text-[#c85776]" strokeWidth={1.6} />
+              <div className="relative flex items-center gap-3 border-b border-[#EAD8DF]/75 px-5 py-4">
+                <Search className="h-4 w-4 text-[#A5556E]" strokeWidth={1.6} />
                 <input
                   ref={inputRef}
                   type="text"
@@ -691,10 +691,10 @@ export default function Topbar({
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handlePaletteKeyDown}
                   placeholder={placeholder}
-                  className="flex-1 bg-transparent text-[14px] text-[#352432] placeholder:text-[#9d7386]/55 focus:outline-none"
+                  className="flex-1 bg-transparent text-[14px] text-[#2A2027] placeholder:text-[#9d7386]/55 focus:outline-none"
                   aria-label="Komut paleti"
                 />
-                <kbd className="hidden rounded-md border border-[#ead8df] bg-[#fff7fa] px-1.5 text-[9px] font-semibold text-[#9d7386] sm:inline-block">
+                <kbd className="hidden rounded-md border border-[#EAD8DF] bg-[#fff7fa] px-1.5 text-[9px] font-semibold text-[#9d7386] sm:inline-block">
                   ESC
                 </kbd>
               </div>
@@ -720,8 +720,8 @@ export default function Topbar({
                           onClick={() => goToResult(item)}
                           className={`group flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-[12px] transition-colors ${
                             active
-                              ? 'rounded-2xl bg-gradient-to-r from-[#fff1f6] via-white to-transparent text-[#352432]'
-                              : 'text-[#7c6170]/78 hover:text-[#352432]'
+                              ? 'rounded-2xl bg-gradient-to-r from-[#fff1f6] via-white to-transparent text-[#2A2027]'
+                              : 'text-[#7c6170]/78 hover:text-[#2A2027]'
                           }`}
                         >
                           <span className="flex min-w-0 items-center gap-3">
@@ -736,12 +736,12 @@ export default function Topbar({
                             )}
                             <span className="truncate">{item.label}</span>
                             {item.action && (
-                              <span className="shrink-0 rounded-full border border-[#efbfd0]/75 bg-[#fff1f6] px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#c85776]">
+                              <span className="shrink-0 rounded-full border border-[#BE7690]/75 bg-[#F6DFE6] px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#A5556E]">
                                 Aksiyon
                               </span>
                             )}
                             {isCurrent && (
-                              <span className="shrink-0 border border-[#efbfd0]/75 bg-[#f0aac2]/10 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#c85776]">
+                              <span className="shrink-0 border border-[#BE7690]/75 bg-[#f0aac2]/10 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#A5556E]">
                                 Açık
                               </span>
                             )}
@@ -752,7 +752,7 @@ export default function Topbar({
                                 initial={{ opacity: 0, x: -4 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: -4 }}
-                                className="flex items-center gap-1 text-[10px] font-semibold text-[#c85776]"
+                                className="flex items-center gap-1 text-[10px] font-semibold text-[#A5556E]"
                               >
                                 Git <CornerDownLeft className="h-3 w-3" />
                               </motion.span>
@@ -770,7 +770,7 @@ export default function Topbar({
               </div>
 
               {/* footer */}
-              <div className="relative flex items-center justify-between border-t border-[#ead8df]/75 bg-[#fff7fa]/78 px-5 py-2.5 text-[10px] font-semibold text-[#9d7386]/78">
+              <div className="relative flex items-center justify-between border-t border-[#EAD8DF]/75 bg-[#fff7fa]/78 px-5 py-2.5 text-[10px] font-semibold text-[#9d7386]/78">
                 <span className="flex items-center gap-3">
                   <span>↑↓ gezin</span>
                   <span>↵ git</span>

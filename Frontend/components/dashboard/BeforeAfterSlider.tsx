@@ -42,7 +42,7 @@ export default function BeforeAfterSlider({
       onPointerMove={(e) => dragging.current && moveTo(e.clientX)}
       onPointerUp={() => (dragging.current = false)}
       onPointerCancel={() => (dragging.current = false)}
-      className="group relative aspect-[4/3] w-full cursor-ew-resize touch-none select-none overflow-hidden rounded-[18px] border border-[#ead8df] bg-[#1c1016] shadow-[0_24px_60px_-44px_rgba(142,63,91,0.7)]"
+      className="group relative aspect-[4/3] w-full cursor-ew-resize touch-none select-none overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-[#1c1016] shadow-[0_24px_60px_-44px_rgba(142,63,91,0.7)]"
     >
       {/* Alt katman: SONRA (tam) */}
       <img src={afterUrl} alt={afterLabel} draggable={false} className="absolute inset-0 h-full w-full object-cover" />
@@ -66,7 +66,7 @@ export default function BeforeAfterSlider({
       {/* Ayraç + tutamaç */}
       <div className="pointer-events-none absolute inset-y-0" style={{ left: `${pos}%` }}>
         <div className="absolute inset-y-0 -translate-x-1/2 border-l-2 border-white/90" />
-        <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white/95 text-[#b14d6c] shadow-lg transition-transform group-active:scale-95">
+        <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white/95 text-[#8C4460] shadow-lg transition-transform group-active:scale-95">
           <MoveHorizontal className="h-4 w-4" />
         </div>
       </div>

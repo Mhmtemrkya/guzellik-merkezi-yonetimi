@@ -25,18 +25,18 @@ export function UsageBar({
     ? 'bg-rose-400/12 border-rose-300/30'
     : isWarning
       ? 'bg-amber-400/10 border-amber-300/25'
-      : 'bg-[#fff4f8]/[0.04] border-[#ead8df]/70'
+      : 'bg-[#F7F6F6]/[0.04] border-[#EAD8DF]'
   const barTone = isOver
     ? 'bg-gradient-to-r from-rose-400 to-rose-300'
     : isWarning
       ? 'bg-gradient-to-r from-amber-400 to-amber-300'
       : 'bg-gradient-to-r from-[#f0aac2] to-[#ffd3df]'
-  const textTone = isOver ? 'text-rose-700' : isWarning ? 'text-amber-700' : 'text-[#c85776]'
+  const textTone = isOver ? 'text-rose-700' : isWarning ? 'text-amber-700' : 'text-[#A5556E]'
 
   return (
     <div className={`border ${trackTone} ${compact ? 'px-2.5 py-2' : 'p-3'}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/55">
+        <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53]">
           {Icon && <Icon className="h-3 w-3" strokeWidth={1.6} />}
           {label}
         </div>
@@ -53,7 +53,7 @@ export function UsageBar({
         />
       </div>
       {!compact && (
-        <div className="mt-1 text-right text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">
+        <div className="mt-1 text-right text-[9px] font-mono uppercase tracking-widest text-[#74616A]">
           {isUnlimited ? 'sınırsız' : `${percent}%`}
           {isOver && <span className="ml-1 text-rose-700">· aşıldı</span>}
           {isWarning && <span className="ml-1 text-amber-700">· sınıra yakın</span>}

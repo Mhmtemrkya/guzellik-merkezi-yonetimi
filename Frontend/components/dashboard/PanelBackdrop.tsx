@@ -16,13 +16,13 @@ interface OrbConfig {
 const variantOrbs: Record<BackdropVariant, OrbConfig[]> = {
   admin: [
     { size: 'h-[520px] w-[520px]', color: 'bg-[#ffdce8]/70', position: 'left-[-15%] top-[-18%]', intensity: 24, duration: 13 },
-    { size: 'h-[500px] w-[500px]', color: 'bg-[#fff1f6]/90', position: 'right-[-14%] bottom-[-18%]', intensity: 20, duration: 15 },
+    { size: 'h-[500px] w-[500px]', color: 'bg-[#F6DFE6]/90', position: 'right-[-14%] bottom-[-18%]', intensity: 20, duration: 15 },
     { size: 'h-[340px] w-[340px]', color: 'bg-[#f6b8cb]/36', position: 'left-[45%] top-[22%]', intensity: 16, duration: 11 },
     { size: 'h-[260px] w-[260px]', color: 'bg-[#efd8e1]/44', position: 'right-1/4 bottom-1/3', intensity: 12, duration: 17 },
   ],
   personel: [
     { size: 'h-[500px] w-[500px]', color: 'bg-[#ffdce8]/64', position: 'left-[-12%] top-[-12%]', intensity: 22, duration: 12 },
-    { size: 'h-[440px] w-[440px]', color: 'bg-[#fff1f6]/84', position: 'right-[-14%] bottom-[-12%]', intensity: 24, duration: 15 },
+    { size: 'h-[440px] w-[440px]', color: 'bg-[#F6DFE6]/84', position: 'right-[-14%] bottom-[-12%]', intensity: 24, duration: 15 },
     { size: 'h-[280px] w-[280px]', color: 'bg-white/70', position: 'right-1/4 top-1/4', intensity: 16, duration: 13 },
   ],
   platform: [

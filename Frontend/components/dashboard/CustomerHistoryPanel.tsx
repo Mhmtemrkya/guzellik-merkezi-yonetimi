@@ -391,18 +391,18 @@ export default function CustomerHistoryPanel({
   }, [canAdisyon, tab, operationRows.length])
 
   return (
-    <div className="rounded-2xl border border-[#efe1e7] bg-white p-4">
+    <div className="rounded-2xl border border-[#EAD8DF] bg-white p-4">
       <h4 className="font-display text-[13.5px] font-extrabold tracking-[-0.01em] text-[#2b1e29]">Müşteri geçmişi</h4>
 
       {/* Sekmeler */}
-      <div className="mt-2.5 inline-flex w-full items-center gap-1 rounded-xl border border-[#efe1e7] bg-[#fdf9fb] p-1">
+      <div className="mt-2.5 inline-flex w-full items-center gap-1 rounded-xl border border-[#EAD8DF] bg-[#fdf9fb] p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
             className={`inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold transition-colors ${
-              tab === t.key ? 'bg-[#8e3f5b] text-white' : 'text-[#705a66] hover:bg-white'
+              tab === t.key ? 'bg-[#8e3f5b] text-white' : 'text-[#74616A] hover:bg-white'
             }`}
           >
             <t.icon className="h-3.5 w-3.5" strokeWidth={1.9} />
@@ -411,7 +411,7 @@ export default function CustomerHistoryPanel({
         ))}
       </div>
 
-      <p className="mt-2 text-[11.5px] text-[#705a66]">{caption}</p>
+      <p className="mt-2 text-[11.5px] text-[#74616A]">{caption}</p>
 
       {/* SEANSLAR: önce kalan bakiye (paket → işlem kırılımı), sonra kullanım geçmişi. */}
       {tab === 'sessions' && packageGroups.length > 0 && (
@@ -424,7 +424,7 @@ export default function CustomerHistoryPanel({
                 {(() => {
                   const rem = g.rows.reduce((n, r) => n + r.remaining, 0)
                   return (
-                    <span className={`shrink-0 text-[11px] font-semibold ${rem > 0 ? 'text-[#8e3f5b]' : 'text-[#705a66]'}`}>
+                    <span className={`shrink-0 text-[11px] font-semibold ${rem > 0 ? 'text-[#8e3f5b]' : 'text-[#74616A]'}`}>
                       {rem > 0 ? `${rem} seans kaldı` : 'Seans kalmadı'}
                     </span>
                   )
@@ -433,8 +433,8 @@ export default function CustomerHistoryPanel({
               <ul className="mt-1.5 space-y-1">
                 {g.rows.map((r) => (
                   <li key={r.serviceDefinitionId} className="flex items-baseline justify-between gap-2 text-[11.5px]">
-                    <span className="min-w-0 truncate text-[#4a3a44]">{r.serviceName}</span>
-                    <span className="shrink-0 font-semibold text-[#705a66]">
+                    <span className="min-w-0 truncate text-[#3E343A]">{r.serviceName}</span>
+                    <span className="shrink-0 font-semibold text-[#74616A]">
                       {r.remaining > 0 ? (
                         <>
                           <span className="tabular-nums text-[#8e3f5b]">{r.remaining} seans kaldı</span>
@@ -453,7 +453,7 @@ export default function CustomerHistoryPanel({
       )}
 
       {/* Tablo başlığı */}
-      <div className="mt-2 grid grid-cols-[64px_1fr_auto] items-center gap-2 border-b border-[#f4e8ee] pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+      <div className="mt-2 grid grid-cols-[64px_1fr_auto] items-center gap-2 border-b border-[#f4e8ee] pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
         <span>Tarih</span>
         <span>{tab === 'sessions' ? 'Kullanılan seans' : tab === 'operations' ? 'İşlem' : 'Satış'}</span>
         <span className="text-right">{tab === 'sessions' ? 'Kaynak' : 'Tutar'}</span>
@@ -462,23 +462,23 @@ export default function CustomerHistoryPanel({
       {/* Satırlar — uzun geçmişte panel şişmesin diye kendi içinde kayar. */}
       <div className="max-h-[280px] overflow-y-auto">
         {loading && rows.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-6 text-[12px] text-[#705a66]">
+          <div className="flex items-center justify-center gap-2 py-6 text-[12px] text-[#74616A]">
             <Loader2 className="h-3.5 w-3.5 animate-spin" /> Geçmiş yükleniyor…
           </div>
         ) : rows.length === 0 ? (
-          <div className="py-6 text-center text-[12px] text-[#705a66]">{emptyText}</div>
+          <div className="py-6 text-center text-[12px] text-[#74616A]">{emptyText}</div>
         ) : (
           <ul className="divide-y divide-[#f7eef2]">
             {rows.map((r) => (
               <li key={r.key} className="grid grid-cols-[64px_1fr_auto] items-baseline gap-2 py-2">
-                <span className="text-[11.5px] tabular-nums leading-tight text-[#705a66]">
+                <span className="text-[11.5px] tabular-nums leading-tight text-[#74616A]">
                   {fmtDate(r.ts)}
                   {fmtTime(r.ts) && <span className="block text-[10px] text-[#8b7480]">{fmtTime(r.ts)}</span>}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[12.5px] font-medium text-[#2b1e29]">{r.desc}</span>
                   {/* İşlemler sekmesinde İKİ KİŞİ vardır: satan ve uygulayan. */}
-                  <span className="block truncate text-[11px] text-[#705a66]">
+                  <span className="block truncate text-[11px] text-[#74616A]">
                     {tab === 'operations'
                       ? [
                           r.soldBy ? `Satan: ${r.soldBy}` : 'Satan belirtilmemiş',
@@ -493,7 +493,7 @@ export default function CustomerHistoryPanel({
                       ? 'text-emerald-700'
                       : r.tone === 'package'
                         ? 'text-[#b8863b]'
-                        : 'text-[#4a3a44]'
+                        : 'text-[#3E343A]'
                   }`}
                 >
                   {r.trailing || '—'}

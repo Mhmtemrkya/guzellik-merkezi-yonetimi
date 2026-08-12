@@ -144,16 +144,16 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
   const skinLabel = SKIN_TYPE_OPTIONS.find((s) => s.value === (form?.skinType ?? 'Unknown'))?.label
 
   return (
-    <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+    <div className="rounded-[20px] border border-[#EAD8DF] bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
+        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]/80">
           <ClipboardList className="h-3.5 w-3.5" /> Müşteri Bilgi ve Onay Formu
         </div>
         {!editing && (
           <button
             type="button"
             onClick={startEdit}
-            className="inline-flex items-center gap-1 rounded-lg border border-[#efbfd0] bg-[#fff1f6] px-2 py-1 text-[11px] font-semibold text-[#b14d6c] transition hover:bg-[#ffe3ec]"
+            className="inline-flex items-center gap-1 rounded-lg border border-[#BE7690] bg-[#F6DFE6] px-2 py-1 text-[11px] font-semibold text-[#8C4460] transition hover:bg-[#ffe3ec]"
           >
             <Pencil className="h-3.5 w-3.5" /> {hasForm ? 'Düzenle' : 'Form oluştur'}
           </button>
@@ -205,10 +205,10 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
                     type="button"
                     onClick={() => setDraft((d) => ({ ...d, [fl.key]: !checked }))}
                     className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[11.5px] font-medium transition ${
-                      checked ? 'border-[#c85776] bg-[#fff1f6] text-[#b14d6c]' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fffafb]'
+                      checked ? 'border-[#8C4460] bg-[#F6DFE6] text-[#8C4460]' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]'
                     }`}
                   >
-                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#cdb8c1] bg-white'}`}>
+                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#cdb8c1] bg-white'}`}>
                       {checked && <Check className="h-3 w-3" />}
                     </span>
                     {fl.label}
@@ -218,10 +218,10 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
             </div>
 
             {/* Özel — kuruma/şubeye özel işaretlenebilir seçenekler */}
-            <div className="rounded-lg border border-[#efbfd0]/70 bg-[#fffafb] p-2.5">
-              <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+            <div className="rounded-lg border border-[#EAD8DF] bg-[#F7F6F6] p-2.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/80">
                 <Star className="h-3 w-3" /> Özel
-                <span className="font-sans normal-case tracking-normal text-[#352432]/40">· kuruma/şubeye özel seçenekler</span>
+                <span className="font-sans normal-case tracking-normal text-[#74616A]">· kuruma/şubeye özel seçenekler</span>
               </div>
 
               {customOptionLabels.length > 0 && (
@@ -232,11 +232,11 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
                       <div
                         key={label}
                         className={`group flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-medium transition ${
-                          checked ? 'border-[#c85776] bg-[#fff1f6] text-[#b14d6c]' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fffafb]'
+                          checked ? 'border-[#8C4460] bg-[#F6DFE6] text-[#8C4460]' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]'
                         }`}
                       >
                         <button type="button" onClick={() => toggleCustom(label)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#cdb8c1] bg-white'}`}>
+                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#cdb8c1] bg-white'}`}>
                             {checked && <Check className="h-3 w-3" />}
                           </span>
                           <span className="truncate">{label}</span>
@@ -246,7 +246,7 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
                           onClick={() => removeOption(label)}
                           aria-label={`${label} seçeneğini kaldır`}
                           title="Seçeneği kaldır"
-                          className="shrink-0 rounded p-0.5 text-[#352432]/30 opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
+                          className="shrink-0 rounded p-0.5 text-[#74616A] opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -265,31 +265,31 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
                       onChange={(e) => setNewOption(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
                       placeholder="Özel seçenek ekle (ör. Botoks geçmişi)…"
-                      className="min-w-0 flex-1 rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                      className="min-w-0 flex-1 rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                     />
                     <button
                       type="button"
                       onClick={addCustom}
                       disabled={!newOption.trim()}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#efbfd0] bg-[#fff1f6] px-2.5 py-1.5 text-[11px] font-semibold text-[#b14d6c] transition hover:bg-[#ffe3ec] disabled:opacity-40"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#BE7690] bg-[#F6DFE6] px-2.5 py-1.5 text-[11px] font-semibold text-[#8C4460] transition hover:bg-[#ffe3ec] disabled:opacity-40"
                     >
                       <Plus className="h-3.5 w-3.5" /> Ekle
                     </button>
                   </div>
-                  <div className="mt-1 text-[10px] text-[#352432]/40">Eklenen seçenek bu kuruma/şubeye kaydedilir; sonraki müşterilerde hazır checkbox olarak çıkar.</div>
+                  <div className="mt-1 text-[10px] text-[#74616A]">Eklenen seçenek bu kuruma/şubeye kaydedilir; sonraki müşterilerde hazır checkbox olarak çıkar.</div>
                 </>
               ) : (
-                <div className="mt-2 text-[10px] text-[#352432]/40">Özel seçenek ekleme paketinizde yok — mevcut seçenekleri işaretleyebilirsiniz.</div>
+                <div className="mt-2 text-[10px] text-[#74616A]">Özel seçenek ekleme paketinizde yok — mevcut seçenekleri işaretleyebilirsiniz.</div>
               )}
             </div>
 
             {/* Cilt tipi */}
             <div>
-              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Cilt tipi (Fitzpatrick)</label>
+              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Cilt tipi (Fitzpatrick)</label>
               <select
                 value={draft.skinType ?? 'Unknown'}
                 onChange={(e) => setDraft((d) => ({ ...d, skinType: e.target.value as ApiConsultationForm['skinType'] }))}
-                className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
               >
                 {SKIN_TYPE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
@@ -298,13 +298,13 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
             {/* Serbest metinler */}
             {TEXT_FIELDS.map((tf) => (
               <div key={tf.key}>
-                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{tf.label}</label>
+                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{tf.label}</label>
                 <textarea
                   value={(draft[tf.key] as string) ?? ''}
                   onChange={(e) => setDraft((d) => ({ ...d, [tf.key]: e.target.value }))}
                   placeholder={tf.placeholder}
                   rows={2}
-                  className="w-full resize-none rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                  className="w-full resize-none rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                 />
               </div>
             ))}
@@ -314,7 +314,7 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
               type="button"
               onClick={() => setDraft((d) => ({ ...d, consentGiven: !d.consentGiven }))}
               className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-[11.5px] font-medium transition ${
-                draft.consentGiven ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-[#ead8df] bg-white text-[#352432]/65'
+                draft.consentGiven ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-[#EAD8DF] bg-white text-[#5A4B53]'
               }`}
             >
               <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${draft.consentGiven ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-[#cdb8c1] bg-white'}`}>
@@ -325,10 +325,10 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
 
             {error && <div className="text-[11px] font-medium text-rose-600">{error}</div>}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setEditing(false)} className="inline-flex items-center gap-1 rounded-lg border border-[#ead8df] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#352432]/60 transition hover:bg-[#fffafb]">
+              <button type="button" onClick={() => setEditing(false)} className="inline-flex items-center gap-1 rounded-lg border border-[#EAD8DF] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#5A4B53] transition hover:bg-[#F7F6F6]">
                 <X className="h-3.5 w-3.5" /> İptal
               </button>
-              <button type="button" disabled={busy} onClick={save} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#c85776] to-[#8e3f5b] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition disabled:opacity-50">
+              <button type="button" disabled={busy} onClick={save} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8e3f5b] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition disabled:opacity-50">
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Kaydet
               </button>
             </div>
@@ -336,25 +336,25 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
         ) : (
           <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {loading && !hasForm ? (
-              <div className="py-4 text-center text-[11px] text-[#352432]/40">Yükleniyor…</div>
+              <div className="py-4 text-center text-[11px] text-[#74616A]">Yükleniyor…</div>
             ) : !hasForm ? (
-              <div className="py-4 text-center text-[11px] text-[#352432]/45">
-                Henüz müşteri bilgi formu yok. İşlem öncesi müşteri beyanları ve onay için <span className="font-semibold text-[#b14d6c]">Form oluştur</span>’a dokunun.
+              <div className="py-4 text-center text-[11px] text-[#74616A]">
+                Henüz müşteri bilgi formu yok. İşlem öncesi müşteri beyanları ve onay için <span className="font-semibold text-[#8C4460]">Form oluştur</span>’a dokunun.
               </div>
             ) : (
               <div className="space-y-2.5">
                 {markedFlags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {markedFlags.map((fl) => (
-                      <span key={fl.key} className="rounded-md border border-[#efbfd0] bg-[#fff1f6] px-2 py-0.5 text-[10.5px] font-medium text-[#b14d6c]">{fl.label}</span>
+                      <span key={fl.key} className="rounded-md border border-[#BE7690] bg-[#F6DFE6] px-2 py-0.5 text-[10.5px] font-medium text-[#8C4460]">{fl.label}</span>
                     ))}
                   </div>
                 )}
                 {(form?.customSelections?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/35"><Star className="h-2.5 w-2.5" /> Özel</span>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-[#74616A]"><Star className="h-2.5 w-2.5" /> Özel</span>
                     {form!.customSelections!.map((label) => (
-                      <span key={label} className="rounded-md border border-[#efbfd0] bg-[#fff7fa] px-2 py-0.5 text-[10.5px] font-medium text-[#b14d6c]">{label}</span>
+                      <span key={label} className="rounded-md border border-[#BE7690] bg-[#fff7fa] px-2 py-0.5 text-[10.5px] font-medium text-[#8C4460]">{label}</span>
                     ))}
                   </div>
                 )}
@@ -366,7 +366,7 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
                   {form?.chronicConditions && <Field label="Kronik" value={form.chronicConditions} />}
                   {form?.notes && <Field label="Notlar" value={form.notes} />}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 border-t border-[#f0e0e6] pt-2 text-[10px] text-[#352432]/45">
+                <div className="flex flex-wrap items-center gap-2 border-t border-[#f0e0e6] pt-2 text-[10px] text-[#74616A]">
                   <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-semibold ${form?.consentGiven ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                     {form?.consentGiven ? <><ShieldCheck className="h-3 w-3" /> Onam alındı</> : <><AlertTriangle className="h-3 w-3" /> Onam yok</>}
                   </span>
@@ -386,9 +386,9 @@ export default function ConsultationForm({ customerId, tenantId, branchId }: { c
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[#f0e0e6] bg-[#fffafb] px-2.5 py-1.5">
-      <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/35">{label}</div>
-      <div className="text-[11.5px] text-[#352432]/75">{value}</div>
+    <div className="rounded-lg border border-[#f0e0e6] bg-[#F7F6F6] px-2.5 py-1.5">
+      <div className="text-[9px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
+      <div className="text-[11.5px] text-[#3E343A]">{value}</div>
     </div>
   )
 }

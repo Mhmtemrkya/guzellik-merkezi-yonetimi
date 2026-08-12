@@ -30,16 +30,16 @@ export default function ScopeBadge({ label, description }: ScopeBadgeProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="relative inline-flex items-center gap-3 overflow-hidden border border-[#efbfd0]/75 bg-gradient-to-r from-[#f0aac2]/15 via-[#fff4f8]/[0.04] to-transparent px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776] backdrop-blur-md"
+      className="relative inline-flex items-center gap-3 overflow-hidden border border-[#BE7690]/75 bg-gradient-to-r from-[#f0aac2]/15 via-[#fff4f8]/[0.04] to-transparent px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] backdrop-blur-md"
     >
       <Filter className="h-3 w-3" />
-      <span className="text-[#352432]/85">{label}</span>
-      {description && <span className="hidden text-[#352432]/45 sm:inline">· {description}</span>}
+      <span className="text-[#2A2027]/85">{label}</span>
+      {description && <span className="hidden text-[#74616A] sm:inline">· {description}</span>}
       <button
         type="button"
         onClick={clear}
         aria-label="Filtreyi kaldır"
-        className="ml-1 grid h-5 w-5 place-items-center text-[#352432]/45 transition-colors hover:text-[#c85776]"
+        className="ml-1 grid h-5 w-5 place-items-center text-[#74616A] transition-colors hover:text-[#A5556E]"
       >
         <X className="h-3 w-3" strokeWidth={2} />
       </button>

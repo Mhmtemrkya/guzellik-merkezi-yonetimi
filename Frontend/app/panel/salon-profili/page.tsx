@@ -46,7 +46,7 @@ interface GalleryPhoto {
 }
 
 const inputCls =
-  'min-h-11 w-full rounded-xl border border-[#ead8df] bg-white px-3.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#e798b4]'
+  'min-h-11 w-full rounded-xl border border-[#EAD8DF] bg-white px-3.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#e798b4]'
 const labelCls = 'mb-1.5 block text-[11px] font-semibold text-[#7c6170]'
 
 function LogoUploader({ logo, onChanged }: { logo: string | null; onChanged: () => void }) {
@@ -84,9 +84,9 @@ function LogoUploader({ logo, onChanged }: { logo: string | null; onChanged: () 
   }
 
   return (
-    <div className="rounded-[22px] border border-[#ead8df] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
-      <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#352432]">
-        <ImagePlus className="h-4 w-4 text-[#c85776]" /> Kurum Logosu
+    <div className="rounded-[22px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
+      <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#2A2027]">
+        <ImagePlus className="h-4 w-4 text-[#A5556E]" /> Kurum Logosu
       </h2>
       <p className="mt-1 text-[11.5px] text-[#7c6170]">
         Salon sayfanızda kapak fotoğrafının üzerindeki kare karoda görünür. Kare (1:1) bir görsel yükleyin.
@@ -185,11 +185,11 @@ function GalleryManager({
   }
 
   return (
-    <div className="rounded-[22px] border border-[#ead8df] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
+    <div className="rounded-[22px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#352432]">
-            <Images className="h-4 w-4 text-[#c85776]" /> {title}
+          <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#2A2027]">
+            <Images className="h-4 w-4 text-[#A5556E]" /> {title}
           </h2>
           <p className="mt-1 text-[11.5px] text-[#7c6170]">{hint}</p>
         </div>
@@ -216,7 +216,7 @@ function GalleryManager({
       {error && <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div>}
       <div className="mt-4 flex flex-wrap gap-3">
         {list.length === 0 && (
-          <div className="w-full rounded-xl border border-dashed border-[#ead8df] px-4 py-8 text-center text-[12px] text-[#9d7386]">
+          <div className="w-full rounded-xl border border-dashed border-[#EAD8DF] px-4 py-8 text-center text-[12px] text-[#9d7386]">
             Henüz fotoğraf yok. En fazla 10 fotoğraf ekleyebilirsiniz.
           </div>
         )}
@@ -229,7 +229,7 @@ function GalleryManager({
               disabled={busy}
               onClick={() => void remove(p.id)}
               aria-label="Fotoğrafı sil"
-              className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-rose-600 opacity-0 shadow transition-opacity group-hover:opacity-100"
+              className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-white text-rose-600 opacity-0 shadow transition-opacity group-hover:opacity-100"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -324,23 +324,23 @@ export default function SalonProfiliPage() {
         subtitle="Herkese açık salon sayfanızı yönetin: fotoğraflar, işletme bilgileri ve yayın durumu."
         breadcrumbs={['Yönetim', 'Salon Vitrini']}
       />
-      <div className="space-y-5 p-4 sm:p-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         {/* Yayın durumu + kaydet */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[#ead8df] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]"
         >
           <div className="flex items-center gap-3">
             <span
               className={`grid h-11 w-11 place-items-center rounded-2xl ${
-                form.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-[#fff1f6] text-[#c85776]'
+                form.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-[#A5556E] text-white'
               }`}
             >
               {form.isPublished ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
             </span>
             <div>
-              <div className="text-[14px] font-bold text-[#352432]">
+              <div className="text-[14px] font-bold text-[#2A2027]">
                 {form.isPublished ? 'Salonunuz yayında' : 'Salonunuz yayında değil'}
               </div>
               <div className="text-[11.5px] text-[#7c6170]">
@@ -353,7 +353,7 @@ export default function SalonProfiliPage() {
               <Link
                 href={`/salon/${slug}`}
                 target="_blank"
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#ead8df] bg-white px-4 text-[12px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#c85776]"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-4 text-[12px] font-semibold text-[#7c6170] transition-colors hover:border-[#ef9ab5] hover:text-[#A5556E]"
               >
                 <ExternalLink className="h-3.5 w-3.5" /> Sayfayı Gör
               </Link>
@@ -377,9 +377,9 @@ export default function SalonProfiliPage() {
         <div className="grid items-start gap-5 xl:grid-cols-[1.35fr_1fr]">
         <div className="space-y-5">
         {/* İşletme bilgileri formu */}
-        <div className="rounded-[22px] border border-[#ead8df] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
-          <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#352432]">
-            <Building2 className="h-4 w-4 text-[#c85776]" /> İşletme Bilgileri
+        <div className="rounded-[22px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_44px_-36px_rgba(150,78,104,0.4)]">
+          <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#2A2027]">
+            <Building2 className="h-4 w-4 text-[#A5556E]" /> İşletme Bilgileri
           </h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -390,7 +390,7 @@ export default function SalonProfiliPage() {
                 rows={3}
                 maxLength={2000}
                 placeholder="Salonunuzu birkaç cümleyle tanıtın…"
-                className="w-full rounded-xl border border-[#ead8df] bg-white px-3.5 py-2.5 text-[13px] outline-none focus:border-[#e798b4]"
+                className="w-full rounded-xl border border-[#EAD8DF] bg-white px-3.5 py-2.5 text-[13px] outline-none focus:border-[#e798b4]"
               />
             </div>
             <div>

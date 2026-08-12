@@ -40,19 +40,19 @@ export default function CommissionPanel({ tenantId }: { tenantId?: string }) {
   }
 
   return (
-    <div className="rounded-[22px] border border-[#ead8df]/70 bg-white/86 p-5 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+    <div className="rounded-[22px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
+        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]/80">
           <BadgePercent className="h-4 w-4" /> Personel primleri
         </div>
         <div className="flex gap-3 text-right">
           <div>
-            <div className="font-display text-lg tabular-nums text-[#352432]">{formatTL(Number(data?.earnedTotal ?? 0))}</div>
-            <div className="text-[8px] font-mono uppercase text-[#352432]/40">kazanılan</div>
+            <div className="font-display text-lg tabular-nums text-[#2A2027]">{formatTL(Number(data?.earnedTotal ?? 0))}</div>
+            <div className="text-[8px] font-mono uppercase text-[#74616A]">kazanılan</div>
           </div>
           <div>
             <div className="font-display text-lg tabular-nums text-amber-700">{formatTL(Number(data?.unpaidTotal ?? 0))}</div>
-            <div className="text-[8px] font-mono uppercase text-[#352432]/40">bekleyen</div>
+            <div className="text-[8px] font-mono uppercase text-[#74616A]">bekleyen</div>
           </div>
         </div>
       </div>
@@ -61,22 +61,22 @@ export default function CommissionPanel({ tenantId }: { tenantId?: string }) {
 
       <div className="space-y-1.5">
         {!loading && byStaff.length === 0 && (
-          <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[12px] text-[#352432]/45">
+          <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-4 text-center text-[12px] text-[#74616A]">
             Henüz prim yok. Adisyon onaylandığında personele atanmış kalemler buraya düşer.
           </div>
         )}
         {byStaff.map((s) => (
           <div key={s.staffMemberId} className="flex items-center justify-between gap-3 rounded-[14px] border border-[#f0e0e6] bg-white px-3 py-2.5">
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium text-[#352432]">{s.staffName || 'Personel'}</div>
-              <div className="text-[10px] font-mono text-[#352432]/45">
+              <div className="truncate text-[13px] font-medium text-[#2A2027]">{s.staffName || 'Personel'}</div>
+              <div className="text-[10px] font-mono text-[#74616A]">
                 {s.count} kalem · ödenen {formatTL(Number(s.paidTotal ?? 0))}
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="font-display text-base tabular-nums text-amber-700">{formatTL(Number(s.unpaidTotal ?? 0))}</div>
-                <div className="text-[8px] font-mono uppercase text-[#352432]/40">bekleyen</div>
+                <div className="text-[8px] font-mono uppercase text-[#74616A]">bekleyen</div>
               </div>
               <button
                 type="button"

@@ -48,9 +48,9 @@ const UNITS = ['adet', 'kutu', 'paket', 'set', 'gr', 'ml']
 const CATEGORY_KEYS = Object.keys(productCategoryLabels) as ProductCategoryKey[]
 
 const fieldStyle =
-  'w-full rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3 text-[14px] text-[#4a3a44] outline-none transition focus:border-[#c85776] focus:ring-2 focus:ring-[#c85776]/20 placeholder:text-[#705a66]/50'
+  'w-full rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[14px] text-[#3E343A] outline-none transition focus:border-[#A5556E] focus:ring-2 focus:ring-[#A5556E]/20 placeholder:text-[#74616A]/50'
 const labelStyle = 'mb-1.5 block text-[13px] font-medium text-[#241923]'
-const helperStyle = 'mt-1.5 text-[12px] text-[#705a66]'
+const helperStyle = 'mt-1.5 text-[12px] text-[#74616A]'
 
 function defaults(): ProductFormValues {
   return {
@@ -64,7 +64,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
-        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#c85776]">{title}</span>
+        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#A5556E]">{title}</span>
         <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-[#f0aac2]/45 to-transparent" />
       </div>
       {children}
@@ -139,30 +139,30 @@ export default function ProductFormDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[28px] border border-[#efe1e7] bg-white p-0 text-[#4a3a44] shadow-[0_44px_120px_-60px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF] bg-white p-0 text-[#3E343A] shadow-[0_44px_120px_-60px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 1152px)', height: 'min(92dvh, 900px)', maxHeight: '92dvh' }}
       >
         {/* Üst altın hairline */}
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[3px]" style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 20%, #b88938 50%, #ffd3df 80%, transparent)' }} />
 
         {/* HEADER */}
-        <header className="flex shrink-0 items-start justify-between border-b border-[#efe1e7] bg-white px-6 py-6 sm:px-8">
+        <header className="flex shrink-0 items-start justify-between border-b border-[#EAD8DF] bg-white px-6 py-6 sm:px-8">
           <div className="flex items-center gap-4">
             <motion.span
               initial={{ scale: 0.85, rotate: -8 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#f0aac2] bg-[#f7ecf1] text-[#c85776]"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#f0aac2] bg-[#f7ecf1] text-[#A5556E]"
             >
               <PackagePlus className="h-5 w-5" strokeWidth={1.7} />
             </motion.span>
             <div className="min-w-0">
-              <div className="mb-1 font-mono text-[12px] uppercase tracking-widest text-[#705a66]">ÜRÜN · {mode === 'edit' ? 'DÜZENLE' : 'YENİ TANIM'}</div>
+              <div className="mb-1 font-mono text-[12px] uppercase tracking-widest text-[#74616A]">ÜRÜN · {mode === 'edit' ? 'DÜZENLE' : 'YENİ TANIM'}</div>
               <DialogTitle className="font-display text-[26px] leading-tight text-[#241923] sm:text-3xl">{heading}</DialogTitle>
-              <DialogDescription className="mt-1 text-[13px] text-[#705a66]">Ürün stok, satış ve adisyon akışında kullanılabilir.</DialogDescription>
+              <DialogDescription className="mt-1 text-[13px] text-[#74616A]">Ürün stok, satış ve adisyon akışında kullanılabilir.</DialogDescription>
             </div>
           </div>
-          <button type="button" onClick={() => setOpen(false)} aria-label="Kapat" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7ecf1] text-[#705a66] transition-colors hover:bg-[#ffd3df]/40 hover:text-[#c85776]">
+          <button type="button" onClick={() => setOpen(false)} aria-label="Kapat" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7ecf1] text-[#74616A] transition-colors hover:bg-[#ffd3df]/40 hover:text-[#A5556E]">
             <X className="h-5 w-5" />
           </button>
         </header>
@@ -170,11 +170,11 @@ export default function ProductFormDialog({
         {/* BODY — iki sütun */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
           {/* SOL — canlı önizleme (krem) */}
-          <div className="w-full shrink-0 overflow-y-auto border-b border-[#efe1e7] bg-[#f7ecf1] p-6 sm:p-8 md:w-[340px] md:border-b-0 md:border-r">
-            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#c85776]">Önizleme</div>
-            <div className="mt-3 overflow-hidden rounded-2xl border border-[#efe1e7]/60 bg-white p-5 shadow-[0_4px_12px_-8px_rgba(200,87,118,0.3)]">
+          <div className="w-full shrink-0 overflow-y-auto border-b border-[#EAD8DF] bg-[#f7ecf1] p-6 sm:p-8 md:w-[340px] md:border-b-0 md:border-r">
+            <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#A5556E]">Önizleme</div>
+            <div className="mt-3 overflow-hidden rounded-2xl border border-[#EAD8DF]/60 bg-white p-5 shadow-[0_4px_12px_-8px_rgba(200,87,118,0.3)]">
               {/* görsel */}
-              <div className="grid aspect-square w-full place-items-center overflow-hidden rounded-[16px] border border-[#f0dde5] bg-[#fffafc]">
+              <div className="grid aspect-square w-full place-items-center overflow-hidden rounded-[16px] border border-[#f0dde5] bg-[#F7F6F6]">
                 {values.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={values.imageUrl} alt="" className="h-full w-full object-cover" />
@@ -186,20 +186,20 @@ export default function ProductFormDialog({
                 )}
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <span className="inline-flex rounded-full border border-[#f3cdda] bg-[#fff1f6] px-2.5 py-0.5 text-[10px] font-semibold text-[#a84f69]">
+                <span className="inline-flex rounded-full border border-[#f3cdda] bg-[#F6DFE6] px-2.5 py-0.5 text-[10px] font-semibold text-[#a84f69]">
                   {productCategoryLabels[values.category]}
                 </span>
-                <span className={`text-[10px] font-semibold ${values.isActive ? 'text-[#2f9e72]' : 'text-[#705a66]'}`}>
+                <span className={`text-[10px] font-semibold ${values.isActive ? 'text-[#2f9e72]' : 'text-[#74616A]'}`}>
                   {values.isActive ? 'Satışta' : 'Pasif'}
                 </span>
               </div>
               <div className="mt-2 font-display text-lg font-bold leading-tight text-[#241923]">{values.name.trim() || 'Ürün adı'}</div>
-              <div className="mt-1 font-mono text-[11px] text-[#705a66]">{values.barcode.trim() || 'Barkod otomatik üretilecek'}</div>
+              <div className="mt-1 font-mono text-[11px] text-[#74616A]">{values.barcode.trim() || 'Barkod otomatik üretilecek'}</div>
               <div className="mt-3 font-display text-2xl font-bold tabular-nums beautyasist-text-gradient">₺{(Number(values.salePrice) || 0).toLocaleString('tr-TR')}</div>
-              <div className="mt-0.5 text-[11px] text-[#705a66]">Maliyet ₺{(Number(values.cost) || 0).toLocaleString('tr-TR')} · %{margin} kâr</div>
+              <div className="mt-0.5 text-[11px] text-[#74616A]">Maliyet ₺{(Number(values.cost) || 0).toLocaleString('tr-TR')} · %{margin} kâr</div>
               <div className="mt-3 flex gap-2 border-t border-[#f3e1e9] pt-3">
-                <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><Boxes className="h-3 w-3 text-[#c85776]" /> Stok</span>
-                <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffafc] px-2 py-1 text-[10px] font-semibold text-[#705a66]"><AlertTriangle className="h-3 w-3 text-[#b88938]" /> Min {values.minStockLevel}</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-[#F7F6F6] px-2 py-1 text-[10px] font-semibold text-[#74616A]"><Boxes className="h-3 w-3 text-[#A5556E]" /> Stok</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-[#F7F6F6] px-2 py-1 text-[10px] font-semibold text-[#74616A]"><AlertTriangle className="h-3 w-3 text-[#b88938]" /> Min {values.minStockLevel}</span>
               </div>
             </div>
           </div>
@@ -211,19 +211,19 @@ export default function ProductFormDialog({
               <Section title="TANIM">
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
-                    <label title="Görsel yükle" className={`group relative grid h-[68px] w-[68px] shrink-0 cursor-pointer place-items-center overflow-hidden rounded-[14px] border border-dashed border-[#e7c9d4] bg-[#fffafc] ${photoBusy ? 'opacity-60' : ''}`}>
+                    <label title="Görsel yükle" className={`group relative grid h-[68px] w-[68px] shrink-0 cursor-pointer place-items-center overflow-hidden rounded-[14px] border border-dashed border-[#e7c9d4] bg-[#F7F6F6] ${photoBusy ? 'opacity-60' : ''}`}>
                       {values.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={values.imageUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
-                        <ImagePlus className="h-5 w-5 text-[#c85776]" />
+                        <ImagePlus className="h-5 w-5 text-[#A5556E]" />
                       )}
                       <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"><ImagePlus className="h-5 w-5 text-white" /></span>
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pickPhoto(f); e.target.value = '' }} />
                     </label>
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-medium text-[#241923]">Ürün görseli</div>
-                      <div className="mt-0.5 text-[12px] text-[#705a66]">Kare, ≤320px. {values.imageUrl ? 'Değiştirmek için tıkla.' : 'Görsel seç (opsiyonel).'}</div>
+                      <div className="mt-0.5 text-[12px] text-[#74616A]">Kare, ≤320px. {values.imageUrl ? 'Değiştirmek için tıkla.' : 'Görsel seç (opsiyonel).'}</div>
                       {values.imageUrl && (
                         <button type="button" onClick={() => set({ imageUrl: '' })} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-rose-500 hover:text-rose-600"><X className="h-3 w-3" /> Kaldır</button>
                       )}
@@ -248,7 +248,7 @@ export default function ProductFormDialog({
                         <select value={values.category} onChange={(e) => set({ category: e.target.value as ProductCategoryKey })} className={`${fieldStyle} appearance-none pr-10`}>
                           {CATEGORY_KEYS.map((k) => <option key={k} value={k}>{productCategoryLabels[k]}</option>)}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
                       </div>
                     </div>
                     <div>
@@ -257,7 +257,7 @@ export default function ProductFormDialog({
                         <select value={values.unit} onChange={(e) => set({ unit: e.target.value })} className={`${fieldStyle} appearance-none pr-10`}>
                           {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
                       </div>
                     </div>
                   </div>
@@ -304,13 +304,13 @@ export default function ProductFormDialog({
                   <button
                     type="button"
                     onClick={() => set({ isActive: !values.isActive })}
-                    className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#efe1e7] bg-[#fffafc] px-4 py-3 text-left transition-colors hover:border-[#efbfd0]"
+                    className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-3 text-left transition-colors hover:border-[#BE7690]"
                   >
                     <span>
                       <span className="block text-[13px] font-semibold text-[#241923]">Aktif (satışta)</span>
-                      <span className="block text-[12px] text-[#705a66]">Pasif ürünler satış/adisyon listesinde görünmez.</span>
+                      <span className="block text-[12px] text-[#74616A]">Pasif ürünler satış/adisyon listesinde görünmez.</span>
                     </span>
-                    <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${values.isActive ? 'bg-gradient-to-r from-[#f47699] to-[#ef6088]' : 'bg-[#e7d6de]'}`}>
+                    <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${values.isActive ? 'bg-gradient-to-r from-[#A5556E] to-[#8C4460]' : 'bg-[#e7d6de]'}`}>
                       <motion.span animate={{ x: values.isActive ? 24 : 4 }} transition={{ type: 'spring', stiffness: 360, damping: 24 }} className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
                     </span>
                   </button>
@@ -327,22 +327,22 @@ export default function ProductFormDialog({
         </div>
 
         {/* FOOTER */}
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[#efe1e7] bg-white px-6 py-4 sm:px-8">
-          <div className="hidden items-center gap-2 font-mono text-[12px] text-[#705a66] sm:flex">
-            <Package className="h-4 w-4 text-[#c85776]" />
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[#EAD8DF] bg-white px-6 py-4 sm:px-8">
+          <div className="hidden items-center gap-2 font-mono text-[12px] text-[#74616A] sm:flex">
+            <Package className="h-4 w-4 text-[#A5556E]" />
             <span>{productCategoryLabels[values.category]}</span>
             <span>·</span>
             <span className="tabular-nums">₺{(Number(values.salePrice) || 0).toLocaleString('tr-TR')}</span>
           </div>
           <div className="flex flex-1 items-center justify-end gap-3 sm:flex-none">
-            <button type="button" onClick={() => setOpen(false)} disabled={busy} className="rounded-[14px] border border-[#ead8df] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50">Vazgeç</button>
+            <button type="button" onClick={() => setOpen(false)} disabled={busy} className="rounded-[14px] border border-[#EAD8DF] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-50">Vazgeç</button>
             <motion.button
               type="button"
               onClick={submit}
               disabled={busy || saved}
               whileTap={{ scale: 0.97 }}
               whileHover={{ y: -1 }}
-              className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-all hover:shadow-[0_22px_44px_-20px_rgba(214,95,131,0.9)] disabled:opacity-70"
+              className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-all hover:shadow-[0_22px_44px_-20px_rgba(214,95,131,0.9)] disabled:opacity-70"
             >
               {busy ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : saved ? <CheckCircle2 className="h-[18px] w-[18px]" /> : <PackagePlus className="h-[18px] w-[18px]" />}
               {saved ? 'Kaydedildi' : cta}

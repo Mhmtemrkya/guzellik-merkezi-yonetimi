@@ -82,7 +82,7 @@ export function SelectBox({ checked, onToggle }: { checked: boolean; onToggle: (
         }
       }}
       className={`grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-[6px] border transition-colors ${
-        checked ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#e0cad4] bg-white text-transparent hover:border-[#c85776]'
+        checked ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#e0cad4] bg-white text-transparent hover:border-[#8C4460]'
       }`}
     >
       <CheckSquare className="h-3 w-3" strokeWidth={2.4} />
@@ -194,9 +194,9 @@ export default function BulkSelectBar({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-5 left-1/2 z-[60] flex w-[min(94vw,640px)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-[18px] border border-[#efe1e7] bg-white/98 px-4 py-3 shadow-[0_24px_60px_-30px_rgba(120,71,88,0.75)] backdrop-blur"
+            className="fixed bottom-5 left-1/2 z-[60] flex w-[min(94vw,640px)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-[18px] border border-[#EAD8DF] bg-white/98 px-4 py-3 shadow-[0_24px_60px_-30px_rgba(120,71,88,0.75)] backdrop-blur"
           >
-            <span className="inline-flex items-center gap-2 rounded-full bg-[#fff1f6] px-3 py-1.5 text-[12px] font-bold text-[#a34a62]">
+            <span className="inline-flex items-center gap-2 rounded-full bg-[#F6DFE6] px-3 py-1.5 text-[12px] font-bold text-[#a34a62]">
               {api.count} {itemLabel} seçildi
             </span>
 
@@ -204,7 +204,7 @@ export default function BulkSelectBar({
               type="button"
               onClick={() => api.selectMany(pageIds)}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#efe1e7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-50"
             >
               {allOnPageSelected ? <Square className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}
               {allOnPageSelected ? 'Sayfa seçimini kaldır' : 'Sayfadakilerin tümü'}
@@ -214,7 +214,7 @@ export default function BulkSelectBar({
               type="button"
               onClick={api.clear}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#efe1e7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-50"
             >
               <X className="h-3.5 w-3.5" /> Seçimi temizle
             </button>
@@ -238,7 +238,7 @@ export default function BulkSelectBar({
                   )
                 })}
               {busy && (
-                <span className="text-[11px] font-semibold text-[#705a66] tabular-nums">
+                <span className="text-[11px] font-semibold text-[#74616A] tabular-nums">
                   {progress}/{api.count}
                 </span>
               )}
@@ -249,7 +249,7 @@ export default function BulkSelectBar({
                     type="button"
                     onClick={() => setConfirming(false)}
                     disabled={busy}
-                    className="rounded-[11px] border border-[#efe1e7] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#705a66] disabled:opacity-50"
+                    className="rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#74616A] disabled:opacity-50"
                   >
                     Vazgeç
                   </button>

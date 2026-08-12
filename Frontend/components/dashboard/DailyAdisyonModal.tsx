@@ -181,79 +181,79 @@ export default function DailyAdisyonModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex flex-col overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white !p-0 text-[#2A2027] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 1080px)', maxHeight: '94dvh' }}
       >
         <div className="flex min-h-0 max-h-[94dvh] flex-col overflow-hidden">
           {/* HEADER */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/70 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] px-5 py-4">
+          <header className="relative shrink-0 border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] px-5 py-4">
             <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, transparent, #ffd3df 20%, #b88938 50%, #ffd3df 80%, transparent)' }} />
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/80">
                   <CalendarDays className="h-3.5 w-3.5" /> Günlük Adisyon Kartı
                 </div>
-                <DialogTitle className="mt-0.5 truncate font-display text-2xl capitalize tracking-tight text-[#352432]">
+                <DialogTitle className="mt-0.5 truncate font-display text-2xl capitalize tracking-tight text-[#2A2027]">
                   {dateLabel}
-                  {isToday && <span className="ml-2 align-middle rounded-full bg-[#ffe4ec] px-2.5 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-[#c85776]">Bugün</span>}
+                  {isToday && <span className="ml-2 align-middle rounded-full bg-[#ffe4ec] px-2.5 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-[#A5556E]">Bugün</span>}
                 </DialogTitle>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <button type="button" onClick={() => shiftDay(-1)} aria-label="Önceki gün" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#ead8df]/80 bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#c85776]"><ChevronLeft className="h-4 w-4" /></button>
-                <button type="button" onClick={() => shiftDay(1)} aria-label="Sonraki gün" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#ead8df]/80 bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#c85776]"><ChevronRight className="h-4 w-4" /></button>
-                <button type="button" onClick={() => setDayKey(dayKeyOf(new Date()))} className="rounded-[12px] border border-[#ead8df]/80 bg-white px-3.5 py-2 text-[12px] font-semibold text-[#5d4a56] transition hover:border-[#efbfd0] hover:text-[#c85776]">Bugün</button>
-                <button type="button" onClick={() => onOpenChange(false)} aria-label="Kapat" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#ead8df]/80 bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"><X className="h-4 w-4" /></button>
+                <button type="button" onClick={() => shiftDay(-1)} aria-label="Önceki gün" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#EAD8DF]/80 bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#A5556E]"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => shiftDay(1)} aria-label="Sonraki gün" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#EAD8DF]/80 bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#A5556E]"><ChevronRight className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setDayKey(dayKeyOf(new Date()))} className="rounded-[12px] border border-[#EAD8DF]/80 bg-white px-3.5 py-2 text-[12px] font-semibold text-[#5d4a56] transition hover:border-[#BE7690] hover:text-[#A5556E]">Bugün</button>
+                <button type="button" onClick={() => onOpenChange(false)} aria-label="Kapat" className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#EAD8DF]/80 bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#3b2330]"><X className="h-4 w-4" /></button>
               </div>
             </div>
 
             {/* KPI STRIP — dün karşılaştırmalı */}
             <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-              <Kpi icon={ReceiptText} label="İşlem" value={String(daily.serviceCount)} prevText={`Dün: ${prev.serviceCount}`} delta={pctDelta(daily.serviceCount, prev.serviceCount)} iconTone="bg-[#fbeaf1] text-[#c85776]" />
+              <Kpi icon={ReceiptText} label="İşlem" value={String(daily.serviceCount)} prevText={`Dün: ${prev.serviceCount}`} delta={pctDelta(daily.serviceCount, prev.serviceCount)} iconTone="bg-[#fbeaf1] text-[#A5556E]" />
               <Kpi icon={Users} label="Danışan" value={String(daily.customerCount)} prevText={`Dün: ${prev.customerCount}`} delta={pctDelta(daily.customerCount, prev.customerCount)} iconTone="bg-sky-50 text-sky-600" />
-              <Kpi icon={TrendingUp} label="Ciro" value={formatTL(daily.chargeTotal)} prevText={`Dün: ${formatTL(prev.chargeTotal)}`} delta={pctDelta(daily.chargeTotal, prev.chargeTotal)} iconTone="bg-[#fbeaf1] text-[#b14d6c]" />
+              <Kpi icon={TrendingUp} label="Ciro" value={formatTL(daily.chargeTotal)} prevText={`Dün: ${formatTL(prev.chargeTotal)}`} delta={pctDelta(daily.chargeTotal, prev.chargeTotal)} iconTone="bg-[#fbeaf1] text-[#8C4460]" />
               <Kpi icon={Wallet} label="Tahsilat" value={formatTL(daily.paymentTotal)} prevText={`Dün: ${formatTL(prev.paymentTotal)}`} delta={pctDelta(daily.paymentTotal, prev.paymentTotal)} iconTone="bg-emerald-50 text-emerald-600" />
               <Kpi icon={CheckCircle2} label="Kalan / Bakiye" value={formatTL(kalan)} prevText={`Dün: ${formatTL(prevKalan)}`} delta={pctDelta(kalan, prevKalan)} invertDelta iconTone="bg-rose-50 text-rose-500" />
             </div>
 
             {/* FİLTRE SATIRI */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as AdisyonItemTypeKey | '')} className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as AdisyonItemTypeKey | '')} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
                 <option value="">İşlem Türü: Tümü</option>
                 {typeOptions.map((t) => <option key={t} value={t}>{adisyonItemTypeLabel(t)}</option>)}
               </select>
-              <select value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} className="rounded-[10px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
+              <select value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]">
                 <option value="">Personel: Tümü</option>
                 {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
               <div className="relative min-w-[180px] flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#c85776]/60" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Müşteri, işlem veya not ara…" className="w-full rounded-[10px] border border-[#ead8df] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A5556E]/60" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Müşteri, işlem veya not ara…" className="w-full rounded-[10px] border border-[#EAD8DF] bg-white py-1.5 pl-8 pr-3 text-[12px] text-[#241923] outline-none transition-colors focus:border-[#ef9ab5]" />
               </div>
               {anyFilter && (
-                <button type="button" onClick={() => { setTypeFilter(''); setStaffFilter(''); setSearch('') }} className="text-[11px] font-semibold text-[#c85776] hover:underline">Temizle</button>
+                <button type="button" onClick={() => { setTypeFilter(''); setStaffFilter(''); setSearch('') }} className="text-[11px] font-semibold text-[#A5556E] hover:underline">Temizle</button>
               )}
-              <button type="button" onClick={() => void exportExcel()} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#c85776] transition hover:bg-[#fff4f8] disabled:opacity-60">
+              <button type="button" onClick={() => void exportExcel()} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BE7690] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#A5556E] transition hover:bg-[#F7F6F6] disabled:opacity-60">
                 <Download className="h-3.5 w-3.5" /> {exporting ? 'Hazırlanıyor…' : 'Excel Aktar'}
               </button>
-              <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#c85776] transition hover:bg-[#fff4f8]">
+              <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BE7690] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#A5556E] transition hover:bg-[#F7F6F6]">
                 <Printer className="h-3.5 w-3.5" /> Yazdır
               </button>
             </div>
           </header>
 
           {/* GÖVDE — tablo (saat + timeline noktası + tür + detay + tutar + durum) */}
-          <div className="min-h-0 flex-auto overflow-y-auto bg-[#fffafb] px-4 py-3">
+          <div className="min-h-0 flex-auto overflow-y-auto bg-[#F7F6F6] px-4 py-3">
             {loading ? (
-              <div className="grid place-items-center py-16 text-sm text-[#352432]/45">Yükleniyor…</div>
+              <div className="grid place-items-center py-16 text-sm text-[#74616A]">Yükleniyor…</div>
             ) : filteredRows.length === 0 ? (
               <div className="grid place-items-center gap-2 py-16 text-center">
                 <ReceiptText className="h-8 w-8 text-[#e6c6d2]" />
-                <div className="text-sm text-[#352432]/50">{rows.length === 0 ? 'Bu gün için işlem yok.' : 'Filtrelere uyan işlem yok.'}</div>
+                <div className="text-sm text-[#5A4B53]">{rows.length === 0 ? 'Bu gün için işlem yok.' : 'Filtrelere uyan işlem yok.'}</div>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-[16px] border border-[#efe1e7] bg-white">
+              <div className="overflow-hidden rounded-[16px] border border-[#EAD8DF] bg-white">
                 {/* Başlık satırı */}
-                <div className="grid grid-cols-[64px_20px_110px_minmax(0,1fr)_110px_120px] items-center gap-2 border-b border-[#f3e4ea] bg-[#fff8fa] px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#8a7480] max-sm:hidden">
+                <div className="grid grid-cols-[64px_20px_110px_minmax(0,1fr)_110px_120px] items-center gap-2 border-b border-[#f3e4ea] bg-[#fff8fa] px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#74616A] max-sm:hidden">
                   <span>Saat</span><span /><span>İşlem</span><span>Danışan &amp; İşlem Detayı</span><span className="text-right">Tutar</span><span className="text-center">Durum</span>
                 </div>
                 <div className="relative before:absolute before:bottom-3 before:left-[81px] before:top-3 before:w-px before:bg-[#f0dbe4] max-sm:before:hidden">
@@ -264,19 +264,19 @@ export default function DailyAdisyonModal({
           </div>
 
           {/* FOOTER — Gün Sonu Özeti */}
-          <footer className="shrink-0 border-t border-[#ead8df]/70 bg-[#fff8fa]/90 px-5 py-3">
+          <footer className="shrink-0 border-t border-[#EAD8DF] bg-[#fff8fa]/90 px-5 py-3">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div className="flex items-center gap-2.5">
-                <span className="grid h-9 w-9 place-items-center rounded-[11px] bg-gradient-to-br from-[#f47699] to-[#ef6088] text-white shadow-[0_10px_20px_-12px_rgba(214,95,131,0.9)]">
+                <span className="grid h-9 w-9 place-items-center rounded-[11px] bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-white shadow-[0_10px_20px_-12px_rgba(214,95,131,0.9)]">
                   <BarChart3 className="h-4 w-4" />
                 </span>
                 <div>
                   <div className="text-[12.5px] font-bold text-[#241923]">Gün Sonu Özeti</div>
-                  <div className="text-[10.5px] capitalize text-[#8a7480]">{dateLabel} gününe ait özet bilgiler.</div>
+                  <div className="text-[10.5px] capitalize text-[#74616A]">{dateLabel} gününe ait özet bilgiler.</div>
                 </div>
               </div>
               <div className="ml-auto grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-5">
-                <SummaryStat label="Toplam Ciro" value={formatTL(daily.chargeTotal)} tone="text-[#c85776]" />
+                <SummaryStat label="Toplam Ciro" value={formatTL(daily.chargeTotal)} tone="text-[#A5556E]" />
                 <SummaryStat label="Toplam Tahsilat" value={formatTL(daily.paymentTotal)} tone="text-emerald-600" />
                 <SummaryStat label="Ürün Satışı" value={formatTL(summary.product)} tone="text-amber-600" />
                 <SummaryStat label="Hizmet Cirosu" value={formatTL(summary.service)} tone="text-sky-600" />
@@ -310,12 +310,12 @@ function Kpi({
 }) {
   const good = delta != null && (invertDelta ? delta < 0 : delta > 0)
   return (
-    <div className="flex items-start gap-2.5 rounded-[14px] border border-[#efe1e7] bg-white px-3 py-2.5 shadow-[0_10px_26px_-22px_rgba(200,87,118,0.5)]">
+    <div className="flex items-start gap-2.5 rounded-[14px] border border-[#EAD8DF] bg-white px-3 py-2.5 shadow-[0_10px_26px_-22px_rgba(200,87,118,0.5)]">
       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] ${iconTone}`}>
         <Icon className="h-4 w-4" strokeWidth={1.8} />
       </span>
       <div className="min-w-0">
-        <div className="truncate text-[10.5px] font-semibold text-[#8a7480]">{label}</div>
+        <div className="truncate text-[10.5px] font-semibold text-[#74616A]">{label}</div>
         <div className="flex items-center gap-1.5">
           <span className="font-display text-[17px] font-bold leading-tight text-[#241923] tabular-nums">{value}</span>
           {delta != null && delta !== 0 && (
@@ -324,7 +324,7 @@ function Kpi({
             </span>
           )}
         </div>
-        <div className="truncate text-[10px] text-[#a58d99]">{prevText}</div>
+        <div className="truncate text-[10px] text-[#74616A]">{prevText}</div>
       </div>
     </div>
   )
@@ -333,7 +333,7 @@ function Kpi({
 function SummaryStat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[10px] font-medium text-[#8a7480]">{label}</div>
+      <div className="truncate text-[10px] font-medium text-[#74616A]">{label}</div>
       <div className={`truncate text-[14px] font-bold tabular-nums ${tone}`}>{value}</div>
     </div>
   )
@@ -354,7 +354,7 @@ function TableRow({ row }: { row: DailyAdisyonRow }) {
       <span className={`w-fit rounded-[7px] border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide max-sm:hidden ${TYPE_TONES[row.type]}`}>{adisyonItemTypeLabel(row.type, row.coveredByPackage)}</span>
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold text-[#241923]">{row.description}</div>
-        <div className="truncate text-[11px] text-[#8a7480]">
+        <div className="truncate text-[11px] text-[#74616A]">
           {row.customerName || 'Müşteri'}
           {row.staffName && <span className="text-[#c2adb6]"> &nbsp;•&nbsp; </span>}
           {row.staffName}

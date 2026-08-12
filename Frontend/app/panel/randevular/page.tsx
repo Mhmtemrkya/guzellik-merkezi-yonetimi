@@ -119,17 +119,17 @@ interface BadgeMeta {
 }
 
 const statusBadge: Record<AppointmentStatusKey, BadgeMeta> = {
-  tamamlandi: { label: 'Tamamlandı', icon: CheckCircle2, cls: 'bg-[#fff4f8] text-[#2f1724]', dot: 'bg-white' },
+  tamamlandi: { label: 'Tamamlandı', icon: CheckCircle2, cls: 'bg-[#F7F6F6] text-[#2f1724]', dot: 'bg-white' },
   devam: {
     label: 'Devam',
     icon: Activity,
-    cls: 'bg-[#f0aac2]/15 text-[#c85776] border border-[#efbfd0]/75',
+    cls: 'bg-[#f0aac2]/15 text-[#A5556E] border border-[#BE7690]/75',
     dot: 'bg-[#f0aac2]',
   },
   bekliyor: {
     label: 'Bekliyor',
     icon: Clock,
-    cls: 'border border-[#ead8df]/70 text-[#352432]/70',
+    cls: 'border border-[#EAD8DF] text-[#5A4B53]',
     dot: 'border border-[#fff4f8]/40',
   },
   iptal: {
@@ -202,7 +202,7 @@ const statusTone: Record<AppointmentStatusKey, StatusTone> = {
 const statusToneOrder: AppointmentStatusKey[] = ['islemde', 'tamamlandi', 'devam', 'bekliyor', 'taslak', 'iptal']
 
 const metricCardShell =
-  'relative overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]'
+  'relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]'
 
 function initials(name: string): string {
   return (
@@ -364,12 +364,12 @@ function PeriodSummaryBand({
       {/* --- KARTIN BAŞI: dönem etiketi + Gün/Ay/Yıl/Özel süzgeci --- */}
       <div className="relative mb-5 flex flex-col gap-3 border-b border-[#f3e4ea] pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#A5556E]">
             <Calendar className="h-4 w-4" strokeWidth={1.7} />
           </span>
           <div className="min-w-0">
             <div className="truncate text-[14px] font-semibold tracking-tight text-[#241923]">{range.label}</div>
-            <div className="truncate text-[11px] font-medium text-[#8a7480]">{range.hint}</div>
+            <div className="truncate text-[11px] font-medium text-[#74616A]">{range.hint}</div>
           </div>
           <AnimatePresence>
             {loading && (
@@ -377,9 +377,9 @@ function PeriodSummaryBand({
                 initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0 }}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f0d9e2] bg-[#fff1f6] px-2.5 py-1 text-[10.5px] font-semibold text-[#a34a62]"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f0d9e2] bg-[#F6DFE6] px-2.5 py-1 text-[10.5px] font-semibold text-[#a34a62]"
               >
-                <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#c05277]" />
+                <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#A5556E]" />
                 Dönem yükleniyor
               </motion.span>
             )}
@@ -399,14 +399,14 @@ function PeriodSummaryBand({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-full border border-[#efe1e7] bg-[#fff8fa] p-0.5">
+          <div className="inline-flex rounded-full border border-[#EAD8DF] bg-[#fff8fa] p-0.5">
             {presets.map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => onPresetChange(p)}
                 className={`relative rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold transition-colors ${
-                  preset === p ? 'text-white' : 'text-[#705a66] hover:text-[#a34a62]'
+                  preset === p ? 'text-white' : 'text-[#74616A] hover:text-[#a34a62]'
                 }`}
               >
                 {preset === p && (
@@ -414,7 +414,7 @@ function PeriodSummaryBand({
                     // Rapor çubuğundaki pille AYNI layoutId kullanılamaz: aynı id iki ayrı
                     // bileşende yaşarsa Framer pili ekranlar arasında uçurur.
                     layoutId="randevu-ozet-donem-pill"
-                    className="absolute inset-0 rounded-full bg-[#c05277] shadow-[0_10px_22px_-16px_rgba(192,82,119,0.9)]"
+                    className="absolute inset-0 rounded-full bg-[#A5556E] shadow-[0_10px_22px_-16px_rgba(192,82,119,0.9)]"
                     transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                   />
                 )}
@@ -429,9 +429,9 @@ function PeriodSummaryBand({
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
-                className="inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-[#efe1e7] bg-white px-2.5 py-1.5"
+                className="inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-[#EAD8DF] bg-white px-2.5 py-1.5"
               >
-                <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[#c05277]" strokeWidth={1.8} />
+                <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" strokeWidth={1.8} />
                 <input
                   type="date"
                   aria-label="Başlangıç tarihi"
@@ -440,9 +440,9 @@ function PeriodSummaryBand({
                   onChange={(e) => {
                     if (e.target.value) onCustomChange({ ...custom, from: e.target.value })
                   }}
-                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#3E343A] outline-none"
                 />
-                <span className="text-[11px] text-[#a3576f]">→</span>
+                <span className="text-[11px] text-[#8C4460]">→</span>
                 <input
                   type="date"
                   aria-label="Bitiş tarihi"
@@ -451,7 +451,7 @@ function PeriodSummaryBand({
                   onChange={(e) => {
                     if (e.target.value) onCustomChange({ ...custom, to: e.target.value })
                   }}
-                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+                  className="w-[128px] bg-transparent text-[11.5px] font-semibold text-[#3E343A] outline-none"
                 />
               </motion.div>
             )}
@@ -472,8 +472,8 @@ function PeriodSummaryBand({
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[#f3e4ea] bg-[#fff8fa] px-3.5 py-2.5 sm:min-w-[190px]">
-            <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
-              <Wallet className="h-3.5 w-3.5 text-[#c85776]" strokeWidth={1.7} />
+            <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]">
+              <Wallet className="h-3.5 w-3.5 text-[#A5556E]" strokeWidth={1.7} />
               Toplam Tutar
             </span>
             <span className="text-[17px] font-semibold tracking-tight text-[#241923] tabular-nums">
@@ -489,7 +489,7 @@ function PeriodSummaryBand({
               const tone = statusTone[key]
               return (
                 <div key={key} className="sm:border-l sm:border-[#f3e4ea] sm:pl-3 sm:first:border-0 sm:first:pl-0">
-                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8a7480]">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]">
                     <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
                     {tone.label}
                   </div>
@@ -1347,7 +1347,7 @@ function RandevularPageInner() {
               }}
               trigger={
                 <button type="button"
-                  className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]">
+                  className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]">
                   <UserPlus className="h-4 w-4" strokeWidth={2.1} /> Yeni Müşteri
                 </button>
               }
@@ -1356,13 +1356,13 @@ function RandevularPageInner() {
               tenantId={tenantId}
               onDone={reload}
               triggerLabel="Paket Satışı"
-              triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              triggerClassName="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
             />
             {canAdisyon && (
               <button
                 type="button"
                 onClick={() => setAdisyonModal({ open: true })}
-                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
               >
                 <ReceiptText className="h-4 w-4" strokeWidth={2.1} /> Müşteri Adisyonu
               </button>
@@ -1371,7 +1371,7 @@ function RandevularPageInner() {
               <button
                 type="button"
                 onClick={() => setDailyOpen(true)}
-                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+                className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
               >
                 <CalendarDays className="h-4 w-4" strokeWidth={2.1} /> Günlük Adisyon
               </button>
@@ -1383,7 +1383,7 @@ function RandevularPageInner() {
                   setCreateDate(selectedDate)
                   setCreateOpen(true)
                 }}
-                className="inline-flex min-w-max items-center gap-2 rounded-[15px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5"
+                className="inline-flex min-w-max items-center gap-2 rounded-[15px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_15px_26px_-17px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5"
               >
                 <Plus className="h-4 w-4" strokeWidth={1.8} />
                 {isStaffUser ? 'Kendi randevunu oluştur' : 'Yeni Randevu'}
@@ -1419,7 +1419,7 @@ function RandevularPageInner() {
           </div>
         }
       />
-      <div className="relative space-y-6 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6 xl:px-8">
         <div className="flex flex-wrap items-center gap-3">
           <ScopeBadge label={scopeInfo.label} description={scopeInfo.description} />
         </div>
@@ -1483,7 +1483,7 @@ function RandevularPageInner() {
             aria-hidden
             className="pointer-events-none absolute -right-16 -top-12 h-48 w-48 rounded-full bg-[#f0aac2]/14 blur-3xl"
           />
-          <div className="relative flex flex-col gap-3 border-b border-[#ead8df]/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="relative flex flex-col gap-3 border-b border-[#EAD8DF] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="flex items-center gap-4">
               {/* BUGÜN KUTUSU KALDIRILDI. İki sorunu vardı:
                   1) Bugünün tarihini gösteriyordu ama başlığın yanında duruyordu — Mayıs'a
@@ -1507,7 +1507,7 @@ function RandevularPageInner() {
                   <span className="armo-shimmer">{monthLabel(`${monthKey}-01`)}</span>
                 </motion.div>
                 {/* Ay özeti — mono/uppercase yerine düz okunur metin; sayılar vurgulu. */}
-                <div className="mt-1.5 text-[12px] text-[#705a66]">
+                <div className="mt-1.5 text-[12px] text-[#74616A]">
                   <span className="font-semibold text-[#241923]">{monthlyTotal}</span> randevu
                   <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
                   <span className="font-semibold text-[#241923]">{completed}</span> tamamlandı
@@ -1523,7 +1523,7 @@ function RandevularPageInner() {
                   whileHover={{ y: -1 }}
                   type="button"
                   onClick={jumpToToday}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3.5 py-2 text-[11.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#fff4f8]"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e8c2d1] bg-white px-3.5 py-2 text-[11.5px] font-semibold text-[#8e3f5b] transition-colors hover:bg-[#F7F6F6]"
                   title="Bugüne dön"
                 >
                   <Calendar className="h-3.5 w-3.5" strokeWidth={1.6} />
@@ -1535,7 +1535,7 @@ function RandevularPageInner() {
                 whileHover={{ scale: 1.05, x: -1 }}
                 type="button"
                 onClick={() => moveMonth(-1)}
-                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#BE7690] hover:bg-[#F7F6F6] hover:text-[#A5556E]"
                 title="Önceki ay"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -1545,7 +1545,7 @@ function RandevularPageInner() {
                 whileHover={{ scale: 1.05, x: 1 }}
                 type="button"
                 onClick={() => moveMonth(1)}
-                className="grid h-9 w-9 place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776]"
+                className="grid h-9 w-9 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-[#BE7690] hover:bg-[#F7F6F6] hover:text-[#A5556E]"
                 title="Sonraki ay"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -1556,8 +1556,8 @@ function RandevularPageInner() {
             {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d, idx) => (
               <div
                 key={d}
-                className={`bg-[#fffafc] px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.16em] ${
-                  idx >= 5 ? 'text-[#a3576f]' : 'text-[#705a66]'
+                className={`bg-[#F7F6F6] px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.16em] ${
+                  idx >= 5 ? 'text-[#8C4460]' : 'text-[#74616A]'
                 }`}
               >
                 {d}
@@ -1636,17 +1636,17 @@ function RandevularPageInner() {
                         <span className="relative">{day}</span>
                       </motion.span>
                     ) : isSelected ? (
-                      <span className="relative grid h-9 w-9 place-items-center rounded-full border border-[#f0aac2]/65 bg-white/82 font-display text-base font-semibold tabular-nums text-[#c85776]">
+                      <span className="relative grid h-9 w-9 place-items-center rounded-full border border-[#f0aac2]/65 bg-white/82 font-display text-base font-semibold tabular-nums text-[#A5556E]">
                         {day}
                       </span>
                     ) : (
                       <span
                         className={`font-display text-xl leading-none tabular-nums ${
                           !inCurrentMonth
-                            ? 'text-[#352432]/30'
+                            ? 'text-[#74616A]'
                             : isWeekend
-                              ? 'text-[#c85776]/55'
-                              : 'text-[#352432]/70'
+                              ? 'text-[#A5556E]/55'
+                              : 'text-[#5A4B53]'
                         }`}
                       >
                         {day}
@@ -1671,7 +1671,7 @@ function RandevularPageInner() {
                               ? 'bg-emerald-400/22 text-emerald-700 ring-1 ring-emerald-300/35'
                               : items.length >= 5
                                 ? 'bg-gradient-to-br from-[#f0aac2] to-[#d48aa7] text-[#2f1724] shadow-[0_0_10px_rgba(240,170,194,0.6)]'
-                                : 'bg-[#f0aac2]/22 text-[#c85776] ring-1 ring-[#f0aac2]/35'
+                                : 'bg-[#f0aac2]/22 text-[#A5556E] ring-1 ring-[#f0aac2]/35'
                           }`}
                           title={`${items.length} randevu · ${completedCount} tamamlandı`}
                         >
@@ -1701,22 +1701,22 @@ function RandevularPageInner() {
                                   setEditingId(r.id)
                                 }
                               }}
-                              className="group/apt relative cursor-pointer overflow-hidden border border-[#ead8df]/70 bg-gradient-to-r from-[#fff4f8]/[0.04] to-[#fff4f8]/[0.01] p-2 pl-3 transition-all hover:border-[#efbfd0]/75 hover:from-[#f0aac2]/12 hover:to-[#fff4f8]/[0.03] hover:shadow-[0_4px_14px_-4px_rgba(240,170,194,0.35)]"
+                              className="group/apt relative cursor-pointer overflow-hidden border border-[#EAD8DF] bg-gradient-to-r from-[#fff4f8]/[0.04] to-[#fff4f8]/[0.01] p-2 pl-3 transition-all hover:border-[#BE7690]/75 hover:from-[#f0aac2]/12 hover:to-[#fff4f8]/[0.03] hover:shadow-[0_4px_14px_-4px_rgba(240,170,194,0.35)]"
                             >
                               {/* Status renkli sol bar */}
                               <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${b.dot}`} />
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-mono text-[10px] font-semibold tracking-wide text-[#c85776]/95">{r.time}</span>
+                                <span className="font-mono text-[10px] font-semibold tracking-wide text-[#A5556E]/95">{r.time}</span>
                                 <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} />
                               </div>
                               <div className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium">
                                 <span className="truncate">{r.musteri}</span>
-                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#A5556E]/12 px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-[#A5556E]">Online</span>}
                               </div>
-                              <div className="flex items-center justify-between gap-2 text-[9px] text-[#352432]/45">
+                              <div className="flex items-center justify-between gap-2 text-[9px] text-[#74616A]">
                                 <span className="truncate">{r.islem}</span>
                                 {Number(r.price) > 0 && (
-                                  <span className="shrink-0 font-mono tabular-nums text-[#c85776]/80">
+                                  <span className="shrink-0 font-mono tabular-nums text-[#A5556E]/80">
                                     {formatTL(Number(r.price))}
                                   </span>
                                 )}
@@ -1739,7 +1739,7 @@ function RandevularPageInner() {
                                       setEditingId(r.id)
                                     }}
                                     title="Düzenle"
-                                    className="grid h-5 w-5 place-items-center border border-[#ead8df]/70 bg-white/60 text-[#352432]/70 transition-colors hover:border-[#efbfd0]/75 hover:text-[#352432]"
+                                    className="grid h-5 w-5 place-items-center border border-[#EAD8DF] bg-white/60 text-[#5A4B53] transition-colors hover:border-[#BE7690]/75 hover:text-[#2A2027]"
                                   >
                                     <PenLine className="h-2.5 w-2.5" strokeWidth={1.6} />
                                   </button>
@@ -1754,7 +1754,7 @@ function RandevularPageInner() {
                                   className={`grid h-5 w-5 place-items-center border bg-white/60 transition-colors ${
                                     hasNote
                                       ? 'border-amber-300/40 text-amber-700 hover:bg-amber-400/15'
-                                      : 'border-[#ead8df]/70 text-[#352432]/70 hover:border-[#efbfd0]/75 hover:text-[#352432]'
+                                      : 'border-[#EAD8DF] text-[#5A4B53] hover:border-[#BE7690]/75 hover:text-[#2A2027]'
                                   }`}
                                 >
                                   <StickyNote className="h-2.5 w-2.5" strokeWidth={1.6} />
@@ -1786,7 +1786,7 @@ function RandevularPageInner() {
                           )
                         })}
                         {items.length > 3 && (
-                          <div className="text-[9px] font-mono text-[#352432]/40">+{items.length - 3} randevu</div>
+                          <div className="text-[9px] font-mono text-[#74616A]">+{items.length - 3} randevu</div>
                         )}
                       </div>
                       {/* QUICK ADD POPOUT */}
@@ -1804,7 +1804,7 @@ function RandevularPageInner() {
                               setCreateDate(dayKey)
                               setCreateOpen(true)
                             }}
-                            className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 border border-[#efbfd0]/75 bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-2 py-1 text-[8px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
+                            className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 border border-[#BE7690]/75 bg-gradient-to-r from-[#fff4f8] via-[#ffd3df] to-[#f0aac2] px-2 py-1 text-[8px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
                           >
                             <Plus className="h-2.5 w-2.5" /> Ekle
                           </motion.button>
@@ -1825,7 +1825,7 @@ function RandevularPageInner() {
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.36, ease: [0.22, 1, 0.36, 1] }}
-            className="relative overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]"
+            className="relative overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white/94 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)]"
           >
             <span
               aria-hidden
@@ -1833,7 +1833,7 @@ function RandevularPageInner() {
             />
             <div className="relative flex items-center justify-between gap-3 px-5 pb-4 pt-5">
               <div className="flex items-center gap-2.5">
-                <span className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#c85776]">
+                <span className="grid h-9 w-9 place-items-center rounded-[12px] border border-[#f8d8e2] bg-[#fff2f6] text-[#A5556E]">
                   <Calendar className="h-4 w-4" strokeWidth={1.7} />
                 </span>
                 <div>
@@ -1841,7 +1841,7 @@ function RandevularPageInner() {
                       (ör. "2026"), dolayısıyla bu listenin hangi günü/kapsamı listelediğini
                       söyleyen tek yer burası. Mükerrerlik gerekçesi ortadan kalktı. */}
                   <h2 className="text-[15px] font-semibold tracking-tight text-[#241923]">Randevu çizelgesi</h2>
-                  <p className="mt-0.5 text-[11.5px] text-[#8a7480]">
+                  <p className="mt-0.5 text-[11.5px] text-[#74616A]">
                     {listHeaderLabel}
                     <span aria-hidden className="mx-1.5 text-[#d9c3cd]">·</span>
                     <span className="font-semibold text-[#241923]">{selectedAppointments.length}</span> kayıt
@@ -1850,9 +1850,9 @@ function RandevularPageInner() {
               </div>
             </div>
             <div className="relative overflow-x-auto px-4 pb-4">
-              <table className="w-full min-w-[680px] border-separate border-spacing-0 overflow-hidden rounded-[18px] border border-[#efe1e7] text-left">
+              <table className="w-full min-w-[680px] border-separate border-spacing-0 overflow-hidden rounded-[18px] border border-[#EAD8DF] text-left">
                 <thead>
-                  <tr className="bg-[#fff8fa] text-[11px] font-medium text-[#8a7480]">
+                  <tr className="bg-[#fff8fa] text-[11px] font-medium text-[#74616A]">
                     <th className="px-4 py-3 font-medium">Saat</th>
                     <th className="px-4 py-3 font-medium">Müşteri</th>
                     <th className="px-4 py-3 font-medium">Hizmet</th>
@@ -1889,10 +1889,10 @@ function RandevularPageInner() {
                             <span className="min-w-0">
                               <span className="flex items-center gap-1.5">
                                 <span className="block truncate text-[13px] font-semibold text-[#241923]">{r.musteri}</span>
-                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#c85776]/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#c85776]">Online</span>}
+                                {r.isOnline && <span className="shrink-0 rounded-full bg-[#A5556E]/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#A5556E]">Online</span>}
                               </span>
                               {r.customerPhone && (
-                                <span className="mt-0.5 block text-[11px] text-[#8a7480]">{r.customerPhone}</span>
+                                <span className="mt-0.5 block text-[11px] text-[#74616A]">{r.customerPhone}</span>
                               )}
                             </span>
                           </span>
@@ -1900,7 +1900,7 @@ function RandevularPageInner() {
                         <td className="px-4 py-4">
                           <span className="block text-[12.5px] font-medium text-[#3d2f3a]">{r.islem}</span>
                           <span className="mt-1 inline-flex items-center gap-1.5">
-                            <span className="rounded-md border border-[#f8d8e2] bg-[#fff2f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#c85776]">
+                            <span className="rounded-md border border-[#f8d8e2] bg-[#fff2f6] px-1.5 py-0.5 text-[10px] font-semibold text-[#A5556E]">
                               {r.sure} dk
                             </span>
                             {Number(r.price) > 0 && (
@@ -1936,7 +1936,7 @@ function RandevularPageInner() {
                                     type="button"
                                     onClick={() => void quickApprove(r.id)}
                                     title="Onayla"
-                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]"
+                                    className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#A5556E]"
                                   >
                                     <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.7} />
                                   </button>
@@ -1996,7 +1996,7 @@ function RandevularPageInner() {
                                 type="button"
                                 onClick={() => setEditingId(r.id)}
                                 title="Düzenle"
-                                className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]"
+                                className="grid h-7 w-7 place-items-center rounded-lg border border-transparent text-[#a9929d] transition-colors hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#A5556E]"
                               >
                                 <PenLine className="h-3.5 w-3.5" strokeWidth={1.7} />
                               </button>
@@ -2031,7 +2031,7 @@ function RandevularPageInner() {
                               className={`grid h-7 w-7 place-items-center rounded-lg border transition-colors ${
                                 hasNote
                                   ? 'border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100'
-                                  : 'border-transparent text-[#a9929d] hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#c85776]'
+                                  : 'border-transparent text-[#a9929d] hover:border-[#f3c7d6] hover:bg-[#fff2f6] hover:text-[#A5556E]'
                               }`}
                             >
                               <StickyNote className="h-3.5 w-3.5" strokeWidth={1.7} />

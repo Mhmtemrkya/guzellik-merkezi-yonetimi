@@ -223,24 +223,24 @@ export default function CustomerLedgerModal({
               className="relative flex h-full w-full flex-col overflow-hidden bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.6)] sm:rounded-[22px]"
             >
               {/* ---------------- BAŞLIK ---------------- */}
-              <header className="relative shrink-0 border-b border-[#ead8df] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 pb-0 pt-3.5 sm:px-6">
+              <header className="relative shrink-0 border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 pb-0 pt-3.5 sm:px-6">
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Kapat"
-                  className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                  className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
                 >
                   <X className="h-4 w-4" />
                 </button>
 
                 <div className="flex flex-col gap-3 pr-12 xl:flex-row xl:items-center xl:justify-between xl:gap-5">
                   <div className="flex min-w-0 items-center gap-3.5">
-                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#3a1a2a] to-[#c85776] font-display text-lg text-white">
+                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#3a1a2a] to-[#A5556E] font-display text-lg text-white">
                       {initials || '—'}
                     </span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="font-display text-xl leading-tight tracking-tight text-[#352432] sm:text-2xl">{group.customerName}</h2>
+                        <h2 className="font-display text-xl leading-tight tracking-tight text-[#2A2027] sm:text-2xl">{group.customerName}</h2>
                         {group.hasOverdue && (
                           <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10.5px] font-bold text-rose-700">
                             <AlertTriangle className="h-3 w-3" /> Gecikmiş {formatTL(Math.round(group.overdueAmount))}
@@ -250,18 +250,18 @@ export default function CustomerLedgerModal({
                           <span className="rounded-full border border-[#d9b3e8] bg-[#f8f0fc] px-2 py-0.5 text-[10.5px] font-bold text-[#6d4187]">Taksitli</span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-[#4a3a44]">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-[#3E343A]">
                         {group.customerPhone && (
-                          <a href={`tel:${group.customerPhone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]">
-                            <Phone className="h-3.5 w-3.5 text-[#c85776]" /> {group.customerPhone}
+                          <a href={`tel:${group.customerPhone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]">
+                            <Phone className="h-3.5 w-3.5 text-[#A5556E]" /> {group.customerPhone}
                           </a>
                         )}
-                        <span className="flex items-center gap-1.5 text-[#705a66]">
-                          <Package className="h-3.5 w-3.5 text-[#c85776]" /> {group.saleCount} satış
+                        <span className="flex items-center gap-1.5 text-[#74616A]">
+                          <Package className="h-3.5 w-3.5 text-[#A5556E]" /> {group.saleCount} satış
                         </span>
                         {group.nextDueDate && group.remainingAmount > 0.005 && (
-                          <span className="flex items-center gap-1.5 text-[#705a66]">
-                            <CalendarClock className="h-3.5 w-3.5 text-[#c85776]" /> Sıradaki vade {fmtDay(group.nextDueDate)} · <b className="text-[#4a3a44]">{formatTL(group.nextDueAmount)}</b>
+                          <span className="flex items-center gap-1.5 text-[#74616A]">
+                            <CalendarClock className="h-3.5 w-3.5 text-[#A5556E]" /> Sıradaki vade {fmtDay(group.nextDueDate)} · <b className="text-[#3E343A]">{formatTL(group.nextDueAmount)}</b>
                           </span>
                         )}
                       </div>
@@ -309,16 +309,16 @@ export default function CustomerLedgerModal({
                       aria-selected={tab === t.key}
                       onClick={() => setTab(t.key)}
                       className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-[10px] px-3.5 py-2.5 text-[12.5px] font-semibold transition-colors ${
-                        tab === t.key ? 'text-[#c85776]' : 'text-[#705a66] hover:text-[#352432]'
+                        tab === t.key ? 'text-[#A5556E]' : 'text-[#74616A] hover:text-[#2A2027]'
                       }`}
                     >
                       <t.icon className="h-3.5 w-3.5" /> {t.label}
                       {t.key === 'sales' && (
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${tab === t.key ? 'bg-[#fff1f6] text-[#c85776]' : 'bg-[#f3e9ed] text-[#705a66]'}`}>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${tab === t.key ? 'bg-[#A5556E] text-white' : 'bg-[#f3e9ed] text-[#74616A]'}`}>
                           {group.saleCount}
                         </span>
                       )}
-                      {tab === t.key && <motion.span layoutId="clm-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#c85776]" />}
+                      {tab === t.key && <motion.span layoutId="clm-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#A5556E]" />}
                     </button>
                   ))}
                 </div>
@@ -345,14 +345,14 @@ export default function CustomerLedgerModal({
                         (modal "Tümü" seçili açılır). Tek satışı olan müşteride gösterilmez:
                         toplam satırı ile tek satış satırı birebir aynı rakamları yazardı. */}
                     {openSaleCount > 1 && (
-                      <div className="rounded-[14px] border border-[#c85776]/35 bg-gradient-to-br from-[#fff1f6] to-white p-3.5">
+                      <div className="rounded-[14px] border border-[#8C4460]/35 bg-gradient-to-br from-[#fff1f6] to-white p-3.5">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#a3576f]">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#8C4460]">
                               <Layers className="h-3.5 w-3.5" /> Toplam · {group.saleCount} satış
                             </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[#4a3a44]">
-                              <span>Satış <b className="text-[#352432]">{formatTL(Math.round(group.totalAmount))}</b></span>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[#3E343A]">
+                              <span>Satış <b className="text-[#2A2027]">{formatTL(Math.round(group.totalAmount))}</b></span>
                               <span>Tahsil <b className="text-emerald-700">{formatTL(Math.round(group.paidAmount))}</b></span>
                               {group.hasOverdue && (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10.5px] font-bold text-rose-700">
@@ -362,16 +362,16 @@ export default function CustomerLedgerModal({
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <div className="font-display text-[19px] tabular-nums text-[#c85776]">
+                            <div className="font-display text-[19px] tabular-nums text-[#A5556E]">
                               {formatTL(Math.round(group.remainingAmount))}
                             </div>
-                            <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">toplam kalan</div>
+                            <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#74616A]">toplam kalan</div>
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={onCollectAll}
-                          className="mt-2.5 inline-flex min-h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3 text-[12px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+                          className="mt-2.5 inline-flex min-h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 text-[12px] font-semibold text-white transition-transform hover:-translate-y-0.5"
                         >
                           <Banknote className="h-4 w-4" /> Tümünden tahsilat al
                         </button>
@@ -398,8 +398,8 @@ export default function CustomerLedgerModal({
                           {cancelledSales.map((c) => (
                             <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-white px-3 py-2 text-[12px]">
                               <span className="min-w-0">
-                                <span className="block truncate font-semibold text-[#352432]">{c.name}</span>
-                                <span className="block text-[11px] text-[#705a66]">
+                                <span className="block truncate font-semibold text-[#2A2027]">{c.name}</span>
+                                <span className="block text-[11px] text-[#74616A]">
                                   {fmtDay(c.cancelledAtUtc)} · iptal edildi
                                   {c.cancellationReason ? ` · ${c.cancellationReason}` : ''}
                                 </span>
@@ -423,7 +423,7 @@ export default function CustomerLedgerModal({
                     <button
                       type="button"
                       onClick={onOpenSalesWorkspace}
-                      className="flex w-full cursor-pointer items-center justify-between rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-3 text-[12.5px] font-semibold text-[#a3576f] transition-colors hover:border-[#efbfd0] hover:bg-[#fff5f8]"
+                      className="flex w-full cursor-pointer items-center justify-between rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-3 text-[12.5px] font-semibold text-[#8C4460] transition-colors hover:border-[#BE7690] hover:bg-[#fff5f8]"
                     >
                       <span className="flex items-center gap-2"><Package className="h-4 w-4" /> Satış yönetimi — geçmiş satış ekle, satış iptal et</span>
                       <ChevronRight className="h-4 w-4" />
@@ -440,14 +440,14 @@ export default function CustomerLedgerModal({
                     hint={`${ledger.length} hareket · net ${formatTL(Math.round(ledgerTotals.net))}`}
                   >
                     {ledger.length === 0 ? (
-                      <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-8 text-center text-[12px] text-[#705a66]">
+                      <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#74616A]">
                         Bu müşteriden henüz tahsilat alınmamış.
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[560px] text-[12.5px]">
                           <thead>
-                            <tr className="border-b border-[#f4e8ee] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+                            <tr className="border-b border-[#f4e8ee] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
                               <th className="py-2 pr-3">Tarih</th>
                               <th className="py-2 pr-3">Satış</th>
                               <th className="py-2 pr-3">Yöntem</th>
@@ -457,9 +457,9 @@ export default function CustomerLedgerModal({
                           <tbody>
                             {ledger.map((r, i) => (
                               <tr key={i} className="border-b border-[#f8f0f4] last:border-b-0">
-                                <td className="py-2 pr-3 tabular-nums text-[#4a3a44]">{fmtDay(r.date)}</td>
-                                <td className="max-w-[240px] truncate py-2 pr-3 text-[#352432]">{r.sale}</td>
-                                <td className="py-2 pr-3 text-[#705a66]">{r.method}</td>
+                                <td className="py-2 pr-3 tabular-nums text-[#3E343A]">{fmtDay(r.date)}</td>
+                                <td className="max-w-[240px] truncate py-2 pr-3 text-[#2A2027]">{r.sale}</td>
+                                <td className="py-2 pr-3 text-[#74616A]">{r.method}</td>
                                 <td className={`py-2 text-right font-semibold tabular-nums ${r.kind === 'refund' ? 'text-rose-700' : 'text-emerald-700'}`}>
                                   {r.kind === 'refund' ? '−' : '+'}{formatTL(r.amount)}
                                 </td>
@@ -469,10 +469,10 @@ export default function CustomerLedgerModal({
                           {/* TOPLAM SATIRI: tahsilat − iade = net. Excel'deki toplam bandı gibi
                               tablonun altında sabit durur. */}
                           <tfoot>
-                            <tr className="border-t-2 border-[#f0dce5] bg-[#fff7fa] text-[12px] font-bold text-[#352432]">
+                            <tr className="border-t-2 border-[#f0dce5] bg-[#fff7fa] text-[12px] font-bold text-[#2A2027]">
                               <td className="py-2 pr-3">TOPLAM</td>
-                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#705a66]">{ledger.length} hareket</td>
-                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#705a66]">
+                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#74616A]">{ledger.length} hareket</td>
+                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#74616A]">
                                 {ledgerTotals.refunded > 0.005
                                   ? `Tahsilat ${formatTL(Math.round(ledgerTotals.collected))} · İade ${formatTL(Math.round(ledgerTotals.refunded))}`
                                   : 'Tahsilat'}
@@ -498,24 +498,24 @@ export default function CustomerLedgerModal({
 
 function Kpi({ label, value, icon: Icon, tone, sub }: { label: string; value: string; icon: typeof Wallet; tone?: string; sub?: string }) {
   return (
-    <div className="min-w-0 rounded-[14px] border border-[#ead8df] bg-white/80 px-3 py-2 xl:min-w-[128px]">
-      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#705a66]">
+    <div className="min-w-0 rounded-[14px] border border-[#EAD8DF] bg-white/80 px-3 py-2 xl:min-w-[128px]">
+      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#74616A]">
         <Icon className="h-3 w-3" /> {label}
       </div>
-      <div className={`mt-0.5 truncate font-display text-lg tracking-tight tabular-nums ${tone || 'text-[#352432]'}`}>{value}</div>
-      {sub && <div className="truncate text-[10.5px] text-[#705a66]">{sub}</div>}
+      <div className={`mt-0.5 truncate font-display text-lg tracking-tight tabular-nums ${tone || 'text-[#2A2027]'}`}>{value}</div>
+      {sub && <div className="truncate text-[10.5px] text-[#74616A]">{sub}</div>}
     </div>
   )
 }
 
 function Section({ title, icon: Icon, hint, children }: { title: string; icon: typeof Wallet; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[16px] border border-[#ead8df] bg-white p-4">
+    <div className="rounded-[16px] border border-[#EAD8DF] bg-white p-4">
       <div className="mb-3">
-        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
           <Icon className="h-3.5 w-3.5" /> {title}
         </div>
-        {hint && <div className="mt-0.5 text-[11px] text-[#705a66]">{hint}</div>}
+        {hint && <div className="mt-0.5 text-[11px] text-[#74616A]">{hint}</div>}
       </div>
       {children}
     </div>
@@ -539,11 +539,11 @@ function SaleRow({
   const pct = account.totalAmount > 0 ? Math.min(100, Math.round((account.paidAmount / account.totalAmount) * 100)) : 0
 
   return (
-    <div className={`rounded-[14px] border bg-white p-3.5 ${account.hasOverdue ? 'border-rose-200' : isOpen ? 'border-[#ead8df]' : 'border-emerald-200/70'}`}>
+    <div className={`rounded-[14px] border bg-white p-3.5 ${account.hasOverdue ? 'border-rose-200' : isOpen ? 'border-[#EAD8DF]' : 'border-emerald-200/70'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left">
-          <div className="truncate text-[13.5px] font-semibold text-[#352432]">{account.servicePackageName || account.name}</div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[#705a66]">
+          <div className="truncate text-[13.5px] font-semibold text-[#2A2027]">{account.servicePackageName || account.name}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[#74616A]">
             <span>{fmtDay(account.soldAtUtc || account.createdAtUtc)}</span>
             <span className={`rounded-md px-1.5 py-0.5 text-[9.5px] font-bold ${isInstallment ? 'bg-[#f3e8ff] text-[#7c3aed]' : 'bg-[#e0f2fe] text-[#0369a1]'}`}>
               {isInstallment ? `TAKSİTLİ · ${insts.length} AY` : 'PEŞİN'}
@@ -553,10 +553,10 @@ function SaleRow({
           </div>
         </button>
         <div className="shrink-0 text-right">
-          <div className={`font-display text-[17px] tabular-nums ${isOpen ? 'text-[#c85776]' : 'text-emerald-700'}`}>
+          <div className={`font-display text-[17px] tabular-nums ${isOpen ? 'text-[#A5556E]' : 'text-emerald-700'}`}>
             {formatTL(account.remainingAmount)}
           </div>
-          <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#705a66]">{isOpen ? 'kalan borç' : 'kapandı'}</div>
+          <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#74616A]">{isOpen ? 'kalan borç' : 'kapandı'}</div>
         </div>
       </div>
 
@@ -564,7 +564,7 @@ function SaleRow({
         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
           <span className="block h-full rounded-full bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]" style={{ width: `${pct}%` }} />
         </span>
-        <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">
+        <span className="shrink-0 text-[10px] font-semibold text-[#74616A]">
           {isInstallment ? `${paidCount}/${insts.length} taksit` : `%${pct} ödendi`}
         </span>
       </div>
@@ -572,11 +572,11 @@ function SaleRow({
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {/* TEK BUTON: modal taksitli satışta planı ve "bu ay ödenmesi gereken"i kendisi açar. */}
         {isOpen && (
-          <button type="button" onClick={onCollect} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5">
+          <button type="button" onClick={onCollect} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-2.5 text-[11px] font-semibold text-white transition-transform hover:-translate-y-0.5">
             <Banknote className="h-3.5 w-3.5" /> Tahsilat al
           </button>
         )}
-        <button type="button" onClick={onOpen} className="ml-auto inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-2.5 text-[11px] font-semibold text-[#4a3a44] transition-colors hover:border-[#efbfd0]">
+        <button type="button" onClick={onOpen} className="ml-auto inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 text-[11px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690]">
           Detay <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>

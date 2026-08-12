@@ -233,7 +233,7 @@ export default function PaketPage() {
         breadcrumbs={['Ana Sayfa', 'Paketim']}
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         <ApiStateNotice loading={loading} error={error} />
 
         {showTrialBanner && (
@@ -300,25 +300,25 @@ export default function PaketPage() {
         {/* ÖDEME: kayıtlı kart + faturalar. Ödeme altyapısı kapalıysa hiç gösterilmez. */}
         {billing?.paymentsEnabled && (
           <motion.section variants={cardVariant} initial="hidden" animate="visible"
-            className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+            className="rounded-[18px] border border-[#EAD8DF] bg-white p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
               <CreditCard className="h-3.5 w-3.5" /> Ödeme ve Faturalar
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
               {/* Kayıtlı kart */}
-              <div className="rounded-[14px] border border-[#ead8df]/70 bg-[#fff7fa] p-4">
+              <div className="rounded-[14px] border border-[#EAD8DF] bg-[#fff7fa] p-4">
                 {billing.card ? (
                   <>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-display text-[15px] tracking-tight text-[#352432]">
+                      <span className="font-display text-[15px] tracking-tight text-[#2A2027]">
                         {billing.card.maskedNumber || 'Kayıtlı kart'}
                       </span>
                       <span className="rounded-full border border-emerald-300/40 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
                         Otomatik yenileme açık
                       </span>
                     </div>
-                    <div className="mt-1 text-[11.5px] text-[#705a66]">
+                    <div className="mt-1 text-[11.5px] text-[#74616A]">
                       {[billing.card.association, billing.card.family, billing.card.bankName].filter(Boolean).join(' · ') || 'Kart bilgisi'}
                     </div>
                     {billing.card.consecutiveFailureCount > 0 && (
@@ -328,20 +328,20 @@ export default function PaketPage() {
                       </div>
                     )}
                     {billing.subscriptionEndsAtUtc && (
-                      <div className="mt-2 text-[11.5px] text-[#4a3a44]">
+                      <div className="mt-2 text-[11.5px] text-[#3E343A]">
                         <Calendar className="mr-1 inline h-3 w-3" />
                         Sonraki tahsilat: {new Date(billing.subscriptionEndsAtUtc).toLocaleDateString('tr-TR')}
                       </div>
                     )}
                     <button type="button" onClick={handleRemoveCard} disabled={cardBusy}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#eec9d7] px-3 py-1.5 text-[11.5px] text-[#4a3a44] transition hover:bg-white disabled:opacity-60">
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#eec9d7] px-3 py-1.5 text-[11.5px] text-[#3E343A] transition hover:bg-white disabled:opacity-60">
                       {cardBusy && <Loader2 className="h-3 w-3 animate-spin" />} Kartı kaldır
                     </button>
                   </>
                 ) : (
                   <>
-                    <div className="font-display text-[15px] tracking-tight text-[#352432]">Kayıtlı kart yok</div>
-                    <div className="mt-1 text-[11.5px] leading-relaxed text-[#705a66]">
+                    <div className="font-display text-[15px] tracking-tight text-[#2A2027]">Kayıtlı kart yok</div>
+                    <div className="mt-1 text-[11.5px] leading-relaxed text-[#74616A]">
                       Aşağıdan bir paket seçtiğinizde güvenli ödeme sayfasına yönlendirilirsiniz. Kartınızı
                       kaydederseniz abonelik dönem sonunda otomatik yenilenir. Kart bilgileri bizde saklanmaz.
                     </div>
@@ -352,14 +352,14 @@ export default function PaketPage() {
               {/* Faturalar */}
               <div className="min-w-0">
                 {billing.recentInvoices.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[#eec9d7] px-4 py-6 text-center text-[12px] text-[#705a66]">
+                  <div className="rounded-[14px] border border-dashed border-[#eec9d7] px-4 py-6 text-center text-[12px] text-[#74616A]">
                     Henüz fatura yok.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[460px] text-left text-[12px]">
                       <thead>
-                        <tr className="text-[10px] uppercase tracking-widest text-[#705a66]">
+                        <tr className="text-[10px] uppercase tracking-widest text-[#74616A]">
                           <th className="pb-2 font-medium">Fatura</th>
                           <th className="pb-2 font-medium">Dönem</th>
                           <th className="pb-2 text-right font-medium">Net</th>
@@ -368,14 +368,14 @@ export default function PaketPage() {
                           <th className="pb-2 text-right font-medium">Durum</th>
                         </tr>
                       </thead>
-                      <tbody className="text-[#4a3a44]">
+                      <tbody className="text-[#3E343A]">
                         {billing.recentInvoices.map((inv) => (
                           <tr key={inv.id} className="border-t border-[#f2dfe7]">
                             <td className="py-2 font-mono text-[11.5px]">{inv.number}</td>
                             <td className="py-2">{new Date(inv.periodStartUtc).toLocaleDateString('tr-TR')}</td>
                             <td className="py-2 text-right">{formatTL(inv.netAmountTRY)}</td>
                             <td className="py-2 text-right">{formatTL(inv.vatAmountTRY)}</td>
-                            <td className="py-2 text-right font-semibold text-[#352432]">{formatTL(inv.amountTRY)}</td>
+                            <td className="py-2 text-right font-semibold text-[#2A2027]">{formatTL(inv.amountTRY)}</td>
                             <td className="py-2 text-right">
                               {inv.status === 'Paid' ? (
                                 <span className="rounded-full border border-emerald-300/40 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">Ödendi</span>
@@ -396,9 +396,9 @@ export default function PaketPage() {
 
         {/* BU AYKİ KULLANIM */}
         <motion.section variants={cardVariant} initial="hidden" animate="visible"
-          className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+          className="rounded-[18px] border border-[#EAD8DF] bg-white p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75"><Sparkles className="h-3.5 w-3.5" /> Bu Ayki Kullanım</div>
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75"><Sparkles className="h-3.5 w-3.5" /> Bu Ayki Kullanım</div>
             {(usage.hasOverflow || usage.hasWarning) && (
               <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${usage.hasOverflow ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}>
                 <AlertTriangle className="h-3 w-3" /> {usage.hasOverflow ? 'kritik' : 'sınıra yakın'}
@@ -407,21 +407,21 @@ export default function PaketPage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {usage.metrics.map((m) => <UsageCell key={m.key} metric={m} icon={metricIcons[m.key]} />)}
-            {!usage.metrics.length && <div className="col-span-full text-[12px] text-[#352432]/45">Kullanım verisi alınamadı.</div>}
+            {!usage.metrics.length && <div className="col-span-full text-[12px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
           </div>
         </motion.section>
 
         {/* YÜKSELTME YOLU */}
         <motion.section variants={cardVariant} initial="hidden" animate="visible">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75"><Sparkles className="h-3.5 w-3.5" /> Yükseltme Yolu</div>
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75"><Sparkles className="h-3.5 w-3.5" /> Yükseltme Yolu</div>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/45">Dönem</span>
-              <div className="inline-flex overflow-hidden rounded-[10px] border border-[#ead8df]">
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[#74616A]">Dönem</span>
+              <div className="inline-flex overflow-hidden rounded-[10px] border border-[#EAD8DF]">
                 {(['Monthly', 'Yearly'] as const).map((p) => (
                   <button key={p} type="button" onClick={() => setUpgradePeriod(p)}
                     className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
-                      upgradePeriod === p ? 'bg-[#fff1f6] text-[#c85776]' : 'bg-white text-[#9d7386] hover:text-[#c85776]'
+                      upgradePeriod === p ? 'bg-[#A5556E] text-white' : 'bg-white text-[#9d7386] hover:text-[#A5556E]'
                     }`}>
                     {p === 'Monthly' ? 'Aylık' : 'Yıllık'}
                   </button>
@@ -441,9 +441,9 @@ export default function PaketPage() {
               />
             ))}
             {!plans.length && !loading && (
-              <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/80 p-12 text-center sm:col-span-2 lg:col-span-3 2xl:col-span-5">
-                <Crown className="mx-auto h-10 w-10 text-[#c85776]/45" strokeWidth={1.3} />
-                <div className="mt-3 text-sm text-[#352432]/65">Plan kataloğu henüz yüklenmedi.</div>
+              <div className="rounded-[18px] border border-[#EAD8DF] bg-white/80 p-12 text-center sm:col-span-2 lg:col-span-3 2xl:col-span-5">
+                <Crown className="mx-auto h-10 w-10 text-[#A5556E]/45" strokeWidth={1.3} />
+                <div className="mt-3 text-sm text-[#5A4B53]">Plan kataloğu henüz yüklenmedi.</div>
               </div>
             )}
           </div>
@@ -458,7 +458,7 @@ export default function PaketPage() {
 const BADGE_TONE: Record<string, string> = {
   emerald: 'bg-emerald-50 text-emerald-700 border-emerald-300/40',
   amber: 'bg-amber-50 text-amber-700 border-amber-300/40',
-  rose: 'bg-[#fff1f6] text-[#c85776] border-[#efbfd0]/70',
+  rose: 'bg-[#A5556E] text-white border-[#EAD8DF]',
 }
 
 function StatCard({
@@ -469,15 +469,15 @@ function StatCard({
 }) {
   return (
     <motion.div variants={cardVariant}
-      className="relative overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+      className="relative overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
       {decoration === 'crown' && <Crown aria-hidden className="pointer-events-none absolute -right-3 top-3 h-20 w-20 text-[#f3a3bf]/15" strokeWidth={1.2} />}
       {decoration === 'sparkle' && <Sparkles aria-hidden className="pointer-events-none absolute -right-2 top-4 h-16 w-16 text-[#f3a3bf]/15" strokeWidth={1.2} />}
       <div className="relative flex items-start gap-2.5">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-5 w-5" /></span>
-        <div className="text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{label}</div>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#A5556E] text-white"><Icon className="h-5 w-5" /></span>
+        <div className="text-[11px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
       </div>
-      <div className="relative mt-3 font-display text-3xl tabular-nums tracking-tight text-[#352432]">{value}</div>
-      {sub && <div className="relative mt-1 text-[11px] text-[#352432]/45">{sub}</div>}
+      <div className="relative mt-3 font-display text-3xl tabular-nums tracking-tight text-[#2A2027]">{value}</div>
+      {sub && <div className="relative mt-1 text-[11px] text-[#74616A]">{sub}</div>}
       {badge && <span className={`relative mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-mono uppercase tracking-wide ${BADGE_TONE[badge.tone] || BADGE_TONE.rose}`}>{badge.tone === 'emerald' && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}{badge.text}</span>}
     </motion.div>
   )
@@ -485,18 +485,18 @@ function StatCard({
 
 function UsageCell({ metric, icon: Icon }: { metric: UsageMetric; icon?: LucideIcon }) {
   const { used, limit, percent, isUnlimited, isOver, isWarning, label } = metric
-  const tone = isOver ? 'text-rose-700' : isWarning ? 'text-amber-700' : 'text-[#c85776]'
+  const tone = isOver ? 'text-rose-700' : isWarning ? 'text-amber-700' : 'text-[#A5556E]'
   const bar = isOver ? 'from-rose-400 to-rose-300' : isWarning ? 'from-amber-400 to-amber-300' : 'from-[#e0617f] to-[#f3a3bf]'
   return (
-    <div className="rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3.5">
+    <div className="rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[11px] text-[#352432]/65">{Icon && <Icon className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.7} />}{label}</div>
+        <div className="flex items-center gap-1.5 text-[11px] text-[#5A4B53]">{Icon && <Icon className="h-3.5 w-3.5 text-[#A5556E]/70" strokeWidth={1.7} />}{label}</div>
         <div className={`font-display text-[12px] tabular-nums ${tone}`}>{isUnlimited ? `${used.toLocaleString('tr-TR')} / ∞` : `${used.toLocaleString('tr-TR')} / ${limit.toLocaleString('tr-TR')}`}</div>
       </div>
       <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#f7e9ee]">
         <motion.div initial={{ width: 0 }} animate={{ width: `${isUnlimited ? 6 : Math.min(percent, 100)}%` }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }} className={`h-full rounded-full bg-gradient-to-r ${bar}`} />
       </div>
-      <div className="mt-1.5 text-right text-[10px] font-mono text-[#352432]/40">{isUnlimited ? 'sınırsız' : `%${percent}`}</div>
+      <div className="mt-1.5 text-right text-[10px] font-mono text-[#74616A]">{isUnlimited ? 'sınırsız' : `%${percent}`}</div>
     </div>
   )
 }
@@ -524,14 +524,14 @@ function PlanCard({
           ? 'border-[#7a2f4d] bg-gradient-to-br from-[#5c2138] via-[#7a2f4d] to-[#3a1426] text-white shadow-[0_30px_70px_-30px_rgba(92,33,56,0.85)]'
           : isRecommended
             ? 'border-[#e0617f]/60 bg-white shadow-[0_24px_58px_-34px_rgba(200,87,118,0.55)]'
-            : 'border-[#ead8df]/70 bg-white/90'
+            : 'border-[#EAD8DF] bg-white'
       }`}>
       {isCurrent && <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,200,220,0.25),transparent_55%)]" />}
       {isCurrent && <Gem aria-hidden className="pointer-events-none absolute -right-4 top-10 h-24 w-24 text-white/10" strokeWidth={1} />}
 
       {/* üst rozet */}
       <div className="relative flex items-center justify-between">
-        <span className={`rounded-md px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest ${isCurrent ? 'bg-white/15 text-white' : 'bg-[#fff1f6] text-[#b14d6c]'}`}>
+        <span className={`rounded-md px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest ${isCurrent ? 'bg-white/15 text-white' : 'bg-[#F6DFE6] text-[#8C4460]'}`}>
           {isCurrent ? 'Aktif Paket' : plan.planKey.toUpperCase()}
         </span>
         {isRecommended && <span className="rounded-md bg-[#e0617f] px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest text-white">Önerilen</span>}
@@ -540,19 +540,19 @@ function PlanCard({
 
       {/* ad + açıklama */}
       <div className="relative mt-3 flex items-center gap-1.5">
-        <h3 className={`font-display text-2xl tracking-tight ${isCurrent ? 'text-white' : 'text-[#352432]'}`}>{plan.name}</h3>
+        <h3 className={`font-display text-2xl tracking-tight ${isCurrent ? 'text-white' : 'text-[#2A2027]'}`}>{plan.name}</h3>
         {isCurrent && <Gem className="h-4 w-4 text-[#f3a3bf]" />}
       </div>
-      {plan.description && <p className={`relative mt-1 line-clamp-2 text-[11px] ${isCurrent ? 'text-white/70' : 'text-[#352432]/55'}`}>{plan.description}</p>}
+      {plan.description && <p className={`relative mt-1 line-clamp-2 text-[11px] ${isCurrent ? 'text-white/70' : 'text-[#5A4B53]'}`}>{plan.description}</p>}
 
       {/* fiyat */}
       <div className="relative mt-4">
         {isCustom ? (
-          <div className={`font-display text-3xl tracking-tight ${isCurrent ? 'text-white' : 'text-[#c85776]'}`}>Özel Fiyat</div>
+          <div className={`font-display text-3xl tracking-tight ${isCurrent ? 'text-white' : 'text-[#A5556E]'}`}>Özel Fiyat</div>
         ) : (
           <div className="flex items-end gap-1">
-            <span className={`font-display text-4xl tabular-nums tracking-tight ${isCurrent ? 'text-white' : 'text-[#c85776]'}`}>{formatTL(plan.monthlyPriceTRY)}</span>
-            <span className={`mb-1 text-[12px] ${isCurrent ? 'text-white/60' : 'text-[#352432]/45'}`}>/ay</span>
+            <span className={`font-display text-4xl tabular-nums tracking-tight ${isCurrent ? 'text-white' : 'text-[#A5556E]'}`}>{formatTL(plan.monthlyPriceTRY)}</span>
+            <span className={`mb-1 text-[12px] ${isCurrent ? 'text-white/60' : 'text-[#74616A]'}`}>/ay</span>
           </div>
         )}
       </div>
@@ -561,8 +561,8 @@ function PlanCard({
       <div className="relative mt-4 space-y-1.5">
         {metrics.map(([Icon, label, value]) => (
           <div key={label} className={`flex items-center justify-between border-b pb-1.5 text-[12px] last:border-b-0 ${isCurrent ? 'border-white/10' : 'border-[#f1e5ea]'}`}>
-            <span className={`flex items-center gap-1.5 ${isCurrent ? 'text-white/75' : 'text-[#352432]/60'}`}><Icon className={`h-3.5 w-3.5 ${isCurrent ? 'text-[#f3a3bf]' : 'text-[#c85776]/70'}`} strokeWidth={1.7} />{label}</span>
-            <span className={`font-display tabular-nums ${isCurrent ? 'text-white' : 'text-[#352432]'}`}>{fmt(value)}</span>
+            <span className={`flex items-center gap-1.5 ${isCurrent ? 'text-white/75' : 'text-[#5A4B53]'}`}><Icon className={`h-3.5 w-3.5 ${isCurrent ? 'text-[#f3a3bf]' : 'text-[#A5556E]/70'}`} strokeWidth={1.7} />{label}</span>
+            <span className={`font-display tabular-nums ${isCurrent ? 'text-white' : 'text-[#2A2027]'}`}>{fmt(value)}</span>
           </div>
         ))}
       </div>
@@ -570,7 +570,7 @@ function PlanCard({
       {/* öne çıkan özellikler */}
       <div className="relative mt-4 flex flex-wrap gap-1.5">
         {highlights.map((f) => (
-          <span key={f} className={`rounded-md border px-2 py-0.5 text-[9px] ${isCurrent ? 'border-white/20 bg-white/10 text-white/85' : 'border-[#ead8df]/70 bg-[#fffafc] text-[#352432]/65'}`}>{f}</span>
+          <span key={f} className={`rounded-md border px-2 py-0.5 text-[9px] ${isCurrent ? 'border-white/20 bg-white/10 text-white/85' : 'border-[#EAD8DF] bg-[#F7F6F6] text-[#5A4B53]'}`}>{f}</span>
         ))}
       </div>
 
@@ -582,13 +582,13 @@ function PlanCard({
           </button>
         ) : isCustom ? (
           <a href="mailto:destek@beautyasist.app?subject=Enterprise%20paket%20talebi"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[11px] font-medium text-[#352432]/75 transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[11px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
             <MailPlus className="h-4 w-4" /> İletişime geç
           </a>
         ) : (
           <button type="button" disabled={busy} onClick={onChoose}
             className={`inline-flex w-full items-center justify-center gap-2 rounded-[12px] px-3 py-2.5 text-[11px] font-medium transition-colors disabled:opacity-50 ${
-              isRecommended ? 'bg-[#c85776] text-white hover:opacity-90' : 'border border-[#efbfd0]/75 bg-[#fff1f6] text-[#c85776] hover:bg-[#ffe6ef]'
+              isRecommended ? 'bg-[#A5556E] text-white hover:opacity-90' : 'border border-[#BE7690]/75 bg-[#A5556E] text-white hover:bg-[#F6DFE6]'
             }`}>
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Uygulanıyor…</> : <>Bu pakete geç</>}
           </button>

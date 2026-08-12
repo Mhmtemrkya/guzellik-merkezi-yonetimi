@@ -119,7 +119,7 @@ function WaitRow({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.03, ease: [0.22, 1, 0.36, 1] }}
-      className={`group relative flex flex-col gap-3 overflow-hidden rounded-[18px] border border-[#efe1e7] bg-white/96 p-4 pl-5 shadow-[0_12px_30px_-24px_rgba(200,87,118,0.55)] transition-all md:flex-row md:items-center ${
+      className={`group relative flex flex-col gap-3 overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white/96 p-4 pl-5 shadow-[0_12px_30px_-24px_rgba(200,87,118,0.55)] transition-all md:flex-row md:items-center ${
         resolved ? 'opacity-70 hover:opacity-100' : 'hover:shadow-[0_16px_36px_-22px_rgba(200,87,118,0.6)]'
       }`}
     >
@@ -129,7 +129,7 @@ function WaitRow({
       {/* sıra no + avatar */}
       <div className="flex shrink-0 items-center gap-3">
         {queueNo !== null ? (
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#f47699] to-[#ef6088] text-[13px] font-bold text-white shadow-[0_6px_14px_-7px_rgba(214,95,131,0.95)]">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-[13px] font-bold text-white shadow-[0_6px_14px_-7px_rgba(214,95,131,0.95)]">
             {queueNo}
           </span>
         ) : (
@@ -156,16 +156,16 @@ function WaitRow({
             <Scissors className="h-3.5 w-3.5" /> {service || 'Herhangi bir işlem'}
           </span>
           {staff && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-[#fffafc] px-2.5 py-1 text-[11px] font-semibold text-[#705a66]">
-              <UserRound className="h-3.5 w-3.5 text-[#c85776]" /> {staff}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1 text-[11px] font-semibold text-[#74616A]">
+              <UserRound className="h-3.5 w-3.5 text-[#A5556E]" /> {staff}
             </span>
           )}
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-medium text-[#705a66]">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-medium text-[#74616A]">
           {/* Listeye alınma tarihi + kaç gündür beklediği (tercih edilen tarih yerine). */}
-          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-[#c85776]" /> Listeye alındı: {formatAddedDate(entry.createdAt)}</span>
+          <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-[#A5556E]" /> Listeye alındı: {formatAddedDate(entry.createdAt)}</span>
           {wait && <span className="inline-flex items-center gap-1.5 font-semibold text-[#a34a62]"><Hourglass className="h-3.5 w-3.5" /> {wait}</span>}
-          {slotTime && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#c85776]" /> İstenen slot: {slotTime}</span>}
+          {slotTime && <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-[#A5556E]" /> İstenen slot: {slotTime}</span>}
           {entry.note && <span className="inline-flex items-center gap-1.5 text-[#9a6f22]"><Quote className="h-3.5 w-3.5" /> {entry.note}</span>}
         </div>
       </div>
@@ -182,7 +182,7 @@ function WaitRow({
               disabled={busy}
               onClick={onSchedule}
               title="Randevu modalını bu müşteri seçili olarak aç"
-              className="inline-flex items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_10px_20px_-14px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_10px_20px_-14px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
             >
               <CalendarPlus className="h-3.5 w-3.5" /> Randevuya aktar
             </button>
@@ -224,7 +224,7 @@ function WaitRow({
               disabled={busy}
               onClick={onCancel}
               title="İptal et"
-              className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#f7ecf1] text-[#705a66] transition-colors hover:bg-[#efdfe7] hover:text-[#cf4d68] disabled:opacity-50"
+              className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#f7ecf1] text-[#74616A] transition-colors hover:bg-[#efdfe7] hover:text-[#cf4d68] disabled:opacity-50"
             >
               <XCircle className="h-4 w-4" />
             </button>
@@ -235,7 +235,7 @@ function WaitRow({
             disabled={busy}
             onClick={onRequeue}
             title="Yeniden sıraya al"
-            className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#f7ecf1] px-2.5 py-1.5 text-[11px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#efdfe7] hover:text-[#c85776] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-[11px] bg-[#f7ecf1] px-2.5 py-1.5 text-[11px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#efdfe7] hover:text-[#A5556E] disabled:opacity-50"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Sıraya al
           </button>
@@ -457,17 +457,17 @@ export default function BeklemeListesiPage() {
     return (
       <>
         <Topbar title="Bekleme Listesi" subtitle="Pakete dahil değil" breadcrumbs={['Admin', 'İşletme', 'Bekleme Listesi']} />
-        <div className="mx-auto mt-10 max-w-md rounded-[22px] border border-[#ead8df]/70 bg-white/86 p-8 text-center">
-          <Lock className="mx-auto h-8 w-8 text-[#c85776]/60" />
+        <div className="mx-auto mt-10 max-w-md rounded-[22px] border border-[#EAD8DF] bg-white p-8 text-center">
+          <Lock className="mx-auto h-8 w-8 text-[#A5556E]/60" />
           <div className="mt-3 font-display text-xl text-[#241923]">Bekleme Listesi</div>
-          <p className="mt-2 text-[13px] text-[#705a66]">Bu özellik paketinizde yok. Üst pakete geçerek bekleme listesini kullanabilirsiniz.</p>
+          <p className="mt-2 text-[13px] text-[#74616A]">Bu özellik paketinizde yok. Üst pakete geçerek bekleme listesini kullanabilirsiniz.</p>
         </div>
       </>
     )
   }
 
   const statCards = [
-    { label: 'Toplam kayıt', value: String(entries.length), icon: CalendarClock, chip: 'bg-[#fbeaf1] text-[#c85776]' },
+    { label: 'Toplam kayıt', value: String(entries.length), icon: CalendarClock, chip: 'bg-[#fbeaf1] text-[#A5556E]' },
     { label: 'Sırada bekleyen', value: String(activeCount), icon: Hourglass, chip: 'bg-amber-50 text-amber-600' },
     { label: 'Randevuya dönen', value: String(bookedCount), icon: CheckCircle2, chip: 'bg-[#e6f5ee] text-[#2f9e72]' },
   ]
@@ -482,7 +482,7 @@ export default function BeklemeListesiPage() {
         breadcrumbs={['Admin', 'İşletme', 'Bekleme Listesi']}
       />
 
-      <div className="relative space-y-7 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-7 p-4 sm:p-6 xl:px-8">
         {/* Özet */}
         <div className="grid gap-4 sm:grid-cols-3">
           {statCards.map((s, i) => (
@@ -491,13 +491,13 @@ export default function BeklemeListesiPage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: i * 0.05 }}
-              className="flex items-start gap-4 rounded-[20px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_12px_30px_-20px_rgba(200,87,118,0.5)]"
+              className="flex items-start gap-4 rounded-[20px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_12px_30px_-20px_rgba(200,87,118,0.5)]"
             >
               <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${s.chip}`}>
                 <s.icon className="h-5 w-5" strokeWidth={1.9} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#705a66]">{s.label}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#74616A]">{s.label}</p>
                 <p className="mt-1 truncate font-display text-[28px] font-bold leading-tight text-[#241923]">{s.value}</p>
               </div>
             </motion.div>
@@ -509,10 +509,10 @@ export default function BeklemeListesiPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
-          className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
+          className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
         >
-          <div className="flex items-center gap-3 border-b border-[#f2e6eb] pb-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#f47699] to-[#ef6088] text-white shadow-[0_8px_16px_-8px_rgba(214,95,131,0.9)]">
+          <div className="flex items-center gap-3 border-b border-[#EAD8DF] pb-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-white shadow-[0_8px_16px_-8px_rgba(214,95,131,0.9)]">
               <Plus className="h-4 w-4" strokeWidth={2.5} />
             </div>
             <h2 className="font-display text-lg font-bold text-[#241923]">Bekleme listesine ekle</h2>
@@ -520,43 +520,43 @@ export default function BeklemeListesiPage() {
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Müşteri *</span>
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Müşteri *</span>
               <CustomerPicker
                 items={[]}
                 onSearch={customerSearch}
                 value={customerId}
                 onChange={setCustomerId}
-                className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Personel (ops.)</span>
-              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Personel (ops.)</span>
+              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40">
                 <option value="">Farketmez</option>
                 {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Tercih edilen tarih *</span>
-              <input type="date" value={preferredDate} onChange={(e) => setPreferredDate(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Tercih edilen tarih *</span>
+              <input type="date" value={preferredDate} onChange={(e) => setPreferredDate(e.target.value)} className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Saat (ops.)</span>
-              <input type="time" value={preferredTime} onChange={(e) => setPreferredTime(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Saat (ops.)</span>
+              <input type="time" value={preferredTime} onChange={(e) => setPreferredTime(e.target.value)} className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
               <span className="mt-1 block text-[10px] text-[#9a7d89]">Saat girilirse yer açılınca WhatsApp'tan otomatik teklif gider.</span>
             </label>
             <label className="block lg:col-span-2">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Not (ops.)</span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. öğleden sonrası uygun" className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Not (ops.)</span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. öğleden sonrası uygun" className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
             </label>
           </div>
 
           {/* Hizmet — satış modallarıyla aynı: kategori/alt-kategori/arama ile süzülebilir seçici (opsiyonel) */}
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-[#705a66]">Hizmet (ops.)</span>
+              <span className="text-[11px] font-semibold text-[#74616A]">Hizmet (ops.)</span>
               {serviceId && (
-                <button type="button" onClick={() => setServiceId('')} className="text-[10px] font-semibold text-[#c85776] transition-colors hover:text-[#a83e5b]">
+                <button type="button" onClick={() => setServiceId('')} className="text-[10px] font-semibold text-[#A5556E] transition-colors hover:text-[#a83e5b]">
                   Temizle · farketmez
                 </button>
               )}
@@ -574,7 +574,7 @@ export default function BeklemeListesiPage() {
 
           {actionError && <div className="mt-4 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{actionError}</div>}
           <div className="mt-5 flex justify-end">
-            <button type="button" disabled={busy} onClick={handleCreate} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60">
+            <button type="button" disabled={busy} onClick={handleCreate} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60">
               <ListPlus className="h-4 w-4" strokeWidth={2.3} /> Listeye ekle
             </button>
           </div>

@@ -20,7 +20,7 @@ import { useAuth } from './AuthContext'
 // SIDEBAR — "Sekme"
 //
 // Panelin kart diliyle AYNI sözlüğü konuşur: aynı hairline (#ead8df), aynı
-// aksiyon rengi (#c85776), aynı yumuşak zemin (#fff1f6). Sidebar panelden
+// aksiyon rengi (#A5556E), aynı yumuşak zemin (#fff1f6). Sidebar panelden
 // yalnız bir tık daha sıcak bir kremle ayrılır — çelişmez, ayrışır.
 //
 // İMZA ÖĞESİ — SEKME: aktif sayfa satırı panelin BEYAZINA boyanır, sağ köşeleri

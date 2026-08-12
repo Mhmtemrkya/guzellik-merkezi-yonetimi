@@ -240,20 +240,20 @@ export default function AyarlarPage() {
         }
       />
 
-      <div className="space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && !tenant && !branches.length} emptyMessage="Bu kurum için ayar kaydı bulunamadı." />
 
         {/* SATIR 1: KURUM PROFİLİ + ÖDEME & TAKSİT */}
         <section data-guide="ayarlar-kurum" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           {/* KURUM PROFİLİ */}
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}
-            className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             <span aria-hidden className="pointer-events-none absolute -right-10 top-6 h-64 w-64 rounded-full bg-[#fbd2dc]/45 blur-2xl" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/settings/kurum-profili.png" alt="" className="pointer-events-none absolute -right-4 top-10 hidden w-72 select-none lg:block" />
 
             <div className="relative flex items-start justify-between gap-4">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/75">
+              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/75">
                 <Building2 className="h-4 w-4" /> Kurum Profili
               </div>
               {tenant && (
@@ -277,8 +277,8 @@ export default function AyarlarPage() {
 
             <h2 className="relative mt-4 font-display text-4xl leading-none tracking-tight">{tenant?.name || 'Kurum'}</h2>
             <div className="relative mt-3">
-              <div className="text-[10px] text-[#352432]/45">Yasal İşletme Adı</div>
-              <div className="text-[14px] text-[#352432]/80">{rawTenant?.legalName || tenant?.name || '—'}</div>
+              <div className="text-[10px] text-[#74616A]">Yasal İşletme Adı</div>
+              <div className="text-[14px] text-[#2A2027]/80">{rawTenant?.legalName || tenant?.name || '—'}</div>
             </div>
 
             <div className="relative mt-4 grid max-w-md gap-2 sm:grid-cols-2">
@@ -288,7 +288,7 @@ export default function AyarlarPage() {
               <ProfileBox icon={Mail} label="E-posta" value={rawTenant?.email || tenant?.loginEmails?.[0] || '—'} />
             </div>
 
-            <div className="relative mt-5 grid gap-2 rounded-[16px] border border-[#ead8df]/65 bg-white/80 p-2 sm:grid-cols-4">
+            <div className="relative mt-5 grid gap-2 rounded-[16px] border border-[#EAD8DF]/65 bg-white/80 p-2 sm:grid-cols-4">
               {([
                 [String(branches.length), 'Şube', Building2],
                 [String(activeStaff), 'Aktif Personel', Users],
@@ -296,8 +296,8 @@ export default function AyarlarPage() {
                 [String(packages.length), 'Paket', Package],
               ] as const).map(([v, l, Icon]) => (
                 <div key={l} className="flex items-center gap-2.5 rounded-[12px] px-2 py-1.5">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-4 w-4" /></span>
-                  <div><div className="font-display text-2xl leading-none tabular-nums">{v}</div><div className="text-[10px] text-[#352432]/45">{l}</div></div>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#A5556E] text-white"><Icon className="h-4 w-4" /></span>
+                  <div><div className="font-display text-2xl leading-none tabular-nums">{v}</div><div className="text-[10px] text-[#74616A]">{l}</div></div>
                 </div>
               ))}
             </div>
@@ -305,11 +305,11 @@ export default function AyarlarPage() {
 
           {/* ÖDEME & TAKSİT */}
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.06 }}
-            className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/settings/odeme-taksit.png" alt="" className="pointer-events-none absolute -bottom-4 -right-2 w-52 select-none" />
             <div className="relative flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2 text-[12px] font-medium text-[#352432]"><CreditCard className="h-4 w-4 text-[#c85776]" /> <span className="font-display text-lg tracking-tight">ÖDEME & TAKSİT</span></div>
+              <div className="flex items-center gap-2 text-[12px] font-medium text-[#2A2027]"><CreditCard className="h-4 w-4 text-[#A5556E]" /> <span className="font-display text-lg tracking-tight">ÖDEME & TAKSİT</span></div>
               {financeEditDialog}
             </div>
             <div className="relative mt-4 space-y-2.5">
@@ -349,18 +349,18 @@ export default function AyarlarPage() {
         {/* SATIR 2: GELİR BİLGİLERİ + GELİR KALEMLERİ */}
         <section data-guide="ayarlar-gelir" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.1 }}
-            className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/settings/gelir-bilgileri.png" alt="" className="pointer-events-none absolute -bottom-6 right-0 hidden w-80 select-none md:block" />
             <div className="absolute right-44 top-8 hidden md:block">
-              <div className="grid h-20 w-20 place-items-center rounded-full bg-white/90 shadow-[0_14px_40px_-18px_rgba(200,87,118,0.5)]">
-                <div className="text-center"><div className="font-display text-xl leading-none text-[#c85776]">%{Math.abs(growth)}</div><div className="text-[8px] text-[#352432]/45">Bu ay {growth >= 0 ? 'artış' : 'düşüş'}</div></div>
+              <div className="grid h-20 w-20 place-items-center rounded-full bg-white shadow-[0_14px_40px_-18px_rgba(200,87,118,0.5)]">
+                <div className="text-center"><div className="font-display text-xl leading-none text-[#A5556E]">%{Math.abs(growth)}</div><div className="text-[8px] text-[#74616A]">Bu ay {growth >= 0 ? 'artış' : 'düşüş'}</div></div>
               </div>
             </div>
 
-            <div className="relative flex items-center gap-2 text-[12px] font-medium"><TrendingUp className="h-4 w-4 text-[#c85776]" /> <span className="font-display text-lg tracking-tight">GELİR BİLGİLERİ</span></div>
-            <div className="relative text-[12px] text-[#352432]/50">Klinik genel gelir performansı ve özet bilgiler</div>
-            <div className="relative mt-3 font-display text-5xl tabular-nums tracking-tight text-[#c85776]">{formatTL(incomeMonth)}</div>
+            <div className="relative flex items-center gap-2 text-[12px] font-medium"><TrendingUp className="h-4 w-4 text-[#A5556E]" /> <span className="font-display text-lg tracking-tight">GELİR BİLGİLERİ</span></div>
+            <div className="relative text-[12px] text-[#5A4B53]">Klinik genel gelir performansı ve özet bilgiler</div>
+            <div className="relative mt-3 font-display text-5xl tabular-nums tracking-tight text-[#A5556E]">{formatTL(incomeMonth)}</div>
 
             <div className="relative mt-4 flex max-w-md flex-wrap gap-1.5">
               {([
@@ -370,11 +370,11 @@ export default function AyarlarPage() {
                 ['Randevu Gelirleri', '/panel/randevular'],
                 ['Tahsilat Analizi', '/panel/raporlar?scope=finance'],
               ] as const).map(([l, href]) => (
-                <Link key={l} href={href} className="rounded-[9px] border border-[#ead8df]/70 bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/60 transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">{l}</Link>
+                <Link key={l} href={href} className="rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">{l}</Link>
               ))}
             </div>
             <Link href="/panel/raporlar?scope=finance"
-              className="relative mt-3 inline-flex items-center gap-2 rounded-[10px] border border-[#efbfd0]/75 bg-[#fff1f6] px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#ffe6ef]">
+              className="relative mt-3 inline-flex items-center gap-2 rounded-[10px] border border-[#BE7690]/75 bg-[#F6DFE6] px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
               Detaylı Gelir Raporu <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           </motion.div>
@@ -405,21 +405,21 @@ export default function AyarlarPage() {
         {/* SATIR 3: KAYIT ÖZETİ + AKTİF KADRO */}
         <section className="grid gap-4 xl:grid-cols-2">
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.18 }}
-            className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/settings/kayit-ozeti.png" alt="" className="pointer-events-none absolute -bottom-4 right-2 w-44 select-none" />
-            <div className="relative flex items-center gap-2 text-[12px] font-medium"><ClipboardList className="h-4 w-4 text-[#c85776]" /> <span className="font-display text-lg tracking-tight">KAYIT ÖZETİ</span></div>
+            <div className="relative flex items-center gap-2 text-[12px] font-medium"><ClipboardList className="h-4 w-4 text-[#A5556E]" /> <span className="font-display text-lg tracking-tight">KAYIT ÖZETİ</span></div>
             <div className="relative mt-5 flex flex-wrap items-center gap-6">
-              <div className="grid h-32 w-32 shrink-0 place-items-center rounded-full border-8 border-[#fbd2dc]/60 bg-[#fff1f6]">
-                <div className="text-center"><FileText className="mx-auto h-5 w-5 text-[#c85776]" /><div className="font-display text-3xl tabular-nums leading-none">{auditTotal.toLocaleString('tr-TR')}</div><div className="text-[9px] text-[#352432]/45">Toplam Kayıt</div></div>
+              <div className="grid h-32 w-32 shrink-0 place-items-center rounded-full border-8 border-[#fbd2dc]/60 bg-[#F6DFE6]">
+                <div className="text-center"><FileText className="mx-auto h-5 w-5 text-[#A5556E]" /><div className="font-display text-3xl tabular-nums leading-none">{auditTotal.toLocaleString('tr-TR')}</div><div className="text-[9px] text-[#74616A]">Toplam Kayıt</div></div>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[12px] text-[#352432]/50">Kayıtlarınızın detayını görüntüleyin</div>
-                <div className="mt-3 grid max-w-xs grid-cols-2 gap-2 rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3">
-                  <div><div className="text-[13px] font-medium uppercase text-[#352432]">{lastLog?.actorName || '—'}</div><div className="text-[10px] text-[#352432]/45">Kayıt sahibi</div></div>
-                  <div className="text-right"><div className="text-[13px] font-medium text-[#352432]">{lastLog?.createdAtUtc ? new Date(lastLog.createdAtUtc).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div><div className="text-[10px] text-[#352432]/45">Oluşturulma tarihi</div></div>
+                <div className="text-[12px] text-[#5A4B53]">Kayıtlarınızın detayını görüntüleyin</div>
+                <div className="mt-3 grid max-w-xs grid-cols-2 gap-2 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
+                  <div><div className="text-[13px] font-medium uppercase text-[#2A2027]">{lastLog?.actorName || '—'}</div><div className="text-[10px] text-[#74616A]">Kayıt sahibi</div></div>
+                  <div className="text-right"><div className="text-[13px] font-medium text-[#2A2027]">{lastLog?.createdAtUtc ? new Date(lastLog.createdAtUtc).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div><div className="text-[10px] text-[#74616A]">Oluşturulma tarihi</div></div>
                 </div>
-                <Link href="/panel/loglar" className="mt-3 inline-flex items-center gap-2 rounded-[10px] border border-[#ead8df]/70 bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                <Link href="/panel/loglar" className="mt-3 inline-flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                   Tüm Kayıtları Görüntüle <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
@@ -427,20 +427,20 @@ export default function AyarlarPage() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.22 }}
-            className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/settings/aktif-kadro.png" alt="" className="pointer-events-none absolute -bottom-2 right-2 w-44 select-none" />
-            <div className="relative flex items-center gap-2 text-[12px] font-medium"><Users className="h-4 w-4 text-[#c85776]" /> <span className="font-display text-lg tracking-tight">AKTİF KADRO</span></div>
+            <div className="relative flex items-center gap-2 text-[12px] font-medium"><Users className="h-4 w-4 text-[#A5556E]" /> <span className="font-display text-lg tracking-tight">AKTİF KADRO</span></div>
             <div className="relative mt-4 flex flex-wrap gap-6">
               <div>
-                <div className="font-display text-5xl tabular-nums leading-none"><span className="text-[#c85776]">{activeStaff}</span><span className="text-[#352432]/30"> / {staff.length}</span></div>
-                <div className="mt-1 text-[10px] text-[#352432]/45">Aktif / Toplam</div>
-                <div className="mt-4 text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Uzmanlık Dağılımı</div>
+                <div className="font-display text-5xl tabular-nums leading-none"><span className="text-[#A5556E]">{activeStaff}</span><span className="text-[#74616A]"> / {staff.length}</span></div>
+                <div className="mt-1 text-[10px] text-[#74616A]">Aktif / Toplam</div>
+                <div className="mt-4 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Uzmanlık Dağılımı</div>
                 <div className="mt-1.5 flex max-w-[220px] flex-wrap gap-1.5">
-                  {specialties.slice(0, 4).map((d) => <span key={d} className="rounded-[8px] border border-[#ead8df]/70 bg-[#fffafc] px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-[#352432]/60">{d}</span>)}
-                  {!specialties.length && <span className="text-[11px] text-[#352432]/40">—</span>}
+                  {specialties.slice(0, 4).map((d) => <span key={d} className="rounded-[8px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-[#5A4B53]">{d}</span>)}
+                  {!specialties.length && <span className="text-[11px] text-[#74616A]">—</span>}
                 </div>
-                <Link href="/panel/ekip" className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-[#ead8df]/70 bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                <Link href="/panel/ekip" className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                   Tüm Personeli Görüntüle <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
@@ -449,15 +449,15 @@ export default function AyarlarPage() {
                   <div key={p.id} className="flex items-center gap-2.5">
                     {p.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.photoUrl} alt={p.name} className="h-10 w-10 shrink-0 rounded-full border border-[#efbfd0]/50 object-cover" />
+                      <img src={p.photoUrl} alt={p.name} className="h-10 w-10 shrink-0 rounded-full border border-[#BE7690]/50 object-cover" />
                     ) : (
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#fbd2dc] text-[11px] font-display text-[#8e3f5b]">{p.name.slice(0, 2).toUpperCase()}</span>
                     )}
-                    <div className="min-w-0"><div className="truncate text-[13px] font-medium text-[#352432]">{p.name}</div><div className="text-[10px] text-[#352432]/45">{p.role}</div></div>
+                    <div className="min-w-0"><div className="truncate text-[13px] font-medium text-[#2A2027]">{p.name}</div><div className="text-[10px] text-[#74616A]">{p.role}</div></div>
                     <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[8px] font-mono uppercase ${p.active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{p.active ? 'Aktif' : 'Pasif'}</span>
                   </div>
                 ))}
-                {!staff.length && <div className="text-[11px] text-[#352432]/40">Personel kaydı yok.</div>}
+                {!staff.length && <div className="text-[11px] text-[#74616A]">Personel kaydı yok.</div>}
               </div>
             </div>
           </motion.div>
@@ -465,32 +465,32 @@ export default function AyarlarPage() {
 
         {/* MEVCUT PAKET + KULLANIM */}
         <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.26 }}
-          className="overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+          className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
           <div className="grid gap-0 lg:grid-cols-[.65fr_1fr]">
-            <div className="border-b border-[#ead8df]/70 p-6 lg:border-b-0 lg:border-r">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/75"><Package className="h-4 w-4" /> Mevcut Paket</div>
+            <div className="border-b border-[#EAD8DF] p-6 lg:border-b-0 lg:border-r">
+              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/75"><Package className="h-4 w-4" /> Mevcut Paket</div>
               <h3 className="mt-3 font-display text-3xl tracking-tight">{usage.planName || 'Atanmamış'}</h3>
-              {currentPlan?.description && <p className="mt-1 line-clamp-2 text-[12px] text-[#352432]/55">{currentPlan.description}</p>}
+              {currentPlan?.description && <p className="mt-1 line-clamp-2 text-[12px] text-[#5A4B53]">{currentPlan.description}</p>}
               <div className="mt-4 font-display text-4xl tabular-nums beautyasist-text-gradient">{usage.planMonthlyPriceTRY === 0 ? 'Özel' : formatTL(usage.planMonthlyPriceTRY)}</div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">aylık</div>
+              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">aylık</div>
               {(usage.hasOverflow || usage.hasWarning) && (
                 <div className={`mt-5 flex items-start gap-2 rounded-[12px] border px-3 py-2.5 text-[11px] ${usage.hasOverflow ? 'border-rose-300/30 bg-rose-50 text-rose-700' : 'border-amber-300/30 bg-amber-50 text-amber-700'}`}>
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <div>{usage.hasOverflow ? 'Bazı metrikler paket limitlerini aşıyor — yükseltme önerilir.' : 'Bazı metrikler sınıra yaklaşıyor (%80+).'}</div>
                 </div>
               )}
-              <Link href="/panel/paket" className="group mt-5 inline-flex items-center gap-2 rounded-[10px] border border-[#efbfd0]/75 bg-[#fff1f6] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#ffe6ef]">
+              <Link href="/panel/paket" className="group mt-5 inline-flex items-center gap-2 rounded-[10px] border border-[#BE7690]/75 bg-[#F6DFE6] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
                 Paket detayı & yükselt <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </Link>
             </div>
             <div className="p-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/45"><Sparkles className="h-3.5 w-3.5" /> Kullanım</div>
-                <div className={`font-display text-lg tabular-nums ${usage.hasOverflow ? 'text-rose-700' : usage.hasWarning ? 'text-amber-700' : 'text-[#c85776]'}`}>%{usage.maxPercent}</div>
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]"><Sparkles className="h-3.5 w-3.5" /> Kullanım</div>
+                <div className={`font-display text-lg tabular-nums ${usage.hasOverflow ? 'text-rose-700' : usage.hasWarning ? 'text-amber-700' : 'text-[#A5556E]'}`}>%{usage.maxPercent}</div>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {usage.metrics.map((m) => <UsageBar key={m.key} metric={m} icon={metricIcons[m.key]} />)}
-                {!usage.metrics.length && <div className="col-span-2 text-[11px] text-[#352432]/45">Kullanım verisi alınamadı.</div>}
+                {!usage.metrics.length && <div className="col-span-2 text-[11px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
               </div>
             </div>
           </div>
@@ -498,25 +498,25 @@ export default function AyarlarPage() {
 
         {/* ŞUBELER */}
         <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.3 }}
-          className="overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
-          <div className="flex items-center justify-between border-b border-[#ead8df]/70 px-5 py-4">
+          className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+          <div className="flex items-center justify-between border-b border-[#EAD8DF] px-5 py-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">Şubeler</div>
-              <div className="font-display text-2xl tracking-tight">{branches.length} kayıt{defaultBranch && <span className="ml-2 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">· varsayılan: {defaultBranch.name}</span>}</div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">Şubeler</div>
+              <div className="font-display text-2xl tracking-tight">{branches.length} kayıt{defaultBranch && <span className="ml-2 text-[11px] font-mono uppercase tracking-widest text-[#74616A]">· varsayılan: {defaultBranch.name}</span>}</div>
             </div>
-            <Building2 className="h-5 w-5 text-[#c85776]/60" />
+            <Building2 className="h-5 w-5 text-[#A5556E]/60" />
           </div>
-          <div className="divide-y divide-[#f1e5ea]">
+          <div className="divide-y divide-[#F1E7EB]">
             {branches.map((b) => (
-              <div key={b.id} className="grid grid-cols-1 gap-3 px-5 py-4 transition-colors hover:bg-[#fffafc] md:grid-cols-12 md:items-center">
+              <div key={b.id} className="grid grid-cols-1 gap-3 px-5 py-4 transition-colors hover:bg-[#F7F6F6] md:grid-cols-12 md:items-center">
                 <div className="md:col-span-5">
-                  <div className="flex items-center gap-2 text-sm text-[#352432]/85">
+                  <div className="flex items-center gap-2 text-sm text-[#2A2027]/85">
                     {b.name}
-                    {b.isDefault && <span className="inline-flex items-center gap-1 rounded-md border border-[#efbfd0]/75 bg-[#fff1f6] px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#c85776]"><Star className="h-2.5 w-2.5" /> varsayılan</span>}
+                    {b.isDefault && <span className="inline-flex items-center gap-1 rounded-md border border-[#BE7690]/75 bg-[#F6DFE6] px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#A5556E]"><Star className="h-2.5 w-2.5" /> varsayılan</span>}
                   </div>
-                  <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/45"><MapPin className="mr-1 inline h-3 w-3" />{b.city}</div>
+                  <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#74616A]"><MapPin className="mr-1 inline h-3 w-3" />{b.city}</div>
                 </div>
-                <div className="md:col-span-4 text-[11px] font-mono text-[#352432]/55"><UsersRound className="mr-1 inline h-3 w-3" /> {b.staffCount} personel</div>
+                <div className="md:col-span-4 text-[11px] font-mono text-[#5A4B53]"><UsersRound className="mr-1 inline h-3 w-3" /> {b.staffCount} personel</div>
                 <div className="md:col-span-3 flex justify-end">
                   <AdminEditDialog
                     triggerVariant="ghost" triggerLabel="Düzenle" titleIcon={PenLine} title={`${b.name} · şube ayarı`}
@@ -531,7 +531,7 @@ export default function AyarlarPage() {
                 </div>
               </div>
             ))}
-            {!branches.length && !loading && <div className="px-5 py-8 text-center text-sm text-[#352432]/45">Henüz şube tanımlanmadı. Sağ üstten "Şube Ekle" ile başla.</div>}
+            {!branches.length && !loading && <div className="px-5 py-8 text-center text-sm text-[#74616A]">Henüz şube tanımlanmadı. Sağ üstten "Şube Ekle" ile başla.</div>}
           </div>
         </motion.section>
       </div>
@@ -544,11 +544,11 @@ function useMemoLike<T>(v: T): T { return v }
 
 function ProfileBox({ icon: Icon, label, value }: { icon: typeof PhoneIcon; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-[12px] border border-[#ead8df]/65 bg-white/85 px-3 py-2.5">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-3.5 w-3.5" /></span>
+    <div className="flex items-center gap-2.5 rounded-[12px] border border-[#EAD8DF]/65 bg-white/85 px-3 py-2.5">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#A5556E] text-white"><Icon className="h-3.5 w-3.5" /></span>
       <div className="min-w-0">
-        <div className="text-[9px] text-[#352432]/45">{label}</div>
-        <div className="truncate text-[12px] font-medium text-[#352432]/85">{value}</div>
+        <div className="text-[9px] text-[#74616A]">{label}</div>
+        <div className="truncate text-[12px] font-medium text-[#2A2027]/85">{value}</div>
       </div>
     </div>
   )
@@ -556,12 +556,12 @@ function ProfileBox({ icon: Icon, label, value }: { icon: typeof PhoneIcon; labe
 
 function PaymentRow({ icon: Icon, title, sub, value }: { icon: typeof Wallet; title: string; sub: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-[14px] border border-[#ead8df]/65 bg-white/85 px-3.5 py-3">
+    <div className="flex items-center justify-between rounded-[14px] border border-[#EAD8DF]/65 bg-white/85 px-3.5 py-3">
       <div className="flex items-center gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><Icon className="h-4 w-4" /></span>
-        <div><div className="text-[13px] font-medium text-[#352432]">{title}</div><div className="text-[10px] text-[#352432]/45">{sub}</div></div>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><Icon className="h-4 w-4" /></span>
+        <div><div className="text-[13px] font-medium text-[#2A2027]">{title}</div><div className="text-[10px] text-[#74616A]">{sub}</div></div>
       </div>
-      <div className="font-display text-base tabular-nums text-[#c85776]">{value}</div>
+      <div className="font-display text-base tabular-nums text-[#A5556E]">{value}</div>
     </div>
   )
 }

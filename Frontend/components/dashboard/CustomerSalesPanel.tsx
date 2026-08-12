@@ -108,7 +108,7 @@ export default function CustomerSalesPanel({
     <button
       type="button"
       onClick={() => setHistoryOpen(true)}
-      className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#efe1e7] bg-[#fffafc] font-semibold text-[#a34a62] transition-colors hover:border-[#e7bccb] hover:bg-[#fff2f6] ${
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] font-semibold text-[#a34a62] transition-colors hover:border-[#e7bccb] hover:bg-[#fff2f6] ${
         flush ? 'px-3 py-1.5 text-[11px]' : 'px-2.5 py-1 text-[10px]'
       }`}
     >
@@ -123,10 +123,10 @@ export default function CustomerSalesPanel({
         {!flush && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f7ebef] pb-3">
             <div className="flex items-center gap-2">
-              <Package className="h-3.5 w-3.5 text-[#c85776]" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#c85776]">Paket & Hizmet Satışları</span>
+              <Package className="h-3.5 w-3.5 text-[#A5556E]" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#A5556E]">Paket & Hizmet Satışları</span>
               {sorted.length > 0 && (
-                <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
+                <span className="rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
               )}
             </div>
             {historyButton}
@@ -142,7 +142,7 @@ export default function CustomerSalesPanel({
                   type="button"
                   onClick={() => setFilter(f.key)}
                   className={`cursor-pointer rounded-full font-semibold transition-colors ${flush ? 'px-3 py-1.5 text-[11px]' : 'px-2.5 py-1 text-[10px]'} ${
-                    filter === f.key ? 'bg-[#c85776] text-white' : 'border border-[#f0e0e6] bg-white text-[#705a66] hover:border-[#e7bccb] hover:text-[#a34a62]'
+                    filter === f.key ? 'bg-[#A5556E] text-white' : 'border border-[#f0e0e6] bg-white text-[#74616A] hover:border-[#e7bccb] hover:text-[#a34a62]'
                   }`}
                 >
                   {f.label} {counts[f.key] > 0 && <span className="opacity-70">{counts[f.key]}</span>}
@@ -156,7 +156,7 @@ export default function CustomerSalesPanel({
         {/* Geniş modalda liste iki sütuna açılır — 10+ satışlı müşteride tek sütun uzayıp gidiyordu. */}
         <div className={`mt-3 ${flush ? 'grid gap-2.5 xl:grid-cols-2' : 'space-y-2'}`}>
           {visible.length === 0 ? (
-            <div className={`rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 text-center text-[12px] text-[#705a66] ${flush ? 'py-10 xl:col-span-2' : 'py-6'}`}>
+            <div className={`rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 text-center text-[12px] text-[#74616A] ${flush ? 'py-10 xl:col-span-2' : 'py-6'}`}>
               {sorted.length === 0
                 ? 'Bu müşteriye ait paket veya hizmet satışı yok. Geçmiş satışları da buradan girebilirsiniz.'
                 : 'Bu durumda satış yok.'}
@@ -214,8 +214,8 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
       whileHover={{ y: -1 }}
       className={`group flex w-full items-start gap-2.5 rounded-[12px] border px-3 py-2.5 text-left transition-colors ${
         account.saleStatus === 'Cancelled'
-          ? 'border-[#f3dfe4] bg-[#fffafb] opacity-80 hover:opacity-100'
-          : 'border-[#f0e0e6] bg-white hover:border-[#e7bccb] hover:bg-[#fffafc]'
+          ? 'border-[#f3dfe4] bg-[#F7F6F6] opacity-80 hover:opacity-100'
+          : 'border-[#f0e0e6] bg-white hover:border-[#e7bccb] hover:bg-[#F7F6F6]'
       }`}
     >
       <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] border ${meta.pill}`}>
@@ -224,7 +224,7 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
 
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="truncate text-[12.5px] font-semibold text-[#352432]">{account.name}</span>
+          <span className="truncate text-[12.5px] font-semibold text-[#2A2027]">{account.name}</span>
           <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${meta.pill}`}>{meta.label}</span>
           {account.isHistorical && (
             <span className="inline-flex items-center gap-0.5 rounded-full border border-[#e0d3f2] bg-[#faf6ff] px-1.5 py-0.5 text-[10px] font-bold text-[#6b4aa0]">
@@ -233,19 +233,19 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
           )}
         </span>
 
-        <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#705a66]">
-          <span className="inline-flex items-center gap-1"><CalendarClock className="h-3 w-3 text-[#c85776]" /> {formatSaleDate(account.soldAtUtc)}</span>
+        <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#74616A]">
+          <span className="inline-flex items-center gap-1"><CalendarClock className="h-3 w-3 text-[#A5556E]" /> {formatSaleDate(account.soldAtUtc)}</span>
           {account.soldByStaffName && (
-            <span className="inline-flex items-center gap-1"><User className="h-3 w-3 text-[#c85776]" /> {account.soldByStaffName}</span>
+            <span className="inline-flex items-center gap-1"><User className="h-3 w-3 text-[#A5556E]" /> {account.soldByStaffName}</span>
           )}
           {account.appliedByStaffName && (
-            <span className="inline-flex items-center gap-1" title="Seansları uygulayan"><Sparkles className="h-3 w-3 text-[#c85776]" /> {account.appliedByStaffName}</span>
+            <span className="inline-flex items-center gap-1" title="Seansları uygulayan"><Sparkles className="h-3 w-3 text-[#A5556E]" /> {account.appliedByStaffName}</span>
           )}
           {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
           {account.sessionsTotal > 0 && (
-            <span className="font-semibold tabular-nums text-[#4a3a44]">
+            <span className="font-semibold tabular-nums text-[#3E343A]">
               {Math.max(0, account.sessionsTotal - account.sessionsUsed)} seans kaldı
-              <span className="ml-1 font-normal text-[#705a66]">({account.sessionsTotal} seanslık)</span>
+              <span className="ml-1 font-normal text-[#74616A]">({account.sessionsTotal} seanslık)</span>
             </span>
           )}
         </span>
@@ -262,15 +262,15 @@ function SaleRow({ account, onClick }: { account: CustomerAccount; onClick: () =
               style={{ width: `${Math.max(3, paidPct)}%` }}
             />
           </span>
-          <span className="shrink-0 text-[11px] font-semibold text-[#705a66]">
+          <span className="shrink-0 text-[11px] font-semibold text-[#74616A]">
             {account.remainingAmount > 0.005 ? `${formatTL(Math.round(account.remainingAmount))} kalan` : 'Ödendi'}
           </span>
         </span>
       </span>
 
       <span className="flex shrink-0 flex-col items-end gap-1">
-        <span className="font-display text-[13.5px] font-bold text-[#352432]">{formatTL(Math.round(account.totalAmount))}</span>
-        <ChevronRight className="h-3.5 w-3.5 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#c85776]" />
+        <span className="font-display text-[13.5px] font-bold text-[#2A2027]">{formatTL(Math.round(account.totalAmount))}</span>
+        <ChevronRight className="h-3.5 w-3.5 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#A5556E]" />
       </span>
     </motion.button>
   )

@@ -32,7 +32,7 @@ const statusBadge: Record<PendingOperationStatusKey, string> = {
   Pending: 'border-amber-300/40 bg-amber-50 text-amber-700',
   Approved: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Rejected: 'border-rose-300/40 bg-rose-50 text-rose-700',
-  Cancelled: 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/55',
+  Cancelled: 'border-[#EAD8DF] bg-[#F7F6F6] text-[#5A4B53]',
   Processing: 'border-sky-300/40 bg-sky-50 text-sky-700',
 }
 const statusLabel: Record<PendingOperationStatusKey, string> = { Pending: 'Bekliyor', Approved: 'Onaylandı', Rejected: 'Reddedildi', Cancelled: 'İptal', Processing: 'İşleniyor' }
@@ -262,7 +262,7 @@ function OnaylarPageInner() {
   }, [page, totalPages])
 
   const statCards = [
-    { label: 'Bekleyen', s: stats.pending, icon: Clock, stroke: '#e0617f', iconBg: 'bg-[#fff1f6] text-[#c85776]' },
+    { label: 'Bekleyen', s: stats.pending, icon: Clock, stroke: '#e0617f', iconBg: 'bg-[#A5556E] text-white' },
     { label: 'Onaylanan', s: stats.approved, icon: CheckCircle2, stroke: '#3cae8d', iconBg: 'bg-emerald-50 text-emerald-600' },
     { label: 'Reddedilen', s: stats.rejected, icon: XCircle, stroke: '#e0617f', iconBg: 'bg-rose-50 text-rose-600' },
     { label: 'Toplam', s: stats.total, icon: Users, stroke: '#9c70bb', iconBg: 'bg-violet-50 text-violet-600' },
@@ -276,25 +276,25 @@ function OnaylarPageInner() {
         breadcrumbs={['Admin', 'Yönetim', 'Onay Bekleyenler']}
         actions={
           <button type="button" onClick={refresh}
-            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/75 transition-colors hover:bg-[#fff4f8]/40">
+            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#3E343A] transition-colors hover:bg-[#F7F6F6]">
             <RefreshCcw className="h-3.5 w-3.5" /> Yenile
           </button>
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         {/* Personelin onaya gönderdiği taslak randevular + saati gelmiş randevular */}
         <ManagerAppointmentInbox enabled={Boolean(tenantId)} tenantId={tenantId} />
 
         {/* TABS */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
             {TABS.map((t) => {
               // Takılı kayıt sayısı sekmede görünür: müdahale gerektiren tek durum budur.
               const stuckCount = t.key === 'stuck' ? all.filter((o) => o.isStuck).length : 0
               return (
                 <button key={t.key} type="button" onClick={() => setTab(t.key)}
-                  className={`inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white shadow-sm' : 'text-[#352432]/55 hover:bg-white'}`}>
+                  className={`inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#A5556E] text-white shadow-sm' : 'text-[#5A4B53] hover:bg-white'}`}>
                   {t.label}
                   {stuckCount > 0 && (
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${tab === t.key ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-700'}`}>{stuckCount}</span>
@@ -305,7 +305,7 @@ function OnaylarPageInner() {
           </div>
           {tab !== 'pending' && (
             <button type="button" onClick={() => setTab('pending')}
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[11px] text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/40">
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]">
               <Sparkles className="h-3.5 w-3.5" /> Filtreleri Temizle
             </button>
           )}
@@ -317,7 +317,7 @@ function OnaylarPageInner() {
         {/* STAT CARDS */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {statCards.map((card) => (
-            <div key={card.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+            <div key={card.label} className="rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
               <div className="flex items-center justify-between">
                 <span className={`grid h-9 w-9 place-items-center rounded-[10px] ${card.iconBg}`}><card.icon className="h-4 w-4" /></span>
                 {card.s.delta !== null && (
@@ -326,34 +326,34 @@ function OnaylarPageInner() {
                   </span>
                 )}
               </div>
-              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{card.label}</div>
+              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#74616A]">{card.label}</div>
               <div className="mt-0.5 flex items-end justify-between gap-2">
                 <div className="font-display text-3xl tabular-nums tracking-tight">{card.s.value.toLocaleString('tr-TR')}</div>
                 <div className="w-24 shrink-0"><Sparkline values={card.s.series} stroke={card.stroke} /></div>
               </div>
-              <div className="mt-1 text-[10px] text-[#352432]/40">Dün: {card.s.yest}</div>
+              <div className="mt-1 text-[10px] text-[#74616A]">Dün: {card.s.yest}</div>
             </div>
           ))}
         </div>
 
         {/* TABLE */}
-        <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ead8df]/70 px-5 py-4">
+        <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EAD8DF] px-5 py-4">
             <div>
-              <div className="font-display text-xl tracking-tight">{TABS.find((t) => t.key === tab)?.label === 'Bekleyenler' ? 'Onay Bekleyen Talepler' : 'Onay Talepleri'} <span className="ml-1 rounded-full bg-[#fff1f6] px-2 py-0.5 text-[12px] text-[#b14d6c]">{filtered.length}</span></div>
-              <div className="text-[11px] text-[#352432]/45">Onay taleplerini görüntüleyin ve işlem yapın.</div>
+              <div className="font-display text-xl tracking-tight">{TABS.find((t) => t.key === tab)?.label === 'Bekleyenler' ? 'Onay Bekleyen Talepler' : 'Onay Talepleri'} <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
+              <div className="text-[11px] text-[#74616A]">Onay taleplerini görüntüleyin ve işlem yapın.</div>
             </div>
             <button type="button" onClick={exportCsv}
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[11px] text-[#352432]/70 transition-colors hover:bg-[#fff4f8]/40">
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]">
               <Download className="h-3.5 w-3.5" /> Tabloyu dışa aktar
             </button>
           </div>
 
-          <div className="hidden grid-cols-[1.3fr_1.4fr_1.2fr_0.9fr_1fr_0.8fr_1.3fr] gap-3 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
+          <div className="hidden grid-cols-[1.3fr_1.4fr_1.2fr_0.9fr_1fr_0.8fr_1.3fr] gap-3 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
             <span>Talep Türü</span><span>Müşteri / Danışan</span><span>Personel</span><span>Şube</span><span>Oluşturulma</span><span>Durum</span><span className="text-right">İşlemler</span>
           </div>
 
-          <div className="divide-y divide-[#f1e5ea]">
+          <div className="divide-y divide-[#F1E7EB]">
             {pageRows.map((op) => {
               const Icon = opIcon(op.operationType)
               const cust = extractCustomer(op)
@@ -362,36 +362,36 @@ function OnaylarPageInner() {
               const isPending = op.status === 'Pending'
               const isBusy = busyId === op.id
               return (
-                <div key={op.id} className="px-5 py-3 transition-colors hover:bg-[#fffafc]">
+                <div key={op.id} className="px-5 py-3 transition-colors hover:bg-[#F7F6F6]">
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_1.4fr_1.2fr_0.9fr_1fr_0.8fr_1.3fr] lg:items-center">
                     {/* Talep Türü */}
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><Icon className="h-4 w-4" strokeWidth={1.6} /></span>
-                      <div className="min-w-0"><div className="truncate text-[12.5px] font-medium text-[#352432]">{op.operationTypeLabel}</div></div>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><Icon className="h-4 w-4" strokeWidth={1.6} /></span>
+                      <div className="min-w-0"><div className="truncate text-[12.5px] font-medium text-[#2A2027]">{op.operationTypeLabel}</div></div>
                     </div>
                     {/* Müşteri */}
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br ${avatarColor(cust.name)} text-[10px] font-display text-[#3a1a2a]`}>{initials(cust.name)}</span>
-                      <div className="min-w-0"><div className="truncate text-[12px] text-[#352432]">{cust.name}</div><div className="truncate text-[10px] font-mono text-[#352432]/40">{cust.phone || '—'}</div></div>
+                      <div className="min-w-0"><div className="truncate text-[12px] text-[#2A2027]">{cust.name}</div><div className="truncate text-[10px] font-mono text-[#74616A]">{cust.phone || '—'}</div></div>
                     </div>
                     {/* Personel */}
                     <div className="flex min-w-0 items-center gap-2.5">
                       {photo ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={photo} alt={op.requestedByName} className="h-8 w-8 shrink-0 rounded-full border border-[#efbfd0]/50 object-cover" />
+                        <img src={photo} alt={op.requestedByName} className="h-8 w-8 shrink-0 rounded-full border border-[#BE7690]/50 object-cover" />
                       ) : (
                         <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br ${avatarColor(op.requestedByName)} text-[10px] font-display text-[#3a1a2a]`}>{initials(op.requestedByName)}</span>
                       )}
-                      <div className="min-w-0 truncate text-[12px] text-[#352432]">{op.requestedByName}</div>
+                      <div className="min-w-0 truncate text-[12px] text-[#2A2027]">{op.requestedByName}</div>
                     </div>
                     {/* Şube */}
-                    <div className="text-[11px] text-[#352432]/60">
+                    <div className="text-[11px] text-[#5A4B53]">
                       <div className="truncate">{(op.branchId && branchName.get(op.branchId)) || 'Merkez'}</div>
-                      <div className="truncate text-[10px] text-[#352432]/40">{selectedInstitution?.name || ''}</div>
+                      <div className="truncate text-[10px] text-[#74616A]">{selectedInstitution?.name || ''}</div>
                     </div>
                     {/* Oluşturulma */}
-                    <div className="text-[11px] text-[#352432]/55">
-                      {(() => { const parts = op.requestedAtFormatted.split(/[ ]+/); return (<><div>{parts.slice(0, 3).join(' ') || op.requestedAtFormatted}</div><div className="font-mono text-[10px] text-[#352432]/40">{parts.slice(3).join(' ')}</div></>) })()}
+                    <div className="text-[11px] text-[#5A4B53]">
+                      {(() => { const parts = op.requestedAtFormatted.split(/[ ]+/); return (<><div>{parts.slice(0, 3).join(' ') || op.requestedAtFormatted}</div><div className="font-mono text-[10px] text-[#74616A]">{parts.slice(3).join(' ')}</div></>) })()}
                     </div>
                     {/* Durum */}
                     <div className="space-y-1">
@@ -422,28 +422,28 @@ function OnaylarPageInner() {
                           className="inline-flex items-center gap-1 rounded-md border border-amber-300/50 bg-amber-50 px-2.5 py-1.5 text-[10px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50">
                           <AlertTriangle className="h-3.5 w-3.5" /> Elle çöz
                         </button>
-                      ) : op.rejectionReason ? <span className="truncate text-[10px] text-rose-600/70" title={op.rejectionReason}>{op.rejectionReason}</span> : <span className="text-[10px] text-[#352432]/35">karara bağlandı</span>}
+                      ) : op.rejectionReason ? <span className="truncate text-[10px] text-rose-600/70" title={op.rejectionReason}>{op.rejectionReason}</span> : <span className="text-[10px] text-[#74616A]">karara bağlandı</span>}
                       <button type="button" onClick={() => setExpandedId(isExpanded ? null : op.id)}
-                        className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 transition-colors hover:bg-[#fff4f8]/50"><MoreVertical className="h-3.5 w-3.5" /></button>
+                        className="grid h-7 w-7 place-items-center rounded-md border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:bg-[#F7F6F6]/50"><MoreVertical className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
 
                   <AnimatePresence initial={false}>
                     {isExpanded && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
-                        <div className="mt-3 space-y-3 border-t border-[#ead8df]/60 pt-3">
+                        <div className="mt-3 space-y-3 border-t border-[#EAD8DF] pt-3">
                           {isReplayOp(op) ? (
                             <>
-                              <div className="flex items-start gap-2 text-[12.5px] text-[#352432]/75">
-                                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#c85776]/70" />
-                                <span><span className="font-medium text-[#352432]">{op.operationTypeLabel}</span> — onaylanınca uygulanacak: {op.title}</span>
+                              <div className="flex items-start gap-2 text-[12.5px] text-[#3E343A]">
+                                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#A5556E]/70" />
+                                <span><span className="font-medium text-[#2A2027]">{op.operationTypeLabel}</span> — onaylanınca uygulanacak: {op.title}</span>
                               </div>
                               {replayBodyFields(op).length > 0 && (
                                 <div className="grid gap-1.5 sm:grid-cols-2">
                                   {replayBodyFields(op).map(([label, val]) => (
-                                    <div key={label} className="rounded-[8px] border border-[#ead8df]/60 bg-[#fffafc] px-2.5 py-1.5">
-                                      <div className="text-[10px] tracking-wide text-[#c85776]/70">{label}</div>
-                                      <div className="mt-0.5 truncate text-[12px] text-[#352432]/85">{val}</div>
+                                    <div key={label} className="rounded-[8px] border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1.5">
+                                      <div className="text-[10px] tracking-wide text-[#A5556E]/70">{label}</div>
+                                      <div className="mt-0.5 truncate text-[12px] text-[#2A2027]/85">{val}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -451,13 +451,13 @@ function OnaylarPageInner() {
                             </>
                           ) : (
                             <>
-                              <div className="text-[12px] text-[#352432]/70">{op.title}{op.summary ? ` · ${op.summary}` : ''}</div>
+                              <div className="text-[12px] text-[#5A4B53]">{op.title}{op.summary ? ` · ${op.summary}` : ''}</div>
                               {op.payload && (
                                 <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                                   {Object.entries(op.payload).slice(0, 9).map(([k, v]) => (
-                                    <div key={k} className="rounded-[8px] border border-[#ead8df]/60 bg-[#fffafc] px-2.5 py-1.5">
-                                      <div className="text-[10px] tracking-wide text-[#c85776]/70">{FIELD_TR[k] || k}</div>
-                                      <div className="mt-0.5 truncate text-[12px] text-[#352432]/85">{v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v)}</div>
+                                    <div key={k} className="rounded-[8px] border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1.5">
+                                      <div className="text-[10px] tracking-wide text-[#A5556E]/70">{FIELD_TR[k] || k}</div>
+                                      <div className="mt-0.5 truncate text-[12px] text-[#2A2027]/85">{v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -467,9 +467,9 @@ function OnaylarPageInner() {
                           {isPending && (
                             <div className="flex flex-wrap items-end gap-2">
                               <div className="flex-1 min-w-[200px]">
-                                <label className="block text-[10px] font-mono uppercase tracking-widest text-[#c85776]/70">Red gerekçesi (opsiyonel)</label>
+                                <label className="block text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/70">Red gerekçesi (opsiyonel)</label>
                                 <input value={reasonDrafts[op.id] || ''} onChange={(e) => setReasonDrafts((p) => ({ ...p, [op.id]: e.target.value }))} placeholder="Personele iletilecek kısa açıklama"
-                                  className="mt-1.5 w-full rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[12px] text-[#352432] outline-none focus:border-[#c85776]" />
+                                  className="mt-1.5 w-full rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
                               </div>
                               <button type="button" disabled={isBusy} onClick={() => handleReject(op)}
                                 className="rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50">Reddet</button>
@@ -495,14 +495,14 @@ function OnaylarPageInner() {
                               <label className="mt-2.5 block text-[10px] font-mono uppercase tracking-widest text-amber-700/80">Ne kontrol ettiniz? (zorunlu)</label>
                               <input value={reasonDrafts[op.id] || ''} onChange={(e) => setReasonDrafts((p) => ({ ...p, [op.id]: e.target.value }))}
                                 placeholder="Örn: cari kartta 1.500 ₺ tahsilat göründü"
-                                className="mt-1.5 w-full rounded-[10px] border border-amber-300/60 bg-white px-3 py-2 text-[12px] text-[#352432] outline-none focus:border-amber-500" />
+                                className="mt-1.5 w-full rounded-[10px] border border-amber-300/60 bg-white px-3 py-2 text-[12px] text-[#2A2027] outline-none focus:border-amber-500" />
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <button type="button" disabled={isBusy} onClick={() => handleResolveStuck(op, true)}
                                   className="rounded-[10px] border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50">
                                   Kayıt oluşmuş — onaylandı olarak kapat
                                 </button>
                                 <button type="button" disabled={isBusy} onClick={() => handleResolveStuck(op, false)}
-                                  className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/75 transition-colors hover:bg-[#fff4f8]/60 disabled:opacity-50">
+                                  className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-medium text-[#3E343A] transition-colors hover:bg-[#F7F6F6]/60 disabled:opacity-50">
                                   Kayıt yok — yeniden onaylanabilir yap
                                 </button>
                               </div>
@@ -518,7 +518,7 @@ function OnaylarPageInner() {
             {!pageRows.length && !loading && (
               <div className="px-5 py-14 text-center">
                 <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-300/60" strokeWidth={1.4} />
-                <div className="mt-3 text-sm text-[#352432]/65">{
+                <div className="mt-3 text-sm text-[#5A4B53]">{
                   tab === 'pending' ? 'Bekleyen onay yok. Tüm personel işlemleri karara bağlanmış.'
                     : tab === 'stuck' ? 'Takılan işlem yok — sonucu doğrulanamayan onay bulunmuyor.'
                     : `${TABS.find((t) => t.key === tab)?.label} kapsamında kayıt yok.`
@@ -529,15 +529,15 @@ function OnaylarPageInner() {
 
           {/* PAGINATION */}
           {filtered.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 px-5 py-3.5">
-              <div className="text-[11px] text-[#352432]/50">{(page - 1) * pageSize + 1} – {Math.min(page * pageSize, filtered.length)} / {filtered.length} kayıt gösteriliyor</div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
+              <div className="text-[11px] text-[#5A4B53]">{(page - 1) * pageSize + 1} – {Math.min(page * pageSize, filtered.length)} / {filtered.length} kayıt gösteriliyor</div>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-                {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#352432]/35">…</span> : (
-                  <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums transition-colors ${p === page ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fff4f8]/50'}`}>{p}</button>
+                <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+                {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#74616A]">…</span> : (
+                  <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums transition-colors ${p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'}`}>{p}</button>
                 ))}
-                <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
-                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[11px] text-[#352432]/65 outline-none focus:border-[#c85776]">
+                <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">
                   {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}
                 </select>
               </div>
@@ -546,11 +546,11 @@ function OnaylarPageInner() {
         </div>
 
         {/* ONAY ÖZETİ */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
+        <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
           <div className="font-display text-xl tracking-tight">Onay Özeti</div>
-          <div className="text-[11px] text-[#352432]/45">Seçili filtreye göre özet bilgiler</div>
+          <div className="text-[11px] text-[#74616A]">Seçili filtreye göre özet bilgiler</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryTile icon={Clock} tone="text-[#c85776] bg-[#fff1f6]" label="Ortalama Bekleme Süresi" value={fmtDur(summary.avgWait)} sub={`Dün: ${fmtDur(summary.yAvg)}`} />
+            <SummaryTile icon={Clock} tone="text-[#A5556E] bg-[#F6DFE6]" label="Ortalama Bekleme Süresi" value={fmtDur(summary.avgWait)} sub={`Dün: ${fmtDur(summary.yAvg)}`} />
             <SummaryTile icon={Hourglass} tone="text-amber-600 bg-amber-50" label="En Uzun Bekleyen Talep" value={fmtDur(summary.longest)} sub={summary.longestLabel} />
             <SummaryTile icon={CheckCircle2} tone="text-emerald-600 bg-emerald-50" label="Bugün Onaylanan" value={String(summary.todayApproved)} sub={`%${summary.successRate} başarı oranı`} />
             <SummaryTile icon={XCircle} tone="text-rose-600 bg-rose-50" label="Bugün Reddedilen" value={String(summary.todayRejected)} sub={`%${summary.rejectRate} ret oranı`} />
@@ -563,12 +563,12 @@ function OnaylarPageInner() {
 
 function SummaryTile({ icon: Icon, tone, label, value, sub }: { icon: typeof Clock; tone: string; label: string; value: string; sub: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-[#ead8df]/60 bg-white px-4 py-3.5">
+    <div className="flex items-center gap-3 rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3.5">
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
       <div className="min-w-0">
-        <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
-        <div className="truncate font-display text-lg tracking-tight text-[#352432]">{value}</div>
-        <div className="truncate text-[10px] text-[#352432]/45">{sub}</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
+        <div className="truncate font-display text-lg tracking-tight text-[#2A2027]">{value}</div>
+        <div className="truncate text-[10px] text-[#74616A]">{sub}</div>
       </div>
     </div>
   )

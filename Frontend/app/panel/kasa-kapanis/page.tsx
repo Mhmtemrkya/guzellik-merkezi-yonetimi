@@ -133,10 +133,10 @@ export default function KasaKapanisPage() {
     return (
       <>
         <Topbar title="Gün Sonu Kasa Kapanışı" subtitle="Pakete dahil değil" breadcrumbs={['Admin', 'Finans', 'Kasa Kapanışı']} />
-        <div className="mx-auto mt-10 max-w-md rounded-[22px] border border-[#ead8df]/70 bg-white/86 p-8 text-center">
-          <Lock className="mx-auto h-8 w-8 text-[#c85776]/60" />
+        <div className="mx-auto mt-10 max-w-md rounded-[22px] border border-[#EAD8DF] bg-white p-8 text-center">
+          <Lock className="mx-auto h-8 w-8 text-[#A5556E]/60" />
           <div className="mt-3 font-display text-xl text-[#241923]">Gün Sonu Kasa Kapanışı</div>
-          <p className="mt-2 text-[13px] text-[#705a66]">Bu özellik paketinizde yok. Üst pakete geçerek Z raporu / kasa kapanışını kullanabilirsiniz.</p>
+          <p className="mt-2 text-[13px] text-[#74616A]">Bu özellik paketinizde yok. Üst pakete geçerek Z raporu / kasa kapanışını kullanabilirsiniz.</p>
         </div>
       </>
     )
@@ -158,13 +158,13 @@ export default function KasaKapanisPage() {
         breadcrumbs={['Admin', 'Finans', 'Kasa Kapanışı']}
       />
 
-      <div className="relative space-y-7 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-7 p-4 sm:p-6 xl:px-8">
         {/* Z RAPORU çipi */}
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e7cfa6]/60 bg-[#fbf3e6] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#9a6f22]">
             <Award className="h-3.5 w-3.5" /> Z Raporu
           </span>
-          <span className="text-[12px] font-medium text-[#705a66]">Gün sonu nakit mutabakatı</span>
+          <span className="text-[12px] font-medium text-[#74616A]">Gün sonu nakit mutabakatı</span>
         </div>
 
         {/* Kapanış + bilgi */}
@@ -174,10 +174,10 @@ export default function KasaKapanisPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_16px_38px_-26px_rgba(200,87,118,0.55)] sm:p-6"
+            className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_16px_38px_-26px_rgba(200,87,118,0.55)] sm:p-6"
           >
-            <div className="flex items-center gap-3 border-b border-[#f2e6eb] pb-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#fbeaf1] text-[#c85776]">
+            <div className="flex items-center gap-3 border-b border-[#EAD8DF] pb-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#fbeaf1] text-[#A5556E]">
                 <CalendarCheck className="h-4 w-4" strokeWidth={1.9} />
               </div>
               <h2 className="font-display text-lg font-bold text-[#241923]">Kapanış (Z Raporu)</h2>
@@ -185,22 +185,22 @@ export default function KasaKapanisPage() {
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">İş günü</span>
-                <input type="date" value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+                <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">İş günü</span>
+                <input type="date" value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Açılış (devir) ₺</span>
+                <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Açılış (devir) ₺</span>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-[#a98a98]">₺</span>
-                  <input type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder={String(suggestedOpening)} className="w-full rounded-[12px] border border-[#ead8df] bg-white py-2.5 pl-8 pr-3 text-[13px] tabular-nums text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+                  <input type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder={String(suggestedOpening)} className="w-full rounded-[12px] border border-[#EAD8DF] bg-white py-2.5 pl-8 pr-3 text-[13px] tabular-nums text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
                 </div>
               </label>
             </div>
 
             {/* Makbuz / döküm */}
-            <div className="gc-receipt mt-5 space-y-2.5 rounded-[16px] border border-[#f1e3e9] bg-[#fffafc] p-5 text-[13px]">
-              <div className="flex items-center justify-between text-[#4a3a44]">
-                <span className="flex items-center gap-1.5"><Banknote className="h-3.5 w-3.5 text-[#705a66]" /> Açılış (devir)</span>
+            <div className="gc-receipt mt-5 space-y-2.5 rounded-[16px] border border-[#f1e3e9] bg-[#F7F6F6] p-5 text-[13px]">
+              <div className="flex items-center justify-between text-[#3E343A]">
+                <span className="flex items-center gap-1.5"><Banknote className="h-3.5 w-3.5 text-[#74616A]" /> Açılış (devir)</span>
                 <span className="tabular-nums font-semibold">{formatTL(Math.round(opening))}</span>
               </div>
               <div className="border-t border-dashed border-[#ead0d9]" />
@@ -214,7 +214,7 @@ export default function KasaKapanisPage() {
               </div>
               <div className="border-t-2 border-[#ead0d9]" />
               <div className="flex items-center justify-between pt-0.5 text-[15px] font-bold text-[#241923]">
-                <span className="flex items-center gap-1.5"><Calculator className="h-4 w-4 text-[#c85776]" /> = Sistem nakdi (beklenen)</span>
+                <span className="flex items-center gap-1.5"><Calculator className="h-4 w-4 text-[#A5556E]" /> = Sistem nakdi (beklenen)</span>
                 <span className="tabular-nums text-[#b06a26]">{formatTL(Math.round(systemCash))}</span>
               </div>
             </div>
@@ -223,7 +223,7 @@ export default function KasaKapanisPage() {
             <label className="mt-5 block">
               <span className="mb-2 block text-[13px] font-bold text-[#241923]">Sayılan fiziki nakit ₺ *</span>
               <div className="relative">
-                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-display text-2xl font-bold text-[#c85776]">₺</span>
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-display text-2xl font-bold text-[#A5556E]">₺</span>
                 <input
                   type="number"
                   value={countedCash}
@@ -252,15 +252,15 @@ export default function KasaKapanisPage() {
             )}
 
             <label className="mt-4 block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-[#705a66]">Not (ops.)</span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. 50₺ bozuk para eksik" className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Not (ops.)</span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="örn. 50₺ bozuk para eksik" className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40" />
             </label>
 
             {alreadyClosed && <div className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700">Bu gün zaten kapatılmış — kaydetmek mevcut kaydı günceller.</div>}
             {actionError && <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{actionError}</div>}
 
             <div className="mt-5 flex justify-end">
-              <button type="button" disabled={busy} onClick={handleSave} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-3 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60">
+              <button type="button" disabled={busy} onClick={handleSave} className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-3 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60">
                 <Lock className="h-4 w-4" /> {alreadyClosed ? 'Güncelle' : 'Günü kapat'}
               </button>
             </div>
@@ -271,12 +271,12 @@ export default function KasaKapanisPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
-            className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_16px_38px_-28px_rgba(200,87,118,0.5)] sm:p-6"
+            className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_16px_38px_-28px_rgba(200,87,118,0.5)] sm:p-6"
           >
             <div className="flex items-center gap-2 font-display text-lg font-bold text-[#241923]">
-              <HelpCircle className="h-4 w-4 text-[#c85776]" /> Nasıl çalışır?
+              <HelpCircle className="h-4 w-4 text-[#A5556E]" /> Nasıl çalışır?
             </div>
-            <ul className="mt-4 space-y-3 text-[12.5px] leading-relaxed text-[#4a3a44]">
+            <ul className="mt-4 space-y-3 text-[12.5px] leading-relaxed text-[#3E343A]">
               <li className="flex gap-2.5"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /> Sistem, seçtiğin günün <b className="font-semibold text-[#241923]">nakit</b> tahsilat ve giderini kasadan otomatik hesaplar.</li>
               <li className="flex gap-2.5"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /> Sen yalnızca kasadaki <b className="font-semibold text-[#241923]">fiziki parayı</b> sayıp girersin; fark anında çıkar.</li>
               <li className="flex gap-2.5"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /> Açılış (devir) bir önceki günün sayımından otomatik önerilir.</li>
@@ -294,13 +294,13 @@ export default function KasaKapanisPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.13 }}
-          className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)] sm:p-6"
+          className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)] sm:p-6"
         >
-          <div className="flex flex-wrap items-center gap-2 border-b border-[#f2e6eb] pb-4 text-[#241923]">
-            <Wallet className="h-4 w-4 text-[#c85776]" />
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#EAD8DF] pb-4 text-[#241923]">
+            <Wallet className="h-4 w-4 text-[#A5556E]" />
             <h3 className="font-display text-lg font-bold">Ödeme yöntemi kırılımı</h3>
-            <span className="rounded-full border border-[#efe1e7] bg-[#fffafc] px-2.5 py-0.5 text-[10px] font-semibold text-[#705a66]">bugünün tahsilatları</span>
-            <span className="ml-auto text-[12px] font-semibold text-[#705a66]">
+            <span className="rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-0.5 text-[10px] font-semibold text-[#74616A]">bugünün tahsilatları</span>
+            <span className="ml-auto text-[12px] font-semibold text-[#74616A]">
               Toplam tahsilat: <span className="font-display text-[15px] font-bold text-[#b06a26]">{formatTL(Math.round(totalMethodIncome))}</span>
             </span>
           </div>
@@ -319,14 +319,14 @@ export default function KasaKapanisPage() {
                     )}
                   </div>
                   <div className={`mt-2 font-display text-xl font-bold tabular-nums ${m.text}`}>{formatTL(Math.round(b.income))}</div>
-                  <div className="mt-0.5 text-[10.5px] text-[#705a66]">
+                  <div className="mt-0.5 text-[10.5px] text-[#74616A]">
                     {b.count} tahsilat{b.expense > 0 ? ` · ${formatTL(Math.round(b.expense))} gider` : ''}
                   </div>
                 </div>
               )
             })}
           </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-[#705a66]">
+          <p className="mt-3 text-[11px] leading-relaxed text-[#74616A]">
             Kart / EFT / havale kasada fiziki nakit oluşturmaz; yalnızca <b className="font-semibold text-[#241923]">nakit</b> sistem nakdine ve sayım farkına girer. Bu kırılım, günün tüm tahsilat yöntemlerini alınan tahsilatlardan otomatik gösterir.
           </p>
         </motion.div>
@@ -337,20 +337,20 @@ export default function KasaKapanisPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.16 }}
-            className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)] sm:p-6"
+            className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)] sm:p-6"
           >
-            <div className="flex items-center gap-2 border-b border-[#f2e6eb] pb-4 text-[#241923]">
-              <Receipt className="h-4 w-4 text-[#c85776]" />
+            <div className="flex items-center gap-2 border-b border-[#EAD8DF] pb-4 text-[#241923]">
+              <Receipt className="h-4 w-4 text-[#A5556E]" />
               <h3 className="font-display text-lg font-bold">Günün nakit hareketleri</h3>
-              <span className="ml-1 rounded-full border border-[#efe1e7] bg-[#fffafc] px-2.5 py-0.5 text-[10px] font-semibold text-[#705a66]">{cashEntries.length} kayıt</span>
+              <span className="ml-1 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-0.5 text-[10px] font-semibold text-[#74616A]">{cashEntries.length} kayıt</span>
             </div>
             <div className="mt-3 space-y-1.5">
               {cashEntries.map((e) => {
                 const income = e.type === 'income'
                 return (
-                  <div key={e.id} className="flex items-center gap-3 rounded-[12px] px-2.5 py-2 transition-colors hover:bg-[#fffafc]">
+                  <div key={e.id} className="flex items-center gap-3 rounded-[12px] px-2.5 py-2 transition-colors hover:bg-[#F7F6F6]">
                     <span className={`h-2 w-2 shrink-0 rounded-full ${income ? 'bg-emerald-500' : 'bg-[#cf4d68]'}`} />
-                    <span className="w-11 shrink-0 text-[11px] font-semibold tabular-nums text-[#705a66]">{e.time || '—'}</span>
+                    <span className="w-11 shrink-0 text-[11px] font-semibold tabular-nums text-[#74616A]">{e.time || '—'}</span>
                     {/* Müşteri adı başta: satırda önce kimin işlemi olduğu okunur. */}
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[#3d2f3a]">
                       {e.customerName && <span className="font-semibold text-[#241923]">{e.customerName}</span>}
@@ -376,16 +376,16 @@ export default function KasaKapanisPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.22 }}
-            className="overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white/95 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)]"
+            className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/95 shadow-[0_14px_34px_-26px_rgba(200,87,118,0.5)]"
           >
-            <div className="flex items-center gap-2 border-b border-[#f2e6eb] bg-[#fff8fa] px-5 py-4 text-[#241923]">
-              <CalendarCheck className="h-4 w-4 text-[#c85776]" />
+            <div className="flex items-center gap-2 border-b border-[#EAD8DF] bg-[#fff8fa] px-5 py-4 text-[#241923]">
+              <CalendarCheck className="h-4 w-4 text-[#A5556E]" />
               <h3 className="font-display text-lg font-bold">Geçmiş kapanışlar</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-[12px]">
                 <thead>
-                  <tr className="border-b border-[#efe1e7] bg-[#fffafc] text-[10px] font-semibold uppercase tracking-wide text-[#705a66]">
+                  <tr className="border-b border-[#EAD8DF] bg-[#F7F6F6] text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">
                     <th className="px-4 py-3">Tarih</th>
                     <th className="px-4 py-3 text-right">Açılış</th>
                     <th className="px-4 py-3 text-right">Nakit Gelir</th>
@@ -398,7 +398,7 @@ export default function KasaKapanisPage() {
                 </thead>
                 <tbody className="divide-y divide-[#f2e6eb]">
                   {closings.map((c) => (
-                    <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[#3d2f3a] transition-colors hover:bg-[#fffafc]">
+                    <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[#3d2f3a] transition-colors hover:bg-[#F7F6F6]">
                       <td className="px-4 py-3 font-medium text-[#241923]">{c.businessDate ? new Date(`${c.businessDate}T00:00:00`).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{formatTL(Math.round(c.openingBalance))}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatTL(Math.round(c.cashIncome))}</td>

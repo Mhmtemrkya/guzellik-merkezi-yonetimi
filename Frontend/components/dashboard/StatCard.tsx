@@ -23,10 +23,10 @@ const accentGlow: Record<NonNullable<StatCardProps['accent']>, string> = {
 }
 
 const iconTone: Record<NonNullable<StatCardProps['accent']>, string> = {
-  rose: 'border-[#f4b9c9] bg-[#fff0f5] text-[#c85776]',
+  rose: 'border-[#f4b9c9] bg-[#fff0f5] text-[#A5556E]',
   gold: 'border-[#f0c8d5] bg-[#fff5f8] text-[#b75b74]',
   copper: 'border-[#e6bdca] bg-[#fff2f6] text-[#9d526b]',
-  neutral: 'border-[#ead8df] bg-white text-[#7a5a68]',
+  neutral: 'border-[#EAD8DF] bg-white text-[#7a5a68]',
 }
 
 const miniBarTone: Record<NonNullable<StatCardProps['accent']>, string> = {
@@ -95,7 +95,7 @@ export default function StatCard({
         {value}
       </div>
       {delta && (
-        <div className="relative mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2.5 py-1 text-[11px] font-semibold text-[#a84f69]">
+        <div className="relative mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#BE7690] bg-[#F6DFE6] px-2.5 py-1 text-[11px] font-semibold text-[#a84f69]">
           <ArrowUpRight className="h-3 w-3" strokeWidth={1.8} />
           {delta}
         </div>

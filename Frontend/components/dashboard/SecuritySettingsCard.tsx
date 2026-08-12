@@ -74,19 +74,19 @@ export default function SecuritySettingsCard({ tenantId }: { tenantId?: string }
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.08 }}
-      className="relative overflow-hidden rounded-[22px] border border-[#ead8df]/70 bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
+      className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 p-6 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]"
     >
       <div className="relative flex items-center gap-2 text-[12px] font-medium">
-        <ShieldCheck className="h-4 w-4 text-[#c85776]" /> <span className="font-display text-lg tracking-tight">GÜVENLİK</span>
+        <ShieldCheck className="h-4 w-4 text-[#A5556E]" /> <span className="font-display text-lg tracking-tight">GÜVENLİK</span>
       </div>
-      <div className="relative text-[12px] text-[#352432]/50">Personel cihazlarında veri sızıntısı korumaları</div>
+      <div className="relative text-[12px] text-[#5A4B53]">Personel cihazlarında veri sızıntısı korumaları</div>
 
-      <div className="relative mt-4 flex items-start justify-between gap-4 rounded-[14px] border border-[#ead8df]/70 bg-[#fffafc] px-4 py-3">
+      <div className="relative mt-4 flex items-start justify-between gap-4 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-3">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><Camera className="h-4 w-4" /></span>
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><Camera className="h-4 w-4" /></span>
           <div>
-            <div className="text-[13px] font-medium text-[#352432]">Personel ekran görüntüsü alabilsin (kurum varsayılanı)</div>
-            <div className="mt-0.5 max-w-md text-[11px] text-[#4a3a44]">
+            <div className="text-[13px] font-medium text-[#2A2027]">Personel ekran görüntüsü alabilsin (kurum varsayılanı)</div>
+            <div className="mt-0.5 max-w-md text-[11px] text-[#3E343A]">
               Kapalıyken personel, mobil uygulamada ekran görüntüsü ve ekran kaydı alamaz. Aşağıdan kişi bazında istisna tanımlayabilirsiniz.
             </div>
           </div>
@@ -97,7 +97,7 @@ export default function SecuritySettingsCard({ tenantId }: { tenantId?: string }
           aria-checked={allowed}
           disabled={!settings || saving}
           onClick={() => void toggle()}
-          className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${allowed ? 'bg-[#c85776]' : 'bg-[#d9c3cd]'}`}
+          className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${allowed ? 'bg-[#A5556E]' : 'bg-[#d9c3cd]'}`}
         >
           <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${allowed ? 'left-[22px]' : 'left-0.5'}`} />
         </button>
@@ -105,16 +105,16 @@ export default function SecuritySettingsCard({ tenantId }: { tenantId?: string }
 
       {staff.length > 0 && (
         <div className="relative mt-4">
-          <div className="flex items-center gap-2 text-[11px] font-medium text-[#352432]/70">
-            <Users className="h-3.5 w-3.5 text-[#c85776]" /> Personel bazlı istisnalar
+          <div className="flex items-center gap-2 text-[11px] font-medium text-[#5A4B53]">
+            <Users className="h-3.5 w-3.5 text-[#A5556E]" /> Personel bazlı istisnalar
           </div>
-          <div className="mt-2 divide-y divide-[#ead8df]/50 rounded-[14px] border border-[#ead8df]/70 bg-white">
+          <div className="mt-2 divide-y divide-[#ead8df]/50 rounded-[14px] border border-[#EAD8DF] bg-white">
             {staff.map((s) => (
               <div key={s.tenantUserId} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] text-[#352432]">{s.fullName || s.email}</div>
-                  <div className="text-[10px] text-[#4a3a44]">
-                    Uygulanan: <span className={s.effective ? 'text-emerald-600' : 'text-[#c85776]'}>{s.effective ? 'İzinli' : 'Engelli'}</span>
+                  <div className="truncate text-[13px] text-[#2A2027]">{s.fullName || s.email}</div>
+                  <div className="text-[10px] text-[#3E343A]">
+                    Uygulanan: <span className={s.effective ? 'text-emerald-600' : 'text-[#A5556E]'}>{s.effective ? 'İzinli' : 'Engelli'}</span>
                     {s.allow === null && ' (kurum varsayılanı)'}
                   </div>
                 </div>
@@ -125,7 +125,7 @@ export default function SecuritySettingsCard({ tenantId }: { tenantId?: string }
                     const v = e.target.value
                     void setOverride(s.tenantUserId, v === 'default' ? null : v === 'allow')
                   }}
-                  className="shrink-0 rounded-[10px] border border-[#ead8df] bg-[#fffafc] px-2 py-1.5 text-[11px] text-[#352432] outline-none disabled:opacity-50"
+                  className="shrink-0 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1.5 text-[11px] text-[#2A2027] outline-none disabled:opacity-50"
                 >
                   <option value="default">Kurum varsayılanı</option>
                   <option value="allow">İzinli</option>

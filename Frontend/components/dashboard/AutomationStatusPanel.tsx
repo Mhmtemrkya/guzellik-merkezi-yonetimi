@@ -21,11 +21,11 @@ export default function AutomationStatusPanel({ templates }: { templates: Notifi
   if (!canAutomation) return null
 
   return (
-    <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/86 p-5 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
-      <div className="mb-1 flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
+    <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]/80">
         <Zap className="h-4 w-4" /> Otomatik gönderim
       </div>
-      <p className="mb-4 text-[12px] leading-relaxed text-[#352432]/55">
+      <p className="mb-4 text-[12px] leading-relaxed text-[#5A4B53]">
         İlgili tetikleyiciye <b>Aktif</b> bir şablon eklediğinde, sistem arka planda (~15 dk'da bir tarar)
         uygun müşterilere otomatik gönderir. Aynı kişiye gün içinde tekrar gönderilmez.
       </p>
@@ -40,23 +40,23 @@ export default function AutomationStatusPanel({ templates }: { templates: Notifi
             <div
               key={trigger.key}
               className={`rounded-[16px] border p-3.5 transition-colors ${
-                isOn ? 'border-emerald-300/45 bg-emerald-50/60' : 'border-[#ead8df]/70 bg-[#fffafc]'
+                isOn ? 'border-emerald-300/45 bg-emerald-50/60' : 'border-[#EAD8DF] bg-[#F7F6F6]'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className={`grid h-9 w-9 place-items-center rounded-[10px] ${isOn ? 'bg-emerald-100 text-emerald-700' : 'bg-[#fff1f6] text-[#c85776]'}`}>
+                <span className={`grid h-9 w-9 place-items-center rounded-[10px] ${isOn ? 'bg-emerald-100 text-emerald-700' : 'bg-[#A5556E] text-white'}`}>
                   <Icon className="h-4 w-4" />
                 </span>
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-mono uppercase tracking-wide ${
-                  isOn ? 'bg-emerald-100 text-emerald-700' : 'bg-[#f0e0e6] text-[#352432]/45'
+                  isOn ? 'bg-emerald-100 text-emerald-700' : 'bg-[#f0e0e6] text-[#74616A]'
                 }`}>
                   {isOn ? <Power className="h-3 w-3" /> : <PowerOff className="h-3 w-3" />}
                   {isOn ? 'Açık' : 'Kapalı'}
                 </span>
               </div>
-              <div className="mt-2.5 text-[13px] font-medium text-[#352432]">{trigger.label}</div>
-              <div className="text-[10px] text-[#352432]/45">{trigger.desc}</div>
-              <div className="mt-2 flex items-center gap-1 text-[10px] font-mono text-[#352432]/50">
+              <div className="mt-2.5 text-[13px] font-medium text-[#2A2027]">{trigger.label}</div>
+              <div className="text-[10px] text-[#74616A]">{trigger.desc}</div>
+              <div className="mt-2 flex items-center gap-1 text-[10px] font-mono text-[#5A4B53]">
                 <BellRing className="h-3 w-3" />
                 {isOn ? `${active.length} aktif şablon · ${channels}` : 'Aktif şablon yok'}
               </div>

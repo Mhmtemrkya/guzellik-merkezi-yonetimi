@@ -248,7 +248,7 @@ export default function CompleteAppointmentDialog({
           </span>
           <div>
             <DialogTitle className="text-[15px] font-bold text-[#2b1e29]">Randevuyu tamamla</DialogTitle>
-            <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#8a7480]">
+            <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#74616A]">
               {customerName ? `${customerName} · ` : ''}
               {step === 'consent'
                 ? 'Onam formu kontrolü'
@@ -286,7 +286,7 @@ export default function CompleteAppointmentDialog({
             <button
               type="button"
               onClick={() => setConsentOpen(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#c85776] px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#A5556E] px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
             >
               <FileSignature className="h-4 w-4" /> Onam formlarını görüntüle
             </button>
@@ -294,11 +294,11 @@ export default function CompleteAppointmentDialog({
               type="button"
               disabled={saving}
               onClick={() => setStep('ask')}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#ead8df] bg-white px-4 py-3 text-[12.5px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[12.5px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-60"
             >
               İmzasız devam et
             </button>
-            <p className="text-center text-[11px] text-[#8a7480]">
+            <p className="text-center text-[11px] text-[#74616A]">
               İmzasız tamamlanan işlem, müşteri kartında ve cari/adisyon ekranlarında uyarı olarak görünmeye devam eder.
             </p>
           </div>
@@ -329,7 +329,7 @@ export default function CompleteAppointmentDialog({
               type="button"
               disabled={saving}
               onClick={() => void completeWithoutPayment()}
-              className="flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#ead8df] bg-white px-4 py-3 text-[13px] font-semibold text-[#5d4a56] transition-colors hover:border-[#efbfd0] hover:text-[#c85776] disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[13px] font-semibold text-[#5d4a56] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Ödeme alınmadı
             </button>
@@ -342,28 +342,28 @@ export default function CompleteAppointmentDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                  <Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar
+                  <Wallet className="h-3.5 w-3.5 text-[#A5556E]" /> Tutar
                 </label>
-                <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#efbfd0]">
-                  <span className="text-[13px] font-semibold text-[#a58d99]">₺</span>
+                <div className="flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 focus-within:border-[#BE7690]">
+                  <span className="text-[13px] font-semibold text-[#74616A]">₺</span>
                   <input
                     type="number"
                     min={0}
                     autoFocus
                     value={amount}
                     onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#352432] outline-none"
+                    className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#2A2027] outline-none"
                   />
                 </div>
               </div>
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                  <CreditCard className="h-3.5 w-3.5 text-[#c05277]" /> Yöntem
+                  <CreditCard className="h-3.5 w-3.5 text-[#A5556E]" /> Yöntem
                 </label>
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value)}
-                  className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]"
+                  className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#BE7690]"
                 >
                   {METHOD_OPTIONS.map((m) => (
                     <option key={m.value} value={m.value}>
@@ -375,9 +375,9 @@ export default function CompleteAppointmentDialog({
             </div>
 
             {openAdisyon && Math.max(0, Number(openAdisyon.chargeTotal || 0) - Number(openAdisyon.paymentTotal || 0)) > 0 && (
-              <div className="rounded-[10px] border border-[#efe1e7] bg-[#fff8fa] px-3 py-2 text-[11px] text-[#8a7480]">
+              <div className="rounded-[10px] border border-[#EAD8DF] bg-[#fff8fa] px-3 py-2 text-[11px] text-[#74616A]">
                 Açık adisyon kalanı:{' '}
-                <b className="text-[#c05277]">
+                <b className="text-[#A5556E]">
                   {formatTL(Math.max(0, Number(openAdisyon.chargeTotal || 0) - Number(openAdisyon.paymentTotal || 0)))}
                 </b>
               </div>
@@ -395,7 +395,7 @@ export default function CompleteAppointmentDialog({
                   setError('')
                   setStep('ask')
                 }}
-                className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0] disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#BE7690] disabled:opacity-60"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Geri
               </button>

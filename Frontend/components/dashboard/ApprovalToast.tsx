@@ -38,14 +38,14 @@ export default function ApprovalToast() {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 40, scale: 0.96 }}
             transition={{ type: 'spring', stiffness: 360, damping: 28 }}
-            className="pointer-events-auto overflow-hidden rounded-[16px] border border-[#efbfd0]/80 bg-white/95 shadow-[0_24px_60px_-30px_rgba(150,78,104,0.7)] backdrop-blur-xl"
+            className="pointer-events-auto overflow-hidden rounded-[16px] border border-[#BE7690]/80 bg-white/95 shadow-[0_24px_60px_-30px_rgba(150,78,104,0.7)] backdrop-blur-xl"
           >
             <div className="flex items-start gap-3 p-3.5">
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#A5556E] text-white">
                 <ShieldCheck className="h-4.5 w-4.5" strokeWidth={1.7} />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-[12px] font-semibold text-[#352432]">
+                <div className="text-[12px] font-semibold text-[#2A2027]">
                   {n.title ? `${n.title} · onaya gönderildi` : 'Onaya gönderildi'}
                 </div>
                 <div className="mt-0.5 text-[11px] leading-relaxed text-[#7c6170]">{n.message}</div>
@@ -53,7 +53,7 @@ export default function ApprovalToast() {
               <button
                 type="button"
                 onClick={() => setNotices((prev) => prev.filter((x) => x.id !== n.id))}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#9d7386] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
                 aria-label="Kapat"
               >
                 <X className="h-3.5 w-3.5" />

@@ -66,17 +66,17 @@ export default function CatalogPicker({
 
   const selectedActive = accent === 'violet'
     ? 'border-violet-400 bg-violet-50'
-    : 'border-[#c85776] bg-[#fdf4f8]'
+    : 'border-[#8C4460] bg-[#fdf4f8]'
   const pillActive = accent === 'violet'
     ? 'bg-violet-500 text-white'
-    : 'bg-[#c85776] text-white'
+    : 'bg-[#A5556E] text-white'
 
   const Pill = ({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) => (
     <button
       type="button"
       onClick={onClick}
       className={`shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition-colors ${
-        active ? pillActive : 'border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]'
+        active ? pillActive : 'border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]'
       }`}
     >
       {label}
@@ -87,19 +87,19 @@ export default function CatalogPicker({
     <div className="mt-1 space-y-2">
       {/* Arama */}
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#c85776]/50" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#A5556E]/50" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Ada göre ara…"
-          className="w-full rounded-[10px] border border-[#ead8df] bg-white py-2 pl-9 pr-3 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#c85776]"
+          className="w-full rounded-[10px] border border-[#EAD8DF] bg-white py-2 pl-9 pr-3 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E]"
         />
       </div>
 
       {/* Üst kategori filtresi */}
       {cats.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-          <Tag className="h-3 w-3 shrink-0 text-[#c85776]/50" />
+          <Tag className="h-3 w-3 shrink-0 text-[#A5556E]/50" />
           <Pill active={!cat} label="Tümü" onClick={() => { setCat(''); setSub('') }} />
           {cats.map((c) => (
             <Pill key={c} active={cat === c} label={c} onClick={() => { setCat(c); setSub('') }} />
@@ -110,7 +110,7 @@ export default function CatalogPicker({
       {/* Alt kategori filtresi (seçili üst kategoriye göre) */}
       {subs.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pl-4">
-          <Layers3 className="h-3 w-3 shrink-0 text-[#c85776]/40" />
+          <Layers3 className="h-3 w-3 shrink-0 text-[#A5556E]/40" />
           <Pill active={!sub} label="Tüm alt kategoriler" onClick={() => setSub('')} />
           {subs.map((s) => (
             <Pill key={s} active={sub === s} label={s} onClick={() => setSub(s)} />
@@ -119,7 +119,7 @@ export default function CatalogPicker({
       )}
 
       {/* Sonuç listesi */}
-      <div className="max-h-60 space-y-1.5 overflow-y-auto rounded-[12px] border border-[#ead8df]/70 bg-[#fffafc] p-1.5">
+      <div className="max-h-60 space-y-1.5 overflow-y-auto rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] p-1.5">
         {filtered.map((i) => {
           const active = value === i.id
           return (
@@ -128,37 +128,37 @@ export default function CatalogPicker({
               type="button"
               onClick={() => onChange(clearable && active ? '' : i.id)}
               className={`flex w-full items-start justify-between gap-2 rounded-[10px] border px-3 py-2 text-left transition-colors ${
-                active ? selectedActive : 'border-transparent bg-white hover:border-[#efbfd0]'
+                active ? selectedActive : 'border-transparent bg-white hover:border-[#BE7690]'
               }`}
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="truncate text-[13px] font-medium text-[#352432]">{i.name}</span>
+                  <span className="truncate text-[13px] font-medium text-[#2A2027]">{i.name}</span>
                   {i.badge && (
                     <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
                       {i.badge}
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[#352432]/45">
-                  {i.cat && <span className="rounded bg-[#fff1f6] px-1 py-0.5 text-[#b14d6c]">{i.cat}</span>}
+                <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[#74616A]">
+                  {i.cat && <span className="rounded bg-[#F6DFE6] px-1 py-0.5 text-[#8C4460]">{i.cat}</span>}
                   {i.sub && <span className="rounded bg-[#f4ecf9] px-1 py-0.5 text-violet-600">{i.sub}</span>}
                   {i.meta && <span>{i.meta}</span>}
                 </div>
                 {i.content && i.content.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {i.content.map((c, idx) => (
-                      <span key={idx} className="rounded border border-[#e7c7d4]/60 bg-white px-1 py-0.5 text-[9.5px] text-[#b14d6c]">{c}</span>
+                      <span key={idx} className="rounded border border-[#e7c7d4]/60 bg-white px-1 py-0.5 text-[9.5px] text-[#8C4460]">{c}</span>
                     ))}
                   </div>
                 )}
               </div>
-              {active && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" />}
+              {active && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#A5556E]" />}
             </button>
           )
         })}
         {filtered.length === 0 && (
-          <div className="px-3 py-6 text-center text-[12px] text-[#352432]/45">{emptyText}</div>
+          <div className="px-3 py-6 text-center text-[12px] text-[#74616A]">{emptyText}</div>
         )}
       </div>
     </div>

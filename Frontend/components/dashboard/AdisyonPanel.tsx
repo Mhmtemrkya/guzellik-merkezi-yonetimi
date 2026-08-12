@@ -411,11 +411,11 @@ export default function AdisyonPanel({
   const previewTotal = effectiveUnit * previewQty
 
   const fieldClass =
-    'w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[12.5px] text-[#352432] outline-none transition-colors focus:border-[#c85776]'
+    'w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E]'
   const labelClass = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#7e5f6e]'
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-[#ead8df]/80 bg-white shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+    <div className="overflow-hidden rounded-[20px] border border-[#EAD8DF]/80 bg-white shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       {/* ---------- BAŞLIK: durum + ödenecek tutar ---------- */}
       <div className="relative border-b border-[#f2e2e9] bg-gradient-to-br from-[#fff5f8] via-white to-[#fff1f6] px-4 py-3.5">
         <span
@@ -425,12 +425,12 @@ export default function AdisyonPanel({
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#A5556E]">
               <ReceiptText className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Adisyon</div>
-              <div className="truncate text-[13px] font-bold text-[#352432]">
+              <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#8C4460]">Adisyon</div>
+              <div className="truncate text-[13px] font-bold text-[#2A2027]">
                 {adisyon
                   ? `${adisyon.items.length} kalem${adisyon.openedAtUtc ? ` · ${adisyon.openedAtUtc.slice(0, 10)}` : ''}`
                   : 'Açık adisyon yok'}
@@ -441,10 +441,10 @@ export default function AdisyonPanel({
             <div className="flex items-center gap-3">
               <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[9.5px] font-bold text-amber-700">● AÇIK</span>
               <div className="text-right">
-                <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">
+                <div className="text-[9px] font-mono uppercase tracking-widest text-[#8C4460]">
                   {overpaid > 0 ? 'Fazla tahsilat' : 'Ödenecek'}
                 </div>
-                <div className={`font-display text-[26px] leading-7 tabular-nums ${overpaid > 0 ? 'text-emerald-700' : 'text-[#352432]'}`}>
+                <div className={`font-display text-[26px] leading-7 tabular-nums ${overpaid > 0 ? 'text-emerald-700' : 'text-[#2A2027]'}`}>
                   {formatTL(overpaid > 0 ? overpaid : due)}
                 </div>
               </div>
@@ -456,7 +456,7 @@ export default function AdisyonPanel({
             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
               <span className="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{ width: `${paidPct}%` }} />
             </span>
-            <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">%{paidPct} tahsil edildi</span>
+            <span className="shrink-0 text-[10px] font-semibold text-[#74616A]">%{paidPct} tahsil edildi</span>
           </div>
         )}
       </div>
@@ -467,18 +467,18 @@ export default function AdisyonPanel({
         )}
 
         {!adisyon ? (
-          <div className="rounded-[16px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-7 text-center">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c05277]">
+          <div className="rounded-[16px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#A5556E] text-white">
               <ReceiptText className="h-6 w-6" />
             </span>
-            <p className="mx-auto mt-2.5 max-w-[320px] text-[12px] leading-relaxed text-[#705a66]">
-              Açık adisyon yok. Hizmet, ürün ve tahsilat önce adisyona düşer; <b className="text-[#4a3a44]">onaylayınca</b> cariye ve kasaya aktarılır.
+            <p className="mx-auto mt-2.5 max-w-[320px] text-[12px] leading-relaxed text-[#74616A]">
+              Açık adisyon yok. Hizmet, ürün ve tahsilat önce adisyona düşer; <b className="text-[#3E343A]">onaylayınca</b> cariye ve kasaya aktarılır.
             </p>
             <button
               type="button"
               disabled={busy || loading}
               onClick={openAdisyon}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-5 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
             >
               <Plus className="h-4 w-4" /> Adisyon aç
             </button>
@@ -488,7 +488,7 @@ export default function AdisyonPanel({
             {/* ---------- KALEMLER ---------- */}
             <div className="overflow-hidden rounded-[14px] border border-[#f0e0e6]">
               {adisyon.items.length === 0 && (
-                <div className="bg-[#fffafb] px-3 py-6 text-center text-[11.5px] text-[#705a66]">
+                <div className="bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] text-[#74616A]">
                   Henüz kalem yok — aşağıdan hizmet, ürün veya tahsilat ekleyin.
                 </div>
               )}
@@ -504,8 +504,8 @@ export default function AdisyonPanel({
                       <Icon className="h-3.5 w-3.5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] font-medium text-[#352432]">{it.description}</span>
-                      <span className="block truncate text-[10px] text-[#705a66]">
+                      <span className="block truncate text-[12.5px] font-medium text-[#2A2027]">{it.description}</span>
+                      <span className="block truncate text-[10px] text-[#74616A]">
                         {adisyonItemTypeLabel(it.type, it.coveredByPackage)}
                         {it.quantity > 1 ? ` · ${it.quantity} adet × ${formatTL(it.unitPrice)}` : ''}
                         {it.staffName ? ` · ${it.staffName}` : ''}
@@ -513,7 +513,7 @@ export default function AdisyonPanel({
                     </span>
                     <span
                       className={`shrink-0 font-display text-[14px] tabular-nums ${
-                        it.type === 'Payment' ? 'text-emerald-700' : it.type === 'Discount' ? 'text-rose-700' : it.coveredByPackage ? 'text-amber-700' : 'text-[#352432]'
+                        it.type === 'Payment' ? 'text-emerald-700' : it.type === 'Discount' ? 'text-rose-700' : it.coveredByPackage ? 'text-amber-700' : 'text-[#2A2027]'
                       }`}
                     >
                       {it.coveredByPackage ? 'paketten' : `${it.type === 'Payment' ? '+' : it.type === 'Discount' ? '−' : ''}${formatTL(it.lineTotal)}`}
@@ -522,7 +522,7 @@ export default function AdisyonPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => removeItemWithRefund(it.id, it.description)}
-                      className="shrink-0 rounded-md p-1 text-[#c2a8b4] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                      className="shrink-0 rounded-md p-1 text-[#74616A] transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
                       aria-label="Kalemi sil"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -535,33 +535,33 @@ export default function AdisyonPanel({
             {/* ---------- TOPLAMLAR ---------- */}
             <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#f0dae2] bg-[#f7e9ee] text-center">
               <div className="bg-white px-2 py-2.5">
-                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">Borç</div>
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#8C4460]">Borç</div>
                 <div className="font-display text-[15px] tabular-nums text-rose-700">{formatTL(adisyon.chargeTotal)}</div>
               </div>
               <div className="bg-white px-2 py-2.5">
-                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">Tahsilat</div>
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#8C4460]">Tahsilat</div>
                 <div className="font-display text-[15px] tabular-nums text-emerald-700">{formatTL(adisyon.paymentTotal)}</div>
               </div>
               <div className="bg-white px-2 py-2.5">
-                <div className="text-[9px] font-mono uppercase tracking-wide text-[#a3576f]">{overpaid > 0 ? 'Fazla' : 'Kalan'}</div>
-                <div className={`font-display text-[15px] tabular-nums ${overpaid > 0 ? 'text-emerald-700' : due > 0 ? 'text-[#352432]' : 'text-emerald-700'}`}>
+                <div className="text-[9px] font-mono uppercase tracking-wide text-[#8C4460]">{overpaid > 0 ? 'Fazla' : 'Kalan'}</div>
+                <div className={`font-display text-[15px] tabular-nums ${overpaid > 0 ? 'text-emerald-700' : due > 0 ? 'text-[#2A2027]' : 'text-emerald-700'}`}>
                   {formatTL(overpaid > 0 ? overpaid : due)}
                 </div>
               </div>
             </div>
 
             {/* ---------- İNDİRİM & HEDİYE (katlanır) ---------- */}
-            <div className="mt-3 overflow-hidden rounded-[14px] border border-[#f0e0e6] bg-[#fffafc]">
+            <div className="mt-3 overflow-hidden rounded-[14px] border border-[#f0e0e6] bg-[#F7F6F6]">
               <button
                 type="button"
                 onClick={() => setPerksOpen((o) => !o)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
               >
-                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-[#4a3a44]">
-                  <Gift className="h-4 w-4 text-[#c05277]" /> İndirim & hediye
+                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-[#3E343A]">
+                  <Gift className="h-4 w-4 text-[#A5556E]" /> İndirim & hediye
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9.5px] font-bold text-amber-700">{loyaltyBalance}P</span>
                 </span>
-                <ChevronDown className={`h-4 w-4 shrink-0 text-[#a3576f] transition-transform duration-300 ${perksOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 text-[#8C4460] transition-transform duration-300 ${perksOpen ? 'rotate-180' : ''}`} />
               </button>
               {perksOpen && (
                 <div className="space-y-2.5 border-t border-[#f6ebef] p-3">
@@ -583,7 +583,7 @@ export default function AdisyonPanel({
                             value={loyaltyPointsInput}
                             onChange={(e) => setLoyaltyPointsInput(e.target.value)}
                             placeholder="İndirim puanı (1P = 1₺)"
-                            className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
+                            className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-amber-400"
                           />
                           <button
                             type="button"
@@ -599,7 +599,7 @@ export default function AdisyonPanel({
                             <select
                               value={giftSel}
                               onChange={(e) => setGiftSel(e.target.value)}
-                              className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-amber-400"
+                              className="w-full rounded-[10px] border border-amber-200/80 bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-amber-400"
                             >
                               <option value="">Hediye seç…</option>
                               {giftableServices.length > 0 && (
@@ -653,7 +653,7 @@ export default function AdisyonPanel({
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon() } }}
                           placeholder="Kodu girin (ör. YILBASI25)"
-                          className="w-full rounded-[10px] border border-violet-200/80 bg-white px-2.5 py-1.5 font-mono text-[12px] uppercase text-[#352432] outline-none focus:border-violet-400"
+                          className="w-full rounded-[10px] border border-violet-200/80 bg-white px-2.5 py-1.5 font-mono text-[12px] uppercase text-[#2A2027] outline-none focus:border-violet-400"
                         />
                         <button
                           type="button"
@@ -672,8 +672,8 @@ export default function AdisyonPanel({
             </div>
 
             {/* ---------- KALEM EKLE ---------- */}
-            <div className="mt-3 rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3">
-              <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Kalem ekle</div>
+            <div className="mt-3 rounded-[16px] border border-[#f0e0e6] bg-[#F7F6F6] p-3">
+              <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Kalem ekle</div>
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(TYPE_PICKER_LABELS) as AdisyonItemTypeKey[]).map((t) => {
                   const Icon = TYPE_ICONS[t]
@@ -684,7 +684,7 @@ export default function AdisyonPanel({
                       type="button"
                       onClick={() => setForm({ ...emptyForm, type: t, method: form.method, staffMemberId: form.staffMemberId })}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-colors ${
-                        on ? `${TYPE_TONES[t]} ring-1 ring-current/20` : 'border-[#ead8df] bg-white text-[#705a66] hover:bg-white'
+                        on ? `${TYPE_TONES[t]} ring-1 ring-current/20` : 'border-[#EAD8DF] bg-white text-[#74616A] hover:bg-white'
                       }`}
                     >
                       <Icon className="h-3.5 w-3.5" /> {TYPE_PICKER_LABELS[t]}
@@ -790,7 +790,7 @@ export default function AdisyonPanel({
                       {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                     {!form.staffMemberId && (
-                      <span className="mt-1 block text-[10.5px] leading-snug text-[#a3576f]">
+                      <span className="mt-1 block text-[10.5px] leading-snug text-[#8C4460]">
                         Boş bırakılırsa prim hesaplanmaz ve kayıt “Kurum Yöneticisi” adına geçer.
                       </span>
                     )}
@@ -802,12 +802,12 @@ export default function AdisyonPanel({
                 type="button"
                 disabled={busy}
                 onClick={addItem}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#c85776]/45 bg-[#fff1f6] px-3 py-2.5 text-[12px] font-semibold text-[#a3576f] transition-colors hover:bg-[#ffe6ef] disabled:opacity-50"
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#8C4460]/45 bg-[#F6DFE6] px-3 py-2.5 text-[12px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6] disabled:opacity-50"
               >
                 <Plus className="h-4 w-4" />
                 Kalem ekle
                 {previewTotal > 0 && form.type !== 'PackageUse' && (
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#4a3a44]">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-[#3E343A]">
                     {previewQty > 1 ? `${previewQty} × ${formatTL(effectiveUnit)} = ` : ''}{formatTL(previewTotal)}
                   </span>
                 )}
@@ -816,7 +816,7 @@ export default function AdisyonPanel({
 
             {/* Taksitli satış bilgisi — onayda cariye taksitli işlenir */}
             {adisyon.plannedInstallmentCount > 0 && (
-              <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-3 py-2 text-[11px] text-[#b14d6c]">
+              <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2 text-[11px] text-[#8C4460]">
                 <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                 <span>
                   Taksitli satış: {adisyon.plannedInstallmentCount} taksit
@@ -875,7 +875,7 @@ export default function AdisyonPanel({
                 type="button"
                 disabled={busy}
                 onClick={cancelWithRefund}
-                className="inline-flex items-center justify-center gap-1.5 rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[11.5px] font-semibold text-[#705a66] transition-colors hover:bg-[#fff4f8] disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11.5px] font-semibold text-[#74616A] transition-colors hover:bg-[#F7F6F6] disabled:opacity-40"
               >
                 <X className="h-4 w-4" /> Adisyonu iptal et
               </button>

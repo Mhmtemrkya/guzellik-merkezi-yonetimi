@@ -250,7 +250,7 @@ export default function QuickMenu() {
                   onClick={() => go(action.href)}
                   className="pointer-events-auto group absolute left-1/2 top-1/2 -ml-[44px] -mt-[44px] flex w-[88px] flex-col items-center gap-1.5"
                 >
-                  <span className="grid h-14 w-14 place-items-center rounded-full border border-white/70 bg-gradient-to-b from-white to-[#fff1f6] text-[#a63e5f] shadow-[0_18px_34px_-16px_rgba(59,35,48,0.6)] transition-colors group-hover:from-[#c85776] group-hover:to-[#a63e5f] group-hover:text-white">
+                  <span className="grid h-14 w-14 place-items-center rounded-full border border-white/70 bg-gradient-to-b from-white to-[#fff1f6] text-[#a63e5f] shadow-[0_18px_34px_-16px_rgba(59,35,48,0.6)] transition-colors group-hover:from-[#A5556E] group-hover:to-[#a63e5f] group-hover:text-white">
                     <Icon className="h-6 w-6" />
                   </span>
                   <span className="max-w-[88px] rounded-full bg-[#3b2330]/85 px-2 py-0.5 text-center text-[10.5px] font-semibold leading-tight text-[#ffe7ef] shadow-[0_8px_18px_-10px_rgba(0,0,0,0.6)] backdrop-blur-sm">
@@ -273,7 +273,7 @@ export default function QuickMenu() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setOpen(false); setEditing(true) }}
-                className="pointer-events-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0d9e2] bg-white/95 px-3.5 py-1.5 text-[11px] font-semibold text-[#a63e5f] shadow-[0_14px_30px_-14px_rgba(59,35,48,0.6)] backdrop-blur-sm transition-colors hover:bg-[#fff1f6]"
+                className="pointer-events-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0d9e2] bg-white/95 px-3.5 py-1.5 text-[11px] font-semibold text-[#a63e5f] shadow-[0_14px_30px_-14px_rgba(59,35,48,0.6)] backdrop-blur-sm transition-colors hover:bg-[#F6DFE6]"
                 title="Hızlı menüyü düzenle"
               >
                 <Settings2 className="h-3.5 w-3.5" /> Menüyü düzenle
@@ -286,7 +286,7 @@ export default function QuickMenu() {
         <div className="pointer-events-none relative flex h-[64px] w-[148px] items-end justify-center">
           <span
             aria-hidden
-            className="absolute inset-x-0 bottom-0 h-[40px] rounded-t-[74px] border border-b-0 border-[#f0d9e2] bg-white/90 shadow-[0_-12px_34px_-16px_rgba(122,41,64,0.45)] backdrop-blur-md"
+            className="absolute inset-x-0 bottom-0 h-[40px] rounded-t-[74px] border border-b-0 border-[#f0d9e2] bg-white shadow-[0_-12px_34px_-16px_rgba(122,41,64,0.45)] backdrop-blur-md"
           />
           <span
             aria-hidden
@@ -298,7 +298,7 @@ export default function QuickMenu() {
             onClick={() => setOpen((v) => !v)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.93 }}
-            className="pointer-events-auto absolute bottom-[12px] grid h-[60px] w-[60px] place-items-center rounded-full bg-gradient-to-br from-[#e0617f] via-[#c85776] to-[#8e3f5b] text-white shadow-[0_20px_38px_-16px_rgba(140,50,80,0.95)] ring-[3px] ring-white"
+            className="pointer-events-auto absolute bottom-[12px] grid h-[60px] w-[60px] place-items-center rounded-full bg-gradient-to-br from-[#e0617f] via-[#A5556E] to-[#8e3f5b] text-white shadow-[0_20px_38px_-16px_rgba(140,50,80,0.95)] ring-[3px] ring-white"
             title="Hızlı menü"
             aria-label="Hızlı menü"
             aria-expanded={open}
@@ -338,7 +338,7 @@ export default function QuickMenu() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.94, y: 18, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-              className="flex w-full max-w-lg flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)]"
+              className="flex w-full max-w-lg flex-col overflow-hidden rounded-[26px] border border-[#EAD8DF] bg-white shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)]"
               style={{ maxHeight: 'min(88dvh, 760px)' }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -351,19 +351,19 @@ export default function QuickMenu() {
                 />
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#A5556E]">
                       <Sparkles className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
                       <h3 className="text-[15.5px] font-bold text-[#2b1e29]">Hızlı menüyü düzenle</h3>
-                      <p className="mt-0.5 text-[11.5px] text-[#705a66]">
+                      <p className="mt-0.5 text-[11.5px] text-[#74616A]">
                         Alt menüde görünecek kısayolları seç ve sırala.
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => setEditing(false)}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df] bg-white text-[#7e5f6e] transition hover:border-[#efbfd0] hover:text-[#3b2330]"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#7e5f6e] transition hover:border-[#BE7690] hover:text-[#3b2330]"
                     aria-label="Kapat"
                   >
                     <X className="h-4 w-4" />
@@ -378,13 +378,13 @@ export default function QuickMenu() {
                       style={{ width: `${Math.round((ids.length / MAX_ITEMS) * 100)}%` }}
                     />
                   </span>
-                  <span className="shrink-0 text-[10.5px] font-semibold text-[#705a66]">{ids.length}/{MAX_ITEMS} kısayol</span>
+                  <span className="shrink-0 text-[10.5px] font-semibold text-[#74616A]">{ids.length}/{MAX_ITEMS} kısayol</span>
                 </div>
               </div>
 
               {/* Gövde */}
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Menüdeki sıra</div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Menüdeki sıra</div>
                 <div className="mt-2 space-y-1.5">
                   {ids.map((id, index) => {
                     const action = allowedCatalog.find((a) => a.id === id)
@@ -393,20 +393,20 @@ export default function QuickMenu() {
                     return (
                       <div
                         key={id}
-                        className="flex items-center gap-2.5 rounded-[14px] border border-[#f0dae2] bg-[#fffafc] px-3 py-2.5"
+                        className="flex items-center gap-2.5 rounded-[14px] border border-[#f0dae2] bg-[#F7F6F6] px-3 py-2.5"
                       >
-                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[10.5px] font-bold text-[#a3576f] ring-1 ring-[#f0d9e2]">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[10.5px] font-bold text-[#8C4460] ring-1 ring-[#f0d9e2]">
                           {index + 1}
                         </span>
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#c85776] to-[#a63e5f] text-white">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-white">
                           <Icon className="h-4 w-4" />
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#352432]">{action.label}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#2A2027]">{action.label}</span>
                         <span className="flex shrink-0 items-center gap-1">
                           <button
                             onClick={() => move(id, -1)}
                             disabled={index === 0}
-                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#a3576f] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6] disabled:opacity-30"
+                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#8C4460] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6] disabled:opacity-30"
                             title="Yukarı taşı"
                           >
                             <ChevronUp className="h-3.5 w-3.5" />
@@ -414,7 +414,7 @@ export default function QuickMenu() {
                           <button
                             onClick={() => move(id, 1)}
                             disabled={index === ids.length - 1}
-                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#a3576f] transition-colors hover:border-[#efbfd0] hover:bg-[#fff1f6] disabled:opacity-30"
+                            className="grid h-7 w-7 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#8C4460] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6] disabled:opacity-30"
                             title="Aşağı taşı"
                           >
                             <ChevronDown className="h-3.5 w-3.5" />
@@ -431,13 +431,13 @@ export default function QuickMenu() {
                     )
                   })}
                   {ids.length === 0 && (
-                    <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] text-[#705a66]">
+                    <div className="rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] text-[#74616A]">
                       Menü boş — aşağıdan kısayol ekle.
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 text-[10px] font-mono uppercase tracking-widest text-[#a3576f]">Eklenebilir işlemler</div>
+                <div className="mt-4 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">Eklenebilir işlemler</div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {allowedCatalog.filter((a) => !ids.includes(a.id)).map((action) => {
                     const Icon = action.icon
@@ -447,19 +447,19 @@ export default function QuickMenu() {
                         key={action.id}
                         onClick={() => toggleId(action.id)}
                         disabled={full}
-                        className="flex items-center gap-2.5 rounded-[14px] border border-[#ead8df] bg-white px-3 py-2.5 text-left transition-colors hover:border-[#efbfd0] hover:bg-[#fff7fa] disabled:opacity-40"
+                        className="flex items-center gap-2.5 rounded-[14px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-left transition-colors hover:border-[#BE7690] hover:bg-[#fff7fa] disabled:opacity-40"
                         title={full ? `En fazla ${MAX_ITEMS} kısayol eklenebilir` : undefined}
                       >
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff1f6] text-[#a63e5f]">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F6DFE6] text-[#a63e5f]">
                           <Icon className="h-4 w-4" />
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[#4a3a44]">{action.label}</span>
-                        <Plus className="h-4 w-4 shrink-0 text-[#c85776]" />
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[#3E343A]">{action.label}</span>
+                        <Plus className="h-4 w-4 shrink-0 text-[#A5556E]" />
                       </button>
                     )
                   })}
                   {allowedCatalog.filter((a) => !ids.includes(a.id)).length === 0 && (
-                    <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11.5px] text-[#705a66] sm:col-span-2">
+                    <div className="rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11.5px] text-[#74616A] sm:col-span-2">
                       Tüm işlemler menüde.
                     </div>
                   )}
@@ -471,13 +471,13 @@ export default function QuickMenu() {
                 <div className="flex items-center justify-between gap-2">
                   <button
                     onClick={() => save(defaultIds)}
-                    className="inline-flex min-h-10 items-center rounded-[12px] border border-[#ead8df] bg-white px-3.5 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0]"
+                    className="inline-flex min-h-10 items-center rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#BE7690]"
                   >
                     Varsayılana dön
                   </button>
                   <button
                     onClick={() => setEditing(false)}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-5 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
                   >
                     Tamam
                   </button>

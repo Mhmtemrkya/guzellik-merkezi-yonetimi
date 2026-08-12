@@ -65,7 +65,7 @@ const methodLight: Record<CashFlowMethodKey, { badge: string; bar: string; dot: 
   card: { badge: 'border-sky-200 bg-sky-50 text-sky-700', bar: 'bg-sky-400', dot: '#3b82f6' },
   transfer: { badge: 'border-violet-200 bg-violet-50 text-violet-700', bar: 'bg-violet-400', dot: '#a78bfa' },
   check: { badge: 'border-amber-200 bg-amber-50 text-amber-700', bar: 'bg-amber-400', dot: '#f59e0b' },
-  unknown: { badge: 'border-[#e7d6de] bg-[#f3eef1] text-[#705a66]', bar: 'bg-[#c9b3bd]', dot: '#a98a98' },
+  unknown: { badge: 'border-[#e7d6de] bg-[#f3eef1] text-[#74616A]', bar: 'bg-[#c9b3bd]', dot: '#a98a98' },
 }
 
 const methodIcon: Record<'cash' | 'card' | 'transfer', typeof CreditCard> = {
@@ -114,24 +114,24 @@ function DayPicker({ value, onChange }: { value: string; onChange: (next: string
   })
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#efe1e7] bg-white px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#EAD8DF] bg-white px-2 py-1.5">
       <button
         type="button"
         onClick={() => shift(-1)}
         aria-label="Önceki gün"
-        className="grid h-7 w-7 place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+        className="grid h-7 w-7 place-items-center rounded-full text-[#74616A] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
-      <label className="flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-[#4a3a44]">
-        <CalendarDays className="h-3.5 w-3.5 text-[#c85776]" />
+      <label className="flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-[#3E343A]">
+        <CalendarDays className="h-3.5 w-3.5 text-[#A5556E]" />
         <span className="hidden sm:inline">{label}</span>
         <input
           type="date"
           value={value}
           max={today}
           onChange={(e) => onChange(e.target.value || today)}
-          className="w-[132px] cursor-pointer rounded-full bg-transparent px-1 text-[12px] font-semibold text-[#4a3a44] outline-none"
+          className="w-[132px] cursor-pointer rounded-full bg-transparent px-1 text-[12px] font-semibold text-[#3E343A] outline-none"
         />
       </label>
       <button
@@ -139,7 +139,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (next: string
         onClick={() => shift(1)}
         disabled={value >= today}
         aria-label="Sonraki gün"
-        className="grid h-7 w-7 place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776] disabled:opacity-40 disabled:hover:bg-transparent"
+        className="grid h-7 w-7 place-items-center rounded-full text-[#74616A] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E] disabled:opacity-40 disabled:hover:bg-transparent"
       >
         <ChevronRight className="h-4 w-4" />
       </button>
@@ -147,7 +147,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (next: string
         <button
           type="button"
           onClick={() => onChange(today)}
-          className="rounded-full border border-[#efe1e7] px-2.5 py-1 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff1f6]"
+          className="rounded-full border border-[#EAD8DF] px-2.5 py-1 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#F6DFE6]"
         >
           Bugün
         </button>
@@ -340,7 +340,7 @@ function KasaPageInner() {
     { label: scope === 'today' && !isToday ? `${dayLabel} geliri` : 'Bugünkü gelir', value: todayIncome, money: true, delta: `${todayIncomeCount} tahsilat`, icon: TrendingUp, chip: 'bg-[#e6f5ee] text-[#2f9e72]' },
     { label: scope === 'today' && !isToday ? `${dayLabel} gideri` : 'Bugünkü gider', value: todayExpense, money: true, delta: `${todayExpenseCount} gider`, icon: TrendingDown, chip: 'bg-[#fdeaef] text-[#cf4d68]' },
     { label: 'Net kasa (bugün)', value: todayNet, money: true, delta: todayNet >= 0 ? 'pozitif' : 'negatif', icon: Wallet, chip: 'bg-[#f7eed9] text-[#b88938]', negative: todayNet < 0 },
-    { label: `${scopeLabel} işlem`, value: entries.length, money: false, delta: `${summary.incomeCount} gelir · ${summary.expenseCount} gider`, icon: Receipt, chip: 'bg-[#fbeaf1] text-[#c85776]' },
+    { label: `${scopeLabel} işlem`, value: entries.length, money: false, delta: `${summary.incomeCount} gelir · ${summary.expenseCount} gider`, icon: Receipt, chip: 'bg-[#fbeaf1] text-[#A5556E]' },
   ]
 
   return (
@@ -360,7 +360,7 @@ function KasaPageInner() {
               trigger={
                 <button
                   type="button"
-                  className="group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#ead8df]/70 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/72 transition-colors hover:border-[#efbfd0]/75 hover:text-[#352432]"
+                  className="group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#EAD8DF] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/72 transition-colors hover:border-[#BE7690]/75 hover:text-[#2A2027]"
                 >
                   <ArrowDownRight className="h-3.5 w-3.5" strokeWidth={1.6} />
                   <span>Gider ekle</span>
@@ -371,7 +371,7 @@ function KasaPageInner() {
         }
       />
 
-      <div className="relative space-y-7 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-7 p-4 sm:p-6 xl:px-8">
         <div className="flex flex-wrap items-center gap-3">
           <ScopeBadge label={scopeLabel} description={scope === 'today' && !isToday ? 'Seçili günün kasa hareketleri' : scopeInfo.description} />
           {scope === 'today' && <DayPicker value={dayIso} onChange={setDayIso} />}
@@ -391,15 +391,15 @@ function KasaPageInner() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: i * 0.05 }}
-              className="rounded-[20px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_12px_30px_-20px_rgba(200,87,118,0.5)]"
+              className="rounded-[20px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_12px_30px_-20px_rgba(200,87,118,0.5)]"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-full ${k.chip}`}>
                   <k.icon className="h-5 w-5" strokeWidth={1.9} />
                 </div>
-                <span className="rounded-full bg-[#f7ecf1] px-2.5 py-1 text-[10px] font-semibold text-[#705a66]">{k.delta}</span>
+                <span className="rounded-full bg-[#f7ecf1] px-2.5 py-1 text-[10px] font-semibold text-[#74616A]">{k.delta}</span>
               </div>
-              <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-[#705a66]">{k.label}</p>
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-[#74616A]">{k.label}</p>
               <p className={`mt-1 font-display text-[26px] font-bold tabular-nums ${k.negative ? 'text-[#cf4d68]' : 'text-[#241923]'}`}>
                 <AnimatedNumber value={k.value} format={k.money ? (n) => formatTL(Math.round(n)) : undefined} />
               </p>
@@ -412,10 +412,10 @@ function KasaPageInner() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-          className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
+          className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
         >
           <div className="flex items-center gap-2 text-[#241923]">
-            <Banknote className="h-4 w-4 text-[#c85776]" />
+            <Banknote className="h-4 w-4 text-[#A5556E]" />
             <h2 className="font-display text-lg font-bold">{scope === 'today' && !isToday ? `${dayLabel} ödeme yöntemi dağılımı` : 'Bugünün ödeme yöntemi dağılımı'}</h2>
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
@@ -425,10 +425,10 @@ function KasaPageInner() {
               const MIcon = methodIcon[method]
               const tone = methodLight[method]
               return (
-                <div key={method} className="rounded-[16px] border border-[#efe1e7] bg-[#fffafc] p-4">
+                <div key={method} className="rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
                   <div className="flex items-center justify-between">
                     <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#241923]">
-                      <MIcon className="h-4 w-4 text-[#c85776]" strokeWidth={1.9} /> {cashFlowMethodLabel(method)}
+                      <MIcon className="h-4 w-4 text-[#A5556E]" strokeWidth={1.9} /> {cashFlowMethodLabel(method)}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.badge}`}>%{ratio}</span>
                   </div>
@@ -456,11 +456,11 @@ function KasaPageInner() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
+            className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
           >
-            <div className="flex items-center justify-between gap-2 border-b border-[#f2e6eb] pb-4">
+            <div className="flex items-center justify-between gap-2 border-b border-[#EAD8DF] pb-4">
               <h2 className="font-display text-lg font-bold text-[#241923]">{scopeLabel} · kasa hareketleri</h2>
-              <span className="rounded-full border border-[#efe1e7] bg-[#fffafc] px-3 py-1 text-[11px] font-semibold text-[#705a66]">{entries.length} işlem</span>
+              <span className="rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-1 text-[11px] font-semibold text-[#74616A]">{entries.length} işlem</span>
             </div>
             <motion.div
               variants={listContainer}
@@ -475,7 +475,7 @@ function KasaPageInner() {
                   <motion.div
                     key={e.id}
                     variants={listRow}
-                    className="flex items-center gap-3 rounded-[16px] border border-[#efe1e7] bg-white/96 p-3.5 shadow-[0_8px_22px_-20px_rgba(200,87,118,0.5)] transition-colors hover:border-[#efbfd0]"
+                    className="flex items-center gap-3 rounded-[16px] border border-[#EAD8DF] bg-white/96 p-3.5 shadow-[0_8px_22px_-20px_rgba(200,87,118,0.5)] transition-colors hover:border-[#BE7690]"
                   >
                     <span
                       className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${
@@ -493,10 +493,10 @@ function KasaPageInner() {
                           {cashFlowMethodLabel(e.method)}
                         </span>
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium text-[#705a66]">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-medium text-[#74616A]">
                         <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {e.time || '—'}{e.date ? ` · ${e.date}` : ''}</span>
                         {(e.customerName || e.staffName || e.category) && (
-                          <span className="inline-flex items-center gap-1 text-[#c85776]">{e.customerName || e.staffName || e.category}</span>
+                          <span className="inline-flex items-center gap-1 text-[#A5556E]">{e.customerName || e.staffName || e.category}</span>
                         )}
                         {e.reference && <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" /> {e.reference}</span>}
                       </div>
@@ -517,7 +517,7 @@ function KasaPageInner() {
                 )
               })}
               {!entries.length && (
-                <div className="px-5 py-10 text-center text-sm text-[#705a66]">
+                <div className="px-5 py-10 text-center text-sm text-[#74616A]">
                   {scopeLabel} kapsamında kasa hareketi yok. Üstten tahsilat veya gider ekleyebilirsin.
                 </div>
               )}
@@ -529,7 +529,7 @@ function KasaPageInner() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-[22px] border border-[#efe1e7] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)]"
+            className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)]"
           >
             <div className="font-display text-lg font-bold text-[#241923]">{scopeLabel} Özeti</div>
 
@@ -570,18 +570,18 @@ function KasaPageInner() {
               const topMethod = methods.length ? [...methods].sort((a, b) => b.incomeAmount - a.incomeAmount)[0] : null
               const topPct = totalIn > 0 && topMethod ? Math.round((topMethod.incomeAmount / totalIn) * 100) : 0
               return (
-                <div className="mt-4 rounded-[16px] border border-[#efe1e7] bg-[#fffafc] p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#705a66]">Yöntem Dağılımı ({scopeLabel})</div>
+                <div className="mt-4 rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#74616A]">Yöntem Dağılımı ({scopeLabel})</div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="space-y-1.5">
                       {methods.map((m) => (
                         <div key={m.method} className="flex items-center gap-2 text-[11px]">
                           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: methodLight[m.method].dot }} />
-                          <span className="text-[#4a3a44]">{cashFlowMethodLabel(m.method)}</span>
+                          <span className="text-[#3E343A]">{cashFlowMethodLabel(m.method)}</span>
                           <span className="ml-auto font-semibold tabular-nums text-[#241923]">+{formatTL(m.incomeAmount)}</span>
                         </div>
                       ))}
-                      {methods.length === 0 && <div className="text-[11px] text-[#705a66]">Tahsilat yok.</div>}
+                      {methods.length === 0 && <div className="text-[11px] text-[#74616A]">Tahsilat yok.</div>}
                     </div>
                     {methods.length > 0 && (
                       <div className="relative grid h-24 w-24 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(${segs.join(', ')})` }}>
@@ -590,7 +590,7 @@ function KasaPageInner() {
                             <div className="font-display text-[15px] font-bold leading-none text-[#241923]">%{topPct}</div>
                             {/* Yöntemi yazılmamış kayıtların etiketi uzun ("Yöntem Kaydedilmemiş") —
                                 daire içinde taşmasın diye kırpılır. */}
-                            <div className="mx-auto max-w-[54px] truncate text-[8px] font-semibold uppercase text-[#705a66]" title={topMethod ? cashFlowMethodLabel(topMethod.method) : ''}>{topMethod ? cashFlowMethodLabel(topMethod.method) : ''}</div>
+                            <div className="mx-auto max-w-[54px] truncate text-[8px] font-semibold uppercase text-[#74616A]" title={topMethod ? cashFlowMethodLabel(topMethod.method) : ''}>{topMethod ? cashFlowMethodLabel(topMethod.method) : ''}</div>
                           </div>
                         </div>
                       </div>

@@ -70,9 +70,9 @@ export function summarizeCustomerSales(accounts: CustomerAccount[]): CustomerSal
 
 function StatTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="rounded-[14px] border border-[#ead8df] bg-white/85 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#705a66]">{label}</div>
-      <div className={`mt-0.5 font-display text-[17px] leading-tight tracking-tight tabular-nums ${tone || 'text-[#352432]'}`}>{value}</div>
+    <div className="rounded-[14px] border border-[#EAD8DF] bg-white/85 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#74616A]">{label}</div>
+      <div className={`mt-0.5 font-display text-[17px] leading-tight tracking-tight tabular-nums ${tone || 'text-[#2A2027]'}`}>{value}</div>
     </div>
   )
 }
@@ -122,29 +122,29 @@ export default function CustomerSalesModal({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: 6 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="relative z-10 my-auto flex max-h-[95dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-[#ead8df] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.65)] sm:rounded-[26px]"
+              className="relative z-10 my-auto flex max-h-[95dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.65)] sm:rounded-[26px]"
             >
               {/* HEADER */}
-              <header className="relative shrink-0 overflow-hidden border-b border-[#ead8df] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 py-3.5 sm:px-6 sm:py-4">
+              <header className="relative shrink-0 overflow-hidden border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#ffeef4] px-4 py-3.5 sm:px-6 sm:py-4">
                 <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-[#f0aac2]/25 blur-3xl" />
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Kapat"
-                  className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#ead8df] bg-white text-[#705a66] shadow-sm transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+                  className="absolute right-3.5 top-3.5 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[#EAD8DF] bg-white text-[#74616A] shadow-sm transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
                 >
                   <X className="h-4 w-4" />
                 </button>
 
                 <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:pr-12">
                   <div className="flex min-w-0 items-center gap-3 pr-10 lg:pr-0">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#efbfd0] bg-[#fff1f6] text-[#c85776]">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#BE7690] bg-[#A5556E] text-white">
                       <Package className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
-                      <h2 className="truncate font-display text-[19px] leading-tight tracking-tight text-[#352432] sm:text-[21px]">Paket &amp; Hizmet Satışları</h2>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[#705a66]">
-                        <span className="truncate font-semibold text-[#4a3a44]">{customerName}</span>
+                      <h2 className="truncate font-display text-[19px] leading-tight tracking-tight text-[#2A2027] sm:text-[21px]">Paket &amp; Hizmet Satışları</h2>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[#74616A]">
+                        <span className="truncate font-semibold text-[#3E343A]">{customerName}</span>
                         <span className="text-[#c9b3bd]">·</span>
                         <span className="tabular-nums">{summary.count} satış kaydı</span>
                       </div>
@@ -187,8 +187,8 @@ export default function CustomerSalesModal({
                         style={{ width: `${Math.max(3, paidPct)}%` }}
                       />
                     </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#4a3a44]">
-                      <Wallet className="h-3.5 w-3.5 text-[#c85776]" /> %{paidPct} tahsil edildi
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#3E343A]">
+                      <Wallet className="h-3.5 w-3.5 text-[#A5556E]" /> %{paidPct} tahsil edildi
                     </span>
                   </div>
                 )}

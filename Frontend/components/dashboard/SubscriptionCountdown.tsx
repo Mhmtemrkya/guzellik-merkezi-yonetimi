@@ -99,17 +99,17 @@ const THEMES: Record<Urgency, Theme> = {
   // Sakin — gül/bordo; abonelik güvende.
   calm: {
     wash: 'bg-[#ffe4ee]',
-    pill: 'border-[#f0d9e2] bg-[#fff1f6] text-[#b14d6c]',
-    accent: 'text-[#b14d6c]',
+    pill: 'border-[#f0d9e2] bg-[#F6DFE6] text-[#8C4460]',
+    accent: 'text-[#8C4460]',
     unit: 'text-[#5d4a56]',
-    cell: 'border-[#efe1e7] bg-[#fff8fa]',
+    cell: 'border-[#EAD8DF] bg-[#fff8fa]',
     cellIdle: 'border-[#f3ebef] bg-[#fbf7f9]',
     num: 'text-[#2b1e29]',
     numIdle: 'text-[#cbb9c1]',
     bar: 'from-[#ecaec0] to-[#c05277]',
     track: 'bg-[#f5e7ec]',
     dot: 'bg-[#d98aa4]',
-    cta: 'text-[#c05277] hover:text-[#a23f5c]',
+    cta: 'text-[#A5556E] hover:text-[#a23f5c]',
   },
   // Uyarı — gold; son birkaç gün.
   warning: {
@@ -290,7 +290,7 @@ export default function SubscriptionCountdown({ tenantId }: { tenantId?: string 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-[24px] border border-[#efe1e7] bg-white/95 px-5 py-5 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)] sm:px-6"
+      className="relative overflow-hidden rounded-[24px] border border-[#EAD8DF] bg-white/95 px-5 py-5 shadow-[0_18px_50px_-34px_rgba(120,71,88,0.45)] sm:px-6"
     >
       <span aria-hidden className={`pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-50 blur-3xl ${theme.wash}`} />
 
@@ -317,7 +317,7 @@ export default function SubscriptionCountdown({ tenantId }: { tenantId?: string 
                 </span>
                 <div>
                   <div className="font-display text-[24px] font-semibold leading-tight text-[#2b1e29] sm:text-[27px]">Süreniz doldu</div>
-                  <p className="mt-1 max-w-md text-[12px] leading-relaxed text-[#8a7480]">{subline}</p>
+                  <p className="mt-1 max-w-md text-[12px] leading-relaxed text-[#74616A]">{subline}</p>
                 </div>
               </div>
             ) : (
@@ -331,7 +331,7 @@ export default function SubscriptionCountdown({ tenantId }: { tenantId?: string 
                   </span>
                   <span className="text-[12px] text-[#9a8590]">kaldı</span>
                 </div>
-                <p className="mt-2 max-w-md text-[12px] leading-relaxed text-[#8a7480]">{subline}</p>
+                <p className="mt-2 max-w-md text-[12px] leading-relaxed text-[#74616A]">{subline}</p>
               </>
             )}
 

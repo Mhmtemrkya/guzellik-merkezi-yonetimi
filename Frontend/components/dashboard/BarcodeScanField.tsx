@@ -88,8 +88,8 @@ export default function BarcodeScanField({
           onClick={() => setArmed((v) => !v)}
           className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
             armed
-              ? 'border-[#c85776] bg-[#fff1f6] text-[#a34a62]'
-              : 'border-[#efe1e7] bg-white text-[#705a66] hover:border-[#efbfd0] hover:text-[#c85776]'
+              ? 'border-[#8C4460] bg-[#F6DFE6] text-[#a34a62]'
+              : 'border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#BE7690] hover:text-[#A5556E]'
           }`}
         >
           <ScanLine className={`h-3.5 w-3.5 ${armed ? 'animate-pulse' : ''}`} />
@@ -98,7 +98,7 @@ export default function BarcodeScanField({
         <button
           type="button"
           onClick={() => setCamOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#efe1e7] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+          className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
         >
           <Camera className="h-3.5 w-3.5" /> Kamera ile tara
         </button>
@@ -106,7 +106,7 @@ export default function BarcodeScanField({
       </div>
 
       {armed && (
-        <p className="text-[11px] text-[#705a66]">
+        <p className="text-[11px] text-[#74616A]">
           Okuyucuyu ürünün barkoduna tutun — cihaz kodu yazıp Enter gönderdiğinde alan otomatik dolar.
         </p>
       )}
@@ -193,18 +193,18 @@ function CameraScanner({ onClose, onResult }: { onClose: () => void; onResult: (
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.97, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-[#f2e6eb] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[#EAD8DF] px-4 py-3">
           <span className="flex items-center gap-2 text-[13px] font-semibold text-[#241923]">
-            <Camera className="h-4 w-4 text-[#c85776]" /> Barkodu kameraya gösterin
+            <Camera className="h-4 w-4 text-[#A5556E]" /> Barkodu kameraya gösterin
           </span>
-          <button type="button" onClick={onClose} aria-label="Kapat" className="grid h-7 w-7 place-items-center rounded-full border border-[#efe1e7] text-[#705a66] hover:text-[#c85776]">
+          <button type="button" onClick={onClose} aria-label="Kapat" className="grid h-7 w-7 place-items-center rounded-full border border-[#EAD8DF] text-[#74616A] hover:text-[#A5556E]">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
         {error ? (
-          <div className="px-4 py-6 text-center text-[12px] text-[#705a66]">{error}</div>
+          <div className="px-4 py-6 text-center text-[12px] text-[#74616A]">{error}</div>
         ) : (
           <div className="relative bg-black">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

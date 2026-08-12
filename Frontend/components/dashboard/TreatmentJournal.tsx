@@ -14,7 +14,7 @@ import FeatureLockedCard from '@/components/dashboard/FeatureLockedCard'
 import BeforeAfterSlider from './BeforeAfterSlider'
 
 const KIND_META: Record<TreatmentPhotoKind, { label: string; badge: string; dot: string }> = {
-  Before: { label: 'Önce', badge: 'border-[#efbfd0] bg-[#fff1f6] text-[#b14d6c]', dot: 'bg-[#c85776]' },
+  Before: { label: 'Önce', badge: 'border-[#BE7690] bg-[#F6DFE6] text-[#8C4460]', dot: 'bg-[#A5556E]' },
   After: { label: 'Sonra', badge: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
   Progress: { label: 'Süreç', badge: 'border-violet-200 bg-violet-50 text-violet-700', dot: 'bg-violet-500' },
 }
@@ -114,15 +114,15 @@ export default function TreatmentJournal({
   }
 
   return (
-    <div className="rounded-[20px] border border-[#ead8df]/70 bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+    <div className="rounded-[20px] border border-[#EAD8DF] bg-white/80 p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#c85776]/80">
+        <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-[#A5556E]/80">
           <Camera className="h-3.5 w-3.5" /> İşlem günlüğü · Önce / Sonra
         </div>
         <button
           type="button"
           onClick={() => { setOpen((v) => !v); setPendingMsg('') }}
-          className="inline-flex items-center gap-1 rounded-lg border border-[#efbfd0] bg-[#fff1f6] px-2 py-1 text-[11px] font-semibold text-[#b14d6c] transition hover:bg-[#ffe3ec]"
+          className="inline-flex items-center gap-1 rounded-lg border border-[#BE7690] bg-[#F6DFE6] px-2 py-1 text-[11px] font-semibold text-[#8C4460] transition hover:bg-[#ffe3ec]"
         >
           {open ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           {open ? 'Kapat' : 'Fotoğraf ekle'}
@@ -145,12 +145,12 @@ export default function TreatmentJournal({
             transition={{ duration: 0.25 }}
             className="mb-4 overflow-hidden"
           >
-            <div className="rounded-[16px] border border-[#f0e0e6] bg-[#fffafb] p-3">
+            <div className="rounded-[16px] border border-[#f0e0e6] bg-[#F7F6F6] p-3">
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-2 border-dashed border-[#efbfd0] bg-white text-[#c85776] transition hover:bg-[#fff1f6]"
+                  className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-2 border-dashed border-[#BE7690] bg-white text-[#A5556E] transition hover:bg-[#F6DFE6]"
                 >
                   {preview ? (
                     <img src={preview} alt="önizleme" className="h-full w-full object-cover" />
@@ -175,7 +175,7 @@ export default function TreatmentJournal({
                         type="button"
                         onClick={() => setKind(k)}
                         className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
-                          kind === k ? KIND_META[k].badge : 'border-[#ead8df] bg-white text-[#352432]/55 hover:bg-[#fff1f6]'
+                          kind === k ? KIND_META[k].badge : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F6DFE6]'
                         }`}
                       >
                         {KIND_META[k].label}
@@ -185,7 +185,7 @@ export default function TreatmentJournal({
                   <select
                     value={serviceId}
                     onChange={(e) => setServiceId(e.target.value)}
-                    className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                    className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                   >
                     <option value="">İlişkili hizmet (opsiyonel)</option>
                     {services.map((s) => (
@@ -196,7 +196,7 @@ export default function TreatmentJournal({
                     type="date"
                     value={takenDate}
                     onChange={(e) => setTakenDate(e.target.value)}
-                    className="w-full rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                    className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
                   />
                 </div>
               </div>
@@ -205,7 +205,7 @@ export default function TreatmentJournal({
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Not (opsiyonel) — ör. 3. seans, cihaz ayarı, gözlem…"
                 rows={2}
-                className="mt-2 w-full resize-none rounded-lg border border-[#ead8df] bg-white px-2.5 py-1.5 text-[12px] text-[#352432] outline-none focus:border-[#c85776]"
+                className="mt-2 w-full resize-none rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
               />
               {error && <div className="mt-2 text-[11px] font-medium text-rose-600">{error}</div>}
               <div className="mt-2 flex justify-end">
@@ -213,7 +213,7 @@ export default function TreatmentJournal({
                   type="button"
                   disabled={busy || !preview}
                   onClick={submit}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#c85776] to-[#8e3f5b] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8e3f5b] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                   Günlüğe ekle
@@ -228,9 +228,9 @@ export default function TreatmentJournal({
       {canCompare && selBefore && selAfter && (
         <div className="mb-4">
           <BeforeAfterSlider beforeUrl={selBefore.imageUrl!} afterUrl={selAfter.imageUrl!} />
-          <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-[#352432]/40">
+          <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono uppercase tracking-wide text-[#74616A]">
             <span>{fmtDate(selBefore.takenAtUtc)} → {fmtDate(selAfter.takenAtUtc)}</span>
-            <span className="inline-flex items-center gap-1 text-[#b14d6c]"><CheckCircle2 className="h-3 w-3" /> sürükleyerek karşılaştır</span>
+            <span className="inline-flex items-center gap-1 text-[#8C4460]"><CheckCircle2 className="h-3 w-3" /> sürükleyerek karşılaştır</span>
           </div>
           {(befores.length > 1 || afters.length > 1) && (
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -243,12 +243,12 @@ export default function TreatmentJournal({
 
       {/* Galeri */}
       {loading && photos.length === 0 ? (
-        <div className="py-6 text-center text-[11px] text-[#352432]/40">Yükleniyor…</div>
+        <div className="py-6 text-center text-[11px] text-[#74616A]">Yükleniyor…</div>
       ) : photos.length === 0 ? (
         <div className="flex flex-col items-center gap-1.5 py-6 text-center">
           <ImageOff className="h-6 w-6 text-[#efbfd0]" />
-          <div className="text-[12px] font-medium text-[#352432]/55">Henüz fotoğraf yok</div>
-          <div className="text-[10.5px] text-[#352432]/40">Önce/sonra ekleyince burada görünür ve karşılaştırma açılır.</div>
+          <div className="text-[12px] font-medium text-[#5A4B53]">Henüz fotoğraf yok</div>
+          <div className="text-[10.5px] text-[#74616A]">Önce/sonra ekleyince burada görünür ve karşılaştırma açılır.</div>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -260,7 +260,7 @@ export default function TreatmentJournal({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.25, delay: Math.min(idx * 0.04, 0.4) }}
-                className="group relative overflow-hidden rounded-[12px] border border-[#f0e0e6] bg-[#fffafb]"
+                className="group relative overflow-hidden rounded-[12px] border border-[#f0e0e6] bg-[#F7F6F6]"
               >
                 <div className="aspect-square w-full overflow-hidden">
                   <img src={p.imageUrl} alt={meta.label} className="h-full w-full object-cover transition group-hover:scale-105" />
@@ -277,11 +277,11 @@ export default function TreatmentJournal({
                   <Trash2 className="h-3 w-3" />
                 </button>
                 <div className="px-1.5 py-1">
-                  <div className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wide text-[#352432]/40">
+                  <div className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wide text-[#74616A]">
                     <CalendarDays className="h-2.5 w-2.5" /> {fmtDate(p.takenAtUtc)}
                   </div>
-                  {p.serviceName && <div className="truncate text-[10px] font-medium text-[#352432]/70">{p.serviceName}</div>}
-                  {p.note && <div className="truncate text-[9.5px] text-[#352432]/45">{p.note}</div>}
+                  {p.serviceName && <div className="truncate text-[10px] font-medium text-[#5A4B53]">{p.serviceName}</div>}
+                  {p.note && <div className="truncate text-[9.5px] text-[#74616A]">{p.note}</div>}
                 </div>
               </motion.div>
             )
@@ -302,7 +302,7 @@ function PickRow({
 }) {
   return (
     <div>
-      <div className="mb-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/35">{label}</div>
+      <div className="mb-1 text-[9px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
       <div className="flex gap-1 overflow-x-auto pb-1">
         {items.map((p) => (
           <button
@@ -310,7 +310,7 @@ function PickRow({
             type="button"
             onClick={() => p.id && onPick(p.id)}
             className={`h-10 w-10 shrink-0 overflow-hidden rounded-md border-2 transition ${
-              p.id === selectedId ? 'border-[#c85776]' : 'border-transparent opacity-60 hover:opacity-100'
+              p.id === selectedId ? 'border-[#8C4460]' : 'border-transparent opacity-60 hover:opacity-100'
             }`}
           >
             <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />

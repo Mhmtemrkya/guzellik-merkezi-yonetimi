@@ -63,19 +63,19 @@ export default function RatingQrModal({ info, onClose }: { info: RatingTokenInfo
   return (
     <Dialog open={!!info} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent
-        className="overflow-hidden rounded-[26px] border border-[#ead8df]/90 bg-white p-0 text-[#352432] shadow-[0_40px_120px_-50px_rgba(120,71,88,0.6)]"
+        className="overflow-hidden rounded-[26px] border border-[#EAD8DF]/90 bg-white p-0 text-[#2A2027] shadow-[0_40px_120px_-50px_rgba(120,71,88,0.6)]"
         style={{ width: 'min(94vw, 420px)', maxWidth: 'min(94vw, 420px)' }}
       >
         <div className="relative p-6 text-center">
-          <div className="flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/80">
+          <div className="flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/80">
             <QrCode className="h-3.5 w-3.5" /> Müşteri Puanlaması
           </div>
           <DialogTitle className="mt-2 font-display text-2xl tracking-tight">{info?.staffName}</DialogTitle>
-          <DialogDescription className="mt-1 text-[12px] text-[#352432]/55">
+          <DialogDescription className="mt-1 text-[12px] text-[#5A4B53]">
             {info?.serviceName ? `${info.serviceName} · ` : ''}Müşteri bu kodu okutup telefonunu girerek puan verebilir.
           </DialogDescription>
 
-          <div className="mx-auto mt-5 grid w-fit place-items-center rounded-[20px] border border-[#ead8df] bg-white p-4 shadow-[0_18px_40px_-28px_rgba(150,78,104,0.45)]">
+          <div className="mx-auto mt-5 grid w-fit place-items-center rounded-[20px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_40px_-28px_rgba(150,78,104,0.45)]">
             {url && (
               <QRCodeSVG
                 value={url}
@@ -89,13 +89,13 @@ export default function RatingQrModal({ info, onClose }: { info: RatingTokenInfo
 
           <div className="mt-4 flex items-center justify-center gap-1.5 text-[12px]">
             <Star className="h-3.5 w-3.5 text-[#d8ad55]" />
-            <span className="text-[#352432]/60">Müşteri no:</span>
-            <span className="font-mono font-medium text-[#352432]">{info?.maskedPhone}</span>
+            <span className="text-[#5A4B53]">Müşteri no:</span>
+            <span className="font-mono font-medium text-[#2A2027]">{info?.maskedPhone}</span>
           </div>
 
           <div
             className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium ${
-              expired ? 'bg-rose-50 text-rose-600' : 'bg-[#fff1f6] text-[#b14d6c]'
+              expired ? 'bg-rose-50 text-rose-600' : 'bg-[#F6DFE6] text-[#8C4460]'
             }`}
           >
             <Clock className="h-3.5 w-3.5" />
@@ -106,7 +106,7 @@ export default function RatingQrModal({ info, onClose }: { info: RatingTokenInfo
             <button
               type="button"
               onClick={copy}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-4 py-2.5 text-[12px] font-medium text-[#352432]/75 transition-colors hover:border-[#efbfd0] hover:text-[#352432]"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2.5 text-[12px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#2A2027]"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? 'Kopyalandı' : 'Linki kopyala'}
@@ -114,7 +114,7 @@ export default function RatingQrModal({ info, onClose }: { info: RatingTokenInfo
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-[12px] bg-[#c85776] px-4 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+              className="flex-1 rounded-[12px] bg-[#A5556E] px-4 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
             >
               Kapat
             </button>

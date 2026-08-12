@@ -93,21 +93,21 @@ export interface ExcelTransferActionsProps<TRow> {
 }
 
 const compactBtn =
-  'inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[#ead8df] bg-white text-[#8c6e7c] transition-colors hover:border-[#efbfd0] hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-60'
+  'inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[#EAD8DF] bg-white text-[#8c6e7c] transition-colors hover:border-[#BE7690] hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-60'
 
 const ghostBtn =
-  'group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#ead8df]/[0.70] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.72] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-60'
+  'group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#EAD8DF]/[0.70] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.72] transition-colors hover:border-[#BE7690]/[0.75] hover:text-[#2A2027] disabled:opacity-60'
 
 const goldBtn =
-  'group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#efbfd0]/[0.75] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776] transition-colors hover:bg-[#f0aac2]/[0.10] hover:text-[#352432] disabled:opacity-60'
+  'group relative inline-flex min-h-10 items-center justify-center gap-2 overflow-hidden border border-[#BE7690]/[0.75] px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#f0aac2]/[0.10] hover:text-[#2A2027] disabled:opacity-60'
 
 const fieldStyle =
-  'min-h-11 w-full rounded-[14px] border border-[#ead8df]/[0.80] bg-white/[0.88] px-3 py-2 text-sm text-[#352432] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors placeholder:text-[#8f7784]/[0.45] hover:border-[#efbfd0]/[0.85] focus:border-[#f0aac2]/[0.85] focus:bg-white focus:outline-none'
+  'min-h-11 w-full rounded-[14px] border border-[#EAD8DF]/[0.80] bg-white/[0.88] px-3 py-2 text-sm text-[#2A2027] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors placeholder:text-[#8f7784]/[0.45] hover:border-[#BE7690]/[0.85] focus:border-[#f0aac2]/[0.85] focus:bg-white focus:outline-none'
 
 const labelStyle =
-  'flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#c85776]/[0.70]'
+  'flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.22em] text-[#A5556E]/[0.70]'
 
-const helperStyle = 'mt-1 text-[10px] leading-relaxed text-[#352432]/[0.40]'
+const helperStyle = 'mt-1 text-[10px] leading-relaxed text-[#2A2027]/[0.40]'
 
 function slugify(input: string): string {
   return input
@@ -139,7 +139,7 @@ function ModalShell({ open, onOpenChange, trigger, eyebrow, title, description, 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex h-[94dvh] flex-col overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-white/[0.96] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex h-[94dvh] flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF]/[0.90] bg-white/[0.96] p-0 text-[#2A2027] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(92vw, 980px)', maxWidth: 'min(92vw, 980px)', height: '94dvh', maxHeight: '94dvh' }}
       >
         <div className="relative flex h-full flex-col overflow-hidden bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5]">
@@ -152,27 +152,27 @@ function ModalShell({ open, onOpenChange, trigger, eyebrow, title, description, 
           <span aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-[0.04]" />
 
           {/* HEADER */}
-          <header className="relative shrink-0 border-b border-[#ead8df]/[0.70] p-5 pr-12 sm:p-6 sm:pr-14">
+          <header className="relative shrink-0 border-b border-[#EAD8DF]/[0.70] p-5 pr-12 sm:p-6 sm:pr-14">
             <div className="flex items-start gap-4">
               <motion.span
                 initial={{ scale: 0.85, rotate: -8 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ duration: 0.4 }}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#BE7690]/[0.80] bg-white text-[#A5556E] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
               >
-                <Icon className="h-4 w-4 text-[#c85776]" strokeWidth={1.6} />
+                <Icon className="h-4 w-4 text-[#A5556E]" strokeWidth={1.6} />
               </motion.span>
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-mono uppercase tracking-[0.28em] text-[#c85776]/[0.80]">{eyebrow}</div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/[0.80]">{eyebrow}</div>
                 <DialogTitle className="mt-1 font-display text-2xl tracking-tight">{title}</DialogTitle>
-                <DialogDescription className="mt-2 text-[12px] leading-relaxed text-[#352432]/[0.60]">
+                <DialogDescription className="mt-2 text-[12px] leading-relaxed text-[#2A2027]/[0.60]">
                   {description}
                 </DialogDescription>
               </div>
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ead8df]/[0.80] bg-white/[0.82] text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.82] text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#BE7690]/[0.90] hover:text-[#2A2027]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -185,7 +185,7 @@ function ModalShell({ open, onOpenChange, trigger, eyebrow, title, description, 
           </div>
 
           {/* FOOTER */}
-          <footer className="relative shrink-0 border-t border-[#ead8df]/[0.70] px-5 py-4 sm:px-7 sm:py-5">{footer}</footer>
+          <footer className="relative shrink-0 border-t border-[#EAD8DF]/[0.70] px-5 py-4 sm:px-7 sm:py-5">{footer}</footer>
         </div>
       </DialogContent>
     </Dialog>
@@ -431,7 +431,7 @@ export default function ExcelTransferActions<TRow>({
         }
         footer={
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.40]">
               {importPreview ? `${previewCount} satır algılandı` : 'Dosya seçilmedi'}
             </div>
             <div className="flex gap-2">
@@ -439,7 +439,7 @@ export default function ExcelTransferActions<TRow>({
                 type="button"
                 onClick={() => setImportOpen(false)}
                 disabled={importBusy}
-                className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-50"
+                className="rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.65] transition-colors hover:border-[#BE7690]/[0.75] hover:text-[#2A2027] disabled:opacity-50"
               >
                 Vazgeç
               </button>
@@ -448,7 +448,7 @@ export default function ExcelTransferActions<TRow>({
                 onClick={handleImportSubmit}
                 disabled={importBusy || importDone || !importPreview}
                 whileTap={{ scale: 0.96 }}
-                className="inline-flex items-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-full border border-[#BE7690]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-70"
               >
                 {importBusy && <Loader2 className="h-3 w-3 animate-spin" />}
                 {importDone && <CheckCircle2 className="h-3 w-3" />}
@@ -483,12 +483,12 @@ export default function ExcelTransferActions<TRow>({
                       }}
                       className={`flex items-center justify-between gap-2 border px-3 py-2.5 text-left transition-colors ${
                         active
-                          ? 'border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.10] text-[#352432]'
-                          : 'border-[#ead8df]/[0.70] bg-white/[0.72] text-[#352432]/[0.60] hover:border-[#efbfd0]/[0.75]'
+                          ? 'border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.10] text-[#2A2027]'
+                          : 'border-[#EAD8DF]/[0.70] bg-white/[0.72] text-[#2A2027]/[0.60] hover:border-[#BE7690]/[0.75]'
                       }`}
                     >
                       <span className="truncate text-[12px] font-medium">{t.label}</span>
-                      {active && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#c85776]" />}
+                      {active && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />}
                     </button>
                   )
                 })}
@@ -538,16 +538,16 @@ export default function ExcelTransferActions<TRow>({
               <label className={labelStyle}>
                 <Sparkles className="h-3 w-3" /> Önizleme
               </label>
-              <div className="mt-2 border border-[#ead8df]/[0.70] bg-white/[0.82]">
+              <div className="mt-2 border border-[#EAD8DF]/[0.70] bg-white/[0.82]">
                 {importPreview.map((res, sheetIdx) => (
-                  <div key={`${res.sheetName}-${sheetIdx}`} className="border-b border-[#ead8df]/[0.70] last:border-b-0">
-                    <div className="flex items-center justify-between px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.60]">
+                  <div key={`${res.sheetName}-${sheetIdx}`} className="border-b border-[#EAD8DF]/[0.70] last:border-b-0">
+                    <div className="flex items-center justify-between px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.60]">
                       <span>📄 {res.sheetName}</span>
                       <span>{res.rows.length} satır</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-px bg-[#fff4f8]/[0.10] text-[10px] sm:grid-cols-4">
+                    <div className="grid grid-cols-3 gap-px bg-[#F7F6F6]/[0.10] text-[10px] sm:grid-cols-4">
                       {res.headers.slice(0, 8).map((h, headerIdx) => (
-                        <div key={`${headerIdx}-${h}`} className="bg-white px-2 py-1.5 font-mono text-[#352432]/[0.70]">
+                        <div key={`${headerIdx}-${h}`} className="bg-white px-2 py-1.5 font-mono text-[#2A2027]/[0.70]">
                           {h}
                         </div>
                       ))}
@@ -596,8 +596,8 @@ export default function ExcelTransferActions<TRow>({
         }
         footer={
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
-              {hasDatasets && <span className="text-[#c85776]/[0.70]">{activeSource.label} · </span>}
+            <div className="text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.40]">
+              {hasDatasets && <span className="text-[#A5556E]/[0.70]">{activeSource.label} · </span>}
               {activeSource.rows.length} satır · {selectedKeys.length}/{activeSource.columns.length} kolon
             </div>
             <div className="flex gap-2">
@@ -605,7 +605,7 @@ export default function ExcelTransferActions<TRow>({
                 type="button"
                 onClick={() => setExportOpen(false)}
                 disabled={exportBusy}
-                className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65] transition-colors hover:border-[#efbfd0]/[0.75] hover:text-[#352432] disabled:opacity-50"
+                className="rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.72] px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.65] transition-colors hover:border-[#BE7690]/[0.75] hover:text-[#2A2027] disabled:opacity-50"
               >
                 Vazgeç
               </button>
@@ -614,7 +614,7 @@ export default function ExcelTransferActions<TRow>({
                 onClick={handleExport}
                 disabled={exportBusy || exportDone}
                 whileTap={{ scale: 0.96 }}
-                className="inline-flex items-center gap-2 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-full border border-[#BE7690]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] disabled:opacity-70"
               >
                 {exportBusy && <Loader2 className="h-3 w-3 animate-spin" />}
                 {exportDone && <CheckCircle2 className="h-3 w-3" />}
@@ -642,17 +642,17 @@ export default function ExcelTransferActions<TRow>({
                       onClick={() => setActiveDatasetKey(ds.key)}
                       className={`group flex items-center justify-between gap-2 border px-3 py-2.5 text-left transition-colors ${
                         active
-                          ? 'border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.10] text-[#352432]'
-                          : 'border-[#ead8df]/[0.70] bg-white/[0.72] text-[#352432]/[0.60] hover:border-[#efbfd0]/[0.75]'
+                          ? 'border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.10] text-[#2A2027]'
+                          : 'border-[#EAD8DF]/[0.70] bg-white/[0.72] text-[#2A2027]/[0.60] hover:border-[#BE7690]/[0.75]'
                       }`}
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-[12px] font-medium">{ds.label}</span>
-                        <span className="block text-[9px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
+                        <span className="block text-[9px] font-mono uppercase tracking-widest text-[#2A2027]/[0.40]">
                           {ds.rows.length} satır · {ds.columns.length} kolon
                         </span>
                       </span>
-                      {active && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#c85776]" />}
+                      {active && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />}
                     </button>
                   )
                 })}
@@ -694,12 +694,12 @@ export default function ExcelTransferActions<TRow>({
               <Hash className="h-3 w-3" /> Ekstra satır/sayfa
             </label>
             <div className="mt-2 space-y-2">
-              <label className="flex cursor-pointer items-center gap-2 border border-[#ead8df]/[0.70] bg-white/[0.82] px-3 py-2 text-[11px] text-[#352432]/[0.75] transition-colors hover:border-[#efbfd0]/[0.75]">
+              <label className="flex cursor-pointer items-center gap-2 border border-[#EAD8DF]/[0.70] bg-white/[0.82] px-3 py-2 text-[11px] text-[#2A2027]/[0.75] transition-colors hover:border-[#BE7690]/[0.75]">
                 <input type="checkbox" checked={includeTotals} onChange={(e) => setIncludeTotals(e.target.checked)} className="h-3.5 w-3.5" />
                 Toplam satırı ekle
               </label>
               {!hasDatasets && extraSheets && extraSheets.length > 0 && (
-                <label className="flex cursor-pointer items-center gap-2 border border-[#ead8df]/[0.70] bg-white/[0.82] px-3 py-2 text-[11px] text-[#352432]/[0.75] transition-colors hover:border-[#efbfd0]/[0.75]">
+                <label className="flex cursor-pointer items-center gap-2 border border-[#EAD8DF]/[0.70] bg-white/[0.82] px-3 py-2 text-[11px] text-[#2A2027]/[0.75] transition-colors hover:border-[#BE7690]/[0.75]">
                   <input type="checkbox" checked={includeExtras} onChange={(e) => setIncludeExtras(e.target.checked)} className="h-3.5 w-3.5" />
                   Ek sayfaları ekle ({extraSheets.length})
                 </label>
@@ -714,10 +714,10 @@ export default function ExcelTransferActions<TRow>({
                 <Layers className="h-3 w-3" /> Kolonlar
               </label>
               <div className="flex gap-1.5 text-[9px] font-mono uppercase tracking-widest">
-                <button type="button" onClick={() => setSelectedKeys(activeSource.columns.map((c) => c.key))} className="border border-[#ead8df]/[0.70] px-2 py-0.5 text-[#352432]/[0.65] hover:border-[#efbfd0]/[0.75] hover:text-[#352432]">
+                <button type="button" onClick={() => setSelectedKeys(activeSource.columns.map((c) => c.key))} className="border border-[#EAD8DF]/[0.70] px-2 py-0.5 text-[#2A2027]/[0.65] hover:border-[#BE7690]/[0.75] hover:text-[#2A2027]">
                   Tümü
                 </button>
-                <button type="button" onClick={() => setSelectedKeys([])} className="border border-[#ead8df]/[0.70] px-2 py-0.5 text-[#352432]/[0.65] hover:border-[#efbfd0]/[0.75] hover:text-[#352432]">
+                <button type="button" onClick={() => setSelectedKeys([])} className="border border-[#EAD8DF]/[0.70] px-2 py-0.5 text-[#2A2027]/[0.65] hover:border-[#BE7690]/[0.75] hover:text-[#2A2027]">
                   Hiçbiri
                 </button>
               </div>
@@ -732,12 +732,12 @@ export default function ExcelTransferActions<TRow>({
                     onClick={() => toggleColumn(col.key)}
                     className={`border px-2 py-1.5 text-left text-[11px] transition-colors ${
                       active
-                        ? 'border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.08] text-[#352432]'
-                        : 'border-[#ead8df]/[0.70] bg-white/[0.72] text-[#352432]/[0.55] hover:border-[#efbfd0]/[0.75]'
+                        ? 'border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.08] text-[#2A2027]'
+                        : 'border-[#EAD8DF]/[0.70] bg-white/[0.72] text-[#2A2027]/[0.55] hover:border-[#BE7690]/[0.75]'
                     }`}
                   >
                     <span className="flex items-center gap-1.5">
-                      {active && <CheckCircle2 className="h-2.5 w-2.5 text-[#c85776]" />}
+                      {active && <CheckCircle2 className="h-2.5 w-2.5 text-[#A5556E]" />}
                       <span className="truncate">{col.header}</span>
                     </span>
                   </button>
@@ -747,18 +747,18 @@ export default function ExcelTransferActions<TRow>({
           </div>
 
           {/* Preview */}
-          <div className="sm:col-span-2 border border-[#ead8df]/[0.70] bg-white/[0.35] p-3">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.65]">
+          <div className="sm:col-span-2 border border-[#EAD8DF]/[0.70] bg-white/[0.35] p-3">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.65]">
               <FileText className="h-3 w-3" /> Çıktı önizleme
             </div>
-            <div className="mt-2 text-[11px] text-[#352432]/[0.65]">
-              <strong className="text-[#c85776]">✦ BeautyAsist — {activeSource.label.toUpperCase()}</strong>
-              <div className="mt-1 text-[10px] text-[#352432]/[0.40]">
+            <div className="mt-2 text-[11px] text-[#2A2027]/[0.65]">
+              <strong className="text-[#A5556E]">✦ BeautyAsist — {activeSource.label.toUpperCase()}</strong>
+              <div className="mt-1 text-[10px] text-[#2A2027]/[0.40]">
                 {context || 'Kurum · Şube · Dönem'} · {selectedKeys.length} kolon · {activeSource.rows.length} satır
                 {includeTotals && ' · Toplam satırı'}
                 {!hasDatasets && includeExtras && extraSheets?.length ? ` · ${extraSheets.length} ek sayfa` : ''}
               </div>
-              <div className="mt-1.5 text-[10px] font-mono text-[#c85776]/[0.55]">
+              <div className="mt-1.5 text-[10px] font-mono text-[#A5556E]/[0.55]">
                 📄 {(exportFilename.trim() || defaultFilename(activeSource.label)).replace(/\.xlsx$/i, '')}.xlsx
               </div>
             </div>

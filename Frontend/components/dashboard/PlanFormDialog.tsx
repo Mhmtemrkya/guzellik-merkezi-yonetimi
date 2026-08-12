@@ -222,7 +222,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="!gap-0 !p-0 !rounded-[28px] border-[#ead8df]/[0.90] bg-white/[0.96] text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl !inset-x-2 !top-[3vh] !bottom-[3vh] sm:!inset-x-auto sm:!left-1/2 sm:!top-1/2 sm:!-translate-x-1/2 sm:!-translate-y-1/2 sm:!max-w-none [&>button:last-child]:hidden"
+        className="!gap-0 !p-0 !rounded-[28px] border-[#EAD8DF]/[0.90] bg-white/[0.96] text-[#2A2027] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl !inset-x-2 !top-[3vh] !bottom-[3vh] sm:!inset-x-auto sm:!left-1/2 sm:!top-1/2 sm:!-translate-x-1/2 sm:!-translate-y-1/2 sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(98vw, 1640px)', maxWidth: 'min(98vw, 1640px)', height: '94dvh', maxHeight: '94dvh' }}
       >
         <VisuallyHidden.Root>
@@ -235,8 +235,8 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
         </VisuallyHidden.Root>
         <div className="grid h-[94dvh] grid-cols-1 overflow-hidden lg:grid-cols-[360px_1fr]" style={{ height: '94dvh', maxHeight: '94dvh' }}>
           {/* Sol — özet panel */}
-          <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-[#ead8df]/[0.75] bg-gradient-to-b from-white via-[#fff8fb] to-[#fff0f5] p-6 lg:flex">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.65]">
+          <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-[#EAD8DF]/[0.75] bg-gradient-to-b from-white via-[#fff8fb] to-[#fff0f5] p-6 lg:flex">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.65]">
               <Package className="h-3.5 w-3.5" />
               {mode === 'create' ? 'Yeni paket' : 'Paket düzenle'}
             </div>
@@ -244,7 +244,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
               {form.name.trim() || 'İsimsiz paket'}
             </h2>
             {form.planKey && (
-              <div className="mt-1 text-[11px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+              <div className="mt-1 text-[11px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">
                 {form.planKey}
               </div>
             )}
@@ -253,11 +253,11 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
               <div className="font-display text-4xl tabular-nums beautyasist-text-gradient">
                 {form.monthlyPriceTRY === 0 ? 'Özel' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(form.monthlyPriceTRY)}
               </div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">aylık</div>
-              <div className="mt-2 font-display text-xl tabular-nums text-[#c85776]">
+              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">aylık</div>
+              <div className="mt-2 font-display text-xl tabular-nums text-[#A5556E]">
                 {form.yearlyPriceTRY === 0 ? 'Özel' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(form.yearlyPriceTRY)}
               </div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">yıllık</div>
+              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">yıllık</div>
             </div>
 
             <div className="mt-6 space-y-3">
@@ -269,10 +269,10 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
             </div>
 
             <div className="mt-auto pt-6">
-              <div className="rounded-[20px] border border-[#ead8df]/[0.80] bg-white/[0.78] p-3 shadow-[0_18px_44px_-36px_rgba(120,71,88,0.45)]">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.70]">
+              <div className="rounded-[20px] border border-[#EAD8DF]/[0.80] bg-white/[0.78] p-3 shadow-[0_18px_44px_-36px_rgba(120,71,88,0.45)]">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.70]">
                   <span>Aktif özellik</span>
-                  <span className="text-[#c85776]">{selectedFeatures}/{totalFeatures}</span>
+                  <span className="text-[#A5556E]">{selectedFeatures}/{totalFeatures}</span>
                 </div>
                 <div className="mt-2 h-1 bg-[#f9dce7]/[0.55]">
                   <div
@@ -280,7 +280,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                     style={{ width: `${totalFeatures > 0 ? (selectedFeatures / totalFeatures) * 100 : 0}%` }}
                   />
                 </div>
-                <p className="mt-2 text-[10px] leading-snug text-[#352432]/[0.45]">
+                <p className="mt-2 text-[10px] leading-snug text-[#2A2027]/[0.45]">
                   Aşağıdaki listeden bu pakete dahil olacak özellikleri seç.
                   Tenant'lar yalnızca kendi paketindeki özellikleri kullanabilir.
                 </p>
@@ -291,23 +291,23 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
           {/* Sağ — form alanı */}
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-[#ead8df]/[0.70] px-6 py-4">
+            <div className="flex shrink-0 items-center justify-between border-b border-[#EAD8DF]/[0.70] px-6 py-4">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.65]">
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.65]">
                   {mode === 'create' ? <Plus className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
                   Plan kataloğu
                 </div>
                 <h3 className="mt-1 font-display text-2xl armo-shimmer">
                   {mode === 'create' ? 'Yeni abonelik paketi oluştur' : `${form.name || 'Paket'} · düzenle`}
                 </h3>
-                <p className="mt-0.5 text-[11px] text-[#352432]/[0.55]">
+                <p className="mt-0.5 text-[11px] text-[#2A2027]/[0.55]">
                   Limit alanlarına -1 yazarsan sınırsız olur. Aşağıdaki özellikleri seçerek bu paketin neleri açacağını belirle.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.82] p-1.5 text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#efbfd0]/[0.90] hover:text-[#352432]"
+                className="rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.82] p-1.5 text-[#7e5f6e] shadow-[0_10px_28px_-20px_rgba(120,71,88,0.55)] transition-colors hover:border-[#BE7690]/[0.90] hover:text-[#2A2027]"
                 aria-label="Kapat"
               >
                 <X className="h-4 w-4" />
@@ -352,18 +352,18 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                     className={inputClass} />
                 </Field>
                 <Field label="Durum">
-                  <label className="flex h-10 cursor-pointer items-center gap-2 rounded-[14px] border border-[#ead8df]/[0.80] bg-white/[0.86] px-3">
+                  <label className="flex h-10 cursor-pointer items-center gap-2 rounded-[14px] border border-[#EAD8DF]/[0.80] bg-white/[0.86] px-3">
                     <input type="checkbox" checked={form.isActive}
                       onChange={(e) => update('isActive', e.target.checked)}
                       className="h-4 w-4 accent-[#f0aac2]" />
-                    <span className="text-[12px] text-[#352432]/[0.85]">
+                    <span className="text-[12px] text-[#2A2027]/[0.85]">
                       {form.isActive ? 'Aktif' : 'Pasif'}
                     </span>
                   </label>
                 </Field>
               </div>
 
-              <SectionTitle icon={Layers} className="mt-6">Kullanım Limitleri <span className="ml-1 normal-case text-[#352432]/40">(aylık maliyetli kanallar dahil · -1 = sınırsız · 0 = kapalı)</span></SectionTitle>
+              <SectionTitle icon={Layers} className="mt-6">Kullanım Limitleri <span className="ml-1 normal-case text-[#74616A]">(aylık maliyetli kanallar dahil · -1 = sınırsız · 0 = kapalı)</span></SectionTitle>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Max şube" helper="-1 = sınırsız">
                   <input type="number" value={form.maxBranches}
@@ -408,19 +408,19 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                 <SectionTitle icon={Sparkles}>Pakete Dahil Özellikler</SectionTitle>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={selectAll}
-                    className="text-[10px] font-mono uppercase tracking-widest text-[#c85776] hover:text-[#c85776]">
+                    className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E] hover:text-[#A5556E]">
                     Tümünü seç
                   </button>
-                  <span className="text-[#352432]/[0.25]">·</span>
+                  <span className="text-[#2A2027]/[0.25]">·</span>
                   <button type="button" onClick={clearAll}
-                    className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.55] hover:text-[#352432]/[0.85]">
+                    className="text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.55] hover:text-[#2A2027]/[0.85]">
                     Temizle
                   </button>
                 </div>
               </div>
 
               {loadingCatalog ? (
-                <div className="mt-3 flex items-center gap-2 border border-[#ead8df]/[0.70] bg-white/[0.72] p-4 text-[12px] text-[#352432]/[0.55]">
+                <div className="mt-3 flex items-center gap-2 border border-[#EAD8DF]/[0.70] bg-white/[0.72] p-4 text-[12px] text-[#2A2027]/[0.55]">
                   <Loader2 className="h-4 w-4 animate-spin" /> Özellik kataloğu yükleniyor...
                 </div>
               ) : (
@@ -433,17 +433,17 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                       <motion.div key={category}
                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3 }}
-                        className="rounded-[20px] border border-[#ead8df]/[0.80] bg-gradient-to-br from-white/[0.92] to-[#fff2f6]/[0.90] p-4 shadow-[0_18px_44px_-36px_rgba(120,71,88,0.45)]">
+                        className="rounded-[20px] border border-[#EAD8DF]/[0.80] bg-gradient-to-br from-white/[0.92] to-[#fff2f6]/[0.90] p-4 shadow-[0_18px_44px_-36px_rgba(120,71,88,0.45)]">
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
-                            <span className="inline-flex h-7 w-7 items-center justify-center border border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.10] text-[#c85776]">
+                            <span className="inline-flex h-7 w-7 items-center justify-center border border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.10] text-[#A5556E]">
                               <Icon className="h-3.5 w-3.5" />
                             </span>
                             <div>
-                              <div className="font-display text-[15px] text-[#352432]">
+                              <div className="font-display text-[15px] text-[#2A2027]">
                                 {FEATURE_CATEGORY_LABELS[category] ?? category}
                               </div>
-                              <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                              <div className="text-[9px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">
                                 {selectedInCat}/{items.length} seçili
                               </div>
                             </div>
@@ -451,8 +451,8 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                           <button type="button" onClick={() => toggleCategory(items)}
                             className={`border px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest transition-colors ${
                               allSelected
-                                ? 'border-[#efbfd0]/[0.75] bg-[#f0aac2]/[0.15] text-[#c85776]'
-                                : 'border-[#ead8df]/[0.70] bg-white/[0.78] text-[#352432]/[0.65] hover:bg-[#f9dce7]/[0.55]'
+                                ? 'border-[#BE7690]/[0.75] bg-[#f0aac2]/[0.15] text-[#A5556E]'
+                                : 'border-[#EAD8DF]/[0.70] bg-white/[0.78] text-[#2A2027]/[0.65] hover:bg-[#f9dce7]/[0.55]'
                             }`}>
                             {allSelected ? 'Tümünü kaldır' : 'Tümünü seç'}
                           </button>
@@ -464,17 +464,17 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                               <label key={item.key}
                                 className={`flex cursor-pointer items-start gap-2.5 rounded-[16px] border p-2.5 transition-colors ${
                                   checked
-                                    ? 'border-[#efbfd0]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] to-[#ffd3df]/[0.05]'
-                                    : 'border-[#ead8df]/[0.70] bg-white/[0.72] hover:border-[#ead8df]/[0.70] hover:bg-white/[0.78]'
+                                    ? 'border-[#BE7690]/[0.75] bg-gradient-to-br from-[#f0aac2]/[0.10] to-[#ffd3df]/[0.05]'
+                                    : 'border-[#EAD8DF]/[0.70] bg-white/[0.72] hover:border-[#EAD8DF]/[0.70] hover:bg-white/[0.78]'
                                 }`}>
                                 <input type="checkbox" checked={checked}
                                   onChange={() => toggleFeature(item.key)}
                                   className="mt-0.5 h-3.5 w-3.5 accent-[#f0aac2]" />
                                 <div className="min-w-0 flex-1">
-                                  <div className={`text-[12px] ${checked ? 'text-[#c85776]' : 'text-[#352432]/[0.85]'}`}>
+                                  <div className={`text-[12px] ${checked ? 'text-[#A5556E]' : 'text-[#2A2027]/[0.85]'}`}>
                                     {item.name}
                                   </div>
-                                  <div className="mt-0.5 text-[10px] leading-snug text-[#352432]/[0.45]">
+                                  <div className="mt-0.5 text-[10px] leading-snug text-[#2A2027]/[0.45]">
                                     {item.description}
                                   </div>
                                 </div>
@@ -490,7 +490,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 border-t border-[#ead8df]/[0.70] bg-white/[0.95] px-6 py-3">
+            <div className="shrink-0 border-t border-[#EAD8DF]/[0.70] bg-white/[0.95] px-6 py-3">
               <AnimatePresence>
                 {err && (
                   <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -500,16 +500,16 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                 )}
               </AnimatePresence>
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">
                   {selectedFeatures}/{totalFeatures} özellik · {limitText(form.maxBranches)} şube · {limitText(form.maxStaff)} personel
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setOpen(false)}
-                    className="rounded-full border border-[#ead8df]/[0.80] bg-white/[0.72] px-4 py-2 text-[11px] font-mono uppercase tracking-widest text-[#352432]/[0.75] transition-colors hover:bg-[#fff2f6]/[0.90]">
+                    className="rounded-full border border-[#EAD8DF]/[0.80] bg-white/[0.72] px-4 py-2 text-[11px] font-mono uppercase tracking-widest text-[#2A2027]/[0.75] transition-colors hover:bg-[#fff2f6]/[0.90]">
                     Vazgeç
                   </button>
                   <button type="button" onClick={handleSubmit} disabled={submitting}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[11px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_12px_28px_-18px_rgba(200,87,118,0.55)] transition-opacity hover:opacity-90 disabled:opacity-50">
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#BE7690]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-5 py-2 text-[11px] font-mono uppercase tracking-widest text-[#2f1724] shadow-[0_12px_28px_-18px_rgba(200,87,118,0.55)] transition-opacity hover:opacity-90 disabled:opacity-50">
                     {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : mode === 'create' ? <Zap className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
                     {mode === 'create' ? 'Paketi oluştur' : 'Değişiklikleri kaydet'}
                   </button>
@@ -524,7 +524,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
 }
 
 const inputClass =
-  'h-10 w-full rounded-[14px] border border-[#ead8df]/[0.80] bg-white/[0.88] px-3 text-[12px] text-[#352432] outline-none transition-colors placeholder:text-[#8f7784]/[0.45] focus:border-[#f0aac2]/[0.85] focus:bg-white'
+  'h-10 w-full rounded-[14px] border border-[#EAD8DF]/[0.80] bg-white/[0.88] px-3 text-[12px] text-[#2A2027] outline-none transition-colors placeholder:text-[#8f7784]/[0.45] focus:border-[#f0aac2]/[0.85] focus:bg-white'
 
 function Field({
   label, helper, required, fullWidth, children,
@@ -532,19 +532,19 @@ function Field({
   return (
     <div className={fullWidth ? 'sm:col-span-2 lg:col-span-3' : ''}>
       <div className="mb-1 flex items-baseline justify-between">
-        <label className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.65]">
-          {label}{required && <span className="ml-1 text-[#c85776]">*</span>}
+        <label className="text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.65]">
+          {label}{required && <span className="ml-1 text-[#A5556E]">*</span>}
         </label>
       </div>
       {children}
-      {helper && <p className="mt-1 text-[10px] leading-snug text-[#352432]/[0.45]">{helper}</p>}
+      {helper && <p className="mt-1 text-[10px] leading-snug text-[#2A2027]/[0.45]">{helper}</p>}
     </div>
   )
 }
 
 function SectionTitle({ icon: Icon, children, className = '' }: { icon: LucideIcon; children: ReactNode; className?: string }) {
   return (
-    <div className={`mb-2.5 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/[0.75] ${className}`}>
+    <div className={`mb-2.5 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/[0.75] ${className}`}>
       <Icon className="h-3.5 w-3.5" />
       <span>{children}</span>
       <span className="ml-2 h-px flex-1 bg-gradient-to-r from-[#f0aac2]/[0.35] to-transparent" />
@@ -554,11 +554,11 @@ function SectionTitle({ icon: Icon, children, className = '' }: { icon: LucideIc
 
 function SummaryRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-[#ead8df]/[0.70] pb-2">
-      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.55]">
+    <div className="flex items-center justify-between border-b border-[#EAD8DF]/[0.70] pb-2">
+      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.55]">
         <Icon className="h-3 w-3" /> {label}
       </div>
-      <div className="font-display text-sm tabular-nums text-[#352432]">{value}</div>
+      <div className="font-display text-sm tabular-nums text-[#2A2027]">{value}</div>
     </div>
   )
 }

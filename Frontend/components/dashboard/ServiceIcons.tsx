@@ -166,12 +166,12 @@ export function IconPicker({
     <>
       {/* arama */}
       <div className="relative shrink-0">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="İkon ara..."
-          className="w-full rounded-xl border border-[#efe1e7] bg-white py-2.5 pl-10 pr-4 text-[13px] text-[#4a3a44] outline-none transition focus:border-[#c85776] focus:ring-1 focus:ring-[#c85776] placeholder:text-[#705a66]/60"
+          className="w-full rounded-xl border border-[#EAD8DF] bg-white py-2.5 pl-10 pr-4 text-[13px] text-[#3E343A] outline-none transition focus:border-[#A5556E] focus:ring-1 focus:ring-[#A5556E] placeholder:text-[#74616A]/60"
         />
       </div>
 
@@ -186,8 +186,8 @@ export function IconPicker({
               onClick={() => setGroup(g)}
               className={`whitespace-nowrap rounded-full px-4 py-1.5 text-[12px] font-medium transition-colors ${
                 active
-                  ? 'bg-[#c85776] text-white shadow-sm'
-                  : 'border border-[#efe1e7] bg-white text-[#705a66] hover:border-[#c85776]/50 hover:text-[#c85776]'
+                  ? 'bg-[#A5556E] text-white shadow-sm'
+                  : 'border border-[#EAD8DF] bg-white text-[#74616A] hover:border-[#8C4460]/50 hover:text-[#A5556E]'
               }`}
             >
               {g === 'all' ? 'Tümü' : g}
@@ -208,8 +208,8 @@ export function IconPicker({
               onClick={() => onChange(i.key)}
               className={`grid aspect-square place-items-center rounded-xl transition-all duration-200 ${
                 selected
-                  ? 'bg-gradient-to-br from-[#f47699] to-[#ef6088] text-white shadow-[0_4px_12px_-8px_rgba(200,87,118,0.5)] ring-2 ring-[#c85776]'
-                  : 'border border-[#efe1e7] bg-white text-[#705a66] shadow-sm hover:border-[#c85776] hover:text-[#c85776]'
+                  ? 'bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-white shadow-[0_4px_12px_-8px_rgba(200,87,118,0.5)] ring-2 ring-[#A5556E]'
+                  : 'border border-[#EAD8DF] bg-white text-[#74616A] shadow-sm hover:border-[#8C4460] hover:text-[#A5556E]'
               }`}
             >
               <ServiceIcon iconKey={i.key} className="h-[18px] w-[18px]" strokeWidth={1.7} />
@@ -224,5 +224,5 @@ export function IconPicker({
   )
 
   if (bare) return <div className={fill ? 'flex min-h-0 flex-1 flex-col' : ''}>{inner}</div>
-  return <div className={`rounded-[16px] border border-[#efe1e7] bg-[#fffafc] p-3 ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>{inner}</div>
+  return <div className={`rounded-[16px] border border-[#EAD8DF] bg-[#F7F6F6] p-3 ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>{inner}</div>
 }

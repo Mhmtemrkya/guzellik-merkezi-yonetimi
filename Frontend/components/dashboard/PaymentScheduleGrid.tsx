@@ -27,7 +27,7 @@ const CELL: Record<MonthCell['status'], { row: string; badge: string; label: str
   partial: { row: 'bg-amber-50', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Kısmi', mark: '◐' },
   overdue: { row: 'bg-rose-50', badge: 'bg-rose-100 text-rose-800 border-rose-300', label: 'Gecikti', mark: '!' },
   upcoming: { row: 'bg-amber-50/60', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Bekliyor', mark: '·' },
-  none: { row: 'bg-white', badge: 'bg-[#f3e9ed] text-[#705a66] border-[#e3d2da]', label: '—', mark: '' },
+  none: { row: 'bg-white', badge: 'bg-[#f3e9ed] text-[#74616A] border-[#e3d2da]', label: '—', mark: '' },
 }
 
 function fmtDue(cell: MonthCell): string {
@@ -69,7 +69,7 @@ export default function PaymentScheduleGrid({
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-[14px] border border-dashed border-[#ead8df] bg-[#fffafb] px-4 py-8 text-center text-[12px] text-[#705a66]">
+      <div className="rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#74616A]">
         Bu müşteride taksit planı yok — satışlar peşin.
       </div>
     )
@@ -80,25 +80,25 @@ export default function PaymentScheduleGrid({
       {/* Özet şeridi — KAPSAM AÇIKÇA YAZILI: bu rakamlar YALNIZ taksitleri sayar. Peşinat ve
           peşin satışlar taksit satırı üretmediğinden buraya girmez. */}
       <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-        <SummaryChip label="Taksit planı" value={totals.due} tone="text-[#4a3a44] border-[#ead8df] bg-white" />
+        <SummaryChip label="Taksit planı" value={totals.due} tone="text-[#3E343A] border-[#EAD8DF] bg-white" />
         <SummaryChip label="Taksitlerden tahsil" value={totals.paid} tone="text-emerald-800 border-emerald-200 bg-emerald-50" />
-        <SummaryChip label="Kalan taksit" value={totals.remaining} tone="text-[#a3576f] border-[#efbfd0] bg-[#fff4f8]" />
+        <SummaryChip label="Kalan taksit" value={totals.remaining} tone="text-[#8C4460] border-[#BE7690] bg-[#F7F6F6]" />
         {totals.overdue > 0.005 && (
           <SummaryChip label="Gecikmiş" value={totals.overdue} tone="text-rose-800 border-rose-200 bg-rose-50" />
         )}
-        <span className="ml-auto hidden items-center gap-2 text-[10px] text-[#705a66] sm:flex">
+        <span className="ml-auto hidden items-center gap-2 text-[10px] text-[#74616A] sm:flex">
           <Legend swatch="bg-emerald-100 border-emerald-300" text="Ödendi" />
           <Legend swatch="bg-amber-100 border-amber-300" text="Bekliyor" />
           <Legend swatch="bg-rose-100 border-rose-300" text="Gecikti" />
         </span>
       </div>
 
-      <div ref={scrollRef} className="max-h-[420px] overflow-auto rounded-[12px] border border-[#ead8df]">
+      <div ref={scrollRef} className="max-h-[420px] overflow-auto rounded-[12px] border border-[#EAD8DF]">
         <table className="w-full min-w-[560px] border-collapse text-[12px]">
           {/* YAPIŞKANLIK HÜCREDE, thead/tfoot ÜZERİNDE DEĞİL: `position: sticky` bölüm
               elemanlarında (özellikle tfoot) tarayıcılar arasında güvenilir değil. */}
           <thead>
-            <tr className="text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3576f]">
+            <tr className="text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2">Tarih</th>
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right">Planlanan Miktar</th>
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right">Ödenen Taksit</th>
@@ -114,11 +114,11 @@ export default function PaymentScheduleGrid({
                 <tr
                   key={c.key}
                   ref={isThisMonth ? todayRef : undefined}
-                  className={`${s.row} ${isThisMonth ? 'ring-1 ring-inset ring-[#c85776]' : ''}`}
+                  className={`${s.row} ${isThisMonth ? 'ring-1 ring-inset ring-[#A5556E]' : ''}`}
                 >
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 align-top">
-                    <div className="font-semibold tabular-nums text-[#352432]">{fmtDue(c)}</div>
-                    <div className="text-[10px] text-[#705a66]">
+                    <div className="font-semibold tabular-nums text-[#2A2027]">{fmtDue(c)}</div>
+                    <div className="text-[10px] text-[#74616A]">
                       {isThisMonth ? 'bu ay' : `${MONTHS_SHORT[c.month - 1]} ${c.year}`}
                       {c.installmentCount > 1 ? ` · ${c.installmentCount} taksit` : ''}
                     </div>
@@ -126,7 +126,7 @@ export default function PaymentScheduleGrid({
 
                   {/* PLANLANAN: plan tutarı + (varsa) devreden borç → o ay ödenmesi gereken */}
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 text-right align-top">
-                    <div className="font-semibold tabular-nums text-[#352432]">{formatTL(Math.round(c.due))}</div>
+                    <div className="font-semibold tabular-nums text-[#2A2027]">{formatTL(Math.round(c.due))}</div>
                     {c.carryIn > 0.005 && (
                       <div className="text-[10px] font-semibold tabular-nums text-rose-700">
                         +{formatTL(Math.round(c.carryIn))} devir → {formatTL(Math.round(c.expected))}
@@ -140,11 +140,11 @@ export default function PaymentScheduleGrid({
 
                   {/* KALAN: o ayın borcundan geriye kalan = bir sonraki aya devredecek tutar */}
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 text-right align-top">
-                    <div className={`font-bold tabular-nums ${c.outstanding > 0.005 ? 'text-[#a3576f]' : 'text-emerald-700'}`}>
+                    <div className={`font-bold tabular-nums ${c.outstanding > 0.005 ? 'text-[#8C4460]' : 'text-emerald-700'}`}>
                       {formatTL(Math.round(c.outstanding))}
                     </div>
                     {c.outstanding > 0.005 && c.carryIn > 0.005 && (
-                      <div className="text-[10px] text-[#705a66]">sonraki aya devreder</div>
+                      <div className="text-[10px] text-[#74616A]">sonraki aya devreder</div>
                     )}
                   </td>
 
@@ -159,12 +159,12 @@ export default function PaymentScheduleGrid({
           </tbody>
           {/* TOPLAM BANDI — Excel'deki toplam satırı gibi tablonun altında yapışık durur. */}
           <tfoot>
-            <tr className="text-[12px] font-bold text-[#352432]">
+            <tr className="text-[12px] font-bold text-[#2A2027]">
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2">TOPLAM</td>
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums">{formatTL(Math.round(totals.due))}</td>
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums text-emerald-700">{formatTL(Math.round(totals.paid))}</td>
-              <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums text-[#a3576f]">{formatTL(Math.round(totals.remaining))}</td>
-              <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-center text-[10px] font-semibold text-[#705a66]">
+              <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums text-[#8C4460]">{formatTL(Math.round(totals.remaining))}</td>
+              <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-center text-[10px] font-semibold text-[#74616A]">
                 {rows.length} vade
               </td>
             </tr>

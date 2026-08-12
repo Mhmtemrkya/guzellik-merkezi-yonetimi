@@ -74,19 +74,19 @@ const actionTone: Record<string, string> = {
   ChangeNotes: 'border-violet-300/40 bg-violet-50 text-violet-700',
   RegisterPayment: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   StockMovement: 'border-sky-300/40 bg-sky-50 text-sky-700',
-  Submit: 'border-[#efbfd0]/75 bg-[#fff1f6] text-[#c85776]',
+  Submit: 'border-[#BE7690]/75 bg-[#A5556E] text-white',
   Approve: 'border-indigo-300/40 bg-indigo-50 text-indigo-700',
   Reject: 'border-rose-300/40 bg-rose-50 text-rose-700',
-  Cancel: 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/65',
+  Cancel: 'border-[#EAD8DF] bg-[#F7F6F6] text-[#5A4B53]',
   View: 'border-sky-300/40 bg-sky-50 text-sky-700',
   'Security.UnauthorizedDevice': 'border-rose-300/50 bg-rose-50 text-rose-700',
   'Security.DeviceRegistered': 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   'Security.DeviceRemoved': 'border-amber-300/40 bg-amber-50 text-amber-700',
   'Security.DeviceLimitChanged': 'border-violet-300/40 bg-violet-50 text-violet-700',
   'Security.DeviceControlEnabled': 'border-indigo-300/40 bg-indigo-50 text-indigo-700',
-  'Security.DeviceControlDisabled': 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/65',
+  'Security.DeviceControlDisabled': 'border-[#EAD8DF] bg-[#F7F6F6] text-[#5A4B53]',
 }
-const moduleTone = 'border-[#e7c7d4]/70 bg-[#fff1f6]/70 text-[#b14d6c]'
+const moduleTone = 'border-[#EAD8DF] bg-[#F6DFE6]/70 text-[#8C4460]'
 
 function deviceTypeLabel(type: string | undefined): string {
   switch ((type || '').toLowerCase()) {
@@ -336,7 +336,7 @@ function LoglarPageInner() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={refresh}
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/75 transition-colors hover:bg-[#fff4f8]/40">
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#3E343A] transition-colors hover:bg-[#F7F6F6]">
               <RefreshCcw className="h-3.5 w-3.5" /> Yenile
             </button>
             {!isStaffUser && (
@@ -349,14 +349,14 @@ function LoglarPageInner() {
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         {/* SCOPE TABS + CLEAR */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-1 rounded-[12px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+          <div className="inline-flex items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
             {(['today', 'week', 'all'] as RangeKey[]).map((r) => (
               <button key={r} type="button" onClick={() => { setRangeKey(r); setPage(1) }}
                 className={`rounded-[9px] px-3.5 py-1.5 text-[12px] font-medium transition-colors ${
-                  rangeKey === r ? 'bg-[#c85776] text-white shadow-sm' : 'text-[#352432]/55 hover:bg-white'
+                  rangeKey === r ? 'bg-[#A5556E] text-white shadow-sm' : 'text-[#5A4B53] hover:bg-white'
                 }`}>
                 {r === 'all' ? 'Tüm geçmiş' : RANGE_LABELS[r]}
               </button>
@@ -376,7 +376,7 @@ function LoglarPageInner() {
           </div>
           {hasFilters && (
             <button type="button" onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df]/70 bg-white px-3 py-2 text-[11px] text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/40">
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]">
               <X className="h-3.5 w-3.5" /> Filtreleri Temizle
             </button>
           )}
@@ -392,19 +392,19 @@ function LoglarPageInner() {
           {statCards.map((card) => (
             <motion.div key={card.label}
               initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-              className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
+              className="rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
               <div className="flex items-center justify-between">
-                <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]">
+                <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#A5556E] text-white">
                   <card.icon className="h-4 w-4" />
                 </span>
               </div>
-              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{card.label}</div>
+              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#74616A]">{card.label}</div>
               <div className="mt-0.5 flex items-end justify-between gap-2">
                 <div className="font-display text-3xl tabular-nums tracking-tight">{card.value.toLocaleString('tr-TR')}</div>
                 <div className="w-24 shrink-0"><Sparkline values={card.series} stroke={card.stroke} /></div>
               </div>
               {card.badge && (
-                <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#fff1f6]/70 px-2 py-0.5 text-[9px] font-mono uppercase tracking-wide text-[#b14d6c]">
+                <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#F6DFE6]/70 px-2 py-0.5 text-[9px] font-mono uppercase tracking-wide text-[#8C4460]">
                   ↗ {card.badge}
                 </div>
               )}
@@ -413,13 +413,13 @@ function LoglarPageInner() {
         </div>
 
         {/* FILTER BAR */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4">
+        <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-4">
           <div className="grid gap-3 lg:grid-cols-[1.4fr_repeat(4,0.9fr)_auto] lg:items-end">
             <Field label="Arama">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
                 <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Action veya entity adı"
-                  className="w-full rounded-[10px] border border-[#ead8df]/70 bg-white px-9 py-2 text-[12px] text-[#352432] outline-none focus:border-[#c85776]" />
+                  className="w-full rounded-[10px] border border-[#EAD8DF] bg-white px-9 py-2 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
               </div>
             </Field>
             <Field label="Eylem">
@@ -439,17 +439,17 @@ function LoglarPageInner() {
                 options={(Object.keys(RANGE_LABELS) as RangeKey[]).map((r) => ({ value: r, label: RANGE_LABELS[r] }))} />
             </Field>
             <button type="button" onClick={exportCsv}
-              className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] border border-[#c85776]/40 bg-[#fff1f6] px-3 text-[11px] font-medium text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]">
+              className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] border border-[#8C4460]/40 bg-[#F6DFE6] px-3 text-[11px] font-medium text-[#8C4460] transition-colors hover:bg-[#F6DFE6]">
               <Download className="h-3.5 w-3.5" /> Dışa aktar (Excel)
             </button>
           </div>
         </div>
 
         {/* ACTIVITY TABLE */}
-        <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-          <div className="flex items-center justify-between gap-3 border-b border-[#ead8df]/70 px-5 py-4">
+        <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white">
+          <div className="flex items-center justify-between gap-3 border-b border-[#EAD8DF] px-5 py-4">
             <div>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">{RANGE_LABELS[rangeKey]} · Aktivite Akışı</div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">{RANGE_LABELS[rangeKey]} · Aktivite Akışı</div>
               <div className="mt-0.5 font-display text-2xl tracking-tight">
                 <span className="beautyasist-text-gradient">{total.toLocaleString('tr-TR')}</span> kayıt
               </div>
@@ -457,18 +457,18 @@ function LoglarPageInner() {
           </div>
 
           {/* Column headers */}
-          <div className="hidden grid-cols-[1fr_180px_120px_130px_140px_80px] gap-3 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
+          <div className="hidden grid-cols-[1fr_180px_120px_130px_140px_80px] gap-3 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
             <span>İşlem</span><span>Kullanıcı</span><span>Eylem</span><span>Modül</span><span>Tarih</span><span className="text-right">Detay</span>
           </div>
 
-          <div className="divide-y divide-[#f1e5ea]">
+          <div className="divide-y divide-[#F1E7EB]">
             {logs.map((log) => {
               const Icon = actionIcon[log.action] || Activity
-              const tone = actionTone[log.action] || 'border-[#ead8df]/70 bg-[#fff4f8]/40 text-[#352432]/70'
+              const tone = actionTone[log.action] || 'border-[#EAD8DF] bg-[#F7F6F6] text-[#5A4B53]'
               const isExpanded = expandedId === log.id
               const photo = log.actorUserId ? photoByUserId.get(log.actorUserId) : undefined
               return (
-                <div key={log.id} className="px-5 py-3 transition-colors hover:bg-[#fffafc]">
+                <div key={log.id} className="px-5 py-3 transition-colors hover:bg-[#F7F6F6]">
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px_120px_130px_140px_80px] lg:items-center">
                     {/* İşlem */}
                     <div className="flex min-w-0 items-center gap-3">
@@ -476,11 +476,11 @@ function LoglarPageInner() {
                         <Icon className="h-4 w-4" strokeWidth={1.6} />
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-[12.5px] text-[#352432]">{log.summary || `${log.actionLabel} · ${log.entityLabel}`}</div>
-                        <div className="mt-0.5 flex items-center gap-1.5 truncate text-[9px] font-mono uppercase tracking-wide text-[#352432]/40">
+                        <div className="truncate text-[12.5px] text-[#2A2027]">{log.summary || `${log.actionLabel} · ${log.entityLabel}`}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 truncate text-[9px] font-mono uppercase tracking-wide text-[#74616A]">
                           <span className="truncate">{log.actorName?.toLowerCase()}</span>
-                          {log.actorRole && <span className="text-[#c85776]/55">· {log.actorRole}</span>}
-                          <span className="text-[#352432]/30">· ⊕ #{shortRef(log.id)}</span>
+                          {log.actorRole && <span className="text-[#A5556E]/55">· {log.actorRole}</span>}
+                          <span className="text-[#74616A]">· ⊕ #{shortRef(log.id)}</span>
                         </div>
                         {/* IP + cihaz kimliği + ağ bilgisi — belirgin rozetler */}
                         {(log.ipAddress || (deviceControlFeature && (log.deviceId || log.deviceInfo))) && (
@@ -491,7 +491,7 @@ function LoglarPageInner() {
                               </span>
                             )}
                             {deviceControlFeature && log.deviceId && (
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#efbfd0]/70 bg-[#fff1f6] px-2.5 py-1 text-[10.5px] font-mono font-medium text-[#b14d6c]"
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F6DFE6] px-2.5 py-1 text-[10.5px] font-mono font-medium text-[#8C4460]"
                                 title={log.deviceId}>
                                 {String((log.deviceInfo?.deviceType as string) || '').toLowerCase() === 'mobile'
                                   ? <Smartphone className="h-3.5 w-3.5" />
@@ -516,7 +516,7 @@ function LoglarPageInner() {
                     {/* Kullanıcı */}
                     <div className="flex items-center gap-2">
                       {photo ? (
-                        <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-[#efbfd0]/60">
+                        <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-[#EAD8DF]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={photo} alt={log.actorName} className="h-full w-full object-cover" />
                         </span>
@@ -526,8 +526,8 @@ function LoglarPageInner() {
                         </span>
                       )}
                       <div className="min-w-0">
-                        <div className="truncate text-[12px] font-medium text-[#352432]">{log.actorName}</div>
-                        <div className="truncate text-[9px] font-mono uppercase tracking-wide text-[#352432]/40">{log.actorRole || '—'}</div>
+                        <div className="truncate text-[12px] font-medium text-[#2A2027]">{log.actorName}</div>
+                        <div className="truncate text-[9px] font-mono uppercase tracking-wide text-[#74616A]">{log.actorRole || '—'}</div>
                       </div>
                     </div>
                     {/* Eylem */}
@@ -539,12 +539,12 @@ function LoglarPageInner() {
                       <span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${moduleTone}`}>{log.entityLabel}</span>
                     </div>
                     {/* Tarih */}
-                    <div className="text-[10.5px] font-mono text-[#352432]/50">{log.createdAtFormatted}</div>
+                    <div className="text-[10.5px] font-mono text-[#5A4B53]">{log.createdAtFormatted}</div>
                     {/* Detay */}
                     <div className="flex lg:justify-end">
                       <button type="button" disabled={!log.data && !log.deviceId && !log.ipAddress}
                         onClick={() => setExpandedId(isExpanded ? null : log.id)}
-                        className="inline-flex items-center gap-1 rounded-md border border-[#ead8df]/70 bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35">
+                        className="inline-flex items-center gap-1 rounded-md border border-[#EAD8DF] bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/50 disabled:opacity-35">
                         {isExpanded ? 'Gizle' : 'Detay'}
                       </button>
                     </div>
@@ -555,8 +555,8 @@ function LoglarPageInner() {
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
                         {/* CİHAZ & BAĞLANTI — IP ve cihaz kimliği büyük, okunur kart */}
                         {(log.ipAddress || (deviceControlFeature && (log.deviceId || log.deviceInfo))) && (
-                          <div className="mt-3 rounded-[14px] border border-[#ead8df]/70 bg-gradient-to-br from-[#fffafc] to-[#fff1f6]/60 p-4">
-                            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/80">
+                          <div className="mt-3 rounded-[14px] border border-[#EAD8DF] bg-gradient-to-br from-[#fffafc] to-[#fff1f6]/60 p-4">
+                            <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/80">
                               <MonitorSmartphone className="h-3.5 w-3.5" /> Cihaz &amp; Bağlantı
                             </div>
                             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -566,7 +566,7 @@ function LoglarPageInner() {
                               {deviceControlFeature && log.deviceId && (
                                 <DeviceFact
                                   icon={String((log.deviceInfo?.deviceType as string) || '').toLowerCase() === 'mobile' ? Smartphone : MonitorSmartphone}
-                                  tone="text-[#b14d6c] bg-[#fff1f6] border-[#efbfd0]/70"
+                                  tone="text-[#8C4460] bg-[#F6DFE6] border-[#EAD8DF]"
                                   label="Cihaz Kimliği" value={log.deviceId} mono copyable
                                   sub={deviceTypeLabel(log.deviceInfo?.deviceType as string | undefined)}
                                 />
@@ -595,11 +595,11 @@ function LoglarPageInner() {
                           </div>
                         )}
                         {log.data && (
-                        <div className="mt-3 grid gap-1.5 border-t border-[#ead8df]/60 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="mt-3 grid gap-1.5 border-t border-[#EAD8DF] pt-3 sm:grid-cols-2 lg:grid-cols-3">
                           {Object.entries(log.data).slice(0, 12).map(([k, v]) => (
-                            <div key={k} className="rounded-[8px] border border-[#ead8df]/60 bg-[#fffafc] px-2.5 py-1.5">
-                              <div className="font-mono text-[9px] uppercase tracking-widest text-[#c85776]/55">{k}</div>
-                              <div className="mt-0.5 truncate text-[11px] text-[#352432]/85">
+                            <div key={k} className="rounded-[8px] border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1.5">
+                              <div className="font-mono text-[9px] uppercase tracking-widest text-[#A5556E]/55">{k}</div>
+                              <div className="mt-0.5 truncate text-[11px] text-[#2A2027]/85">
                                 {v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v)}
                               </div>
                             </div>
@@ -615,8 +615,8 @@ function LoglarPageInner() {
 
             {!logs.length && !loading && (
               <div className="px-5 py-14 text-center">
-                <ClipboardList className="mx-auto h-10 w-10 text-[#c85776]/45" strokeWidth={1.3} />
-                <div className="mt-3 text-sm text-[#352432]/65">
+                <ClipboardList className="mx-auto h-10 w-10 text-[#A5556E]/45" strokeWidth={1.3} />
+                <div className="mt-3 text-sm text-[#5A4B53]">
                   {hasFilters ? 'Filtreyle eşleşen log bulunamadı.' : 'Bu zaman aralığında henüz işlem yapılmamış.'}
                 </div>
               </div>
@@ -625,33 +625,33 @@ function LoglarPageInner() {
 
           {/* PAGINATION */}
           {total > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 px-5 py-3.5">
-              <div className="text-[11px] text-[#352432]/50">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
+              <div className="text-[11px] text-[#5A4B53]">
                 {rangeStart} – {rangeEnd} / {total.toLocaleString('tr-TR')} kayıt gösteriliyor
               </div>
               <div className="flex items-center gap-1.5">
                 <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1}
-                  className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35">
+                  className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/50 disabled:opacity-35">
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 {pageNumbers.map((p, i) =>
                   p === '...' ? (
-                    <span key={`e-${i}`} className="px-1 text-[12px] text-[#352432]/35">…</span>
+                    <span key={`e-${i}`} className="px-1 text-[12px] text-[#74616A]">…</span>
                   ) : (
                     <button key={p} type="button" onClick={() => goPage(p)}
                       className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums transition-colors ${
-                        p === page ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fff4f8]/50'
+                        p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'
                       }`}>
                       {p}
                     </button>
                   ),
                 )}
                 <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages}
-                  className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 transition-colors hover:bg-[#fff4f8]/50 disabled:opacity-35">
+                  className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/50 disabled:opacity-35">
                   <ChevronRight className="h-4 w-4" />
                 </button>
                 <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
-                  className="ml-2 rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[11px] text-[#352432]/65 outline-none focus:border-[#c85776]">
+                  className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">
                   {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}
                 </select>
               </div>
@@ -660,11 +660,11 @@ function LoglarPageInner() {
         </div>
 
         {/* LOG ÖZETİ */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
+        <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
           <div className="font-display text-xl tracking-tight">Log Özeti</div>
-          <div className="text-[11px] text-[#352432]/45">Seçili filtreye göre özet bilgiler</div>
+          <div className="text-[11px] text-[#74616A]">Seçili filtreye göre özet bilgiler</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryTile icon={Clock} tone="text-[#c85776] bg-[#fff1f6]" label="En Yoğun Saat" value={summary.busiestHour} sub="Akşam aralığı" />
+            <SummaryTile icon={Clock} tone="text-[#A5556E] bg-[#F6DFE6]" label="En Yoğun Saat" value={summary.busiestHour} sub="Akşam aralığı" />
             <SummaryTile icon={Star} tone="text-violet-600 bg-violet-50" label="En Aktif Modül" value={summary.topModule} sub={`Toplam işlem oranı %${summary.modulePct}`} />
             <SummaryTile icon={Users} tone="text-emerald-600 bg-emerald-50" label="Benzersiz Kullanıcı" value={String(summary.uniqueUsers)} sub="Bu filtredeki kullanıcı sayısı" />
             <SummaryTile icon={AlertTriangle} tone="text-amber-600 bg-amber-50" label="Hata / Uyarı" value={String(summary.warnings)} sub="Hata & uyarı sayısı" />
@@ -684,8 +684,8 @@ function LoglarPageInner() {
                   <AlertCircle className="h-5 w-5" strokeWidth={1.5} />
                 </span>
                 <div>
-                  <div className="font-display text-xl text-[#352432]">Tüm log kayıtları silinsin mi?</div>
-                  <p className="mt-2 text-sm leading-6 text-[#352432]/65">
+                  <div className="font-display text-xl text-[#2A2027]">Tüm log kayıtları silinsin mi?</div>
+                  <p className="mt-2 text-sm leading-6 text-[#5A4B53]">
                     Bu işlem seçili kurumun tüm log geçmişini kalıcı olarak temizler. Arama/filtreler dikkate alınmaz.
                   </p>
                   <div className="mt-3 rounded-[10px] border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-700">
@@ -695,7 +695,7 @@ function LoglarPageInner() {
               </div>
               <div className="mt-5 flex flex-wrap justify-end gap-2">
                 <button type="button" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}
-                  className="rounded-[10px] border border-[#ead8df]/70 bg-white px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/70 transition-colors hover:bg-[#fff4f8]/40 disabled:opacity-50">
+                  className="rounded-[10px] border border-[#EAD8DF] bg-white px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:bg-[#F7F6F6] disabled:opacity-50">
                   Vazgeç
                 </button>
                 <button type="button" onClick={handleDeleteAllLogs} disabled={deleting}
@@ -715,7 +715,7 @@ function LoglarPageInner() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</label>
+      <label className="mb-1.5 block text-[9px] font-mono uppercase tracking-widest text-[#74616A]">{label}</label>
       {children}
     </div>
   )
@@ -724,7 +724,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Select({ value, onChange, options, disabled }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; disabled?: boolean }) {
   return (
     <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-2 text-[12px] text-[#352432] outline-none focus:border-[#c85776] disabled:opacity-50">
+      className="w-full rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-2 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E] disabled:opacity-50">
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   )
@@ -736,21 +736,21 @@ function DeviceFact({ icon: Icon, tone, label, value, sub, mono, copyable }: {
 }) {
   const [copied, setCopied] = useState(false)
   return (
-    <div className="flex items-start gap-3 rounded-[12px] border border-[#ead8df]/60 bg-white px-3.5 py-3">
+    <div className="flex items-start gap-3 rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 py-3">
       <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[10px] border ${tone}`}>
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
-        <div className={`mt-0.5 break-all text-[13px] font-semibold leading-snug text-[#352432] ${mono ? 'font-mono tracking-tight' : ''}`}>
+        <div className="text-[9px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
+        <div className={`mt-0.5 break-all text-[13px] font-semibold leading-snug text-[#2A2027] ${mono ? 'font-mono tracking-tight' : ''}`}>
           {value}
         </div>
-        {sub && <div className="mt-0.5 truncate text-[10px] text-[#352432]/50">{sub}</div>}
+        {sub && <div className="mt-0.5 truncate text-[10px] text-[#5A4B53]">{sub}</div>}
       </div>
       {copyable && (
         <button type="button" title="Kopyala"
           onClick={() => { void navigator.clipboard?.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] border border-[#ead8df]/70 text-[#352432]/50 transition-colors hover:bg-[#fff4f8]/60">
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] border border-[#EAD8DF] text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]/60">
           {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       )}
@@ -760,14 +760,14 @@ function DeviceFact({ icon: Icon, tone, label, value, sub, mono, copyable }: {
 
 function SummaryTile({ icon: Icon, tone, label, value, sub }: { icon: LucideIcon; tone: string; label: string; value: string; sub: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-[#ead8df]/60 bg-white px-4 py-3.5">
+    <div className="flex items-center gap-3 rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3.5">
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}>
         <Icon className="h-5 w-5" />
       </span>
       <div className="min-w-0">
-        <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div>
-        <div className="truncate font-display text-lg tracking-tight text-[#352432]">{value}</div>
-        <div className="truncate text-[10px] text-[#352432]/45">{sub}</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div>
+        <div className="truncate font-display text-lg tracking-tight text-[#2A2027]">{value}</div>
+        <div className="truncate text-[10px] text-[#74616A]">{sub}</div>
       </div>
     </div>
   )

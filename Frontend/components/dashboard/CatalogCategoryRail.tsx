@@ -288,12 +288,12 @@ export default function CatalogCategoryRail({ items, value, sub = '', onChange, 
       {/* Çok kategori varsa açık panelde arama — 25 kategoride göz taraması yorucu olur. */}
       {expanded && topItems.length > SEARCH_THRESHOLD && (
         <div className="relative mt-2 w-full max-w-[240px]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Kategori ara…"
-            className="w-full rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]"
+            className="w-full rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#A5556E]"
           />
         </div>
       )}
@@ -315,9 +315,9 @@ export default function CatalogCategoryRail({ items, value, sub = '', onChange, 
             <div
               role="group"
               aria-label={`${value} alt kategorileri`}
-              className="mt-2 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#f0dde5] bg-[#fffafc] px-3 py-2"
+              className="mt-2 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#f0dde5] bg-[#F7F6F6] px-3 py-2"
             >
-              <span className="mr-0.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#b14d6c]">
+              <span className="mr-0.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#8C4460]">
                 <CornerDownRight className="h-3.5 w-3.5" />
                 {value} · alt kategoriler
               </span>
@@ -349,12 +349,12 @@ function SubChip({ label, count, active, onClick }: { label: string; count: numb
       title={`${label} · ${count}`}
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] transition-colors ${
         active
-          ? 'border-[#c85776] bg-[#c85776] text-white'
-          : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0] hover:text-[#c85776]'
+          ? 'border-[#8C4460] bg-[#A5556E] text-white'
+          : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690] hover:text-[#A5556E]'
       }`}
     >
       <span className="whitespace-nowrap font-medium">{label}</span>
-      <span className={`tabular-nums text-[10.5px] ${active ? 'text-white/75' : 'text-[#705a66]'}`}>{count}</span>
+      <span className={`tabular-nums text-[10.5px] ${active ? 'text-white/75' : 'text-[#74616A]'}`}>{count}</span>
     </button>
   )
 }
@@ -365,9 +365,9 @@ function MoreButton({ hiddenCount, expanded, onClick }: { hiddenCount: number; e
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      className="group shrink-0 rounded-[10px] px-2.5 py-1.5 text-left transition-colors hover:bg-[#fffafc]"
+      className="group shrink-0 rounded-[10px] px-2.5 py-1.5 text-left transition-colors hover:bg-[#F7F6F6]"
     >
-      <span className="flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-[#c85776]">
+      <span className="flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-[#A5556E]">
         {expanded ? 'Daha az' : `+${hiddenCount} daha`}
         <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} strokeWidth={2} />
       </span>
@@ -400,23 +400,23 @@ function RailButton({
       aria-pressed={active}
       title={title ?? `${label} · ${count}`}
       className={`group shrink-0 rounded-[10px] px-2.5 py-1.5 text-left transition-colors ${
-        active ? 'bg-[#fff1f6]' : 'hover:bg-[#fffafc]'
+        active ? 'bg-[#F6DFE6]' : 'hover:bg-[#F7F6F6]'
       }`}
     >
       <span className="flex items-baseline gap-1.5">
         <span
           className={`whitespace-nowrap text-[12px] font-medium ${
-            active ? 'text-[#c85776]' : 'text-[#4a3a44] group-hover:text-[#c85776]'
+            active ? 'text-[#A5556E]' : 'text-[#3E343A] group-hover:text-[#A5556E]'
           }`}
         >
           {label}
         </span>
-        <span className={`tabular-nums text-[10.5px] ${active ? 'text-[#c85776]/70' : 'text-[#705a66]'}`}>{count}</span>
+        <span className={`tabular-nums text-[10.5px] ${active ? 'text-[#A5556E]/70' : 'text-[#74616A]'}`}>{count}</span>
       </span>
       {/* Pay barı — kategorinin katalogdaki ağırlığı. */}
       <span aria-hidden className="mt-1 block h-[3px] w-full overflow-hidden rounded-full bg-[#f4e3ea]">
         <motion.span
-          className={`block h-full rounded-full ${active ? 'bg-[#c85776]' : 'bg-[#efbfd0] group-hover:bg-[#e79bb4]'}`}
+          className={`block h-full rounded-full ${active ? 'bg-[#A5556E]' : 'bg-[#efbfd0] group-hover:bg-[#e79bb4]'}`}
           initial={false}
           animate={{ width: barWidth }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}

@@ -58,7 +58,7 @@ export default function ManagerAppointmentInbox({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-[22px] border border-[#efbfd0]/70 bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-4 shadow-[0_24px_70px_-46px_rgba(150,78,104,0.6)] sm:p-5"
+      className="relative overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-4 shadow-[0_24px_70px_-46px_rgba(150,78,104,0.6)] sm:p-5"
     >
       <motion.span
         aria-hidden
@@ -72,16 +72,16 @@ export default function ManagerAppointmentInbox({
           <motion.span
             animate={{ rotate: [0, -10, 8, -4, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 3 }}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[#efbfd0]/80 bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
+            className="grid h-9 w-9 place-items-center rounded-full border border-[#BE7690]/80 bg-white text-[#A5556E] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]"
           >
             <BellRing className="h-4 w-4" strokeWidth={1.7} />
           </motion.span>
           <div>
-            <div className="text-[9px] font-mono uppercase tracking-[0.24em] text-[#c85776]/75">Aksiyon kutusu</div>
-            <h3 className="font-display text-lg leading-tight tracking-tight text-[#352432]">Bekleyen randevu kararları</h3>
+            <div className="text-[9px] font-mono uppercase tracking-[0.24em] text-[#A5556E]/75">Aksiyon kutusu</div>
+            <h3 className="font-display text-lg leading-tight tracking-tight text-[#2A2027]">Bekleyen randevu kararları</h3>
           </div>
         </div>
-        <span className="grid h-7 min-w-7 place-items-center rounded-full bg-[#c85776] px-2 text-[12px] font-semibold text-white tabular-nums">
+        <span className="grid h-7 min-w-7 place-items-center rounded-full bg-[#A5556E] px-2 text-[12px] font-semibold text-white tabular-nums">
           {inbox.total}
         </span>
       </div>
@@ -94,7 +94,7 @@ export default function ManagerAppointmentInbox({
         {/* SAATİ GELEN — SONUÇ BEKLEYEN */}
         {inbox.awaitingOutcome.length > 0 && (
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest text-[#b14d6c]/80">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest text-[#8C4460]/80">
               <Clock3 className="h-3.5 w-3.5" /> Saati geldi · sonucu girilmeli
             </div>
             <ul className="space-y-2">
@@ -140,7 +140,7 @@ export default function ManagerAppointmentInbox({
                           type="button"
                           disabled={busyId === a.id}
                           onClick={() => onReschedule(a)}
-                          className="inline-flex items-center gap-1 rounded-[9px] border border-[#ead8df] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#7c6170] transition-colors hover:bg-[#fff4f8] disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#7c6170] transition-colors hover:bg-[#F7F6F6] disabled:opacity-50"
                         >
                           <CalendarClock className="h-3.5 w-3.5" /> Ertele
                         </button>
@@ -182,7 +182,7 @@ export default function ManagerAppointmentInbox({
                         type="button"
                         disabled={busyId === a.id}
                         onClick={() => run(a.id, () => inbox.approve(a.id))}
-                        className="inline-flex items-center gap-1 rounded-[9px] bg-[#c85776] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-[9px] bg-[#A5556E] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
                         <Check className="h-3.5 w-3.5" /> Onayla
                       </button>

@@ -46,9 +46,9 @@ export default function RouteGuard({ allowedRoles = [], children }: RouteGuardPr
 
   if (!hydrated || !isAuthenticated || !allowed) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white px-6 text-[#352432]">
-        <div className="max-w-md border border-[#ead8df]/70 bg-white/82 p-8 text-center shadow-[0_28px_76px_-48px_rgba(150,78,104,0.52)] backdrop-blur-2xl">
-          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-[#efbfd0]/75 bg-[#f0aac2]/10 text-[#c85776]">
+      <div className="flex min-h-screen items-center justify-center bg-white px-6 text-[#2A2027]">
+        <div className="max-w-md border border-[#EAD8DF] bg-white/82 p-8 text-center shadow-[0_28px_76px_-48px_rgba(150,78,104,0.52)] backdrop-blur-2xl">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-[#BE7690]/75 bg-[#f0aac2]/10 text-[#A5556E]">
             <ShieldAlert className="h-5 w-5" strokeWidth={1.5} />
           </div>
           <div className="font-display text-2xl tracking-tight">
@@ -58,7 +58,7 @@ export default function RouteGuard({ allowedRoles = [], children }: RouteGuardPr
                 ? 'Giriş ekranına yönlendiriliyor'
                 : 'Yetkili panelinize yönlendiriliyor'}
           </div>
-          <p className="mt-3 text-sm leading-relaxed text-[#352432]/60">
+          <p className="mt-3 text-sm leading-relaxed text-[#5A4B53]">
             Bu alan rol bazlı korunur. Yanlış panel açıldıysa sistem sizi kendi yetkinize uygun panele taşır.
           </p>
         </div>

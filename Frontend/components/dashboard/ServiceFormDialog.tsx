@@ -83,9 +83,9 @@ export interface ServiceFormDialogProps {
 }
 
 const fieldStyle =
-  'w-full rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3 text-[14px] text-[#4a3a44] outline-none transition focus:border-[#c85776] focus:ring-2 focus:ring-[#c85776]/20 placeholder:text-[#705a66]/50'
+  'w-full rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[14px] text-[#3E343A] outline-none transition focus:border-[#A5556E] focus:ring-2 focus:ring-[#A5556E]/20 placeholder:text-[#74616A]/50'
 const labelStyle = 'text-[13px] font-medium text-[#241923]'
-const helperStyle = 'text-[12px] text-[#705a66]'
+const helperStyle = 'text-[12px] text-[#74616A]'
 
 export default function ServiceFormDialog({
   trigger,
@@ -241,21 +241,21 @@ export default function ServiceFormDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[28px] border border-[#efe1e7] bg-white p-0 text-[#4a3a44] shadow-[0_44px_120px_-60px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF] bg-white p-0 text-[#3E343A] shadow-[0_44px_120px_-60px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 1152px)', height: 'min(92dvh, 900px)', maxHeight: '92dvh' }}
       >
         {/* HEADER */}
-        <header className="flex shrink-0 items-start justify-between border-b border-[#efe1e7] bg-white px-6 py-6 sm:px-8">
+        <header className="flex shrink-0 items-start justify-between border-b border-[#EAD8DF] bg-white px-6 py-6 sm:px-8">
           <div className="flex items-center gap-5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#f0aac2] bg-[#f7ecf1] text-[#c85776]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#f0aac2] bg-[#f7ecf1] text-[#A5556E]">
               <Sparkles className="h-5 w-5" strokeWidth={1.7} />
             </div>
             <div className="min-w-0">
-              <div className="mb-1 font-mono text-[12px] uppercase tracking-widest text-[#705a66]">
+              <div className="mb-1 font-mono text-[12px] uppercase tracking-widest text-[#74616A]">
                 HİZMET · {mode === 'edit' ? 'DÜZENLE' : 'YENİ TANIM'}
               </div>
               <DialogTitle className="mb-1 font-display text-[28px] leading-tight text-[#241923] sm:text-3xl">{title}</DialogTitle>
-              <DialogDescription className="text-[13px] text-[#705a66]">
+              <DialogDescription className="text-[13px] text-[#74616A]">
                 Hizmet, randevu ve paket akışında anında kullanılabilir.
               </DialogDescription>
             </div>
@@ -264,7 +264,7 @@ export default function ServiceFormDialog({
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Kapat"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7ecf1] text-[#705a66] transition-colors hover:bg-[#ffd3df]/40 hover:text-[#c85776]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7ecf1] text-[#74616A] transition-colors hover:bg-[#ffd3df]/40 hover:text-[#A5556E]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -273,9 +273,9 @@ export default function ServiceFormDialog({
         {/* BODY — iki sütun */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
           {/* SOL — önizleme + ikon seçimi (krem). Sütun bütün olarak kayar: üstte kart + ikonların başı görünür, aşağı kaydırınca tüm ikonlar gelir. */}
-          <div className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-[#efe1e7] bg-[#f7ecf1] p-6 sm:p-8 md:w-[38%] md:border-b-0 md:border-r">
+          <div className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-[#EAD8DF] bg-[#f7ecf1] p-6 sm:p-8 md:w-[38%] md:border-b-0 md:border-r">
             {/* Canlı önizleme kartı */}
-            <div className="relative flex shrink-0 flex-col items-center overflow-hidden rounded-2xl border border-[#efe1e7]/60 bg-white p-5 text-center shadow-[0_4px_12px_-8px_rgba(200,87,118,0.3)]">
+            <div className="relative flex shrink-0 flex-col items-center overflow-hidden rounded-2xl border border-[#EAD8DF]/60 bg-white p-5 text-center shadow-[0_4px_12px_-8px_rgba(200,87,118,0.3)]">
               <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/40 to-transparent" />
               <motion.div
                 key={previewIcon}
@@ -287,14 +287,14 @@ export default function ServiceFormDialog({
               >
                 <ServiceIcon iconKey={previewIcon} className="h-10 w-10" strokeWidth={1.7} />
               </motion.div>
-              <div className="relative z-10 mb-3 rounded-full bg-[#ffd3df]/50 px-3 py-1 font-mono text-[10px] tracking-wider text-[#c85776]">
+              <div className="relative z-10 mb-3 rounded-full bg-[#ffd3df]/50 px-3 py-1 font-mono text-[10px] tracking-wider text-[#A5556E]">
                 {values.category || 'Kategori'}
               </div>
               <h3 className="relative z-10 mb-4 px-2 font-display text-xl text-[#241923]">{values.name.trim() || 'Hizmet adı'}</h3>
-              <div className="relative z-10 mt-auto flex w-full items-center justify-center gap-4 border-t border-[#efe1e7] pt-4 text-[13px] font-medium text-[#4a3a44]">
-                <span className="flex items-center gap-1.5"><Clock className="h-[18px] w-[18px] text-[#705a66]" /> {values.durationMinutes} dk</span>
+              <div className="relative z-10 mt-auto flex w-full items-center justify-center gap-4 border-t border-[#EAD8DF] pt-4 text-[13px] font-medium text-[#3E343A]">
+                <span className="flex items-center gap-1.5"><Clock className="h-[18px] w-[18px] text-[#74616A]" /> {values.durationMinutes} dk</span>
                 <span className="h-1 w-1 rounded-full bg-[#efe1e7]" />
-                <span className="flex items-center gap-1.5"><Repeat className="h-[18px] w-[18px] text-[#705a66]" /> {values.defaultSessionCount} seans</span>
+                <span className="flex items-center gap-1.5"><Repeat className="h-[18px] w-[18px] text-[#74616A]" /> {values.defaultSessionCount} seans</span>
               </div>
               <div className="relative z-10 mt-4 font-display text-2xl font-semibold text-[#b88938]">
                 ₺{(Number(values.price) || 0).toLocaleString('tr-TR')}
@@ -356,7 +356,7 @@ export default function ServiceFormDialog({
                       )}
                       {onCreateCustomCategory && <option value={OTHER_SENTINEL}>＋ Diğer — yeni kategori ekle…</option>}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#705a66]" />
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
                   </div>
                   {onDeleteCustomCategory && selectedCategoryRecord && !creatingCategory && (
                     <button
@@ -389,9 +389,9 @@ export default function ServiceFormDialog({
                       transition={{ duration: 0.25 }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-1 rounded-2xl border border-[#efbfd0]/80 bg-[#f7ecf1] p-4">
+                      <div className="mt-1 rounded-2xl border border-[#BE7690]/80 bg-[#f7ecf1] p-4">
                         <div className="flex items-center gap-2">
-                          <Plus className="h-4 w-4 text-[#c85776]" />
+                          <Plus className="h-4 w-4 text-[#A5556E]" />
                           <span className={labelStyle}>Yeni kategori ekle</span>
                         </div>
                         <div className="mt-2.5 flex flex-wrap gap-2">
@@ -411,19 +411,19 @@ export default function ServiceFormDialog({
                             type="button"
                             onClick={createCategory}
                             disabled={categoryBusy || !newCategoryName.trim()}
-                            className="inline-flex items-center gap-1.5 rounded-[14px] bg-[#c85776] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-[14px] bg-[#A5556E] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                           >
                             {categoryBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ekle
                           </button>
                           <button
                             type="button"
                             onClick={() => { setCreatingCategory(false); setNewCategoryName(''); setCategoryError('') }}
-                            className="rounded-[14px] border border-[#efe1e7] bg-white px-4 py-3 text-[13px] font-medium text-[#705a66] transition-colors hover:text-[#241923]"
+                            className="rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[13px] font-medium text-[#74616A] transition-colors hover:text-[#241923]"
                           >
                             Vazgeç
                           </button>
                         </div>
-                        <p className="mt-2 text-[11px] text-[#705a66]">
+                        <p className="mt-2 text-[11px] text-[#74616A]">
                           Eklenen kategori tüm hizmet/paket formlarında ve <span className="font-medium">Paket &amp; Hizmet › Kategoriler</span> sayfasında görünür.
                         </p>
                         {categoryError && <div className="mt-2 text-[12px] font-medium text-rose-600">{categoryError}</div>}
@@ -437,7 +437,7 @@ export default function ServiceFormDialog({
 
                 {/* Alt kategori — kategori seçilene kadar kapalı, sonra O kategorinin alt kategorileri */}
                 <div className="mt-1 flex flex-col gap-1.5">
-                  <label className={labelStyle}>Alt kategori <span className="font-normal text-[#705a66]">(opsiyonel)</span></label>
+                  <label className={labelStyle}>Alt kategori <span className="font-normal text-[#74616A]">(opsiyonel)</span></label>
                   <select
                     value={values.subCategory || ''}
                     onChange={(e) => setValues((v) => ({ ...v, subCategory: e.target.value || null }))}
@@ -462,7 +462,7 @@ export default function ServiceFormDialog({
                 <div className="flex flex-col gap-2">
                   <label className={labelStyle}>Fiyat</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 font-medium text-[#705a66]">₺</span>
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 font-medium text-[#74616A]">₺</span>
                     <input
                       type="number" min={0} step={0.01}
                       value={values.price}
@@ -480,7 +480,7 @@ export default function ServiceFormDialog({
                       onChange={(e) => setValues((v) => ({ ...v, durationMinutes: Number(e.target.value) }))}
                       className={`${fieldStyle} pr-16 font-mono`}
                     />
-                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-[13px] text-[#705a66]">dakika</span>
+                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-[13px] text-[#74616A]">dakika</span>
                   </div>
                 </div>
               </div>
@@ -514,10 +514,10 @@ export default function ServiceFormDialog({
                           value={values.loyaltyPointCost || ''}
                           onChange={(e) => setValues((v) => ({ ...v, loyaltyPointCost: Math.max(0, Math.round(Number(e.target.value) || 0)) }))}
                           placeholder="Örn. 500"
-                          className="w-full rounded-[14px] border border-[#b88938]/40 bg-white py-2 pl-8 pr-3 font-mono text-[13px] text-[#4a3a44] outline-none transition focus:border-[#b88938] focus:ring-2 focus:ring-[#b88938]/20"
+                          className="w-full rounded-[14px] border border-[#b88938]/40 bg-white py-2 pl-8 pr-3 font-mono text-[13px] text-[#3E343A] outline-none transition focus:border-[#b88938] focus:ring-2 focus:ring-[#b88938]/20"
                         />
                       </div>
-                      <span className="flex-1 text-[12px] text-[#705a66]">
+                      <span className="flex-1 text-[12px] text-[#74616A]">
                         {values.loyaltyPointCost > 0
                           ? `Adisyonda ${values.loyaltyPointCost} puan karşılığında hediye edilebilir.`
                           : 'Bu hizmeti ücretsiz almak için gereken puan (boş bırakılırsa puanla alınamaz).'}
@@ -539,7 +539,7 @@ export default function ServiceFormDialog({
               {/* Yayın durumu — segmented */}
               <div className="flex flex-col gap-3">
                 <label className={labelStyle}>Yayın durumu</label>
-                <div className="inline-flex w-fit max-w-full overflow-x-auto rounded-2xl border border-[#efe1e7] bg-[#f7ecf1] p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="inline-flex w-fit max-w-full overflow-x-auto rounded-2xl border border-[#EAD8DF] bg-[#f7ecf1] p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {STATUS_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -547,8 +547,8 @@ export default function ServiceFormDialog({
                       onClick={() => setValues((v) => ({ ...v, status: opt.value, isActive: opt.value === 'Active' }))}
                       className={`whitespace-nowrap rounded-xl px-5 py-2 text-[13px] font-medium transition-all ${
                         values.status === opt.value
-                          ? 'bg-white text-[#c85776] shadow-sm'
-                          : 'text-[#705a66] hover:text-[#241923]'
+                          ? 'bg-white text-[#A5556E] shadow-sm'
+                          : 'text-[#74616A] hover:text-[#241923]'
                       }`}
                     >
                       {opt.label}
@@ -562,12 +562,12 @@ export default function ServiceFormDialog({
         </div>
 
         {/* FOOTER */}
-        <footer className="shrink-0 border-t border-[#efe1e7] bg-white px-6 py-5 sm:px-8">
+        <footer className="shrink-0 border-t border-[#EAD8DF] bg-white px-6 py-5 sm:px-8">
           {error && (
             <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{error}</div>
           )}
           <div className="flex items-center justify-between gap-3">
-            <div className="hidden items-center gap-2 font-mono text-[12px] text-[#705a66] sm:flex">
+            <div className="hidden items-center gap-2 font-mono text-[12px] text-[#74616A] sm:flex">
               <Scissors className="h-4 w-4" />
               <span>·</span>
               <span>{values.category || 'Kategori seçilmedi'}</span>
@@ -579,7 +579,7 @@ export default function ServiceFormDialog({
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={busy}
-                className="rounded-[14px] px-6 py-2.5 text-[13px] font-medium text-[#705a66] transition-colors hover:bg-[#f7ecf1] hover:text-[#241923] disabled:opacity-50"
+                className="rounded-[14px] px-6 py-2.5 text-[13px] font-medium text-[#74616A] transition-colors hover:bg-[#f7ecf1] hover:text-[#241923] disabled:opacity-50"
               >
                 Vazgeç
               </button>
@@ -589,7 +589,7 @@ export default function ServiceFormDialog({
                 disabled={busy || saved}
                 whileTap={{ scale: 0.97 }}
                 whileHover={{ y: -1 }}
-                className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_-8px_rgba(200,87,118,0.5)] transition-all hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_-8px_rgba(200,87,118,0.5)] transition-all hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] disabled:opacity-70"
               >
                 {busy ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : saved ? <CheckCircle2 className="h-[18px] w-[18px]" /> : <Save className="h-[18px] w-[18px]" />}
                 {saved ? 'Kaydedildi' : submitLabel}

@@ -70,8 +70,8 @@ export interface StaffFormDialogProps {
 
 // Stitch tasarım token'ları (rose-gold light): input, label
 const fieldStyle =
-  'w-full rounded-xl border border-[#efe1e7] bg-white px-4 py-2.5 text-sm text-[#241923] outline-none transition-all placeholder:text-[#705a66]/[0.45] hover:border-[#efbfd0] focus:border-[#c85776] focus:ring-2 focus:ring-[#c85776]/[0.15]'
-const labelStyle = 'mb-1.5 block text-xs font-medium text-[#4a3a44]'
+  'w-full rounded-xl border border-[#EAD8DF] bg-white px-4 py-2.5 text-sm text-[#241923] outline-none transition-all placeholder:text-[#74616A]/[0.45] hover:border-[#BE7690] focus:border-[#A5556E] focus:ring-2 focus:ring-[#A5556E]/[0.15]'
+const labelStyle = 'mb-1.5 block text-xs font-medium text-[#3E343A]'
 
 // Sayfa izin anahtarı → ikon (Stitch kartlarındaki ikonlu başlık için).
 const PAGE_ICONS: Record<string, LucideIcon> = {
@@ -357,7 +357,7 @@ export default function StaffFormDialog({
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[22px] border border-[#efe1e7] bg-white p-0 text-[#4a3a44] shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] sm:!max-w-none [&>button:last-child]:hidden"
+        className="flex flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white p-0 text-[#3E343A] shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] sm:!max-w-none [&>button:last-child]:hidden"
         style={{ width: 'min(96vw, 1180px)', maxWidth: 'min(96vw, 1180px)', height: 'min(92dvh, 860px)', maxHeight: '92dvh' }}
       >
         <DialogTitle className="sr-only">{isEdit ? 'Personeli düzenle' : 'Yeni personel oluştur'}</DialogTitle>
@@ -367,10 +367,10 @@ export default function StaffFormDialog({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
           {/* ================= SOL — CANLI ÖNİZLEME (krem) ================= */}
-          <aside className="relative z-10 flex w-full shrink-0 flex-col justify-between overflow-y-auto border-b border-[#efe1e7] bg-[#f7ecf1] p-6 md:w-80 md:border-b-0 md:border-r lg:w-[340px]">
+          <aside className="relative z-10 flex w-full shrink-0 flex-col justify-between overflow-y-auto border-b border-[#EAD8DF] bg-[#f7ecf1] p-6 md:w-80 md:border-b-0 md:border-r lg:w-[340px]">
             {/* Soluk gül + altın ışık lekeleri */}
             <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden opacity-20">
-              <div className="absolute -left-24 -top-24 h-48 w-48 rounded-full bg-[#c85776] blur-[60px]" />
+              <div className="absolute -left-24 -top-24 h-48 w-48 rounded-full bg-[#A5556E] blur-[60px]" />
               <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-[#b88938] blur-[60px]" />
             </div>
 
@@ -385,7 +385,7 @@ export default function StaffFormDialog({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={values.photoUrl} alt={values.fullName || 'Personel'} className="h-full w-full object-cover" />
                   ) : (
-                    <span className="font-display text-3xl font-medium tracking-widest text-[#c85776]">
+                    <span className="font-display text-3xl font-medium tracking-widest text-[#A5556E]">
                       {initialsOf(values.fullName)}
                     </span>
                   )}
@@ -416,7 +416,7 @@ export default function StaffFormDialog({
                 <button
                   type="button"
                   onClick={() => setValues((v) => ({ ...v, photoUrl: '' }))}
-                  className="-mt-3 mb-3 text-[11px] font-medium text-[#705a66] transition-colors hover:text-[#c85776]"
+                  className="-mt-3 mb-3 text-[11px] font-medium text-[#74616A] transition-colors hover:text-[#A5556E]"
                 >
                   Fotoğrafı kaldır
                 </button>
@@ -427,8 +427,8 @@ export default function StaffFormDialog({
                 <h2 className="font-display text-2xl font-medium text-[#241923]">
                   {values.fullName.trim() || 'Yeni Personel'}
                 </h2>
-                <p className="mt-0.5 text-sm font-medium text-[#c85776]">{values.title.trim() || 'Unvan'}</p>
-                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#efe1e7] bg-white px-3 py-1 text-xs text-[#705a66]">
+                <p className="mt-0.5 text-sm font-medium text-[#A5556E]">{values.title.trim() || 'Unvan'}</p>
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-3 py-1 text-xs text-[#74616A]">
                   <MapPin className="h-3.5 w-3.5" />
                   {selectedBranchName}
                 </div>
@@ -436,23 +436,23 @@ export default function StaffFormDialog({
 
               {/* İletişim satırları */}
               <div className="mb-6 w-full space-y-3 px-2">
-                <div className="flex items-center gap-3 text-sm text-[#4a3a44]">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white">
-                    <Phone className="h-4 w-4 text-[#c85776]" />
+                <div className="flex items-center gap-3 text-sm text-[#3E343A]">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white">
+                    <Phone className="h-4 w-4 text-[#A5556E]" />
                   </div>
                   <span className="truncate">{values.phone.trim() || 'Telefon girilmedi'}</span>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-[#4a3a44]">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white">
-                    <Mail className="h-4 w-4 text-[#c85776]" />
+                <div className="flex items-center gap-3 text-sm text-[#3E343A]">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white">
+                    <Mail className="h-4 w-4 text-[#A5556E]" />
                   </div>
                   <span className="truncate">
                     {credentials?.email || (isEdit ? 'E-posta değiştirilmez' : 'E-posta otomatik üretilir')}
                   </span>
                 </div>
                 {values.commissionRate > 0 && (
-                  <div className="flex items-center gap-3 text-sm text-[#4a3a44]">
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#efe1e7] bg-white">
+                  <div className="flex items-center gap-3 text-sm text-[#3E343A]">
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#EAD8DF] bg-white">
                       <BadgeCheck className="h-4 w-4 text-[#b88938]" />
                     </div>
                     <span className="truncate">%{values.commissionRate} prim oranı</span>
@@ -465,15 +465,15 @@ export default function StaffFormDialog({
             <div className="relative z-10 mt-auto w-full space-y-4">
               {canStaffPermissions && (
                 <div className="mb-2 flex justify-center gap-2">
-                  <div className="flex items-center gap-1.5 rounded-lg border border-[#efe1e7] bg-white px-3 py-1.5 shadow-sm">
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[#EAD8DF] bg-white px-3 py-1.5 shadow-sm">
                     <FileBarChart className="h-4 w-4 text-[#b88938]" />
-                    <span className="text-xs text-[#705a66]" style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span className="text-xs text-[#74616A]" style={{ fontFamily: 'var(--font-mono)' }}>
                       {selectedPageCount} SAYFA
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 rounded-lg border border-[#efe1e7] bg-white px-3 py-1.5 shadow-sm">
-                    <Wrench className="h-4 w-4 text-[#c85776]" />
-                    <span className="text-xs text-[#705a66]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[#EAD8DF] bg-white px-3 py-1.5 shadow-sm">
+                    <Wrench className="h-4 w-4 text-[#A5556E]" />
+                    <span className="text-xs text-[#74616A]" style={{ fontFamily: 'var(--font-mono)' }}>
                       {selectedActionCount} İŞLEM
                     </span>
                   </div>
@@ -485,7 +485,7 @@ export default function StaffFormDialog({
                 type="button"
                 disabled={Boolean(credentials)}
                 onClick={() => setValues((v) => ({ ...v, isActive: !v.isActive }))}
-                className="flex w-full items-center justify-between rounded-xl border border-[#efe1e7] bg-white p-4 text-left shadow-sm transition-colors hover:border-[#efbfd0] disabled:opacity-60"
+                className="flex w-full items-center justify-between rounded-xl border border-[#EAD8DF] bg-white p-4 text-left shadow-sm transition-colors hover:border-[#BE7690] disabled:opacity-60"
               >
                 <div>
                   <h4 className="text-sm font-medium text-[#241923]">Personel Durumu</h4>
@@ -495,7 +495,7 @@ export default function StaffFormDialog({
                   </p>
                 </div>
                 {/* Toggle — topuz konumu left ile (transform tuzağına düşme) */}
-                <span className={`relative inline-block h-6 w-12 shrink-0 rounded-full transition-colors ${values.isActive ? 'bg-[#c85776]' : 'bg-[#efe1e7]'}`}>
+                <span className={`relative inline-block h-6 w-12 shrink-0 rounded-full transition-colors ${values.isActive ? 'bg-[#A5556E]' : 'bg-[#efe1e7]'}`}>
                   <span
                     className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${values.isActive ? 'left-[26px]' : 'left-0.5'}`}
                   />
@@ -507,11 +507,11 @@ export default function StaffFormDialog({
           {/* ================= SAĞ — FORM + YETKİLER (beyaz, iç scroll) ================= */}
           <div className="flex min-h-0 flex-1 flex-col bg-white">
             {/* İnce üst şerit — kapat butonu scroll çubuğuyla çakışmasın diye scroll alanının DIŞINDA */}
-            <div className="flex shrink-0 items-center justify-end border-b border-[#efe1e7]/[0.60] px-4 py-2">
+            <div className="flex shrink-0 items-center justify-end border-b border-[#EAD8DF]/[0.60] px-4 py-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="grid h-8 w-8 place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#f7ecf1] hover:text-[#c85776]"
+                className="grid h-8 w-8 place-items-center rounded-full text-[#74616A] transition-colors hover:bg-[#f7ecf1] hover:text-[#A5556E]"
                 aria-label="Kapat"
               >
                 <X className="h-4 w-4" />
@@ -535,15 +535,15 @@ export default function StaffFormDialog({
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-lg border border-emerald-300/30 bg-white p-3">
-                        <div className="flex items-center gap-1.5 text-xs text-[#705a66]">
-                          <Mail className="h-3.5 w-3.5 text-[#c85776]" /> E-posta
+                        <div className="flex items-center gap-1.5 text-xs text-[#74616A]">
+                          <Mail className="h-3.5 w-3.5 text-[#A5556E]" /> E-posta
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <code className="text-[13px] text-[#241923]" style={{ fontFamily: 'var(--font-mono)' }}>{credentials.email}</code>
                           <button
                             type="button"
                             onClick={() => copyToClipboard(credentials.email || '', 'email')}
-                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#efe1e7] text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#241923]"
+                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#EAD8DF] text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#241923]"
                             title="Kopyala"
                           >
                             {copiedField === 'email' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" /> : <Copy className="h-3.5 w-3.5" />}
@@ -551,15 +551,15 @@ export default function StaffFormDialog({
                         </div>
                       </div>
                       <div className="rounded-lg border border-emerald-300/30 bg-white p-3">
-                        <div className="flex items-center gap-1.5 text-xs text-[#705a66]">
-                          <Key className="h-3.5 w-3.5 text-[#c85776]" /> Geçici şifre
+                        <div className="flex items-center gap-1.5 text-xs text-[#74616A]">
+                          <Key className="h-3.5 w-3.5 text-[#A5556E]" /> Geçici şifre
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2">
-                          <code className="text-sm font-bold text-[#c85776]" style={{ fontFamily: 'var(--font-mono)' }}>{credentials.initialPassword}</code>
+                          <code className="text-sm font-bold text-[#A5556E]" style={{ fontFamily: 'var(--font-mono)' }}>{credentials.initialPassword}</code>
                           <button
                             type="button"
                             onClick={() => copyToClipboard(credentials.initialPassword || '', 'pwd')}
-                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#efe1e7] text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#241923]"
+                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#EAD8DF] text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#241923]"
                             title="Kopyala"
                           >
                             {copiedField === 'pwd' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" /> : <Copy className="h-3.5 w-3.5" />}
@@ -578,7 +578,7 @@ export default function StaffFormDialog({
                           type="button"
                           onClick={handleDownloadPdf}
                           disabled={!hasStaffCredentialValues}
-                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Download className="h-4 w-4" />
                           Giriş bilgileri PDF&apos;i indir
@@ -593,7 +593,7 @@ export default function StaffFormDialog({
               <section>
                 <div className="mb-6 flex items-center gap-3">
                   <div className="grid h-10 w-10 place-items-center rounded-full bg-[#f7ecf1]">
-                    <CircleUser className="h-5 w-5 text-[#c85776]" />
+                    <CircleUser className="h-5 w-5 text-[#A5556E]" />
                   </div>
                   <h3 className="font-display text-xl font-medium text-[#241923]">Kimlik &amp; İletişim</h3>
                 </div>
@@ -623,7 +623,7 @@ export default function StaffFormDialog({
                   <div>
                     <label className={labelStyle}>Telefon</label>
                     <div className="flex">
-                      <span className="inline-flex items-center rounded-l-xl border border-r-0 border-[#efe1e7] bg-[#f7ecf1] px-3 text-sm text-[#705a66]">
+                      <span className="inline-flex items-center rounded-l-xl border border-r-0 border-[#EAD8DF] bg-[#f7ecf1] px-3 text-sm text-[#74616A]">
                         +90
                       </span>
                       <input
@@ -652,7 +652,7 @@ export default function StaffFormDialog({
                         </option>
                       ))}
                     </select>
-                    {isEdit && <div className="mt-1 text-xs text-[#705a66]">Şube değişikliği bu modaldan yapılmaz (güvenlik nedeniyle)</div>}
+                    {isEdit && <div className="mt-1 text-xs text-[#74616A]">Şube değişikliği bu modaldan yapılmaz (güvenlik nedeniyle)</div>}
                   </div>
                   <div>
                     <label className={labelStyle}>Prim Oranı (%)</label>
@@ -667,13 +667,13 @@ export default function StaffFormDialog({
                         className={`${fieldStyle} pr-8`}
                         disabled={Boolean(credentials)}
                       />
-                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-[#705a66]">%</span>
+                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-[#74616A]">%</span>
                     </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className={`${labelStyle} mb-2`}>Yapabildiği İşlem Kategorileri</label>
                     {servicesLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-[#705a66]">
+                      <div className="flex items-center gap-2 text-sm text-[#74616A]">
                         <Loader2 className="h-4 w-4 animate-spin" /> Kategoriler yükleniyor...
                       </div>
                     ) : serviceOptions.length || selectedSpecialties.length ? (
@@ -688,8 +688,8 @@ export default function StaffFormDialog({
                               onClick={() => toggleSpecialty(name)}
                               className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 ${
                                 active
-                                  ? 'border-[#c85776]/[0.20] bg-[#c85776]/[0.10] text-[#c85776] hover:bg-[#c85776]/[0.18]'
-                                  : 'border-dashed border-[#efe1e7] bg-[#f7ecf1] text-[#705a66] hover:border-[#c85776]'
+                                  ? 'border-[#8C4460]/[0.20] bg-[#A5556E]/[0.10] text-[#A5556E] hover:bg-[#A5556E]/[0.18]'
+                                  : 'border-dashed border-[#EAD8DF] bg-[#f7ecf1] text-[#74616A] hover:border-[#8C4460]'
                               }`}
                             >
                               {active && <X className="h-3.5 w-3.5" />}
@@ -699,9 +699,9 @@ export default function StaffFormDialog({
                         })}
                       </div>
                     ) : (
-                      <div className="text-sm text-[#705a66]">Kategori bulunamadı. Önce hizmetlere kategori atayın ya da Kategoriler sayfasından ekleyin.</div>
+                      <div className="text-sm text-[#74616A]">Kategori bulunamadı. Önce hizmetlere kategori atayın ya da Kategoriler sayfasından ekleyin.</div>
                     )}
-                    <div className="mt-1.5 text-xs text-[#705a66]/[0.75]">
+                    <div className="mt-1.5 text-xs text-[#74616A]/[0.75]">
                       Personel yalnızca seçili kategorilerdeki hizmetlere randevu alabilir. <strong>Hiçbiri seçilmezse tüm kategorilerde çalışabilir.</strong>
                     </div>
                   </div>
@@ -711,16 +711,16 @@ export default function StaffFormDialog({
               {/* ---- Bölüm 2: Rol & Sayfa Yetkileri ---- */}
               {canStaffPermissions && (
                 <>
-                  <hr className="border-[#efe1e7]" />
+                  <hr className="border-[#EAD8DF]" />
                   <section>
                     <div className="mb-6 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="grid h-10 w-10 place-items-center rounded-full bg-[#f7ecf1]">
-                          <ShieldCheck className="h-5 w-5 text-[#c85776]" />
+                          <ShieldCheck className="h-5 w-5 text-[#A5556E]" />
                         </div>
                         <div>
                           <h3 className="font-display text-xl font-medium text-[#241923]">Rol &amp; Sayfa Yetkileri</h3>
-                          <p className="mt-1 text-xs text-[#705a66]">
+                          <p className="mt-1 text-xs text-[#74616A]">
                             Personelin görebileceği sayfaları ve yapabileceği işlemleri yönetin · {selectedPageCount}/{visiblePermissions.length} sayfa açık
                           </p>
                         </div>
@@ -730,7 +730,7 @@ export default function StaffFormDialog({
                           type="button"
                           onClick={handleSelectAll}
                           disabled={Boolean(credentials)}
-                          className="rounded px-2 py-1 text-xs font-medium text-[#c85776] transition-colors hover:text-[#ef9ab5] disabled:opacity-50"
+                          className="rounded px-2 py-1 text-xs font-medium text-[#A5556E] transition-colors hover:text-[#ef9ab5] disabled:opacity-50"
                         >
                           Tümü
                         </button>
@@ -739,7 +739,7 @@ export default function StaffFormDialog({
                           type="button"
                           onClick={handleSelectNone}
                           disabled={Boolean(credentials)}
-                          className="rounded px-2 py-1 text-xs font-medium text-[#705a66] transition-colors hover:text-[#241923] disabled:opacity-50"
+                          className="rounded px-2 py-1 text-xs font-medium text-[#74616A] transition-colors hover:text-[#241923] disabled:opacity-50"
                         >
                           Hiçbiri
                         </button>
@@ -747,8 +747,8 @@ export default function StaffFormDialog({
                     </div>
 
                     {permLoading ? (
-                      <div className="grid h-32 place-items-center text-sm text-[#705a66]">
-                        <Loader2 className="h-5 w-5 animate-spin text-[#c85776]" />
+                      <div className="grid h-32 place-items-center text-sm text-[#74616A]">
+                        <Loader2 className="h-5 w-5 animate-spin text-[#A5556E]" />
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -761,19 +761,19 @@ export default function StaffFormDialog({
                               key={p.key}
                               className={`relative overflow-hidden rounded-xl border transition-all ${
                                 active
-                                  ? 'border-[#c85776]/[0.30] bg-white shadow-sm'
-                                  : 'border-[#efe1e7] bg-white opacity-70 hover:bg-[#f7ecf1]/[0.50] hover:opacity-90'
+                                  ? 'border-[#8C4460]/[0.30] bg-white shadow-sm'
+                                  : 'border-[#EAD8DF] bg-white opacity-70 hover:bg-[#f7ecf1]/[0.50] hover:opacity-90'
                               }`}
                             >
                               {/* Aktif sol vurgu şeridi */}
-                              {active && <div className="absolute bottom-0 left-0 top-0 w-1 bg-[#c85776]" />}
+                              {active && <div className="absolute bottom-0 left-0 top-0 w-1 bg-[#A5556E]" />}
                               <div className="flex items-start gap-4 p-4">
                                 <button
                                   type="button"
                                   onClick={() => togglePermission(p)}
                                   disabled={Boolean(credentials)}
                                   className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border transition-colors disabled:opacity-60 ${
-                                    active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#efe1e7] bg-white hover:border-[#efbfd0]'
+                                    active ? 'border-[#8C4460] bg-[#A5556E]' : 'border-[#EAD8DF] bg-white hover:border-[#BE7690]'
                                   }`}
                                   aria-label={active ? `${p.label} sayfasını kapat` : `${p.label} sayfasını aç`}
                                 >
@@ -788,22 +788,22 @@ export default function StaffFormDialog({
                                   >
                                     <div className="mb-1 flex items-center justify-between gap-2">
                                       <h4 className="flex items-center gap-2 text-sm font-medium text-[#241923]">
-                                        <PageIcon className={`h-[18px] w-[18px] ${active ? 'text-[#c85776]' : 'text-[#705a66]'}`} />
+                                        <PageIcon className={`h-[18px] w-[18px] ${active ? 'text-[#A5556E]' : 'text-[#74616A]'}`} />
                                         {p.label}
                                       </h4>
                                       {active && (
-                                        <span className="rounded bg-[#c85776]/[0.10] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#c85776]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                        <span className="rounded bg-[#A5556E]/[0.10] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#A5556E]" style={{ fontFamily: 'var(--font-mono)' }}>
                                           AKTİF
                                         </span>
                                       )}
                                     </div>
-                                    <p className={`text-xs text-[#705a66] ${active && actions.length ? 'mb-3' : ''}`}>
+                                    <p className={`text-xs text-[#74616A] ${active && actions.length ? 'mb-3' : ''}`}>
                                       {p.description}
                                     </p>
                                   </button>
                                   {/* İşlem çipleri — sayfa açıkken tek tek kapatılabilir ("görsün ama yapamasın") */}
                                   {active && actions.length > 0 && (
-                                    <div className="flex flex-wrap gap-2 border-t border-dashed border-[#efe1e7] pt-2.5">
+                                    <div className="flex flex-wrap gap-2 border-t border-dashed border-[#EAD8DF] pt-2.5">
                                       {actions.map((a) => {
                                         const actionActive = values.permissions.includes(a.key)
                                         return (
@@ -815,13 +815,13 @@ export default function StaffFormDialog({
                                             title={actionActive ? 'İşlemi kapat — sayfayı görür ama bu işlemi yapamaz' : 'İşlemi aç'}
                                             className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
                                               actionActive
-                                                ? 'border-[#c85776]/[0.40] bg-white text-[#241923] shadow-sm'
-                                                : 'border-[#efe1e7] bg-[#f7ecf1] text-[#705a66]/[0.60] line-through'
+                                                ? 'border-[#8C4460]/[0.40] bg-white text-[#241923] shadow-sm'
+                                                : 'border-[#EAD8DF] bg-[#f7ecf1] text-[#74616A]/[0.60] line-through'
                                             }`}
                                           >
                                             <span
                                               className={`grid h-3.5 w-3.5 shrink-0 place-items-center rounded-sm border ${
-                                                actionActive ? 'border-[#c85776] bg-[#c85776]' : 'border-[#d9c3ce] bg-white'
+                                                actionActive ? 'border-[#8C4460] bg-[#A5556E]' : 'border-[#d9c3ce] bg-white'
                                               }`}
                                             >
                                               {actionActive && <CheckCircle2 className="h-2.5 w-2.5 text-white" strokeWidth={3.5} />}
@@ -845,14 +845,14 @@ export default function StaffFormDialog({
             </div>
 
             {/* ================= FOOTER (sticky) ================= */}
-            <div className="relative z-20 shrink-0 border-t border-[#efe1e7] bg-white p-4 px-6 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] md:px-8">
+            <div className="relative z-20 shrink-0 border-t border-[#EAD8DF] bg-white p-4 px-6 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] md:px-8">
               {error && (
                 <div className="mb-3 rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                   {error}
                 </div>
               )}
               <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-                <div className="flex w-full items-center gap-2 rounded-lg bg-[#f7ecf1] px-3 py-1.5 text-[#705a66] sm:w-auto">
+                <div className="flex w-full items-center gap-2 rounded-lg bg-[#f7ecf1] px-3 py-1.5 text-[#74616A] sm:w-auto">
                   <Info className="h-[18px] w-[18px] text-[#b88938]" />
                   <p className="text-xs font-medium">
                     {credentials
@@ -865,7 +865,7 @@ export default function StaffFormDialog({
                     <button
                       type="button"
                       onClick={() => setOpen(false)}
-                      className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)]"
+                      className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)]"
                     >
                       <CheckCircle2 className="h-4 w-4" /> Kapat
                     </button>
@@ -875,7 +875,7 @@ export default function StaffFormDialog({
                         type="button"
                         onClick={() => setOpen(false)}
                         disabled={busy}
-                        className="rounded-lg border border-[#efe1e7] bg-white px-5 py-2.5 text-sm font-medium text-[#4a3a44] transition-colors hover:bg-[#f7ecf1] disabled:opacity-50"
+                        className="rounded-lg border border-[#EAD8DF] bg-white px-5 py-2.5 text-sm font-medium text-[#3E343A] transition-colors hover:bg-[#f7ecf1] disabled:opacity-50"
                       >
                         Vazgeç
                       </button>
@@ -884,7 +884,7 @@ export default function StaffFormDialog({
                         onClick={isEdit ? handleUpdate : handleCreate}
                         disabled={busy}
                         whileTap={{ scale: 0.97 }}
-                        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-6 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] disabled:opacity-70"
+                        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] disabled:opacity-70"
                       >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? <PenLine className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
                         {isEdit ? 'Personeli Güncelle' : 'Personeli Kaydet'}

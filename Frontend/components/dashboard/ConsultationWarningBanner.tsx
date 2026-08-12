@@ -71,7 +71,7 @@ export default function ConsultationWarningBanner({
         className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-semibold transition-colors ${
           tone === 'amber'
             ? 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
-            : 'border-[#e8c2d1] bg-white text-[#8e3f5b] hover:bg-[#fff4f8]'
+            : 'border-[#e8c2d1] bg-white text-[#8e3f5b] hover:bg-[#F7F6F6]'
         }`}
       >
         <ClipboardPen className="h-3 w-3" strokeWidth={2} />
@@ -106,7 +106,7 @@ export default function ConsultationWarningBanner({
 
   return (
     <div className={`space-y-1.5 ${className}`}>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#b14d6c]">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#8C4460]">
         <ShieldAlert className="h-3.5 w-3.5" /> İşlem uygunluğu uyarıları ({warnings.length}{highCount > 0 ? ` · ${highCount} yüksek` : ''})
         <span className="ml-auto">{editButton('Formu aç', 'plain')}</span>
       </div>

@@ -83,18 +83,18 @@ export default function CustomerSessionsCard({
   if (!customerId || (!loading && rawSessions.length === 0)) return null
 
   return (
-    <div className="rounded-[18px] border border-[#ead8df] bg-white p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
+    <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-4 shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">
       {/* Özet şeridi */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#c85776]">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
           <Layers3 className="h-3.5 w-3.5" /> Satılan Paket / Seanslar
-          <span className="rounded-full bg-[#fff1f6] px-1.5 py-0.5 text-[10.5px] tabular-nums text-[#a34a62]">{grouped.length} hizmet</span>
+          <span className="rounded-full bg-[#F6DFE6] px-1.5 py-0.5 text-[10.5px] tabular-nums text-[#a34a62]">{grouped.length} hizmet</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full border border-[#efbfd0] bg-[#fff1f6] px-2.5 py-0.5 text-[11px] font-bold text-[#a34a62]">
+          <span className="rounded-full border border-[#BE7690] bg-[#F6DFE6] px-2.5 py-0.5 text-[11px] font-bold text-[#a34a62]">
             {totals.remaining} seans kaldı
           </span>
-          <span className="rounded-full border border-[#ead8df] bg-[#fffafc] px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-[#4a3a44]">
+          <span className="rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-[#3E343A]">
             {totals.total} seansın {totals.used}&apos;i kullanıldı
           </span>
         </div>
@@ -111,19 +111,19 @@ export default function CustomerSessionsCard({
       {/* Çok hizmet varsa arama — 15 paketli müşteride göz taraması bitiyordu */}
       {grouped.length > 8 && (
         <div className="relative mt-3">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Hizmet ara…"
-            className="w-full rounded-[10px] border border-[#ead8df] bg-[#fffafc] py-1.5 pl-8 pr-8 text-[12.5px] text-[#352432] outline-none transition-colors focus:border-[#c85776] placeholder:text-[#9d8590]"
+            className="w-full rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] py-1.5 pl-8 pr-8 text-[12.5px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E] placeholder:text-[#74616A]"
           />
           {q && (
             <button
               type="button"
               onClick={() => setQ('')}
               aria-label="Aramayı temizle"
-              className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[#705a66] transition-colors hover:bg-[#fff1f6] hover:text-[#c85776]"
+              className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[#74616A] transition-colors hover:bg-[#F6DFE6] hover:text-[#A5556E]"
             >
               <X className="h-3 w-3" />
             </button>
@@ -137,7 +137,7 @@ export default function CustomerSessionsCard({
           <SessionTile key={g.key} group={g} idx={idx} />
         ))}
         {visibleActive.length === 0 && (
-          <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[11.5px] text-[#705a66] sm:col-span-2 2xl:col-span-3">
+          <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-4 text-center text-[11.5px] text-[#74616A] sm:col-span-2 2xl:col-span-3">
             {q ? 'Aramayla eşleşen açık seans yok.' : 'Açık seans kalmadı — tüm paketler tamamlandı.'}
           </div>
         )}
@@ -160,7 +160,7 @@ export default function CustomerSessionsCard({
             <div className="mt-2 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
               {visibleDone.map((g, idx) => <SessionTile key={g.key} group={g} idx={idx} />)}
               {visibleDone.length === 0 && (
-                <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[11.5px] text-[#705a66] sm:col-span-2 2xl:col-span-3">
+                <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-4 text-center text-[11.5px] text-[#74616A] sm:col-span-2 2xl:col-span-3">
                   Aramayla eşleşen tamamlanmış seans yok.
                 </div>
               )}
@@ -193,15 +193,15 @@ function SessionTile({ group, idx }: { group: ServiceGroup; idx: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(idx, 8) * 0.04 }}
       className={`flex items-center gap-2.5 rounded-[13px] border px-2.5 py-2 ${
-        done ? 'border-emerald-200 bg-emerald-50/50' : 'border-[#f0e0e6] bg-[#fffafb]'
+        done ? 'border-emerald-200 bg-emerald-50/50' : 'border-[#f0e0e6] bg-[#F7F6F6]'
       }`}
     >
       <SessionProgressRing remaining={remaining} total={total} size={44} stroke={5} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-[12.5px] font-semibold text-[#352432]" title={group.name}>{group.name}</span>
+          <span className="truncate text-[12.5px] font-semibold text-[#2A2027]" title={group.name}>{group.name}</span>
           {group.bundles > 1 && (
-            <span className="shrink-0 rounded-md border border-[#ead8df] bg-white px-1 py-0.5 text-[10px] font-bold text-[#705a66]" title="Bu hizmete seans veren satış sayısı">
+            <span className="shrink-0 rounded-md border border-[#EAD8DF] bg-white px-1 py-0.5 text-[10px] font-bold text-[#74616A]" title="Bu hizmete seans veren satış sayısı">
               ×{group.bundles}
             </span>
           )}
@@ -211,8 +211,8 @@ function SessionTile({ group, idx }: { group: ServiceGroup; idx: number }) {
             <CheckCircle2 className="h-3 w-3" /> Tamamlandı
           </div>
         ) : (
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#705a66]">
-            <span className="rounded-md bg-[#fff1f6] px-1.5 py-0.5 font-bold tabular-nums text-[#a34a62]">{remaining} seans kaldı</span>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#74616A]">
+            <span className="rounded-md bg-[#F6DFE6] px-1.5 py-0.5 font-bold tabular-nums text-[#a34a62]">{remaining} seans kaldı</span>
             <span className="tabular-nums">{total} seanslık · {used} kullanıldı</span>
           </div>
         )}

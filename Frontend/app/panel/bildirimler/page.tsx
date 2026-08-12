@@ -83,7 +83,7 @@ const channelTone: Record<NotificationChannelKey, string> = {
 
 const templateStatusTone: Record<NotificationTemplateStatusKey, string> = {
   Active: 'border-emerald-300/30 bg-emerald-400/12 text-emerald-700',
-  Draft: 'border-[#ead8df]/70 bg-[#fff4f8]/8 text-[#352432]/70',
+  Draft: 'border-[#EAD8DF] bg-[#F7F6F6]/8 text-[#5A4B53]',
   PendingApproval: 'border-amber-300/30 bg-amber-400/12 text-amber-700',
 }
 
@@ -216,7 +216,7 @@ function BildirimlerPageInner() {
         }
       />
 
-      <div className="relative space-y-6 p-4 sm:p-6 lg:p-8">
+      <div className="relative mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6 xl:px-8">
         <div className="flex flex-wrap items-center gap-3">
           <ScopeBadge label={scopeInfo.label} description={scopeInfo.description} />
         </div>
@@ -258,16 +258,16 @@ function BildirimlerPageInner() {
         <AutomationStatusPanel templates={templates} />
 
         {canAutomation && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#ead8df]/70 bg-white/80 px-4 py-3">
-            <div className="flex items-start gap-2 text-[12px] text-[#352432]/70">
-              <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#EAD8DF] bg-white/80 px-4 py-3">
+            <div className="flex items-start gap-2 text-[12px] text-[#5A4B53]">
+              <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-[#A5556E]" />
               <span>Vadesi gelen/geçen, <b>ödenmemiş</b> taksiti olan müşterilere aktif “Ödeme hatırlatma” şablonunu şimdi gönder (15 dk'lık otomatik taramayı beklemeden).</span>
             </div>
             <button
               type="button"
               disabled={busyId === 'payment-reminders'}
               onClick={handleRunReminders}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#f47699] to-[#ef6088] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
             >
               <Send className="h-3.5 w-3.5" /> {busyId === 'payment-reminders' ? 'Gönderiliyor…' : 'Vadesi geçen taksit hatırlatması gönder'}
             </button>
@@ -291,14 +291,14 @@ function BildirimlerPageInner() {
             className="relative overflow-hidden armo-card armo-card-luxury"
           >
             <span aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-[#f0aac2]/14 blur-3xl" />
-            <div className="relative border-b border-[#ead8df]/70 px-5 py-4">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+            <div className="relative border-b border-[#EAD8DF] px-5 py-4">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
                 {scopeInfo.label} · şablonlar
               </div>
               <div className="font-display text-2xl tracking-tight">
                 <AnimatedNumber value={filteredTemplates.length} className="beautyasist-text-gradient" /> kayıt
                 {scope !== 'all' && (
-                  <span className="ml-2 text-[12px] font-mono uppercase tracking-widest text-[#352432]/45">
+                  <span className="ml-2 text-[12px] font-mono uppercase tracking-widest text-[#74616A]">
                     / {templates.length} toplam
                   </span>
                 )}
@@ -309,7 +309,7 @@ function BildirimlerPageInner() {
                 const Icon = channelIcon[t.channel]
                 return (
                   <motion.div key={t.id} variants={listRow} whileHover={{ x: 4 }}
-                    className="grid gap-3 px-5 py-4 transition-colors hover:bg-[#fff4f8]/[0.035] md:grid-cols-12 md:items-center">
+                    className="grid gap-3 px-5 py-4 transition-colors hover:bg-[#F7F6F6]/[0.035] md:grid-cols-12 md:items-center">
                     <div className="md:col-span-1">
                       <span className={`grid h-9 w-9 place-items-center border ${channelTone[t.channel]}`}>
                         <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -317,12 +317,12 @@ function BildirimlerPageInner() {
                     </div>
                     <div className="md:col-span-6 min-w-0">
                       <div className="truncate font-medium">{t.name}</div>
-                      <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/55">
+                      <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/55">
                         {t.channelLabel} · {t.triggerLabel}
                       </div>
-                      <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-[#352432]/55">{t.body}</div>
+                      <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-[#5A4B53]">{t.body}</div>
                       {t.totalSentCount > 0 && (
-                        <div className="mt-1 text-[10px] font-mono text-[#352432]/40">
+                        <div className="mt-1 text-[10px] font-mono text-[#74616A]">
                           {t.totalSentCount} gönderim · son: {t.lastSentAtFormatted || '—'}
                         </div>
                       )}
@@ -344,8 +344,8 @@ function BildirimlerPageInner() {
                 )
               })}
               {!filteredTemplates.length && !loading && (
-                <div className="px-5 py-12 text-center text-[12px] text-[#352432]/45">
-                  <BellRing className="mx-auto mb-3 h-8 w-8 text-[#c85776]/40" strokeWidth={1.4} />
+                <div className="px-5 py-12 text-center text-[12px] text-[#74616A]">
+                  <BellRing className="mx-auto mb-3 h-8 w-8 text-[#A5556E]/40" strokeWidth={1.4} />
                   Bu kanalda henüz şablon yok. Sağ üstten "Şablon ekle" ile başlayabilirsin.
                 </div>
               )}
@@ -360,8 +360,8 @@ function BildirimlerPageInner() {
             className="relative overflow-hidden armo-card armo-card-luxury"
           >
             <span aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#ffd3df]/18 blur-3xl" />
-            <div className="relative border-b border-[#ead8df]/70 px-5 py-4">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+            <div className="relative border-b border-[#EAD8DF] px-5 py-4">
+              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
                 <Send className="h-3.5 w-3.5" /> Son gönderimler
               </div>
               <div className="mt-1 font-display text-2xl tracking-tight">
@@ -373,7 +373,7 @@ function BildirimlerPageInner() {
                 const Icon = channelIcon[l.channel]
                 return (
                   <motion.div key={l.id} variants={listRow}
-                    className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-[#fff4f8]/[0.035]">
+                    className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-[#F7F6F6]/[0.035]">
                     <span className={`grid h-8 w-8 shrink-0 place-items-center border ${channelTone[l.channel]}`}>
                       <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
                     </span>
@@ -381,7 +381,7 @@ function BildirimlerPageInner() {
                       <div className="truncate text-[12px] font-medium">
                         {l.customerName || l.recipient || 'Alıcı'}
                       </div>
-                      <div className="mt-0.5 truncate text-[10px] font-mono text-[#352432]/45">
+                      <div className="mt-0.5 truncate text-[10px] font-mono text-[#74616A]">
                         {l.templateName || 'Manuel'} · {l.createdAtFormatted}
                       </div>
                       {l.errorMessage && (
@@ -395,7 +395,7 @@ function BildirimlerPageInner() {
                 )
               })}
               {!filteredLogs.length && !loading && (
-                <div className="flex flex-col items-center gap-2 px-5 py-10 text-center text-[11px] text-[#352432]/45">
+                <div className="flex flex-col items-center gap-2 px-5 py-10 text-center text-[11px] text-[#74616A]">
                   <BellRing className="h-5 w-5" />
                   Henüz gönderim yok
                 </div>
@@ -471,11 +471,11 @@ function TemplatePresetGallery({
 
   return (
     <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-      className="rounded-[16px] border border-[#ead8df]/70 bg-white/80 px-4 py-3">
+      className="rounded-[16px] border border-[#EAD8DF] bg-white/80 px-4 py-3">
       <button type="button" onClick={() => setCollapsed((c) => !c)} className="flex w-full items-center justify-between">
-        <span className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#c85776]/75">
+        <span className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
           <Sparkles className="h-3.5 w-3.5" /> Hazır Şablonlar
-          <span className="normal-case tracking-normal text-[#352432]/40">· tek tıkla ekle, otomasyon hemen başlasın ({defaultChannel === 'WhatsApp' ? 'WhatsApp' : defaultChannel} kanalı)</span>
+          <span className="normal-case tracking-normal text-[#74616A]">· tek tıkla ekle, otomasyon hemen başlasın ({defaultChannel === 'WhatsApp' ? 'WhatsApp' : defaultChannel} kanalı)</span>
         </span>
         <span className="text-[10px] font-mono uppercase tracking-widest text-[#9d7386]">{collapsed ? 'Göster' : 'Gizle'}</span>
       </button>
@@ -484,16 +484,16 @@ function TemplatePresetGallery({
           {TEMPLATE_PRESETS.map((p) => {
             const added = existing.has(p.trigger)
             return (
-              <div key={p.key} className={`flex flex-col rounded-[14px] border p-3 ${added ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-[#ead8df]/70 bg-[#fffafc]'}`}>
+              <div key={p.key} className={`flex flex-col rounded-[14px] border p-3 ${added ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-[#EAD8DF] bg-[#F7F6F6]'}`}>
                 <div className="text-[12.5px] font-semibold text-[#241923]">{p.title}</div>
                 <div className="mt-0.5 text-[10px] text-[#9d7386]">{p.hint}</div>
-                <div className="mt-2 line-clamp-3 flex-1 text-[10.5px] leading-relaxed text-[#352432]/60">{p.body}</div>
+                <div className="mt-2 line-clamp-3 flex-1 text-[10.5px] leading-relaxed text-[#5A4B53]">{p.body}</div>
                 <button
                   type="button"
                   disabled={busyKey === p.key || added}
                   onClick={() => void addPreset(p)}
                   className={`mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
-                    added ? 'border border-emerald-300/60 bg-white text-emerald-700' : 'border border-[#efbfd0] bg-white text-[#c85776] hover:bg-[#fff4f8]'
+                    added ? 'border border-emerald-300/60 bg-white text-emerald-700' : 'border border-[#BE7690] bg-white text-[#A5556E] hover:bg-[#F7F6F6]'
                   }`}
                 >
                   {added ? <><CheckCircle2 className="h-3.5 w-3.5" /> Bu tetikleyicide şablon var</> : busyKey === p.key ? 'Ekleniyor…' : <><Plus className="h-3.5 w-3.5" /> Şablonu ekle</>}
@@ -631,7 +631,7 @@ function BulkSendButton({
   if (activeTemplates.length === 0) {
     return (
       <button type="button" disabled
-        className="inline-flex cursor-not-allowed items-center gap-1 border border-[#ead8df]/70 bg-[#fff4f8]/5 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">
+        className="inline-flex cursor-not-allowed items-center gap-1 border border-[#EAD8DF] bg-[#F7F6F6]/5 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">
         <Send className="h-3 w-3" /> Aktif şablon yok
       </button>
     )

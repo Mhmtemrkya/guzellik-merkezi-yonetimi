@@ -123,7 +123,7 @@ export default function AccountDetailModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[28px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none"
+        className="flex flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF] bg-white !p-0 text-[#2A2027] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none"
         style={{ width: 'min(96vw, 1080px)', height: 'min(94dvh, 900px)', maxHeight: '94dvh' }}
       >
         {/* ================= BAŞLIK ================= */}
@@ -131,25 +131,25 @@ export default function AccountDetailModal({
           <div className="flex flex-wrap items-start justify-between gap-3 pr-10">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#A5556E]">
                   <User className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-[18px] font-bold tracking-tight text-[#2b1e29]">
                     {account.customerName || account.name}
                   </DialogTitle>
-                  <DialogDescription className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-[#705a66]">
+                  <DialogDescription className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-[#74616A]">
                     {account.customerPhone && (
-                      <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 text-[#c85776]" />{account.customerPhone}</span>
+                      <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 text-[#A5556E]" />{account.customerPhone}</span>
                     )}
                     <span className="truncate">{[account.name, account.servicePackageName].filter(Boolean).join(' • ')}</span>
                     {/* SATIŞ TARİHİ — geçmişe dönük girilen satışlarda kayıt tarihinden farklıdır. */}
                     {account.soldAtUtc && (
                       <span className="inline-flex items-center gap-1">
-                        <CalendarDays className="h-3 w-3 text-[#c85776]" />{formatDay(account.soldAtUtc)}
+                        <CalendarDays className="h-3 w-3 text-[#A5556E]" />{formatDay(account.soldAtUtc)}
                       </span>
                     )}
-                    {account.soldByStaffName && <span className="truncate">Satan: <b className="text-[#4a3a44]">{account.soldByStaffName}</b></span>}
+                    {account.soldByStaffName && <span className="truncate">Satan: <b className="text-[#3E343A]">{account.soldByStaffName}</b></span>}
                   </DialogDescription>
                 </div>
               </div>
@@ -172,20 +172,20 @@ export default function AccountDetailModal({
           {/* KPI şeridi */}
           <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-[#f0dae2] bg-[#f7e9ee] sm:grid-cols-4">
             <div className="bg-white px-3 py-2.5">
-              <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">Toplam</div>
+              <div className="text-[9px] font-mono uppercase tracking-widest text-[#8C4460]">Toplam</div>
               <div className="font-display text-[19px] tabular-nums">{formatTL(account.totalAmount)}</div>
             </div>
             <div className="bg-white px-3 py-2.5">
-              <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">Ödenen</div>
+              <div className="text-[9px] font-mono uppercase tracking-widest text-[#8C4460]">Ödenen</div>
               <div className="font-display text-[19px] tabular-nums text-emerald-700">{formatTL(account.paidAmount)}</div>
             </div>
             <div className="bg-white px-3 py-2.5">
-              <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">Kalan</div>
+              <div className="text-[9px] font-mono uppercase tracking-widest text-[#8C4460]">Kalan</div>
               <div className="font-display text-[19px] tabular-nums text-rose-700">{formatTL(account.remainingAmount)}</div>
             </div>
             <div className="bg-white px-3 py-2.5">
-              <div className="text-[9px] font-mono uppercase tracking-widest text-[#a3576f]">Sıradaki vade</div>
-              <div className="font-display text-[15px] leading-7 text-[#352432]">
+              <div className="text-[9px] font-mono uppercase tracking-widest text-[#8C4460]">Sıradaki vade</div>
+              <div className="font-display text-[15px] leading-7 text-[#2A2027]">
                 {account.nextDueDate ? formatDay(account.nextDueDate) : '—'}
               </div>
             </div>
@@ -194,7 +194,7 @@ export default function AccountDetailModal({
             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
               <span className={`block h-full rounded-full ${cancelled ? 'bg-[#d9b7c3]' : 'bg-gradient-to-r from-[#e0617f] to-[#f3a3bf]'}`} style={{ width: `${stats.pct}%` }} />
             </span>
-            <span className="shrink-0 text-[10px] font-semibold text-[#705a66]">%{stats.pct} ödendi</span>
+            <span className="shrink-0 text-[10px] font-semibold text-[#74616A]">%{stats.pct} ödendi</span>
           </div>
 
           {/* Sekmeler */}
@@ -206,7 +206,7 @@ export default function AccountDetailModal({
                 <button
                   key={t.key} type="button" onClick={() => setTab(t.key)}
                   className={`inline-flex shrink-0 items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${
-                    on ? 'bg-[#c85776] text-white shadow-[0_10px_22px_-14px_rgba(168,62,95,0.9)]' : 'text-[#705a66] hover:bg-[#fff1f6]'
+                    on ? 'bg-[#A5556E] text-white shadow-[0_10px_22px_-14px_rgba(168,62,95,0.9)]' : 'text-[#74616A] hover:bg-[#F6DFE6]'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" /> {t.label}
@@ -234,13 +234,13 @@ export default function AccountDetailModal({
             <div className="space-y-3">
               {!cancelled && account.remainingAmount > 0.005 && (
                 <div className="rounded-[16px] border border-[#f0d9e2] bg-gradient-to-br from-[#fff1f6] to-white p-4">
-                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Tahsilat</div>
+                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#8C4460]">Tahsilat</div>
                   {/* TEK BUTON: modal taksitli hesapta planı ve "bu ay ödenmesi gereken"i
                       kendisi getirir; aylık/genel ayrımı kullanıcıya sorulmaz. */}
                   <div className="mt-2">
                     <button
                       type="button" onClick={onCollect}
-                      className="group flex w-full items-center gap-3 rounded-[14px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3.5 py-3 text-left text-white shadow-[0_16px_30px_-20px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
+                      className="group flex w-full items-center gap-3 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3.5 py-3 text-left text-white shadow-[0_16px_30px_-20px_rgba(168,62,95,0.95)] transition-transform hover:-translate-y-0.5"
                     >
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-white/15">
                         <Banknote className="h-5 w-5" />
@@ -279,20 +279,20 @@ export default function AccountDetailModal({
 
               {/* Satılan kalemler */}
               {account.items.length > 0 && (
-                <div className="rounded-[16px] border border-[#ead8df] bg-white p-3.5">
-                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Satış kalemleri</div>
+                <div className="rounded-[16px] border border-[#EAD8DF] bg-white p-3.5">
+                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#8C4460]">Satış kalemleri</div>
                   {/* Kalem çoksa liste uzayıp kartı boğuyordu: geniş ekranda iki sütuna açılır. */}
                   <div className="mt-2 grid gap-1.5 lg:grid-cols-2">
                     {account.items.map((it, i) => (
-                      <div key={`${it.serviceDefinitionId || 'x'}-${i}`} className="flex items-center justify-between gap-2 rounded-[11px] bg-[#fffafc] px-3 py-2 text-[12px]">
+                      <div key={`${it.serviceDefinitionId || 'x'}-${i}`} className="flex items-center justify-between gap-2 rounded-[11px] bg-[#F7F6F6] px-3 py-2 text-[12px]">
                         <span className="flex min-w-0 items-center gap-1.5">
-                          <Layers className="h-3.5 w-3.5 shrink-0 text-[#c85776]" />
-                          <span className="truncate text-[#4a3a44]">{it.name}</span>
+                          <Layers className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />
+                          <span className="truncate text-[#3E343A]">{it.name}</span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
                           {it.sessionsTotal > 0 && (
-                            <span className="text-[10px] font-semibold tabular-nums text-[#705a66]">
+                            <span className="text-[10px] font-semibold tabular-nums text-[#74616A]">
                               {Math.max(0, it.sessionsTotal - it.sessionsUsed)} seans kaldı
                             </span>
                           )}
@@ -305,10 +305,10 @@ export default function AccountDetailModal({
               )}
 
               {/* Son tahsilatlar */}
-              <div className="rounded-[16px] border border-[#ead8df] bg-white p-3.5">
+              <div className="rounded-[16px] border border-[#EAD8DF] bg-white p-3.5">
                 <div className="flex items-center justify-between">
-                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#a3576f]">Son tahsilatlar</div>
-                  <span className="text-[10px] font-semibold text-[#705a66]">{account.payments.length} kayıt</span>
+                  <div className="text-[9.5px] font-mono uppercase tracking-widest text-[#8C4460]">Son tahsilatlar</div>
+                  <span className="text-[10px] font-semibold text-[#74616A]">{account.payments.length} kayıt</span>
                 </div>
                 <div className="mt-2 space-y-1.5">
                   {[...account.payments]
@@ -318,7 +318,7 @@ export default function AccountDetailModal({
                       <div key={p.id} className="flex items-center justify-between gap-2 rounded-[11px] bg-[#f6fbf8] px-3 py-2 text-[12px]">
                         <span className="flex min-w-0 items-center gap-1.5">
                           <Receipt className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                          <span className="truncate text-[#4a3a44]">
+                          <span className="truncate text-[#3E343A]">
                             {formatDay(p.occurredAtUtc)}
                             {p.method ? ` · ${paymentMethodLabel(p.method)}` : ''}
                             {p.reference ? ` · ${p.reference}` : ''}
@@ -328,7 +328,7 @@ export default function AccountDetailModal({
                       </div>
                     ))}
                   {account.payments.length === 0 && (
-                    <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-4 text-center text-[11.5px] text-[#705a66]">
+                    <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-4 text-center text-[11.5px] text-[#74616A]">
                       Henüz tahsilat yok.
                     </div>
                   )}
@@ -342,16 +342,16 @@ export default function AccountDetailModal({
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-[#f0dae2] bg-[#f7e9ee]">
                 <div className="bg-white px-3 py-2 text-center">
-                  <div className="text-[9px] font-mono uppercase text-[#a3576f]">Taksit</div>
+                  <div className="text-[9px] font-mono uppercase text-[#8C4460]">Taksit</div>
                   <div className="font-display text-[17px] tabular-nums">{stats.count}</div>
                 </div>
                 <div className="bg-white px-3 py-2 text-center">
-                  <div className="text-[9px] font-mono uppercase text-[#a3576f]">Ödenen</div>
+                  <div className="text-[9px] font-mono uppercase text-[#8C4460]">Ödenen</div>
                   <div className="font-display text-[17px] tabular-nums text-emerald-700">{stats.paidCount}</div>
                 </div>
                 <div className="bg-white px-3 py-2 text-center">
-                  <div className="text-[9px] font-mono uppercase text-[#a3576f]">Geciken</div>
-                  <div className={`font-display text-[17px] tabular-nums ${stats.overdueCount ? 'text-rose-700' : 'text-[#352432]'}`}>{stats.overdueCount}</div>
+                  <div className="text-[9px] font-mono uppercase text-[#8C4460]">Geciken</div>
+                  <div className={`font-display text-[17px] tabular-nums ${stats.overdueCount ? 'text-rose-700' : 'text-[#2A2027]'}`}>{stats.overdueCount}</div>
                 </div>
               </div>
 
@@ -371,9 +371,9 @@ export default function AccountDetailModal({
                     <div key={i.id} className={`rounded-[12px] border px-3.5 py-2.5 ${tone}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 items-center gap-2.5">
-                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[11px] font-bold text-[#a3576f] ring-1 ring-[#f0d9e2]">{i.no}</span>
+                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[11px] font-bold text-[#8C4460] ring-1 ring-[#f0d9e2]">{i.no}</span>
                           <span className="min-w-0">
-                            <span className="block truncate text-[12.5px] font-semibold text-[#4a3a44]">{formatDay(i.dueDate)}</span>
+                            <span className="block truncate text-[12.5px] font-semibold text-[#3E343A]">{formatDay(i.dueDate)}</span>
                             {isPaid && i.paidAtUtc && (
                               <span className="block text-[10px] text-emerald-700">Ödendi · {formatDay(i.paidAtUtc)}</span>
                             )}
@@ -394,7 +394,7 @@ export default function AccountDetailModal({
                   )
                 })}
                 {account.installments.length === 0 && (
-                  <div className="rounded-[12px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-6 text-center text-[11.5px] text-[#705a66]">
+                  <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-6 text-center text-[11.5px] text-[#74616A]">
                     Taksit planı yok — bu satış peşin kaydedilmiş.
                   </div>
                 )}
@@ -402,10 +402,10 @@ export default function AccountDetailModal({
 
               {/* Planı yeniden kur (iç içe dialog yok: satır içi form) */}
               {!cancelled && (
-                <div className="rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
+                <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
                   <button
                     type="button" onClick={() => setRescheduleOpen((o) => !o)}
-                    className="flex w-full items-center gap-2 text-[11.5px] font-semibold text-[#a3576f]"
+                    className="flex w-full items-center gap-2 text-[11.5px] font-semibold text-[#8C4460]"
                   >
                     <PencilLine className="h-3.5 w-3.5" /> {rescheduleOpen ? 'Vazgeç' : 'Taksit planını yeniden kur'}
                   </button>
@@ -416,7 +416,7 @@ export default function AccountDetailModal({
                         transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden"
                       >
                         <div className="pt-3">
-                          <div className="text-[10.5px] text-[#705a66]">
+                          <div className="text-[10.5px] text-[#74616A]">
                             Finanse edilen tutar (toplam − peşinat) seçtiğin taksit sayısına eşit bölünür; alınan tahsilatlar yeni plana vade sırasıyla dağıtılır.
                           </div>
                           <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
@@ -425,19 +425,19 @@ export default function AccountDetailModal({
                               <input
                                 type="number" min={1} value={count}
                                 onChange={(e) => setCount(Number(e.target.value || 1))}
-                                className="w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] tabular-nums outline-none focus:border-[#efbfd0]"
+                                className="w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[13px] tabular-nums outline-none focus:border-[#BE7690]"
                               />
                             </label>
                             <label className="block">
                               <span className="mb-1 block text-[10.5px] font-semibold text-[#7e5f6e]">İlk vade</span>
                               <input
                                 type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)}
-                                className="w-full rounded-[11px] border border-[#ead8df] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#efbfd0]"
+                                className="w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#BE7690]"
                               />
                             </label>
                             <button
                               type="button" onClick={() => void runReschedule()} disabled={busy}
-                              className="mt-auto inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[11px] bg-[#c85776] px-4 text-[12px] font-semibold text-white disabled:opacity-60"
+                              className="mt-auto inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[11px] bg-[#A5556E] px-4 text-[12px] font-semibold text-white disabled:opacity-60"
                             >
                               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Planı kur
                             </button>
@@ -453,28 +453,28 @@ export default function AccountDetailModal({
 
           {/* ---------------- EKSTRE ---------------- */}
           {tab === 'ledger' && (
-            <div className="overflow-hidden rounded-[14px] border border-[#ead8df]">
-              <div className="grid grid-cols-[0.8fr_1.6fr_0.7fr_0.7fr_0.7fr] gap-2 border-b border-[#f2e2e9] bg-[#fffafc] px-3 py-2 text-[8.5px] font-mono uppercase tracking-widest text-[#a3576f]">
+            <div className="overflow-hidden rounded-[14px] border border-[#EAD8DF]">
+              <div className="grid grid-cols-[0.8fr_1.6fr_0.7fr_0.7fr_0.7fr] gap-2 border-b border-[#f2e2e9] bg-[#F7F6F6] px-3 py-2 text-[8.5px] font-mono uppercase tracking-widest text-[#8C4460]">
                 <span>Tarih</span><span>İşlem</span><span className="text-right">Borç</span><span className="text-right">Alacak</span><span className="text-right">Bakiye</span>
               </div>
               <div className="divide-y divide-[#f4e8ed] bg-white">
                 {ledger.map((r, i) => (
                   <div key={i} className="grid grid-cols-[0.8fr_1.6fr_0.7fr_0.7fr_0.7fr] items-center gap-2 px-3 py-2 text-[11.5px]">
-                    <span className="font-mono text-[10px] text-[#705a66]">{(r.date || '').slice(0, 10) || '—'}</span>
+                    <span className="font-mono text-[10px] text-[#74616A]">{(r.date || '').slice(0, 10) || '—'}</span>
                     <span className="min-w-0">
-                      <span className={`mr-1.5 rounded px-1 py-0.5 text-[8.5px] font-bold ${r.credit > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-[#fff1f6] text-[#c85776]'}`}>{r.label}</span>
-                      <span className="text-[10.5px] text-[#705a66]">{r.detail}</span>
+                      <span className={`mr-1.5 rounded px-1 py-0.5 text-[8.5px] font-bold ${r.credit > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-[#A5556E] text-white'}`}>{r.label}</span>
+                      <span className="text-[10.5px] text-[#74616A]">{r.detail}</span>
                     </span>
                     <span className="text-right font-display tabular-nums text-rose-700">{r.debit > 0 ? formatTL(r.debit) : '—'}</span>
                     <span className="text-right font-display tabular-nums text-emerald-700">{r.credit > 0 ? formatTL(r.credit) : '—'}</span>
-                    <span className={`text-right font-display tabular-nums ${r.balance > 0 ? 'text-[#352432]' : 'text-emerald-700'}`}>{formatTL(r.balance)}</span>
+                    <span className={`text-right font-display tabular-nums ${r.balance > 0 ? 'text-[#2A2027]' : 'text-emerald-700'}`}>{formatTL(r.balance)}</span>
                   </div>
                 ))}
-                {ledger.length === 0 && <div className="px-3 py-6 text-center text-[11.5px] text-[#705a66]">Hareket yok.</div>}
+                {ledger.length === 0 && <div className="px-3 py-6 text-center text-[11.5px] text-[#74616A]">Hareket yok.</div>}
               </div>
               {ledger.length > 0 && (
-                <div className="flex items-center justify-between border-t border-[#f2e2e9] bg-[#fffafc] px-3 py-2 text-[11px]">
-                  <span className="font-mono uppercase tracking-widest text-[#a3576f]">Son bakiye</span>
+                <div className="flex items-center justify-between border-t border-[#f2e2e9] bg-[#F7F6F6] px-3 py-2 text-[11px]">
+                  <span className="font-mono uppercase tracking-widest text-[#8C4460]">Son bakiye</span>
                   <span className={`font-display text-[14px] tabular-nums ${ledger[ledger.length - 1].balance > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                     {formatTL(ledger[ledger.length - 1].balance)}
                   </span>
@@ -514,7 +514,7 @@ export default function AccountDetailModal({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button" onClick={onCollect}
-                  className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
                 >
                   <CreditCard className="h-4 w-4" /> Tahsilat al
                 </button>

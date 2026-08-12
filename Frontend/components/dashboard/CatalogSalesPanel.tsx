@@ -166,13 +166,13 @@ export default function CatalogSalesPanel({
 
   return (
     <>
-      <div className="rounded-[14px] border border-[#ead8df]/65 bg-white p-3">
+      <div className="rounded-[14px] border border-[#EAD8DF]/65 bg-white p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <TrendingUp className="h-3.5 w-3.5 text-[#c85776]" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/45">Satış performansı</span>
+            <TrendingUp className="h-3.5 w-3.5 text-[#A5556E]" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Satış performansı</span>
             {sorted.length > 0 && (
-              <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
+              <span className="rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
             )}
           </div>
           {canManage && kind !== 'category' && (
@@ -201,9 +201,9 @@ export default function CatalogSalesPanel({
 
         {/* Kim sattı */}
         {sellers.length > 0 && (
-          <div className="mt-2.5 rounded-[11px] border border-[#f2e6eb] bg-[#fffafc] px-2.5 py-2">
-            <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40">
-              <UserCheck className="h-3 w-3 text-[#c85776]" /> Kim sattı
+          <div className="mt-2.5 rounded-[11px] border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-2">
+            <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A]">
+              <UserCheck className="h-3 w-3 text-[#A5556E]" /> Kim sattı
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {sellers.slice(0, 5).map((s) => {
@@ -212,18 +212,18 @@ export default function CatalogSalesPanel({
                   <span
                     key={s.name}
                     title={`${s.name} · ${s.count} satış · ${formatTL(Math.round(s.amount))}`}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#ead8df] bg-white px-2 py-1 text-[10px] font-semibold text-[#4a3a44]"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-2 py-1 text-[10px] font-semibold text-[#3E343A]"
                   >
                     <span className="grid h-4 w-4 place-items-center rounded-full bg-[linear-gradient(140deg,#e78ba8,#c05277)] text-[7px] font-bold text-white">
                       {initials(s.name)}
                     </span>
                     {s.name}
                     <span className="text-[#a34a62]">×{s.count}</span>
-                    <span className="text-[#705a66]">%{share}</span>
+                    <span className="text-[#74616A]">%{share}</span>
                   </span>
                 )
               })}
-              {sellers.length > 5 && <span className="self-center text-[10px] text-[#705a66]">+{sellers.length - 5}</span>}
+              {sellers.length > 5 && <span className="self-center text-[10px] text-[#74616A]">+{sellers.length - 5}</span>}
             </div>
           </div>
         )}
@@ -237,7 +237,7 @@ export default function CatalogSalesPanel({
                 type="button"
                 onClick={() => { setFilter(f.key); setLimit(VISIBLE_STEP) }}
                 className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors ${
-                  filter === f.key ? 'bg-[#c85776] text-white' : 'bg-[#fff5f8] text-[#705a66] hover:text-[#a34a62]'
+                  filter === f.key ? 'bg-[#A5556E] text-white' : 'bg-[#fff5f8] text-[#74616A] hover:text-[#a34a62]'
                 }`}
               >
                 {f.label} {counts[f.key] > 0 && <span className="opacity-70">{counts[f.key]}</span>}
@@ -250,7 +250,7 @@ export default function CatalogSalesPanel({
         <div className="mt-2 space-y-1.5">
           {filter === 'Cancelled' ? (
             cancelledSales.length === 0 ? (
-              <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11px] text-[#705a66]">
+              <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11px] text-[#74616A]">
                 İptal edilmiş satış yok.
               </div>
             ) : (
@@ -258,14 +258,14 @@ export default function CatalogSalesPanel({
                 <div key={c.id} className="rounded-[11px] border border-rose-100 bg-rose-50/40 px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold text-[#352432]">{c.customerName || c.name}</div>
-                      <div className="truncate text-[10.5px] text-[#705a66]">
+                      <div className="truncate text-[12px] font-semibold text-[#2A2027]">{c.customerName || c.name}</div>
+                      <div className="truncate text-[10.5px] text-[#74616A]">
                         {c.cancellationReason || 'gerekçe belirtilmemiş'}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="text-[12.5px] font-bold tabular-nums text-[#352432]">{formatTL(c.totalAmount)}</div>
-                      <div className="text-[10px] text-[#705a66]">
+                      <div className="text-[12.5px] font-bold tabular-nums text-[#2A2027]">{formatTL(c.totalAmount)}</div>
+                      <div className="text-[10px] text-[#74616A]">
                         tahsil {formatTL(c.collectedAmount)}{c.refundedAmount > 0.005 ? ` · iade ${formatTL(c.refundedAmount)}` : ''}
                       </div>
                     </div>
@@ -274,7 +274,7 @@ export default function CatalogSalesPanel({
               ))
             )
           ) : visible.length === 0 ? (
-            <div className="rounded-[11px] border border-dashed border-[#ead8df] bg-[#fffafb] px-3 py-5 text-center text-[11px] text-[#705a66]">
+            <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11px] text-[#74616A]">
               {sorted.length === 0
                 ? kind === 'category'
                   ? `"${item.name}" kategorisinde henüz satış yok.`
@@ -290,7 +290,7 @@ export default function CatalogSalesPanel({
           <button
             type="button"
             onClick={() => setLimit((v) => v + VISIBLE_STEP)}
-            className="mx-auto mt-2 flex w-max items-center gap-1 rounded-full border border-[#ead8df] bg-white px-3 py-1 text-[10px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6]"
+            className="mx-auto mt-2 flex w-max items-center gap-1 rounded-full border border-[#EAD8DF] bg-white px-3 py-1 text-[10px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6]"
           >
             {filtered.length - visible.length} satış daha
           </button>
@@ -345,12 +345,12 @@ export default function CatalogSalesPanel({
 
 function Kpi({ icon: Icon, label, value, sub }: { icon: typeof Package; label: string; value: string; sub: string }) {
   return (
-    <div className="rounded-[11px] border border-[#ead8df]/65 bg-[#fffafc] px-2.5 py-2">
-      <div className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-widest text-[#352432]/40">
-        <Icon className="h-3 w-3 text-[#c85776]" /> {label}
+    <div className="rounded-[11px] border border-[#EAD8DF]/65 bg-[#F7F6F6] px-2.5 py-2">
+      <div className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-widest text-[#74616A]">
+        <Icon className="h-3 w-3 text-[#A5556E]" /> {label}
       </div>
-      <div className="mt-0.5 truncate font-display text-[15px] tabular-nums text-[#352432]">{value}</div>
-      <div className="truncate text-[9px] text-[#705a66]">{sub}</div>
+      <div className="mt-0.5 truncate font-display text-[15px] tabular-nums text-[#2A2027]">{value}</div>
+      <div className="truncate text-[9px] text-[#74616A]">{sub}</div>
     </div>
   )
 }
@@ -366,8 +366,8 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
       whileHover={{ y: -1 }}
       className={`group flex w-full items-center gap-2 rounded-[11px] border px-2.5 py-2 text-left transition-colors ${
         account.saleStatus === 'Cancelled'
-          ? 'border-[#f3dfe4] bg-[#fffafb] opacity-80 hover:opacity-100'
-          : 'border-[#f0e0e6] bg-white hover:border-[#e7bccb] hover:bg-[#fffafc]'
+          ? 'border-[#f3dfe4] bg-[#F7F6F6] opacity-80 hover:opacity-100'
+          : 'border-[#f0e0e6] bg-white hover:border-[#e7bccb] hover:bg-[#F7F6F6]'
       }`}
     >
       <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-[8px] border ${meta.pill}`}>
@@ -376,7 +376,7 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
 
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1">
-          <span className="truncate text-[12px] font-semibold text-[#352432]">{account.customerName}</span>
+          <span className="truncate text-[12px] font-semibold text-[#2A2027]">{account.customerName}</span>
           {account.isHistorical && (
             <span className="inline-flex items-center gap-0.5 rounded-full border border-[#e0d3f2] bg-[#faf6ff] px-1.5 py-0.5 text-[8px] font-bold text-[#6b4aa0]">
               <Archive className="h-2 w-2" /> Geçmiş
@@ -386,7 +386,7 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
         {showItemName && (
           <span className="mt-0.5 block truncate text-[10.5px] font-medium text-[#a34a62]">{account.name}</span>
         )}
-        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9.5px] text-[#705a66]">
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9.5px] text-[#74616A]">
           <span>{formatSaleDate(account.soldAtUtc)}</span>
           <span className="text-[#c9b3bd]">·</span>
           <span>{account.soldByStaffName || 'Satan belirtilmemiş'}</span>
@@ -394,7 +394,7 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
             <>
               <span className="text-[#c9b3bd]">·</span>
               {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
-              <span className="font-semibold tabular-nums text-[#4a3a44]">
+              <span className="font-semibold tabular-nums text-[#3E343A]">
                 {Math.max(0, account.sessionsTotal - account.sessionsUsed)} seans kaldı
               </span>
             </>
@@ -409,12 +409,12 @@ function CatalogSaleRow({ account, onClick, showItemName = false }: { account: C
       </span>
 
       <span className="flex shrink-0 flex-col items-end">
-        <span className="font-display text-[12.5px] font-bold text-[#352432]">{formatTL(Math.round(account.totalAmount))}</span>
+        <span className="font-display text-[12.5px] font-bold text-[#2A2027]">{formatTL(Math.round(account.totalAmount))}</span>
         <span className={`text-[9px] font-semibold ${account.remainingAmount > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'}`}>
           {account.remainingAmount > 0.005 ? `${formatTL(Math.round(account.remainingAmount))} kalan` : 'Ödendi'}
         </span>
       </span>
-      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#c85776]" />
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#A5556E]" />
     </motion.button>
   )
 }

@@ -494,7 +494,7 @@ export default function CollectionDialog({
           <DialogTrigger asChild>
             <button
               type="button"
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
             >
               <Banknote className="h-4 w-4" /> {triggerLabel}
             </button>
@@ -503,18 +503,18 @@ export default function CollectionDialog({
       {/* Kabuk: başlık/alt bar SABİT, gövde kaydırılır. Sabit yükseklik YOK — plan olmayan
           hesapta modal içeriği kadar kalır, uzun planda 92dvh'de durur (footer kırpılmaz). */}
       <DialogContent
-        className="flex flex-col overflow-hidden rounded-[26px] border border-[#efe1e7] bg-white !p-0 text-[#352432] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none"
+        className="flex flex-col overflow-hidden rounded-[26px] border border-[#EAD8DF] bg-white !p-0 text-[#2A2027] shadow-[0_44px_120px_-58px_rgba(120,71,88,0.72)] sm:!max-w-none"
         style={{ width: showPlanPanel ? 'min(96vw, 900px)' : 'min(96vw, 520px)', maxHeight: '92dvh' }}
       >
         {/* ---- Başlık ---- */}
         <div className="shrink-0 border-b border-[#f2e2e9] bg-gradient-to-r from-[#fff5f8] via-white to-[#fff2f6] px-5 py-4">
           <div className="flex items-start gap-3 pr-10">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#c05277]">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border border-[#f0d9e2] bg-white text-[#A5556E]">
               <Banknote className="h-5 w-5" />
             </span>
             <div className="min-w-0">
               <DialogTitle className="truncate text-[16px] font-bold text-[#2b1e29]">{title}</DialogTitle>
-              <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#705a66]">
+              <DialogDescription className="mt-0.5 text-[11.5px] leading-snug text-[#74616A]">
                 {headerNote}
               </DialogDescription>
             </div>
@@ -528,7 +528,7 @@ export default function CollectionDialog({
           {allMode && allQueue.length > 0 && (
             <div className="flex min-h-0 flex-col lg:w-[44%]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Ödeme sırası (tüm satışlar)</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#8C4460]">Ödeme sırası (tüm satışlar)</span>
                 {allSummary && allSummary.overdue > 0.005 && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
                     <AlertTriangle className="h-3 w-3" /> {formatTL(Math.round(allSummary.overdue))} gecikmiş
@@ -540,28 +540,28 @@ export default function CollectionDialog({
                   <div
                     key={`${row.accountId}-${row.installmentNo ?? 'peşin'}-${idx}`}
                     className={`rounded-[12px] border px-3 py-2 transition-colors ${
-                      applied > 0.005 ? 'border-[#c85776]/45 bg-[#fff1f6] ring-1 ring-[#c85776]/20'
+                      applied > 0.005 ? 'border-[#8C4460]/45 bg-[#F6DFE6] ring-1 ring-[#A5556E]/20'
                         : row.isOverdue ? 'border-rose-200 bg-rose-50/50'
                         : 'border-[#f0e0e6] bg-white'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-semibold text-[#352432]">{row.accountLabel}</span>
-                        <span className="block truncate text-[10.5px] text-[#705a66]">
+                        <span className="block truncate text-[12px] font-semibold text-[#2A2027]">{row.accountLabel}</span>
+                        <span className="block truncate text-[10.5px] text-[#74616A]">
                           {row.installmentNo !== null ? `${row.installmentNo}. taksit · ` : 'Peşin bakiye · '}
                           {row.dueDate ? formatDay(row.dueDate) : 'vadesiz'}
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[13px] font-bold tabular-nums text-[#352432]">{formatTL(row.remaining)}</span>
+                        <span className="text-[13px] font-bold tabular-nums text-[#2A2027]">{formatTL(row.remaining)}</span>
                         {row.isOverdue && (
                           <span className="rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">GECİKTİ</span>
                         )}
                       </span>
                     </div>
                     {applied > 0.005 && (
-                      <div className="mt-1.5 flex items-center gap-1.5 rounded-[8px] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#a3576f]">
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-[8px] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#8C4460]">
                         <Banknote className="h-3 w-3" />
                         Bu ödemeden {formatTL(applied)} düşecek
                         {applied >= row.remaining - 0.005 ? ' · kapanır' : ' · kısmi kalır'}
@@ -577,7 +577,7 @@ export default function CollectionDialog({
           {!allMode && hasPlan && (
             <div className="flex min-h-0 flex-col lg:w-[44%]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Taksit planı</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#8C4460]">Taksit planı</span>
                 {overdueSum > 0.005 && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
                     <AlertTriangle className="h-3 w-3" /> {formatTL(Math.round(overdueSum))} gecikmiş
@@ -591,7 +591,7 @@ export default function CollectionDialog({
                   const applied = preview.applied.get(i.id) ?? 0
                   const isPaid = i.remaining <= 0.005
                   const tone = isPaid ? 'border-emerald-200 bg-emerald-50/60'
-                    : applied > 0.005 ? 'border-[#c85776]/45 bg-[#fff1f6] ring-1 ring-[#c85776]/20'
+                    : applied > 0.005 ? 'border-[#8C4460]/45 bg-[#F6DFE6] ring-1 ring-[#A5556E]/20'
                     : r.isOverdue ? 'border-rose-200 bg-rose-50/50'
                     : 'border-[#f0e0e6] bg-white'
                   const [badge, badgeTone] = isPaid ? ['ÖDENDİ', 'bg-emerald-100 text-emerald-800']
@@ -602,13 +602,13 @@ export default function CollectionDialog({
                     <div key={i.id} className={`rounded-[12px] border px-3 py-2 transition-colors ${tone}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 items-center gap-2">
-                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[10px] font-bold text-[#a3576f] ring-1 ring-[#f0d9e2]">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[10px] font-bold text-[#8C4460] ring-1 ring-[#f0d9e2]">
                             {i.no}
                           </span>
-                          <span className="truncate text-[12px] font-medium text-[#4a3a44]">{formatDay(i.dueDate)}</span>
+                          <span className="truncate text-[12px] font-medium text-[#3E343A]">{formatDay(i.dueDate)}</span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
-                          <span className="text-[13px] font-bold tabular-nums text-[#352432]">{formatTL(i.amount)}</span>
+                          <span className="text-[13px] font-bold tabular-nums text-[#2A2027]">{formatTL(i.amount)}</span>
                           <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${badgeTone}`}>{badge}</span>
                         </span>
                       </div>
@@ -625,7 +625,7 @@ export default function CollectionDialog({
                         </div>
                       )}
                       {applied > 0.005 && (
-                        <div className="mt-1.5 flex items-center gap-1.5 rounded-[8px] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#a3576f]">
+                        <div className="mt-1.5 flex items-center gap-1.5 rounded-[8px] bg-white/70 px-2 py-1 text-[10.5px] font-semibold text-[#8C4460]">
                           <Banknote className="h-3 w-3" />
                           Bu ödemeden {formatTL(applied)} düşecek
                           {applied >= i.remaining - 0.005 ? ' · kapanır' : ' · kısmi kalır'}
@@ -643,50 +643,50 @@ export default function CollectionDialog({
             {/* Cari hesap seçici (aranabilir) */}
             <div className="relative" ref={pickerRef}>
               <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                <User className="h-3.5 w-3.5 text-[#c05277]" />
+                <User className="h-3.5 w-3.5 text-[#A5556E]" />
                 {saleMode ? 'Hangi satıştan tahsilat?' : 'Cari hesap'}
               </label>
               <button
                 type="button"
                 onClick={() => setPickerOpen((o) => !o)}
-                className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-left text-[13px] text-[#352432] transition-colors hover:border-[#efbfd0]"
+                className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-left text-[13px] text-[#2A2027] transition-colors hover:border-[#BE7690]"
               >
                 {allMode && allSummary ? (
                   <span className="min-w-0 truncate">
-                    <span className="font-semibold text-[#a3576f]">TÜMÜ · {allSummary.openCount} satış</span>
-                    <span className="text-[#705a66]"> · {formatTL(allSummary.remaining)} toplam borç</span>
+                    <span className="font-semibold text-[#8C4460]">TÜMÜ · {allSummary.openCount} satış</span>
+                    <span className="text-[#74616A]"> · {formatTL(allSummary.remaining)} toplam borç</span>
                   </span>
                 ) : selected ? (
                   <span className="min-w-0 truncate">
                     <span className="font-semibold">
                       {saleMode ? saleLabel(selected) : selected.customerName || selected.name}
                     </span>
-                    <span className="text-[#705a66]"> · {formatTL(selected.remainingAmount)} kalan</span>
+                    <span className="text-[#74616A]"> · {formatTL(selected.remainingAmount)} kalan</span>
                   </span>
                 ) : (
-                  <span className="text-[#705a66]">{saleMode ? 'Satış seç…' : 'Cari hesap seç…'}</span>
+                  <span className="text-[#74616A]">{saleMode ? 'Satış seç…' : 'Cari hesap seç…'}</span>
                 )}
-                <Search className="h-4 w-4 shrink-0 text-[#a3576f]" />
+                <Search className="h-4 w-4 shrink-0 text-[#8C4460]" />
               </button>
               {/* Kapsam açıkça yazılır: tek satışta para yalnız oraya gider, Tümü'de birden
                   çok cariye BÖLÜNÜR (her satış için ayrı tahsilat kaydı açılır). */}
               {saleMode && (
-                <p className="mt-1 text-[10.5px] text-[#705a66]">
+                <p className="mt-1 text-[10.5px] text-[#74616A]">
                   {allMode
                     ? <>Tahsilat <b>{accounts.length} satışa</b> vade sırasıyla bölünür; her satış için ayrı tahsilat kaydı açılır.</>
                     : <>Bu müşterinin <b>{accounts.length}</b> açık satışı var. Tahsilat yalnız <b>seçili satışın</b> taksitlerine dağıtılır.</>}
                 </p>
               )}
               {pickerOpen && (
-                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-[14px] border border-[#ead8df] bg-white shadow-[0_24px_60px_-30px_rgba(120,71,88,0.55)]">
+                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-[14px] border border-[#EAD8DF] bg-white shadow-[0_24px_60px_-30px_rgba(120,71,88,0.55)]">
                   <div className="flex items-center gap-2 border-b border-[#f2e6ec] px-3 py-2">
-                    <Search className="h-3.5 w-3.5 text-[#a3576f]" />
+                    <Search className="h-3.5 w-3.5 text-[#8C4460]" />
                     <input
                       autoFocus
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder={saleMode ? 'Satış / paket ara…' : 'Müşteri adı / telefon ara…'}
-                      className="w-full bg-transparent text-[12.5px] text-[#352432] outline-none placeholder:text-[#705a66]"
+                      className="w-full bg-transparent text-[12.5px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
                     />
                   </div>
                   <div className="max-h-56 overflow-y-auto py-1">
@@ -696,26 +696,26 @@ export default function CollectionDialog({
                       <button
                         type="button"
                         onClick={pickAll}
-                        className={`flex w-full items-center justify-between gap-2 border-b border-[#f2e6ec] px-3 py-2.5 text-left text-[12.5px] transition-colors hover:bg-[#fff2f6] ${allMode ? 'bg-[#fff1f6]' : ''}`}
+                        className={`flex w-full items-center justify-between gap-2 border-b border-[#f2e6ec] px-3 py-2.5 text-left text-[12.5px] transition-colors hover:bg-[#fff2f6] ${allMode ? 'bg-[#F6DFE6]' : ''}`}
                       >
                         <span className="min-w-0">
                           <span className="flex items-center gap-1.5">
-                            <Layers className="h-3.5 w-3.5 shrink-0 text-[#c05277]" />
-                            <span className="truncate font-bold text-[#a3576f]">TÜMÜ · {allSummary.openCount} satış</span>
+                            <Layers className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />
+                            <span className="truncate font-bold text-[#8C4460]">TÜMÜ · {allSummary.openCount} satış</span>
                           </span>
-                          <span className="block truncate text-[10.5px] text-[#705a66]">
+                          <span className="block truncate text-[10.5px] text-[#74616A]">
                             Bu ay ödenmesi gereken {formatTL(Math.round(allSummary.dueNow))}
                             {allSummary.overdue > 0.005 ? ` · ${formatTL(Math.round(allSummary.overdue))} gecikmiş` : ''}
                           </span>
                         </span>
                         <span className="shrink-0 text-right">
                           <span className="block font-bold tabular-nums text-rose-700">{formatTL(allSummary.remaining)}</span>
-                          <span className="block text-[10px] uppercase tracking-wide text-[#705a66]">toplam</span>
+                          <span className="block text-[10px] uppercase tracking-wide text-[#74616A]">toplam</span>
                         </span>
                       </button>
                     )}
                     {filtered.length === 0 && (
-                      <div className="px-3 py-4 text-center text-[11.5px] text-[#705a66]">
+                      <div className="px-3 py-4 text-center text-[11.5px] text-[#74616A]">
                         {saleMode ? 'Satış bulunamadı.' : 'Cari hesap bulunamadı.'}
                       </div>
                     )}
@@ -726,11 +726,11 @@ export default function CollectionDialog({
                           key={a.id}
                           type="button"
                           onClick={() => pickAccount(a)}
-                          className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[12.5px] transition-colors hover:bg-[#fff2f6] ${a.id === accountId ? 'bg-[#fff1f6]' : ''}`}
+                          className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[12.5px] transition-colors hover:bg-[#fff2f6] ${a.id === accountId ? 'bg-[#F6DFE6]' : ''}`}
                         >
                           <span className="min-w-0">
                             <span className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate font-semibold text-[#352432]">
+                              <span className="truncate font-semibold text-[#2A2027]">
                                 {saleMode ? saleLabel(a) : a.customerName || a.name}
                               </span>
                               {/* Gecikmiş satış listede görünür olmalı: kullanıcı çoğunlukla onu arıyor. */}
@@ -738,7 +738,7 @@ export default function CollectionDialog({
                                 <span className="shrink-0 rounded-md bg-rose-100 px-1.5 text-[9.5px] font-bold text-rose-700">GECİKMİŞ</span>
                               )}
                             </span>
-                            <span className="block truncate text-[10.5px] text-[#705a66]">
+                            <span className="block truncate text-[10.5px] text-[#74616A]">
                               {saleMode
                                 ? (a.nextDueDate ? `Sıradaki vade ${formatDay(a.nextDueDate)}` : 'Vadesiz / peşin')
                                 : a.name}
@@ -746,7 +746,7 @@ export default function CollectionDialog({
                           </span>
                           <span className="shrink-0 text-right">
                             <span className="block font-bold tabular-nums text-rose-700">{formatTL(a.remainingAmount)}</span>
-                            <span className="block text-[10px] uppercase tracking-wide text-[#705a66]">kalan</span>
+                            <span className="block text-[10px] uppercase tracking-wide text-[#74616A]">kalan</span>
                           </span>
                         </button>
                       )
@@ -769,18 +769,18 @@ export default function CollectionDialog({
                         type="button"
                         onClick={() => applyQuickAmount(q.value)}
                         className={`rounded-[10px] border px-2.5 py-1.5 text-left text-[11.5px] font-semibold transition-colors ${
-                          active ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#4a3a44] hover:border-[#efbfd0]'
+                          active ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690]'
                         }`}
                       >
                         {q.label}
-                        <span className={`ml-1.5 tabular-nums ${active ? 'text-white' : 'text-[#a3576f]'}`}>{formatTL(q.value)}</span>
-                        {q.hint && <span className={`block text-[10px] font-normal ${active ? 'text-white/85' : 'text-[#705a66]'}`}>{q.hint}</span>}
+                        <span className={`ml-1.5 tabular-nums ${active ? 'text-white' : 'text-[#8C4460]'}`}>{formatTL(q.value)}</span>
+                        {q.hint && <span className={`block text-[10px] font-normal ${active ? 'text-white/85' : 'text-[#74616A]'}`}>{q.hint}</span>}
                       </button>
                     )
                   })}
                 </div>
                 {hasPlan && overdueSum > 0.005 && (
-                  <div className="mt-1.5 text-[10.5px] text-[#705a66]">
+                  <div className="mt-1.5 text-[10.5px] text-[#74616A]">
                     Ödenmeyen aylar sonraki ayın taksitine eklenir — <b>bu ay ödenmesi gereken {formatTL(Math.round(dueNow))}</b>.
                   </div>
                 )}
@@ -791,7 +791,7 @@ export default function CollectionDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                  <Wallet className="h-3.5 w-3.5 text-[#c05277]" /> Tutar ve yöntem
+                  <Wallet className="h-3.5 w-3.5 text-[#A5556E]" /> Tutar ve yöntem
                 </label>
                 {rows.length > 1 && (
                   <span className="text-[11px] font-semibold tabular-nums text-[#7e5f6e]">
@@ -802,21 +802,21 @@ export default function CollectionDialog({
 
               {rows.map((row, i) => (
                 <div key={i} className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-1.5 rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 focus-within:border-[#efbfd0]">
-                    <span className="text-[13px] font-semibold text-[#705a66]">₺</span>
+                  <div className="flex items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 focus-within:border-[#BE7690]">
+                    <span className="text-[13px] font-semibold text-[#74616A]">₺</span>
                     <input
                       type="number"
                       min={0}
                       value={row.amount}
                       onChange={(e) => setRow(i, { amount: e.target.value === '' ? '' : Number(e.target.value) })}
-                      className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#352432] outline-none"
+                      className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-[#2A2027] outline-none"
                     />
                   </div>
                   <div className="flex items-center gap-1.5">
                     <select
                       value={row.method}
                       onChange={(e) => setRow(i, { method: e.target.value })}
-                      className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]"
+                      className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#BE7690]"
                     >
                       {METHOD_OPTIONS.map((m) => (
                         <option key={m.value} value={m.value}>
@@ -829,7 +829,7 @@ export default function CollectionDialog({
                         type="button"
                         onClick={() => removeRow(i)}
                         aria-label="Ödeme satırını kaldır"
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#ead8df] bg-white text-[#705a66] transition-colors hover:border-rose-200 hover:text-rose-600"
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#EAD8DF] bg-white text-[#74616A] transition-colors hover:border-rose-200 hover:text-rose-600"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -842,10 +842,10 @@ export default function CollectionDialog({
                 <button
                   type="button"
                   onClick={addRow}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-dashed border-[#efbfd0] bg-[#fffafc] px-2.5 py-1.5 text-[11px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#fff1f6]"
+                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-dashed border-[#BE7690] bg-[#F7F6F6] px-2.5 py-1.5 text-[11px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
                 >
                   <Plus className="h-3.5 w-3.5" /> Ödeme yöntemi ekle
-                  {unallocated > 0 && <span className="font-normal text-[#705a66]">· {formatTL(unallocated)} kaldı</span>}
+                  {unallocated > 0 && <span className="font-normal text-[#74616A]">· {formatTL(unallocated)} kaldı</span>}
                 </button>
               )}
             </div>
@@ -854,24 +854,24 @@ export default function CollectionDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                  <CalendarDays className="h-3.5 w-3.5 text-[#c05277]" /> Tarih
+                  <CalendarDays className="h-3.5 w-3.5 text-[#A5556E]" /> Tarih
                 </label>
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0]"
+                  className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#BE7690]"
                 />
               </div>
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#7e5f6e]">
-                  <FileText className="h-3.5 w-3.5 text-[#c05277]" /> Dekont / referans
+                  <FileText className="h-3.5 w-3.5 text-[#A5556E]" /> Dekont / referans
                 </label>
                 <input
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="Opsiyonel"
-                  className="w-full rounded-[12px] border border-[#ead8df] bg-white px-3 py-2.5 text-[13px] text-[#352432] outline-none transition-colors focus:border-[#efbfd0] placeholder:text-[#705a66]"
+                  className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#BE7690] placeholder:text-[#74616A]"
                 />
               </div>
             </div>
@@ -879,25 +879,25 @@ export default function CollectionDialog({
             {/* TÜMÜ: para hangi satışa ne kadar yazılacak — onaydan ÖNCE görünmeli.
                 Tek tuşla birden çok cariye yazılan tahsilatı sonradan geri almak zordur. */}
             {allMode && (
-              <div className="rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Hangi satışa ne kadar yazılacak?</div>
+              <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#8C4460]">Hangi satışa ne kadar yazılacak?</div>
                 {allPreview.length === 0 ? (
-                  <div className="mt-1.5 text-[11.5px] text-[#705a66]">Tutar girin — dağıtım burada görünecek.</div>
+                  <div className="mt-1.5 text-[11.5px] text-[#74616A]">Tutar girin — dağıtım burada görünecek.</div>
                 ) : (
                   <ul className="mt-1.5 space-y-1">
                     {allPreview.map((p) => (
-                      <li key={p.accountId} className="flex items-center justify-between gap-3 text-[11.5px] text-[#4a3a44]">
+                      <li key={p.accountId} className="flex items-center justify-between gap-3 text-[11.5px] text-[#3E343A]">
                         <span className="min-w-0 truncate">{p.accountLabel}</span>
-                        <b className="shrink-0 tabular-nums text-[#a3576f]">{formatTL(p.amount)}</b>
+                        <b className="shrink-0 tabular-nums text-[#8C4460]">{formatTL(p.amount)}</b>
                       </li>
                     ))}
-                    <li className="flex items-center justify-between gap-3 border-t border-dashed border-[#ead8df] pt-1 text-[11.5px] font-bold text-[#352432]">
+                    <li className="flex items-center justify-between gap-3 border-t border-dashed border-[#EAD8DF] pt-1 text-[11.5px] font-bold text-[#2A2027]">
                       <span>{allPreview.length} satışa yazılacak</span>
                       <span className="tabular-nums">{formatTL(allPreview.reduce((s, p) => s + p.amount, 0))}</span>
                     </li>
                   </ul>
                 )}
-                <div className="mt-1.5 text-[10.5px] text-[#705a66]">
+                <div className="mt-1.5 text-[10.5px] text-[#74616A]">
                   Dağıtım en eski vadeden başlar; satış içinde de en eski taksit önce kapanır.
                 </div>
               </div>
@@ -905,9 +905,9 @@ export default function CollectionDialog({
 
             {/* Canlı dağıtım özeti — tahsilat vade sırasıyla dağıtılır, kullanıcı ne olacağını görsün */}
             {!allMode && hasPlan && (
-              <div className="rounded-[14px] border border-[#ead8df] bg-[#fffafc] p-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-[#a3576f]">Bu ödeme ne yapacak?</div>
-                <ul className="mt-1.5 space-y-1 text-[11.5px] text-[#4a3a44]">
+              <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#8C4460]">Bu ödeme ne yapacak?</div>
+                <ul className="mt-1.5 space-y-1 text-[11.5px] text-[#3E343A]">
                   <li className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                     {preview.closes > 0 ? <><b>{preview.closes} taksit</b> tamamen kapanır</> : 'Hiçbir taksit tamamen kapanmaz'}
@@ -920,11 +920,11 @@ export default function CollectionDialog({
                   )}
                   {preview.leftover > 0.005 && (
                     <li className="flex items-center gap-1.5">
-                      <Wallet className="h-3.5 w-3.5 shrink-0 text-[#c05277]" />
+                      <Wallet className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />
                       <b>{formatTL(preview.leftover)}</b> fazla ödeme (kredi) olarak kalır
                     </li>
                   )}
-                  <li className="text-[10.5px] text-[#705a66]">
+                  <li className="text-[10.5px] text-[#74616A]">
                     Tahsilat en eski vadeli taksitten başlayarak dağıtılır.
                   </li>
                 </ul>
@@ -942,15 +942,15 @@ export default function CollectionDialog({
         {/* ---- Alt bar ---- */}
         <div className="shrink-0 border-t border-[#f2e2e9] bg-white px-5 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-[11px] text-[#705a66]">
+            <div className="text-[11px] text-[#74616A]">
               {allMode ? 'Tüm satışların kalan borcu' : 'Kalan toplam borç'}{' '}
-              <b className="text-[#352432]">{formatTL(scopeRemaining)}</b>
+              <b className="text-[#2A2027]">{formatTL(scopeRemaining)}</b>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="inline-flex min-h-10 items-center rounded-[12px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#efbfd0]"
+                className="inline-flex min-h-10 items-center rounded-[12px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-semibold text-[#7e5f6e] transition-colors hover:border-[#BE7690]"
               >
                 Vazgeç
               </button>
@@ -958,7 +958,7 @@ export default function CollectionDialog({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={saving}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#c85776] to-[#a63e5f] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {formatTL(totalAmount)} tahsil et
