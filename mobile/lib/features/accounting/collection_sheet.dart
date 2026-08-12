@@ -812,7 +812,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
               final bg = paid
                   ? const Color(0xFFECFDF3)
                   : applied > 0.005
-                      ? const Color(0xFFFFF1F6)
+                      ? const Color(0xFFF6DFE6)
                       : r.isOverdue
                           ? const Color(0xFFFEF2F2)
                           : Colors.white;

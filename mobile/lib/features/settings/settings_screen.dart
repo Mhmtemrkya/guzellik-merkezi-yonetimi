@@ -705,7 +705,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 30,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF1F6),
+                color: const Color(0xFFF6DFE6),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Icon(icon, size: 15, color: AppColors.primary),
@@ -832,7 +832,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF1F6),
+              color: const Color(0xFFF6DFE6),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 17, color: AppColors.primary),
@@ -942,7 +942,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF1F6),
+          color: const Color(0xFFF6DFE6),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: const Color(0xFFEFBFD0)),
         ),
@@ -1077,7 +1077,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFFFFF1F6),
+                  color: const Color(0xFFF6DFE6),
                   border:
                       Border.all(color: const Color(0xFFFBD2DC), width: 5),
                 ),
@@ -1478,7 +1478,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF1F6),
+                            color: const Color(0xFFF6DFE6),
                             borderRadius: BorderRadius.circular(6),
                             border:
                                 Border.all(color: const Color(0xFFEFBFD0)),
@@ -1613,7 +1613,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       child: Text(initials.isEmpty ? '•' : initials,
           style: const TextStyle(
-              color: Color(0xFF8E3F5B),
+              color: Color(0xFF8C4460),
               fontWeight: FontWeight.w900,
               fontSize: 13)),
     );

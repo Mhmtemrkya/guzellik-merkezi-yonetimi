@@ -30,11 +30,11 @@ class StaffRoleSheet extends StatefulWidget {
 // BeautyAsist rose-gold light token'ları (Stitch tasarımıyla birebir).
 const _cream = Color(0xFFF7ECF1);
 const _cardBorder = Color(0xFFEFE1E7);
-const _rose = Color(0xFFC85776);
+const _rose = Color(0xFFA5556E);
 const _gold = Color(0xFFB88938);
 const _ink = Color(0xFF241923);
 const _body = Color(0xFF4A3A44);
-const _muted = Color(0xFF705A66);
+const _muted = Color(0xFF74616A);
 
 const _pageIcons = <String, IconData>{
   'Customers': Icons.group_rounded,

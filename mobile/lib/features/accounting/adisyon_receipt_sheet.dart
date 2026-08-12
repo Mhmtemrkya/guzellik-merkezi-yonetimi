@@ -204,7 +204,7 @@ class _AdisyonReceiptSheetState extends State<AdisyonReceiptSheet> {
               colors: [
                 Color(0xFFFFF5F8),
                 Color(0xFFFFFFFF),
-                Color(0xFFFFF1F6),
+                Color(0xFFF6DFE6),
               ],
             ),
             border: Border(bottom: BorderSide(color: Color(0xFFF2E2E9))),
@@ -398,7 +398,7 @@ class _AdisyonReceiptSheetState extends State<AdisyonReceiptSheet> {
                 const SizedBox(height: 8),
                 _note(
                   icon: Icons.credit_card_rounded,
-                  bg: const Color(0xFFFFF1F6),
+                  bg: const Color(0xFFF6DFE6),
                   border: const Color(0xFFEFBFD0),
                   ink: const Color(0xFFB14D6C),
                   text:

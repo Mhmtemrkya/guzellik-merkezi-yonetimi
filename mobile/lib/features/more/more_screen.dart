@@ -537,12 +537,12 @@ class _ModuleIcon extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFF1F6), Color(0xFFFFE0EB)],
+          colors: [Color(0xFFF6DFE6), Color(0xFFFFE0EB)],
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFF6E3EA)),
       ),
-      child: Icon(module.icon, color: const Color(0xFFC85776), size: 21),
+      child: Icon(module.icon, color: const Color(0xFFA5556E), size: 21),
     );
     if (module.path != '/notification-inbox') return box;
     return AnimatedBuilder(

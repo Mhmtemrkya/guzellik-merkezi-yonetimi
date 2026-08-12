@@ -798,7 +798,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 9),
             decoration: BoxDecoration(
-              color: active ? const Color(0xFF8E3F5B) : Colors.transparent,
+              color: active ? const Color(0xFF8C4460) : Colors.transparent,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -1129,13 +1129,13 @@ class _AppointmentFormState extends State<AppointmentForm> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF705A66))),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF74616A))),
             const SizedBox(height: 2),
             Text(value,
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: debt ? const Color(0xFF8E3F5B) : const Color(0xFF2B1E29))),
+                    color: debt ? const Color(0xFF8C4460) : const Color(0xFF2B1E29))),
           ],
         ),
       );
@@ -1487,7 +1487,7 @@ class _OwnedPackageCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: depleted ? const Color(0xFF7A6672) : const Color(0xFF8E3F5B),
+                    color: depleted ? const Color(0xFF7A6672) : const Color(0xFF8C4460),
                   ),
                 ),
               ],
@@ -1535,9 +1535,9 @@ class _PackageRow extends StatelessWidget {
                   height: 18,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: selected ? const Color(0xFF8E3F5B) : Colors.white,
+                    color: selected ? const Color(0xFF8C4460) : Colors.white,
                     border: Border.all(
-                        color: selected ? const Color(0xFF8E3F5B) : const Color(0xFFE3D2DA)),
+                        color: selected ? const Color(0xFF8C4460) : const Color(0xFFE3D2DA)),
                   ),
                   child: selected
                       ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
@@ -1561,7 +1561,7 @@ class _PackageRow extends StatelessWidget {
                           value: pct,
                           minHeight: 4,
                           backgroundColor: const Color(0xFFF4E4EA),
-                          valueColor: const AlwaysStoppedAnimation(Color(0xFF8E3F5B)),
+                          valueColor: const AlwaysStoppedAnimation(Color(0xFF8C4460)),
                         ),
                       ),
                     ],
@@ -1579,7 +1579,7 @@ class _PackageRow extends StatelessWidget {
                           fontSize: remaining > 0 ? 12.5 : 11.5,
                           fontWeight: FontWeight.w800,
                           color: remaining > 0
-                              ? const Color(0xFF8E3F5B)
+                              ? const Color(0xFF8C4460)
                               : const Color(0xFF7A6672)),
                     ),
                     Text(

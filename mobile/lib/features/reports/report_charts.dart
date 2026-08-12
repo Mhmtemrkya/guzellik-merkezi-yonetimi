@@ -16,7 +16,7 @@ import '../../core/theme/app_theme.dart';
 ///  • ReportSection · başlıklı kart kabuğu
 
 const reportPalette = <Color>[
-  Color(0xFFC85776),
+  Color(0xFFA5556E),
   Color(0xFF7B52BA),
   Color(0xFF2C7D63),
   Color(0xFFC99A2E),
@@ -1148,11 +1148,17 @@ class ReportColumn<T> {
     required this.cell,
     this.width = 90,
     this.alignRight = false,
+    this.tint,
   });
   final String header;
   final Widget Function(T row) cell;
   final double width;
   final bool alignRight;
+
+  /// Sütunun kimlik rengi (karşılaştırmada DÖNEM rengi). Verilirse başlık bu renkte yazılır
+  /// ve hücre zeminine aynı rengin çok açık tonu uygulanır — beş dönemli tabloda hangi
+  /// rakamın hangi döneme ait olduğu tek renk noktasıyla okunmuyordu.
+  final Color? tint;
 }
 
 class ReportDataTable<T> extends StatelessWidget {
@@ -1184,21 +1190,20 @@ class ReportDataTable<T> extends StatelessWidget {
               child: Row(
                 children: [
                   for (final c in columns)
-                    SizedBox(
+                    Container(
                       width: c.width,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(
-                          c.header,
-                          textAlign: c.alignRight
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: .4,
-                            color: AppColors.muted,
-                          ),
+                      color: c.tint?.withValues(alpha: .10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 4),
+                      child: Text(
+                        c.header,
+                        textAlign:
+                            c.alignRight ? TextAlign.right : TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .4,
+                          color: c.tint ?? AppColors.muted,
                         ),
                       ),
                     ),
@@ -1216,16 +1221,15 @@ class ReportDataTable<T> extends StatelessWidget {
                 child: Row(
                   children: [
                     for (final c in columns)
-                      SizedBox(
+                      Container(
                         width: c.width,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Align(
-                            alignment: c.alignRight
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: c.cell(row),
-                          ),
+                        color: c.tint?.withValues(alpha: .05),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Align(
+                          alignment: c.alignRight
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: c.cell(row),
                         ),
                       ),
                   ],

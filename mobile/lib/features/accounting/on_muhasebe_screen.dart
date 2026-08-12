@@ -364,11 +364,11 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     }
     final cards = [
       ['Bu ay tahsilat', income, const Color(0xFF2A7A50), Icons.trending_up_rounded],
-      ['Bu ay gider', expenseTotal, const Color(0xFFD34D68), Icons.trending_down_rounded],
+      ['Bu ay gider', expenseTotal, const Color(0xFFB23252), Icons.trending_down_rounded],
       ['Net', income - expenseTotal, AppColors.primaryDark, Icons.account_balance_wallet_rounded],
       ['Toplam alacak', receivables, const Color(0xFFB5772A), Icons.request_quote_rounded],
       ['Açık adisyon', openNet, const Color(0xFF2F5FA6), Icons.receipt_long_rounded],
-      ['Personel maaş yükü', salaryTotal, const Color(0xFF8E3F5B), Icons.groups_rounded],
+      ['Personel maaş yükü', salaryTotal, const Color(0xFF8C4460), Icons.groups_rounded],
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
@@ -1328,7 +1328,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     final date = parseUtcToLocal(e['occurredAtUtc']);
     final staff = valueOf(e, const ['staffName'], fallback: '');
     final period = valueOf(e, const ['periodLabel'], fallback: '');
-    final tone = salary ? const Color(0xFFEFE7FF) : const Color(0xFFFFF1F6);
+    final tone = salary ? const Color(0xFFEFE7FF) : const Color(0xFFF6DFE6);
     final ink = salary ? const Color(0xFF6B45C0) : const Color(0xFFC0405F);
 
     return Container(
@@ -1978,7 +1978,7 @@ class _AccountDetailSheetState extends State<AccountDetailSheet> {
                 decoration: BoxDecoration(
                   color: r.credit > 0
                       ? const Color(0xFFE6F7EE)
-                      : const Color(0xFFFFF1F6),
+                      : const Color(0xFFF6DFE6),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(

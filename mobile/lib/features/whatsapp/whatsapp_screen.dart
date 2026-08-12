@@ -365,7 +365,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
                 children: [
                   const Text('KULLANILABİLİR BAKİYE', style: TextStyle(fontSize: 10, letterSpacing: 1, color: AppColors.muted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  Text(available, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF8E3F5B))),
+                  Text(available, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF8C4460))),
                 ],
               ),
               Column(
@@ -403,7 +403,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
           _usageBar('Hatırlatma (Utility)', _int(w['utilityUsed']), _int(w['utilityLimit']), const Color(0xFF1DA851)),
           if (_int(w['marketingLimit']) > 0) ...[
             const SizedBox(height: 10),
-            _usageBar('Pazarlama (Marketing)', _int(w['marketingUsed']), _int(w['marketingLimit']), const Color(0xFFC85776)),
+            _usageBar('Pazarlama (Marketing)', _int(w['marketingUsed']), _int(w['marketingLimit']), const Color(0xFFA5556E)),
           ],
           if (_num(w['monthlyWalletSpentTry']) > 0 || w['monthlySpendCapTry'] != null) ...[
             const SizedBox(height: 10),
@@ -477,7 +477,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
                 Text(valueOf(pkg, const ['name'], fallback: 'Kontör'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                 const SizedBox(height: 2),
                 Row(children: [
-                  Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF8E3F5B))),
+                  Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF8C4460))),
                   if (grants > priceNum) Padding(padding: const EdgeInsets.only(left: 6), child: Text('+${_money(grants - priceNum)} bonus', style: const TextStyle(fontSize: 11, color: Color(0xFF1DA851), fontWeight: FontWeight.w600))),
                 ]),
                 Text('≈ $est mesaj', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
@@ -488,7 +488,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             // minimumSize: tema Size.fromHeight(52) ile SONSUZ genişlik ister; Row içinde
             // soldaki Expanded'i 0'a düşürüp yazıyı harf harf alt alta diziyordu.
             style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF8E3F5B),
+                backgroundColor: const Color(0xFF8C4460),
                 minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
             onPressed: () => _buyCredit(pkg),

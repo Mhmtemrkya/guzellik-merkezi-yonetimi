@@ -248,7 +248,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFF3A1A2A), Color(0xFFC85776)]),
+                      gradient: const LinearGradient(colors: [Color(0xFF3A1A2A), Color(0xFFA5556E)]),
                       borderRadius: BorderRadius.circular(13),
                     ),
                     child: Text(initials.isEmpty ? '—' : initials,

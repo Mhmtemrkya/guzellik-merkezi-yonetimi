@@ -1,19 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// PANO PALETİ (web `globals.css` → "Dashboard paleti" ve `PanelKit` ile AYNI).
+///
+/// Kurallar web tarafıyla birebir:
+///  • Kart YÜZÜ beyaz; renk doygun aksandan gelir, AÇIK TİNT KULLANILMAZ.
+///  • Kuyu/inset yüzeyler nötr paper (#F7F6F6) — pembe tint değil.
+///  • YEŞİL para rengidir (tahsilat/ciro); yalnız parasal göstergede kullanılır.
+///  • İkincil metin en az #74616A — düşük opaklık okunmuyordu.
+///
+/// Bu sınıf mobilin TEK renk kaynağıdır: burada değişen ton bütün ekranlara geçer.
+/// Ekranlarda ham hex yazmak, webde yapılan bir düzeltmenin mobile geçmemesini üretir.
 abstract final class AppColors {
   static const background = Color(0xFFFFF7FA);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceSoft = Color(0xFFFFF0F5);
-  static const ink = Color(0xFF352432);
-  static const muted = Color(0xFF806C78);
-  static const primary = Color(0xFFEF6F94);
-  static const primaryDark = Color(0xFF8E3F5B);
-  static const rose = Color(0xFFFFDCE8);
+
+  /// Kuyu/inset yüzey — paletin paper tonu (eskiden pembe tint #FFF0F5 idi).
+  static const surfaceSoft = Color(0xFFF7F6F6);
+  static const ink = Color(0xFF2A2027);
+  static const muted = Color(0xFF74616A);
+
+  /// Birincil aksan — paletin plum tonu (eskiden parlak pembe #EF6F94 idi).
+  static const primary = Color(0xFFA5556E);
+  static const primaryDark = Color(0xFF8C4460);
+
+  /// Paletin pembesi — avatar/rozet zeminleri.
+  static const rose = Color(0xFFF9A1B9);
   static const border = Color(0xFFEAD8DF);
-  static const success = Color(0xFF39846F);
+
+  /// PARA rengi (tahsilat/ciro).
+  static const success = Color(0xFF1E8C60);
   static const warning = Color(0xFFB88938);
-  static const danger = Color(0xFFD34D68);
+  static const danger = Color(0xFFB23252);
+
+  /// Paletin mavi ve mor aksanları — pano kartlarındaki mint/violet tonlarının karşılığı.
+  static const mint = Color(0xFF1E4E8C);
+  static const violet = Color(0xFF8E7882);
 }
 
 abstract final class AppTheme {

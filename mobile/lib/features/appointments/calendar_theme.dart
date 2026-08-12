@@ -150,7 +150,7 @@ abstract final class CalendarText {
       case 'inprogress':
         return const Color(0xFF6D3FBF);
       case 'cancelled':
-        return const Color(0xFFD34D68);
+        return const Color(0xFFB23252);
       case 'noshow':
         return const Color(0xFF8A8A90);
       default:

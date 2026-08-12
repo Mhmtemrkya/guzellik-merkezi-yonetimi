@@ -62,7 +62,7 @@ class AppointmentHelpSheet extends StatelessWidget {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.shopping_bag_rounded, size: 16, color: Color(0xFF8E3F5B)),
+                    Icon(Icons.shopping_bag_rounded, size: 16, color: Color(0xFF8C4460)),
                     SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -70,7 +70,7 @@ class AppointmentHelpSheet extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8E3F5B),
+                          color: Color(0xFF8C4460),
                         ),
                       ),
                     ),
@@ -235,7 +235,7 @@ class _HelpStep extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF8E3F5B),
+              color: Color(0xFF8C4460),
             ),
           ),
         ),

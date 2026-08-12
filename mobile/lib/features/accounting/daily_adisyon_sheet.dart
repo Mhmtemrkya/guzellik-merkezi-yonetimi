@@ -269,7 +269,7 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
                   _kpi('Tahsilat', CalendarText.tl(payment), 'Dün: ${CalendarText.tl(prevPayment)}',
                       _pct(payment, prevPayment), const Color(0xFF2A7A50)),
                   _kpi('Kalan / Bakiye', CalendarText.tl(kalan), 'Dün: ${CalendarText.tl(prevKalan)}',
-                      _pct(kalan, prevKalan), const Color(0xFFD34D68), invertDelta: true),
+                      _pct(kalan, prevKalan), const Color(0xFFB23252), invertDelta: true),
                 ],
               ),
             ),
@@ -372,7 +372,7 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
                       _sumStat('Tahsilat', CalendarText.tl(payment), const Color(0xFF2A7A50)),
                       _sumStat('Ürün', CalendarText.tl(product), const Color(0xFFC9852F)),
                       _sumStat('Hizmet', CalendarText.tl(service), const Color(0xFF2F5FA6)),
-                      _sumStat('İndirim', CalendarText.tl(discount), const Color(0xFFD34D68)),
+                      _sumStat('İndirim', CalendarText.tl(discount), const Color(0xFFB23252)),
                     ],
                   ),
                 ],
@@ -443,10 +443,10 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
               if (delta != null && delta != 0) ...[
                 const SizedBox(width: 4),
                 Icon(delta > 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                    size: 13, color: good ? const Color(0xFF2A7A50) : const Color(0xFFD34D68)),
+                    size: 13, color: good ? const Color(0xFF2A7A50) : const Color(0xFFB23252)),
                 Text('%${delta.abs()}',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
-                        color: good ? const Color(0xFF2A7A50) : const Color(0xFFD34D68))),
+                        color: good ? const Color(0xFF2A7A50) : const Color(0xFFB23252))),
               ],
             ],
           ),
@@ -482,7 +482,7 @@ class _DailyAdisyonSheetState extends State<DailyAdisyonSheet> {
     final dot = isPayment
         ? const Color(0xFF2A7A50)
         : isDiscount
-            ? const Color(0xFFD34D68)
+            ? const Color(0xFFB23252)
             : AppColors.primary;
     final amountText = isPackageUse
         ? 'paket'

@@ -134,7 +134,7 @@ class NotificationsScreen extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 11)),
                   trailing: const Icon(Icons.add_circle_rounded,
-                      color: Color(0xFFC85776)),
+                      color: Color(0xFFA5556E)),
                   onTap: () async {
                     try {
                       await api.post('/api/admin/notification-templates/', {

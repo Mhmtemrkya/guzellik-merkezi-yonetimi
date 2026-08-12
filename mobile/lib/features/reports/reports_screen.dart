@@ -788,6 +788,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ReportColumn(
                   width: 104,
                   alignRight: true,
+                  // HER DÖNEM KENDİ RENGİNDE (web CompareTab paritesi): renk grafiklerdeki
+                  // seri paletinden gelir, tablodaki sütun ile eğrideki çizgi aynı dönemi
+                  // işaret eder.
+                  tint: paletteAt(pi),
                   header:
                       _s(periods[pi]['label']) + (pi == 0 ? ' (temel)' : ''),
                   cell: (r) {
@@ -808,12 +812,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       children: [
                         Text(
                           text,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
+                            color: paletteAt(pi),
                           ),
                         ),
+                        // FARK ROZETİ palet dışında kalır: artış-azalış evrensel okumadır.
                         if (pi > 0) DeltaChip(current: v, previous: base),
                       ],
                     );

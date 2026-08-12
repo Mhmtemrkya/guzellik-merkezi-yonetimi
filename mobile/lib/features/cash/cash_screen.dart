@@ -180,7 +180,7 @@ class _CashScreenState extends State<CashScreen> {
           children: [
             _card('Gelir', income, const Color(0xFF2A7A50),
                 Icons.trending_up_rounded),
-            _card('Gider', expense, const Color(0xFFD34D68),
+            _card('Gider', expense, const Color(0xFFB23252),
                 Icons.trending_down_rounded),
             _card('Net', net, AppColors.primaryDark,
                 Icons.account_balance_wallet_rounded),
@@ -279,7 +279,7 @@ class _CashScreenState extends State<CashScreen> {
                   decoration: BoxDecoration(
                     color: ('${e['type']}'.toLowerCase() == 'income'
                             ? const Color(0xFF2A7A50)
-                            : const Color(0xFFD34D68))
+                            : const Color(0xFFB23252))
                         .withValues(alpha: .12),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -289,7 +289,7 @@ class _CashScreenState extends State<CashScreen> {
                         : Icons.south_west_rounded,
                     color: '${e['type']}'.toLowerCase() == 'income'
                         ? const Color(0xFF2A7A50)
-                        : const Color(0xFFD34D68),
+                        : const Color(0xFFB23252),
                     size: 19,
                   ),
                 ),
@@ -319,7 +319,7 @@ class _CashScreenState extends State<CashScreen> {
                     fontWeight: FontWeight.w800,
                     color: '${e['type']}'.toLowerCase() == 'income'
                         ? const Color(0xFF2A7A50)
-                        : const Color(0xFFD34D68),
+                        : const Color(0xFFB23252),
                   ),
                 ),
               ],

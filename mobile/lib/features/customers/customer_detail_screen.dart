@@ -46,7 +46,7 @@ const _trMonthsShort = [
 
 // Web DONUT_COLORS ile aynı — net ayrışan dilimler.
 const _donutColors = [
-  Color(0xFFC85776), Color(0xFF7C5CBF), Color(0xFF2FAE8E),
+  Color(0xFFA5556E), Color(0xFF7C5CBF), Color(0xFF2FAE8E),
   Color(0xFFE8932F), Color(0xFF4A9FE0), Color(0xFFD65A8E),
 ];
 

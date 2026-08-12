@@ -502,7 +502,7 @@ class _PaketScreenState extends State<PaketScreen> {
               [card['association'], card['family'], card['bankName']]
                   .where((e) => e != null && '$e'.isNotEmpty)
                   .join(' · '),
-              style: const TextStyle(fontSize: 12, color: Color(0xFF705A66)),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF74616A)),
             ),
             if (nextCharge != null) ...[
               const SizedBox(height: 6),
@@ -525,7 +525,7 @@ class _PaketScreenState extends State<PaketScreen> {
               'yönlendirilirsin; kartını kaydedersen abonelik otomatik yenilenir. '
               'Kart bilgilerin bizde saklanmaz.',
               style: TextStyle(
-                  fontSize: 12, height: 1.45, color: Color(0xFF705A66)),
+                  fontSize: 12, height: 1.45, color: Color(0xFF74616A)),
             ),
           if (invoices.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -657,7 +657,7 @@ class _PaketScreenState extends State<PaketScreen> {
                   height: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF1F6),
+                    color: const Color(0xFFF6DFE6),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, size: 17, color: AppColors.primary),
@@ -737,7 +737,7 @@ class _PaketScreenState extends State<PaketScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: on ? const Color(0xFFFFF1F6) : Colors.white,
+            color: on ? const Color(0xFFF6DFE6) : Colors.white,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(label,
@@ -894,7 +894,7 @@ class _PaketScreenState extends State<PaketScreen> {
                 decoration: BoxDecoration(
                   color: isCurrent
                       ? Colors.white.withValues(alpha: .15)
-                      : const Color(0xFFFFF1F6),
+                      : const Color(0xFFF6DFE6),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Text(
@@ -1072,7 +1072,7 @@ class _PaketScreenState extends State<PaketScreen> {
       onPressed: busy ? null : () => _choose(p),
       style: FilledButton.styleFrom(
         backgroundColor:
-            isRecommended ? AppColors.primary : const Color(0xFFFFF1F6),
+            isRecommended ? AppColors.primary : const Color(0xFFF6DFE6),
         foregroundColor: isRecommended ? Colors.white : AppColors.primary,
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),

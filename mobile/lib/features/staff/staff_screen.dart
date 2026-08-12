@@ -121,7 +121,7 @@ _PermCell _permCell(Set<String> perms, _PermPage page) {
 }
 
 const _gold = Color(0xFFD8AD55);
-const _rose = Color(0xFFC85776);
+const _rose = Color(0xFFA5556E);
 
 /// Türkçe ondalık (5.0 → "5,0").
 String _fmt1(double v) => v.toStringAsFixed(1).replaceAll('.', ',');
@@ -1256,7 +1256,7 @@ class _StaffScreenState extends State<StaffScreen> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFFBD2DC), Color(0xFFFFF0F5)],
+          colors: [Color(0xFFFBD2DC), Color(0xFFF7F6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1994,7 +1994,7 @@ class _StaffDetailSheetState extends State<_StaffDetailSheet> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFFBD2DC), Color(0xFFFFF0F5)],
+          colors: [Color(0xFFFBD2DC), Color(0xFFF7F6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

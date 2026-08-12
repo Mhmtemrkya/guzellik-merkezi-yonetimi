@@ -859,7 +859,7 @@ class StatusBadgePill extends StatelessWidget {
     final (color, label) = switch (status) {
       'Open' => (const Color(0xFF2F5FA6), 'Açık'),
       'Approved' => (const Color(0xFF2A7A50), 'Onaylı'),
-      'Cancelled' => (const Color(0xFFD34D68), 'İptal'),
+      'Cancelled' => (const Color(0xFFB23252), 'İptal'),
       _ => (AppColors.muted, status),
     };
     return Container(

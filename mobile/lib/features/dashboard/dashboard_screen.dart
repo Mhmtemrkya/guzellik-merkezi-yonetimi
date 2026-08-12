@@ -554,7 +554,7 @@ class _MetricGrid extends StatelessWidget {
               : '$completed tamamlandı · $waiting bekliyor',
           // Dönemin randevu dağılımı: tamamlanan / bekleyen / diğer.
           segments: [
-            (const Color(0xFF39846F), completed.toDouble()),
+            (const Color(0xFF1E8C60), completed.toDouble()),
             (const Color(0xFFA5556E), waiting.toDouble()),
             (const Color(0xFFDFD9DC), other > 0 ? other.toDouble() : 0),
           ],
