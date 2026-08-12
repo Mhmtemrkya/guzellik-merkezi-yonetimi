@@ -10,6 +10,7 @@ import NewAccountDialog from '@/components/dashboard/NewAccountDialog'
 import SalaryPaymentDialog from '@/components/dashboard/SalaryPaymentDialog'
 import AccountDetailModal from '@/components/dashboard/AccountDetailModal'
 import CustomerLedgerModal from '@/components/dashboard/CustomerLedgerModal'
+import type { StatementInstitution } from '@/components/dashboard/AccountStatementSheet'
 import CariSalesWorkspace from '@/components/dashboard/CariSalesWorkspace'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import CustomerPicker, { type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
@@ -38,8 +39,8 @@ import {
 } from 'lucide-react'
 import type {
   Adisyon, ApiAdisyon, ApiAppointment, ApiBusinessExpense, ApiCustomExpenseCategory, ApiCustomer,
-  ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, BusinessExpense, CustomerAccount, CustomExpenseCategory,
-  ExpensePaymentMethodKey,
+  ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, ApiTenant, BusinessExpense, CustomerAccount,
+  CustomExpenseCategory, ExpensePaymentMethodKey,
 } from '@/lib/types'
 
 type TabKey = 'overview' | 'adisyon' | 'accounts' | 'expenses' | 'salary'
@@ -161,10 +162,12 @@ function OnMuhasebePageInner() {
     staff: ApiStaff[]; expenseCats: ApiCustomExpenseCategory[]; cancelled: unknown[]
     // Geçmiş satış dialogu paketin yanında TEKİL HİZMET de seçtiriyor.
     services: ApiService[]
+    /** Cari hesap ekstresi belgesinin başlığı (kurum adı/iletişim/vergi). */
+    tenant: ApiTenant | null
   }>(
     async () => {
-      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] }
-      const [sales, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, services] = await Promise.all([
+      if (!tenantId) return { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [], tenant: null }
+      const [sales, expenses, adisyonlar, appts, customers, packages, staff, expenseCats, services, tenant] = await Promise.all([
         // CANLI CARİLER + İPTAL ARŞİVİ TEK İSTEKTE, TEK ANLIK GÖRÜNTÜDEN.
         //
         // İkisi AYRI çekiliyordu; tablo müşteri bazında gruplanıp para topladığı için araya giren
@@ -189,6 +192,9 @@ function OnMuhasebePageInner() {
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 100 }).catch(() => ({ items: [] })),
         adminApi.expenseCategories<ApiCustomExpenseCategory>(tenantId).catch(() => []),
         adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
+        // Yalnız ekstre BELGESİNİN başlığı için; hata YUTULUR (personel rolünde 403 gelirse tüm
+        // sayfa düşmesin — belge kurum adını oturum kapsamından da okuyabilir).
+        adminApi.currentTenant<ApiTenant>(tenantId).catch(() => null),
       ])
       return {
         // Canlı cariler ve iptal arşivi AYNI yanıttan çözülür (bkz. yukarıdaki uç).
@@ -198,10 +204,11 @@ function OnMuhasebePageInner() {
         staff: apiItems(staff), expenseCats: Array.isArray(expenseCats) ? expenseCats : [],
         cancelled: Array.isArray(sales?.cancelled) ? sales.cancelled : [],
         services: apiItems(services),
+        tenant: tenant ?? null,
       }
     },
     [tenantId, monthStart.toISOString()],
-    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [] } },
+    { initialData: { accounts: [], expenses: [], adisyonlar: [], appts: [], customers: [], packages: [], staff: [], expenseCats: [], cancelled: [], services: [], tenant: null } },
   )
 
   const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
@@ -446,6 +453,36 @@ function OnMuhasebePageInner() {
     () => (selGroup?.customerId ? cancelledSales.filter((c) => c.customerId === selGroup.customerId) : []),
     [cancelledSales, selGroup],
   )
+
+  /**
+   * CARİYE HENÜZ İŞLENMEMİŞ SATIŞLAR — ekstredeki bilgi şeridi.
+   *
+   * Peşinatsız hizmet/paket satışı cari kartı AÇMAZ: fiş Açık kalır, müşteri ilk randevusunu
+   * tamamlayınca otomatik işlenir. Kullanıcı "paketi sattım ama ekstrede yok" diyor; belgeye
+   * satır olarak eklemek yanlış olurdu (ortada henüz borç kaydı yok), bu yüzden uyarı olarak
+   * geçilir. Ürün satışı ertelenmez, burada hiç görünmez.
+   */
+  const selGroupPending = useMemo(
+    () => (selGroup?.customerId
+      ? adisyonlar
+        .filter((a) => a.customerId === selGroup.customerId && a.status === 'Open' && a.chargeTotal > 0.005)
+        .map((a) => ({ id: a.id, amount: a.chargeTotal, openedAtUtc: a.openedAtUtc }))
+      : []),
+    [adisyonlar, selGroup],
+  )
+
+  /**
+   * Cari hesap ekstresi belgesinin ANTETİ. Kurum ucu erişilemezse (personel rolü) belge adsız
+   * kalmasın diye oturum kapsamındaki kurum adına düşülür.
+   */
+  const statementInstitution = useMemo<StatementInstitution>(() => ({
+    name: data?.tenant?.name || data?.tenant?.tenantName || selectedInstitution?.name || 'Kurum',
+    phone: data?.tenant?.phone ?? null,
+    email: data?.tenant?.email ?? null,
+    taxNumber: data?.tenant?.taxNumber ?? null,
+    taxOffice: data?.tenant?.taxOffice ?? null,
+    branch: selectedBranch?.name || selectedBranch?.branchName || null,
+  }), [data?.tenant, selectedInstitution?.name, selectedBranch])
 
   const selAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) || null, [accounts, selectedAccountId])
   const openAccount = (id: string): void => { setSelectedAccountId(id); setAccountDetailOpen(true) }
@@ -1373,6 +1410,8 @@ function OnMuhasebePageInner() {
             <CustomerLedgerModal
               group={selGroup}
               cancelledSales={selGroupCancelled}
+              institution={statementInstitution}
+              pendingSales={selGroupPending}
               open={Boolean(selGroup)}
               onClose={() => setSelectedGroupId(null)}
               /* Defterden tahsilat: seçici yine o müşterinin satışlarına daralır — kullanıcı

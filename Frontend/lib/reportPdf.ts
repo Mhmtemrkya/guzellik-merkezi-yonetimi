@@ -1,23 +1,9 @@
-// pdfmake — built-in Roboto fontu Türkçe karakterleri (ı, ş, ç, ğ, ü, ö, İ, Ş, Ç, Ğ, Ü, Ö) destekler.
-// jsPDF'teki Latin-1 encoding sorununu önlemek için bu kütüphaneye geçildi.
-import pdfMakeOrig from 'pdfmake/build/pdfmake'
-import pdfFonts from 'pdfmake/build/vfs_fonts'
+// pdfmake kurulumu (Roboto/Türkçe font bağlama) `lib/pdfMake.ts` içinde TEK yerde yapılır.
 import type { TDocumentDefinitions, Content, TableCell, StyleDictionary, Margins } from 'pdfmake/interfaces'
+import { createPdf } from '@/lib/pdfMake'
 
 // Margin helper (TypeScript tuple zorunluluğu için)
 const m = (top: number, right: number, bottom: number, left: number): Margins => [top, right, bottom, left]
-
-// vfs_fonts'un farklı sürüm shape'i: bazı sürümlerde { pdfMake: { vfs } } bazılarında direkt vfs
-type VfsShape = { pdfMake?: { vfs?: Record<string, string> }; vfs?: Record<string, string> }
-const vfsCandidate = pdfFonts as unknown as VfsShape
-const vfs = vfsCandidate.pdfMake?.vfs || vfsCandidate.vfs || {}
-
-interface PdfMakeRuntime {
-  vfs: Record<string, string>
-  createPdf: (def: TDocumentDefinitions) => { download: (filename: string) => void }
-}
-const pdfMake = pdfMakeOrig as unknown as PdfMakeRuntime
-pdfMake.vfs = vfs
 
 // ---------------------------------------------------------------------------
 // Brand palette
@@ -402,5 +388,5 @@ export function generateReportPdf(options: PdfReportOptions): void {
   }
 
   const filename = `BeautyAsist-${options.filenameBase}-${todayIso()}.pdf`
-  pdfMake.createPdf(docDefinition).download(filename)
+  createPdf(docDefinition).download(filename)
 }

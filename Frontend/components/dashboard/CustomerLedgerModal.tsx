@@ -8,7 +8,10 @@ import {
 } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import PaymentScheduleGrid from '@/components/dashboard/PaymentScheduleGrid'
-import { formatTL, paymentMethodLabel } from '@/lib/apiMappers'
+import AccountStatementSheet, {
+  type PendingSaleNotice, type StatementInstitution,
+} from '@/components/dashboard/AccountStatementSheet'
+import { formatTL } from '@/lib/apiMappers'
 import { activeInstallments, buildMonthlySchedule, type CustomerAccountGroup } from '@/lib/accountGrouping'
 import type { CancelledSale, CustomerAccount } from '@/lib/types'
 
@@ -18,7 +21,7 @@ import type { CancelledSale, CustomerAccount } from '@/lib/types'
  * Liste satırı müşteridir; bu modal o müşterinin BÜTÜN satışlarını tek yerde toplar:
  *  · Ay ay taksit takvimi (Excel ızgarası; yeşil ödendi / kırmızı gecikmiş)
  *  · Satış satırları — her biri kendi cari kartı, tahsilat oraya yazılır
- *  · Birleşik ekstre (tüm satışların tahsilatları, tarih sırasıyla)
+ *  · Cari hesap ekstresi (borç / alacak / yürüyen bakiye — basılabilir belge)
  *
  * TAHSİLAT HÂLÂ SATIŞ BAZINDA: gruplama yalnız GÖRÜNÜMdür. "Tahsilat al" bir satış satırından
  * açılır ki para doğru carinin taksitlerine dağıtılsın (sunucu tahsilatı hesaba yazar, vade
@@ -51,6 +54,8 @@ function todayIsoLocal(): string {
 export default function CustomerLedgerModal({
   group,
   cancelledSales = [],
+  institution,
+  pendingSales = [],
   open,
   onClose,
   onCollect,
@@ -65,6 +70,10 @@ export default function CustomerLedgerModal({
    * (tahsil edilen − iade) defterden tamamen kaybolurdu.
    */
   cancelledSales?: CancelledSale[]
+  /** Ekstre belgesinin başlığındaki kurum bilgileri (ad, iletişim, vergi, şube). */
+  institution: StatementInstitution
+  /** Cariye henüz işlenmemiş açık fişler — ekstrede bilgi şeridi olarak görünür. */
+  pendingSales?: PendingSaleNotice[]
   open: boolean
   onClose: () => void
   /** Tahsilat — SEÇİLEN satışın carisine yazılır (tek modal: aylık/genel ayrımı yok). */
@@ -91,96 +100,6 @@ export default function CustomerLedgerModal({
 
   const todayIso = todayIsoLocal()
   const cells = useMemo(() => (group ? buildMonthlySchedule(group, todayIso) : []), [group, todayIso])
-
-  /**
-   * Birleşik ekstre: tüm satışların tahsilatları tek listede (hangi satıştan geldiği yazılı).
-   *
-   * İPTAL EDİLEN SATIŞIN PARASI DA BURADA: iptalde tahsilat satırları canlı tablodan silinip
-   * arşive taşınır, bu yüzden `accounts` üzerinden hiç görünmezdi — müşteri ödeme yapmış ama
-   * ekstre boş çıkıyordu. Arşiv kaydı tek satırda özetlenir (tahsil edilen ve varsa iade).
-   */
-  const ledger = useMemo(() => {
-    if (!group) return []
-    const rows: { ts: number; date: string; sale: string; method: string; amount: number; kind: 'in' | 'refund' }[] = []
-    for (const a of group.accounts) {
-      for (const p of a.payments || []) {
-        rows.push({
-          ts: Date.parse(p.occurredAtUtc || '') || 0,
-          date: (p.occurredAtUtc || '').slice(0, 10),
-          sale: a.servicePackageName || a.name,
-          method: paymentMethodLabel(p.method),
-          amount: p.amount,
-          kind: 'in',
-        })
-      }
-    }
-    for (const c of cancelledSales) {
-      // GERÇEK TAHSİLAT SATIRLARI (arşivden): tarih ve yöntem korunur. Tek sentetik satıra
-      // indirmek ödeme günlerini/yöntemlerini siliyor ve "2 tahsilat · toplam 0" gibi çelişkili
-      // özetler üretiyordu (tutar arşiv toplamından, adet canlı listeden geliyordu).
-      if (c.payments.length > 0) {
-        for (const p of c.payments) {
-          rows.push({
-            ts: Date.parse(p.occurredAtUtc || '') || 0,
-            date: (p.occurredAtUtc || '').slice(0, 10),
-            sale: `${c.name} · İPTAL`,
-            method: paymentMethodLabel(p.method),
-            amount: p.amount,
-            kind: 'in',
-          })
-        }
-      } else if (c.collectedAmount > 0.005) {
-        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir. YÖNTEM SÜTUNUNA
-        // yöntem olmayan bir metin ("iptal edilen satış") yazılmaz: satışın durumu zaten
-        // başlıkta yazıyor, kanal ise gerçekten BİLİNMİYOR.
-        rows.push({
-          ts: Date.parse(c.cancelledAtUtc || c.soldAtUtc || '') || 0,
-          date: (c.soldAtUtc || c.cancelledAtUtc || '').slice(0, 10),
-          sale: `${c.name} · İPTAL`,
-          method: paymentMethodLabel(''),
-          amount: c.collectedAmount,
-          kind: 'in',
-        })
-      }
-      // GERÇEK İADE SATIRLARI: paranın çıktığı KANAL (nakit/kart/havale) gösterilir. Burası
-      // "müşteriye geri ödendi" diye sentetik bir metin yazıyordu; kart iadesi ile nakit iade
-      // ekstrede ayırt edilemiyor, kasa kırılımı tutmuyordu. Tahsilat tarafındaki desenin eşi.
-      if (c.refunds.length > 0) {
-        for (const r of c.refunds) {
-          rows.push({
-            ts: Date.parse(r.refundedAtUtc || '') || 0,
-            date: (r.refundedAtUtc || '').slice(0, 10),
-            sale: `${c.name} · İADE`,
-            method: paymentMethodLabel(r.method),
-            amount: r.amount,
-            kind: 'refund',
-          })
-        }
-      } else if (c.refundedAmount > 0.005) {
-        // Eski arşiv kaydı (iade satırı yok) — kanal BİLİNMİYOR; uydurma yapılmaz.
-        rows.push({
-          ts: Date.parse(c.cancelledAtUtc || '') || 0,
-          date: (c.cancelledAtUtc || '').slice(0, 10),
-          sale: `${c.name} · İADE`,
-          method: paymentMethodLabel(''),
-          amount: c.refundedAmount,
-          kind: 'refund',
-        })
-      }
-    }
-    return rows.sort((x, y) => y.ts - x.ts)
-  }, [group, cancelledSales])
-
-  /**
-   * EKSTRE TOPLAMLARI — tablonun ALTINDAKİ toplam satırı (kullanıcı isteği).
-   * Satırların KENDİSİNDEN türetilir: özet ile satırlar farklı kaynaktan gelince
-   * "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu.
-   */
-  const ledgerTotals = useMemo(() => {
-    const collected = ledger.filter((r) => r.kind === 'in').reduce((s, r) => s + r.amount, 0)
-    const refunded = ledger.filter((r) => r.kind === 'refund').reduce((s, r) => s + r.amount, 0)
-    return { collected, refunded, net: collected - refunded }
-  }, [ledger])
 
   /** İptalden KURUMDA KALAN para (tahsil − iade) — KPI'a eklenir, yoksa sıfır görünürdü. */
   const cancelledSummary = useMemo(() => ({
@@ -431,61 +350,16 @@ export default function CustomerLedgerModal({
                   </div>
                 )}
 
+                {/* CARİ HESAP EKSTRESİ — çift taraflı, basılabilir belge. Satış yapıldığı anda
+                    peşinat/taksit borç satırları burada doğar; tahsilat alacak yazılır. */}
                 {tab === 'ledger' && (
-                  <Section
-                    title="Tahsilat Ekstresi"
-                    icon={Receipt}
-                    /* ÖZET SATIRIN KENDİSİNDEN TÜRETİLİR: adet canlı listeden, tutar arşivden
-                       gelince "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu. */
-                    hint={`${ledger.length} hareket · net ${formatTL(Math.round(ledgerTotals.net))}`}
-                  >
-                    {ledger.length === 0 ? (
-                      <div className="rounded-[12px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#74616A]">
-                        Bu müşteriden henüz tahsilat alınmamış.
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[560px] text-[12.5px]">
-                          <thead>
-                            <tr className="border-b border-[#f4e8ee] text-left text-[10px] font-bold uppercase tracking-[0.08em] text-[#8C4460]">
-                              <th className="py-2 pr-3">Tarih</th>
-                              <th className="py-2 pr-3">Satış</th>
-                              <th className="py-2 pr-3">Yöntem</th>
-                              <th className="py-2 text-right">Tutar</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ledger.map((r, i) => (
-                              <tr key={i} className="border-b border-[#f8f0f4] last:border-b-0">
-                                <td className="py-2 pr-3 tabular-nums text-[#3E343A]">{fmtDay(r.date)}</td>
-                                <td className="max-w-[240px] truncate py-2 pr-3 text-[#2A2027]">{r.sale}</td>
-                                <td className="py-2 pr-3 text-[#74616A]">{r.method}</td>
-                                <td className={`py-2 text-right font-semibold tabular-nums ${r.kind === 'refund' ? 'text-rose-700' : 'text-emerald-700'}`}>
-                                  {r.kind === 'refund' ? '−' : '+'}{formatTL(r.amount)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          {/* TOPLAM SATIRI: tahsilat − iade = net. Excel'deki toplam bandı gibi
-                              tablonun altında sabit durur. */}
-                          <tfoot>
-                            <tr className="border-t-2 border-[#f0dce5] bg-[#fff7fa] text-[12px] font-bold text-[#2A2027]">
-                              <td className="py-2 pr-3">TOPLAM</td>
-                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#74616A]">{ledger.length} hareket</td>
-                              <td className="py-2 pr-3 text-[11px] font-semibold text-[#74616A]">
-                                {ledgerTotals.refunded > 0.005
-                                  ? `Tahsilat ${formatTL(Math.round(ledgerTotals.collected))} · İade ${formatTL(Math.round(ledgerTotals.refunded))}`
-                                  : 'Tahsilat'}
-                              </td>
-                              <td className={`py-2 text-right font-display text-[15px] tabular-nums ${ledgerTotals.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                {formatTL(Math.round(ledgerTotals.net))}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </Section>
+                  <AccountStatementSheet
+                    group={group}
+                    cancelledSales={cancelledSales}
+                    institution={institution}
+                    pendingSales={pendingSales}
+                    todayIso={todayIso}
+                  />
                 )}
               </div>
             </motion.div>

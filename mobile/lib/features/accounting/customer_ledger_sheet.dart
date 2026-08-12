@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
-import '../../shared/payment_method.dart';
 import '../appointments/calendar_theme.dart';
 import 'account_grouping.dart';
 import 'account_installments.dart';
+import 'account_statement.dart';
 import 'payment_schedule_grid.dart';
+import 'statement_pdf.dart';
 
 /// MÜŞTERİ CARİ DEFTERİ — Ön Muhasebe tablosundan açılan TAM EKRAN sayfa (web
 /// `CustomerLedgerModal` paritesi).
@@ -22,8 +24,12 @@ import 'payment_schedule_grid.dart';
 Future<void> openCustomerLedgerSheet(
   BuildContext context, {
   required CustomerAccountGroup group,
+  /// Ekstre belgesinin antetindeki kurum bilgisi bu istemciden okunur.
+  required ApiClient api,
   /// Bu müşterinin İPTAL arşivi — iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR.
   List<Map<String, dynamic>> cancelledSales = const [],
+  /// Cariye henüz işlenmemiş açık fişler — ekstrede bilgi şeridi olarak görünür.
+  List<Map<String, dynamic>> pendingSales = const [],
   required Future<void> Function(Map<String, dynamic> account) onCollect,
   /// "Tümünden tahsilat al" — sayfa TÜMÜ seçili açılır, para satışlara vade sırasıyla bölünür.
   required Future<void> Function() onCollectAll,
@@ -37,7 +43,9 @@ Future<void> openCustomerLedgerSheet(
     fullscreenDialog: true,
     builder: (_) => CustomerLedgerScreen(
       group: group,
+      api: api,
       cancelledSales: cancelledSales,
+      pendingSales: pendingSales,
       onCollect: onCollect,
       onCollectAll: onCollectAll,
       onOpenSale: onOpenSale,
@@ -85,7 +93,9 @@ class LedgerRefresh {
 class CustomerLedgerScreen extends StatefulWidget {
   const CustomerLedgerScreen({
     required this.group,
+    required this.api,
     this.cancelledSales = const [],
+    this.pendingSales = const [],
     required this.onCollect,
     required this.onCollectAll,
     required this.onOpenSale,
@@ -96,8 +106,18 @@ class CustomerLedgerScreen extends StatefulWidget {
 
   final CustomerAccountGroup group;
 
+  /// Ekstre belgesinin antetindeki kurum bilgisi (ad/telefon/e-posta) buradan okunur.
+  final ApiClient api;
+
   /// İptal arşivi: satırları canlı tablodan silinir, parası yalnız buradan okunur.
   final List<Map<String, dynamic>> cancelledSales;
+
+  /// CARİYE HENÜZ İŞLENMEMİŞ SATIŞLAR (açık fişler) — `{'id','amount','openedAtUtc'}`.
+  ///
+  /// Peşinatsız hizmet/paket satışı cari kartı AÇMAZ: fiş açık kalır, müşteri ilk randevusunu
+  /// tamamlayınca otomatik işlenir. Belgeye SATIR olarak girmez (ortada henüz borç kaydı yok,
+  /// yürüyen bakiye bozulurdu); ekstrenin üstünde bilgi şeridi olarak görünür.
+  final List<Map<String, dynamic>> pendingSales;
   final Future<void> Function(Map<String, dynamic> account) onCollect;
   final Future<void> Function() onCollectAll;
   final Future<void> Function(Map<String, dynamic> account) onOpenSale;
@@ -116,6 +136,43 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   /// Ekranda GÖSTERİLEN grup. Tahsilat sonrası tazelenir; başlangıçta çağıranın verdiği anlık
   /// görüntüdür.
   late CustomerAccountGroup _group = widget.group;
+
+  // --- EKSTRE BELGESİ ---
+  /// Belgenin dönem süzgeci (`YYYY-MM-DD`); null = tüm hareketler.
+  String? _stmtFrom;
+  String? _stmtTo;
+  bool _sharingStatement = false;
+
+  /// Belge anteti — kurum adı/iletişimi (KVKK ve onam PDF'leriyle AYNI kaynak).
+  String _institution = '';
+  String? _institutionPhone;
+  String? _institutionEmail;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInstitution();
+  }
+
+  /// Kurum bilgisi belgenin ANTETİDİR; hata YUTULUR — ekstre kurum adı olmadan da açılmalı
+  /// (personel rolünde bu uç 403 dönebilir), yalnız başlık "Kurum" kalır.
+  Future<void> _loadInstitution() async {
+    try {
+      final res = await widget.api.get('/api/admin/tenant/');
+      if (!mounted || res is! Map) return;
+      final map = res.cast<String, dynamic>();
+      final name = '${map['name'] ?? map['tenantName'] ?? ''}'.trim();
+      setState(() {
+        if (name.isNotEmpty) _institution = name;
+        final phone = '${map['phone'] ?? ''}'.trim();
+        final email = '${map['email'] ?? ''}'.trim();
+        _institutionPhone = phone.isEmpty ? null : phone;
+        _institutionEmail = email.isEmpty ? null : email;
+      });
+    } catch (_) {
+      // yut: belge yine açılır
+    }
+  }
 
   /// Tazeleme başarısız oldu ya da satış artık yok → ekrandaki rakamlar BAYAT.
   LedgerRefresh? _staleReason;
@@ -196,10 +253,6 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     final d = DateTime.now();
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
-
-  /// "3 Ağu 2026" — ekstre satırının dar tarih sütunu.
-  static String _shortDay(DateTime d) =>
-      '${d.day} ${CalendarText.months[d.month - 1].substring(0, 3)} ${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -424,152 +477,372 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         ),
       );
 
+  /// CARİ HESAP EKSTRESİ — çift taraflı, paylaşılabilir belge (web `AccountStatementSheet`
+  /// paritesi). Tahsilat listesi değil: satışın doğurduğu borç (peşinat, taksitler), müşterinin
+  /// ödediği alacak ve her satırdan sonraki yürüyen bakiye.
+  ///
+  /// DAR EKRAN: altı sütunlu tablo telefona sığmaz, bu yüzden her hareket bir KART satırıdır
+  /// (tarih + tür + açıklama üstte, borç/alacak/bakiye altta). PDF çıktısı yine tam tablodur.
   Widget _ledgerTab(CustomerAccountGroup g) {
-    // Birleşik ekstre: tüm satışların tahsilatları tek listede (hangi satıştan geldiği yazılı).
-    final rows = <Map<String, dynamic>>[];
-    for (final a in g.accounts) {
-      for (final p in (a['payments'] as List? ?? const [])) {
-        if (p is! Map) continue;
-        final m = p.cast<String, dynamic>();
-        rows.add({
-          'at': parseUtcToLocal(m['occurredAtUtc']),
-          'sale': valueOf(a, const ['servicePackageName', 'name'], fallback: 'Satış'),
-          'method': paymentMethodLabel('${m['method'] ?? ''}'),
-          'amount': numberOf(m, const ['amount']),
-          'refund': false,
-        });
-      }
-    }
-    // İPTAL EDİLEN SATIŞIN PARASI DA BURADA (web paritesi): iptalde tahsilat satırları canlı
-    // tablodan silinip arşive taşınır, bu yüzden `accounts` üzerinden hiç görünmezdi — müşteri
-    // ödeme yapmış ama ekstre boş çıkıyordu. Gerçek tarih/yöntem arşiv kopyalarından okunur.
-    for (final c in widget.cancelledSales) {
-      final name = valueOf(c, const ['name'], fallback: 'Satış');
-      final pays = (c['payments'] as List? ?? const []).whereType<Map>().toList();
-      if (pays.isNotEmpty) {
-        for (final raw in pays) {
-          final m = raw.cast<String, dynamic>();
-          rows.add({
-            'at': parseUtcToLocal(m['occurredAtUtc']),
-            'sale': '$name · İPTAL',
-            'method': paymentMethodLabel('${m['method'] ?? ''}'),
-            'amount': numberOf(m, const ['amount']),
-            'refund': false,
-          });
-        }
-      } else if (numberOf(c, const ['collectedAmount']) > 0.005) {
-        // Eski arşiv kaydı (tahsilat kopyası yok) — tek satırda özetlenir. YÖNTEM SÜTUNUNA
-        // yöntem olmayan metin yazılmaz; kanal gerçekten bilinmiyor.
-        rows.add({
-          'at': parseUtcToLocal(c['cancelledAtUtc'] ?? c['soldAtUtc']),
-          'sale': '$name · İPTAL',
-          'method': paymentMethodLabel(''),
-          'amount': numberOf(c, const ['collectedAmount']),
-          'refund': false,
-        });
-      }
-
-      // GERÇEK İADE SATIRLARI: paranın çıktığı KANAL gösterilir (web paritesi). Burası
-      // "müşteriye geri ödendi" diye sentetik metin yazıyordu; kart iadesi ile nakit iade
-      // ayırt edilemiyor, kasa kırılımı tutmuyordu.
-      final refunds = (c['refunds'] as List? ?? const []).whereType<Map>().toList();
-      if (refunds.isNotEmpty) {
-        for (final raw in refunds) {
-          final r = raw.cast<String, dynamic>();
-          rows.add({
-            'at': parseUtcToLocal(r['refundedAtUtc']),
-            'sale': '$name · İADE',
-            'method': paymentMethodLabel('${r['method'] ?? ''}'),
-            'amount': numberOf(r, const ['amount']),
-            'refund': true,
-          });
-        }
-      } else if (numberOf(c, const ['refundedAmount']) > 0.005) {
-        // Eski arşiv kaydı (iade satırı yok) — kanal BİLİNMİYOR; uydurma yapılmaz.
-        rows.add({
-          'at': parseUtcToLocal(c['cancelledAtUtc']),
-          'sale': '$name · İADE',
-          'method': paymentMethodLabel(''),
-          'amount': numberOf(c, const ['refundedAmount']),
-          'refund': true,
-        });
-      }
-    }
-    rows.sort((x, y) {
-      final ax = (x['at'] as DateTime?)?.millisecondsSinceEpoch ?? 0;
-      final ay = (y['at'] as DateTime?)?.millisecondsSinceEpoch ?? 0;
-      return ay.compareTo(ax);
-    });
-
-    return _section(
-      'Tahsilat Ekstresi',
-      Icons.receipt_long_rounded,
-      '${rows.length} hareket · net ${CalendarText.tl(_ledgerNet(rows))}',
-      rows.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
-              child: Text('Bu müşteriden henüz tahsilat alınmamış.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: AppColors.muted)),
-            )
-          : Column(
-              children: [
-                for (final r in rows)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(children: [
-                      SizedBox(
-                        width: 74,
-                        child: Text(
-                          (r['at'] as DateTime?) == null
-                              ? '—'
-                              : _shortDay(r['at'] as DateTime),
-                          style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${r['sale']}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                          Text('${r['method']}',
-                              style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
-                        ]),
-                      ),
-                      Text(
-                          '${r['refund'] == true ? '−' : '+'}${CalendarText.tl(r['amount'] as double)}',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: r['refund'] == true ? AppColors.danger : AppColors.success)),
-                    ]),
-                  ),
-                // TOPLAM SATIRI: tahsilat − iade = net (web paritesi, kullanıcı isteği).
-                const Divider(height: 18),
-                Row(children: [
-                  const Expanded(
-                    child: Text('TOPLAM',
-                        style: TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .5)),
-                  ),
-                  if (_ledgerRefunded(rows) > 0.005)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(
-                        'İade ${CalendarText.tl(_ledgerRefunded(rows))}',
-                        style: const TextStyle(fontSize: 10.5, color: AppColors.danger),
-                      ),
-                    ),
-                  Text(CalendarText.tl(_ledgerNet(rows)),
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: _ledgerNet(rows) >= 0 ? AppColors.success : AppColors.danger)),
-                ]),
-              ],
-            ),
+    final doc = buildAccountStatement(
+      group: g,
+      cancelledSales: widget.cancelledSales,
+      todayIso: _todayIso,
+      from: _stmtFrom,
+      to: _stmtTo,
     );
+    final filtered = _stmtFrom != null || _stmtTo != null;
+    final periodLabel = filtered
+        ? '${formatDocDate(_stmtFrom ?? doc.firstDate)} - ${formatDocDate(_stmtTo ?? doc.lastDate)}'
+        : (doc.firstDate == null
+            ? '—'
+            : '${formatDocDate(doc.firstDate)} - ${formatDocDate(doc.lastDate)}');
+    final closingDebt = doc.closing >= 0;
+
+    return Column(children: [
+      // ---------------- ARAÇ ÇUBUĞU ----------------
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(children: [
+          Row(children: [
+            const Icon(Icons.date_range_rounded, size: 15, color: AppColors.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                filtered ? periodLabel : 'Tüm hareketler',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+            // Row içindeki düğmelerde AppButtons.inline ZORUNLU: tema minimumSize'ı sonsuz
+            // genişlik verir ve etiket harf harf alt alta düşer.
+            OutlinedButton.icon(
+              onPressed: () => _pickStatementRange(doc),
+              icon: const Icon(Icons.tune_rounded, size: 15),
+              label: const Text('Dönem', style: TextStyle(fontSize: 11.5)),
+              style: AppButtons.inline(height: 32),
+            ),
+            if (filtered) ...[
+              const SizedBox(width: 6),
+              OutlinedButton.icon(
+                onPressed: () => setState(() {
+                  _stmtFrom = null;
+                  _stmtTo = null;
+                }),
+                icon: const Icon(Icons.restart_alt_rounded, size: 15),
+                label: const Text('Tümü', style: TextStyle(fontSize: 11.5)),
+                style: AppButtons.inline(height: 32),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 36,
+            child: FilledButton.icon(
+              onPressed: _sharingStatement ? null : () => _shareStatement(doc, periodLabel),
+              icon: _sharingStatement
+                  ? const SizedBox(
+                      width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.picture_as_pdf_rounded, size: 16),
+              label: Text(_sharingStatement ? 'Hazırlanıyor…' : 'PDF olarak paylaş',
+                  style: const TextStyle(fontSize: 12)),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+
+      // BEKLEYEN SATIŞ: peşinatsız satış cari kartı açmaz, ilk randevu tamamlanınca işlenir.
+      // Belgeye satır olarak GİRMEZ (ortada henüz borç kaydı yok, yürüyen bakiye bozulurdu);
+      // ama "sattım, neden ekstrede yok" sorusu burada yanıtlanır.
+      if (widget.pendingSales.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F7FD),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFBCD6F2)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.schedule_rounded, size: 16, color: Color(0xFF1E4E8C)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${widget.pendingSales.length} satış cariye henüz işlenmedi (toplam '
+                '${formatStatementAmount(widget.pendingSales.fold<double>(0, (s, p) => s + numberOf(p, const ['amount'])))} TL). '
+                'Peşinat alınmadığı için fiş açık: müşteri ilk randevusunu tamamlayınca peşinat '
+                've taksitler bu ekstreye otomatik düşer.',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF1E4E8C), height: 1.35),
+              ),
+            ),
+          ]),
+        ),
+
+      // KREDİ BAKİYESİ UYARISI: belge NET bakiye yazar (yürüyen sütun toplanabilir olmalı),
+      // üstteki "Kalan Borç" KPI'ı ise cari BAŞINA sıfırlanır.
+      if (doc.clampDifference.abs() > 0.5)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8EC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF6D9A8)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF7A4A12)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Bir satışta fazla ödeme var: ekstre net bakiyeyi '
+                '(${formatStatementAmount(doc.closing)} TL) yazar, "Kalan Borç" kartı her satışı '
+                'ayrı sayar (fark ${formatStatementAmount(doc.clampDifference.abs())} TL).',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF7A4A12), height: 1.35),
+              ),
+            ),
+          ]),
+        ),
+
+      // ---------------- BELGE ----------------
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE7DCE2)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Kurum başlığı
+          Text(_institution.isEmpty ? 'Kurum' : _institution,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF241C21))),
+          const SizedBox(height: 6),
+          Container(height: 1.6, color: AppColors.primary),
+          const SizedBox(height: 14),
+          const Center(
+            child: Text('CARİ HESAP EKSTRESİ',
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: .6, color: Color(0xFF241C21))),
+          ),
+          const SizedBox(height: 14),
+
+          // Cari bilgileri
+          _stmtInfo('Cari Kodu', cariCode(g.customerId)),
+          _stmtInfo('Adı Soyadı', g.customerName),
+          _stmtInfo('Telefon', g.customerPhone.isEmpty ? '—' : g.customerPhone),
+          _stmtInfo('Tarih Aralığı', periodLabel),
+          _stmtInfo('Düzenleme Tarihi', formatDocDateTime(DateTime.now())),
+          _stmtInfo('Para Birimi', 'TL'),
+          const SizedBox(height: 12),
+
+          // Sütun başlıkları (kart satırların anlamı)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF4EFF1),
+              border: Border(bottom: BorderSide(color: AppColors.primary, width: 1.4)),
+            ),
+            child: const Row(children: [
+              Expanded(
+                child: Text('Tarih · İşlem · Açıklama',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .3)),
+              ),
+              Text('Borç / Alacak · Bakiye',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .3)),
+            ]),
+          ),
+
+          if (doc.rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 22),
+              child: Text(
+                filtered
+                    ? 'Seçilen dönemde hareket bulunmuyor.'
+                    : widget.pendingSales.isNotEmpty
+                        ? 'Cariye işlenmiş hareket yok — yukarıdaki bekleyen satış onaylanınca '
+                            'peşinat ve taksitler buraya düşer.'
+                        : 'Bu müşteride henüz cari hareket yok. Satış yapıldığında peşinat ve '
+                            'taksitler buraya düşer.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+              ),
+            ),
+          for (var i = 0; i < doc.rows.length; i++) _stmtRow(doc.rows[i], i.isOdd),
+
+          if (doc.rows.isNotEmpty) ...[
+            const Divider(height: 18),
+            Row(children: [
+              const Expanded(
+                child: Text('Toplam',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+              ),
+              Text(
+                'Borç ${formatStatementAmount(doc.totalDebit)} · '
+                'Alacak ${formatStatementAmount(doc.totalCredit)}',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              const Expanded(
+                child: Text('Bakiye', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+              ),
+              Text('${formatStatementAmount(doc.closing.abs())} TL',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: closingDebt ? AppColors.danger : AppColors.success)),
+            ]),
+            const SizedBox(height: 10),
+            RichText(
+              text: TextSpan(children: [
+                const TextSpan(
+                    text: 'Yalnız ', style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                TextSpan(
+                  text: turkishAmountInWords(doc.closing.abs()),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF241C21)),
+                ),
+                if (!closingDebt)
+                  const TextSpan(
+                      text: ' (müşteri alacaklı)',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+              ]),
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Text('Not: Bu belge bilgilendirme amaçlıdır.',
+              style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+        ]),
+      ),
+    ]);
+  }
+
+  /// Belge bilgi satırı — "Etiket : Değer".
+  Widget _stmtInfo(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 104,
+            child: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+          ),
+          const Text(': ', style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF241C21))),
+          ),
+        ]),
+      );
+
+  /// Tek hareket satırı — dar ekranda iki katlı kart (tablo yerine).
+  Widget _stmtRow(StatementRow row, bool zebra) {
+    final money = row.debit > 0.005
+        ? '+${formatStatementAmount(row.debit)}'
+        : '−${formatStatementAmount(row.credit)}';
+    final moneyColor = row.debit > 0.005 ? AppColors.danger : AppColors.success;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: zebra ? const Color(0xFFFBF8F9) : null,
+        border: const Border(bottom: BorderSide(color: Color(0xFFEFE7EB), width: .6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(formatDocDate(row.date),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF4a3a44))),
+          const SizedBox(width: 8),
+          Text(row.type,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800, color: _stmtTypeTone(row.kind))),
+          const Spacer(),
+          Text(money,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: moneyColor)),
+        ]),
+        const SizedBox(height: 2),
+        Row(children: [
+          Expanded(
+            child: Text(row.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF4a3a44), height: 1.3)),
+          ),
+          const SizedBox(width: 8),
+          Text('Bakiye ${formatStatementAmount(row.balance)}',
+              style: const TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF241C21))),
+        ]),
+      ]),
+    );
+  }
+
+  /// İşlem türüne göre renk: para girişi yeşil, çıkış/iptal kırmızı, borç satırları nötr.
+  static Color _stmtTypeTone(StatementKind kind) {
+    switch (kind) {
+      case StatementKind.collection:
+        return AppColors.success;
+      case StatementKind.refund:
+      case StatementKind.cancelled:
+        return AppColors.danger;
+      case StatementKind.opening:
+        return const Color(0xFF1E4E8C);
+      default:
+        return const Color(0xFF4a3a44);
+    }
+  }
+
+  /// Dönem seçimi — belgenin tarih aralığı (web'deki iki tarih alanının karşılığı).
+  Future<void> _pickStatementRange(AccountStatement doc) async {
+    final first = DateTime.tryParse(doc.firstDate ?? '') ?? DateTime(DateTime.now().year - 3);
+    final last = DateTime.tryParse(doc.lastDate ?? '') ?? DateTime(DateTime.now().year + 3);
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(first.year - 1),
+      lastDate: DateTime(last.year + 1),
+      initialDateRange: _stmtFrom != null && _stmtTo != null
+          ? DateTimeRange(start: DateTime.parse(_stmtFrom!), end: DateTime.parse(_stmtTo!))
+          : null,
+      helpText: 'Ekstre dönemi',
+      saveText: 'Uygula',
+    );
+    if (range == null || !mounted) return;
+    String iso(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    setState(() {
+      _stmtFrom = iso(range.start);
+      _stmtTo = iso(range.end);
+    });
+  }
+
+  /// Belgeyi PDF olarak paylaşır — ekrandaki rakamların AYNISI (tek hesaplayıcı).
+  Future<void> _shareStatement(AccountStatement doc, String periodLabel) async {
+    setState(() => _sharingStatement = true);
+    try {
+      await StatementPdf.share(
+        doc: doc,
+        institutionName: _institution.isEmpty ? 'Kurum' : _institution,
+        institutionPhone: _institutionPhone,
+        institutionEmail: _institutionEmail,
+        customerCode: cariCode(_group.customerId),
+        customerName: _group.customerName,
+        customerPhone: _group.customerPhone,
+        saleCount: _group.saleCount,
+        periodLabel: periodLabel,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ekstre PDF oluşturulamadı: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharingStatement = false);
+    }
   }
 
   /// İptal arşivi özetleri — KPI'lar canlı + arşiv toplamını gösterir.
@@ -578,16 +851,6 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       .fold<double>(0, (s, c) => s + numberOf(c, const ['totalAmount']));
   double get _cancelledRetained => widget.cancelledSales
       .fold<double>(0, (s, c) => s + numberOf(c, const ['retainedAmount']));
-
-  /// Ekstre toplamları SATIRLARIN KENDİSİNDEN türetilir: özet ile satırlar farklı kaynaktan
-  /// gelince "2 tahsilat · toplam 0" gibi çelişkiler çıkıyordu.
-  static double _ledgerNet(List<Map<String, dynamic>> rows) => rows.fold<double>(
-      0,
-      (s, r) => s + ((r['refund'] == true ? -1 : 1) * (r['amount'] as double)));
-
-  static double _ledgerRefunded(List<Map<String, dynamic>> rows) => rows
-      .where((r) => r['refund'] == true)
-      .fold<double>(0, (s, r) => s + (r['amount'] as double));
 
   /// Tek satış satırı — kendi cari kartı; tahsilat buradan alınır (para doğru satışa yazılsın).
   Widget _saleRow(Map<String, dynamic> a) {

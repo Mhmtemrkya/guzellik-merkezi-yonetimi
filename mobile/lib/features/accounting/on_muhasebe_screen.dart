@@ -1054,10 +1054,26 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
     await openCustomerLedgerSheet(
       context,
       group: g,
+      // Ekstre belgesinin antetindeki kurum bilgisi bu istemciden okunur.
+      api: widget.api,
       // İPTAL ARŞİVİ: iptal edilen satışın tahsilat/iadesi canlı listede YOKTUR (arşive taşınır),
       // defterde hiç görünmüyordu.
       cancelledSales: (_last?.cancelled ?? const <Map<String, dynamic>>[])
           .where((c) => '${c['customerId']}' == g.customerId)
+          .toList(),
+      // CARİYE HENÜZ İŞLENMEMİŞ SATIŞLAR: peşinatsız hizmet/paket satışı cari kartı açmaz,
+      // fiş Açık kalır (ilk randevu tamamlanınca işlenir). Ekstrede uyarı olarak görünür ki
+      // "sattım ama ekstrede yok" sorusu yanıtsız kalmasın.
+      pendingSales: (_last?.adisyonlar ?? const <Map<String, dynamic>>[])
+          .where((a) =>
+              '${a['customerId']}' == g.customerId &&
+              '${a['status'] ?? ''}'.toLowerCase() == 'open' &&
+              numberOf(a, const ['chargeTotal']) > 0.005)
+          .map((a) => {
+                'id': '${a['id'] ?? ''}',
+                'amount': numberOf(a, const ['chargeTotal']),
+                'openedAtUtc': '${a['openedAtUtc'] ?? ''}',
+              })
           .toList(),
       onCollect: (a) async => _openAccountDetail(a),
       // TÜMÜ: sayfa müşterinin bütün satışlarıyla ve TÜMÜ seçili açılır.
