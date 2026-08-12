@@ -384,7 +384,7 @@ const PACKAGE_PERIOD_OPTIONS: { key: RangePeriod; label: string }[] = [
   { key: 'yearly', label: 'Yıllık' },
 ]
 
-interface CategoryOption { name: string; subs: string[]; count: number }
+interface CategoryOption { name: string; subs: string[] }
 
 /**
  * Kategori (+ varsa alt kategori) süzgeci. Ham <select> yerine panelin diliyle uyumlu açılır panel:
@@ -424,7 +424,6 @@ function CategoryFilter({
 
   const active = Boolean(value)
   const subs = options.find((o) => o.name === value)?.subs ?? []
-  const totalCount = options.reduce((sum, o) => sum + o.count, 0)
 
   return (
     <div ref={boxRef} className="relative">
@@ -461,7 +460,6 @@ function CategoryFilter({
                 }`}
               >
                 <span>{allLabel}</span>
-                <span className="text-[10px] text-[#74616A]">{totalCount}</span>
               </button>
               {options.length === 0 && (
                 <div className="px-2.5 py-3 text-center text-[11px] text-[#74616A]">Kategori tanımlı değil.</div>
@@ -476,7 +474,6 @@ function CategoryFilter({
                   }`}
                 >
                   <span className="truncate">{o.name}</span>
-                  <span className="shrink-0 text-[10px] text-[#74616A]">{o.count}</span>
                 </button>
               ))}
             </div>
@@ -1737,37 +1734,35 @@ export default function AdminDashboard() {
   }
   // Hizmet kategorileri: hizmetlerin kendi kategori/alt kategorileri (paketinkiyle karışmaz).
   const serviceCategoryOptions = useMemo<CategoryOption[]>(() => {
-    const map = new Map<string, { subs: Set<string>; count: number }>()
+    const map = new Map<string, { subs: Set<string> }>()
     for (const s of apiItems(data?.servicesResult)) {
       const cat = (s.category || '').trim()
       if (!cat) continue
-      if (!map.has(cat)) map.set(cat, { subs: new Set(), count: 0 })
+      if (!map.has(cat)) map.set(cat, { subs: new Set() })
       const entry = map.get(cat)!
-      entry.count += 1
       const sub = (s.subCategory || '').trim()
       if (sub) entry.subs.add(sub)
     }
     return [...map.entries()]
       .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
-      .map(([name, v]) => ({ name, count: v.count, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
+      .map(([name, v]) => ({ name, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
   }, [data])
 
   // Kategori süzgecinin seçenekleri: paketlerin kendi kategori/alt kategorileri.
   // Alt kategori kutusu yalnızca seçili kategorinin alt kategorisi VARSA görünür.
   const packageCategoryOptions = useMemo<CategoryOption[]>(() => {
-    const map = new Map<string, { subs: Set<string>; count: number }>()
+    const map = new Map<string, { subs: Set<string> }>()
     for (const p of apiItems(data?.packagesResult)) {
       const cat = (p.category || '').trim()
       if (!cat) continue
-      if (!map.has(cat)) map.set(cat, { subs: new Set(), count: 0 })
+      if (!map.has(cat)) map.set(cat, { subs: new Set() })
       const entry = map.get(cat)!
-      entry.count += 1
       const sub = (p.subCategory || '').trim()
       if (sub) entry.subs.add(sub)
     }
     return [...map.entries()]
       .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
-      .map(([name, v]) => ({ name, count: v.count, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
+      .map(([name, v]) => ({ name, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
   }, [data])
 
   const customerStats = data?.customersStats || {}

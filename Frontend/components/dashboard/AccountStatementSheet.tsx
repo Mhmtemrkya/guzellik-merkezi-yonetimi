@@ -208,7 +208,12 @@ export default function AccountStatementSheet({
       )}
 
       {/* ---------------- BELGE ---------------- */}
-      <article className="mx-auto w-full max-w-[940px] rounded-[16px] border border-[#E7DCE2] bg-white p-4 shadow-[0_18px_48px_-38px_rgba(90,40,60,0.55)] sm:p-7">
+      {/* GENİŞLİK SINIRI YOK: belge, açıldığı kabın tamamını kullanır.
+          Eskiden 940px ile ortalanıyordu ve geniş defter modalinde iki yanında büyük boşluk
+          kalıyor, tablo gereksiz yere dar sıkışıyordu. Baskı/PDF bu HTML'den ÜRETİLMEZ
+          (pdfmake kendi belgesini kurar, bkz. exportPdf) — dolayısıyla sınırın kaldırılması
+          çıktı sadakatini etkilemez, yalnız ekranda okunabilir alanı büyütür. */}
+      <article className="w-full rounded-[16px] border border-[#E7DCE2] bg-white p-4 shadow-[0_18px_48px_-38px_rgba(90,40,60,0.55)] sm:p-7">
         {/* Kurum başlığı */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
