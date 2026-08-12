@@ -1,4 +1,4 @@
-import { activeInstallments, type CustomerAccountGroup } from '@/lib/accountGrouping'
+import { saleDisplayName, type CustomerAccountGroup } from '@/lib/accountGrouping'
 import { paymentMethodLabel } from '@/lib/apiMappers'
 import type { CancelledSale, CustomerAccount } from '@/lib/types'
 
@@ -10,11 +10,18 @@ import type { CancelledSale, CustomerAccount } from '@/lib/types'
  * alacağımız) ile ALACAK (müşterinin ödediği) satırlarını tarih sırasına dizer ve her satırın
  * ardından YÜRÜYEN BAKİYE yazar.
  *
- * <b>BORÇ TARAFININ AYRIŞIMI (backend ile birebir):</b> `CustomerAccount.RemainingAmount`
- * = `max(0, TotalAmount − PaidAmount)`; `DepositAmount` bir PLAN alanıdır ve toplamın İÇİNDEDİR
- * (`financed = Total − Deposit`, taksitler bu tutarı böler). Bu yüzden bir satışın borç satırları:
- *   peşinat + aktif taksitler + (kalırsa) plan dışı bakiye  =  TotalAmount
- * Böylece kapanış bakiyesi `Σ(total − paid)` ile BİREBİR tutar — belge kendi içinde mutabık olur.
+ * <b>BORÇ SATIŞ GÜNÜNDE TEK SATIRDA DOĞAR.</b> Alacak, satışın yapıldığı anda tamamıyla doğar;
+ * taksit planı bir ÖDEME TAKVİMİDİR, ayrı bir alacak değildir. Bu yüzden bir satışın TEK borç
+ * satırı vardır: satış günü, `TotalAmount` kadar. Peşinat da bu tutarın İÇİNDEDİR — ayrıca borç
+ * yazılmaz, yalnız tahsil edildiğinde alacak satırı olarak görünür.
+ *
+ * Vadesi gelmemiş taksitler belgeye DÜŞMEZ: müşteri henüz ödemediği bir taksit için ikinci kez
+ * borçlandırılamaz (aynı tutar iki kez sayılırdı). Taksit zamanı geldiğinde belgeye düşen şey
+ * TAHSİLATTIR. Plan bilgisi kaybolmaz — defterin "Taksit Takvimi" ızgarası hangi ay ne ödeneceğini
+ * ayrıca gösterir.
+ *
+ * Değişmez korunur: `Σborç − Σalacak = Σ(TotalAmount − PaidAmount)`. Borcun toplamı aynı kaldı,
+ * yalnız TEK satıra ve satış gününe toplandı.
  *
  * <b>İPTAL EDİLEN SATIŞ SIFIRA KAPANIR:</b> iptalde cari satır arşive taşınır ve borç silinir
  * (`RemainingAmount` iptalde 0'dır). Ama para hareketleri gerçektir: tahsilatlar alacak, iadeler
@@ -23,21 +30,17 @@ import type { CancelledSale, CustomerAccount } from '@/lib/types'
  *
  * <b>TARİH ANLAMI:</b> tahsilat/iade bir ANDIR → YEREL güne çevrilir (UTC günü kullanılırsa
  * gece yarısı civarındaki ödeme bir gün geriye kayar ve yürüyen bakiyede satır sırası bozulur).
- * Taksit vadesi ise TAKVİM TARİHİDİR → olduğu gibi kesilir (takvim sekmesiyle aynı kural).
+ *
+ * <b>TEK SÜTUN:</b> belgede "İşlem Türü" ve "Açıklama" ayrı sütun değildir — `label` alanında
+ * birleşir: "Paket Satışı (9-D)", "Tahsilat (Nakit · 9-D)".
  */
 
 /** Hareket türü — etiketler tek yerden okunur (bkz. STATEMENT_TYPE_LABEL). */
 export type StatementKind =
   /** Önceki dönemden devreden bakiye (tarih süzgeci varsa üretilir). */
   | 'opening'
-  /** Kayıt peşinatı — satış günü doğan borç. */
-  | 'deposit'
-  /** Peşin satış ya da plan dışı bakiye — satış günü doğan borç. */
+  /** Satış — satış günü doğan borcun TAMAMI (peşinat ve taksitler bunun içindedir). */
   | 'sale'
-  /** Vadesi GELMİŞ taksit. */
-  | 'installment'
-  /** Vadesi GELMEMİŞ taksit (ileri tarihli). */
-  | 'installmentFuture'
   /** Müşteriden alınan para. */
   | 'collection'
   /** Müşteriye geri ödenen para. */
@@ -51,26 +54,41 @@ export type StatementKind =
  */
 export const STATEMENT_TYPE_LABEL: Record<StatementKind, string> = {
   opening: 'Devir',
-  deposit: 'Peşinat',
   sale: 'Satış',
-  installment: 'Taksit',
-  installmentFuture: 'Taksit (Vade)',
   collection: 'Tahsilat',
   refund: 'İade',
   cancelled: 'Satış (İptal)',
 }
 
 /**
- * AYNI GÜN İÇİ SIRA. Satış günü hem peşinat borcu hem onun tahsilatı düşer; borç önce yazılmazsa
- * bakiye sütunu önce eksiye düşüp sonra sıfırlanır (örnek ekstredeki sıra: Peşinat → Tahsilat).
+ * BİRLEŞİK SÜTUNUN BAŞI. Belgede "İşlem Türü" ve "Açıklama" TEK sütuna indi: detay parantez
+ * içine giriyor ("Tahsilat (Nakit)", "Peşinat (9-D)"). Bu yüzden baş metin PARANTEZSİZ olmalı —
+ * `STATEMENT_TYPE_LABEL` doğrudan kullanılsaydı "Satış (İptal) (9-D)" gibi iç içe parantez çıkardı.
+ * Taksit satırlarında baş metin satır bazında yazılır (`3. Taksit`); buradaki değer yedektir.
+ */
+const STATEMENT_HEAD: Record<StatementKind, string> = {
+  opening: 'Devir',
+  sale: 'Satış',
+  collection: 'Tahsilat',
+  refund: 'İade',
+  cancelled: 'İptal Edilen Satış',
+}
+
+/** "Satış" + "9-D" → "Satış (9-D)". Detay boşsa parantez açılmaz. */
+function composeLabel(head: string, detail: string): string {
+  const d = String(detail || '').trim()
+  return d ? `${head} (${d})` : head
+}
+
+
+/**
+ * AYNI GÜN İÇİ SIRA. Satış günü hem satış borcu hem peşinat tahsilatı düşer; borç önce
+ * yazılmazsa bakiye sütunu önce eksiye düşüp sonra düzelir (doğru sıra: Satış → Tahsilat).
  */
 const KIND_RANK: Record<StatementKind, number> = {
   opening: -1,
-  deposit: 0,
   sale: 0,
   cancelled: 0,
-  installment: 1,
-  installmentFuture: 1,
   collection: 2,
   refund: 3,
 }
@@ -83,14 +101,18 @@ export interface StatementRow {
   type: string
   /** Açıklama sütunu: taksit no / satış adı / ödeme yöntemi / belge no. */
   description: string
+  /**
+   * BELGEDE GÖSTERİLEN TEK SÜTUN: tür + detay birleşik ("Tahsilat (Nakit · 9-D)").
+   * `type`/`description` ayrı ayrı korunur — ekran ve PDF `label` yazar, ama iki alan hem
+   * testlerin sabitlediği sözleşme hem de tür bazlı süzme/renk için gerekli kalır.
+   */
+  label: string
   debit: number
   credit: number
   /** Bu satırdan SONRAKİ yürüyen bakiye (borç pozitif). */
   balance: number
   /** Satırın bağlı olduğu cari (satış) — arşiv satırlarında boş. */
   accountId: string
-  /** Taksit numarası (varsa) — aynı gün içi kararlı sıra için. */
-  installmentNo: number | null
 }
 
 export interface AccountStatement {
@@ -148,12 +170,13 @@ export function localDay(value: string | null | undefined): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** Taksit vadesi TAKVİM tarihidir — saat dilimi uygulanmaz (takvim sekmesiyle aynı kural). */
-function planDay(value: string | null | undefined): string {
-  return String(value || '').slice(0, 10)
+type Draft = Omit<StatementRow, 'balance' | 'type' | 'label'> & {
+  seq: number
+  /** Birleşik sütunun parantez ÖNCESİ başı ("Peşinat", "3. Taksit"). */
+  head: string
+  /** Birleşik sütunun parantez İÇİ detayı ("Nakit · 9-D"). */
+  detail: string
 }
-
-type Draft = Omit<StatementRow, 'balance' | 'type'> & { seq: number }
 
 /** Tutarın işaretine göre borç/alacak sütununa yazar (veri bozukluğunda ters kayıt üretmesin). */
 function signedRow(base: Omit<Draft, 'debit' | 'credit'>, amount: number): Draft {
@@ -170,6 +193,19 @@ function collectionText(label: string, method: string, reference: string | null 
 }
 
 /**
+ * Birleşik sütunun parantez içi — ÖNCE ÖDEME YÖNTEMİ ("Tahsilat (Nakit)"), sonra hangi satış,
+ * sonra belge no. Yöntem başa alınır çünkü tahsilat satırında ilk sorulan "neyle ödedi".
+ * Yöntem `paymentMethodLabel`ten geçer: yöntemi kaydedilmemiş eski adisyon tahsilatları
+ * "Yöntem kaydedilmemiş" yazar — uydurma "Nakit" YAZILMAZ.
+ */
+function collectionDetail(label: string, method: string, reference: string | null | undefined): string {
+  const parts = [paymentMethodLabel(method), label]
+  const ref = String(reference || '').trim()
+  if (ref) parts.push(`Belge: ${ref}`)
+  return parts.join(' · ')
+}
+
+/**
  * Tek bir müşterinin BÜTÜN hareketlerini üretir (süzgeçsiz, kronolojik).
  *
  * Dışa açıktır ki test hem ham satırları hem süzülmüş belgeyi ayrı ayrı sabitleyebilsin.
@@ -177,57 +213,30 @@ function collectionText(label: string, method: string, reference: string | null 
 export function buildStatementRows(
   group: CustomerAccountGroup,
   cancelledSales: CancelledSale[],
-  todayIso: string,
+  _todayIso: string,
 ): Omit<StatementRow, 'balance'>[] {
   const drafts: Draft[] = []
-  const today = todayIso.slice(0, 10)
   let seq = 0
 
   for (const account of group.accounts) {
-    const label = account.servicePackageName || account.name || 'Satış'
+    const label = saleDisplayName(account)
     const soldDay = localDay(account.soldAtUtc || account.createdAtUtc)
     const accountId = account.id
+    // Paket bağı olan satış "Paket Satışı" yazar. Hizmet ↔ ürün ayrımı cari DTO'sunda YOK,
+    // bu yüzden paket dışındaki her satış yalın "Satış" kalır — uydurma tür etiketi yazılmaz.
+    const saleHead = account.servicePackageId ? 'Paket Satışı' : STATEMENT_HEAD.sale
 
-    // --- BORÇ: peşinat + taksitler + plan dışı bakiye = TotalAmount ---
-    const deposit = round2(account.depositAmount)
-    if (deposit > 0.005) {
-      drafts.push({
-        seq: seq++, date: soldDay, kind: 'deposit', accountId, installmentNo: null,
-        description: `Kayıt peşinatı • ${label}`, debit: deposit, credit: 0,
-      })
-    }
-
-    const insts = activeInstallments(account)
-      .slice()
-      .sort((a, b) => planDay(a.dueDate).localeCompare(planDay(b.dueDate)) || a.no - b.no)
-
-    let planned = deposit
-    for (const inst of insts) {
-      const due = planDay(inst.dueDate)
-      planned = round2(planned + inst.amount)
-      drafts.push({
-        seq: seq++,
-        date: due,
-        // Vadesi gelen taksit tahakkuk etmiş borçtur; gelmemiş olan plan satırıdır. Ayrım
-        // örnek ekstredeki "Fatura ↔ Taksit (Vade)" ayrımının sektöre uyarlanmış hâlidir.
-        kind: due !== '' && due <= today ? 'installment' : 'installmentFuture',
-        accountId,
-        installmentNo: inst.no,
-        description: `${inst.no}. Taksit • ${label}`,
-        debit: round2(inst.amount),
-        credit: 0,
-      })
-    }
-
-    // PLAN DIŞI BAKİYE: peşin satışta taksit yoktur (tamamı buraya düşer); taksitli satışta ise
-    // İPTAL EDİLMİŞ taksit varsa plan toplamı satış tutarının altında kalır. Sunucu borcu yine
-    // `Total − Paid` sayar, bu yüzden fark satırı YAZILMALI — yoksa belge sunucudan az borç yazar.
-    const residual = round2(account.totalAmount - planned)
-    if (Math.abs(residual) > 0.005) {
+    // --- BORÇ: SATIŞIN TAMAMI, SATIŞ GÜNÜNDE, TEK SATIR ---
+    // Alacak satış anında doğar; taksit planı bir ÖDEME TAKVİMİDİR, ayrı bir alacak değildir.
+    // Taksitler ayrıca borç yazılsaydı aynı tutar iki kez sayılırdı. Plan bilgisi kaybolmaz:
+    // defterin "Taksit Takvimi" ızgarası (PaymentScheduleGrid) hangi ay ne ödeneceğini gösterir.
+    const total = round2(account.totalAmount)
+    if (Math.abs(total) > 0.005) {
       drafts.push(signedRow({
-        seq: seq++, date: soldDay, kind: 'sale', accountId, installmentNo: null,
-        description: insts.length > 0 ? `${label} • plan dışı bakiye` : label,
-      }, residual))
+        seq: seq++, date: soldDay, kind: 'sale', accountId,
+        description: label,
+        head: saleHead, detail: label,
+      }, total))
     }
 
     // --- ALACAK: tahsilatlar ---
@@ -238,8 +247,10 @@ export function buildStatementRows(
       paymentSum = round2(paymentSum + payment.amount)
       if (day > lastPaymentDay) lastPaymentDay = day
       drafts.push({
-        seq: seq++, date: day, kind: 'collection', accountId, installmentNo: null,
+        seq: seq++, date: day, kind: 'collection', accountId,
         description: collectionText(label, payment.method, payment.reference),
+        head: STATEMENT_HEAD.collection,
+        detail: collectionDetail(label, payment.method, payment.reference),
         debit: 0, credit: round2(payment.amount),
       })
     }
@@ -253,13 +264,15 @@ export function buildStatementRows(
      */
     const drift = round2(paymentSum - account.paidAmount)
     if (Math.abs(drift) > 0.005) {
+      const driftIsRefund = drift > 0
       drafts.push(signedRow({
         seq: seq++,
         date: lastPaymentDay || soldDay,
-        kind: drift > 0 ? 'refund' : 'collection',
-        accountId,
-        installmentNo: null,
-        description: drift > 0 ? `${label} • iade edilen tutar` : `${label} • ${paymentMethodLabel('')}`,
+        kind: driftIsRefund ? 'refund' : 'collection',
+        accountId,        description: driftIsRefund ? `${label} • iade edilen tutar` : `${label} • ${paymentMethodLabel('')}`,
+        head: driftIsRefund ? STATEMENT_HEAD.refund : STATEMENT_HEAD.collection,
+        // Sapma satırının yöntemi GERÇEKTEN bilinmiyor (DTO taşımıyor) — uydurulmaz.
+        detail: driftIsRefund ? `${label} · iade edilen tutar` : `${paymentMethodLabel('')} · ${label}`,
       }, drift))
     }
   }
@@ -275,9 +288,9 @@ export function buildStatementRows(
       for (const payment of sale.payments) {
         collected = round2(collected + payment.amount)
         drafts.push({
-          seq: seq++, date: localDay(payment.occurredAtUtc), kind: 'collection', accountId: '',
-          installmentNo: null,
-          description: collectionText(`${label} · İPTAL`, payment.method, payment.reference),
+          seq: seq++, date: localDay(payment.occurredAtUtc), kind: 'collection', accountId: '',          description: collectionText(`${label} · İPTAL`, payment.method, payment.reference),
+          head: STATEMENT_HEAD.collection,
+          detail: collectionDetail(`${label} · iptal edilen satış`, payment.method, payment.reference),
           debit: 0, credit: round2(payment.amount),
         })
       }
@@ -285,9 +298,9 @@ export function buildStatementRows(
       // Eski arşiv kaydı: tahsilat kopyası yok, yöntem GERÇEKTEN bilinmiyor — uydurulmaz.
       collected = round2(sale.collectedAmount)
       drafts.push({
-        seq: seq++, date: soldDay || cancelDay, kind: 'collection', accountId: '',
-        installmentNo: null,
-        description: collectionText(`${label} · İPTAL`, '', null),
+        seq: seq++, date: soldDay || cancelDay, kind: 'collection', accountId: '',        description: collectionText(`${label} · İPTAL`, '', null),
+        head: STATEMENT_HEAD.collection,
+        detail: collectionDetail(`${label} · iptal edilen satış`, '', null),
         debit: 0, credit: collected,
       })
     }
@@ -297,17 +310,19 @@ export function buildStatementRows(
       for (const refund of sale.refunds) {
         refunded = round2(refunded + refund.amount)
         drafts.push({
-          seq: seq++, date: localDay(refund.refundedAtUtc), kind: 'refund', accountId: '',
-          installmentNo: null,
-          description: collectionText(`${label} · İADE`, refund.method, refund.reference),
+          seq: seq++, date: localDay(refund.refundedAtUtc), kind: 'refund', accountId: '',          description: collectionText(`${label} · İADE`, refund.method, refund.reference),
+          head: STATEMENT_HEAD.refund,
+          detail: collectionDetail(`${label} · iptal edilen satış`, refund.method, refund.reference),
           debit: round2(refund.amount), credit: 0,
         })
       }
     } else if (sale.refundedAmount > 0.005) {
       refunded = round2(sale.refundedAmount)
       drafts.push({
-        seq: seq++, date: cancelDay, kind: 'refund', accountId: '', installmentNo: null,
+        seq: seq++, date: cancelDay, kind: 'refund', accountId: '',
         description: collectionText(`${label} · İADE`, '', null),
+        head: STATEMENT_HEAD.refund,
+        detail: collectionDetail(`${label} · iptal edilen satış`, '', null),
         debit: refunded, credit: 0,
       })
     }
@@ -321,17 +336,26 @@ export function buildStatementRows(
     if (Math.abs(retained) > 0.005) {
       // Satış gününe yazılır; aynı gün düşen tahsilatlardan ÖNCE gelmesini KIND_RANK sağlar.
       drafts.push(signedRow({
-        seq: seq++, date: soldDay || cancelDay, kind: 'cancelled', accountId: '', installmentNo: null,
+        seq: seq++, date: soldDay || cancelDay, kind: 'cancelled', accountId: '',
         description: `${label} • iptal edildi, kurumda kalan tutar`,
+        head: STATEMENT_HEAD.cancelled,
+        detail: `${label} · kurumda kalan tutar`,
       }, retained))
     }
   }
 
+  /**
+   * KRONOLOJİK ARTAN — en eski üstte, EN YENİ EN ALTTA. Ekstre yukarıdan aşağı okunur ve kapanış
+   * bakiyesi son satırın devamıdır; ters sıra yürüyen bakiye sütununu okunamaz hâle getirir.
+   *
+   * TARİHSİZ SATIR EN ALTA. Eskiden en başa atılıyordu ("gizlenmesin" gerekçesiyle) — ama bu,
+   * tarihi eksik yeni bir kaydın belgenin TEPESİNDE belirmesi demekti. Alt da görünür alandır:
+   * satır kapanış bandının hemen üstünde durur, hem görünür kalır hem sırayı bozmaz.
+   */
+  const dateRank = (d: string) => (d === '' ? '9999-99-99' : d)
   drafts.sort((a, b) =>
-    // Tarihsiz satır EN BAŞA (bkz. buildGlobalDueQueue): gizlenen satır, görülmeyen borç demek.
-    a.date.localeCompare(b.date)
+    dateRank(a.date).localeCompare(dateRank(b.date))
     || KIND_RANK[a.kind] - KIND_RANK[b.kind]
-    || (a.installmentNo ?? 0) - (b.installmentNo ?? 0)
     || a.seq - b.seq)
 
   return drafts.map((row) => ({
@@ -339,10 +363,10 @@ export function buildStatementRows(
     kind: row.kind,
     type: STATEMENT_TYPE_LABEL[row.kind],
     description: row.description,
+    label: composeLabel(row.head, row.detail),
     debit: row.debit,
     credit: row.credit,
     accountId: row.accountId,
-    installmentNo: row.installmentNo,
   }))
 }
 
@@ -382,11 +406,11 @@ export function buildAccountStatement(options: StatementOptions): AccountStateme
       kind: 'opening',
       type: STATEMENT_TYPE_LABEL.opening,
       description: 'Önceki dönemden devreden bakiye',
+      label: composeLabel(STATEMENT_HEAD.opening, 'önceki dönemden devreden'),
       debit: opening > 0 ? opening : 0,
       credit: opening < 0 ? -opening : 0,
       balance: opening,
       accountId: '',
-      installmentNo: null,
     })
   }
 

@@ -27,7 +27,7 @@ import type { AccountInstallmentItem, CustomerAccount } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
 import {
   allocateAcrossAccounts, buildInstallmentRows, dueThisMonth, planCollectionCalls,
-  summarizeAllAccounts, type GlobalDueRow,
+  saleDisplayName, summarizeAllAccounts, type GlobalDueRow,
 } from '@/lib/accountGrouping'
 import { clearPersistentIdempotencySalt, idempotencyKey, persistentIdempotencySalt } from '@/lib/idempotency'
 
@@ -302,7 +302,9 @@ export default function CollectionDialog({
     () => accounts.length > 1 && Boolean(accounts[0]?.customerId) && accounts.every((a) => a.customerId === accounts[0].customerId),
     [accounts],
   )
-  const saleLabel = (a: CustomerAccount): string => a.servicePackageName || a.name || 'Satış'
+  // Satış adı TEK KAYNAKTAN (ekstre ve taksit takvimiyle aynı yazım — "Paket satışı:" ön eki
+  // kırpılır, yoksa aynı satış üç ekranda iki farklı adla görünürdü).
+  const saleLabel = (a: CustomerAccount): string => saleDisplayName(a)
 
   /** "Tümü" seçili mi — tahsilat tüm satışlara dağıtılacak. */
   const allMode = saleMode && accountId === ALL_ACCOUNTS

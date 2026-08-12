@@ -257,12 +257,14 @@ export default function AccountStatementSheet({
 
         {/* Hareketler */}
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-[12px]">
+          {/* BEŞ SÜTUN: "İşlem Türü" ile "Açıklama" tek sütunda birleşti — detay parantez içinde
+              yazılır ("Tahsilat (Nakit · 9-D)"). Metin `row.label`den gelir; iki sütunu burada
+              yan yana basmak, ekran ile PDF'in ayrışmasına açık kapı bırakırdı. */}
+          <table className="w-full min-w-[620px] border-collapse text-[12px]">
             <thead>
               <tr className="bg-[#F4EFF1] text-left text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#241C21]">
                 <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 font-bold">Tarih</th>
                 <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 font-bold">İşlem Türü</th>
-                <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 font-bold">Açıklama</th>
                 <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 text-right font-bold">Borç (TL)</th>
                 <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 text-right font-bold">Alacak (TL)</th>
                 <th className="border-b-[1.6px] border-[#A5556E] px-2.5 py-2 text-right font-bold">Bakiye (TL)</th>
@@ -271,12 +273,12 @@ export default function AccountStatementSheet({
             <tbody>
               {doc.rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-2.5 py-10 text-center text-[12px] text-[#74616A]">
+                  <td colSpan={5} className="px-2.5 py-10 text-center text-[12px] text-[#74616A]">
                     {filtered
                       ? 'Seçilen dönemde hareket bulunmuyor.'
                       : pendingSales.length > 0
-                        ? 'Cariye işlenmiş hareket yok — yukarıdaki bekleyen satış onaylanınca peşinat ve taksitler buraya düşer.'
-                        : 'Bu müşteride henüz cari hareket yok. Satış yapıldığında peşinat ve taksitler buraya düşer.'}
+                        ? 'Cariye işlenmiş hareket yok — yukarıdaki bekleyen satış onaylanınca satış borcu buraya düşer.'
+                        : 'Bu müşteride henüz cari hareket yok. Satış yapıldığında borç, tahsilat aldıkça alacak satırı buraya düşer.'}
                   </td>
                 </tr>
               )}
@@ -285,10 +287,9 @@ export default function AccountStatementSheet({
                   <td className="whitespace-nowrap border-b border-[#EFE7EB] px-2.5 py-2 tabular-nums text-[#4a3a44]">
                     {formatDocDate(row.date)}
                   </td>
-                  <td className="whitespace-nowrap border-b border-[#EFE7EB] px-2.5 py-2 font-semibold" style={{ color: typeTone(row) }}>
-                    {row.type}
+                  <td className="border-b border-[#EFE7EB] px-2.5 py-2 font-semibold" style={{ color: typeTone(row) }}>
+                    {row.label}
                   </td>
-                  <td className="border-b border-[#EFE7EB] px-2.5 py-2 text-[#4a3a44]">{row.description}</td>
                   <td className="whitespace-nowrap border-b border-[#EFE7EB] px-2.5 py-2 text-right tabular-nums text-[#241C21]">
                     {formatAmount(row.debit)}
                   </td>
@@ -305,14 +306,13 @@ export default function AccountStatementSheet({
               <tfoot>
                 <tr className="bg-[#F7F6F6] text-[12px] font-bold text-[#241C21]">
                   <td className="px-2.5 py-2.5" />
-                  <td className="px-2.5 py-2.5" />
                   <td className="px-2.5 py-2.5 text-right">Toplam</td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{formatAmount(doc.totalDebit)}</td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{formatAmount(doc.totalCredit)}</td>
                   <td className="px-2.5 py-2.5" />
                 </tr>
                 <tr className="bg-[#F7F6F6] text-[12px] font-bold text-[#241C21]">
-                  <td className="px-2.5 pb-2.5" colSpan={4} />
+                  <td className="px-2.5 pb-2.5" colSpan={3} />
                   <td className="px-2.5 pb-2.5 text-right">Bakiye</td>
                   <td
                     className="whitespace-nowrap px-2.5 pb-2.5 text-right font-display text-[15px] tabular-nums"

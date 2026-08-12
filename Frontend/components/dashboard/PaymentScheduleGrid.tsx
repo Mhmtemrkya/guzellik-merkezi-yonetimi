@@ -2,75 +2,82 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 import { formatTL } from '@/lib/apiMappers'
-import type { MonthCell } from '@/lib/accountGrouping'
+import type { DueDateRow } from '@/lib/accountGrouping'
 
 /**
- * TAKSİT TAKVİMİ — Excel hücre mantığında, satır = vade.
+ * TAKSİT TAKVİMİ — satır = VADE TARİHİ (ay değil).
  *
- * Beş sütun: <b>Tarih · Planlanan Miktar · Ödenen Taksit · Kalan · Durum</b>.
+ * Dört sütun: <b>Tarih · Planlanan Miktar · Ödenen Taksit · Durum</b>.
  * Renk kuralı: ödendi YEŞİL · bekliyor SARI · vadesi geçtiyse KIRMIZI.
  * RENK TEK BAŞINA ANLAM TAŞIMAZ — "Durum" sütununda yazılı karşılığı da vardır
  * (renk körlüğü + siyah-beyaz çıktı).
  *
- * DEVİR (düzensiz ödeme): ödenmeyen ayın borcu sonraki ayın taksitinin üstüne biner.
- * "Planlanan Miktar" hücresi PLAN tutarını yazar, altında devreden varsa "+X devir → Y"
- * satırıyla o ay gerçekten ödenmesi gereken tutarı gösterir. "Kalan" sütunu ise o ayın
- * borcundan geriye kalanı (yani bir sonraki aya devredecek tutarı) verir.
- * Hesabı `lib/accountGrouping` yapar (bkz. oradaki "DÜZENSİZ ÖDEME (DEVİR) KURALI").
+ * AYNI GÜN TOPLANIR: müşterinin 12.08'de bir pakette 5.000, başkasında 2.000 taksiti varsa
+ * o gün tek satırda 7.000 yazar; hangi satıştan geldiği satırın altında dökülür (yalnız
+ * "Tümü" görünümünde — tek satış seçiliyken kaynak zaten bellidir).
+ *
+ * "Kalan" sütunu ve devir (carry) mantığı KALDIRILDI: devir aylık ızgaraya özeldi ve tahsilat
+ * hesap havuzundan dağıtıldığı için birden çok satışı birleştiren bu listede tanımsız kalıyordu.
  */
 
 const MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 
 /** Satır zemini + durum rozeti. Sarı = bekleyen, yeşil = ödendi, kırmızı = gecikmiş. */
-const CELL: Record<MonthCell['status'], { row: string; badge: string; label: string; mark: string }> = {
+const CELL: Record<DueDateRow['status'], { row: string; badge: string; label: string; mark: string }> = {
   paid: { row: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', label: 'Ödendi', mark: '✓' },
   partial: { row: 'bg-amber-50', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Kısmi', mark: '◐' },
   overdue: { row: 'bg-rose-50', badge: 'bg-rose-100 text-rose-800 border-rose-300', label: 'Gecikti', mark: '!' },
   upcoming: { row: 'bg-amber-50/60', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Bekliyor', mark: '·' },
-  none: { row: 'bg-white', badge: 'bg-[#f3e9ed] text-[#74616A] border-[#e3d2da]', label: '—', mark: '' },
 }
 
-function fmtDue(cell: MonthCell): string {
-  const iso = cell.firstDueDate
-  if (!iso) return `${MONTHS_SHORT[cell.month - 1]} ${cell.year}`
+/** "2026-08-12" → "12 Ağu 2026". */
+function fmtDue(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d} ${MONTHS_SHORT[Number(m) - 1] ?? ''} ${y}`
 }
 
 export default function PaymentScheduleGrid({
-  cells,
-  todayKey,
+  rows,
+  todayIso,
+  showSources = true,
 }: {
-  cells: MonthCell[]
-  /** `YYYY-MM` — içinde bulunulan ayın satırını vurgulamak ve oraya kaydırmak için. */
-  todayKey: string
+  rows: DueDateRow[]
+  /** `YYYY-MM-DD` yerel bugün — sıradaki vadeyi vurgulamak ve oraya kaydırmak için. */
+  todayIso: string
+  /** Kaynak dökümü ("hangi satıştan") gösterilsin mi — tek satış seçiliyken gereksiz. */
+  showSources?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const todayRef = useRef<HTMLTableRowElement | null>(null)
+  const focusRef = useRef<HTMLTableRowElement | null>(null)
 
-  // Vadesi olan aylar; taksitsiz aylar satır üretmez (sütun ızgarasında süreklilik için
-  // duruyorlardı, satır tablosunda yalnız gürültü olurlardı).
-  const rows = useMemo(() => cells.filter((c) => c.installmentCount > 0), [cells])
+  /**
+   * ODAK SATIRI: bugünden itibaren ilk vade (yoksa son satır). Aylık ızgarada "bu ay" satırı
+   * vardı; tarih listesinde her günün satırı olmadığı için bugünün kendisi listede olmayabilir.
+   */
+  const focusDate = useMemo(() => {
+    const next = rows.find((r) => r.date >= todayIso)
+    return next?.date ?? rows[rows.length - 1]?.date ?? ''
+  }, [rows, todayIso])
 
-  // Açılışta "bu ay" satırına kaydır: 24 aylık planda kullanıcı her seferinde elle arıyordu.
+  // Açılışta odak satırına kaydır: uzun planda kullanıcı her seferinde elle arıyordu.
   useEffect(() => {
     const box = scrollRef.current
-    const target = todayRef.current
+    const target = focusRef.current
     if (!box || !target) return
     box.scrollTop = Math.max(0, target.offsetTop - box.clientHeight / 2 + target.clientHeight / 2)
-  }, [rows, todayKey])
+  }, [rows, focusDate])
 
   const totals = useMemo(() => ({
-    due: rows.reduce((s, c) => s + c.due, 0),
-    paid: rows.reduce((s, c) => s + c.paid, 0),
-    remaining: rows.reduce((s, c) => s + c.remaining, 0),
-    overdue: rows.filter((c) => c.status === 'overdue').reduce((s, c) => s + c.remaining, 0),
+    due: rows.reduce((s, r) => s + r.due, 0),
+    paid: rows.reduce((s, r) => s + r.paid, 0),
+    remaining: rows.reduce((s, r) => s + r.remaining, 0),
+    overdue: rows.filter((r) => r.status === 'overdue').reduce((s, r) => s + r.remaining, 0),
   }), [rows])
 
   if (rows.length === 0) {
     return (
       <div className="rounded-[14px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#74616A]">
-        Bu müşteride taksit planı yok — satışlar peşin.
+        Bu seçimde taksit planı yok — satış peşin.
       </div>
     )
   }
@@ -94,7 +101,7 @@ export default function PaymentScheduleGrid({
       </div>
 
       <div ref={scrollRef} className="max-h-[420px] overflow-auto rounded-[12px] border border-[#EAD8DF]">
-        <table className="w-full min-w-[560px] border-collapse text-[12px]">
+        <table className="w-full min-w-[520px] border-collapse text-[12px]">
           {/* YAPIŞKANLIK HÜCREDE, thead/tfoot ÜZERİNDE DEĞİL: `position: sticky` bölüm
               elemanlarında (özellikle tfoot) tarayıcılar arasında güvenilir değil. */}
           <thead>
@@ -102,50 +109,48 @@ export default function PaymentScheduleGrid({
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2">Tarih</th>
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right">Planlanan Miktar</th>
               <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right">Ödenen Taksit</th>
-              <th className="sticky top-0 z-10 border-b border-r border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right">Kalan</th>
               <th className="sticky top-0 z-10 border-b border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-center">Durum</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => {
-              const s = CELL[c.status]
-              const isThisMonth = c.key === todayKey
+            {rows.map((r) => {
+              const s = CELL[r.status]
+              const isFocus = r.date === focusDate
+              const isToday = r.date === todayIso
               return (
                 <tr
-                  key={c.key}
-                  ref={isThisMonth ? todayRef : undefined}
-                  className={`${s.row} ${isThisMonth ? 'ring-1 ring-inset ring-[#A5556E]' : ''}`}
+                  key={r.date}
+                  ref={isFocus ? focusRef : undefined}
+                  className={`${s.row} ${isFocus ? 'ring-1 ring-inset ring-[#A5556E]' : ''}`}
                 >
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 align-top">
-                    <div className="font-semibold tabular-nums text-[#2A2027]">{fmtDue(c)}</div>
-                    <div className="text-[10px] text-[#74616A]">
-                      {isThisMonth ? 'bu ay' : `${MONTHS_SHORT[c.month - 1]} ${c.year}`}
-                      {c.installmentCount > 1 ? ` · ${c.installmentCount} taksit` : ''}
-                    </div>
+                    <div className="font-semibold tabular-nums text-[#2A2027]">{fmtDue(r.date)}</div>
+                    {(isToday || r.installmentCount > 1) && (
+                      <div className="text-[10px] text-[#74616A]">
+                        {isToday ? 'bugün' : ''}
+                        {isToday && r.installmentCount > 1 ? ' · ' : ''}
+                        {r.installmentCount > 1 ? `${r.installmentCount} taksit birleşti` : ''}
+                      </div>
+                    )}
                   </td>
 
-                  {/* PLANLANAN: plan tutarı + (varsa) devreden borç → o ay ödenmesi gereken */}
+                  {/* PLANLANAN: o günün toplamı + (Tümü'de, birden çok satış varsa) kaynak dökümü */}
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 text-right align-top">
-                    <div className="font-semibold tabular-nums text-[#2A2027]">{formatTL(Math.round(c.due))}</div>
-                    {c.carryIn > 0.005 && (
-                      <div className="text-[10px] font-semibold tabular-nums text-rose-700">
-                        +{formatTL(Math.round(c.carryIn))} devir → {formatTL(Math.round(c.expected))}
+                    <div className="font-semibold tabular-nums text-[#2A2027]">{formatTL(Math.round(r.due))}</div>
+                    {showSources && r.sources.length > 1 && (
+                      <div className="mt-0.5 space-y-0.5">
+                        {r.sources.map((src) => (
+                          <div key={src.accountId} className="text-[10px] text-[#74616A]">
+                            <span className="tabular-nums">{formatTL(Math.round(src.amount))}</span>
+                            {' · '}{src.label}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </td>
 
                   <td className="border-b border-r border-[#f0dce5] px-3 py-2 text-right align-top tabular-nums text-emerald-700">
-                    {c.paid > 0.005 ? formatTL(Math.round(c.paid)) : '—'}
-                  </td>
-
-                  {/* KALAN: o ayın borcundan geriye kalan = bir sonraki aya devredecek tutar */}
-                  <td className="border-b border-r border-[#f0dce5] px-3 py-2 text-right align-top">
-                    <div className={`font-bold tabular-nums ${c.outstanding > 0.005 ? 'text-[#8C4460]' : 'text-emerald-700'}`}>
-                      {formatTL(Math.round(c.outstanding))}
-                    </div>
-                    {c.outstanding > 0.005 && c.carryIn > 0.005 && (
-                      <div className="text-[10px] text-[#74616A]">sonraki aya devreder</div>
-                    )}
+                    {r.paid > 0.005 ? formatTL(Math.round(r.paid)) : '—'}
                   </td>
 
                   <td className="border-b border-[#f0dce5] px-3 py-2 text-center align-top">
@@ -163,7 +168,6 @@ export default function PaymentScheduleGrid({
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2">TOPLAM</td>
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums">{formatTL(Math.round(totals.due))}</td>
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums text-emerald-700">{formatTL(Math.round(totals.paid))}</td>
-              <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-right tabular-nums text-[#8C4460]">{formatTL(Math.round(totals.remaining))}</td>
               <td className="sticky bottom-0 border-t-2 border-[#f0dce5] bg-[#fff7fa] px-3 py-2 text-center text-[10px] font-semibold text-[#74616A]">
                 {rows.length} vade
               </td>

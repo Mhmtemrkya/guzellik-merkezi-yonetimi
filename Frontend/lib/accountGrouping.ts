@@ -31,38 +31,43 @@ import type { AccountInstallmentItem, CustomerAccount } from '@/lib/types'
  * birebir aynı kalır, kullanıcı da "bu ay ne almam gerekiyor" sorusunun cevabını görür.
  */
 
-/** Aylık takvim hücresi — bir müşterinin bir aydaki taksit durumu. */
-export interface MonthCell {
-  /** `YYYY-MM` — sütun anahtarı. */
-  key: string
-  year: number
-  /** 1-12. */
-  month: number
-  /** O ay vadesi gelen taksitlerin toplamı (PLAN tutarı — devir hariç). */
+/** Bir vade satırının hangi satışlardan beslendiği — "Tümü" görünümünde satır altında yazar. */
+export interface DueDateSource {
+  accountId: string
+  /** Satışın adı (paket/hizmet). */
+  label: string
+  /** O günkü plan tutarının bu satıştan gelen kısmı. */
+  amount: number
+}
+
+/**
+ * TAKSİT TAKVİMİ SATIRI — satır = VADE TARİHİ (ay değil).
+ *
+ * Aynı GÜNE düşen taksitler TOPLANIR: müşterinin 12.08'de bir pakette 5.000, başka pakette
+ * 2.000 taksiti varsa o gün tek satırda 7.000 yazar (hangi satıştan geldiği `sources`ta).
+ * Farklı tarihler kronolojik olarak araya girer — 12.08 · 15.08 · 17.08.
+ */
+export interface DueDateRow {
+  /** `YYYY-MM-DD` vade tarihi — satır anahtarı. */
+  date: string
+  /** O günün PLAN toplamı (aynı güne düşen taksitlerin toplamı). */
   due: number
   /** Bu vadelere dağıtılmış tahsilat. */
   paid: number
   /** Kalan (due − paid), negatife düşmez. */
   remaining: number
-  /** Önceki aylardan devreden ödenmemiş bakiye. */
-  carryIn: number
-  /** O ay ödenmesi gereken toplam: `due + carryIn`. */
-  expected: number
-  /** Sonraki aya devreden: `expected − paid` (= carryIn + remaining). */
-  outstanding: number
-  /** O aydaki ilk taksit vadesi (`YYYY-MM-DD`) — tabloda "Tarih" sütunu bunu gösterir. */
-  firstDueDate: string | null
-  /** O aya düşen taksit satırı sayısı (birden çok satıştan gelebilir). */
+  /** O güne düşen taksit satırı sayısı (birden çok satıştan gelebilir). */
   installmentCount: number
+  /** Katkı veren satışlar, payı büyükten küçüğe. */
+  sources: DueDateSource[]
   /**
-   * Hücre durumu:
-   * - `none` : o ay taksit yok
+   * Satır durumu:
    * - `paid` : tamamı ödendi (yeşil)
    * - `partial` : kısmen ödendi (amber)
    * - `overdue` : vadesi geçti, kalan var (kırmızı)
    * - `upcoming` : vadesi gelmedi (nötr)
    */
-  status: 'none' | 'paid' | 'partial' | 'overdue' | 'upcoming'
+  status: 'paid' | 'partial' | 'overdue' | 'upcoming'
 }
 
 export interface CustomerAccountGroup {
@@ -97,10 +102,23 @@ export function activeInstallments(a: CustomerAccount) {
   return a.installments.filter((i) => i.status !== 'Cancelled')
 }
 
-/** `YYYY-MM` anahtarı; boş/bozuk tarihte null. */
-function monthKeyOf(iso: string | null | undefined): string | null {
-  const s = (iso || '').slice(0, 7)
-  return /^\d{4}-\d{2}$/.test(s) ? s : null
+/**
+ * SATIŞIN EKRANDAKİ ADI — TEK KAYNAK (ekstre, taksit takvimi, tahsilat seçicisi).
+ *
+ * Adisyondan açılan carilerde `servicePackageName` "Paket satışı: X + Y" biçiminde geliyor.
+ * Bu ön ek her yerde gereksiz tekrar üretiyordu ("Paket Satışı (Paket satışı: X)" — canlı
+ * ekranda görüldü). YALNIZ bu bilinen ön ek kırpılır; "baş metinle başlıyorsa kes" gibi genel
+ * bir kural, adı gerçekten "Satış Danışmanlığı" olan bir paketi bozardı.
+ */
+export function saleDisplayName(a: Pick<CustomerAccount, 'servicePackageName' | 'name'>): string {
+  const raw = a.servicePackageName || a.name || 'Satış'
+  return raw.replace(/^\s*paket\s+satışı\s*:\s*/i, '').trim() || raw
+}
+
+/** `YYYY-MM-DD` gün anahtarı; boş/bozuk tarihte null. Taksit vadesi TAKVİM tarihidir. */
+function dayKeyOf(iso: string | null | undefined): string | null {
+  const s = (iso || '').slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
 }
 
 /**
@@ -180,97 +198,85 @@ export function groupAccountsByCustomer(accounts: CustomerAccount[]): CustomerAc
 }
 
 /**
- * Bir müşterinin AY AY taksit takvimi (Excel'deki "aylık ödeme ızgarası" karşılığı).
+ * Bir müşterinin TARİH TARİH taksit takvimi.
  *
- * Aynı ayda birden çok satışın taksiti olabilir — hepsi tek hücrede toplanır; kullanıcı
- * "bu ay bu müşteriden ne kadar alacağım" sorusunun cevabını arar, hangi satıştan geldiğini
- * satır detayında görür.
+ * <b>Satır = vade GÜNÜ, ay değil.</b> Aynı güne düşen taksitler toplanır: kullanıcı
+ * "bu müşteriden o gün ne kadar alacağım" sorusunun cevabını arar, hangi satıştan geldiğini
+ * satır altındaki kaynak dökümünde görür. Farklı tarihler kronolojik araya girer.
+ *
+ * `accountId` verilirse takvim YALNIZ o satışa daraltılır ("Tümü" = null/boş).
  *
  * `todayIso` dışarıdan verilir: test edilebilirlik + "bugün" hesabının YEREL güne göre
- * yapılması için (UTC gününe geçmek ay sınırında hücreyi kaydırır).
+ * yapılması için (UTC gününe geçmek gün sınırında satırın rengini kaydırır).
+ *
+ * DEVİR (carry) YOKTUR. Aylık ızgarada ödenmemiş ay bir sonrakine biniyordu ve bu "Kalan"
+ * sütununda gösteriliyordu; sütun kaldırıldı. Devri burada sürdürmek ayrıca tutarsız olurdu:
+ * tahsilat HESAP havuzundan dağıtılır (bir satışın gecikmesi başkasının taksitine binmez),
+ * oysa bu görünüm birden çok satışı tek listede birleştiriyor.
  */
-export function buildMonthlySchedule(group: CustomerAccountGroup, todayIso: string): MonthCell[] {
-  const byMonth = new Map<string, {
+export function buildDueDateSchedule(
+  group: CustomerAccountGroup,
+  todayIso: string,
+  accountId?: string | null,
+): DueDateRow[] {
+  const today = todayIso.slice(0, 10)
+  const scope = accountId
+    ? group.accounts.filter((a) => a.id === accountId)
+    : group.accounts
+
+  const byDay = new Map<string, {
     due: number; paid: number; remaining: number; anyOverdue: boolean
-    firstDueDate: string | null; installmentCount: number
+    installmentCount: number; sources: Map<string, DueDateSource>
   }>()
 
-  for (const a of group.accounts) {
+  for (const a of scope) {
+    const label = saleDisplayName(a)
     for (const i of activeInstallments(a)) {
-      const key = monthKeyOf(i.dueDate)
+      const key = dayKeyOf(i.dueDate)
       if (!key) continue
-      const cur = byMonth.get(key) ?? {
-        due: 0, paid: 0, remaining: 0, anyOverdue: false, firstDueDate: null, installmentCount: 0,
+      const cur = byDay.get(key) ?? {
+        due: 0, paid: 0, remaining: 0, anyOverdue: false,
+        installmentCount: 0, sources: new Map<string, DueDateSource>(),
       }
       cur.due += i.amount
       cur.paid += i.paidAmount
       cur.remaining += Math.max(0, i.remaining)
       if (i.overdue && i.remaining > 0.005) cur.anyOverdue = true
-      const day = (i.dueDate || '').slice(0, 10)
-      if (day && (!cur.firstDueDate || day < cur.firstDueDate)) cur.firstDueDate = day
       cur.installmentCount += 1
-      byMonth.set(key, cur)
+      const src = cur.sources.get(a.id) ?? { accountId: a.id, label, amount: 0 }
+      src.amount += i.amount
+      cur.sources.set(a.id, src)
+      byDay.set(key, cur)
     }
   }
 
-  if (byMonth.size === 0) return []
-
-  // Takvim SÜREKLİ olmalı: taksiti olmayan aylar da sütun olarak durur, yoksa "Mart→Haziran"
-  // gibi atlayan bir şerit çıkıp ödeme ritmi okunmaz hâle gelir.
-  const keys = [...byMonth.keys()].sort()
-  const [minY, minM] = keys[0].split('-').map(Number)
-  const [maxY, maxM] = keys[keys.length - 1].split('-').map(Number)
-  const nowKey = todayIso.slice(0, 7)
-  const today = todayIso.slice(0, 10)
-
-  const cells: MonthCell[] = []
-  // DEVİR: aylar kronolojik gezilir, ödenmemiş kalan bir sonraki aya taşınır (bkz. dosya başı).
-  let carry = 0
-  for (let y = minY, m = minM; y < maxY || (y === maxY && m <= maxM); m === 12 ? (m = 1, y += 1) : (m += 1)) {
-    const key = `${y}-${String(m).padStart(2, '0')}`
-    const v = byMonth.get(key)
-    if (!v) {
-      // Taksitsiz ay: devir bakiyesi taşınmaya devam eder ama HÜCRE BOŞTUR — o ayın kendi
-      // vadesi olmadığı için rengi de yoktur.
-      cells.push({
-        key, year: y, month: m, due: 0, paid: 0, remaining: 0,
-        carryIn: carry, expected: carry, outstanding: carry,
-        firstDueDate: null, installmentCount: 0,
-        status: 'none',
-      })
-      continue
-    }
-    // DURUM AYIN KENDİ HÂLİDİR, devrin değil: geçmişteki borç yüzünden gelecek ayı kırmızı
-    // yapmak "bu ayın parası gecikti" diye okunur. Devir ayrı sütun/rakam olarak görünür.
-    let status: MonthCell['status']
-    if (v.remaining <= 0.005) status = 'paid'
-    /*
-     * TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — bu bir tutarsızlık değil, ayrı soru.
-     *
-     * Cari kartındaki "GECİKTİ" rozeti borcun RESMEN geciktiğini söyler ve toleransı uygular:
-     * bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz
-     * (bkz. `apiMappers.normalizeAccount`). Bu ızgarada ise kullanıcı "GEÇEN AYIN PARASI GELDİ
-     * Mİ" diye bakar; geçmiş bir ayın hücresini, tolerans penceresi sürüyor diye nötr boyamak
-     * o soruyu cevapsız bırakırdı.
-     *
-     * Rozetlerin (tahsilat kuyruğu, taksit satırı) tek kaynağı `overdue` bayrağıdır; ham tarih
-     * karşılaştırması YALNIZ bu takvim hücresine özeldir ve testle sabitlenmiştir.
-     */
-    else if (v.anyOverdue || key < nowKey || (v.firstDueDate !== null && v.firstDueDate < today)) status = 'overdue'
-    else if (v.paid > 0.005) status = 'partial'
-    else status = 'upcoming'
-    const expected = v.due + carry
-    const outstanding = Math.max(0, carry + v.remaining)
-    cells.push({
-      key, year: y, month: m, due: v.due, paid: v.paid, remaining: v.remaining,
-      carryIn: carry, expected, outstanding,
-      firstDueDate: v.firstDueDate, installmentCount: v.installmentCount,
-      status,
+  return [...byDay.entries()]
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([date, v]) => {
+      /*
+       * TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — bu bir tutarsızlık değil, ayrı soru.
+       *
+       * Cari kartındaki "GECİKTİ" rozeti borcun RESMEN geciktiğini söyler ve toleransı uygular:
+       * bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz
+       * (bkz. `apiMappers.normalizeAccount`). Bu takvimde ise kullanıcı "O GÜNÜN PARASI GELDİ Mİ"
+       * diye bakar; geçmiş bir vadeyi, tolerans penceresi sürüyor diye nötr boyamak o soruyu
+       * cevapsız bırakırdı. Ham tarih karşılaştırması YALNIZ bu satıra özeldir, testle sabittir.
+       */
+      let status: DueDateRow['status']
+      if (v.remaining <= 0.005) status = 'paid'
+      else if (v.anyOverdue || date < today) status = 'overdue'
+      else if (v.paid > 0.005) status = 'partial'
+      else status = 'upcoming'
+      return {
+        date,
+        due: v.due,
+        paid: v.paid,
+        remaining: v.remaining,
+        installmentCount: v.installmentCount,
+        sources: [...v.sources.values()].sort((p, q) => q.amount - p.amount),
+        status,
+      }
     })
-    // Devre yalnız VADESİ GELMİŞ ay katkı verir (bkz. buildInstallmentRows'daki aynı kural).
-    if (key <= nowKey) carry = outstanding
-  }
-  return cells
 }
 
 /** Devirli taksit satırı — TEK bir cari hesabın planı (tahsilat modalı bunu kullanır). */
@@ -291,7 +297,7 @@ export interface InstallmentDueRow {
  *
  * <b>Hesap bazındadır</b>: sunucu tahsilatı hesap havuzundan dağıtır, bu yüzden bir satışın
  * gecikmesi başka satışın taksitine binmez. Müşteri düzeyindeki (tüm satışlar) toplu görünüm
- * için `buildMonthlySchedule` kullanılır.
+ * için `buildDueDateSchedule` kullanılır.
  */
 export function buildInstallmentRows(
   installments: AccountInstallmentItem[],
@@ -318,7 +324,7 @@ export function buildInstallmentRows(
       expected: item.amount + carryIn,
       outstanding,
       // GECİKME TEK KAYNAKTAN: `item.overdue` aylık toleransı (grace) zaten uygular.
-      // Ham "vade < bugün" eklemek toleransı deler (bkz. buildMonthlySchedule'daki not).
+      // Ham "vade < bugün" eklemek toleransı deler (bkz. buildDueDateSchedule'daki not).
       isOverdue: remaining > 0.005 && item.overdue,
     }
   })

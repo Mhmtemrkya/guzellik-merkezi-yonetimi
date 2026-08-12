@@ -34,7 +34,7 @@ function account(p: Partial<CustomerAccount> & { id: string; totalAmount: number
     customerId: p.customerId ?? 'c1',
     customerName: p.customerName ?? 'Ela Yılmaz',
     customerPhone: p.customerPhone ?? '+90 555 111 22 33',
-    servicePackageId: null,
+    servicePackageId: p.servicePackageId ?? null,
     servicePackageName: p.servicePackageName ?? 'Cilt Bakımı 10 Seans',
     name: p.name ?? 'Satış',
     totalAmount: p.totalAmount,
@@ -120,26 +120,24 @@ function referenceGroup() {
 }
 
 describe('buildStatementRows', () => {
-  it('satışı peşinat + taksitler olarak borçlandırır, tahsilatı alacak yazar', () => {
+  it('satışın TAMAMINI satış gününde tek borç satırı yazar, tahsilatı alacak', () => {
     const rows = buildStatementRows(referenceGroup(), [], TODAY)
 
-    expect(rows).toHaveLength(12) // 1 peşinat + 10 taksit + 1 tahsilat
-    expect(rows[0]).toMatchObject({ date: '2026-06-18', type: 'Peşinat', debit: 150000, credit: 0 })
-    expect(rows[0].description).toContain('Kayıt peşinatı')
+    expect(rows).toHaveLength(2) // 1 satış + 1 tahsilat — taksitler belgeye DÜŞMEZ
+    expect(rows[0]).toMatchObject({ date: '2026-06-18', type: 'Satış', debit: 580000, credit: 0 })
     // Aynı gün: önce borç, sonra tahsilat (bakiye önce eksiye düşmesin).
     expect(rows[1]).toMatchObject({ date: '2026-06-18', type: 'Tahsilat', credit: 150000, debit: 0 })
-    expect(rows[1].description).toContain('Nakit')
-    expect(rows[1].description).toContain('MKB-202606-00001')
-
-    // Vadesi geçmiş taksit "Taksit", gelecek olan "Taksit (Vade)".
-    expect(rows[2]).toMatchObject({ date: '2026-07-01', type: 'Taksit', debit: 43000 })
-    expect(rows[2].description).toBe('1. Taksit • 9-D')
-    expect(rows[4]).toMatchObject({ date: '2026-09-01', type: 'Taksit (Vade)' })
-    expect(rows[11]).toMatchObject({ date: '2027-04-01', type: 'Taksit (Vade)' })
-    expect(rows[11].description).toBe('10. Taksit • 9-D')
   })
 
-  it('peşin satışta tek "Satış" borç satırı üretir (taksit yoksa tamamı)', () => {
+  it('vadesi gelmemiş taksiti belgeye YAZMAZ — borcun toplamı yine satış tutarı', () => {
+    // Taksit ayrıca borçlandırılsaydı aynı tutar iki kez sayılırdı. Müşteri henüz ödemediği
+    // bir taksit için ikinci kez borçlanamaz; taksit zamanı belgeye düşen şey TAHSİLATTIR.
+    const rows = buildStatementRows(referenceGroup(), [], TODAY)
+    expect(rows.some((r) => r.label.includes('Taksit'))).toBe(false)
+    expect(rows.reduce((s, r) => s + r.debit, 0)).toBe(580000)
+  })
+
+  it('peşin satışta da tek "Satış" borç satırı üretir', () => {
     const group = groupAccountsByCustomer([
       account({ id: 'a1', totalAmount: 4000, servicePackageName: 'Lazer 5 Seans' }),
     ])[0]
@@ -148,8 +146,9 @@ describe('buildStatementRows', () => {
     expect(rows[0]).toMatchObject({ type: 'Satış', debit: 4000, description: 'Lazer 5 Seans' })
   })
 
-  it('iptal edilmiş taksitin tutarını "plan dışı bakiye" olarak borçta tutar', () => {
-    // Sunucu borcu yine `Total − Paid` sayar; iptal edilen taksit satırı plandan düşer.
+  it('iptal edilmiş taksit borcu EKSİLTMEZ (borç plandan değil satış tutarından okunur)', () => {
+    // Sunucu borcu `Total − Paid` sayar. Borç artık plan toplamından türetilmediği için
+    // iptal edilmiş taksit belgeyi hiç etkilemez — "plan dışı bakiye" düzeltmesine gerek kalmadı.
     const group = groupAccountsByCustomer([
       account({
         id: 'a1',
@@ -162,9 +161,100 @@ describe('buildStatementRows', () => {
       }),
     ])[0]
     const rows = buildStatementRows(group, [], TODAY)
-    const debit = rows.reduce((s, r) => s + r.debit, 0)
-    expect(debit).toBe(3000)
-    expect(rows.some((r) => r.description.includes('plan dışı bakiye'))).toBe(true)
+    expect(rows).toHaveLength(1)
+    expect(rows.reduce((s, r) => s + r.debit, 0)).toBe(3000)
+  })
+
+  it('işlem türü ile açıklamayı TEK sütunda birleştirir', () => {
+    const rows = buildStatementRows(referenceGroup(), [], TODAY)
+    expect(rows[0].label).toBe('Satış (9-D)')
+    // Tahsilatta önce ödeme yöntemi yazar (kullanıcı isteği: "Tahsilat (Nakit)").
+    expect(rows[1].label).toBe('Tahsilat (Nakit · 9-D · Belge: MKB-202606-00001)')
+  })
+
+  it('paket bağı olan satış "Paket Satışı" yazar, olmayan yalın "Satış" kalır', () => {
+    const [pkg] = groupAccountsByCustomer([
+      account({ id: 'a1', totalAmount: 30000, servicePackageId: 'pkg-1', servicePackageName: 'Ela Cilt Bakım Paketi' }),
+    ])
+    expect(buildStatementRows(pkg, [], TODAY)[0].label).toBe('Paket Satışı (Ela Cilt Bakım Paketi)')
+
+    // Hizmet ↔ ürün ayrımı cari DTO'sunda YOK — uydurma tür etiketi yazılmaz.
+    const [plain] = groupAccountsByCustomer([
+      account({ id: 'a2', totalAmount: 500, servicePackageName: 'Ağda' }),
+    ])
+    expect(buildStatementRows(plain, [], TODAY)[0].label).toBe('Satış (Ağda)')
+  })
+
+  it('"Paket satışı:" ön ekini kırpar — satışta da tahsilatta da tekrar etmez', () => {
+    // Adisyondan açılan carilerde `servicePackageName` = "Paket satışı: X + Y" (canlı veri).
+    const group = groupAccountsByCustomer([
+      account({
+        id: 'a1', totalAmount: 3600, servicePackageId: 'pkg-1',
+        servicePackageName: 'Paket satışı: Bölgesel İncelme + Cilt Bakımı',
+        payments: [{ id: 'p1', amount: 400, method: 'cash', reference: '', occurredAtUtc: '2026-07-05T09:00:00Z' }],
+      }),
+    ])[0]
+    const rows = buildStatementRows(group, [], TODAY)
+    expect(rows[0].label).toBe('Paket Satışı (Bölgesel İncelme + Cilt Bakımı)')
+    expect(rows[1].label).toBe('Tahsilat (Nakit · Bölgesel İncelme + Cilt Bakımı)')
+  })
+
+  it('adı gerçekten "Satış" ile başlayan paketi KIRPMAZ', () => {
+    const group = groupAccountsByCustomer([
+      account({ id: 'a1', totalAmount: 1000, servicePackageName: 'Satış Danışmanlığı' }),
+    ])[0]
+    expect(buildStatementRows(group, [], TODAY)[0].label).toBe('Satış (Satış Danışmanlığı)')
+  })
+
+  it('yöntemi kaydedilmemiş tahsilatta uydurma "Nakit" yazmaz', () => {
+    const group = groupAccountsByCustomer([
+      account({
+        id: 'a1', totalAmount: 1000, servicePackageName: 'X',
+        payments: [{ id: 'p1', amount: 400, method: '', reference: '', occurredAtUtc: '2026-07-01T09:00:00Z' }],
+      }),
+    ])[0]
+    expect(buildStatementRows(group, [], TODAY)[1].label).toBe('Tahsilat (Yöntem Kaydedilmemiş · X)')
+  })
+
+  it('satırları kronolojik ARTAN dizer: en yeni hareket EN ALTTA', () => {
+    const group = groupAccountsByCustomer([
+      account({ id: 'a1', totalAmount: 1000, soldAtUtc: '2026-06-01T09:00:00Z' }),
+      account({ id: 'a2', totalAmount: 2000, soldAtUtc: '2026-08-01T09:00:00Z' }),
+    ])[0]
+    const rows = buildStatementRows(group, [], TODAY)
+    expect(rows.map((r) => r.date)).toEqual(['2026-06-01', '2026-08-01'])
+  })
+
+  it('tarihi olmayan satırı EN ALTA koyar (eskiden belgenin tepesine düşüyordu)', () => {
+    const group = groupAccountsByCustomer([
+      account({ id: 'a1', totalAmount: 1000, soldAtUtc: '2026-06-01T09:00:00Z' }),
+      account({ id: 'a2', totalAmount: 2000, soldAtUtc: '', createdAtUtc: '' }),
+    ])[0]
+    const rows = buildStatementRows(group, [], TODAY)
+    expect(rows[rows.length - 1].date).toBe('')
+  })
+
+  it('kullanıcı senaryosu: 30.000 paket satışı → 5.000 tahsilat → bakiye 25.000', () => {
+    const group = groupAccountsByCustomer([
+      account({
+        id: 'a1', totalAmount: 30000,
+        servicePackageId: 'pkg-1', servicePackageName: 'Ela Cilt Bakım Paketi',
+        soldAtUtc: '2026-08-12T09:00:00Z',
+        payments: [{ id: 'p1', amount: 5000, method: 'cash', reference: '', occurredAtUtc: '2026-09-12T09:00:00Z' }],
+      }),
+    ])[0]
+    const doc = buildAccountStatement({ group, todayIso: '2026-09-20' })
+
+    expect(doc.rows).toHaveLength(2)
+    expect(doc.rows[0]).toMatchObject({
+      date: '2026-08-12', label: 'Paket Satışı (Ela Cilt Bakım Paketi)',
+      debit: 30000, credit: 0, balance: 30000,
+    })
+    expect(doc.rows[1]).toMatchObject({
+      date: '2026-09-12', label: 'Tahsilat (Nakit · Ela Cilt Bakım Paketi)',
+      debit: 0, credit: 5000, balance: 25000,
+    })
+    expect(doc.closing).toBe(25000)
   })
 
   it('canlı carideki iade (DTO alanı yok) ödeme toplamı ile paidAmount farkından yazılır', () => {
@@ -255,26 +345,24 @@ describe('buildAccountStatement — mutabakat', () => {
     ])[0]
 
     const doc = buildAccountStatement({ group, todayIso: TODAY, from: '2026-07-15' })
-    expect(doc.opening).toBe(1000) // 1.000 peşinat + 1.000 taksit − 1.000 tahsilat
-    expect(doc.rows[0]).toMatchObject({ type: 'Devir', debit: 1000, balance: 1000, date: '2026-07-15' })
+    // Satış (3.000) ve tahsilat (1.000) ikisi de 18.06 — tamamı devre girer.
+    expect(doc.opening).toBe(2000)
+    expect(doc.rows[0]).toMatchObject({ type: 'Devir', debit: 2000, balance: 2000, date: '2026-07-15' })
     expect(doc.closing).toBe(2000)
     expect(doc.netAll).toBe(2000) // süzgeç netAll'ı değiştirmez
   })
 
-  it('dönem sonu süzgeci gelecek taksitleri belgeden çıkarır ama netAll korunur', () => {
+  it('dönem sonu süzgeci sonraki hareketleri çıkarır ama netAll korunur', () => {
     const group = groupAccountsByCustomer([
       account({
-        id: 'a1', totalAmount: 2000,
-        installments: [
-          inst({ no: 1, dueDate: '2026-07-01', amount: 1000 }),
-          inst({ no: 2, dueDate: '2026-12-01', amount: 1000 }),
-        ],
+        id: 'a1', totalAmount: 2000, soldAtUtc: '2026-06-18T09:00:00Z',
+        payments: [{ id: 'p1', amount: 500, method: 'cash', reference: '', occurredAtUtc: '2026-12-01T09:00:00Z' }],
       }),
     ])[0]
     const doc = buildAccountStatement({ group, todayIso: TODAY, to: '2026-08-31' })
-    expect(doc.rows).toHaveLength(1)
-    expect(doc.closing).toBe(1000)
-    expect(doc.netAll).toBe(2000)
+    expect(doc.rows).toHaveLength(1) // yalnız satış; aralık dışı tahsilat belgeye girmez
+    expect(doc.closing).toBe(2000)
+    expect(doc.netAll).toBe(1500)
   })
 
   it('fazla ödemede belge NET yazar, KPI ile farkı raporlar', () => {

@@ -25,6 +25,7 @@ Map<String, dynamic> acc({
   required String id,
   required String customerId,
   String customerName = 'Ayşe Yılmaz',
+  String servicePackageName = '',
   double? totalAmount,
   double? paidAmount,
   double? remainingAmount,
@@ -41,7 +42,7 @@ Map<String, dynamic> acc({
     'customerName': customerName,
     'customerPhone': '0555 111 22 33',
     'name': 'Satış',
-    'servicePackageName': '',
+    'servicePackageName': servicePackageName,
     'totalAmount': total,
     'paidAmount': paid,
     'remainingAmount': remainingAmount ?? (total - paid < 0 ? 0.0 : total - paid),
@@ -104,16 +105,45 @@ void main() {
     });
   });
 
-  group('buildMonthlySchedule', () {
-    test('aynı ayda birden çok satışın taksitini TEK hücrede toplar', () {
+  group('buildDueDateSchedule', () {
+    test('AYNI GÜNE düşen taksitleri tek satırda TOPLAR, kaynağını dökümler', () {
+      // Kullanıcı senaryosu: 12.08'de bir pakette 5.000, başka pakette 2.000 → o gün 7.000.
       final g = groupAccountsByCustomer([
-        acc(id: 'a1', customerId: 'c1', installments: [inst(dueDate: '2026-08-10', amount: 400)]),
-        acc(id: 'a2', customerId: 'c1', installments: [inst(dueDate: '2026-08-25', amount: 600)]),
+        acc(id: 'a1', customerId: 'c1', servicePackageName: 'Cilt Bakımı',
+            installments: [inst(dueDate: '2026-08-12', amount: 5000)]),
+        acc(id: 'a2', customerId: 'c1', servicePackageName: 'Lazer',
+            installments: [inst(dueDate: '2026-08-12', amount: 2000)]),
       ]);
-      final cells = buildMonthlySchedule(g.first, '2026-08-15');
-      expect(cells.length, 1);
-      expect(cells.first.key, '2026-08');
-      expect(cells.first.due, 1000);
+      final rows = buildDueDateSchedule(g.first, '2026-08-01');
+      expect(rows.length, 1);
+      expect(rows.first.date, '2026-08-12');
+      expect(rows.first.due, 7000);
+      expect(rows.first.installmentCount, 2);
+      // Payı büyük olan önce; hangi satıştan geldiği satır altında yazar.
+      expect(rows.first.sources.map((s) => s.label).toList(), ['Cilt Bakımı', 'Lazer']);
+      expect(rows.first.sources.first.amount, 5000);
+    });
+
+    test('farklı tarihler KRONOLOJİK araya girer (12 → 15 → 17)', () {
+      // Üçüncü paket iki takvimin ORTASINA denk geliyor: 15'i araya girmeli.
+      final g = groupAccountsByCustomer([
+        acc(id: 'a1', customerId: 'c1', installments: [inst(dueDate: '2026-08-12', amount: 500)]),
+        acc(id: 'a2', customerId: 'c1', installments: [inst(dueDate: '2026-08-17', amount: 700)]),
+        acc(id: 'a3', customerId: 'c1', installments: [inst(dueDate: '2026-08-15', amount: 900)]),
+      ]);
+      expect(buildDueDateSchedule(g.first, '2026-08-01').map((r) => r.date).toList(),
+          ['2026-08-12', '2026-08-15', '2026-08-17']);
+    });
+
+    test('satış seçilince takvim YALNIZ o satışa daralır', () {
+      final g = groupAccountsByCustomer([
+        acc(id: 'a1', customerId: 'c1', installments: [inst(dueDate: '2026-08-12', amount: 5000)]),
+        acc(id: 'a2', customerId: 'c1', installments: [inst(dueDate: '2026-08-12', amount: 2000)]),
+      ]);
+      final only = buildDueDateSchedule(g.first, '2026-08-01', 'a2');
+      expect(only.length, 1);
+      expect(only.first.due, 2000);
+      expect(only.first.sources.length, 1);
     });
 
     test('durum renkleri: ödendi / kısmi / gecikmiş / bekleyen', () {
@@ -125,30 +155,35 @@ void main() {
           inst(dueDate: '2026-10-10', amount: 500),
         ]),
       ]);
-      final byKey = {for (final c in buildMonthlySchedule(g.first, '2026-08-15')) c.key: c};
-      expect(byKey['2026-06']!.status, 'paid');
+      final byDate = {for (final r in buildDueDateSchedule(g.first, '2026-08-15')) r.date: r};
+      expect(byDate['2026-06-10']!.status, 'paid');
       // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve vadesi geçti.
-      expect(byKey['2026-07']!.status, 'overdue');
-      expect(byKey['2026-09']!.status, 'partial');
-      expect(byKey['2026-10']!.status, 'upcoming');
+      expect(byDate['2026-07-10']!.status, 'overdue');
+      expect(byDate['2026-09-10']!.status, 'partial');
+      expect(byDate['2026-10-10']!.status, 'upcoming');
     });
 
-    test('takvim SÜREKLİ: taksitsiz aylar boş sütun olarak durur', () {
+    test('vadesiz gün SATIR ÜRETMEZ (aylık ızgaradaki boş sütunlar kalktı)', () {
       final g = groupAccountsByCustomer([
         acc(id: 'a1', customerId: 'c1', installments: [
           inst(dueDate: '2026-11-10', amount: 500),
           inst(dueDate: '2027-02-10', amount: 500),
         ]),
       ]);
-      final cells = buildMonthlySchedule(g.first, '2026-08-15');
-      expect(cells.map((c) => c.key).toList(), ['2026-11', '2026-12', '2027-01', '2027-02']);
-      expect(cells[1].status, 'none');
-      expect(cells[3].year, 2027);
+      expect(buildDueDateSchedule(g.first, '2026-08-15').map((r) => r.date).toList(),
+          ['2026-11-10', '2027-02-10']);
+    });
+
+    test('vadesi geçmiş gün, taksit "overdue" işaretlenmemiş olsa da kırmızıdır', () {
+      final g = groupAccountsByCustomer([
+        acc(id: 'a1', customerId: 'c1', installments: [inst(dueDate: '2026-07-10', amount: 500)]),
+      ]);
+      expect(buildDueDateSchedule(g.first, '2026-08-15').first.status, 'overdue');
     });
 
     test('taksiti olmayan müşteride takvim boştur (peşin satış)', () {
       final g = groupAccountsByCustomer([acc(id: 'a1', customerId: 'c1')]);
-      expect(buildMonthlySchedule(g.first, '2026-08-15'), isEmpty);
+      expect(buildDueDateSchedule(g.first, '2026-08-15'), isEmpty);
     });
   });
 }

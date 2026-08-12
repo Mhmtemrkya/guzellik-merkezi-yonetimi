@@ -8,7 +8,7 @@ import 'account_statement.dart';
 /// CARİ HESAP EKSTRESİ — yazdırılabilir belge (web `lib/statementPdf.ts` paritesi).
 ///
 /// Ekrandaki belge ile BİREBİR aynı düzen: kurum başlığı, cari bilgi ızgarası,
-/// Tarih / İşlem Türü / Açıklama / Borç / Alacak / Bakiye tablosu, toplam + bakiye bandı,
+/// Tarih / İşlem Türü / Borç / Alacak / Bakiye tablosu, toplam + bakiye bandı,
 /// tutarın yazıyla okunuşu. Rakamlar `buildAccountStatement`ten hazır gelir — bu dosya
 /// HESAP YAPMAZ, yalnız dizer (iki yerde hesap yapılsaydı ekran ile kâğıt ayrışabilirdi).
 ///
@@ -73,13 +73,15 @@ class StatementPdf {
           ),
         );
 
+    // BEŞ SÜTUN — "İşlem Türü" ile "Açıklama" tek sütunda birleşti (`row.label`).
+    // Aşağıdaki her TableRow bu sayıya göre elle kuruluyor: sütun sayısı değişirse boş hücre
+    // adetleri de değişmeli, yoksa tablo sessizce kayar.
     const widths = <int, pw.TableColumnWidth>{
       0: pw.FixedColumnWidth(52),
-      1: pw.FixedColumnWidth(62),
-      2: pw.FlexColumnWidth(),
+      1: pw.FlexColumnWidth(),
+      2: pw.FixedColumnWidth(62),
       3: pw.FixedColumnWidth(62),
-      4: pw.FixedColumnWidth(62),
-      5: pw.FixedColumnWidth(68),
+      4: pw.FixedColumnWidth(68),
     };
 
     final tableRows = <pw.TableRow>[
@@ -91,7 +93,6 @@ class StatementPdf {
         children: [
           cell('Tarih', boldText: true, color: _ink),
           cell('İşlem Türü', boldText: true, color: _ink),
-          cell('Açıklama', boldText: true, color: _ink),
           cell('Borç (TL)', right: true, boldText: true, color: _ink),
           cell('Alacak (TL)', right: true, boldText: true, color: _ink),
           cell('Bakiye (TL)', right: true, boldText: true, color: _ink),
@@ -101,7 +102,6 @@ class StatementPdf {
 
     if (doc.rows.isEmpty) {
       tableRows.add(pw.TableRow(children: [
-        cell(''),
         cell(''),
         cell('Bu dönemde hareket bulunmuyor.', color: _muted),
         cell(''),
@@ -119,8 +119,7 @@ class StatementPdf {
         ),
         children: [
           cell(formatDocDate(row.date)),
-          cell(row.type),
-          cell(row.description),
+          cell(row.label),
           cell(formatStatementAmount(row.debit), right: true, color: _ink),
           cell(formatStatementAmount(row.credit), right: true, color: _ink),
           cell(formatStatementAmount(row.balance), right: true, boldText: true, color: _ink),
@@ -131,14 +130,12 @@ class StatementPdf {
     // TOPLAM: yalnız borç/alacak — bakiye zaten son satırda yazılıdır.
     tableRows.add(pw.TableRow(children: [
       cell(''),
-      cell(''),
       cell('Toplam', right: true, boldText: true, color: _ink, size: 9),
       cell(formatStatementAmount(doc.totalDebit), right: true, boldText: true, color: _ink, size: 9),
       cell(formatStatementAmount(doc.totalCredit), right: true, boldText: true, color: _ink, size: 9),
       cell(''),
     ]));
     tableRows.add(pw.TableRow(children: [
-      cell(''),
       cell(''),
       cell(''),
       cell(''),

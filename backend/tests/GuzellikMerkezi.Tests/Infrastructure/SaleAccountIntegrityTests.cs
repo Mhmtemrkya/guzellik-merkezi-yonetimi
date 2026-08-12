@@ -301,6 +301,112 @@ public sealed class SaleAccountIntegrityTests
     }
 
     /// <summary>
+    /// TAKSİTLİ SATIŞTA PEŞİNAT PLANDAN DÜŞÜLÜR — kullanıcının anlattığı senaryo birebir.
+    ///
+    /// <para>
+    /// 20.000 ₺ satış · 10.000 ₺ peşin · kalan 12 taksit. Doğru davranış: plan finanse edilen
+    /// tutarı böler (10.000 / 12) ve peşinat HİÇBİR taksiti kapatmaz.
+    /// </para>
+    /// <para>
+    /// KUSUR (bu testin koruduğu): <c>ApproveCoreAsync</c> cariyi <c>depositAmount: 0m</c> ile
+    /// açıyordu. Plan 20.000'i 12'ye bölüyor (1.666,67/ay), sonra 10.000'lik peşinat
+    /// <c>AllocatePayments</c> ile vade sırasıyla dağıtılıp ilk ALTI taksiti "ödendi" gösteriyordu.
+    /// Toplam borç doğruydu, ama plan ve taksit durumları saçmalıyordu.
+    /// </para>
+    /// <para>
+    /// Aynı kural doğrudan cari yolunda zaten sabitti (<c>DepositInstallmentScenarioTests</c>);
+    /// kırık olan ADİSYON yoluydu ve hiçbir test onu geçmiyordu.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Approve_InstallmentSaleWithDownPayment_SplitsFinancedAmount_AndLeavesInstallmentsUnpaid()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 20000m, null, false));
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Payment, null, "Peşinat", 1, 10000m, null, false, "cash"));
+            adisyon.SetInstallmentPlan(12, DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var sale = await check.CustomerAccounts
+                .Include(a => a.Installments).Include(a => a.Payments)
+                .SingleAsync(a => a.Id == check.Adisyonlar.Single(x => x.Id == adisyonId).CustomerAccountId);
+
+            Assert.Equal(20000m, sale.TotalAmount);
+            Assert.Equal(10000m, sale.DepositAmount);   // peşinat PLAN alanına yazıldı
+
+            // Plan FİNANSE EDİLEN tutarı böler: 10.000 / 12 (kuruş farkı son taksitte).
+            Assert.Equal(12, sale.Installments.Count);
+            Assert.Equal(10000m, sale.Installments.Sum(i => i.Amount));
+            Assert.All(sale.Installments, i => Assert.InRange(i.Amount, 833m, 834m));
+
+            // Peşinat gerçek bir tahsilattır (kasa onu görür) ama HİÇBİR taksiti kapatmaz.
+            Assert.Equal(10000m, sale.Payments.Sum(p => p.Amount));
+            var allocation = sale.AllocatePayments();
+            Assert.All(sale.Installments, i => Assert.Equal(0m, allocation[i.Id]));
+
+            // Toplam borç ve tahsilat DEĞİŞMEDİ — düzelen yalnız planın tabanı.
+            Assert.Equal(10000m, sale.RemainingAmount);
+        }
+    }
+
+    /// <summary>
+    /// PEŞİN (taksitsiz) satışta peşinat alanı YAZILMAZ — davranış değişmemeli.
+    /// Plan yoksa <c>DepositAmount</c> hiçbir şey ifade etmez; 0 kalması eski kayıtlarla ve
+    /// ekstre/rapor formülleriyle tutarlılığı korur.
+    /// </summary>
+    [Fact]
+    public async Task Approve_CashSaleWithoutPlan_LeavesDepositZero()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 1250m, null, false));
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Payment, null, "Tahsilat", 1, 500m, null, false, "cash"));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId)).IsSuccess);
+
+        await using (var check = NewDb(options))
+        {
+            // Payments ZORUNLU: `PaidAmount` (dolayısıyla `RemainingAmount`) ödeme satırlarından
+            // türetilir — include edilmezse borç ödenmemiş görünür.
+            var sale = await check.CustomerAccounts.Include(a => a.Payments)
+                .SingleAsync(a => a.Id == check.Adisyonlar.Single(x => x.Id == adisyonId).CustomerAccountId);
+            Assert.Equal(0m, sale.DepositAmount);
+            Assert.Equal(1250m, sale.TotalAmount);
+            Assert.Equal(750m, sale.RemainingAmount);
+            Assert.Empty(sale.Installments);
+        }
+    }
+
+    /// <summary>
     /// SİLME DOĞRU KARTI BULUR: satış kendi kartını açtığı için ters kayıt tahsilatı orada bulur,
     /// kart kapanır; müşterinin eski kartının toplamı ve taksitleri hiç değişmez.
     /// </summary>

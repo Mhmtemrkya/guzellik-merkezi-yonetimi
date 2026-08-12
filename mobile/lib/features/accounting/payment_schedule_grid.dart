@@ -5,23 +5,32 @@ import '../../core/theme/app_theme.dart';
 import '../appointments/calendar_theme.dart';
 import 'account_grouping.dart';
 
-/// TAKSİT TAKVİMİ — web `PaymentScheduleGrid` paritesi, Excel hücre mantığı.
+/// TAKSİT TAKVİMİ — web `PaymentScheduleGrid` paritesi.
 ///
-/// Satır = vade. Beş sütun: **Tarih · Planlanan Miktar · Ödenen Taksit · Kalan · Durum**.
+/// Satır = VADE GÜNÜ (ay değil). Dört sütun: **Tarih · Planlanan · Ödenen · Durum**.
 /// Renk kuralı: ödendi YEŞİL · bekliyor SARI · vadesi geçtiyse KIRMIZI.
 /// RENK TEK BAŞINA ANLAM TAŞIMAZ — "Durum" sütununda yazılı karşılığı da var.
 ///
-/// DEVİR (düzensiz ödeme): ödenmeyen ayın borcu sonraki ayın taksitinin üstüne biner.
-/// "Planlanan Miktar" hücresi PLAN tutarını yazar, altında devreden varsa "+X devir → Y"
-/// satırıyla o ay gerçekten ödenmesi gereken tutarı gösterir; "Kalan" ise bir sonraki aya
-/// devredecek tutardır. Hesap `account_grouping.dart` + `account_installments.dart` içinde.
+/// AYNI GÜN TOPLANIR: 12.08'de bir pakette 5.000, başkasında 2.000 taksit varsa o gün tek
+/// satırda 7.000 yazar; kaynak dökümü satırın altında ("Tümü" görünümünde).
+///
+/// "Kalan" sütunu ve devir (carry) KALDIRILDI — devir aylık ızgaraya özeldi ve tahsilat hesap
+/// havuzundan dağıtıldığı için birden çok satışı birleştiren bu listede tanımsız kalıyordu.
 class PaymentScheduleGrid extends StatefulWidget {
-  const PaymentScheduleGrid({required this.cells, required this.todayKey, super.key});
+  const PaymentScheduleGrid({
+    required this.rows,
+    required this.todayIso,
+    this.showSources = true,
+    super.key,
+  });
 
-  final List<MonthCell> cells;
+  final List<DueDateRow> rows;
 
-  /// `YYYY-MM` — içinde bulunulan ayın satırını vurgulamak ve oraya kaydırmak için.
-  final String todayKey;
+  /// `YYYY-MM-DD` yerel bugün — sıradaki vadeyi vurgulamak ve oraya kaydırmak için.
+  final String todayIso;
+
+  /// Kaynak dökümü ("hangi satıştan") gösterilsin mi — tek satış seçiliyken gereksiz.
+  final bool showSources;
 
   @override
   State<PaymentScheduleGrid> createState() => _PaymentScheduleGridState();
@@ -31,16 +40,11 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
   final _scroll = ScrollController();
   static const _rowHeight = 58.0;
 
-  /// Vadesi olan aylar; taksitsiz aylar satır üretmez (sütun ızgarasında süreklilik için
-  /// duruyorlardı, satır tablosunda yalnız gürültü olurlardı).
-  List<MonthCell> get _rows =>
-      widget.cells.where((c) => c.installmentCount > 0).toList();
-
   @override
   void initState() {
     super.initState();
-    // Açılışta "bu ay" satırına kaydır: 24 aylık planda kullanıcı her seferinde elle arıyordu.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToToday());
+    // Açılışta odak satırına kaydır: uzun planda kullanıcı her seferinde elle arıyordu.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFocus());
   }
 
   @override
@@ -49,9 +53,17 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
     super.dispose();
   }
 
-  void _scrollToToday() {
+  /// ODAK: bugünden itibaren ilk vade. Tarih listesinde bugünün kendi satırı olmayabilir.
+  String get _focusDate {
+    for (final r in widget.rows) {
+      if (r.date.compareTo(widget.todayIso) >= 0) return r.date;
+    }
+    return widget.rows.isEmpty ? '' : widget.rows.last.date;
+  }
+
+  void _scrollToFocus() {
     if (!_scroll.hasClients) return;
-    final idx = _rows.indexWhere((c) => c.key == widget.todayKey);
+    final idx = widget.rows.indexWhere((r) => r.date == _focusDate);
     if (idx < 0) return;
     final target = (idx * _rowHeight) - 80;
     _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
@@ -72,11 +84,8 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
     }
   }
 
-  static String _fmtDue(MonthCell c) {
-    final iso = c.firstDueDate;
-    if (iso == null || iso.isEmpty) {
-      return DateFormat('MMM yyyy', 'tr_TR').format(DateTime(c.year, c.month));
-    }
+  /// "2026-08-12" → "12 Ağu 2026".
+  static String _fmtDue(String iso) {
     final d = DateTime.tryParse(iso);
     if (d == null) return iso;
     return DateFormat('d MMM yyyy', 'tr_TR').format(d);
@@ -84,7 +93,7 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _rows;
+    final rows = widget.rows;
     if (rows.isEmpty) {
       return Container(
         width: double.infinity,
@@ -94,15 +103,15 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.border),
         ),
-        child: const Text('Bu müşteride taksit planı yok — satışlar peşin.',
+        child: const Text('Bu seçimde taksit planı yok — satış peşin.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: AppColors.muted)),
       );
     }
 
-    final totalDue = rows.fold<double>(0, (s, c) => s + c.due);
-    final totalPaid = rows.fold<double>(0, (s, c) => s + c.paid);
-    final totalRemaining = rows.fold<double>(0, (s, c) => s + c.remaining);
+    final totalDue = rows.fold<double>(0, (s, r) => s + r.due);
+    final totalPaid = rows.fold<double>(0, (s, r) => s + r.paid);
+    final totalRemaining = rows.fold<double>(0, (s, r) => s + r.remaining);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,7 +146,7 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
                   itemBuilder: (_, index) => _dataRow(rows[index]),
                 ),
               ),
-              _totalRow(rows.length, totalDue, totalPaid, totalRemaining),
+              _totalRow(rows.length, totalDue, totalPaid),
             ],
           ),
         ),
@@ -170,24 +179,29 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         child: Row(
           children: const [
-            Expanded(flex: 26, child: _Head('Tarih')),
-            Expanded(flex: 24, child: _Head('Planlanan', right: true)),
-            Expanded(flex: 20, child: _Head('Ödenen', right: true)),
-            Expanded(flex: 20, child: _Head('Kalan', right: true)),
+            Expanded(flex: 30, child: _Head('Tarih')),
+            Expanded(flex: 30, child: _Head('Planlanan', right: true)),
+            Expanded(flex: 22, child: _Head('Ödenen', right: true)),
             Expanded(flex: 20, child: _Head('Durum', center: true)),
           ],
         ),
       );
 
-  Widget _dataRow(MonthCell c) {
-    final s = _style(c.status);
-    final isThisMonth = c.key == widget.todayKey;
+  Widget _dataRow(DueDateRow r) {
+    final s = _style(r.status);
+    final isFocus = r.date == _focusDate;
+    final isToday = r.date == widget.todayIso;
+    final note = [
+      if (isToday) 'bugün',
+      if (r.installmentCount > 1) '${r.installmentCount} taksit birleşti',
+    ].join(' · ');
+
     return Container(
       decoration: BoxDecoration(
         color: s.bg,
         border: Border(
           top: const BorderSide(color: Color(0xFFF0DCE5)),
-          left: isThisMonth
+          left: isFocus
               ? const BorderSide(color: AppColors.primaryDark, width: 2.5)
               : BorderSide.none,
         ),
@@ -197,53 +211,42 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            flex: 26,
+            flex: 30,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_fmtDue(c),
+                Text(_fmtDue(r.date),
                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                Text(
-                    isThisMonth
-                        ? 'bu ay'
-                        : (c.installmentCount > 1 ? '${c.installmentCount} taksit' : ''),
-                    style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+                if (note.isNotEmpty)
+                  Text(note, style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
               ],
             ),
           ),
           Expanded(
-            flex: 24,
+            flex: 30,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(CalendarText.tl(c.due),
+                Text(CalendarText.tl(r.due),
                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                // DEVİR: önceki ayların borcu bu ayın üstüne biner.
-                if (c.carryIn > 0.005)
-                  Text('+${CalendarText.tl(c.carryIn)} → ${CalendarText.tl(c.expected)}',
-                      style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF9F1239))),
+                // KAYNAK DÖKÜMÜ: aynı güne birden çok satıştan taksit düştüyse hangisinden
+                // ne kadar geldiği yazılır — yoksa toplam "nereden çıktı" sorusu kalırdı.
+                if (widget.showSources && r.sources.length > 1)
+                  ...r.sources.map((src) => Text(
+                        '${CalendarText.tl(src.amount)} · ${src.label}',
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 9.5, color: AppColors.muted),
+                      )),
               ],
             ),
           ),
           Expanded(
-            flex: 20,
-            child: Text(c.paid > 0.005 ? CalendarText.tl(c.paid) : '—',
+            flex: 22,
+            child: Text(r.paid > 0.005 ? CalendarText.tl(r.paid) : '—',
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 11.5, color: Color(0xFF065F46))),
-          ),
-          Expanded(
-            flex: 20,
-            child: Text(CalendarText.tl(c.outstanding),
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: c.outstanding > 0.005
-                        ? AppColors.primaryDark
-                        : const Color(0xFF065F46))),
           ),
           Expanded(
             flex: 20,
@@ -257,36 +260,28 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
     );
   }
 
-  Widget _totalRow(int count, double due, double paid, double remaining) => Container(
+  Widget _totalRow(int count, double due, double paid) => Container(
         color: const Color(0xFFFFF7FA),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(
           children: [
             const Expanded(
-                flex: 26,
+                flex: 30,
                 child: Text('TOPLAM',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800))),
             Expanded(
-                flex: 24,
+                flex: 30,
                 child: Text(CalendarText.tl(due),
                     textAlign: TextAlign.right,
                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800))),
             Expanded(
-                flex: 20,
+                flex: 22,
                 child: Text(CalendarText.tl(paid),
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF065F46)))),
-            Expanded(
-                flex: 20,
-                child: Text(CalendarText.tl(remaining),
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryDark))),
             Expanded(
                 flex: 20,
                 child: Text('$count vade',

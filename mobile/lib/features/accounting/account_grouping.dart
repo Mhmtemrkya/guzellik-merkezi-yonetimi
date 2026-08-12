@@ -10,31 +10,38 @@ import 'account_installments.dart';
 /// VERİ MODELİ DEĞİŞMEZ, yalnız GÖRÜNÜM gruplanır: satır = müşteri, açılınca altında kendi
 /// satışları durur. Tahsilat hâlâ TEK bir satışın carisine yazılır.
 
-/// Aylık takvim hücresi — bir müşterinin bir aydaki taksit durumu.
-class MonthCell {
-  MonthCell({
-    required this.key,
-    required this.year,
-    required this.month,
+/// Bir vade satırının hangi satışlardan beslendiği — "Tümü" görünümünde satır altında yazar.
+class DueDateSource {
+  DueDateSource({required this.accountId, required this.label, required this.amount});
+
+  final String accountId;
+
+  /// Satışın adı (paket/hizmet).
+  final String label;
+
+  /// O günkü plan tutarının bu satıştan gelen kısmı.
+  double amount;
+}
+
+/// TAKSİT TAKVİMİ SATIRI — satır = VADE GÜNÜ (ay değil).
+///
+/// Aynı GÜNE düşen taksitler TOPLANIR: müşterinin 12.08'de bir pakette 5.000, başka pakette
+/// 2.000 taksiti varsa o gün tek satırda 7.000 yazar. Farklı tarihler kronolojik araya girer.
+class DueDateRow {
+  DueDateRow({
+    required this.date,
     required this.due,
     required this.paid,
     required this.remaining,
-    required this.carryIn,
-    required this.expected,
-    required this.outstanding,
-    required this.firstDueDate,
     required this.installmentCount,
+    required this.sources,
     required this.status,
   });
 
-  /// `YYYY-MM` — sütun anahtarı.
-  final String key;
-  final int year;
+  /// `YYYY-MM-DD` vade tarihi — satır anahtarı.
+  final String date;
 
-  /// 1-12.
-  final int month;
-
-  /// O ay vadesi gelen taksitlerin toplamı.
+  /// O günün PLAN toplamı.
   final double due;
 
   /// Bu vadelere dağıtılmış tahsilat.
@@ -43,22 +50,13 @@ class MonthCell {
   /// Kalan (due − paid), negatife düşmez.
   final double remaining;
 
-  /// Önceki (vadesi gelmiş) aylardan devreden ödenmemiş bakiye.
-  final double carryIn;
-
-  /// O ay ödenmesi gereken toplam: due + carryIn.
-  final double expected;
-
-  /// Sonraki aya devreden: carryIn + remaining.
-  final double outstanding;
-
-  /// O aydaki ilk taksit vadesi (YYYY-MM-DD) — tabloda "Tarih" sütunu bunu gösterir.
-  final String? firstDueDate;
-
-  /// O aya düşen taksit satırı sayısı (birden çok satıştan gelebilir).
+  /// O güne düşen taksit satırı sayısı (birden çok satıştan gelebilir).
   final int installmentCount;
 
-  /// `none` taksit yok · `paid` ödendi · `partial` kısmi · `overdue` gecikmiş · `upcoming` bekleyen.
+  /// Katkı veren satışlar, payı büyükten küçüğe.
+  final List<DueDateSource> sources;
+
+  /// `paid` ödendi · `partial` kısmi · `overdue` gecikmiş · `upcoming` bekleyen.
   final String status;
 }
 
@@ -90,12 +88,24 @@ class CustomerAccountGroup {
   int sessionsRemaining = 0;
 }
 
-/// `YYYY-MM` anahtarı; boş/bozuk tarihte null.
-String? _monthKeyOf(String? iso) {
+/// SATIŞIN EKRANDAKİ ADI — TEK KAYNAK (ekstre, taksit takvimi, tahsilat seçicisi).
+///
+/// Adisyondan açılan carilerde `servicePackageName` "Paket satışı: X + Y" biçiminde geliyor;
+/// bu ön ek her yerde gereksiz tekrar üretiyordu. YALNIZ bu bilinen ön ek kırpılır — genel bir
+/// "baş metinle başlıyorsa kes" kuralı, adı gerçekten "Satış Danışmanlığı" olan paketi bozardı.
+String saleDisplayName(Map<String, dynamic> account) {
+  final raw = valueOf(account, const ['servicePackageName', 'name'], fallback: 'Satış');
+  final trimmed =
+      raw.replaceFirst(RegExp(r'^\s*paket\s+satışı\s*:\s*', caseSensitive: false), '').trim();
+  return trimmed.isEmpty ? raw : trimmed;
+}
+
+/// `YYYY-MM-DD` gün anahtarı; boş/bozuk tarihte null. Taksit vadesi TAKVİM tarihidir.
+String? _dayKeyOf(String? iso) {
   final s = (iso ?? '');
-  if (s.length < 7) return null;
-  final k = s.substring(0, 7);
-  return RegExp(r'^\d{4}-\d{2}$').hasMatch(k) ? k : null;
+  if (s.length < 10) return null;
+  final k = s.substring(0, 10);
+  return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k) ? k : null;
 }
 
 /// Cari listesini müşteriye göre gruplar. `customerId` boş olan kayıt (veri bozukluğu) kendi
@@ -158,96 +168,79 @@ List<CustomerAccountGroup> groupAccountsByCustomer(List<Map<String, dynamic>> ac
   return map.values.toList();
 }
 
-/// Bir müşterinin AY AY taksit takvimi (Excel'deki "aylık ödeme ızgarası" karşılığı).
+/// Bir müşterinin TARİH TARİH taksit takvimi (web `buildDueDateSchedule` paritesi).
 ///
-/// Aynı ayda birden çok satışın taksiti olabilir — hepsi tek hücrede toplanır. `todayIso`
-/// dışarıdan verilir: "bugün" hesabı YEREL güne göre yapılmalı (UTC gününe geçmek ay sınırında
-/// hücreyi kaydırır).
-List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso) {
-  final byMonth = <String, List<double>>{}; // [due, paid, remaining, anyOverdue(0/1), count]
-  final firstDue = <String, String>{};
+/// Satır = vade GÜNÜ, ay değil. Aynı güne düşen taksitler toplanır; hangi satıştan geldiği
+/// `sources`ta durur. `accountId` verilirse takvim YALNIZ o satışa daralır ("Tümü" = null).
+///
+/// `todayIso` dışarıdan verilir: "bugün" hesabı YEREL güne göre yapılmalı (UTC gününe geçmek
+/// gün sınırında satırın rengini kaydırır).
+///
+/// DEVİR (carry) YOKTUR: aylık ızgaradaki devir "Kalan" sütununda gösteriliyordu, o sütun
+/// kaldırıldı. Ayrıca devir HESAP bazlıdır (bir satışın gecikmesi başkasının taksitine binmez),
+/// bu görünüm ise birden çok satışı birleştirebiliyor.
+List<DueDateRow> buildDueDateSchedule(
+  CustomerAccountGroup group,
+  String todayIso, [
+  String? accountId,
+]) {
+  final today = todayIso.length >= 10 ? todayIso.substring(0, 10) : todayIso;
+  final scope = (accountId == null || accountId.isEmpty)
+      ? group.accounts
+      : group.accounts.where((a) => '${a['id'] ?? ''}' == accountId).toList();
 
-  for (final a in group.accounts) {
+  // [due, paid, remaining, anyOverdue(0/1), count]
+  final byDay = <String, List<double>>{};
+  final sources = <String, Map<String, DueDateSource>>{};
+
+  for (final a in scope) {
+    final label = saleDisplayName(a);
+    final aid = '${a['id'] ?? ''}';
     // TARİH GEÇİRİLİR: parser gecikmeyi kendi hesaplar; geçirilmezse takvim, verilen
     // todayIso ile değil GERÇEK bugünle boyanır (web'de bu bayrak sunucudan gelir).
     for (final i in parseInstallments(a, todayIso).where((i) => !i.cancelled)) {
-      final key = _monthKeyOf(i.dueDate);
+      final key = _dayKeyOf(i.dueDate);
       if (key == null) continue;
-      final cur = byMonth[key] ??= [0, 0, 0, 0, 0];
+      final cur = byDay[key] ??= [0, 0, 0, 0, 0];
       cur[0] += i.amount;
       cur[1] += i.paidAmount;
       cur[2] += i.remaining > 0 ? i.remaining : 0;
       if (i.overdue && i.remaining > 0.005) cur[3] = 1;
       cur[4] += 1;
-      final day = i.dueDate.length >= 10 ? i.dueDate.substring(0, 10) : i.dueDate;
-      final prev = firstDue[key];
-      if (day.isNotEmpty && (prev == null || day.compareTo(prev) < 0)) firstDue[key] = day;
+      final bucket = sources[key] ??= <String, DueDateSource>{};
+      final src = bucket[aid] ??= DueDateSource(accountId: aid, label: label, amount: 0);
+      src.amount += i.amount;
     }
   }
 
-  if (byMonth.isEmpty) return const [];
-
-  // Takvim SÜREKLİ olmalı: taksiti olmayan aylar da sütun olarak durur, yoksa "Mart→Haziran"
-  // gibi atlayan bir şerit çıkıp ödeme ritmi okunmaz hâle gelir.
-  final keys = byMonth.keys.toList()..sort();
-  final first = keys.first.split('-');
-  final last = keys.last.split('-');
-  final minY = int.parse(first[0]), minM = int.parse(first[1]);
-  final maxY = int.parse(last[0]), maxM = int.parse(last[1]);
-  final nowKey = todayIso.length >= 7 ? todayIso.substring(0, 7) : '';
-
-  final today = todayIso.length >= 10 ? todayIso.substring(0, 10) : todayIso;
-  final cells = <MonthCell>[];
-  // DEVİR: aylar kronolojik gezilir, ödenmemiş kalan sonraki aya taşınır (bkz.
-  // account_installments.dart → "DÜZENSİZ ÖDEME (DEVİR) KURALI").
-  var carry = 0.0;
-  var y = minY, m = minM;
-  while (y < maxY || (y == maxY && m <= maxM)) {
-    final key = '$y-${m.toString().padLeft(2, '0')}';
-    final v = byMonth[key];
-    if (v == null) {
-      // Taksitsiz ay: devir taşınmaya devam eder ama HÜCRE BOŞTUR (kendi vadesi yok).
-      cells.add(MonthCell(
-          key: key, year: y, month: m, due: 0, paid: 0, remaining: 0,
-          carryIn: carry, expected: carry, outstanding: carry,
-          firstDueDate: null, installmentCount: 0, status: 'none'));
+  final keys = byDay.keys.toList()..sort();
+  return keys.map((date) {
+    final v = byDay[date]!;
+    // TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — tutarsızlık değil, ayrı soru:
+    // rozet "borç resmen gecikti mi" der (tolerans uygulanır), bu takvim ise "o günün parası
+    // geldi mi" der. Ham tarih karşılaştırması yalnız bu satıra özeldir (web ile aynı kural).
+    final String status;
+    if (v[2] <= 0.005) {
+      status = 'paid';
+    } else if (v[3] == 1 || date.compareTo(today) < 0) {
+      status = 'overdue';
+    } else if (v[1] > 0.005) {
+      status = 'partial';
     } else {
-      final due = firstDue[key];
-      // DURUM AYIN KENDİ HÂLİDİR, devrin değil: geçmişteki borç yüzünden gelecek ayı kırmızı
-      // yapmak "bu ayın parası gecikti" diye okunur.
-      //
-      // TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — tutarsızlık değil, ayrı soru:
-      // rozet "borç resmen gecikti mi" der (tolerans uygulanır), bu ızgara ise "geçen ayın
-      // parası geldi mi" der. Rozetlerin tek kaynağı `overdue` bayrağıdır; ham tarih
-      // karşılaştırması yalnız bu hücreye özeldir (web `accountGrouping.ts` ile aynı kural).
-      final String status;
-      if (v[2] <= 0.005) {
-        status = 'paid';
-      } else if (v[3] == 1 ||
-          (nowKey.isNotEmpty && key.compareTo(nowKey) < 0) ||
-          (due != null && due.compareTo(today) < 0)) {
-        status = 'overdue';
-      } else if (v[1] > 0.005) {
-        status = 'partial';
-      } else {
-        status = 'upcoming';
-      }
-      final outstanding = carry + v[2];
-      cells.add(MonthCell(
-          key: key, year: y, month: m, due: v[0], paid: v[1], remaining: v[2],
-          carryIn: carry, expected: v[0] + carry, outstanding: outstanding,
-          firstDueDate: due, installmentCount: v[4].toInt(), status: status));
-      // Devre yalnız VADESİ GELMİŞ ay katkı verir.
-      if (nowKey.isNotEmpty && key.compareTo(nowKey) <= 0) carry = outstanding;
+      status = 'upcoming';
     }
-    if (m == 12) {
-      m = 1;
-      y += 1;
-    } else {
-      m += 1;
-    }
-  }
-  return cells;
+    final list = (sources[date]?.values.toList() ?? <DueDateSource>[])
+      ..sort((p, q) => q.amount.compareTo(p.amount));
+    return DueDateRow(
+      date: date,
+      due: v[0],
+      paid: v[1],
+      remaining: v[2],
+      installmentCount: v[4].toInt(),
+      sources: list,
+      status: status,
+    );
+  }).toList();
 }
 
 // ---------------------------------------------------------------------------

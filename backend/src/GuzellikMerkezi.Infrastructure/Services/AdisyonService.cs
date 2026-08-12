@@ -709,8 +709,24 @@ public sealed class AdisyonService : IAdisyonService
                 var name = namedSaleItems.Count == 1
                     ? namedSaleItems[0].Description
                     : $"{(hasInstallmentPlan ? "Taksitli satış" : "Satış")} · {saleAtUtc:dd.MM.yyyy}";
+                // PEŞİNAT = FİŞTE SATIŞ ANINDA TAHSİL EDİLEN TUTAR.
+                //
+                // Buraya 0m geçiliyordu ve taksitli satış şöyle bozuluyordu: 20.000'lik pakette
+                // 10.000 peşinat alınsa bile plan 20.000'i 12'ye bölüyor (1.666,67/ay), sonra o
+                // 10.000'lik tahsilat `AllocatePayments` ile vade sırasıyla dağıtılıp İLK ALTI
+                // TAKSİTİ "ödendi" gösteriyordu. Doğrusu: plan finanse edilen tutarı böler
+                // (20.000 − 10.000 = 10.000 → 833,33/ay) ve peşinat havuzdan düşüldüğü için
+                // hiçbir taksiti kapatmaz. Toplam borç ve tahsilat DEĞİŞMEZ — yalnız planın
+                // taban tutarı ve taksitlerin "ödendi" durumu düzelir.
+                //
+                // Yalnız TAKSİTLİ satışta anlamlı: peşin satışta plan yoktur, `DepositAmount`
+                // orada bir şey ifade etmez ve 0 kalır (davranış değişmesin).
+                // Fazla tahsilatta toplama kırpılır: `ChangeTotal` peşinat > toplam durumunda atar.
+                var deposit = hasInstallmentPlan
+                    ? Math.Clamp(payment, 0m, Math.Max(0, charge))
+                    : 0m;
                 var account = new CustomerAccount(tenantId, adisyon.BranchId, adisyon.CustomerId, null,
-                    name, Math.Max(0, charge), 0m);
+                    name, Math.Max(0, charge), deposit);
                 account.SetSaleInfo(saleAtUtc, null);
                 if (hasInstallmentPlan && charge > 0)
                     account.RebuildInstallments(adisyon.PlannedInstallmentCount, adisyon.PlannedFirstDueDate!.Value);

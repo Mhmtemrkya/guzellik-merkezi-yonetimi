@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  allocateAcrossAccounts, buildGlobalDueQueue, buildInstallmentRows, buildMonthlySchedule,
+  allocateAcrossAccounts, buildDueDateSchedule, buildGlobalDueQueue, buildInstallmentRows,
   dueThisMonth, groupAccountsByCustomer, planCollectionCalls, summarizeAllAccounts,
 } from './accountGrouping'
 import type { AccountInstallmentItem, CustomerAccount } from './types'
@@ -131,16 +131,48 @@ describe('groupAccountsByCustomer', () => {
   })
 })
 
-describe('buildMonthlySchedule', () => {
-  it('aynı ayda birden çok satışın taksitini TEK hücrede toplar', () => {
+describe('buildDueDateSchedule', () => {
+  it('AYNI GÜNE düşen taksitleri tek satırda TOPLAR, kaynağını dökümler', () => {
+    // Kullanıcı senaryosu: 12.08'de bir pakette 5.000, başka pakette 2.000 → o gün 7.000.
     const [g] = groupAccountsByCustomer([
-      acc({ id: 'a1', customerId: 'c1', installments: [inst({ dueDate: '2026-08-10', amount: 400 })] }),
-      acc({ id: 'a2', customerId: 'c1', installments: [inst({ dueDate: '2026-08-25', amount: 600 })] }),
+      acc({
+        id: 'a1', customerId: 'c1', servicePackageName: 'Cilt Bakımı',
+        installments: [inst({ dueDate: '2026-08-12', amount: 5000 })],
+      }),
+      acc({
+        id: 'a2', customerId: 'c1', servicePackageName: 'Lazer',
+        installments: [inst({ dueDate: '2026-08-12', amount: 2000 })],
+      }),
     ])
-    const cells = buildMonthlySchedule(g, '2026-08-15')
-    expect(cells).toHaveLength(1)
-    expect(cells[0].key).toBe('2026-08')
-    expect(cells[0].due).toBe(1000)
+    const rows = buildDueDateSchedule(g, '2026-08-01')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].date).toBe('2026-08-12')
+    expect(rows[0].due).toBe(7000)
+    expect(rows[0].installmentCount).toBe(2)
+    // Payı büyük olan önce; hangi satıştan geldiği satır altında yazar.
+    expect(rows[0].sources.map((s) => [s.label, s.amount])).toEqual([['Cilt Bakımı', 5000], ['Lazer', 2000]])
+  })
+
+  it('farklı tarihler KRONOLOJİK araya girer (12 → 15 → 17)', () => {
+    // Üçüncü paket iki takvimin ORTASINA denk geliyor: 15'i, 12 ile 17'nin arasına girmeli.
+    const [g] = groupAccountsByCustomer([
+      acc({ id: 'a1', customerId: 'c1', installments: [inst({ dueDate: '2026-08-12', amount: 500 })] }),
+      acc({ id: 'a2', customerId: 'c1', installments: [inst({ dueDate: '2026-08-17', amount: 700 })] }),
+      acc({ id: 'a3', customerId: 'c1', installments: [inst({ dueDate: '2026-08-15', amount: 900 })] }),
+    ])
+    expect(buildDueDateSchedule(g, '2026-08-01').map((r) => r.date))
+      .toEqual(['2026-08-12', '2026-08-15', '2026-08-17'])
+  })
+
+  it('satış seçilince takvim YALNIZ o satışa daralır', () => {
+    const [g] = groupAccountsByCustomer([
+      acc({ id: 'a1', customerId: 'c1', installments: [inst({ dueDate: '2026-08-12', amount: 5000 })] }),
+      acc({ id: 'a2', customerId: 'c1', installments: [inst({ dueDate: '2026-08-12', amount: 2000 })] }),
+    ])
+    const only = buildDueDateSchedule(g, '2026-08-01', 'a2')
+    expect(only).toHaveLength(1)
+    expect(only[0].due).toBe(2000)
+    expect(only[0].sources).toHaveLength(1)
   })
 
   it('durum renkleri: ödendi / kısmi / gecikmiş / bekleyen', () => {
@@ -155,40 +187,49 @@ describe('buildMonthlySchedule', () => {
         ],
       }),
     ])
-    const byKey = Object.fromEntries(buildMonthlySchedule(g, '2026-08-15').map((c) => [c.key, c]))
-    expect(byKey['2026-06'].status).toBe('paid')
+    const byDate = Object.fromEntries(buildDueDateSchedule(g, '2026-08-15').map((r) => [r.date, r]))
+    expect(byDate['2026-06-10'].status).toBe('paid')
     // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve vadesi geçti.
-    expect(byKey['2026-07'].status).toBe('overdue')
-    expect(byKey['2026-09'].status).toBe('partial')
-    expect(byKey['2026-10'].status).toBe('upcoming')
+    expect(byDate['2026-07-10'].status).toBe('overdue')
+    expect(byDate['2026-09-10'].status).toBe('partial')
+    expect(byDate['2026-10-10'].status).toBe('upcoming')
   })
 
-  it('takvim SÜREKLİ: taksitsiz aylar boş sütun olarak durur', () => {
+  it('vadesiz gün SATIR ÜRETMEZ (aylık ızgaradaki boş sütunlar kalktı)', () => {
     const [g] = groupAccountsByCustomer([
       acc({
         id: 'a1', customerId: 'c1',
         installments: [inst({ dueDate: '2026-11-10', amount: 500 }), inst({ dueDate: '2027-02-10', amount: 500 })],
       }),
     ])
-    const cells = buildMonthlySchedule(g, '2026-08-15')
-    // Kas · Ara · Oca · Şub — aradaki iki ay atlanmaz, yoksa ödeme ritmi okunmaz.
-    expect(cells.map((c) => c.key)).toEqual(['2026-11', '2026-12', '2027-01', '2027-02'])
-    expect(cells[1].status).toBe('none')
-    expect(cells[3].year).toBe(2027)
+    expect(buildDueDateSchedule(g, '2026-08-15').map((r) => r.date)).toEqual(['2026-11-10', '2027-02-10'])
   })
 
-  it('vadesi geçmiş ay, taksit "overdue" işaretlenmemiş olsa da kırmızıdır', () => {
+  it('vadesi geçmiş gün, taksit "overdue" işaretlenmemiş olsa da kırmızıdır', () => {
     // Sunucu gecikme bayrağını bir sonraki vadeye göre koyar (aylık tolerans); takvimde ise
-    // kullanıcı "geçen ayın parası geldi mi" diye bakar — geçmiş ay + kalan = kırmızı.
+    // kullanıcı "o günün parası geldi mi" diye bakar — geçmiş gün + kalan = kırmızı.
     const [g] = groupAccountsByCustomer([
       acc({ id: 'a1', customerId: 'c1', installments: [inst({ dueDate: '2026-07-10', amount: 500 })] }),
     ])
-    expect(buildMonthlySchedule(g, '2026-08-15')[0].status).toBe('overdue')
+    expect(buildDueDateSchedule(g, '2026-08-15')[0].status).toBe('overdue')
+  })
+
+  it('iptal edilmiş taksit takvime girmez', () => {
+    const [g] = groupAccountsByCustomer([
+      acc({
+        id: 'a1', customerId: 'c1',
+        installments: [
+          inst({ dueDate: '2026-09-10', amount: 500 }),
+          inst({ dueDate: '2026-10-10', amount: 500, status: 'Cancelled' }),
+        ],
+      }),
+    ])
+    expect(buildDueDateSchedule(g, '2026-08-15').map((r) => r.date)).toEqual(['2026-09-10'])
   })
 
   it('taksiti olmayan müşteride takvim boştur (peşin satış)', () => {
     const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1' })])
-    expect(buildMonthlySchedule(g, '2026-08-15')).toEqual([])
+    expect(buildDueDateSchedule(g, '2026-08-15')).toEqual([])
   })
 })
 
@@ -249,14 +290,17 @@ describe('devir (düzensiz ödeme) — Ela senaryosu', () => {
     expect(rows[1].carryIn).toBe(0) // iptal edilen şubat borç doğurmaz
   })
 
-  it('aylık takvim hücreleri de devri taşır', () => {
+  it('TAKSİT TAKVİMİ devri TAŞIMAZ — her satır kendi PLAN tutarını yazar', () => {
+    // Devir, tahsilat önerisine özeldir (buildInstallmentRows / dueThisMonth). Takvimde "Kalan"
+    // sütunu kaldırıldığı için devri gösterecek yer de yok; ayrıca takvim birden çok satışı
+    // birleştirebiliyor, oysa devir HESAP bazlıdır — orada taşımak yanlış rakam üretirdi.
     const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1', installments: plan([5000]) })])
-    const cells = buildMonthlySchedule(g, '2026-03-15')
-    const march = cells.find((c) => c.key === '2026-03')!
-    expect(march.due).toBe(5000)       // PLAN tutarı sütunu değişmez
-    expect(march.carryIn).toBe(5000)
-    expect(march.expected).toBe(10000) // ödenmesi gereken
+    const rows = buildDueDateSchedule(g, '2026-03-15')
+    const march = rows.find((r) => r.date.startsWith('2026-03'))!
+    expect(march.due).toBe(5000)      // PLAN tutarı; ödenmemiş ocak/şubat buraya BİNMEZ
     expect(march.status).toBe('overdue')
+    // Devir hâlâ tahsilat tarafında yaşıyor:
+    expect(buildInstallmentRows(plan([5000]), '2026-03-15')[2].carryIn).toBe(5000)
   })
 })
 

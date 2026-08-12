@@ -133,6 +133,9 @@ class CustomerLedgerScreen extends StatefulWidget {
 class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   int _tab = 0;
 
+  /// TAKVİM KAPSAMI — `null` = Tümü (bütün satışların taksitleri tek listede birleşir).
+  String? _scheduleAccountId;
+
   /// Ekranda GÖSTERİLEN grup. Tahsilat sonrası tazelenir; başlangıçta çağıranın verdiği anlık
   /// görüntüdür.
   late CustomerAccountGroup _group = widget.group;
@@ -257,7 +260,17 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   @override
   Widget build(BuildContext context) {
     final g = _group;
-    final cells = buildMonthlySchedule(g, _todayIso);
+    // Taksit planı OLAN satışlar — seçicide yalnız bunlar listelenir (peşin satışın vadesi yok).
+    final planAccounts = g.accounts
+        .where((a) => parseInstallments(a, _todayIso).any((i) => !i.cancelled))
+        .toList();
+    // Seçili satış listeden düşerse (iptal/tahsilat sonrası tazeleme) Tümü'ye dön: yoksa
+    // takvim sessizce boş görünür ve kullanıcı "plan kayboldu" sanır.
+    if (_scheduleAccountId != null &&
+        !planAccounts.any((a) => '${a['id'] ?? ''}' == _scheduleAccountId)) {
+      _scheduleAccountId = null;
+    }
+    final scheduleRows = buildDueDateSchedule(g, _todayIso, _scheduleAccountId);
     final paidPct = g.totalAmount > 0 ? ((g.paidAmount / g.totalAmount) * 100).round().clamp(0, 100) : 0;
     final initials = g.customerName
         .trim()
@@ -375,7 +388,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           ]),
           const SizedBox(height: 12),
 
-          if (_tab == 0) _scheduleTab(cells),
+          if (_tab == 0) _scheduleTab(scheduleRows, planAccounts),
           if (_tab == 1) ..._salesTab(g),
           if (_tab == 2) _ledgerTab(g),
         ],
@@ -383,14 +396,83 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     );
   }
 
-  Widget _scheduleTab(List<MonthCell> cells) => _section(
-        'Aylık Taksit Takvimi',
+  Widget _scheduleTab(List<DueDateRow> rows, List<Map<String, dynamic>> planAccounts) => _section(
+        'Taksit Takvimi',
         Icons.calendar_month_rounded,
         // KAPSAM UYARISI: peşinat ve peşin satış taksit satırı üretmez, bu yüzden takvim
         // toplamı üstteki "Tahsil Edilen" KPI'ından KÜÇÜK olabilir.
-        'Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz.',
-        PaymentScheduleGrid(cells: cells, todayKey: _todayIso.substring(0, 7)),
+        'Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz. '
+            'Satır = vade günü; aynı güne düşen taksitler toplanır.',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // İŞLEM SEÇİCİ — tahsilat sayfasındaki satış seçicisinin karşılığı. Tek taksitli
+            // satışı olan müşteride gösterilmez: "Tümü" birebir aynı listeyi verir.
+            if (planAccounts.length > 1) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _scopeChip('Tümü', null, count: planAccounts.length),
+                  for (final a in planAccounts)
+                    _scopeChip(saleDisplayName(a), '${a['id'] ?? ''}'),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            PaymentScheduleGrid(
+              rows: rows,
+              todayIso: _todayIso,
+              // Kaynak dökümü yalnız Tümü'de anlamlı: tek satış seçiliyken kaynak zaten belli.
+              showSources: _scheduleAccountId == null,
+            ),
+          ],
+        ),
       );
+
+  /// Takvim kapsam seçeneği ("Tümü" ya da tek satış). Seçili olan dolu, diğerleri çerçeveli.
+  Widget _scopeChip(String label, String? accountId, {int? count}) {
+    final active = _scheduleAccountId == accountId;
+    return InkWell(
+      onTap: () => setState(() => _scheduleAccountId = accountId),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 240),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppColors.primaryDark : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: active ? AppColors.primaryDark : AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: active ? Colors.white : AppColors.ink,
+                ),
+              ),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 5),
+              Text('$count',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: active ? Colors.white70 : AppColors.muted,
+                  )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   List<Widget> _salesTab(CustomerAccountGroup g) => [
         // TOPLAM — satış satırlarının üstünde, müşterinin bütün satışlarının özeti. Buradan
@@ -649,7 +731,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             ),
             child: const Row(children: [
               Expanded(
-                child: Text('Tarih · İşlem · Açıklama',
+                child: Text('Tarih · İşlem Türü',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .3)),
               ),
               Text('Borç / Alacak · Bakiye',
@@ -752,14 +834,13 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         color: zebra ? const Color(0xFFFBF8F9) : null,
         border: const Border(bottom: BorderSide(color: Color(0xFFEFE7EB), width: .6)),
       ),
+      // İŞLEM TÜRÜ ile AÇIKLAMA tek metinde birleşti (`row.label`). Dar ekranda tutar üst
+      // satırda tek başına durur; birleşik etiket alta iki satır yer bulur — yan yana
+      // sıkıştırılsaydı "Tahsilat (Nakit · 9-D · Belge: …)" hemen kırpılırdı.
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(formatDocDate(row.date),
               style: const TextStyle(fontSize: 11, color: Color(0xFF4a3a44))),
-          const SizedBox(width: 8),
-          Text(row.type,
-              style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w800, color: _stmtTypeTone(row.kind))),
           const Spacer(),
           Text(money,
               style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: moneyColor)),
@@ -767,10 +848,14 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         const SizedBox(height: 2),
         Row(children: [
           Expanded(
-            child: Text(row.description,
+            child: Text(row.label,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF4a3a44), height: 1.3)),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: _stmtTypeTone(row.kind),
+                    height: 1.3)),
           ),
           const SizedBox(width: 8),
           Text('Bakiye ${formatStatementAmount(row.balance)}',

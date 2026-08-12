@@ -12,7 +12,9 @@ import AccountStatementSheet, {
   type PendingSaleNotice, type StatementInstitution,
 } from '@/components/dashboard/AccountStatementSheet'
 import { formatTL } from '@/lib/apiMappers'
-import { activeInstallments, buildMonthlySchedule, type CustomerAccountGroup } from '@/lib/accountGrouping'
+import {
+  activeInstallments, buildDueDateSchedule, saleDisplayName, type CustomerAccountGroup,
+} from '@/lib/accountGrouping'
 import type { CancelledSale, CustomerAccount } from '@/lib/types'
 
 /**
@@ -99,7 +101,32 @@ export default function CustomerLedgerModal({
   }, [open, onClose])
 
   const todayIso = todayIsoLocal()
-  const cells = useMemo(() => (group ? buildMonthlySchedule(group, todayIso) : []), [group, todayIso])
+
+  /**
+   * TAKVİM KAPSAMI — `null` = Tümü (bütün satışların taksitleri tek listede birleşir).
+   * Tahsilat modalindeki satış seçicisinin karşılığı; müşteri değişince Tümü'ye döner.
+   */
+  const [scheduleAccountId, setScheduleAccountId] = useState<string | null>(null)
+  useEffect(() => { setScheduleAccountId(null) }, [group?.customerId])
+
+  /** Taksit planı OLAN satışlar — seçicide yalnız bunlar listelenir (peşin satışın vadesi yok). */
+  const installmentAccounts = useMemo(
+    () => (group ? group.accounts.filter((a) => activeInstallments(a).length > 0) : []),
+    [group],
+  )
+
+  // Seçili satış listeden düşerse (iptal/tahsilat sonrası tazeleme) Tümü'ye geri dön:
+  // yoksa takvim sessizce boş görünür ve kullanıcı "plan kayboldu" sanır.
+  useEffect(() => {
+    if (scheduleAccountId && !installmentAccounts.some((a) => a.id === scheduleAccountId)) {
+      setScheduleAccountId(null)
+    }
+  }, [installmentAccounts, scheduleAccountId])
+
+  const scheduleRows = useMemo(
+    () => (group ? buildDueDateSchedule(group, todayIso, scheduleAccountId) : []),
+    [group, todayIso, scheduleAccountId],
+  )
 
   /** İptalden KURUMDA KALAN para (tahsil − iade) — KPI'a eklenir, yoksa sıfır görünürdü. */
   const cancelledSummary = useMemo(() => ({
@@ -247,13 +274,43 @@ export default function CustomerLedgerModal({
               <div className="min-h-0 flex-1 overflow-y-auto p-3.5 sm:p-5">
                 {tab === 'schedule' && (
                   <Section
-                    title="Aylık Taksit Takvimi"
+                    title="Taksit Takvimi"
                     icon={CalendarDays}
                     /* KAPSAM UYARISI: peşinat ve peşin satış taksit satırı üretmez, bu yüzden
                        takvim toplamı üstteki "Tahsil Edilen" KPI'ından KÜÇÜK olabilir. */
-                    hint="Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz. Yeşil ödendi · sarı bekliyor · kırmızı gecikti. Ödenmeyen ay bir sonraki ayın taksitine devreder."
+                    hint="Yalnız TAKSİTLER — peşinat ve peşin satışlar bu takvimde yer almaz. Satır = vade günü; aynı güne düşen taksitler toplanır. Yeşil ödendi · sarı bekliyor · kırmızı gecikti."
                   >
-                    <PaymentScheduleGrid cells={cells} todayKey={todayIso.slice(0, 7)} />
+                    {/* İŞLEM SEÇİCİ — tahsilat modalindeki satış seçicisinin karşılığı.
+                        Tek taksitli satışı olan müşteride gösterilmez: "Tümü" ile o satış
+                        birebir aynı listeyi verir, seçenek yalnız gürültü olurdu. */}
+                    {installmentAccounts.length > 1 && (
+                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-[10.5px] font-bold uppercase tracking-widest text-[#A5556E]">
+                          İşlem
+                        </span>
+                        <ScopeChip
+                          active={scheduleAccountId === null}
+                          onClick={() => setScheduleAccountId(null)}
+                          label="Tümü"
+                          count={installmentAccounts.length}
+                        />
+                        {installmentAccounts.map((a) => (
+                          <ScopeChip
+                            key={a.id}
+                            active={scheduleAccountId === a.id}
+                            onClick={() => setScheduleAccountId(a.id)}
+                            label={saleDisplayName(a)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <PaymentScheduleGrid
+                      rows={scheduleRows}
+                      todayIso={todayIso}
+                      /* Kaynak dökümü yalnız Tümü'de anlamlı: tek satış seçiliyken hangi
+                         satıştan geldiği zaten seçicide yazıyor. */
+                      showSources={scheduleAccountId === null}
+                    />
                   </Section>
                 )}
 
@@ -393,6 +450,41 @@ function Section({ title, icon: Icon, hint, children }: { title: string; icon: t
       </div>
       {children}
     </div>
+  )
+}
+
+/** Takvim kapsam seçeneği ("Tümü" ya da tek satış). Seçili olan dolu, diğerleri çerçeveli. */
+function ScopeChip({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count?: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex max-w-[240px] cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${
+        active
+          ? 'border-[#8C4460] bg-gradient-to-r from-[#A5556E] to-[#8C4460] text-white'
+          : 'border-[#EAD8DF] bg-white text-[#3E343A] hover:border-[#BE7690] hover:text-[#8C4460]'
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      {count !== undefined && (
+        <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+          active ? 'bg-white/25 text-white' : 'bg-[#f3e9ed] text-[#74616A]'
+        }`}>
+          {count}
+        </span>
+      )}
+    </button>
   )
 }
 

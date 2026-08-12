@@ -6,7 +6,7 @@ import { formatAmount, formatDocDate, turkishAmountInWords, type StatementRow } 
  * CARİ HESAP EKSTRESİ — yazdırılabilir belge.
  *
  * Ekrandaki belge ile BİREBİR aynı düzen: kurum başlığı, cari bilgi ızgarası, Tarih / İşlem Türü /
- * Açıklama / Borç / Alacak / Bakiye tablosu, toplam + bakiye bandı, tutarın yazıyla okunuşu.
+ * Borç / Alacak / Bakiye tablosu, toplam + bakiye bandı, tutarın yazıyla okunuşu.
  * Rakamlar `buildAccountStatement`ten hazır gelir — bu dosya HESAP YAPMAZ, yalnız dizer
  * (iki yerde hesap yapılsaydı ekran ile kâğıt ayrı rakam yazabilirdi).
  */
@@ -75,10 +75,12 @@ export function generateAccountStatementPdf(
 ): void {
   const { institution, customer } = data
 
+  // BEŞ SÜTUN — "İşlem Türü" ile "Açıklama" tek sütunda birleşti (`row.label`).
+  // Aşağıdaki her satır bu sayıya göre elle kuruluyor: sütun sayısı değişirse colSpan ve boş
+  // hücre adetleri de değişmeli, yoksa pdfmake tabloyu sessizce kaydırır.
   const head: TableCell[] = [
     { text: 'Tarih', style: 'th' },
     { text: 'İşlem Türü', style: 'th' },
-    { text: 'Açıklama', style: 'th' },
     { text: 'Borç (TL)', style: 'th', alignment: 'right' },
     { text: 'Alacak (TL)', style: 'th', alignment: 'right' },
     { text: 'Bakiye (TL)', style: 'th', alignment: 'right' },
@@ -90,9 +92,9 @@ export function generateAccountStatementPdf(
     body.push([
       {
         text: 'Bu dönemde hareket bulunmuyor.',
-        colSpan: 6, alignment: 'center', color: COLORS.muted, margin: mg(0, 10, 0, 10),
+        colSpan: 5, alignment: 'center', color: COLORS.muted, margin: mg(0, 10, 0, 10),
       },
-      {}, {}, {}, {}, {},
+      {}, {}, {}, {},
     ])
   }
 
@@ -100,8 +102,7 @@ export function generateAccountStatementPdf(
     const fill = index % 2 === 1 ? COLORS.zebra : undefined
     body.push([
       { text: formatDocDate(row.date), style: 'td', fillColor: fill },
-      { text: row.type, style: 'td', fillColor: fill },
-      { text: row.description, style: 'td', fillColor: fill },
+      { text: row.label, style: 'td', fillColor: fill },
       { text: formatAmount(row.debit), style: 'tdNum', alignment: 'right', fillColor: fill },
       { text: formatAmount(row.credit), style: 'tdNum', alignment: 'right', fillColor: fill },
       { text: formatAmount(row.balance), style: 'tdNumBold', alignment: 'right', fillColor: fill },
@@ -111,7 +112,6 @@ export function generateAccountStatementPdf(
   // TOPLAM: yalnız borç/alacak sütunları toplanır — bakiye zaten son satırda yazılıdır.
   body.push([
     { text: '', border: [false, true, false, false], borderColor: [COLORS.line, COLORS.line, COLORS.line, COLORS.line] },
-    { text: '' },
     { text: 'Toplam', style: 'totalLabel', alignment: 'right' },
     { text: formatAmount(data.totalDebit), style: 'totalValue', alignment: 'right' },
     { text: formatAmount(data.totalCredit), style: 'totalValue', alignment: 'right' },
@@ -120,7 +120,6 @@ export function generateAccountStatementPdf(
 
   const closingDebt = data.closing >= 0
   body.push([
-    { text: '' },
     { text: '' },
     { text: '' },
     { text: '' },
@@ -184,7 +183,7 @@ export function generateAccountStatementPdf(
 
     // ---------- HAREKETLER ----------
     {
-      table: { headerRows: 1, widths: [52, 62, '*', 62, 62, 68], body },
+      table: { headerRows: 1, widths: [52, '*', 62, 62, 68], body },
       layout: {
         hLineWidth: (i: number) => (i === 0 || i === 1 || i === body.length ? 0.8 : 0.4),
         vLineWidth: () => 0,
