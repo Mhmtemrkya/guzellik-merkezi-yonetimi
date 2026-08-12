@@ -570,7 +570,9 @@ function OnMuhasebePageInner() {
   // Tahsilat tek uca gider; sunucu tutarı vade sırasıyla taksitlere dağıtır (allocation
   // modeli). "Bu ay ödenmesi gereken" yalnız modalin ÖNERDİĞİ tutardır — kullanıcı değiştirebilir.
   const registerCollection = async (p: CollectionSubmitPayload): Promise<void> => {
-    const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc }
+    // `allowOverpayment`: kalan borcu aşan tutar ancak kullanıcı modalde onayladıysa gider;
+    // gönderilmezse sunucu fazla ödemeyi reddeder (bkz. RegisterPaymentAsync).
+    const payload = { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc, allowOverpayment: p.allowOverpayment }
     const res = await performWrite({
       operationType: 'RegisterAccountPayment',
       title: `Tahsilat: ${formatTL(p.amount)}`,

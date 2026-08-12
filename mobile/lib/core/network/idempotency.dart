@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 /// Para yazan çağrılar için `Idempotency-Key` üretimi — web'deki `lib/idempotency.ts`'in eşi.
 ///
 /// Sunucudaki `IdempotencyMiddleware` başlığı TAŞIYAN /api/admin yazmalarını tek sefere indirger,
@@ -28,6 +30,56 @@ String newIdempotencySalt() {
   final time = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
   final noise = Random().nextInt(0x7FFFFFFF).toRadixString(36);
   return '${time.substring(max(0, time.length - 6))}$noise';
+}
+
+/// KALICI TUZ — uygulama gönderimin ortasında kapanır/yeniden başlarsa (web'deki
+/// `persistentIdempotencySalt` eşi).
+///
+/// [newIdempotencySalt] yalnız sheet AÇIK kaldığı sürece yaşar. En tehlikeli senaryoda bu
+/// yetmiyor: sunucu tutarı COMMIT eder, yanıt yolda kaybolur (kopan bağlantı, arka plana atılıp
+/// öldürülen uygulama), kullanıcı tekrar girer. Yeni tuz = yeni anahtar = İKİNCİ kayıt.
+///
+/// BAŞARIDA SİLİNİR ([clearPersistentIdempotencySalt]) — silinmezse "aynı müşteriden bugün
+/// ikinci kez aynı tutarı almak" gibi MEŞRU tekrarlar sessizce yutulurdu.
+class PersistentIdempotencySalt {
+  static const _storage = FlutterSecureStorage();
+  static const _prefix = 'idem_salt_';
+
+  /// Yarım kalmış tuz sonsuza kadar yaşamasın — bir vardiyadan uzun tutmanın anlamı yok.
+  static const _maxAge = Duration(hours: 12);
+
+  /// [scope] için saklı tuzu döndürür; yoksa üretip saklar.
+  static Future<String> get(String scope) async {
+    final fresh = newIdempotencySalt();
+    try {
+      final raw = await _storage.read(key: '$_prefix$scope');
+      if (raw != null) {
+        final sep = raw.indexOf('|');
+        final at = int.tryParse(sep < 0 ? '' : raw.substring(0, sep));
+        final value = sep < 0 ? '' : raw.substring(sep + 1);
+        if (value.isNotEmpty && at != null) {
+          final age = DateTime.now().millisecondsSinceEpoch - at;
+          if (age >= 0 && age < _maxAge.inMilliseconds) return value;
+        }
+      }
+      await _storage.write(
+        key: '$_prefix$scope',
+        value: '${DateTime.now().millisecondsSinceEpoch}|$fresh',
+      );
+    } catch (_) {
+      // Depolama yoksa/kapalıysa koruma zayıflar ama ekran çalışmaya devam eder.
+    }
+    return fresh;
+  }
+
+  /// Gönderim BAŞARIYLA bittiğinde çağrılır; sonraki açılış taze tuz alır.
+  static Future<void> clear(String scope) async {
+    try {
+      await _storage.delete(key: '$_prefix$scope');
+    } catch (_) {
+      // Silinemeyen tuz en fazla _maxAge kadar yaşar.
+    }
+  }
 }
 
 /// FNV-1a (64 bit). Kriptografik değildir ve olması gerekmez: anahtar bir sır değil, yalnız

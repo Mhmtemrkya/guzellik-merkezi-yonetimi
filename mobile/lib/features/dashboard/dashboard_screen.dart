@@ -140,9 +140,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       widget.api
           .get('/api/admin/products/', query: {'page': 1, 'pageSize': 200})
           .catchError((_) => const <dynamic>[]),
+      // HATA "VERİ YOK" DEĞİLDİR: boş nesneye düşmek, uç 500/403 dönse bile grafiği
+      // "Henüz ciro kaydı yok" diye çizdiriyordu — kullanıcı eksik veriyi gerçek sanıyordu.
+      // Sentinel bir bayrak konur; kart bunu görünce hata durumu gösterir (web ile aynı kural).
       widget.api
           .get('/api/admin/accounts/report', query: {'months': 6})
-          .catchError((_) => const <String, dynamic>{}),
+          .catchError((_) => const <String, dynamic>{'_loadFailed': true}),
       // HİZMET raporu paket raporundan AYRI uçtur: tekil (paketsiz) hizmet satışları
       // burada sayılır, paket kartlarında değil.
       widget.api
@@ -607,10 +610,15 @@ class _MetricGrid extends StatelessWidget {
 enum _MetricTone {
   // Bant PALETİN KENDİ RENGİ (açık tint değil), kart gövdesi beyaz kalır.
   // gold = TAHSİLAT/para => yeşil (kullanıcı talimatı).
+  //
+  // MENEKŞE/YEŞİL BİR TIK KOYU: bandın üstündeki KÜÇÜK beyaz yazı WCAG AA (4,5:1) sağlamalı.
+  // #8E7882 → 4,07 ve #1E8C60 → 4,22 eşiğin altındaydı. Yazıyı koyulaştırmak çözüm değil: bu
+  // ara tonlarda koyu mürekkebin oranı daha da düşük (3,87 / 3,73). Web `PanelKit.toneSurface`
+  // ile birebir aynı tonlar.
   rose(Color(0xFFA5556E), Color(0xFF8C4460), Color(0xFF7A3450), Colors.white),
   mint(Color(0xFF1E4E8C), Color(0xFF17406F), Color(0xFF17406F), Colors.white),
-  violet(Color(0xFF8E7882), Color(0xFF74616A), Color(0xFF4E4048), Colors.white),
-  gold(Color(0xFF1E8C60), Color(0xFF15694A), Color(0xFF15694A), Colors.white);
+  violet(Color(0xFF85717A), Color(0xFF74616A), Color(0xFF4E4048), Colors.white),
+  gold(Color(0xFF1D865C), Color(0xFF15694A), Color(0xFF15694A), Colors.white);
 
   const _MetricTone(this.from, this.to, this.ink, this.onBand);
   final Color from;
@@ -3715,30 +3723,45 @@ class _MonthlyRevenueCard extends StatelessWidget {
     // Pencere EN SON 6 ay: ciro grafiğinde ilk bakılan yer içinde bulunulan aydır.
     final visible =
         months.length > 6 ? months.sublist(months.length - 6) : months;
-    final hasAny = visible.any((m) => numberOf(m, const ['collected']) > 0);
+    /*
+     * ÖLÇÜ = TAHSİLAT EKSENİ (`collectedInMonth`), tahakkuk ekseni değil (web ile aynı kural).
+     *
+     * Kart "Aylık Ciro" diyor, yani "bu ay kasaya ne girdi". `collected` ise ödemenin taksitin
+     * VADE ayına dağıtılmış hâlidir: Eylül vadeli 1.000 ₺ Ağustos'ta tahsil edilince Ağustos 0,
+     * Eylül 1.000 görünüyordu — para giren ay boş kalıyordu.
+     */
+    const cashKeys = ['collectedInMonth'];
+    final hasAny = visible.any((m) => numberOf(m, cashKeys) > 0);
     if (!hasAny) {
-      return const _DashCard(
-        icon: Icons.bar_chart_rounded,
+      // HATA ≠ VERİ YOK: uç düştüğünde "henüz ciro kaydı yok" demek, kullanıcıya var olan
+      // cirosunu SIFIR gösterir. Yanlış bilgi, eksik bilgiden kötüdür.
+      final failed = report['_loadFailed'] == true;
+      return _DashCard(
+        icon: failed ? Icons.error_outline_rounded : Icons.bar_chart_rounded,
         title: 'Aylık Ciro',
         child: Text(
-          'Henüz ciro kaydı yok.',
-          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+          failed
+              ? 'Ciro raporu yüklenemedi. Bu kart şu an gerçek veriyi göstermiyor — '
+                  'sayfayı yenileyin, sorun sürerse yetkinizi kontrol edin.'
+              : 'Henüz ciro kaydı yok.',
+          style: TextStyle(
+            color: failed ? AppColors.danger : AppColors.muted,
+            fontSize: 12.5,
+          ),
         ),
       );
     }
-    final total =
-        visible.fold<double>(0, (s, m) => s + numberOf(m, const ['collected']));
+    final total = visible.fold<double>(0, (s, m) => s + numberOf(m, cashKeys));
     final average = total / visible.length;
     // Zirve İNDEKSLE bulunur: eşitlikte ilk ay kazanır (web'deki reduce ile aynı kural),
     // yoksa aynı tutarlı bütün aylar birden çerçeveleniyordu.
     var peakIndex = 0;
     for (var i = 1; i < visible.length; i++) {
-      if (numberOf(visible[i], const ['collected']) >
-          numberOf(visible[peakIndex], const ['collected'])) {
+      if (numberOf(visible[i], cashKeys) > numberOf(visible[peakIndex], cashKeys)) {
         peakIndex = i;
       }
     }
-    final peak = numberOf(visible[peakIndex], const ['collected']);
+    final peak = numberOf(visible[peakIndex], cashKeys);
     return _DashCard(
       icon: Icons.bar_chart_rounded,
       title: 'Aylık Ciro',
@@ -3764,7 +3787,7 @@ class _MonthlyRevenueCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(visible.length, (index) {
                 final m = visible[index];
-                final value = numberOf(m, const ['collected']);
+                final value = numberOf(m, cashKeys);
                 final frac = peak > 0 ? value / peak : 0.0;
                 final barH = 6 + frac * 76;
                 final monthIdx = numberOf(m, const ['month']).toInt();

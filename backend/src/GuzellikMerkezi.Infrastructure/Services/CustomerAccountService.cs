@@ -424,6 +424,38 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         if (soldAtUtc > DateTime.UtcNow.AddDays(1))
             return Result<CustomerAccountDto>.Failure(Error.Validation("Geçmiş satış tarihi gelecekte olamaz."));
 
+        // EVRAK İÇİ KRONOLOJİ.
+        //
+        // Geçmiş satışta ESKİ TARİH HATA DEĞİLDİR: ekranın işi zaten 2015/2020 tarihli evrakları
+        // sonradan sisteme almaktır. Hata olan, aynı evrağın kendi içinde tutarsız olmasıdır —
+        // seans, satıştan ÖNCE ya da GELECEKTE yapılmış görünemez. Kural:
+        //
+        //     evraktaki satış tarihi ≤ seans tarihi ≤ bugün
+        //
+        // Alt sınır GÜN granülünde bakılır (iki damga da öğlene sabitlenir, saat farkı anlamsız).
+        // Üst sınırda +1 gün tolerans, satış tarihinin kendi kuralıyla aynıdır: istemci yerel günü
+        // öğlen UTC'ye çevirir, UTC+3'te gece yarısına yakın saatlerde bugün "yarın" görünebilir.
+        if (request.Sessions is { Count: > 0 } requestedSessions)
+        {
+            var soldDay = DateOnly.FromDateTime(soldAtUtc);
+            var futureLimit = DateTime.UtcNow.AddDays(1);
+            for (var i = 0; i < requestedSessions.Count; i++)
+            {
+                if (requestedSessions[i].PerformedAtUtc is not { } performed || performed == default) continue;
+                var performedUtc = DateTime.SpecifyKind(performed, DateTimeKind.Utc);
+                if (DateOnly.FromDateTime(performedUtc) < soldDay)
+                {
+                    return Result<CustomerAccountDto>.Failure(Error.Validation(
+                        $"{i + 1}. seansın tarihi ({performedUtc:dd.MM.yyyy}) satış tarihinden ({soldAtUtc:dd.MM.yyyy}) önce olamaz."));
+                }
+                if (performedUtc > futureLimit)
+                {
+                    return Result<CustomerAccountDto>.Failure(Error.Validation(
+                        $"{i + 1}. seansın tarihi ({performedUtc:dd.MM.yyyy}) gelecekte olamaz."));
+                }
+            }
+        }
+
         ServicePackage? package = null;
         if (request.ServicePackageId is { } packageId && packageId != Guid.Empty)
         {
@@ -435,6 +467,47 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         var branchId = request.BranchId ?? customer.BranchId;
         var paid = Math.Min(request.PaidAmount, request.TotalAmount);
         var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "cash" : request.PaymentMethod.Trim();
+
+        // PERSONEL–ŞUBE TUTARLILIĞI.
+        //
+        // Eskiden yalnız "personel bu kuruma ait mi" soruluyordu; aynı kurumun BAŞKA şubesindeki
+        // personel de geçiyordu ve geçmiş seans yanlış şubenin personel raporuna düşüyordu.
+        //
+        // AMA HARD BLOCK YANLIŞ OLURDU: personel şube aktarımı bu üründe var ve sistem TARİHSEL
+        // şube ataması tutmuyor — 2018'de A şubesinde çalışıp bugün B'de olan personelin geçmişi
+        // hiç girilemezdi. Bu yüzden varsayılan REDDET, ama çağıran açıkça onaylarsa kabul et
+        // (kurumdaki `AllowOverpayment` kalıbının aynısı: sessiz kabul yok, bilinçli onay var).
+        // KAPI RANDEVU AÇMAYA BAĞLI DEĞİLDİR: `SetAppliedBy` her hâlde yazılıyor ve "seansı kim
+        // yaptı" bilgisi randevu açılmasa da personel/şube raporlarına giriyor. Yalnız
+        // `CreateSessionAppointments` açıkken denetlemek, aynı yanlış personeli kutu kapalıyken
+        // serbest bırakırdı.
+        if (branchId is { } saleBranchId && !request.AllowCrossBranchStaff)
+        {
+            var chosenStaff = new HashSet<Guid>();
+            if (request.AppliedByStaffMemberId is { } appliedBy && appliedBy != Guid.Empty) chosenStaff.Add(appliedBy);
+            foreach (var s in request.Sessions ?? [])
+                if (s.StaffMemberId is { } perSessionStaff && perSessionStaff != Guid.Empty) chosenStaff.Add(perSessionStaff);
+
+            if (chosenStaff.Count > 0)
+            {
+                // ÖNCE MATERYALİZE, SONRA BELLEKTE SÜZ: yerel koleksiyonla `.Contains()` bu
+                // sağlayıcıda SQL'e çevrilemiyor (çalışma anında 500). Materyalize edilmiş liste
+                // AYRI bir değişkene alınır — zincire yazmak, süzmenin sorgunun içinde mi dışında
+                // mı olduğunu okurken de (konvansiyon kapısı için de) belirsiz bırakıyor.
+                var tenantStaff = await _db.StaffMembers.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId)
+                    .Select(x => new { x.Id, x.BranchId, x.FullName })
+                    .ToListAsync(cancellationToken);
+
+                var foreign = tenantStaff.FirstOrDefault(x => chosenStaff.Contains(x.Id) && x.BranchId != saleBranchId);
+                if (foreign is not null)
+                {
+                    return Result<CustomerAccountDto>.Failure(Error.Validation(
+                        $"Seçilen personel ({foreign.FullName}) bu satışın şubesinde görünmüyor. " +
+                        "Personel o tarihte gerçekten bu şubede çalıştıysa çapraz şube onayını işaretleyip tekrar gönderin."));
+                }
+            }
+        }
 
         CustomerAccount account;
         if (request.PaidInstallmentCount is { } paidInstallments)
@@ -488,6 +561,15 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             // edildi" sayıyor ama kasa/gelir defteri parayı hiç görmüyordu (bkz. RegisterDepositPayment).
             account.RegisterDepositPayment("cash", soldAtUtc);
         }
+
+        // TEK İŞLEM: cari + peşinat/tahsilatlar + seans bakiyeleri + geçmiş randevular.
+        //
+        // Eskiden üç ayrı SaveChanges vardı ve randevu adımı en sondaydı: orası patladığında
+        // evrağın PARA tarafı kaydedilmiş, SEANS tarafı eksik kalıyordu — kullanıcı da satışı
+        // görüp "girdim" sanıyordu. Evrak bölünemez; ya tamamı girer ya hiçbiri.
+        await using var tx = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
 
         _db.CustomerAccounts.Add(account);
 
@@ -557,6 +639,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 request.AppliedByStaffMemberId,
                 request.CreateSessionAppointments,
             }, cancellationToken);
+
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         var hydrated = await LoadAsync(tenantId, account.Id, cancellationToken);
         return Result<CustomerAccountDto>.Success(await PresentAsync(tenantId, hydrated!, 0m, 0, cancellationToken));
@@ -628,11 +712,23 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             if ((perSession ?? fallbackStaff) is not { } staff || staff == Guid.Empty) continue;
 
             // TARİH: seansın kendi tarihi > satış tarihi + sıra × aralık.
-            var start = detail?.PerformedAtUtc is { } performed && performed != default
-                ? performed
-                : soldAtUtc.AddDays((double)step * i);
-            // Geçmiş kayıt geleceğe düşmesin: taşarsa bugüne (bir saat öncesine) çekilir.
-            if (start > now) start = now.AddHours(-1);
+            //
+            // CLAMP YALNIZ TÜRETİLMİŞ TARİHE UYGULANIR. `soldAt + sıra × aralık` dizisi uzun
+            // pakette bugünü aşabilir (10 seans × 15 gün = 150 gün) — orada bugüne çekmek doğru
+            // davranıştır. Ama KULLANICININ GİRDİĞİ tarihi sessizce değiştirmek, aktarılan evrak
+            // ile kaydedilen kayıt arasında görünmez bir fark bırakırdı; o yüzden elle girilen
+            // gelecek tarih yukarıda (CreateHistoricalAsync) doğrulama hatasıyla REDDEDİLİR ve
+            // buraya hiç gelmez.
+            DateTime start;
+            if (detail?.PerformedAtUtc is { } performed && performed != default)
+            {
+                start = performed;
+            }
+            else
+            {
+                start = soldAtUtc.AddDays((double)step * i);
+                if (start > now) start = now.AddHours(-1);
+            }
             start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
             var minutes = durationById.TryGetValue(serviceId, out var d) ? d : 60;
             var end = start.AddMinutes(minutes);
@@ -1977,8 +2073,21 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         decimal totalReceivable = 0m;
         decimal totalCollected = 0m;
         decimal overdueAmount = 0m;
-        // Ay → (vade tutarı, dağıtılan tahsilat)
-        var monthBuckets = new Dictionary<(int Year, int Month), (decimal Due, decimal Collected, decimal Deposit)>();
+        /*
+         * Ay → (vade tutarı, o vadeye dağıtılan tahsilat, peşinat, o ay KASAYA GİREN).
+         *
+         * İKİ AYRI ZAMAN EKSENİ, İKİ AYRI SERİ. Karıştırmak grafiği yanlış okutuyordu:
+         *  · `Due` / `Collected` — TAHAKKUK ekseni: taksitin VADE ayına yazılır. "Eylül'de
+         *    ödenmesi gereken ne kadardı, ne kadarı kapandı" sorusunu cevaplar.
+         *  · `Cash` — TAHSİLAT ekseni: ödemenin GERÇEKLEŞTİĞİ aya yazılır. "Ağustos'ta kasaya
+         *    ne girdi" sorusunu cevaplar.
+         *
+         * Eskiden yalnız ilki vardı ve "Aylık Ciro" diye sunuluyordu: Eylül vadeli 1.000 ₺
+         * Ağustos'ta tahsil edilince Ağustos 0, Eylül 1.000 görünüyordu — kasaya para giren ay
+         * boş kalıyordu. Üstelik aynı yanıtın `CollectedThisMonth` alanı ÖDEME tarihine göre
+         * hesaplandığı için tek bir ödeme iki alanda iki farklı aya düşebiliyordu.
+         */
+        var monthBuckets = new Dictionary<(int Year, int Month), (decimal Due, decimal Collected, decimal Deposit, decimal Cash)>();
 
         // Müşteri kırılımı için cari bazında biriktirilen değerler (aşağıda müşteriye göre toplanır).
         var customerAgg = new Dictionary<Guid, CustomerBreakdownAccumulator>();
@@ -2014,8 +2123,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 if (remaining > 0m && inst.DueDate < today) overdueAmount += remaining;
 
                 var key = (inst.DueDate.Year, inst.DueDate.Month);
-                var agg = monthBuckets.TryGetValue(key, out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m);
-                monthBuckets[key] = (agg.Due + inst.Amount, agg.Collected + paid, agg.Deposit);
+                var agg = monthBuckets.TryGetValue(key, out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
+                monthBuckets[key] = (agg.Due + inst.Amount, agg.Collected + paid, agg.Deposit, agg.Cash);
 
                 bucket.InstallmentCount++;
                 bucket.PaidAmount += paid;
@@ -2057,17 +2166,33 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             if (depositPayment is not null && depositPayment.Amount > 0m)
             {
                 var dKey = (depositPayment.OccurredAtUtc.Year, depositPayment.OccurredAtUtc.Month);
-                var dAgg = monthBuckets.TryGetValue(dKey, out var dCur) ? dCur : (Due: 0m, Collected: 0m, Deposit: 0m);
+                var dAgg = monthBuckets.TryGetValue(dKey, out var dCur) ? dCur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
                 monthBuckets[dKey] = (
                     dAgg.Due + depositPayment.Amount,
                     dAgg.Collected + depositPayment.Amount,
-                    dAgg.Deposit + depositPayment.Amount);
+                    dAgg.Deposit + depositPayment.Amount,
+                    dAgg.Cash);
 
                 totalCollected += depositPayment.Amount;
                 bucket.PaidAmount += depositPayment.Amount;
             }
+
+            // TAHSİLAT EKSENİ: her ödeme, GERÇEKLEŞTİĞİ aya yazılır (hangi taksiti kapattığına
+            // bakılmaz). Peşinat da bir ödemedir ve buraya girer — yukarıdaki blok onu TAHAKKUK
+            // eksenine yazar, burası kasaya girdiği ayı doldurur. İki eksen ayrı alanlarda
+            // durduğu için çift sayım olmaz.
+            foreach (var payment in acc.Payments)
+            {
+                if (payment.Amount <= 0m) continue;
+                var pKey = (payment.OccurredAtUtc.Year, payment.OccurredAtUtc.Month);
+                var pAgg = monthBuckets.TryGetValue(pKey, out var pCur) ? pCur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
+                monthBuckets[pKey] = (pAgg.Due, pAgg.Collected, pAgg.Deposit, pAgg.Cash + payment.Amount);
+            }
         }
 
+        // BU AY KASAYA GİREN — tahsilat ekseni. Aylık serideki `CollectedInMonth` ile AYNI
+        // kuraldan hesaplanır; ikisi ayrı kurallarla üretildiği sürece aynı yanıt kendi içinde
+        // çelişiyordu (bir ödeme burada Ağustos'a, seride Eylül'e düşebiliyordu).
         var collectedThisMonth = accounts
             .SelectMany(a => a.Payments)
             .Where(p => p.OccurredAtUtc.Year == today.Year && p.OccurredAtUtc.Month == today.Month)
@@ -2102,9 +2227,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         for (var i = 0; i < totalSpan; i++)
         {
             var d = firstOfThisMonth.AddMonths(startOffset + i);
-            var agg = monthBuckets.TryGetValue((d.Year, d.Month), out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m);
+            var agg = monthBuckets.TryGetValue((d.Year, d.Month), out var cur) ? cur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
             monthly.Add(new AccountMonthlyInstallmentDto(
-                d.Year, d.Month, agg.Due, agg.Collected, Math.Max(0m, agg.Due - agg.Collected), agg.Deposit));
+                d.Year, d.Month, agg.Due, agg.Collected, Math.Max(0m, agg.Due - agg.Collected), agg.Deposit, agg.Cash));
         }
 
         // Seanslar: CustomerPackageSession yalnızca tenant ile global süzülür (BranchId yok).

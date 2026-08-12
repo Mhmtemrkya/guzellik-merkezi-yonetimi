@@ -23,6 +23,7 @@ import {
 } from 'recharts'
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Boxes,
@@ -109,6 +110,11 @@ interface DashboardData {
   pendingResult: PagedResult<ApiPendingOperation>
   passiveResult: ApiPassiveCustomerList
   reportResult: ApiAccountReport
+  /**
+   * Rapor ucu DÜŞTÜ mü. Boş rapor ile başarısız rapor aynı şey değildir: ikisi de boş nesneye
+   * indirgenince kullanıcı, var olan cirosunu "henüz kayıt yok" diye görüyordu.
+   */
+  reportFailed: boolean
   packagesResult: PagedResult<ApiServicePackage>
 }
 
@@ -200,11 +206,16 @@ const toneClasses: Record<QuickAction['tone'], string> = {
  * `toneOnBand` bandın üstündeki yazı, `toneChip` ikon rozetidir: #F9A1B9 ve
  * #F7F6F6 açık olduğu için onlarda mürekkep koyu olur.
  */
+/*
+ * Menekşe ve yeşil bandın tonu, üzerindeki KÜÇÜK beyaz metin AA (4,5:1) sağlasın diye bir tık
+ * koyudur (#8E7882 → 4,07 ve #1E8C60 → 4,22 eşiğin altındaydı). Metni koyulaştırmak işe yaramaz:
+ * bu ara tonlarda koyu metnin oranı daha düşük. Bkz. `PanelKit.toneSurface` — aynı gerekçe.
+ */
 const toneSurface: Record<QuickAction['tone'], string> = {
   rose: 'bg-[#A5556E]',
-  gold: 'bg-[#1E8C60]',
+  gold: 'bg-[#1D865C]',
   mint: 'bg-[#1E4E8C]',
-  violet: 'bg-[#8E7882]',
+  violet: 'bg-[#85717A]',
   peach: 'bg-[#F9A1B9]',
   cream: 'bg-[#F7F6F6]',
 }
@@ -222,7 +233,7 @@ const toneChip: Record<QuickAction['tone'], string> = {
   rose: 'bg-white/20 text-white',
   gold: 'bg-white/20 text-white',
   mint: 'bg-white/20 text-white',
-  violet: 'bg-white/22 text-white',
+  violet: 'bg-white/20 text-white',
   peach: 'bg-white/45 text-[#5A1730]',
   cream: 'bg-[#8E7882] text-white',
 }
@@ -1231,15 +1242,33 @@ function RevenueTooltip({ active, payload }: TooltipProps<number, string>) {
         <div className="flex items-center justify-between gap-5 text-[11px]">
           <span className="flex items-center gap-2 text-[#5A4B53]">
             <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1E8C60]" />
-            Ciro
+            Kasaya giren
           </span>
-          <b className="tabular-nums text-[#15694A]">{formatTL(Math.round(point.collected))}</b>
+          <b className="tabular-nums text-[#15694A]">{formatTL(Math.round(point.collectedInMonth))}</b>
         </div>
-        {/* Peşinat cironun İÇİNDEDİR — ayrı bant değil, yalnız kırılım satırı. */}
+        {/* Peşinat kasaya girenin İÇİNDEDİR — ayrı bant değil, yalnız kırılım satırı. */}
         {point.deposit > 0.005 && (
           <div className="flex items-center justify-between gap-5 text-[11px]">
             <span className="pl-[18px] text-[#74616A]">Peşin alınan</span>
             <b className="tabular-nums text-[#5A4B53]">{formatTL(Math.round(point.deposit))}</b>
+          </div>
+        )}
+        {/*
+         * VADE PERFORMANSI — AYRI EKSEN, AYRI SATIR.
+         *
+         * Sütun "bu ay kasaya ne girdi"yi çizer; bu satır "bu ayın VADESİ ne kadardı, ne kadarı
+         * kapandı"yı söyler. İkisi aynı ay için farklı olabilir (Eylül vadeli borç Ağustos'ta
+         * ödenebilir) ve tek rakama indirilirse ikisi de yanlış okunur.
+         */}
+        {(point.due > 0.005 || point.collected > 0.005) && (
+          <div className="flex items-center justify-between gap-5 border-t border-dashed border-[#E4DEE0] pt-2 text-[11px]">
+            <span className="flex items-center gap-2 text-[#5A4B53]">
+              <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1E4E8C]" />
+              Bu ayın vadesi
+            </span>
+            <b className="tabular-nums text-[#17406F]">
+              {formatTL(Math.round(point.collected))} / {formatTL(Math.round(point.due))}
+            </b>
           </div>
         )}
         {point.changePct !== null && (
@@ -1294,7 +1323,12 @@ function RevenueSummary({
  *   • GELECEK AYLAR ELENİR: rapor penceresi son taksit vadesine kadar ileri uzanır, ciro
  *     grafiğinde ise henüz yaşanmamış aylar boş sütun olarak dizilirdi.
  */
-function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstallment[]; period: RangePeriod }) {
+function MonthlyRevenueChart({ months, period, loadFailed = false }: {
+  months: AccountMonthlyInstallment[]
+  period: RangePeriod
+  /** Rapor ucu düştü — "veri yok" yerine hata gösterilir (bkz. aşağıdaki boş durum). */
+  loadFailed?: boolean
+}) {
   const now = new Date()
   const curY = now.getFullYear()
   const curM = now.getMonth() + 1
@@ -1312,31 +1346,39 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
   }, [maxOffset])
   const visible = elapsed.slice(start, start + VISIBLE)
 
-  const windowTotal = visible.reduce((sum, month) => sum + month.collected, 0)
+  /*
+   * ÖLÇÜ = TAHSİLAT EKSENİ (`collectedInMonth`), tahakkuk ekseni değil.
+   *
+   * Kart "Aylık Ciro" diyor, yani "bu ay kasaya ne girdi". Eskiden `collected` çiziliyordu ve o,
+   * ödemenin taksitin VADE ayına dağıtılmış hâlidir: Eylül vadeli 1.000 ₺ Ağustos'ta tahsil
+   * edilince Ağustos 0, Eylül 1.000 görünüyordu — para giren ay boş kalıyordu. İki eksen artık
+   * ayrı alanlar; grafik kasayı, ipucu ayrıca vade performansını gösterir.
+   */
+  const windowTotal = visible.reduce((sum, month) => sum + month.collectedInMonth, 0)
   const monthAverage = visible.length > 0 ? windowTotal / visible.length : 0
   const peak = visible.reduce<AccountMonthlyInstallment | null>(
-    (best, month) => (best === null || month.collected > best.collected ? month : best),
+    (best, month) => (best === null || month.collectedInMonth > best.collectedInMonth ? month : best),
     null,
   )
-  const hasPeak = peak !== null && peak.collected > 0
+  const hasPeak = peak !== null && peak.collectedInMonth > 0
 
   const chartData: MonthlyRevenuePoint[] = visible.map((month, index) => {
     // Kıyas penceredeki değil TAKVİMDEKİ önceki aydır: pencerenin ilk sütunu da
     // "önceki aya göre" bilgisini taşısın (kaydırınca kıyas kaybolmasın).
     const previousMonth = elapsed[start + index - 1]
-    const previous = previousMonth ? previousMonth.collected : null
+    const previous = previousMonth ? previousMonth.collectedInMonth : null
     return {
       ...month,
       key: `${month.year}-${month.month}`,
       axisLabel: `${month.label}|${month.year}|${month.year === curY && month.month === curM ? 'current' : 'default'}`,
       isCurrent: month.year === curY && month.month === curM,
       isPeak: hasPeak && month.year === peak!.year && month.month === peak!.month,
-      changePct: previous !== null && previous > 0 ? ((month.collected - previous) / previous) * 100 : null,
-      sharePct: windowTotal > 0 ? (month.collected / windowTotal) * 100 : 0,
+      changePct: previous !== null && previous > 0 ? ((month.collectedInMonth - previous) / previous) * 100 : null,
+      sharePct: windowTotal > 0 ? (month.collectedInMonth / windowTotal) * 100 : 0,
     }
   })
 
-  const hasAny = elapsed.some((month) => month.collected > 0)
+  const hasAny = elapsed.some((month) => month.collectedInMonth > 0)
   const canPrev = start > 0
   const canNext = start + VISIBLE < elapsed.length
   const rangeLabel =
@@ -1357,7 +1399,8 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
             </span>
             <div>
               <div className="text-[13px] font-bold tracking-[-0.01em] text-[#2A2027]">Aylık Ciro</div>
-              <div className="mt-0.5 text-[10.5px] text-[#74616A]">{rangeLabel} · ay ay tahsil edilen tutar</div>
+              {/* Etiket ÖLÇÜYÜ doğru anlatmalı: sütun, ödemenin GERÇEKLEŞTİĞİ aya yazılır. */}
+              <div className="mt-0.5 text-[10.5px] text-[#74616A]">{rangeLabel} · ay ay kasaya giren tahsilat</div>
             </div>
           </div>
         </div>
@@ -1401,7 +1444,7 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
         />
         <RevenueSummary
           label="En yüksek ay"
-          value={hasPeak ? formatTL(Math.round(peak!.collected)) : '—'}
+          value={hasPeak ? formatTL(Math.round(peak!.collectedInMonth)) : '—'}
           detail={hasPeak ? `${peak!.label} ${peak!.year}` : 'Henüz ciro yok'}
           tone="violet"
         />
@@ -1447,11 +1490,12 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
                     cursor={{ fill: '#EFEAEC', opacity: 0.9, radius: 14 }}
                     wrapperStyle={{ outline: 'none' }}
                   />
-                  {/* TEK SERİ: o ayın cirosu. `collected` peşinatı zaten içerdiği için ayrı
-                      bant/ek toplama yok — peşinat yalnız ipucunda kırılım olarak görünür. */}
+                  {/* TEK SERİ: o ay KASAYA GİREN tutar (peşinat dahil). Vade performansı AYRI
+                      bir eksendir ve ipucunda ayrı satır olarak gösterilir — aynı sütuna iki
+                      farklı zaman eksenini bindirmek grafiği okunamaz hâle getiriyordu. */}
                   <Bar
-                    dataKey="collected"
-                    name="Ciro"
+                    dataKey="collectedInMonth"
+                    name="Kasaya giren"
                     fill="url(#monthlyRevenue)"
                     maxBarSize={38}
                     radius={[12, 12, 4, 4]}
@@ -1467,7 +1511,8 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
                       />
                     ))}
                     <LabelList
-                      dataKey="collected"
+                      // Sütunun üstündeki rakam da sütunla AYNI ölçüden gelmeli.
+                      dataKey="collectedInMonth"
                       position="top"
                       fill="#15694A"
                       fontSize={10}
@@ -1498,6 +1543,18 @@ function MonthlyRevenueChart({ months, period }: { months: AccountMonthlyInstall
             <span className="ml-auto hidden text-[#74616A] sm:inline">Ayrıntı için sütunların üzerine gelin</span>
           </div>
         </>
+      ) : loadFailed ? (
+        /* HATA ≠ VERİ YOK. Uç düştüğünde "henüz ciro kaydı yok" demek, kullanıcıya var olan
+           cirosunu SIFIR gösterir; yanlış bilgi, eksik bilgiden kötüdür. */
+        <div className="relative mt-4 flex min-h-[150px] flex-col items-center justify-center rounded-[18px] border border-dashed border-rose-200 bg-rose-50/60 px-4 text-center">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-100 text-rose-700">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div className="mt-3 text-[12px] font-semibold text-rose-700">Ciro raporu yüklenemedi</div>
+          <div className="mt-1 text-[10.5px] text-[#74616A]">
+            Bu kart şu an gerçek veriyi göstermiyor. Sayfayı yenileyin; sorun sürerse yetkinizi kontrol edin.
+          </div>
+        </div>
       ) : (
         <div className="relative mt-4 flex min-h-[150px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 text-center">
           <span className="grid h-10 w-10 place-items-center rounded-full bg-[#edf8f2] text-[#4b8a68]">
@@ -1588,7 +1645,10 @@ export default function AdminDashboard() {
         adminApi.cashFlow<ApiCashFlowEntry>({ tenantId, fromUtc: yearStartIso, toUtc: dayEndIso, page: 1, pageSize: 2000 }),
         adminApi.pendingOperations<ApiPendingOperation>({ tenantId, status: 'Pending', page: 1, pageSize: 10 }),
         adminApi.passiveCustomers<ApiPassiveCustomerList>(tenantId).catch(() => ({ items: [], thresholdDays: 0 })),
-        adminApi.accountReport<ApiAccountReport>(tenantId, 6).catch(() => ({} as ApiAccountReport)),
+        // HATA "VERİ YOK" DEĞİLDİR: boş nesneye düşmek, uç 500/403 dönse bile grafiği
+        // "Henüz ciro kaydı yok" diye çizdiriyordu — kullanıcı eksik veriyi gerçek sanıyordu.
+        // null döner, aşağıda AYRI bir bayrağa çevrilir ve kart hata durumu gösterir.
+        adminApi.accountReport<ApiAccountReport>(tenantId, 6).catch(() => null),
         // Paket Raporu kategori süzgecinin seçenekleri paketlerin kendi kategorilerinden türetilir
         // (boş kategori gösterilmesin diye katalog listesi yerine gerçek paketler kullanılır).
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
@@ -1604,7 +1664,9 @@ export default function AdminDashboard() {
         periodCashEntries,
         pendingResult,
         passiveResult,
-        reportResult,
+        reportResult: reportResult ?? ({} as ApiAccountReport),
+        /** Rapor ucu düştü mü — grafik "veri yok" yerine hata gösterebilsin. */
+        reportFailed: reportResult === null,
         packagesResult,
       }
     },
@@ -2138,7 +2200,7 @@ export default function AdminDashboard() {
 
                 {/* Ciro grafiği dönem çipinden yalnız pencere genişliğini alır (6 ay / 12 ay);
                     veri her zaman genel rapordan gelir, kategori süzgeciyle daralmaz. */}
-                <MonthlyRevenueChart months={reportMonths} period={packagePeriod} />
+                <MonthlyRevenueChart months={reportMonths} period={packagePeriod} loadFailed={data?.reportFailed ?? false} />
 
                 {/* HİZMET RAPORU — paket raporundan TAMAMEN AYRI blok. Kendi dönemi ve kendi
                     (hizmet) kategorisi vardır; yukarıdaki paket seçimlerinden etkilenmez. */}

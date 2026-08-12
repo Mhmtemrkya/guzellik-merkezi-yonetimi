@@ -154,9 +154,18 @@ export function groupAccountsByCustomer(accounts: CustomerAccount[]): CustomerAc
       }
     }
 
-    if (a.nextDueDate && (!g.nextDueDate || a.nextDueDate < g.nextDueDate)) {
-      g.nextDueDate = a.nextDueDate
-      g.nextDueAmount = a.nextDueAmount
+    // EN YAKIN VADE — aynı güne düşen borçlar TOPLANIR.
+    //
+    // Eskiden yalnız "daha erken" olan kazanıyordu: aynı gün vadeli 500 ve 700 ₺'lik iki
+    // satışta ikincisi hiç sayılmıyor, müşterinin o gün ödemesi gereken 1.200 ₺ ekranda
+    // 500 (ya da API sırasına göre 700) görünüyordu.
+    if (a.nextDueDate) {
+      if (!g.nextDueDate || a.nextDueDate < g.nextDueDate) {
+        g.nextDueDate = a.nextDueDate
+        g.nextDueAmount = a.nextDueAmount
+      } else if (a.nextDueDate === g.nextDueDate) {
+        g.nextDueAmount += a.nextDueAmount
+      }
     }
     const soldAt = a.soldAtUtc || a.createdAtUtc || ''
     if (soldAt > g.lastSaleAtUtc) g.lastSaleAtUtc = soldAt
@@ -235,8 +244,18 @@ export function buildMonthlySchedule(group: CustomerAccountGroup, todayIso: stri
     // yapmak "bu ayın parası gecikti" diye okunur. Devir ayrı sütun/rakam olarak görünür.
     let status: MonthCell['status']
     if (v.remaining <= 0.005) status = 'paid'
-    // GÜN HASSASİYETİ: ay granülü ("bu ay henüz bitmedi") 10 Mart vadesini 15 Mart'ta hâlâ
-    // "bekliyor" gösteriyordu. Takvim artık gerçek vade tarihini yazdığı için gün karşılaştırılır.
+    /*
+     * TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — bu bir tutarsızlık değil, ayrı soru.
+     *
+     * Cari kartındaki "GECİKTİ" rozeti borcun RESMEN geciktiğini söyler ve toleransı uygular:
+     * bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz
+     * (bkz. `apiMappers.normalizeAccount`). Bu ızgarada ise kullanıcı "GEÇEN AYIN PARASI GELDİ
+     * Mİ" diye bakar; geçmiş bir ayın hücresini, tolerans penceresi sürüyor diye nötr boyamak
+     * o soruyu cevapsız bırakırdı.
+     *
+     * Rozetlerin (tahsilat kuyruğu, taksit satırı) tek kaynağı `overdue` bayrağıdır; ham tarih
+     * karşılaştırması YALNIZ bu takvim hücresine özeldir ve testle sabitlenmiştir.
+     */
     else if (v.anyOverdue || key < nowKey || (v.firstDueDate !== null && v.firstDueDate < today)) status = 'overdue'
     else if (v.paid > 0.005) status = 'partial'
     else status = 'upcoming'
@@ -298,7 +317,9 @@ export function buildInstallmentRows(
       carryIn,
       expected: item.amount + carryIn,
       outstanding,
-      isOverdue: remaining > 0.005 && (item.overdue || (due !== '' && due < today)),
+      // GECİKME TEK KAYNAKTAN: `item.overdue` aylık toleransı (grace) zaten uygular.
+      // Ham "vade < bugün" eklemek toleransı deler (bkz. buildMonthlySchedule'daki not).
+      isOverdue: remaining > 0.005 && item.overdue,
     }
   })
 }
@@ -384,7 +405,9 @@ export function buildGlobalDueQueue(accounts: CustomerAccount[], todayIso: strin
         installmentNo: i.no,
         dueDate: due,
         remaining: take,
-        isOverdue: i.overdue || (due !== '' && due < today),
+        // GECİKME TEK KAYNAKTAN: `i.overdue` aylık toleransı zaten uygular; ham tarih
+        // karşılaştırması eklemek toleransı deler ve kuyruk, cari kartından farklı boyanırdı.
+        isOverdue: i.overdue,
       })
     }
 
@@ -404,7 +427,15 @@ export function buildGlobalDueQueue(accounts: CustomerAccount[], todayIso: strin
 
   // GLOBAL VADE SIRASI: en eski borç önce kapanır. Tarihsiz satır (bozuk veri) en başa alınır —
   // gizlenmesi, kullanıcının göremediği bir borcun ödenmemesi demek olurdu.
-  return rows.sort((x, y) => (x.dueDate || '0000-00-00').localeCompare(y.dueDate || '0000-00-00'))
+  //
+  // EŞİT VADEDE SIRA DETERMİNİSTİK OLMALI. Yalnız tarihe göre sıralamak, aynı gün vadeli iki
+  // satışta hangisinin önce kapanacağını API'nin döndürme sırasına bırakıyordu: aynı tutar,
+  // aynı gün, iki farklı sonuç — kullanıcı önizlemede gördüğü dağıtımı bir sonraki açılışta
+  // farklı görebiliyordu. Hesap kimliği + taksit numarası bağı kesin ve kararlı çözer.
+  return rows.sort((x, y) =>
+    (x.dueDate || '0000-00-00').localeCompare(y.dueDate || '0000-00-00')
+    || x.accountId.localeCompare(y.accountId)
+    || (x.installmentNo ?? 0) - (y.installmentNo ?? 0))
 }
 
 /** Tümü modunun özet rakamları. */

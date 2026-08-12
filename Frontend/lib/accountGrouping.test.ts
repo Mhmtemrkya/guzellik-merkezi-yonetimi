@@ -368,10 +368,28 @@ describe('allocateAcrossAccounts (Tümü)', () => {
     const s = summarizeAllAccounts(twoSales(), '2026-02-05')
     expect(s.remaining).toBe(5000)
     expect(s.openCount).toBe(2)
-    // Bu ay ödenmesi gereken: 10 Oca (1.500, gecikmiş) + 10 Şub (1.000, bu ay). Mart/Nisan hariç.
+    // Bu ay ödenmesi gereken: 10 Oca (1.500) + 10 Şub (1.000). Mart/Nisan hariç.
     expect(s.dueNow).toBe(2500)
-    // Gecikmiş: yalnız vadesi GEÇMİŞ olan 10 Oca.
-    expect(s.overdue).toBe(1500)
+    /*
+     * GECİKME TEK KAYNAKTAN: `overdue` bayrağı.
+     *
+     * Kuyruk eskiden ham "vade < bugün" ile de gecikme sayıyordu ve AYLIK TOLERANSI deliyordu:
+     * 10 Oca taksiti, bir sonraki vade (10 Şub) gelene kadar gecikmiş değildir — cari kartı da
+     * öyle gösterir. İkisi ayrışınca aynı borç bir ekranda kırmızı, diğerinde normal oluyordu.
+     * Bu kurgudaki taksitlerde bayrak KURULU DEĞİL, dolayısıyla gecikme de yoktur.
+     */
+    expect(s.overdue).toBe(0)
+  })
+
+  it('gecikme bayrağı kurulu taksit kuyrukta da gecikmiş sayılır', () => {
+    // Bayrağın kendisi çalışıyor: tolerans dolduğunda sunucu/mapper bunu işaretler.
+    const list = [
+      acc({
+        id: 'x1', customerId: 'c1', totalAmount: 1500, paidAmount: 0, remainingAmount: 1500,
+        installments: [inst({ id: 'x1-1', no: 1, dueDate: '2026-01-10', amount: 1500, overdue: true })],
+      }),
+    ]
+    expect(summarizeAllAccounts(list, '2026-02-15').overdue).toBe(1500)
   })
 
   it('tutar 0 ise hiç çağrı üretilmez', () => {
@@ -495,5 +513,65 @@ describe('Tümü kırılımı: bu ayın taksitleri her satıştan birer taksit k
     expect(s.dueNow).toBe(6000)
     const out = allocateAcrossAccounts(list, 6000, '2026-02-10')
     expect(out.map((r) => r.amount)).toEqual([2000, 2000, 2000])
+  })
+})
+
+/**
+ * DAĞITIM SIRASI DETERMİNİSTİK OLMALI.
+ *
+ * Kuyruk yalnız vade tarihine göre sıralanınca, aynı gün vadeli iki satıştan hangisinin önce
+ * kapanacağı API'nin döndürme sırasına kalıyordu: aynı veri, iki farklı dağıtım. Kullanıcı
+ * onaydan önce gördüğü önizlemenin bir sonraki açılışta değişmeyeceğine güvenebilmeli.
+ */
+describe('eşit vadede dağıtım sırası', () => {
+  const sameDay = (): CustomerAccount[] => [
+    acc({
+      id: 'b-account', customerId: 'c1', servicePackageName: 'B satışı',
+      installments: [inst({ id: 'b1', no: 1, dueDate: '2026-03-10', amount: 1000 })],
+    }),
+    acc({
+      id: 'a-account', customerId: 'c1', servicePackageName: 'A satışı',
+      installments: [inst({ id: 'a1', no: 1, dueDate: '2026-03-10', amount: 1000 })],
+    }),
+  ]
+
+  it('aynı vadede sıra hesap kimliğine göre sabitlenir (giriş sırası değiştirse de aynı)', () => {
+    const forward = buildGlobalDueQueue(sameDay(), '2026-03-15').map((r) => r.accountId)
+    const reversed = buildGlobalDueQueue(sameDay().reverse(), '2026-03-15').map((r) => r.accountId)
+    expect(forward).toEqual(reversed)
+    expect(forward).toEqual(['a-account', 'b-account'])
+  })
+
+  it('kısmi tutar hep aynı satışa gider — giriş sırası dağıtımı değiştirmez', () => {
+    const forward = allocateAcrossAccounts(sameDay(), 1000, '2026-03-15')
+    const reversed = allocateAcrossAccounts(sameDay().reverse(), 1000, '2026-03-15')
+    expect(forward).toEqual(reversed)
+    expect(forward.map((r) => [r.accountId, r.amount])).toEqual([['a-account', 1000]])
+  })
+})
+
+/**
+ * AYNI GÜNE DÜŞEN VADELER TOPLANIR.
+ *
+ * Grup özeti yalnız "daha erken" vadeyi kazandırıyordu; aynı gün vadeli ikinci satış hiç
+ * sayılmıyor, müşterinin o gün ödemesi gereken tutar eksik görünüyordu.
+ */
+describe('grup özetinde aynı gün vadeleri', () => {
+  it('aynı vadeli iki satışın tutarı toplanır', () => {
+    const [g] = groupAccountsByCustomer([
+      acc({ id: 's1', customerId: 'c1', nextDueDate: '2026-04-05', nextDueAmount: 500 }),
+      acc({ id: 's2', customerId: 'c1', nextDueDate: '2026-04-05', nextDueAmount: 700 }),
+    ])
+    expect(g.nextDueDate).toBe('2026-04-05')
+    expect(g.nextDueAmount).toBe(1200)
+  })
+
+  it('daha erken vade kazanır, geç vade toplanmaz', () => {
+    const [g] = groupAccountsByCustomer([
+      acc({ id: 's1', customerId: 'c1', nextDueDate: '2026-05-01', nextDueAmount: 900 }),
+      acc({ id: 's2', customerId: 'c1', nextDueDate: '2026-04-05', nextDueAmount: 700 }),
+    ])
+    expect(g.nextDueDate).toBe('2026-04-05')
+    expect(g.nextDueAmount).toBe(700)
   })
 })

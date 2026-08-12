@@ -44,16 +44,24 @@ export const toneChip: Record<PanelTone, string> = {
   rose: 'bg-white/20 text-white',
   gold: 'bg-white/20 text-white',
   mint: 'bg-white/20 text-white',
-  violet: 'bg-white/22 text-white',
+  violet: 'bg-white/20 text-white',
   peach: 'bg-white/45 text-[#5A1730]',
   cream: 'bg-[#8E7882] text-white',
 }
 
 /** Kartın renkli başlık bandı. */
+/*
+ * KART BAŞLIK BANDI — üzerindeki 10,5px beyaz etiketle birlikte WCAG AA (4,5:1) sağlamalı.
+ *
+ * Menekşe #8E7882 (4,07:1) ve yeşil #1E8C60 (4,22:1) küçük beyaz metin için AA'nın ALTINDAYDI.
+ * Metni koyulaştırmak çözüm DEĞİL: bu ara tonlarda koyu metin daha da kötü (#2A2027 → 3,87 ve
+ * 3,73). Beyaz metin korunacaksa tek yol bandı bir tık koyultmaktır; %94–96 ölçekleme kimliği
+ * bozmayacak kadar küçük ama eşiği geçmeye yetiyor.
+ */
 export const toneSurface: Record<PanelTone, string> = {
   rose: 'bg-[#A5556E]',
-  gold: 'bg-[#1E8C60]',
-  violet: 'bg-[#8E7882]',
+  gold: 'bg-[#1D865C]',
+  violet: 'bg-[#85717A]',
   mint: 'bg-[#1E4E8C]',
   peach: 'bg-[#F9A1B9]',
   cream: 'bg-[#F7F6F6]',

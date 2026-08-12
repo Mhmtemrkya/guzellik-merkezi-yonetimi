@@ -1797,7 +1797,8 @@ export default function AppointmentEditor({
           onSubmit={async (p) => {
             await adminApi.registerAccountPayment(
               p.accountId,
-              { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc },
+              // Fazla ödeme yalnız modalde onaylandıysa geçer (bkz. RegisterPaymentAsync).
+              { amount: p.amount, method: p.method, reference: p.reference, occurredAtUtc: p.occurredAtUtc, allowOverpayment: p.allowOverpayment },
               tenantId,
               p.idempotencyKey,
             )

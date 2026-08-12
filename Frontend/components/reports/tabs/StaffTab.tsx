@@ -240,7 +240,7 @@ export default function StaffTab({
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate font-semibold text-[#2f2230]">
-                      {i === 0 && <span className="mr-1 text-[#c99a2e]">★</span>}
+                      {i === 0 && <span className="mr-1 text-[#937022]">★</span>}
                       {r.staffName}
                     </span>
                     <span className="block truncate text-[10.5px] text-[#705a66]">

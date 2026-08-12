@@ -131,10 +131,19 @@ List<CustomerAccountGroup> groupAccountsByCustomer(List<Map<String, dynamic>> ac
       }
     }
 
+    // EN YAKIN VADE — aynı güne düşen borçlar TOPLANIR (web ile aynı kural).
+    //
+    // Eskiden yalnız "daha erken" olan kazanıyordu: aynı gün vadeli 500 ve 700 ₺'lik iki
+    // satışta ikincisi hiç sayılmıyor, o gün ödenmesi gereken 1.200 ₺ ekranda 500 (ya da
+    // API sırasına göre 700) görünüyordu.
     final nd = valueOf(a, const ['nextDueDate'], fallback: '');
-    if (nd.isNotEmpty && (g.nextDueDate == null || nd.compareTo(g.nextDueDate!) < 0)) {
-      g.nextDueDate = nd;
-      g.nextDueAmount = numberOf(a, const ['nextDueAmount']);
+    if (nd.isNotEmpty) {
+      if (g.nextDueDate == null || nd.compareTo(g.nextDueDate!) < 0) {
+        g.nextDueDate = nd;
+        g.nextDueAmount = numberOf(a, const ['nextDueAmount']);
+      } else if (nd == g.nextDueDate) {
+        g.nextDueAmount += numberOf(a, const ['nextDueAmount']);
+      }
     }
     final soldAt = valueOf(a, const ['soldAtUtc', 'createdAtUtc'], fallback: '');
     if (soldAt.compareTo(g.lastSaleAtUtc) > 0) g.lastSaleAtUtc = soldAt;
@@ -206,6 +215,11 @@ List<MonthCell> buildMonthlySchedule(CustomerAccountGroup group, String todayIso
       final due = firstDue[key];
       // DURUM AYIN KENDİ HÂLİDİR, devrin değil: geçmişteki borç yüzünden gelecek ayı kırmızı
       // yapmak "bu ayın parası gecikti" diye okunur.
+      //
+      // TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — tutarsızlık değil, ayrı soru:
+      // rozet "borç resmen gecikti mi" der (tolerans uygulanır), bu ızgara ise "geçen ayın
+      // parası geldi mi" der. Rozetlerin tek kaynağı `overdue` bayrağıdır; ham tarih
+      // karşılaştırması yalnız bu hücreye özeldir (web `accountGrouping.ts` ile aynı kural).
       final String status;
       if (v[2] <= 0.005) {
         status = 'paid';
@@ -324,8 +338,9 @@ List<GlobalDueRow> buildGlobalDueQueue(
         installmentNo: i.no,
         dueDate: i.dueDate,
         remaining: take,
-        isOverdue:
-            i.overdue || (i.dueDate.isNotEmpty && i.dueDate.compareTo(today) < 0),
+        // GECİKME TEK KAYNAKTAN: `i.overdue` aylık toleransı zaten uygular; ham tarih
+        // karşılaştırması eklemek toleransı deler (web `accountGrouping.ts` ile aynı kural).
+        isOverdue: i.overdue,
       ));
     }
 
@@ -345,8 +360,18 @@ List<GlobalDueRow> buildGlobalDueQueue(
   }
 
   // GLOBAL VADE SIRASI: en eski borç önce kapanır. Tarihsiz satır (bozuk veri) en başa alınır.
-  rows.sort((x, y) => (x.dueDate.isEmpty ? '0000-00-00' : x.dueDate)
-      .compareTo(y.dueDate.isEmpty ? '0000-00-00' : y.dueDate));
+  //
+  // EŞİT VADEDE SIRA DETERMİNİSTİK OLMALI (web ile aynı kural): yalnız tarihe göre sıralamak,
+  // aynı gün vadeli iki satışta hangisinin önce kapanacağını API'nin döndürme sırasına
+  // bırakıyordu. Hesap kimliği + taksit numarası bağı kesin ve kararlı çözer.
+  rows.sort((x, y) {
+    final c = (x.dueDate.isEmpty ? '0000-00-00' : x.dueDate)
+        .compareTo(y.dueDate.isEmpty ? '0000-00-00' : y.dueDate);
+    if (c != 0) return c;
+    final a = x.accountId.compareTo(y.accountId);
+    if (a != 0) return a;
+    return (x.installmentNo ?? 0).compareTo(y.installmentNo ?? 0);
+  });
   return rows;
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
@@ -119,6 +121,16 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   /// türer. Ağ kesilip kullanıcı tekrar gönderdiğinde fiş açma isteği ilk yanıtı oynatır, AYNI
   /// adisyon id'si döner ve kalemler de oynatılır — ikinci fiş açılmaz, kalemler çiftlenmez.
   String _saleSalt = newIdempotencySalt();
+
+  /// Kalıcı tuzun kapsamı — ekran genelinde tek kapsam yeter: anahtar zaten müşteri/paket/tutar
+  /// gibi ayırt edici alanlardan türüyor, tuz yalnız "bu gönderim oturumu" demek.
+  static const _saltScope = 'package_sale';
+
+  /// Bu oturumda fişe YAZILMIŞ peşinat kalemi (varsa).
+  ///
+  /// Tekrar denemede tutar/yöntem değişmişse önce bu kalem SİLİNİR: kalem ucu bir EKLEME
+  /// ucudur, ikinci çağrı peşinatı güncellemez, İKİNCİSİNİ ekler (200 ₺ → 400 ₺).
+  ({String itemId, double amount, String method})? _writtenDeposit;
   final price = TextEditingController();
   final downPayment = TextEditingController();
 
@@ -221,6 +233,10 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
   @override
   void dispose() {
+    // SHEET KAPANDI = KAÇIŞ KAPISI: kesin hatayla (4xx) reddedilen bir satış, tuz hiç düşmezse
+    // aynı anahtarla sürekli aynı hatayı oynatır ve kullanıcı TTL dolana kadar kilitli kalırdı.
+    // Kaza (uygulama öldürüldü) tuzu korur; bilinçli kapatma düşürür (web ile aynı kural).
+    unawaited(PersistentIdempotencySalt.clear(_saltScope));
     price.dispose();
     downPayment.dispose();
     notes.dispose();
@@ -475,6 +491,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     String? createdId;
     var phase = 'build';
     try {
+      // Kalıcı tuz: uygulama gönderimin ortasında kapanıp açılırsa aynı anahtar üretilir ve
+      // yanıtı kaybolmuş satışın tekrarı sunucuda oynatılır (ikinci fiş açılmaz).
+      _saleSalt = await PersistentIdempotencySalt.get(_saltScope);
       // 1) Adisyonu aç + taksit planını yaz (peşin = 0).
       final adisyon = await widget.api.post(
         '/api/admin/adisyonlar/',
@@ -559,9 +578,26 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         );
       }
 
-      // 3) Peşinat alındıysa tahsilat kalemi.
-      if (pay > 0) {
-        await widget.api.post(
+      /*
+       * 3) Peşinat alındıysa tahsilat kalemi.
+       *
+       * TEKRAR DENEMEDE PEŞİNAT EKLENMEZ, DEĞİŞTİRİLİR (web `PackageSaleDialog` ile aynı kural).
+       *
+       * Anahtara yöntem de giriyor (aşağıdaki gerekçe): 200 ₺ NAKİT peşinat yazıldıktan sonra
+       * adım düşer, kullanıcı yöntemi KARTA çevirip tekrar denerse anahtar değişir, sunucu bunu
+       * yeni istek sayar ve fişe İKİNCİ bir peşinat kalemi eklenir: 200 ₺ yerine 400 ₺.
+       */
+      final written = _writtenDeposit;
+      if (written != null &&
+          (written.amount != pay || written.method != _downPaymentMethod)) {
+        // Hata YUTULMAZ: silinemezse çift kalem riski sürer.
+        await widget.api
+            .delete('/api/admin/adisyonlar/$adisyonId/items/${written.itemId}');
+        _writtenDeposit = null;
+      }
+      // Aynı tutar + aynı yöntem zaten yazıldıysa hiç dokunma.
+      if (pay > 0 && _writtenDeposit == null) {
+        final afterDeposit = await widget.api.post(
           '/api/admin/adisyonlar/$adisyonId/items',
           {
             'type': 'Payment',
@@ -582,9 +618,24 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
             'method': _downPaymentMethod,
           },
           // ANAHTARA YÖNTEM DE GİRER: yöntem değişince gövde değişir; anahtar sabit kalsaydı
-          // sunucu ESKİ yanıtı oynatıp yanlış yöntemi yazardı.
+          // sunucu ESKİ yanıtı oynatıp yanlış yöntemi yazardı. (Eski kalemin silinmesi
+          // yukarıda yapılır — yoksa ikinci kalem eklenirdi.)
           idempotencyKey(_saleSalt, ['pay', pay, _downPaymentMethod]),
         );
+        // NE YAZDIĞIMIZI HATIRLA: tekrar denemede bu kalem silinip yenisi yazılacak.
+        // Sunucu fişin tamamını döndürür; peşinat en son eklenen `Payment` satırıdır.
+        final items = afterDeposit is Map ? afterDeposit['items'] : null;
+        String? writtenId;
+        if (items is List) {
+          for (final it in items) {
+            if (it is Map && '${it['type']}' == 'Payment' && it['id'] != null) {
+              writtenId = '${it['id']}';
+            }
+          }
+        }
+        _writtenDeposit = writtenId == null
+            ? null
+            : (itemId: writtenId, amount: pay, method: _downPaymentMethod);
       }
 
       if (approveNow) {
@@ -593,6 +644,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
         // düşürür (200 + pendingApproval döner, hata fırlatmaz).
         final result = await widget.api.post('/api/admin/adisyonlar/$adisyonId/approve', const {});
         final pending = result is Map && result['pendingApproval'] == true;
+        // SATIŞ BİTTİ → kalıcı tuz düşer; aynı satışı bir daha yapmak MEŞRUDUR.
+        await PersistentIdempotencySalt.clear(_saltScope);
+        _writtenDeposit = null;
         if (mounted) {
           Navigator.pop(context, true);
           _snack(pending
@@ -606,6 +660,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
       // 4) Peşinat alınmadı → satış AÇIK kalır ve ilk randevuya ertelenir. Adisyon kartı AÇILMAZ
       //    (kullanıcı talebi: süreç uzuyordu); kart gerekirse müşteri kartından açılır.
+      // Fiş eksiksiz yazıldı: kalıcı tuz burada da düşer.
+      await PersistentIdempotencySalt.clear(_saltScope);
+      _writtenDeposit = null;
       if (mounted) {
         Navigator.pop(context, true);
         _snack('Satış kaydedildi · ilk randevu tamamlanınca cariye işlenecek.');
@@ -631,7 +688,11 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
           // anahtarla tekrar denemek fiş açma isteğini oynatıp ÖLÜ fişin id'sini döndürür ve
           // kalemler iptal edilmiş fişe yazılmaya çalışılır. İptal de patladıysa (ağ kesik)
           // fiş ortadadır: aynı anahtarla devam edip onu tamamlamak doğrudur.
+          await PersistentIdempotencySalt.clear(_saltScope);
           _saleSalt = newIdempotencySalt();
+          // Fiş öldü; üstündeki peşinat kalemi de yok. Referans taşınırsa sonraki denemede
+          // var olmayan bir kalemi silmeye çalışırdık.
+          _writtenDeposit = null;
         } catch (_) {
           // İptal de düşerse elde edilecek bir şey yok; asıl hata kullanıcıya gösterilir.
         }

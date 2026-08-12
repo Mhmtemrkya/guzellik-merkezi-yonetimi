@@ -493,6 +493,9 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
       collected: Number(m?.collected ?? 0),
       remaining: Number(m?.remaining ?? 0),
       deposit: Number(m?.deposit ?? 0),
+      // Eski sunucu bu alanı göndermiyorsa 0 kalır; grafik tahsilat serisini o ay boş çizer
+      // (yanlış ay göstermektense boş göstermek doğrudur).
+      collectedInMonth: Number(m?.collectedInMonth ?? 0),
     }
   })
   return {

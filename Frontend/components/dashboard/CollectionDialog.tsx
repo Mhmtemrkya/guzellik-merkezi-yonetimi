@@ -29,7 +29,7 @@ import {
   allocateAcrossAccounts, buildInstallmentRows, dueThisMonth, planCollectionCalls,
   summarizeAllAccounts, type GlobalDueRow,
 } from '@/lib/accountGrouping'
-import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
+import { clearPersistentIdempotencySalt, idempotencyKey, persistentIdempotencySalt } from '@/lib/idempotency'
 
 // ---------------------------------------------------------------------------
 // TEK "TAHSİLAT AL" MODALI
@@ -69,6 +69,15 @@ export interface CollectionSubmitPayload {
    * ikinci tıklama) sunucuda İKİNCİ bir tahsilat satırı açar: 400 ₺ 800 ₺ olur.
    */
   idempotencyKey: string
+  /**
+   * Kalan borcu AŞAN tutarın kredi bakiyesi olarak yazılmasına açık onay.
+   *
+   * Sunucu (`RegisterPaymentAsync`) fazla ödemeyi sessizce kabul etmez: `AllowOverpayment`
+   * gelmezse kalan borcu aşan istek doğrulama hatasıyla reddedilir. Çağrı yeri bunu isteğin
+   * gövdesine `allowOverpayment` olarak koymalı — koymazsa modalin "fazlası kredi olarak
+   * kalır" vaadi sunucuda 400 ile karşılanır.
+   */
+  allowOverpayment: boolean
 }
 
 interface CollectionDialogProps {
@@ -163,6 +172,18 @@ export default function CollectionDialog({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const open = controlledOpen ?? uncontrolledOpen
   const setOpen = (next: boolean): void => {
+    /*
+     * KAPATMA = KAÇIŞ KAPISI. Kalıcı tuz "yanıtı kaybolan tahsilat tekrar gönderilmesin" diye
+     * var; ama sunucu isteği KESİN bir hatayla (4xx) reddettiğinde o yanıt kaydediliyor ve aynı
+     * anahtarla atılan her tekrar aynı hatayı OYNATIYOR. Tuz hiç düşmezse kullanıcı, içeriği
+     * değiştirmeden aynı tahsilatı bir daha deneyemez — TTL dolana kadar kilitli kalırdı.
+     *
+     * Bu yüzden kural ayrıştırıldı:
+     *  · KAZA (yenileme, çöken sekme) → tuz yaşar, koruma sürer.
+     *  · BİLİNÇLİ KAPATMA (Vazgeç / X) → tuz düşer; modal yeniden açıldığında taze anahtar üretilir.
+     * Belgelenmiş "modalı kapat-aç" kaçış kapısı böylece korunur.
+     */
+    if (!next) clearPersistentIdempotencySalt(saltScope)
     if (onOpenChange) onOpenChange(next)
     if (controlledOpen === undefined) setUncontrolledOpen(next)
   }
@@ -181,6 +202,14 @@ export default function CollectionDialog({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  /**
+   * FAZLA ÖDEME ONAYI. Modal eskiden "fazlası kredi olarak kalır" diye YAZIYOR ama isteğe
+   * `allowOverpayment` koymuyordu; sunucu da bilinçli onay olmadan fazla ödemeyi reddettiği
+   * için kullanıcı vaat edilen davranış yerine hata alıyordu. Artık vaat, kullanıcının
+   * işaretlediği bu kutuya bağlı: işaretliyse gerçekten kredi yazılır, değilse gönderim
+   * daha istemcide durur.
+   */
+  const [allowOverpayment, setAllowOverpayment] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
   /**
    * Tahsilat anahtarlarının oturum tuzu. YALNIZ açılış/kapanışta döner — aşağıdaki sıfırlama
@@ -188,15 +217,42 @@ export default function CollectionDialog({
    * çift-gönderim koruması sessizce devre dışı kalırdı.
    */
   const saltRef = useRef<string>('')
+  /**
+   * Tuzun KAPSAMI — bu müşterinin/carinin tahsilat oturumu.
+   *
+   * Kapsam sabit olmalı ki sayfa yenilendikten sonra aynı tuz geri gelsin; ama müşteriye özel
+   * olmalı ki A müşterisinin yarım kalan tahsilatı B'ninkini etkilemesin. Liste tek müşteriye
+   * daraltılmışsa onun kimliği, değilse ekran genelinde tek kapsam kullanılır.
+   */
+  const saltScope = useMemo(
+    () => `collection:${accounts[0]?.customerId || 'genel'}`,
+    [accounts],
+  )
   useEffect(() => {
-    if (open) saltRef.current = newIdempotencySalt()
-  }, [open])
+    // Yenileme sonrası AYNI tuz döner: yanıtı kaybolmuş bir tahsilatın tekrarı sunucuda
+    // oynatılır, ikinci kez yazılmaz (bkz. persistentIdempotencySalt).
+    if (open) saltRef.current = persistentIdempotencySalt(saltScope)
+  }, [open, saltScope])
+  /**
+   * GÖNDERİM UÇUŞTA MI — aşağıdaki sıfırlama efektinin kapısı.
+   *
+   * `saving` state'i bu iş için YETMEZ: efekt `accounts` kimliği her değiştiğinde çalışır ve
+   * çok çağrılı tahsilatta (Tümü) ilk alt tahsilattan sonra ekran tazelenir, dizi kimliği
+   * değişir, efekt formu yeniden kurup `setSaving(false)` yapardı — ilk işlem HÂLÂ SÜRERKEN
+   * buton yeniden aktifleşiyor ve kullanıcı aynı tahsilatı ikinci kez başlatabiliyordu.
+   * Ref state döngüsüne girmediği için efekt tetiklenmeden okunabilir.
+   */
+  const submittingRef = useRef(false)
 
   const selected = useMemo(() => accounts.find((a) => a.id === accountId) || null, [accounts, accountId])
 
   // Modal her açılışta ilk cariye (ya da Tümü'ye) + önerilen tutara sıfırlanır.
   useEffect(() => {
     if (!open) return
+    // GÖNDERİM SÜRERKEN FORMA DOKUNMA. Çok çağrılı tahsilatta her alt çağrıdan sonra ekran
+    // tazelenip `accounts` kimliği değişiyor; buradan geçmek çalışan işlemin ortasında formu
+    // sıfırlar, `saving`i düşürür ve ikinci bir gönderime kapı açardı.
+    if (submittingRef.current) return
     const openAccounts = accounts.filter((a) => a.remainingAmount > 0.005)
     // "Tümü" ancak GERÇEKTEN birden çok açık satış varken açılır; tek satışta sıradan seçim.
     const wantsAll = defaultAll && openAccounts.length > 1
@@ -215,6 +271,7 @@ export default function CollectionDialog({
     setPickerOpen(false)
     setError('')
     setSaving(false)
+    setAllowOverpayment(false)
   }, [open, initialAccountId, defaultAll, accounts])
 
   // Dışarı tıklayınca cari seçici kapansın.
@@ -301,6 +358,8 @@ export default function CollectionDialog({
   /** Kalan borcun henüz satırlara dağıtılmamış kısmı — yeni satırın varsayılanı olur. */
   // Kuruş korunur: yuvarlarsak 999,50 ₺ borçta 0,50 ₺'lik hayali "dağıtılmamış" kalır.
   const unallocated = Math.max(0, roundKurus(scopeRemaining - totalAmount))
+  /** Kalan borcu AŞAN kısım — pozitifse sunucu açık onay ister (kredi bakiyesi). */
+  const overpayAmount = Math.max(0, roundKurus(totalAmount - scopeRemaining))
 
   /**
    * TÜMÜ ÖNİZLEMESİ — girilen tutarın hangi satışa ne kadar yazılacağı.
@@ -347,10 +406,11 @@ export default function CollectionDialog({
     /*
      * TÜMÜ'DE İKİ ANA KIRILIM: "bu ayın taksitleri" ↔ "tüm borç".
      *
-     * Birincisi HER SATIŞTAN o ayki taksiti kapatır (para tek satışa yığılmaz) — dağıtım
-     * global vade sırasıyla yapıldığı için üç satışın da 1. taksiti aynı anda kapanır.
-     * Etiketler bunu açıkça yazar: "bu ay ödenmesi gereken" tek başına, kaç satıştan kaç
-     * taksit kapanacağını söylemiyordu.
+     * ETİKET GERÇEK DAVRANIŞI ANLATMALI. Eskiden "N satışın HER BİRİNDEN bu ayki taksit"
+     * yazıyordu; bu yanlıştı: tutar tek bir global vade kuyruğuna dağıtılır ve en eski vadeden
+     * başlayarak kapatır. Gecikmiş borcu olan bir satış kuyruğun başında parayı tüketirse,
+     * yalnız GELECEK ay vadesi olan başka bir satış bu dağıtımdan hiç pay almayabilir.
+     * Doğrusu: "ay sonuna kadar vadesi gelen borçlar, en eski vadeden başlayarak".
      */
     if (allMode && allSummary) {
       if (allSummary.dueNow > 0.005) {
@@ -358,7 +418,7 @@ export default function CollectionDialog({
           key: 'all-due',
           label: 'Bu ayın taksitleri',
           value: roundKurus(allSummary.dueNow),
-          hint: `${allSummary.openCount} satışın her birinden bu ayki taksit`,
+          hint: 'ay sonuna kadar vadesi gelen borçlar · en eski vadeden başlar',
         })
       }
       if (allSummary.overdue > 0.005 && Math.abs(allSummary.overdue - allSummary.dueNow) > 0.005) {
@@ -443,7 +503,19 @@ export default function CollectionDialog({
       return
     }
 
+    // FAZLA ÖDEME KAPISI. Sunucu, açık onay olmadan kalan borcu aşan tahsilatı reddeder;
+    // burada durdurmak kullanıcıya sunucunun tek satırlık hatası yerine ne olacağını söyler
+    // ve onay kutusunu gösterir.
+    if (overpayAmount > 0.005 && !allowOverpayment) {
+      setError(
+        `Girilen tutar kalan borcu ${formatTL(overpayAmount)} aşıyor. ` +
+        'Fazlasını kredi bakiyesi olarak yazmak için aşağıdaki onayı işaretleyin.',
+      )
+      return
+    }
+
     setSaving(true)
+    submittingRef.current = true
     // Tarihten TÜRETİLİR (öğlen sabitlenir) — yani aynı formun tekrar gönderimi aynı damgayı
     // üretir. `new Date()` kullanılsaydı her deneme farklı gövde olur, anahtar tutsa bile
     // middleware parmak izini tutturamaz ve oynatma yerine 409 dönerdi.
@@ -464,9 +536,14 @@ export default function CollectionDialog({
           // anahtarı farklı bir gövdeye denk gelip 409 (KeyReuse) üretirdi. Çift (satış, yöntem)
           // parti içinde benzersizdir ve tekrar denemede aynı kalır.
           idempotencyKey: idempotencyKey(saltRef.current, call.accountId, call.method, call.amount, occurredAtUtc, trimmedReference),
+          // Onay verilmediyse yukarıda durulur; buraya yalnız bilinçli fazla ödeme gelir.
+          allowOverpayment,
         })
         done++
       }
+      // TAMAMI YAZILDI → tuz düşer. Bundan sonra aynı modal aynı tutarla tekrar açılırsa
+      // MEŞRU ikinci bir tahsilat olur ve yeni tuzla gerçekten yazılır.
+      clearPersistentIdempotencySalt(saltScope)
       setOpen(false)
     } catch (e) {
       const base = e instanceof Error ? e.message : 'Tahsilat kaydedilemedi.'
@@ -487,6 +564,8 @@ export default function CollectionDialog({
       }
     } finally {
       setSaving(false)
+      // Kapıyı EN SONDA aç: bu ana kadar gelen `accounts` tazelemeleri formu sıfırlamamalıydı.
+      submittingRef.current = false
     }
   }
 
@@ -936,7 +1015,10 @@ export default function CollectionDialog({
                   {preview.leftover > 0.005 && (
                     <li className="flex items-center gap-1.5">
                       <Wallet className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" />
-                      <b>{formatTL(preview.leftover)}</b> fazla ödeme (kredi) olarak kalır
+                      {/* Vaat KOŞULLU yazılır: onay verilmeden fazla ödeme sunucuda reddedilir,
+                          "kredi olarak kalır" demek yanlış beklenti üretiyordu. */}
+                      <b>{formatTL(preview.leftover)}</b>
+                      {allowOverpayment ? ' fazla ödeme (kredi) olarak kalır' : ' fazla — onay gerekiyor'}
                     </li>
                   )}
                   <li className="text-[10.5px] text-[#74616A]">
@@ -944,6 +1026,26 @@ export default function CollectionDialog({
                   </li>
                 </ul>
               </div>
+            )}
+
+            {/* FAZLA ÖDEME ONAYI — yalnız tutar kalan borcu aştığında çıkar. Sunucu bilinçli
+                onay olmadan fazlasını kabul etmez; kutu, modalin vaadi ile sunucunun kuralını
+                tek yerde buluşturur. */}
+            {overpayAmount > 0.005 && (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] border border-amber-300 bg-amber-50 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={allowOverpayment}
+                  onChange={(e) => { setAllowOverpayment(e.target.checked); if (e.target.checked) setError('') }}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#A5556E]"
+                />
+                <span className="text-[11.5px] leading-snug text-[#5A4B53]">
+                  <b className="font-semibold text-[#3E343A]">
+                    {formatTL(overpayAmount)} fazla ödeme alınıyor.
+                  </b>{' '}
+                  Fazlasını <b className="font-semibold text-[#3E343A]">kredi bakiyesi</b> olarak yazmayı onaylıyorum.
+                </span>
+              </label>
             )}
 
             {error && (

@@ -154,6 +154,9 @@ export default function CariSalesWorkspace({
       sessions: values.sessions,
       notes: values.notes,
       branchId: branchId ?? null,
+      // Personel satışın şubesinde çalışmıyorsa sunucu reddeder; kullanıcı modaldeki onay
+      // kutusuyla "o tarihte bu şubedeydi" dediğinde geçer (bkz. AllowCrossBranchStaff).
+      allowCrossBranchStaff: values.allowCrossBranchStaff,
     }, tenantId))
 
   return (

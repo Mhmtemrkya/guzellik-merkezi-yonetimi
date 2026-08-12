@@ -279,6 +279,8 @@ function KasaPageInner() {
       method: values.method || 'cash',
       reference: values.reference || null,
       occurredAtUtc: values.occurredAtUtc,
+      // Fazla ödeme yalnız modalde onaylandıysa geçer (bkz. RegisterPaymentAsync).
+      allowOverpayment: values.allowOverpayment,
     }
     const res = await performWrite({
       operationType: 'RegisterAccountPayment',

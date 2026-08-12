@@ -134,7 +134,7 @@ export default function CustomersTab({
                   <span className="flex items-center gap-1.5">
                     <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#fff2f6] text-[9.5px] font-bold text-[#a34a62]">{i + 1}</span>
                     <span className="truncate font-semibold text-[#2f2230]">{r.fullName}</span>
-                    {r.isVip && <Crown className="h-3 w-3 shrink-0 text-[#c99a2e]" strokeWidth={2} />}
+                    {r.isVip && <Crown className="h-3 w-3 shrink-0 text-[#937022]" strokeWidth={2} />}
                   </span>
                   <span className="mt-0.5 block truncate pl-6.5 text-[10.5px] text-[#705a66]">{r.phone}</span>
                 </span>

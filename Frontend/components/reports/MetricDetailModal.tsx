@@ -205,7 +205,7 @@ function Block({
           warn ? 'text-[#8a6320]' : 'text-[#8a7480]'
         }`}
       >
-        <Icon className={`h-3.5 w-3.5 ${warn ? 'text-[#c99a2e]' : 'text-[#c05277]'}`} strokeWidth={1.9} />
+        <Icon className={`h-3.5 w-3.5 ${warn ? 'text-[#937022]' : 'text-[#c05277]'}`} strokeWidth={1.9} />
         {title}
       </div>
       <p

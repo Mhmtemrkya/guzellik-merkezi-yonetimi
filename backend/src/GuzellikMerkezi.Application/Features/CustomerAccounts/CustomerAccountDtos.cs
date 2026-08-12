@@ -123,7 +123,16 @@ public sealed record CreateHistoricalSaleRequest(
     /// <para>TAMAMEN OPSİYONEL ve KISMİ olabilir: verilmeyen ya da alanları boş bırakılan
     /// seanslar eski davranışa (aralıklı tarih + genel personel) düşer.</para>
     /// </summary>
-    IReadOnlyList<HistoricalSessionRequest>? Sessions = null);
+    IReadOnlyList<HistoricalSessionRequest>? Sessions = null,
+    /// <summary>
+    /// Geçmiş seansı, satışın şubesinde ÇALIŞMAYAN bir personele yazmaya açık onay.
+    ///
+    /// <para>Varsayılan <c>false</c>: personelin şubesi satışın şubesinden farklıysa istek
+    /// reddedilir (yanlış personel seçimi şube/personel raporlarını bozar). Personel şube
+    /// aktarımı gerçek bir özellik olduğu ve sistem TARİHSEL şube ataması tutmadığı için
+    /// kullanıcı "o tarihte bu şubedeydi" diyerek <c>true</c> gönderebilir.</para>
+    /// </summary>
+    bool AllowCrossBranchStaff = false);
 
 /// <summary>
 /// Geçmiş satışta kullanılmış TEK bir seansın detayı. İkisi de opsiyoneldir; boş bırakılan
@@ -317,12 +326,29 @@ public sealed record CustomerPackageSessionDto(
     int UsedSessions,
     int RemainingSessions);
 
-/// <summary>Bir takvim ayında vadesi gelen taksitlerin özeti (genel rapor için).</summary>
+/// <summary>
+/// Bir takvim ayının taksit/tahsilat özeti (genel rapor için).
+///
+/// <para>
+/// <b>İKİ AYRI ZAMAN EKSENİ VARDIR; KARIŞTIRILMAMALIDIR.</b>
+/// </para>
+/// <list type="bullet">
+///   <item><b>TAHAKKUK</b> (<see cref="Due"/>, <see cref="Collected"/>, <see cref="Remaining"/>):
+///     taksitin <b>VADE</b> ayına yazılır. "Eylül'de ödenmesi gereken neydi, ne kadarı kapandı?"</item>
+///   <item><b>TAHSİLAT</b> (<see cref="CollectedInMonth"/>): ödemenin <b>GERÇEKLEŞTİĞİ</b> aya
+///     yazılır. "Ağustos'ta kasaya ne girdi?"</item>
+/// </list>
+/// <para>
+/// Eylül vadeli 1.000 ₺ Ağustos'ta tahsil edilirse: Ağustos'un <c>CollectedInMonth</c>'u 1.000,
+/// Eylül'ün <c>Collected</c>'ı 1.000 olur. Tek seriyle sunulduğunda bu, "Ağustos'ta hiç para
+/// girmemiş" gibi okunuyordu.
+/// </para>
+/// </summary>
 public sealed record AccountMonthlyInstallmentDto(
     int Year,
     int Month,
-    decimal Due,        // O ay TAHAKKUK eden tutar: vadesi gelen taksitler + o ay alınan peşinat
-    decimal Collected,  // O ay TAHSİL edilen tutar (peşinat DAHİL)
+    decimal Due,        // TAHAKKUK: o ay vadesi gelen taksitler + o ay alınan peşinat
+    decimal Collected,  // TAHAKKUK: o ayın VADESİNE dağıtılan tahsilat (peşinat dahil)
     decimal Remaining,  // Kalan (Due − Collected)
     /// <summary>
     /// <see cref="Collected"/> içindeki PEŞİNAT payı — grafikte ayrı bant olarak gösterilir.
@@ -333,7 +359,16 @@ public sealed record AccountMonthlyInstallmentDto(
     /// ve "bu ay taksitler tıkır tıkır ödendi" gibi yanlış okunur.
     /// </para>
     /// </summary>
-    decimal Deposit = 0m);
+    decimal Deposit = 0m,
+    /// <summary>
+    /// TAHSİLAT EKSENİ: o ay GERÇEKTEN kasaya giren toplam (hangi taksiti kapattığına bakılmaz,
+    /// peşinat dahil). Panodaki "bu ay ne tahsil ettim" sorusunun tek doğru cevabı budur.
+    /// <para>
+    /// Aynı yanıttaki <c>CollectedThisMonth</c> skaleri de bu kuraldan hesaplanır; ikisi ayrı
+    /// kurallarla üretilirken tek bir ödeme iki alanda iki farklı aya düşebiliyordu.
+    /// </para>
+    /// </summary>
+    decimal CollectedInMonth = 0m);
 
 /// <summary>
 /// Kurum yöneticisi panosu "Genel Rapor" özeti: paket satışı, yapılacak seans,

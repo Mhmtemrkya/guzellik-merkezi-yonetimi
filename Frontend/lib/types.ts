@@ -1211,6 +1211,8 @@ export interface ApiAccountMonthlyInstallment {
   collected?: number
   remaining?: number
   deposit?: number
+  /** TAHSİLAT ekseni: o ay GERÇEKTEN kasaya giren toplam (bkz. AccountMonthlyInstallment). */
+  collectedInMonth?: number
 }
 
 /** Pano "Hizmet Raporu" kartları — paket raporundan ayrı, kategori HİZMETİN kategorisidir. */
@@ -1301,9 +1303,9 @@ export interface AccountMonthlyInstallment {
   month: number
   /** "Haz" gibi kısa ay etiketi (tr-TR). */
   label: string
-  /** O ay TAHAKKUK eden tutar: vadesi gelen taksitler + o ay alınan peşinat. */
+  /** TAHAKKUK: o ay vadesi gelen taksitler + o ay alınan peşinat. */
   due: number
-  /** O ay TAHSİL edilen tutar — peşinat DAHİL. */
+  /** TAHAKKUK: o ayın VADESİNE dağıtılan tahsilat (peşinat dahil). */
   collected: number
   remaining: number
   /**
@@ -1312,6 +1314,14 @@ export interface AccountMonthlyInstallment {
    * Toplama katmak yetmez — ayrılmazsa taksit tahsilatıyla karışıp "taksitler ödendi" gibi okunur.
    */
   deposit: number
+  /**
+   * TAHSİLAT EKSENİ: o ay GERÇEKTEN kasaya giren toplam (hangi taksiti kapattığına bakılmaz).
+   *
+   * `collected`ten AYRI bir sorudur: Eylül vadeli 1.000 ₺ Ağustos'ta tahsil edilirse Ağustos'un
+   * `collectedInMonth`i 1.000, Eylül'ün `collected`ı 1.000 olur. Tek seri çizildiğinde bu,
+   * "Ağustos'ta hiç para girmemiş" gibi okunuyordu.
+   */
+  collectedInMonth: number
 }
 
 export interface AccountReport {

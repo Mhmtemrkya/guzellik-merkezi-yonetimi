@@ -30,7 +30,16 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
 import { adminApi } from '@/lib/apiClient'
-import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
+import {
+  clearPersistentIdempotencySalt, idempotencyKey, newIdempotencySalt, persistentIdempotencySalt,
+} from '@/lib/idempotency'
+
+/**
+ * Kalıcı tuzun kapsamı. Ekran genelinde TEK kapsam yeter: anahtar zaten müşteri/paket/tutar
+ * gibi ayırt edici alanlardan türüyor, tuz yalnız "bu gönderim oturumu" demek. Başarı, iptal
+ * ve sıfırlama yollarında düşürülür.
+ */
+const SALE_SALT_SCOPE = 'package-sale'
 import { apiItems, categoryOrderIndex, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeProduct, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import type { ApiAdisyon, ApiCustomer, ApiCustomServiceCategory, ApiProduct, ApiService, ApiServicePackage, ApiStaff } from '@/lib/types'
 
@@ -143,7 +152,17 @@ export default function PackageSaleDialog({
    * çiftlenmez. Tuz akış ortasında dönerse tam tersi olur: ikinci fiş açılır.
    */
   const saleSaltRef = useRef<string>('')
-  if (!saleSaltRef.current) saleSaltRef.current = newIdempotencySalt()
+  // KALICI TUZ: gönderim sırasında sayfa yenilenirse (ya da sekme kapanıp açılırsa) aynı tuz
+  // geri gelir; yanıtı kaybolmuş bir satışın tekrarı sunucuda oynatılır, ikinci fiş açılmaz.
+  // Başarı/iptal yollarında düşürülür, böylece "aynı satışı bir daha yapmak" meşru kalır.
+  if (!saleSaltRef.current) saleSaltRef.current = persistentIdempotencySalt(SALE_SALT_SCOPE)
+  /**
+   * Bu oturumda fişe YAZILMIŞ peşinat kalemi (varsa).
+   *
+   * Tekrar denemede tutar/yöntem değişmişse önce bu kalem silinir: `addAdisyonItem` bir EKLEME
+   * ucudur, ikinci çağrı peşinatı güncellemez, İKİNCİSİNİ ekler (200 ₺ → 400 ₺).
+   */
+  const depositRef = useRef<{ itemId: string; amount: number; method: string } | null>(null)
   const [step, setStep] = useState<SaleStep>('form')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -392,7 +411,10 @@ export default function PackageSaleDialog({
   const reset = () => {
     // Yeni satış = yeni tuz. Aynı müşteriye birebir aynı satışı tekrar yapmak MEŞRUDUR;
     // tuz dönmeseydi ikinci satış birincinin yanıtı olarak oynatılıp sessizce yutulurdu.
+    // Kalıcı kopya da düşer — yoksa yenileme sonrası eski tuz geri gelirdi.
+    clearPersistentIdempotencySalt(SALE_SALT_SCOPE)
     saleSaltRef.current = newIdempotencySalt()
+    depositRef.current = null
     setStep('form')
     setPendingApproval(false)
     setDeferred(false)
@@ -629,9 +651,27 @@ export default function PackageSaleDialog({
         )
       }
 
-      // 3) Peşinat alındıysa tahsilat kalemi — onayda cariye ödeme + kasaya gelir.
-      if (pay > 0) {
-        await adminApi.addAdisyonItem(
+      /*
+       * 3) Peşinat alındıysa tahsilat kalemi — onayda cariye ödeme + kasaya gelir.
+       *
+       * TEKRAR DENEMEDE PEŞİNAT EKLENMEZ, DEĞİŞTİRİLİR.
+       *
+       * Anahtara yöntem de giriyor (aşağıdaki gerekçe): kullanıcı 200 ₺ NAKİT peşinatı
+       * yazdıktan sonra onay adımı düşerse ve yöntemi KARTA çevirip tekrar denerse, anahtar
+       * değiştiği için sunucu bunu yeni bir istek sayar ve `addAdisyonItem` fişe İKİNCİ bir
+       * peşinat kalemi ekler: 200 ₺ yerine 400 ₺. Ekleme uçtur, güncelleme değil — bu yüzden
+       * daha önce YAZDIĞIMIZ kalemi biz silmeliyiz. Aynısı tutar değişince de geçerlidir.
+       */
+      const writtenDeposit = depositRef.current
+      if (writtenDeposit && (writtenDeposit.amount !== pay || writtenDeposit.method !== downPaymentMethod)) {
+        // Silme başarısız olursa (ağ) çift kalem riski sürer; o yüzden hata YUTULMAZ.
+        await adminApi.removeAdisyonItem(createdId, writtenDeposit.itemId, tenantId)
+        depositRef.current = null
+      }
+      // Aynı tutar + aynı yöntem zaten yazıldıysa hiç dokunma: sunucudaki oynatma da aynı
+      // sonucu verirdi ama gereksiz bir yazma isteği atmanın faydası yok.
+      if (pay > 0 && depositRef.current === null) {
+        const afterDeposit = await adminApi.addAdisyonItem<ApiAdisyon>(
           createdId,
           {
             type: 'Payment',
@@ -654,8 +694,15 @@ export default function PackageSaleDialog({
           tenantId,
           // ANAHTARA YÖNTEM DE GİRER: kullanıcı yöntemi değiştirip tekrar denerse gövde
           // değişir; anahtar sabit kalsaydı sunucu ESKİ yanıtı oynatıp yanlış yöntemi yazardı.
+          // (Eski kalemin silinmesi yukarıda yapılır — yoksa ikinci kalem eklenirdi.)
           idempotencyKey(saleSaltRef.current, 'pay', pay, downPaymentMethod),
         )
+        // NE YAZDIĞIMIZI HATIRLA: tekrar denemede bu kalem silinip yenisi yazılacak.
+        // Sunucu fişin tamamını döndürür; peşinat kalemi en son eklenen `Payment` satırıdır.
+        const writtenId = (afterDeposit?.items ?? [])
+          .filter((it) => String(it.type) === 'Payment')
+          .at(-1)?.id
+        depositRef.current = writtenId ? { itemId: writtenId, amount: pay, method: downPaymentMethod } : null
       }
 
       if (approveNow) {
@@ -678,7 +725,9 @@ export default function PackageSaleDialog({
       // ise `setOpen(false)`'u DOĞRUDAN çağırır ve onOpenChange tetiklenmez. Tuz dönmeseydi
       // aynı müşteriye birebir aynı satışı tekrar yapmak (meşru) ilk satışın yanıtı olarak
       // oynatılır, kullanıcı "başarılı" görür ama HİÇBİR ŞEY yazılmazdı.
+      clearPersistentIdempotencySalt(SALE_SALT_SCOPE)
       saleSaltRef.current = newIdempotencySalt()
+      depositRef.current = null
       setStep('done')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Satış kaydedilemedi'
@@ -698,7 +747,13 @@ export default function PackageSaleDialog({
           // anahtarla tekrar denemek fiş açma isteğini oynatıp ÖLÜ fişin id'sini döndürür ve
           // kalemler iptal edilmiş fişe yazılmaya çalışılır. İptal de patladıysa (ağ kesik) fiş
           // ortadadır: aynı anahtarla devam edip onu tamamlamak doğrudur.
-          if (cancelled) saleSaltRef.current = newIdempotencySalt()
+          if (cancelled) {
+            clearPersistentIdempotencySalt(SALE_SALT_SCOPE)
+            saleSaltRef.current = newIdempotencySalt()
+            // Fiş öldü; üstündeki peşinat kalemi de yok. Referans taşınırsa sonraki denemede
+            // var olmayan bir kalemi silmeye çalışırdık.
+            depositRef.current = null
+          }
         }
         setError(msg)
       }

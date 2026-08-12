@@ -1405,7 +1405,13 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   /// hepsini tek personel yapmış sayılır. Açılınca her seansın tarihi ve personeli ayrı girilir
   /// — gerçek geçmişte seansları farklı kişiler farklı günlerde yapmış olur.
   bool _perSession = false;
-  final List<({DateTime? date, String? staffId})> _sessionRows = [];
+  /// Seans satırı: tarih + personel + tarihi KULLANICI mı yazdı (`dateEdited`).
+  /// Ayrım şart — satış tarihi/aralık değişince yalnız TÜRETİLMİŞ tarihler tazelenir,
+  /// elle girilen tarih asla ezilmez (bkz. `_syncSessionRows`).
+  final List<({DateTime? date, String? staffId, bool dateEdited})> _sessionRows = [];
+  /// Çapraz şube onayı — sunucu, satışın şubesinde çalışmayan personeli varsayılan reddeder.
+  bool _crossBranchAsked = false;
+  bool _allowCrossBranch = false;
   final _sessionInterval = TextEditingController(text: '15');
 
   @override
@@ -1475,15 +1481,32 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
     return d.isAfter(now) ? now : d;
   }
 
-  /// Satır sayısını seans adedine eşitler; KULLANICI GİRDİSİ KORUNUR (baştan kurmak, seans
-  /// sayısını artıran kullanıcının önceki satırlarda girdiği tarih/personeli siliyordu).
+  /// Satır sayısını seans adedine eşitler ve TÜRETİLMİŞ tarihleri tazeler (web
+  /// `HistoricalSaleDialog` ile birebir aynı kural).
+  ///
+  /// İki kural birlikte: KULLANICI GİRDİSİ KORUNUR (baştan kurmak, seans sayısını artıran
+  /// kullanıcının önceki satırlarını siliyordu) ama TÜRETİLMİŞ TARİH BAYAT KALMAZ — satış
+  /// tarihi ya da aralık sonradan değişince `dateEdited` olmayan satırlar yeniden hesaplanır,
+  /// yoksa kayıtta eski ve yeni tarihlere göre üretilmiş karışık seanslar kalıyordu.
   void _syncSessionRows() {
     final want = _sessionsUsedNum;
     while (_sessionRows.length > want) {
       _sessionRows.removeLast();
     }
     while (_sessionRows.length < want) {
-      _sessionRows.add((date: _defaultSessionDate(_sessionRows.length), staffId: null));
+      _sessionRows.add((
+        date: _defaultSessionDate(_sessionRows.length),
+        staffId: null,
+        dateEdited: false,
+      ));
+    }
+    for (var i = 0; i < _sessionRows.length; i++) {
+      if (_sessionRows[i].dateEdited) continue;
+      _sessionRows[i] = (
+        date: _defaultSessionDate(i),
+        staffId: _sessionRows[i].staffId,
+        dateEdited: false,
+      );
     }
   }
 
@@ -1559,6 +1582,32 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
       return;
     }
 
+    // EVRAK İÇİ KRONOLOJİ (web ve sunucudaki kuralın aynısı).
+    //
+    // Eski tarih HATA DEĞİLDİR — bu ekranın işi zaten 2015/2020 tarihli evrakları sisteme
+    // almak. Hata, evrağın kendi içinde tutarsız olmasıdır:
+    //     evraktaki satış tarihi ≤ seans tarihi ≤ bugün
+    if (_perSession && _makeAppointments && su > 0) {
+      final soldDay = DateTime(_soldAt!.year, _soldAt!.month, _soldAt!.day);
+      final now = DateTime.now();
+      final todayDay = DateTime(now.year, now.month, now.day);
+      final fmt = DateFormat('dd.MM.yyyy');
+      for (var i = 0; i < _sessionRows.take(su).length; i++) {
+        final d = _sessionRows[i].date;
+        if (d == null) continue;
+        final day = DateTime(d.year, d.month, d.day);
+        if (day.isBefore(soldDay)) {
+          setState(() => _error =
+              '${i + 1}. seansın tarihi (${fmt.format(day)}) satış tarihinden (${fmt.format(soldDay)}) önce olamaz.');
+          return;
+        }
+        if (day.isAfter(todayDay)) {
+          setState(() => _error = '${i + 1}. seansın tarihi (${fmt.format(day)}) gelecekte olamaz.');
+          return;
+        }
+      }
+    }
+
     setState(() { _saving = true; _error = null; });
     try {
       await widget.api.post('/api/admin/accounts/historical', {
@@ -1599,10 +1648,21 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
               },
           ],
         'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        // Personel satışın şubesinde çalışmıyorsa sunucu reddeder; kullanıcı onay kutusuyla
+        // "o tarihte bu şubedeydi" dediğinde geçer (bkz. AllowCrossBranchStaff).
+        'allowCrossBranchStaff': _allowCrossBranch,
       });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) {
+        setState(() {
+          _error = '$e';
+          // Sunucu çapraz şube personelini reddettiyse onay kutusunu göster.
+          if (RegExp('şubesinde görünmüyor', caseSensitive: false).hasMatch('$e')) {
+            _crossBranchAsked = true;
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1852,6 +1912,29 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                               style: const TextStyle(color: AppColors.danger, fontSize: 11.5)),
                         ],
 
+                        // ÇAPRAZ ŞUBE ONAYI — yalnız sunucu reddettikten sonra çıkar (web ile
+                        // aynı akış). Şube aktarımı yapılmış personelin geçmişi başka türlü hiç
+                        // girilemezdi; onay bilinçli ve iz bırakır.
+                        if (_crossBranchAsked) ...[
+                          const SizedBox(height: 10),
+                          CheckboxListTile(
+                            value: _allowCrossBranch,
+                            onChanged: (v) =>
+                                setState(() => _allowCrossBranch = v ?? false),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text(
+                              'Bu personel o tarihte bu şubede çalışıyordu.',
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: const Text(
+                              'Şube aktarımı yapılmış personel için işaretleyin; geçmiş seans yine de kaydedilir.',
+                              style: TextStyle(fontSize: 10.5),
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: _saving ? null : _save,
@@ -2045,8 +2128,11 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                             if (v == null) return;
                             setState(() {
                               for (var i = 0; i < _sessionRows.length; i++) {
-                                _sessionRows[i] =
-                                    (date: _sessionRows[i].date, staffId: v);
+                                _sessionRows[i] = (
+                                  date: _sessionRows[i].date,
+                                  staffId: v,
+                                  dateEdited: _sessionRows[i].dateEdited,
+                                );
                               }
                             });
                           },
@@ -2116,18 +2202,26 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                                   width: double.infinity,
                                   child: OutlinedButton.icon(
                                     onPressed: () async {
+                                      // KRONOLOJİ SINIRI: seans, evraktaki satış gününden önce
+                                      // olamaz (eski tarihin KENDİSİ normaldir — alt sınır satış
+                                      // günüdür, sabit 2015 değil) ve bugünü aşamaz.
+                                      final first = _soldAt ?? DateTime(2015);
+                                      final initial = _sessionRows[i].date ??
+                                          _defaultSessionDate(i) ??
+                                          DateTime.now();
                                       final picked = await showDatePicker(
                                         context: context,
-                                        initialDate: _sessionRows[i].date ??
-                                            _defaultSessionDate(i) ??
-                                            DateTime.now(),
-                                        firstDate: DateTime(2015),
+                                        initialDate: initial.isBefore(first) ? first : initial,
+                                        firstDate: first,
                                         lastDate: DateTime.now(),
                                       );
                                       if (picked == null) return;
+                                      // `dateEdited` — elle seçilen tarih, satış tarihi/aralık
+                                      // sonradan değişse de yeniden hesaplanmaz.
                                       setState(() => _sessionRows[i] = (
                                             date: picked,
-                                            staffId: _sessionRows[i].staffId
+                                            staffId: _sessionRows[i].staffId,
+                                            dateEdited: true,
                                           ));
                                     },
                                     style: OutlinedButton.styleFrom(
@@ -2158,8 +2252,11 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
                                             overflow: TextOverflow.ellipsis),
                                       ),
                                   ],
-                                  onChanged: (v) => setState(() => _sessionRows[i] =
-                                      (date: _sessionRows[i].date, staffId: v)),
+                                  onChanged: (v) => setState(() => _sessionRows[i] = (
+                                        date: _sessionRows[i].date,
+                                        staffId: v,
+                                        dateEdited: _sessionRows[i].dateEdited,
+                                      )),
                                 ),
                               ],
                             ),

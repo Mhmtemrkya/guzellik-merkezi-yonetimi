@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Archive, Banknote, CalendarClock, CalendarCheck, Check, CheckCircle2, CreditCard, Loader2, Package, Scissors,
@@ -64,12 +64,26 @@ export interface HistoricalSaleValues {
    * Boş bırakılırsa (undefined) eski davranış: eşit aralıklı tarih + tek personel.
    */
   sessions?: { performedAtUtc: string | null; staffMemberId: string | null }[]
+  /**
+   * Seçilen personel satışın şubesinde çalışmıyorsa açık onay. Sunucu varsayılan olarak
+   * reddeder; personel şube aktarımı gerçek olduğu için kullanıcı "o tarihte bu şubedeydi"
+   * diyerek geçebilir (bkz. `AllowCrossBranchStaff`).
+   */
+  allowCrossBranchStaff: boolean
 }
 
 /** Seans detay satırının form hâli (tarih + personel; ikisi de opsiyonel). */
 interface SessionDetailRow {
   date: string
   staffId: string
+  /**
+   * Tarihi KULLANICI mı yazdı, yoksa "satış günü + sıra × aralık" kuralı mı üretti?
+   *
+   * Ayrım şart: satış tarihi ya da seans aralığı sonradan değiştiğinde kuralın ürettiği
+   * tarihler yeniden hesaplanmalı (yoksa kayıtta eski tarihe göre üretilmiş bayat satırlar
+   * kalır), ama kullanıcının elle girdiği tarih ASLA ezilmemeli.
+   */
+  dateEdited: boolean
 }
 
 const FIELD = 'w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12.5px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40 placeholder:text-[#74616A]'
@@ -156,6 +170,13 @@ export default function HistoricalSaleDialog({
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  /**
+   * ÇAPRAZ ŞUBE ONAYI. Sunucu, satışın şubesinde çalışmayan personele geçmiş seans yazmayı
+   * varsayılan olarak reddeder. Kutu peşin gösterilmez — vakaların çoğunda personel doğru
+   * şubededir ve gereksiz bir soru olurdu; sunucu reddedince belirir.
+   */
+  const [crossBranchAsked, setCrossBranchAsked] = useState(false)
+  const [allowCrossBranch, setAllowCrossBranch] = useState(false)
 
   // --- ödeme geçmişi ---
   const [payKind, setPayKind] = useState<'cash' | 'installment'>('cash')
@@ -167,17 +188,58 @@ export default function HistoricalSaleDialog({
   /** Vade sırasıyla kaç taksitin ödendiği. */
   const [paidCount, setPaidCount] = useState(0)
 
-  const todayIso = new Date().toISOString().slice(0, 10)
+  /**
+   * YEREL bugün — `toISOString()` UTC verir ve UTC+3'te gece yarısından sonra bir ÖNCEKİ güne
+   * kayar: aynı evrak tarihi webde "gelecek" diye reddedilirken mobilde kabul ediliyordu
+   * (mobil `customer_sales_panel.dart` zaten cihazın yerel gününü kullanıyor). İki istemci
+   * aynı günü görmeli, yoksa tarih sınırı saate göre değişir.
+   */
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
 
-  /** Esc yalnız en üstteki modalı kapatsın — bkz. SaleDetailModal'daki aynı gerekçe. */
+  /** Modal kabuğu — odak tuzağı ve odağın geri verilmesi buradan yürür. */
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * Esc yalnız en üstteki modalı kapatsın — bkz. SaleDetailModal'daki aynı gerekçe.
+   *
+   * ODAK TUZAĞI da burada: modal `role="dialog"` + `aria-modal` olduğu için klavye kullanıcısının
+   * Tab ile arkadaki sayfaya kaçmaması gerekir (kaçarsa görmediği bir formda gezinir). Açılışta
+   * odak modala alınır, kapanışta ÇAĞIRAN öğeye geri verilir.
+   */
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      onClose()
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return
+      const items = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
+        .filter((el) => el.offsetParent !== null)
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      // Uçlarda döngü: sondan Tab başa, baştan Shift+Tab sona gider.
+      if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+      else if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (active && !panelRef.current.contains(active)) { e.preventDefault(); first.focus() }
     }
+
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    // Açılışta odak modalın kendisine: içerideki ilk alana atlamak, ekran okuyucunun başlığı
+    // hiç okumamasına yol açıyor.
+    panelRef.current?.focus()
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      previouslyFocused?.focus?.()
+    }
   }, [onClose])
 
   const packagePickerItems = useMemo<PickerItem[]>(
@@ -260,21 +322,32 @@ export default function HistoricalSaleDialog({
   }
 
   /**
-   * Satır sayısını seans adedine eşitler; KULLANICI GİRDİSİ KORUNUR.
-   * Baştan kurmak, seans sayısını 3'ten 4'e çıkaran kullanıcının önceki üç satırda girdiği
-   * tarih/personeli siliyordu.
+   * Satır sayısını seans adedine eşitler ve TÜRETİLMİŞ tarihleri tazeler.
+   *
+   * İki kural birlikte çalışır:
+   *  · KULLANICI GİRDİSİ KORUNUR — baştan kurmak, seans sayısını 3'ten 4'e çıkaran kullanıcının
+   *    önceki üç satırda girdiği tarih/personeli siliyordu.
+   *  · TÜRETİLMİŞ TARİH BAYAT KALMAZ — eskiden yalnız EKSİK satırlar ekleniyordu; satış tarihini
+   *    ya da seans aralığını sonradan değiştiren kullanıcıda mevcut satırlar ESKİ tarihe göre
+   *    üretilmiş hâlde kalıyor, kayıtta eski ve yeni tarihlerin karışımı oluşuyordu.
+   *    `dateEdited` olmayan satır, kural değişince yeniden hesaplanır.
    */
   useEffect(() => {
     if (!perSession) return
     setSessionRows((prev) => {
-      if (prev.length === sessionsUsedNum) return prev
       const next: SessionDetailRow[] = []
+      let changed = prev.length !== sessionsUsedNum
       for (let i = 0; i < sessionsUsedNum; i++) {
-        next.push(prev[i] ?? { date: defaultSessionDate(i), staffId: '' })
+        const old = prev[i]
+        if (!old) { next.push({ date: defaultSessionDate(i), staffId: '', dateEdited: false }); changed = true; continue }
+        // Elle yazılmış tarih dokunulmaz; kuralın ürettiği tarih güncel kurala göre tazelenir.
+        const fresh = old.dateEdited ? old.date : defaultSessionDate(i)
+        if (fresh !== old.date) changed = true
+        next.push(fresh === old.date ? old : { ...old, date: fresh })
       }
-      return next
+      return changed ? next : prev
     })
-    // defaultSessionDate soldAt/intervalNum'a bağlı; onlar değişince yeni satırlar doğru açılır.
+    // defaultSessionDate soldAt/intervalNum'a bağlı; onlar değişince türetilmiş satırlar tazelenir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perSession, sessionsUsedNum, soldAt, intervalNum])
 
@@ -296,6 +369,26 @@ export default function HistoricalSaleDialog({
     const su = Math.max(0, Number(sessionsUsed) || 0)
     if (su > st) { setError('Kullanılan seans, toplam seanstan fazla olamaz.'); return }
     if (st > 0 && kind !== 'package' && !serviceId) { setError('Seans takibi için hizmet seçin (seanslar bir hizmetten düşer).'); return }
+
+    /*
+     * EVRAK İÇİ KRONOLOJİ — sunucudaki kuralın istemci karşılığı.
+     *
+     * Eski tarih (2015, 2020) HATA DEĞİLDİR; bu ekranın işi zaten eski evrakları sisteme almak.
+     * Hata olan, evrağın kendi içinde tutarsız olmasıdır:
+     *
+     *     evraktaki satış tarihi ≤ seans tarihi ≤ bugün
+     *
+     * Sunucu da aynı kuralı uygular; burada durdurmak kullanıcıya hangi SATIRIN bozuk olduğunu
+     * gösterir (sunucu hatası tek satır metindir).
+     */
+    if (perSession && makeAppointments && su > 0) {
+      for (let i = 0; i < Math.min(sessionRows.length, su); i++) {
+        const d = sessionRows[i]?.date
+        if (!d) continue
+        if (d < soldAt) { setError(`${i + 1}. seansın tarihi (${d}) satış tarihinden (${soldAt}) önce olamaz.`); return }
+        if (d > todayIso) { setError(`${i + 1}. seansın tarihi (${d}) gelecekte olamaz.`); return }
+      }
+    }
 
     setSaving(true)
     setError('')
@@ -329,9 +422,14 @@ export default function HistoricalSaleDialog({
         paidInstallmentCount: payKind === 'installment' ? paidCount : 0,
         paymentMethod: method,
         notes: notes.trim() || null,
+        allowCrossBranchStaff: allowCrossBranch,
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kayıt başarısız.')
+      const msg = e instanceof Error ? e.message : 'Kayıt başarısız.'
+      // Sunucu çapraz şube personelini reddettiyse onay kutusunu göster: kullanıcı "o tarihte
+      // bu şubede çalışıyordu" diyip aynı formu tekrar gönderebilsin.
+      if (/şubesinde görünmüyor/i.test(msg)) setCrossBranchAsked(true)
+      setError(msg)
     } finally {
       setSaving(false)
     }
@@ -343,12 +441,19 @@ export default function HistoricalSaleDialog({
   return (
     <ModalPortal>
     <div className="fixed inset-0 z-[135] flex items-start justify-center overflow-y-auto bg-[#2a141f]/55 p-2 backdrop-blur-[3px] sm:items-center sm:p-4" onClick={onClose}>
+      {/* role/aria-modal + başlık bağı: yardımcı teknoloji bunu "arkadaki sayfayı kapatan
+          iletişim kutusu" olarak duyursun ve başlığı okusun. Odak tuzağı yukarıdaki efektte. */}
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hist-sale-title"
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97 }}
         onClick={(e) => e.stopPropagation()}
-        className="my-auto flex max-h-[94dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] sm:rounded-[26px]"
+        className="my-auto flex max-h-[94dvh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-[#fbf4f7] shadow-[0_40px_120px_-50px_rgba(90,40,60,0.7)] outline-none sm:rounded-[26px]"
       >
         <header className="relative shrink-0 overflow-hidden border-b border-[#EAD8DF] bg-gradient-to-br from-white via-[#fbf7ff] to-[#f6efff] px-4 py-4 sm:px-6">
           <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-52 w-52 rounded-full bg-[#c7a8ef]/25 blur-3xl" />
@@ -357,7 +462,7 @@ export default function HistoricalSaleDialog({
               <Archive className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="font-display text-[19px] font-bold leading-tight tracking-tight text-[#241923] sm:text-[21px]">Geçmiş satış ekle</h2>
+              <h2 id="hist-sale-title" className="font-display text-[19px] font-bold leading-tight tracking-tight text-[#241923] sm:text-[21px]">Geçmiş satış ekle</h2>
               <div className="mt-1 text-[11.5px] text-[#74616A]">
                 <b className="font-semibold text-[#3E343A]">{customerName}</b> · eski satışı, ödeme geçmişiyle birlikte sisteme işleyin
               </div>
@@ -683,8 +788,11 @@ export default function HistoricalSaleDialog({
                                     seçtirmek gereksiz iş. Seçim sonrası tek tek düzeltilebilir. */}
                                 {staffOptions.length > 0 && sessionsUsedNum > 1 && (
                                   <div className="mb-2 flex flex-wrap items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-2">
-                                    <span className="text-[11px] font-semibold text-[#5A4B53]">Hepsini yapan:</span>
+                                    {/* Görünür metin select'e PROGRAMATİK olarak bağlanır: yalnız
+                                        yan yana durması ekran okuyucuda etiket saymıyordu. */}
+                                    <label htmlFor="hist-bulk-staff" className="text-[11px] font-semibold text-[#5A4B53]">Hepsini yapan:</label>
                                     <select
+                                      id="hist-bulk-staff"
                                       value=""
                                       onChange={(e) => {
                                         const id = e.target.value
@@ -720,11 +828,16 @@ export default function HistoricalSaleDialog({
                                           </span>
                                         </div>
                                         <div className="grid gap-2 sm:grid-cols-[minmax(0,150px)_minmax(0,1fr)]">
+                                          {/* KRONOLOJİ SINIRI: seans, evraktaki satış gününden önce
+                                              ve bugünden sonra olamaz (eski tarihin kendisi normaldir).
+                                              `dateEdited` — elle yazılan tarih, satış tarihi/aralık
+                                              sonradan değişse de yeniden hesaplanmaz. */}
                                           <input
                                             type="date"
+                                            min={soldAt || undefined}
                                             max={todayIso}
                                             value={row.date}
-                                            onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, date: e.target.value } : r)))}
+                                            onChange={(e) => setSessionRows((list) => list.map((r, ix) => (ix === i ? { ...r, date: e.target.value, dateEdited: true } : r)))}
                                             className={`${FIELD} tabular-nums`}
                                           />
                                           <select
@@ -770,6 +883,23 @@ export default function HistoricalSaleDialog({
             </label>
 
             {error && <div className="rounded-[13px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[11.5px] font-semibold text-rose-700">{error}</div>}
+
+            {/* ÇAPRAZ ŞUBE ONAYI — yalnız sunucu reddettikten sonra çıkar. Şube aktarımı olan
+                personelin geçmişi başka türlü hiç girilemezdi; onay bilinçli ve iz bırakır. */}
+            {crossBranchAsked && (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-[13px] border border-amber-300 bg-amber-50 px-3.5 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={allowCrossBranch}
+                  onChange={(e) => setAllowCrossBranch(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#A5556E]"
+                />
+                <span className="text-[11.5px] leading-snug text-[#5A4B53]">
+                  <b className="font-semibold text-[#3E343A]">Bu personel o tarihte bu şubede çalışıyordu.</b>{' '}
+                  Şube aktarımı yapılmış personel için işaretleyin; geçmiş seans yine de kaydedilir.
+                </span>
+              </label>
+            )}
           </div>
 
           {/* CANLI ÖZET — yazdıkça güncellenir, kaydetmeden önce kontrol imkânı verir */}

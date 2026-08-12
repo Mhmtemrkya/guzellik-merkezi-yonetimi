@@ -152,18 +152,18 @@ public static class DependencyInjection
         services.AddScoped<Application.Features.WhatsApp.IWhatsAppBillingService, WhatsAppBillingService>();
         // Dış gönderim HttpClient'ları Polly standart dayanıklılık boru hattıyla sarılır
         // (retry + timeout + circuit breaker + rate limiter) → tek deneme yerine geçici hatalara dayanıklı.
-        services.AddHttpClient("WhatsApp").AddStandardResilienceHandler();
+        services.AddHttpClient("WhatsApp").DisableRedirects().AddStandardResilienceHandler();
         services.AddScoped<IPlatformMessagingService, PlatformMessagingService>();
-        services.AddHttpClient("Sms").AddStandardResilienceHandler();
+        services.AddHttpClient("Sms").DisableRedirects().AddStandardResilienceHandler();
 
         // Uygulama-içi bildirim (push + feed) + FCM göndericisi (yapılandırma yoksa simülasyon).
         services.AddScoped<IAppNotificationService, AppNotificationService>();
         services.AddSingleton<IPushSender, FcmPushSender>();
-        services.AddHttpClient("Fcm").AddStandardResilienceHandler();
+        services.AddHttpClient("Fcm").DisableRedirects().AddStandardResilienceHandler();
 
         // Abonelik ödemesi (iyzico / simülasyon). Sağlayıcı ve anahtarlar platform ayarlarından
         // çalışma anında çözülür → anahtar değişince yeniden başlatma gerekmez.
-        services.AddHttpClient("Iyzico").AddStandardResilienceHandler();
+        services.AddHttpClient("Iyzico").DisableRedirects().AddStandardResilienceHandler();
         services.AddScoped<Application.Features.Billing.IPaymentGatewayResolver, Payments.PaymentGatewayResolver>();
         services.AddScoped<Application.Features.Billing.IBillingService, Services.BillingService>();
 
@@ -171,4 +171,22 @@ public static class DependencyInjection
         services.AddSingleton<IBackgroundTaskQueue>(_ => new BackgroundTaskQueue(capacity: 1000));
         return services;
     }
+
+    /// <summary>
+    /// YÖNLENDİRME TAKİBİNİ KAPATIR (SSRF allowlist'inin kaçağını tıkar).
+    ///
+    /// <para>
+    /// SOMUT AÇIK: <c>OutboundEndpointGuard</c> yalnız İLK adresi doğruluyor. <c>HttpClient</c>
+    /// varsayılan olarak yönlendirmeleri kendiliğinden izlediği için, allowlist'teki host bir
+    /// <c>302</c> ile başka bir hedefe (iç ağ, bulut metadata ucu) yönlendirdiğinde istek oraya
+    /// gidiyor ve doğrulama BİR DAHA çalışmıyordu. Yani allowlist yalnız ilk sıçramayı bağlıyordu.
+    /// </para>
+    /// <para>
+    /// Bu uçların hiçbiri meşru akışta yönlendirme kullanmaz (ödeme/SMS/push API'leri doğrudan
+    /// yanıt döner), dolayısıyla kapatmanın işlevsel bedeli yok. Yönlendirme gelirse istek
+    /// başarısız olur — sessizce başka bir yere gitmesindense görünür biçimde düşmesi doğrudur.
+    /// </para>
+    /// </summary>
+    private static IHttpClientBuilder DisableRedirects(this IHttpClientBuilder builder) =>
+        builder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 }

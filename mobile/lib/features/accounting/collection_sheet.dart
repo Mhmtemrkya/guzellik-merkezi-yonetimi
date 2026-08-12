@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -45,6 +47,7 @@ class CollectionPayload {
     required this.method,
     required this.occurredAtUtc,
     this.reference,
+    this.allowOverpayment = false,
   });
 
   final String accountId;
@@ -53,11 +56,16 @@ class CollectionPayload {
   final String? reference;
   final String occurredAtUtc;
 
+  /// Kalan borcu AŞAN tutarın kredi bakiyesi olarak yazılmasına açık onay. Sunucu
+  /// (`RegisterPaymentAsync`) bu bayrak olmadan fazla ödemeyi reddeder.
+  final bool allowOverpayment;
+
   Map<String, dynamic> get body => {
         'amount': amount,
         'method': method,
         'reference': reference,
         'occurredAtUtc': occurredAtUtc,
+        'allowOverpayment': allowOverpayment,
       };
 }
 
@@ -125,10 +133,22 @@ class _CollectionSheetState extends State<_CollectionSheet> {
   final _reference = TextEditingController();
   /// Çift gönderim freni (bkz. core/network/idempotency.dart). Sheet her açılışta yeni bir
   /// State üretir → tuz kendiliğinden oturum başına birdir.
-  final String _salt = newIdempotencySalt();
+  /// Gönderim oturumunun tuzu. Uygulama gönderimin ortasında kapanırsa kalıcı kopya geri
+  /// yüklenir (bkz. `_loadSalt`) — yanıtı kaybolmuş bir tahsilatın tekrarı sunucuda oynatılır.
+  String _salt = newIdempotencySalt();
+
+  /// Tuzun KAPSAMI — bu müşterinin tahsilat oturumu. Sabit olmalı ki yeniden açılışta aynı tuz
+  /// dönsün; müşteriye özel olmalı ki A'nın yarım kalan tahsilatı B'ninkini etkilemesin.
+  String get _saltScope {
+    final first = _accounts.isEmpty ? null : _accounts.first;
+    final customerId = first == null ? '' : valueOf(first, const ['customerId'], fallback: '');
+    return 'collection_${customerId.isEmpty ? 'genel' : customerId}';
+  }
   DateTime _date = DateTime.now();
   bool _loading = true;
   bool _saving = false;
+  /// FAZLA ÖDEME ONAYI — sunucu, bilinçli onay olmadan kalan borcu aşan tahsilatı reddeder.
+  bool _allowOverpayment = false;
   String? _error;
 
   @override
@@ -177,6 +197,18 @@ class _CollectionSheetState extends State<_CollectionSheet> {
 
   @override
   void dispose() {
+    /*
+     * SHEET KAPANDI = KAÇIŞ KAPISI (web `CollectionDialog.setOpen` ile aynı kural).
+     *
+     * Kalıcı tuz "yanıtı kaybolan tahsilat tekrar yazılmasın" diye var; ama sunucu isteği KESİN
+     * bir hatayla (4xx) reddettiğinde o yanıt kaydediliyor ve aynı anahtarla atılan her tekrar
+     * aynı hatayı OYNATIYOR. Tuz hiç düşmezse kullanıcı, içeriği değiştirmeden aynı tahsilatı
+     * bir daha deneyemez — TTL dolana kadar kilitli kalırdı.
+     *
+     *  · KAZA (uygulama öldürüldü) → tuz yaşar, koruma sürer.
+     *  · BİLİNÇLİ KAPATMA → tuz düşer, yeniden açılışta taze anahtar üretilir.
+     */
+    unawaited(PersistentIdempotencySalt.clear(_saltScope));
     for (final r in _rows) {
       r.amount.dispose();
     }
@@ -289,6 +321,15 @@ class _CollectionSheetState extends State<_CollectionSheet> {
       ? 0
       : _kurus(_remaining(_selected!) - _total).clamp(0, double.infinity);
 
+  /// Ekranda "kalan borç" olarak gösterilecek taban — Tümü'de tüm satışların toplamı.
+  double get _scopeRemaining => _allMode
+      ? _allSummary.remaining
+      : (_selected == null ? 0 : _remaining(_selected!));
+
+  /// Kalan borcu AŞAN kısım — pozitifse sunucu açık onay ister (kredi bakiyesi).
+  double get _overpayAmount =>
+      _kurus(_total - _scopeRemaining).clamp(0, double.infinity);
+
   void _addRow() {
     final used = _rows.map((r) => r.method).toSet();
     final next = collectionMethods
@@ -380,6 +421,16 @@ class _CollectionSheetState extends State<_CollectionSheet> {
       return;
     }
 
+    // FAZLA ÖDEME KAPISI (web ile aynı kural). Sunucu, açık onay olmadan kalan borcu aşan
+    // tahsilatı reddeder; burada durdurmak kullanıcıya ne olacağını söyler ve onay kutusunu
+    // gösterir.
+    if (_overpayAmount > 0.005 && !_allowOverpayment) {
+      setState(() => _error =
+          'Girilen tutar kalan borcu ${CalendarText.tl(_overpayAmount)} aşıyor. '
+          'Fazlasını kredi bakiyesi olarak yazmak için aşağıdaki onayı işaretleyin.');
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -392,6 +443,8 @@ class _CollectionSheetState extends State<_CollectionSheet> {
         _reference.text.trim().isEmpty ? null : _reference.text.trim();
     var done = 0;
     try {
+      // Kalıcı tuz: yeniden açılışta aynı anahtar üretilsin (bkz. PersistentIdempotencySalt).
+      _salt = await PersistentIdempotencySalt.get(_saltScope);
       for (final call in calls) {
         final payload = CollectionPayload(
           accountId: call.accountId,
@@ -399,6 +452,8 @@ class _CollectionSheetState extends State<_CollectionSheet> {
           method: call.method,
           reference: reference,
           occurredAtUtc: stamp,
+          // Onay verilmediyse yukarıda durulur; buraya yalnız bilinçli fazla ödeme gelir.
+          allowOverpayment: _allowOverpayment,
         );
         // ANAHTAR SATIŞ+YÖNTEMDEN TÜRER, İNDEKSTEN DEĞİL: kısmi hatadan sonra kullanıcı tekrar
         // gönderdiğinde döngü BAŞARILI olanları da yeniden gönderir (satırlar budanmıyor);
@@ -416,6 +471,9 @@ class _CollectionSheetState extends State<_CollectionSheet> {
         );
         done++;
       }
+      // TAMAMI YAZILDI → tuz düşer. Aynı sheet aynı tutarla tekrar açılırsa MEŞRU ikinci bir
+      // tahsilat olur ve yeni tuzla gerçekten yazılır.
+      await PersistentIdempotencySalt.clear(_saltScope);
       if (mounted) Navigator.pop(context, done);
     } catch (e) {
       if (!mounted) return;
@@ -489,6 +547,37 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                           ),
                         ],
                       ),
+                      // FAZLA ÖDEME ONAYI — yalnız tutar kalan borcu aştığında çıkar (web ile
+                      // aynı akış). Sunucu bilinçli onay olmadan fazlasını kabul etmez.
+                      if (_overpayAmount > 0.005) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: .10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: AppColors.warning.withValues(alpha: .35)),
+                          ),
+                          child: CheckboxListTile(
+                            value: _allowOverpayment,
+                            onChanged: (v) => setState(() {
+                              _allowOverpayment = v ?? false;
+                              if (_allowOverpayment) _error = null;
+                            }),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            dense: true,
+                            title: Text(
+                              '${CalendarText.tl(_overpayAmount)} fazla ödeme alınıyor.',
+                              style: const TextStyle(
+                                  fontSize: 11.5, fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: const Text(
+                              'Fazlasını kredi bakiyesi olarak yazmayı onaylıyorum.',
+                              style: TextStyle(fontSize: 10.5),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (_error != null) ...[
                         const SizedBox(height: 12),
                         Container(
@@ -644,34 +733,45 @@ class _CollectionSheetState extends State<_CollectionSheet> {
   Widget _quickAmounts() {
     final selected = _selected;
     if (selected == null) return const SizedBox.shrink();
-    final items = <(String, double)>[];
-    // TÜMÜ: rakamlar TÜM satışların toplamıdır (tek satışın değil).
+    final items = <(String, double, String?)>[];
+    /*
+     * TÜMÜ: rakamlar TÜM satışların toplamıdır (tek satışın değil).
+     *
+     * ETİKET WEB İLE BİREBİR OLMALI. Mobil "Bu ay ödenmesi gereken", web "Bu ayın taksitleri"
+     * diyordu; aynı finansal işlem iki istemcide farklı beklenti üretiyordu. Ayrıca ikisi de
+     * gerçek davranışı anlatmıyordu: tutar tek bir global vade kuyruğuna, en eski vadeden
+     * başlayarak dağıtılır — her satıştan birer taksit kapanacağı garanti değildir.
+     */
     if (_allMode) {
       final s = _allSummary;
-      if (s.dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(s.dueNow)));
+      if (s.dueNow > 0.005) {
+        items.add(('Bu ayın taksitleri', _kurus(s.dueNow),
+            'ay sonuna kadar vadesi gelen borçlar · en eski vadeden başlar'));
+      }
       if (s.overdue > 0.005 && (s.overdue - s.dueNow).abs() > 0.005) {
-        items.add(('Yalnız gecikmiş', _kurus(s.overdue)));
+        items.add(('Yalnız gecikmiş', _kurus(s.overdue), 'vadesi geçmiş borçlar'));
       }
       if (s.remaining > 0.005) {
-        items.add(('Tüm borcun tamamı', _kurus(s.remaining)));
+        items.add(('Tüm borç', _kurus(s.remaining),
+            '${s.openCount} satışın kalanının tamamı'));
       }
       return _quickChips(items, carryNote: s.overdue > 0.005);
     }
-    if (_dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(_dueNow)));
+    if (_dueNow > 0.005) items.add(('Bu ay ödenmesi gereken', _kurus(_dueNow), null));
     if (_overdueSum > 0.005 && (_overdueSum - _dueNow).abs() > 0.005) {
-      items.add(('Yalnız gecikmiş', _kurus(_overdueSum)));
+      items.add(('Yalnız gecikmiş', _kurus(_overdueSum), null));
     }
     final next = _pending.isEmpty ? null : _pending.first;
     if (next != null && (next.item.remaining - _dueNow).abs() > 0.005) {
-      items.add(('Sıradaki taksit', _kurus(next.item.remaining)));
+      items.add(('Sıradaki taksit', _kurus(next.item.remaining), null));
     }
     final remaining = _kurus(_remaining(selected));
-    if (remaining > 0.005) items.add(('Kalan borcun tamamı', remaining));
+    if (remaining > 0.005) items.add(('Kalan borcun tamamı', remaining, null));
     return _quickChips(items, carryNote: _overdueSum > 0.005);
   }
 
   /// Hazır tutar çipleri — tek satış ve TÜMÜ aynı görünümü paylaşır.
-  Widget _quickChips(List<(String, double)> items, {bool carryNote = false}) {
+  Widget _quickChips(List<(String, double, String?)> items, {bool carryNote = false}) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -690,8 +790,19 @@ class _CollectionSheetState extends State<_CollectionSheet> {
               ChoiceChip(
                 selected: (_total - item.$2).abs() < 0.005 && _rows.length == 1,
                 onSelected: (_) => _applyQuickAmount(item.$2),
-                label: Text('${item.$1} · ${CalendarText.tl(item.$2)}',
-                    style: const TextStyle(fontSize: 11.5)),
+                // Açıklama (web'deki `hint`) çipin ALTINA yazılır: dağıtımın nasıl çalıştığı
+                // tutarın yanında görünmeli, yoksa etiket tek başına yanlış okunuyor.
+                label: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${item.$1} · ${CalendarText.tl(item.$2)}',
+                        style: const TextStyle(fontSize: 11.5)),
+                    if (item.$3 != null)
+                      Text(item.$3!,
+                          style: const TextStyle(fontSize: 10, color: AppColors.muted)),
+                  ],
+                ),
               ),
           ],
         ),

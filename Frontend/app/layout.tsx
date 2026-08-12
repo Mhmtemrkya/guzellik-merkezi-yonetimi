@@ -12,6 +12,7 @@ import DesktopGuard from '@/components/desktop/DesktopGuard'
 import DesktopNotifier from '@/components/desktop/DesktopNotifier'
 import OfflineBanner from '@/components/desktop/OfflineBanner'
 import OutboxSync from '@/components/desktop/OutboxSync'
+import ReducedMotionProvider from '@/components/dashboard/ReducedMotionProvider'
 
 export const metadata: Metadata = {
   title: 'BeautyAsist — Güzellik Merkezleri İçin Yönetim Sistemi',
@@ -22,6 +23,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="tr" className="theme-light">
       <body className="antialiased grain">
+        {/* EN DIŞTA: "hareketi azalt" tercihi bütün Framer Motion animasyonlarını kapsasın —
+            CSS media sorgusu JS ile sürülen hareketi durduramıyordu. */}
+        <ReducedMotionProvider>
         <AuthProvider>
           <FeatureProvider>
             <BranchProvider>
@@ -38,6 +42,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </BranchProvider>
           </FeatureProvider>
         </AuthProvider>
+        </ReducedMotionProvider>
       </body>
     </html>
   )

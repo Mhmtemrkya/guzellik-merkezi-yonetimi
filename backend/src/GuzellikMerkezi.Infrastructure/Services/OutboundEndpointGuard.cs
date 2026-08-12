@@ -65,6 +65,31 @@ public static class OutboundEndpointGuard
             return "Ödeme API adresi yalnız HTTPS olabilir.";
         if (!PaymentHosts.Contains(uri.Host))
             return $"İzin verilmeyen ödeme sunucusu: {uri.Host}. İzinli: {string.Join(", ", PaymentHosts)}.";
+        return ValidateAuthority(uri, "Ödeme API adresi");
+    }
+
+    /// <summary>
+    /// ŞEMA + HOST YETMEZ: yetkili bölümün (authority) geri kalanı da bağlanmalı.
+    ///
+    /// <para>
+    /// Allowlist yalnız <c>uri.Host</c>'a bakıyordu; aynı host'un FARKLI bir portu ve URL'e
+    /// gömülen kullanıcı bilgisi serbest kalıyordu:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><b>Port:</b> <c>https://api.iyzipay.com:8443</c> doğrulamayı geçiyordu. İzinli host'un
+    /// beklenmedik bir portu, o makinede dinleyen başka bir servise (ya da bir tünelin ucuna)
+    /// istek attırabilir. Meşru API yalnız 443'tedir.</item>
+    /// <item><b>Kullanıcı bilgisi:</b> <c>https://kullanıcı:parola@api.iyzipay.com</c> host
+    /// denetimini geçer ama her isteğe kimlik bilgisi ekler; yapılandırmaya sızan bir değerin
+    /// sessizce dışarı gönderilmesine yol açar. Meşru kullanımı yok.</item>
+    /// </list>
+    /// </summary>
+    private static string? ValidateAuthority(Uri uri, string subject)
+    {
+        if (!uri.IsDefaultPort)
+            return $"{subject} yalnız varsayılan HTTPS portunu (443) kullanabilir.";
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+            return $"{subject} kullanıcı adı/parola içeremez.";
         return null;
     }
 
@@ -99,6 +124,8 @@ public static class OutboundEndpointGuard
             return "SMS API adresi yalnız HTTPS olabilir.";
         if (!SmsHosts.Contains(uri.Host))
             return $"İzin verilmeyen SMS sunucusu: {uri.Host}. İzinli: {string.Join(", ", SmsHosts)}.";
+        // Port + kullanıcı bilgisi de bağlanır (gerekçe: ValidateAuthority).
+        if (ValidateAuthority(uri, "SMS API adresi") is { } authorityError) return authorityError;
         if (IsPrivateHost(uri.Host))
             return "SMS API adresi özel/loopback bir adrese çözülüyor.";
         return null;

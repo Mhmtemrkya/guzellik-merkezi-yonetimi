@@ -55,6 +55,69 @@ export function newIdempotencySalt(): string {
 }
 
 /**
+ * KALICI TUZ — sayfa yenilemesi / sekme kapanması gönderimin ortasına denk gelirse.
+ *
+ * `newIdempotencySalt()` yalnız modal AÇIK kaldığı sürece yaşar. En tehlikeli senaryoda bu
+ * yetmiyor: sunucu 400 ₺'yi COMMIT eder, yanıt yolda kaybolur (kopan bağlantı, kapanan sekme),
+ * kullanıcı sayfayı yenileyip aynı tahsilatı tekrar girer. Modal yeni bir tuzla açıldığı için
+ * anahtar da yenidir; sunucu bunu YENİ bir istek sanar ve 800 ₺ yazar.
+ *
+ * Çözüm: tuz, gönderim tamamlanana kadar tarayıcıda durur. Aynı kapsamda yenileme sonrası
+ * yapılan gönderim AYNI anahtarı üretir, sunucu ilk yanıtı oynatır ve ikinci kayıt oluşmaz.
+ *
+ * BAŞARIDA SİLİNİR — bu şart: silinmezse "aynı müşteriden bugün ikinci kez aynı tutarı almak"
+ * gibi MEŞRU tekrarlar sessizce yutulurdu. Silindiği anda bir sonraki açılış taze tuz alır ve
+ * eski davranış (kapat-aç = yeni tahsilat) korunur.
+ */
+const SALT_PREFIX = 'idem-salt:'
+/** Yarım kalmış tuz sonsuza kadar yaşamasın — bir günlük iş vardiyasından uzun tutmanın anlamı yok. */
+const SALT_MAX_AGE_MS = 12 * 60 * 60 * 1000
+
+function saltStore(): Storage | null {
+  // SSR'de ve depolamanın kapalı olduğu tarayıcıda (gizli mod kotası) sessizce devre dışı kalır:
+  // koruma zayıflar ama ekran çalışmaya devam eder.
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `scope` için kalıcı tuzu döndürür; yoksa üretip saklar.
+ *
+ * @param scope Ekranı/işlemi ayıran sabit ad (ör. `collection:<cariId>`). Aynı kapsamda
+ *   yenileme sonrası aynı tuz döner; farklı kapsamlar birbirini etkilemez.
+ */
+export function persistentIdempotencySalt(scope: string): string {
+  const store = saltStore()
+  const fresh = newIdempotencySalt()
+  if (!store) return fresh
+  const key = `${SALT_PREFIX}${scope}`
+  try {
+    const raw = store.getItem(key)
+    if (raw) {
+      const at = Number(raw.slice(0, raw.indexOf('|')))
+      const value = raw.slice(raw.indexOf('|') + 1)
+      if (value && Number.isFinite(at) && Date.now() - at < SALT_MAX_AGE_MS) return value
+    }
+    store.setItem(key, `${Date.now()}|${fresh}`)
+  } catch {
+    // Kota dolu / depolama kapalı — tuz bellekte kalır, davranış eski hâline döner.
+  }
+  return fresh
+}
+
+/** Gönderim BAŞARIYLA bittiğinde çağrılır; sonraki açılış taze tuz alır (meşru tekrar mümkün). */
+export function clearPersistentIdempotencySalt(scope: string): void {
+  try {
+    saltStore()?.removeItem(`${SALT_PREFIX}${scope}`)
+  } catch {
+    // yoksayılır — silinemeyen tuz en fazla TTL kadar yaşar.
+  }
+}
+
+/**
  * cyrb53 — 53 bitlik, hızlı, bağımlılıksız özet. Kriptografik değildir ve olması gerekmez:
  * anahtar bir sır değil, yalnız "aynı istek mi" sorusunun istemci tarafındaki cevabıdır.
  * Çakışma olsa bile sessiz veri kaybına yol açmaz — middleware ayrıca isteğin parmak izini

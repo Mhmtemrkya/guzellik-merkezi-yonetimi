@@ -72,15 +72,17 @@ const SPEND_PERIODS: SpendPeriod[] = [
 // ---------------------------------------------------------------------------
 type Tone = 'rose' | 'gold' | 'mint' | 'violet' | 'peach'
 
+// Menekşe/yeşil bir tık koyu: üzerindeki küçük beyaz metin AA (4,5:1) sağlasın
+// (bkz. `PanelKit.toneSurface` — aynı gerekçe ve ölçümler).
 const toneSurface: Record<Tone, string> = {
-  rose: 'bg-[#A5556E]', gold: 'bg-[#1E8C60]', mint: 'bg-[#1E4E8C]', violet: 'bg-[#8E7882]', peach: 'bg-[#F9A1B9]',
+  rose: 'bg-[#A5556E]', gold: 'bg-[#1D865C]', mint: 'bg-[#1E4E8C]', violet: 'bg-[#85717A]', peach: 'bg-[#F9A1B9]',
 }
 const toneOnBand: Record<Tone, string> = {
   rose: 'text-white', gold: 'text-white', mint: 'text-white', violet: 'text-white', peach: 'text-[#5A1730]',
 }
 const toneChip: Record<Tone, string> = {
   rose: 'bg-white/20 text-white', gold: 'bg-white/20 text-white', mint: 'bg-white/20 text-white',
-  violet: 'bg-white/22 text-white', peach: 'bg-white/45 text-[#5A1730]',
+  violet: 'bg-white/20 text-white', peach: 'bg-white/45 text-[#5A1730]',
 }
 const toneStroke: Record<Tone, string> = {
   rose: '#A5556E', gold: '#1E8C60', mint: '#1E4E8C', violet: '#8E7882', peach: '#E4577F',
@@ -558,6 +560,9 @@ function MusterilerPageInner() {
       sessions: values.sessions,
       notes: values.notes,
       branchId: branchId ?? null,
+      // Personel satışın şubesinde çalışmıyorsa sunucu reddeder; kullanıcı modaldeki onay
+      // kutusuyla "o tarihte bu şubedeydi" dediğinde geçer (bkz. AllowCrossBranchStaff).
+      allowCrossBranchStaff: values.allowCrossBranchStaff,
     }, tenantId))
 
   const handleCancelSale = (accountId: string, reason: string, refundedAmount = 0, refundMethod = 'cash'): Promise<void> =>
@@ -1060,6 +1065,8 @@ function MusterilerPageInner() {
               method: payload.method,
               reference: payload.reference,
               occurredAtUtc: payload.occurredAtUtc,
+              // Fazla ödeme yalnız modalde onaylandıysa geçer (bkz. RegisterPaymentAsync).
+              allowOverpayment: payload.allowOverpayment,
             }, tenantId, payload.idempotencyKey))
           }}
           salesPanel={selected ? (

@@ -174,6 +174,9 @@ export default function ServiceLibrary({
       sessions: values.sessions,
       notes: values.notes,
       branchId: branchId ?? null,
+      // Personel satışın şubesinde çalışmıyorsa sunucu reddeder; kullanıcı modaldeki onay
+      // kutusuyla "o tarihte bu şubedeydi" dediğinde geçer (bkz. AllowCrossBranchStaff).
+      allowCrossBranchStaff: values.allowCrossBranchStaff,
     }, tenantId))
   const handleCancelSale = (accountId: string, reason: string, refundedAmount = 0, refundMethod = 'cash'): Promise<void> =>
     runSaleAction(() => adminApi.cancelSale(accountId, reason || null, refundedAmount, tenantId, refundMethod))

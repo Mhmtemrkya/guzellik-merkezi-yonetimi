@@ -189,8 +189,11 @@ List<InstallmentDueRow> buildInstallmentRows(
       carryIn: carryIn,
       expected: i.amount + carryIn,
       outstanding: outstanding,
-      isOverdue: i.remaining > 0.005 &&
-          (i.overdue || (i.dueDate.isNotEmpty && i.dueDate.compareTo(today) < 0)),
+      // GECİKME TEK KAYNAKTAN: `i.overdue` aylık toleransı (grace) zaten uygular — bir taksit,
+      // BİR SONRAKİ taksitin vade günü gelene kadar gecikmiş sayılmaz. Ham "vade < bugün"
+      // eklemek toleransı deliyor ve aynı borcu bir ekranda kırmızı, diğerinde normal
+      // gösteriyordu (web `accountGrouping.ts` ile aynı düzeltme).
+      isOverdue: i.remaining > 0.005 && i.overdue,
     ));
   }
   return out;
