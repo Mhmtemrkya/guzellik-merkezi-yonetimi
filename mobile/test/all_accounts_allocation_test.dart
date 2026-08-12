@@ -125,7 +125,26 @@ void main() {
       expect(s.remaining, 5000);
       expect(s.openCount, 2);
       expect(s.dueNow, 2500);
-      expect(s.overdue, 1500);
+      /*
+       * GECİKME TEK KAYNAKTAN: `overdue` bayrağı (aylık tolerans/grace uygulanmış hâli).
+       *
+       * Kuyruk eskiden ham "vade < bugün" ile de gecikme sayıyordu ve toleransı deliyordu:
+       * 10 Oca taksiti, bir sonraki vade (10 Mart) gelene kadar gecikmiş DEĞİLDİR — cari kartı
+       * da öyle gösterir. İkisi ayrışınca aynı borç bir ekranda kırmızı, diğerinde normal
+       * oluyordu. Web `accountGrouping.test.ts` içindeki eş testle aynı beklenti.
+       */
+      expect(s.overdue, 0);
+    });
+
+    test('toleransı DOLMUŞ taksit kuyrukta gecikmiş sayılır', () {
+      // Tek taksitli planda tolerans vadenin bir ay sonrasıdır: 10 Oca → 10 Şub.
+      // 15 Şubat'ta tolerans dolmuştur, dolayısıyla borç gerçekten gecikmiştir.
+      final list = [
+        account(id: 'g1', remaining: 1500, installments: [
+          inst(id: 'g1-1', no: 1, due: '2026-01-10', amount: 1500),
+        ]),
+      ];
+      expect(summarizeAllAccounts(list, '2026-02-15').overdue, 1500);
     });
 
     test('tutar 0 ise hiç çağrı üretilmez', () {
