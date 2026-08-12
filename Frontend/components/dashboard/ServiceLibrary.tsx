@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import { PanelPage, PanelStat } from '@/components/dashboard/PanelKit'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
@@ -37,7 +38,7 @@ const STATUS_TONE: Record<CatalogStatusKey, string> = {
   Active: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Passive: 'border-slate-300/40 bg-slate-50 text-slate-600',
   Draft: 'border-amber-300/40 bg-amber-50 text-amber-700',
-  Archived: 'border-[#ead8df]/70 bg-[#fff4f8]/50 text-[#352432]/45',
+  Archived: 'border-[#EAD8DF] bg-[#F7F6F6]/50 text-[#74616A]',
   Cancelled: 'border-rose-200 bg-rose-50 text-rose-600',
 }
 
@@ -48,7 +49,7 @@ function initials(name: string): string { const p = (name || '').trim().split(/\
 function StaffAvatar({ name, photo, className = 'h-7 w-7' }: { name: string; photo?: string; className?: string }) {
   return photo ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={photo} alt={name} className={`${className} shrink-0 rounded-full border border-[#efbfd0]/50 object-cover`} />
+    <img src={photo} alt={name} className={`${className} shrink-0 rounded-full border border-[#BE7690]/50 object-cover`} />
   ) : (
     <span className={`grid ${className} shrink-0 place-items-center rounded-full bg-gradient-to-br ${avatarColor(name)} text-[9px] font-display text-[#3a1a2a]`}>{initials(name)}</span>
   )
@@ -354,7 +355,7 @@ export default function ServiceLibrary({
               consentTenantId={tenantId}
               onSubmit={onCreate}
               trigger={
-                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
+                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
                   <Wand2 className="h-3.5 w-3.5" /> Yeni Hizmet
                 </button>
               }
@@ -381,7 +382,7 @@ export default function ServiceLibrary({
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
             >
               <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
             </button>
@@ -389,51 +390,44 @@ export default function ServiceLibrary({
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <PanelPage>
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && services.length === 0} emptyMessage="Hizmet kaydı yok." />
         {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
 
-        {/* STAT CARDS */}
+        {/* KPI KARTLARI — pano dili. SERİ YALNIZ "toplam"da: apptSeries randevu trendidir,
+            aktif/pasif sayaçlarının altına konsa o rakamların eğrisi sanılırdı. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { label: 'Toplam hizmet', value: String(services.length), icon: Layers3, stroke: '#d7839d' },
-            { label: 'Aktif hizmet', value: String(activeCount), icon: CheckCircle2, stroke: '#3cae8d' },
-            { label: 'Pasif hizmet', value: String(passiveCount), icon: Clock3, stroke: '#e0617f' },
-          ].map((c) => (
-            <div key={c.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
-              <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><c.icon className="h-4 w-4" /></span>
-              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{c.label}</div>
-              <div className="mt-0.5 flex items-end justify-between gap-2">
-                <div className="font-display text-3xl tabular-nums tracking-tight">{c.value}</div>
-                <div className="w-24 shrink-0"><Sparkline values={apptSeries} stroke={c.stroke} /></div>
-              </div>
-            </div>
-          ))}
+          <PanelStat index={0} icon={Layers3} tone="rose" label="Toplam hizmet"
+            value={String(services.length)} detail={`${filtered.length} kayıt listeleniyor`} series={apptSeries} />
+          <PanelStat index={1} icon={CheckCircle2} tone="mint" label="Aktif hizmet"
+            value={String(activeCount)} detail="Randevuya açık" />
+          <PanelStat index={2} icon={Clock3} tone="violet" label="Pasif hizmet"
+            value={String(passiveCount)} detail="Listede görünmez" />
         </div>
 
         {/* MAIN: TABLE + DETAIL */}
         <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-          <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-            <div className="border-b border-[#ead8df]/70 px-5 py-4">
+          <div className="overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white">
+            <div className="border-b border-[#EAD8DF] px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="font-display text-xl tracking-tight">Hizmet Kütüphanesi <span className="ml-1 rounded-full bg-[#fff1f6] px-2 py-0.5 text-[12px] text-[#b14d6c]">{filtered.length}</span></div>
-                  <div className="text-[11px] text-[#352432]/45">Hizmetleri görüntüleyin, düzenleyin ve yönetin.</div>
+                  <div className="font-display text-xl tracking-tight">Hizmet Kütüphanesi <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
+                  <div className="text-[11px] text-[#74616A]">Hizmetleri görüntüleyin, düzenleyin ve yönetin.</div>
                 </div>
               </div>
               {/* tabs */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
                   {TABS.map((t) => (
                     <button key={t.key} type="button" onClick={() => { setTab(t.key); setPage(1) }}
-                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{t.label}</button>
+                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:bg-white'}`}>{t.label}</button>
                   ))}
                 </div>
                 <div className="relative ml-auto">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
-                  <input value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} placeholder="Hizmet ara…" className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
+                  <input value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} placeholder="Hizmet ara…" className="w-40 rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#A5556E]" />
                 </div>
-                <select value={durFilter} onChange={(e) => { setDurFilter(e.target.value); setPage(1) }} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
+                <select value={durFilter} onChange={(e) => { setDurFilter(e.target.value); setPage(1) }} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E]">
                   <option value="">Süre</option><option value="0-30">≤30 dk</option><option value="31-60">31–60 dk</option><option value="61-999">60+ dk</option>
                 </select>
               </div>
@@ -449,11 +443,11 @@ export default function ServiceLibrary({
               />
             </div>
 
-            <div className="hidden grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
+            <div className="hidden grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] gap-2 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
               <span>Hizmet</span><span>Kategori</span><span>Süre</span><span>Fiyat</span><span>Uygulayan Uzman</span><span>Durum</span><span className="text-right">İşlemler</span>
             </div>
 
-            <div className="divide-y divide-[#f1e5ea]">
+            <div className="divide-y divide-[#F1E7EB]">
               {pageRows.map((s) => {
                 const st = statsByService.get(s.id)
                 const perfStaff = (st?.staffIds || []).map((id) => staffById.get(id)).filter(Boolean).slice(0, 3)
@@ -466,59 +460,59 @@ export default function ServiceLibrary({
                       if (canBulkDelete && bulk.active) { bulk.toggle(s.id); return }
                       setSelectedId(s.id)
                     }}
-                    className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${bulk.isSelected(s.id) ? 'bg-[#fff1f6]' : sel?.id === s.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                    className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${bulk.isSelected(s.id) ? 'bg-[#F6DFE6]' : sel?.id === s.id ? 'bg-[#F6DFE6]/60' : ''}`}>
                     <div className="flex min-w-0 items-center gap-2.5">
                       {canBulkDelete && <SelectBox checked={bulk.isSelected(s.id)} onToggle={() => bulk.toggle(s.id)} />}
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
-                      <span className="truncate text-[13px] font-medium text-[#352432]">{s.name}</span>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
+                      <span className="truncate text-[13px] font-medium text-[#2A2027]">{s.name}</span>
                     </div>
-                    <div><span className="inline-flex rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-2 py-0.5 text-[10px] text-[#b14d6c]">{catLabel(s)}</span></div>
-                    <div className="text-[12px] text-[#352432]/65">{s.duration} dk</div>
+                    <div><span className="inline-flex rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10px] text-[#8C4460]">{catLabel(s)}</span></div>
+                    <div className="text-[12px] text-[#5A4B53]">{s.duration} dk</div>
                     <div className="font-display text-[14px] tabular-nums">{formatTL(s.price)}</div>
                     <div className="flex items-center">
-                      {perfStaff.length === 0 ? <span className="text-[10px] text-[#352432]/30">—</span> : (
+                      {perfStaff.length === 0 ? <span className="text-[10px] text-[#74616A]">—</span> : (
                         <div className="flex -space-x-2">
                           {perfStaff.map((p) => p && <StaffAvatar key={p.id} name={p.name} photo={p.photoUrl} />)}
-                          {(st?.staffIds.length || 0) > 3 && <span className="grid h-7 w-7 place-items-center rounded-full border border-[#efbfd0]/50 bg-white text-[9px] font-mono text-[#c85776]">+{(st!.staffIds.length) - 3}</span>}
+                          {(st?.staffIds.length || 0) > 3 && <span className="grid h-7 w-7 place-items-center rounded-full border border-[#BE7690]/50 bg-white text-[9px] font-mono text-[#A5556E]">+{(st!.staffIds.length) - 3}</span>}
                         </div>
                       )}
                     </div>
                     <div><span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status]}</span></div>
-                    <div className="flex justify-end"><span className="rounded-md border border-[#ead8df]/70 bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/70">Detay</span></div>
+                    <div className="flex justify-end"><span className="rounded-md border border-[#EAD8DF] bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53]">Detay</span></div>
                   </button>
                 )
               })}
-              {!pageRows.length && <div className="px-5 py-12 text-center text-sm text-[#352432]/45">{q || tab !== 'all' ? 'Eşleşen hizmet yok.' : 'Hizmet kaydı yok.'}</div>}
+              {!pageRows.length && <div className="px-5 py-12 text-center text-sm text-[#74616A]">{q || tab !== 'all' ? 'Eşleşen hizmet yok.' : 'Hizmet kaydı yok.'}</div>}
             </div>
 
             {filtered.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 px-5 py-3.5">
-                <div className="text-[11px] text-[#352432]/50">{(page - 1) * pageSize + 1} – {Math.min(page * pageSize, filtered.length)} / {filtered.length} kayıt</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
+                <div className="text-[11px] text-[#2A2027]/50">{(page - 1) * pageSize + 1} – {Math.min(page * pageSize, filtered.length)} / {filtered.length} kayıt</div>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#352432]/35">…</span> : (
-                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fff4f8]/50'}`}>{p}</button>
+                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#74616A]">…</span> : (
+                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'}`}>{p}</button>
                   ))}
-                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
-                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }} className="ml-2 rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[11px] text-[#352432]/65 outline-none focus:border-[#c85776]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
+                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }} className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
                 </div>
               </div>
             )}
           </div>
 
           {/* DETAIL PANEL */}
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
             {sel ? (
               <>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]/75">Seçili hizmet detayı</div>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">Seçili hizmet detayı</div>
                   <div className="flex items-center gap-1.5">
                   <PackageSaleDialog
                     tenantId={tenantId}
                     presetService={{ id: sel.id, name: sel.name, price: sel.price }}
                     onDone={reload}
                     triggerLabel="Bu hizmeti sat"
-                    triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#c85776]/40 bg-[#fff1f6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+                    triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#8C4460]/40 bg-[#F6DFE6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
                   />
                   <ServiceFormDialog mode="edit" customCategories={customCategories}
                     onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
@@ -529,47 +523,47 @@ export default function ServiceLibrary({
                     consentTenantId={tenantId}
                     title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
                     onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await syncConsentLinks(sel.id, v.consentTemplateIds); await reload() }}
-                    trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>} />
+                    trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#EAD8DF] bg-white text-[#74616A] hover:text-[#A5556E]"><PencilLine className="h-3.5 w-3.5" /></button>} />
                   </div>
                 </div>
 
                 <div className="mt-3 flex items-center gap-3">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#efbfd0]/75 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={sel.iconKey || suggestIcon(sel.name || sel.group)} className="h-6 w-6" /></span>
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#BE7690]/75 bg-[#A5556E] text-white"><ServiceIcon iconKey={sel.iconKey || suggestIcon(sel.name || sel.group)} className="h-6 w-6" /></span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2"><span className="truncate font-display text-2xl tracking-tight">{sel.name}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[sel.status]}`}>{STATUS_LABEL[sel.status]}</span></div>
-                    <div className="text-[12px] text-[#352432]/55">{catLabel(sel)} hizmeti · {sel.duration} dk</div>
+                    <div className="text-[12px] text-[#5A4B53]">{catLabel(sel)} hizmeti · {sel.duration} dk</div>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Hizmet bilgileri</div>
+                <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Hizmet bilgileri</div>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {[['Kategori', catLabel(sel)], ['Süre', `${sel.duration} dk`], ['Fiyat', formatTL(sel.price)], ['Hazırlık', `${prepOf(sel)} dk`]].map(([k, v]) => (
-                      <div key={k}><div className="text-[9px] font-mono uppercase text-[#352432]/40">{k}</div><div className="mt-0.5 truncate text-[13px] font-medium text-[#352432]">{v}</div></div>
+                      <div key={k}><div className="text-[9px] font-mono uppercase text-[#74616A]">{k}</div><div className="mt-0.5 truncate text-[13px] font-medium text-[#2A2027]">{v}</div></div>
                     ))}
                   </div>
                 </div>
 
                 <div className="mt-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Uygun personel</div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Uygun personel</div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(selStats?.staffIds || []).map((id) => staffById.get(id)).filter(Boolean).slice(0, 6).map((p) => p && (
-                      <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-[#ead8df]/70 bg-white px-2 py-1 text-[11px] text-[#352432]/75"><StaffAvatar name={p.name} photo={p.photoUrl} className="h-5 w-5" /> {p.name}</span>
+                      <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-2 py-1 text-[11px] text-[#3E343A]"><StaffAvatar name={p.name} photo={p.photoUrl} className="h-5 w-5" /> {p.name}</span>
                     ))}
-                    {(!selStats || selStats.staffIds.length === 0) && <span className="text-[11px] text-[#352432]/40">Henüz bu hizmeti uygulayan personel kaydı yok.</span>}
+                    {(!selStats || selStats.staffIds.length === 0) && <span className="text-[11px] text-[#74616A]">Henüz bu hizmeti uygulayan personel kaydı yok.</span>}
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-white p-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Kullanım özeti (Son 30 gün)</div>
+                <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-white p-3">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Kullanım özeti (Son 30 gün)</div>
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     <Mini label="Son 30 gün satış" value={String(selStats?.last30 ?? 0)} />
                     <Mini label="Toplam gelir" value={formatTL(selStats?.revenue ?? 0)} />
                     <Mini label="Müşteri memnuniyeti" value={`${(selStats?.rating ?? 5).toFixed(1)}/5`} />
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="flex items-center gap-2 rounded-[10px] border border-[#f0d5e0] bg-[#fff1f6]/60 px-3 py-2"><Star className="h-4 w-4 text-[#c85776]" /><div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Toplam rezervasyon</div><div className="font-display text-lg">{selStats?.total ?? 0}</div></div></div>
-                    <div className="flex items-center gap-2 rounded-[10px] border border-emerald-200/60 bg-emerald-50/60 px-3 py-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Kâr marjı</div><div className="font-display text-lg text-emerald-700">%{marginOf(sel)}</div></div></div>
+                    <div className="flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2"><Star className="h-4 w-4 text-[#A5556E]" /><div><div className="text-[9px] font-mono uppercase text-[#74616A]">Toplam rezervasyon</div><div className="font-display text-lg">{selStats?.total ?? 0}</div></div></div>
+                    <div className="flex items-center gap-2 rounded-[10px] border border-emerald-200/60 bg-emerald-50/60 px-3 py-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><div><div className="text-[9px] font-mono uppercase text-[#74616A]">Kâr marjı</div><div className="font-display text-lg text-emerald-700">%{marginOf(sel)}</div></div></div>
                   </div>
                 </div>
 
@@ -591,16 +585,16 @@ export default function ServiceLibrary({
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Draft')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/70 hover:bg-[#fff4f8]/50 disabled:opacity-50"><UploadCloud className="h-3.5 w-3.5" /> Taslağa Al</button>
+                  <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Draft')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-medium text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-50"><UploadCloud className="h-3.5 w-3.5" /> Taslağa Al</button>
                   {sel.status === 'Active' ? (
                     <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Passive')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-amber-300/50 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"><PauseCircle className="h-3.5 w-3.5" /> Pasife Al</button>
                   ) : (
-                    <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Active')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-[#c85776] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5" /> Yayına Al</button>
+                    <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Active')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5" /> Yayına Al</button>
                   )}
                   <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Archived')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50">Arşivle</button>
                 </div>
               </>
-            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#352432]/45">Hizmet seçimi yok.</div>}
+            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#74616A]">Hizmet seçimi yok.</div>}
           </div>
         </div>
 
@@ -609,18 +603,18 @@ export default function ServiceLibrary({
             TÜM satışlar (hangi müşteri, ne aldı, kim sattı, iptal edildiyse gerekçesi)
             tek listede görünür. Geçmiş yıllara ait satışlar da buraya düşer. */}
         {catFilter && (
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-display text-xl tracking-tight">{catFilter} · Satışlar</div>
-                <div className="text-[11px] text-[#352432]/45">
+                <div className="text-[11px] text-[#74616A]">
                   Bu kategorideki tüm satışlar: hangi müşteri ne almış, kim satmış, iptal edildiyse gerekçesi.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => { setCatFilter(''); setSubFilter('') }}
-                className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
               >
                 Kategori filtresini kaldır
               </button>
@@ -654,16 +648,16 @@ export default function ServiceLibrary({
         />
 
         {/* HİZMET ÖZETİ */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
+        <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
           <div className="font-display text-xl tracking-tight">Hizmet Özeti</div>
-          <div className="text-[11px] text-[#352432]/45">Hizmet performansınızı özet olarak inceleyin.</div>
+          <div className="text-[11px] text-[#74616A]">Hizmet performansınızı özet olarak inceleyin.</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SummaryTile icon={Trophy} tone="text-amber-600 bg-amber-50" label="En çok tercih edilen" value={summary.topName} />
-            <SummaryTile icon={Sparkles} tone="text-[#c85776] bg-[#fff1f6]" label="Bu ay satılan hizmet" value={String(summary.soldThisMonth)} />
+            <SummaryTile icon={Sparkles} tone="text-[#A5556E] bg-[#F6DFE6]" label="Bu ay satılan hizmet" value={String(summary.soldThisMonth)} />
             <SummaryTile icon={UserCheck} tone="text-emerald-600 bg-emerald-50" label="Aktif uzman oranı" value={`%${summary.activeRate}`} />
           </div>
         </div>
-      </div>
+      </PanelPage>
 
       <ImportDialog
         open={importOpen}
@@ -687,13 +681,13 @@ export default function ServiceLibrary({
 }
 
 function Mini({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-[10px] border border-[#ead8df]/65 bg-[#fffafc] p-2 text-center"><div className="truncate font-display text-[14px] text-[#352432]">{value}</div><div className="text-[8px] font-mono uppercase tracking-wide text-[#352432]/40">{label}</div></div>
+  return <div className="rounded-[10px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-2 text-center"><div className="truncate font-display text-[14px] text-[#2A2027]">{value}</div><div className="text-[8px] font-mono uppercase tracking-wide text-[#74616A]">{label}</div></div>
 }
 function SummaryTile({ icon: Icon, tone, label, value }: { icon: typeof Clock; tone: string; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-[#ead8df]/60 bg-white px-4 py-3.5">
+    <div className="flex items-center gap-3 rounded-[14px] border border-[#EAD8DF]/60 bg-white px-4 py-3.5">
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
-      <div className="min-w-0"><div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div><div className="truncate font-display text-lg tracking-tight text-[#352432]">{value}</div></div>
+      <div className="min-w-0"><div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div><div className="truncate font-display text-lg tracking-tight text-[#2A2027]">{value}</div></div>
     </div>
   )
 }

@@ -389,3 +389,69 @@ export function PanelSkeleton({ rows = 6 }: { rows?: number }) {
     </div>
   )
 }
+
+/**
+ * KOMPAKT KPI KARTI — liste sayfalarının üstündeki sayaçlar.
+ *
+ * `PanelMetricCard`'dan farkı: kendi giriş animasyonu vardır (variant'lı bir ebeveyn
+ * gerektirmez) ve gövdesi tek rakam + tek rozetle sınırlıdır. Pano ve müşteriler
+ * sayfasındaki sayaç kartlarının ortak hâli.
+ *
+ * `series` YALNIZ o rakamın gerçek serisi olduğunda verilmelidir: alakasız bir eğri,
+ * rakamın o eğriyi izlediği izlenimini yaratır (panoda bu hata bir kez yapılmıştı).
+ */
+export function PanelStat({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  detail,
+  series,
+  danger,
+  index = 0,
+}: {
+  icon: LucideIcon
+  tone: PanelTone
+  label: string
+  value: string
+  detail?: string
+  series?: number[]
+  danger?: boolean
+  index?: number
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -4 }}
+      className={`${panelCardShell} group flex flex-col`}
+    >
+      <BrandHairline />
+      <div className={`relative flex items-center gap-2.5 ${toneSurface[tone]} ${toneOnBand[tone]} px-4 py-3`}>
+        <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-white/20 blur-2xl transition-transform duration-500 group-hover:scale-125" />
+        <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-[12px] shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)] transition-transform duration-300 group-hover:scale-105 ${toneChip[tone]}`}>
+          <Icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+        </span>
+        <span className="relative min-w-0 flex-1 truncate text-[10.5px] font-semibold uppercase leading-tight tracking-[0.1em]">
+          {label}
+        </span>
+      </div>
+      <div className="relative flex-1 px-4 pb-3.5 pt-3">
+        <div className={`text-[28px] font-semibold leading-none tracking-tight tabular-nums ${danger ? 'text-[#B23252]' : 'text-[#2A2027]'}`}>
+          {value}
+        </div>
+        {detail && (
+          <div className="mt-2 inline-block max-w-full truncate rounded-full bg-[#F7F6F6] px-2 py-0.5 text-[10.5px] font-medium text-[#5A4B53]">
+            {detail}
+          </div>
+        )}
+      </div>
+      {series && series.length > 1 && (
+        <div className="relative h-[46px] w-full">
+          <AreaSpark values={series} tone={tone} idSuffix={label} />
+        </div>
+      )}
+    </motion.div>
+  )
+}

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import { PanelPage, PanelStat } from '@/components/dashboard/PanelKit'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
@@ -427,7 +428,7 @@ export default function CategoryExplorer({
             <button
               type="button"
               onClick={() => { setAdding(true); setCatQuery('') }}
-              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
             >
               <FolderPlus className="h-4 w-4" /> Yeni Kategori
             </button>
@@ -435,23 +436,23 @@ export default function CategoryExplorer({
         }
       />
 
-      <div className="relative space-y-4 p-4 sm:p-6 lg:p-8">
+      <PanelPage className="space-y-4">
         <ApiStateNotice loading={loading} error={apiError} />
         {error && <div className="rounded-[12px] border border-rose-300/40 bg-rose-50 px-4 py-2.5 text-[12px] font-medium text-rose-700">{error}</div>}
 
         {/* ÖZET ŞERİDİ — kataloğun büyüklüğü tek bakışta. */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: 'Kategori', value: totals.cats, icon: Layers3, tone: 'bg-[#fff1f6] text-[#c85776]' },
+            { label: 'Kategori', value: totals.cats, icon: Layers3, tone: 'bg-[#A5556E] text-white' },
             { label: 'Alt kategori', value: totals.subs, icon: Tag, tone: 'bg-[#fdf1e7] text-[#b9743a]' },
-            { label: 'Hizmet', value: totals.services, icon: Sparkles, tone: 'bg-[#fff1f6] text-[#c85776]' },
+            { label: 'Hizmet', value: totals.services, icon: Sparkles, tone: 'bg-[#A5556E] text-white' },
             { label: 'Paket', value: totals.packages, icon: Package, tone: 'bg-violet-50 text-violet-600' },
           ].map((s) => (
-            <div key={s.label} className="flex items-center gap-3 rounded-[16px] border border-[#ead8df]/70 bg-white/90 px-4 py-3 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+            <div key={s.label} className="flex items-center gap-3 rounded-[16px] border border-[#EAD8DF] bg-white/90 px-4 py-3 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
               <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[12px] ${s.tone}`}><s.icon className="h-5 w-5" /></span>
               <div className="min-w-0">
-                <div className="text-[11px] font-medium text-[#705a66]">{s.label}</div>
-                <div className="font-display text-2xl leading-tight tabular-nums tracking-tight text-[#352432]">{s.value}</div>
+                <div className="text-[11px] font-medium text-[#74616A]">{s.label}</div>
+                <div className="font-display text-2xl leading-tight tabular-nums tracking-tight text-[#2A2027]">{s.value}</div>
               </div>
             </div>
           ))}
@@ -459,24 +460,24 @@ export default function CategoryExplorer({
 
         <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[330px_minmax(0,1fr)]">
           {/* ---------------- SOL: KATEGORİ AĞACI ---------------- */}
-          <aside className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)] lg:sticky lg:top-6">
+          <aside className="overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)] lg:sticky lg:top-6">
             <div className="border-b border-[#f1e5ea] px-4 py-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="font-display text-[17px] tracking-tight text-[#352432]">Kategoriler</div>
-                <span className="rounded-full bg-[#fff1f6] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#b14d6c]">{categories.length}</span>
+                <div className="font-display text-[17px] tracking-tight text-[#2A2027]">Kategoriler</div>
+                <span className="rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#8C4460]">{categories.length}</span>
               </div>
               <div className="relative mt-2.5">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
                 <input
                   value={catQuery}
                   onChange={(e) => setCatQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && railCats[0]) selectCategory(railCats[0].name) }}
                   placeholder="Kategori ara…"
-                  className="w-full rounded-[10px] border border-[#ead8df] bg-white px-8 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                  className="w-full rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-2 text-[12px] text-[#2A2027] outline-none placeholder:text-[#74616A] focus:border-[#A5556E]"
                 />
                 {catQuery && (
                   <button type="button" onClick={() => setCatQuery('')} title="Aramayı temizle"
-                    className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[#705a66] hover:bg-[#fff1f6] hover:text-[#c85776]">
+                    className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-[#74616A] hover:bg-[#F6DFE6] hover:text-[#A5556E]">
                     <X className="h-3 w-3" />
                   </button>
                 )}
@@ -487,23 +488,23 @@ export default function CategoryExplorer({
             {canManage && (
               <div className="border-b border-[#f1e5ea] px-3 py-2.5">
                 {adding ? (
-                  <div className="flex items-center gap-1.5 rounded-[11px] border border-[#efbfd0] bg-white p-1 pl-2.5">
+                  <div className="flex items-center gap-1.5 rounded-[11px] border border-[#BE7690] bg-white p-1 pl-2.5">
                     <input
                       autoFocus
                       value={newCatName}
                       onChange={(e) => setNewCatName(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') void createCat(); if (e.key === 'Escape') { setAdding(false); setNewCatName('') } }}
                       placeholder="Kategori adı…"
-                      className="min-w-0 flex-1 bg-transparent text-[12px] text-[#352432] outline-none placeholder:text-[#705a66]"
+                      className="min-w-0 flex-1 bg-transparent text-[12px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
                     />
                     <button type="button" disabled={busy || !newCatName.trim()} onClick={createCat}
-                      className="rounded-[8px] bg-[#c85776] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
+                      className="rounded-[8px] bg-[#A5556E] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
                     <button type="button" onClick={() => { setAdding(false); setNewCatName('') }} title="Vazgeç"
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] text-[#705a66] hover:bg-[#fff4f8]"><X className="h-3.5 w-3.5" /></button>
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] text-[#74616A] hover:bg-[#F7F6F6]"><X className="h-3.5 w-3.5" /></button>
                   </div>
                 ) : (
                   <button type="button" onClick={() => setAdding(true)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-[11px] border border-dashed border-[#efbfd0] bg-[#fff1f6]/50 px-3 py-2 text-[12px] font-semibold text-[#c85776] transition-colors hover:bg-[#fff1f6]">
+                    className="flex w-full items-center justify-center gap-1.5 rounded-[11px] border border-dashed border-[#BE7690] bg-[#F6DFE6]/60 px-3 py-2 text-[12px] font-semibold text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
                     <Plus className="h-3.5 w-3.5" /> Yeni kategori
                   </button>
                 )}
@@ -518,25 +519,25 @@ export default function CategoryExplorer({
                     <button
                       type="button"
                       onClick={() => selectCategory(c.name)}
-                      className={`group relative flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition-colors ${active ? '' : 'hover:bg-[#fffafc]'}`}
+                      className={`group relative flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition-colors ${active ? '' : 'hover:bg-[#F7F6F6]'}`}
                     >
                       {active && (
                         <motion.span
                           layoutId="category-rail-active"
                           transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                          className="absolute inset-0 rounded-[12px] border border-[#efbfd0] bg-[#fff1f6]"
+                          className="absolute inset-0 rounded-[12px] border border-[#BE7690] bg-[#F6DFE6]"
                         />
                       )}
-                      <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors ${active ? 'border-[#efbfd0] bg-white text-[#c85776]' : 'border-[#f1e5ea] bg-[#fffafc] text-[#b14d6c]'}`}>
+                      <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors ${active ? 'border-[#BE7690] bg-white text-[#A5556E]' : 'border-[#f1e5ea] bg-[#F7F6F6] text-[#8C4460]'}`}>
                         <ServiceIcon iconKey={suggestIcon(c.name)} className="h-[18px] w-[18px]" />
                       </span>
                       <span className="relative min-w-0 flex-1">
-                        <span className={`block truncate text-[13px] font-semibold ${active ? 'text-[#b14d6c]' : 'text-[#352432]'}`}>{c.name}</span>
-                        <span className="mt-0.5 block truncate text-[11px] text-[#705a66]">
+                        <span className={`block truncate text-[13px] font-semibold ${active ? 'text-[#8C4460]' : 'text-[#2A2027]'}`}>{c.name}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[#74616A]">
                           {c.serviceCount} hizmet · {c.packageCount} paket{c.subCount > 0 ? ` · ${c.subCount} alt` : ''}
                         </span>
                       </span>
-                      <ChevronRight className={`relative h-4 w-4 shrink-0 transition-transform ${active ? 'rotate-90 text-[#c85776]' : 'text-[#705a66] group-hover:translate-x-0.5'}`} />
+                      <ChevronRight className={`relative h-4 w-4 shrink-0 transition-transform ${active ? 'rotate-90 text-[#A5556E]' : 'text-[#74616A] group-hover:translate-x-0.5'}`} />
                     </button>
 
                     {/* Alt kategoriler — yalnız seçili kategorinin altında açılır (ağaç). */}
@@ -565,7 +566,7 @@ export default function CategoryExplorer({
                                 çift odak/çift alan sorunu çıkarırdı. */}
                             {canManage && !isUncategorized && !addingSub && (
                               <button type="button" onClick={() => { setAddingSub(true); setNewSubName('') }}
-                                className="flex w-full items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[12px] font-medium text-[#c85776] transition-colors hover:bg-[#fff1f6]">
+                                className="flex w-full items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[12px] font-medium text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
                                 <Plus className="h-3.5 w-3.5" /> Alt kategori ekle
                               </button>
                             )}
@@ -578,7 +579,7 @@ export default function CategoryExplorer({
               })}
 
               {railCats.length === 0 && (
-                <div className="px-3 py-8 text-center text-[12px] text-[#705a66]">
+                <div className="px-3 py-8 text-center text-[12px] text-[#74616A]">
                   {categories.length === 0 ? 'Henüz kategori yok.' : `“${catQuery}” ile eşleşen kategori yok.`}
                 </div>
               )}
@@ -590,17 +591,17 @@ export default function CategoryExplorer({
             {activeCat ? (
               <>
                 {/* BAŞLIK KARTI — o an bakılan kategori/alt kategori ve ona ait TÜM işlemler. */}
-                <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+                <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] border border-[#efbfd0]/70 bg-[#fff1f6] text-[#c85776]">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] border border-[#BE7690]/70 bg-[#A5556E] text-white">
                         <ServiceIcon iconKey={suggestIcon(subject.name)} className="h-6 w-6" />
                       </span>
                       <div className="min-w-0 flex-1">
                         {/* Kırıntı yolu: alt kategori seçiliyken nerede olduğun net kalsın. */}
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-[#705a66]">
-                          <button type="button" onClick={() => selectSub('')} className={selectedSub ? 'hover:text-[#c85776]' : ''}>{activeCat}</button>
-                          {selectedSub && <><ChevronRight className="h-3 w-3" /><span className="truncate text-[#b14d6c]">{selectedSub}</span></>}
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-[#74616A]">
+                          <button type="button" onClick={() => selectSub('')} className={selectedSub ? 'hover:text-[#A5556E]' : ''}>{activeCat}</button>
+                          {selectedSub && <><ChevronRight className="h-3 w-3" /><span className="truncate text-[#8C4460]">{selectedSub}</span></>}
                         </div>
 
                         {renaming ? (
@@ -610,15 +611,15 @@ export default function CategoryExplorer({
                               value={renameValue}
                               onChange={(e) => setRenameValue(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') void applyRename(); if (e.key === 'Escape') setRenaming(false) }}
-                              className="min-w-0 flex-1 rounded-[10px] border border-[#efbfd0] bg-white px-3 py-1.5 font-display text-xl tracking-tight text-[#352432] outline-none focus:border-[#c85776]"
+                              className="min-w-0 flex-1 rounded-[10px] border border-[#BE7690] bg-white px-3 py-1.5 font-display text-xl tracking-tight text-[#2A2027] outline-none focus:border-[#A5556E]"
                             />
                             <button type="button" disabled={busy || !renameValue.trim()} onClick={applyRename}
-                              className="rounded-[10px] bg-[#c85776] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Kaydet</button>
+                              className="rounded-[10px] bg-[#A5556E] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Kaydet</button>
                             <button type="button" onClick={() => setRenaming(false)}
-                              className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8]">Vazgeç</button>
+                              className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#F7F6F6]">Vazgeç</button>
                           </div>
                         ) : (
-                          <div className="mt-0.5 truncate font-display text-[26px] leading-tight tracking-tight text-[#352432]">{subject.name}</div>
+                          <div className="mt-0.5 truncate font-display text-[26px] leading-tight tracking-tight text-[#2A2027]">{subject.name}</div>
                         )}
 
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -642,25 +643,25 @@ export default function CategoryExplorer({
                       <div className="flex flex-wrap items-center gap-1.5">
                         {canManage && subject.level === 'category' && (
                           <button type="button" onClick={() => { setAddingSub(true); setNewSubName('') }}
-                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#efbfd0] bg-[#fff1f6] px-3 py-2 text-[12px] font-semibold text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]">
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BE7690] bg-[#F6DFE6] px-3 py-2 text-[12px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F6DFE6]">
                             <Plus className="h-3.5 w-3.5" /> Alt kategori
                           </button>
                         )}
                         {canManage && (
                           <button type="button" onClick={startRename}
-                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]">
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                             <Pencil className="h-3.5 w-3.5" /> Yeniden adlandır
                           </button>
                         )}
                         {canReorder && (
-                          <span className="inline-flex overflow-hidden rounded-[10px] border border-[#ead8df] bg-white">
+                          <span className="inline-flex overflow-hidden rounded-[10px] border border-[#EAD8DF] bg-white">
                             <button type="button" disabled={busy || orderIndex === 0} onClick={() => move(-1)} title="Sırada yukarı taşı"
-                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-30">
+                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
                               <ArrowUp className="h-4 w-4" />
                             </button>
                             <span className="w-px bg-[#f1e5ea]" />
                             <button type="button" disabled={busy || orderIndex === siblingIds.length - 1} onClick={() => move(1)} title="Sırada aşağı taşı"
-                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#fff4f8] hover:text-[#c85776] disabled:opacity-30">
+                              className="grid h-[38px] w-9 place-items-center text-[#4a3a44] transition-colors hover:bg-[#F7F6F6] hover:text-[#A5556E] disabled:opacity-30">
                               <ArrowDown className="h-4 w-4" />
                             </button>
                           </span>
@@ -684,27 +685,27 @@ export default function CategoryExplorer({
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#efbfd0]/70 bg-[#fff1f6]/60 p-2 pl-3.5">
-                          <span className="text-[12px] font-medium text-[#b14d6c]">{activeCat} altına yeni alt kategori:</span>
+                        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#BE7690]/70 bg-[#F7F6F6] p-2 pl-3.5">
+                          <span className="text-[12px] font-medium text-[#8C4460]">{activeCat} altına yeni alt kategori:</span>
                           <input
                             autoFocus
                             value={newSubName}
                             onChange={(e) => setNewSubName(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') void createSubCat(); if (e.key === 'Escape') setAddingSub(false) }}
                             placeholder="Alt kategori adı…"
-                            className="min-w-[160px] flex-1 rounded-[9px] border border-[#efbfd0] bg-white px-3 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                            className="min-w-[160px] flex-1 rounded-[9px] border border-[#BE7690] bg-white px-3 py-2 text-[12px] text-[#2A2027] outline-none placeholder:text-[#74616A] focus:border-[#A5556E]"
                           />
                           <button type="button" disabled={busy || !newSubName.trim()} onClick={createSubCat}
-                            className="rounded-[9px] bg-[#c85776] px-3.5 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
+                            className="rounded-[9px] bg-[#A5556E] px-3.5 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">Ekle</button>
                           <button type="button" onClick={() => { setAddingSub(false); setNewSubName('') }}
-                            className="rounded-[9px] border border-[#ead8df] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-white">Vazgeç</button>
+                            className="rounded-[9px] border border-[#EAD8DF] bg-white px-3 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-white">Vazgeç</button>
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   {isUncategorized && (
-                    <div className="mt-4 rounded-[12px] border border-[#ead8df] bg-[#fffafc] px-3.5 py-2.5 text-[12px] text-[#4a3a44]">
+                    <div className="mt-4 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-2.5 text-[12px] text-[#4a3a44]">
                       Bu, kategorisi girilmemiş kayıtların toplandığı sistem grubudur — adlandırılamaz, silinemez.
                       Kayıtları bir kategoriye taşımak için hizmet/paket formundan kategori seçin.
                     </div>
@@ -712,9 +713,9 @@ export default function CategoryExplorer({
                 </div>
 
                 {/* İÇERİK LİSTESİ */}
-                <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90 shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
+                <div className="overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white shadow-[0_18px_42px_-38px_rgba(150,78,104,0.42)]">
                   <div className="flex flex-wrap items-center gap-2 border-b border-[#f1e5ea] px-4 py-3">
-                    <div className="inline-flex items-center gap-1 rounded-[11px] border border-[#ead8df] bg-[#fff4f8]/50 p-1">
+                    <div className="inline-flex items-center gap-1 rounded-[11px] border border-[#EAD8DF] bg-[#F7F6F6]/50 p-1">
                       {TYPE_TABS.map((t) => {
                         const count = t.key === 'all' ? rows.length : t.key === 'service' ? serviceCount : packageCount
                         return (
@@ -722,7 +723,7 @@ export default function CategoryExplorer({
                             key={t.key}
                             type="button"
                             onClick={() => setTypeTab(t.key)}
-                            className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${typeTab === t.key ? 'bg-[#c85776] text-white' : 'text-[#4a3a44] hover:bg-white'}`}
+                            className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${typeTab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#4a3a44] hover:bg-white'}`}
                           >
                             {t.label} <span className="tabular-nums opacity-80">{count}</span>
                           </button>
@@ -730,17 +731,17 @@ export default function CategoryExplorer({
                       })}
                     </div>
                     <div className="relative ml-auto">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#705a66]" />
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
                       <input
                         value={itemQuery}
                         onChange={(e) => setItemQuery(e.target.value)}
                         placeholder="Bu kategoride ara…"
-                        className="w-44 rounded-[10px] border border-[#ead8df] bg-white px-8 py-2 text-[12px] text-[#352432] outline-none placeholder:text-[#705a66] focus:border-[#c85776]"
+                        className="w-44 rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-2 text-[12px] text-[#2A2027] outline-none placeholder:text-[#74616A] focus:border-[#A5556E]"
                       />
                     </div>
                   </div>
 
-                  <div className="hidden grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] gap-3 border-b border-[#f1e5ea] bg-[#fffafc] px-4 py-2.5 text-[11px] font-semibold text-[#705a66] lg:grid">
+                  <div className="hidden grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] gap-3 border-b border-[#f1e5ea] bg-[#F7F6F6] px-4 py-2.5 text-[11px] font-semibold text-[#74616A] lg:grid">
                     <span>Kayıt</span>
                     <span>Alt kategori</span>
                     <span>Kapsam</span>
@@ -749,37 +750,37 @@ export default function CategoryExplorer({
                     <span />
                   </div>
 
-                  <div className="divide-y divide-[#f1e5ea]">
+                  <div className="divide-y divide-[#F1E7EB]">
                     {visibleRows.map((r) => (
                       <div
                         key={`${r.kind}-${r.id}`}
-                        className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-[#fffafc] lg:grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] lg:items-center lg:gap-3"
+                        className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[minmax(0,2.3fr)_1fr_0.8fr_0.8fr_0.9fr_64px] lg:items-center lg:gap-3"
                       >
                         <div className="flex min-w-0 items-start gap-2.5">
-                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border ${r.kind === 'service' ? 'border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]' : 'border-violet-200/70 bg-violet-50 text-violet-600'}`}>
+                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border ${r.kind === 'service' ? 'border-[#EAD8DF] bg-[#A5556E] text-white' : 'border-violet-200/70 bg-violet-50 text-violet-600'}`}>
                             <ServiceIcon iconKey={r.iconKey} className="h-[18px] w-[18px]" />
                           </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="truncate text-[13px] font-semibold text-[#352432]">{r.name}</span>
-                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${r.kind === 'service' ? 'bg-[#fff1f6] text-[#b14d6c]' : 'bg-violet-50 text-violet-700'}`}>
+                              <span className="truncate text-[13px] font-semibold text-[#2A2027]">{r.name}</span>
+                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${r.kind === 'service' ? 'bg-[#F6DFE6] text-[#8C4460]' : 'bg-violet-50 text-violet-700'}`}>
                                 {r.kind === 'service' ? 'Hizmet' : 'Paket'}
                               </span>
                             </div>
                             {r.parts.length > 0 && (
                               <div className="mt-1 flex flex-wrap items-center gap-1">
                                 {r.parts.slice(0, 3).map((part) => (
-                                  <span key={part} className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-1.5 py-0.5 text-[10px] text-[#b14d6c]">{part}</span>
+                                  <span key={part} className="rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-1.5 py-0.5 text-[10px] text-[#8C4460]">{part}</span>
                                 ))}
-                                {r.parts.length > 3 && <span className="text-[10px] font-medium text-[#705a66]">+{r.parts.length - 3}</span>}
+                                {r.parts.length > 3 && <span className="text-[10px] font-medium text-[#74616A]">+{r.parts.length - 3}</span>}
                               </div>
                             )}
                           </div>
                         </div>
                         <div className="min-w-0">
                           {r.sub
-                            ? <span className="inline-flex max-w-full truncate rounded-md border border-[#ead8df] bg-white px-2 py-0.5 text-[11px] font-medium text-[#4a3a44]">{r.sub}</span>
-                            : <span className="text-[12px] text-[#705a66]">—</span>}
+                            ? <span className="inline-flex max-w-full truncate rounded-md border border-[#EAD8DF] bg-white px-2 py-0.5 text-[11px] font-medium text-[#4a3a44]">{r.sub}</span>
+                            : <span className="text-[12px] text-[#74616A]">—</span>}
                         </div>
                         <div className="text-[12px] font-medium text-[#4a3a44]">{r.meta}</div>
                         <div>
@@ -787,7 +788,7 @@ export default function CategoryExplorer({
                             {r.active ? 'Aktif' : 'Pasif'}
                           </span>
                         </div>
-                        <div className="font-display text-[15px] tabular-nums text-[#352432] lg:text-right">{formatTL(r.price)}</div>
+                        <div className="font-display text-[15px] tabular-nums text-[#2A2027] lg:text-right">{formatTL(r.price)}</div>
                         <div className="lg:flex lg:justify-end">
                           <PackageSaleDialog
                             tenantId={tenantId}
@@ -795,7 +796,7 @@ export default function CategoryExplorer({
                               ? { presetService: { id: r.id, name: r.name, price: r.price } }
                               : { presetPackageId: r.id })}
                             triggerLabel="Sat"
-                            triggerClassName={`inline-flex items-center justify-center rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition-colors ${r.kind === 'service' ? 'border-[#c85776]/40 bg-[#fff1f6] text-[#b14d6c] hover:bg-[#ffe6ef]' : 'border-violet-300/60 bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
+                            triggerClassName={`inline-flex items-center justify-center rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition-colors ${r.kind === 'service' ? 'border-[#8C4460]/40 bg-[#F6DFE6] text-[#8C4460] hover:bg-[#F6DFE6]' : 'border-violet-300/60 bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
                           />
                         </div>
                       </div>
@@ -803,11 +804,11 @@ export default function CategoryExplorer({
 
                     {visibleRows.length === 0 && (
                       <div className="px-4 py-14 text-center">
-                        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><Layers3 className="h-6 w-6" /></span>
-                        <div className="mt-3 text-[13px] font-semibold text-[#352432]">
+                        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#A5556E] text-white"><Layers3 className="h-6 w-6" /></span>
+                        <div className="mt-3 text-[13px] font-semibold text-[#2A2027]">
                           {itemQuery ? 'Aramayla eşleşen kayıt yok.' : `Bu ${selectedSub ? 'alt kategoride' : 'kategoride'} kayıt yok.`}
                         </div>
-                        <div className="mt-1 text-[12px] text-[#705a66]">
+                        <div className="mt-1 text-[12px] text-[#74616A]">
                           {itemQuery ? 'Farklı bir kelime deneyin.' : 'Hizmet veya paket eklerken bu kategoriyi seçtiğinizde burada listelenir.'}
                         </div>
                       </div>
@@ -817,23 +818,23 @@ export default function CategoryExplorer({
               </>
             ) : (
               !loading && (
-                <div className="rounded-[18px] border border-dashed border-[#ead8df] bg-white/70 px-6 py-16 text-center">
-                  <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#fff1f6] text-[#c85776]"><FolderPlus className="h-7 w-7" /></span>
-                  <div className="mt-4 font-display text-xl tracking-tight text-[#352432]">Henüz kategori yok</div>
-                  <div className="mx-auto mt-1.5 max-w-md text-[12px] text-[#705a66]">
+                <div className="rounded-[18px] border border-dashed border-[#EAD8DF] bg-white/70 px-6 py-16 text-center">
+                  <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#A5556E] text-white"><FolderPlus className="h-7 w-7" /></span>
+                  <div className="mt-4 font-display text-xl tracking-tight text-[#2A2027]">Henüz kategori yok</div>
+                  <div className="mx-auto mt-1.5 max-w-md text-[12px] text-[#74616A]">
                     Soldaki “Yeni kategori” ile başlayın. Hizmet ve paketlere kategori atandıkça bu kategoriler otomatik olarak burada gruplanır.
                   </div>
                 </div>
               )
             )}
 
-            <div className="flex items-start gap-2 rounded-[12px] border border-[#efbfd0]/60 bg-[#fff1f6]/60 px-4 py-2.5 text-[12px] text-[#b14d6c]">
+            <div className="flex items-start gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2.5 text-[12px] text-[#8C4460]">
               <Tag className="mt-0.5 h-4 w-4 shrink-0" />
               <span>Kategoriler hizmet ve paketlerde ortaktır: burada oluşturduğunuz kategori ve alt kategoriler, hizmet/paket formlarındaki seçim listesinde çıkar.</span>
             </div>
           </section>
         </div>
-      </div>
+      </PanelPage>
 
       {/* Silme onayı — uygulama içi modal (tarayıcı confirm'i kullanılmaz).
           ModalPortal şart: panel yerleşiminde <main> kendi yığınlama bağlamını açar, portal
@@ -861,10 +862,10 @@ export default function CategoryExplorer({
                     <Trash2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
-                    <div className="font-display text-[17px] tracking-tight text-[#352432]">
+                    <div className="font-display text-[17px] tracking-tight text-[#2A2027]">
                       {pendingDelete.level === 'sub' ? 'Alt kategori silinsin mi?' : 'Kategori silinsin mi?'}
                     </div>
-                    <div className="mt-0.5 truncate text-[12px] font-medium text-[#705a66]">{pendingDelete.name}</div>
+                    <div className="mt-0.5 truncate text-[12px] font-medium text-[#74616A]">{pendingDelete.name}</div>
                   </div>
                 </div>
 
@@ -885,16 +886,16 @@ export default function CategoryExplorer({
                       <p>Bu kategorideki hizmet ve paketler silinmez; kategori adı üzerlerinde kalır.</p>
                     </>
                   )}
-                  <p className="text-[11px] text-[#705a66]">Bu işlem geri alınamaz.</p>
+                  <p className="text-[11px] text-[#74616A]">Bu işlem geri alınamaz.</p>
                   {error && <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 font-medium text-rose-700">{error}</p>}
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-[#f6e8ee] bg-[#fffafc] px-5 py-3">
+                <div className="flex justify-end gap-2 border-t border-[#f6e8ee] bg-[#F7F6F6] px-5 py-3">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => setPendingDelete(null)}
-                    className="rounded-[11px] border border-[#ead8df] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#fff4f8] disabled:opacity-50"
+                    className="rounded-[11px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12px] font-medium text-[#4a3a44] hover:bg-[#F7F6F6] disabled:opacity-50"
                   >
                     Vazgeç
                   </button>
@@ -923,23 +924,23 @@ function SubRow({ label, count, active, onClick }: { label: string; count: numbe
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition-colors ${
-        active ? 'bg-[#fff1f6] text-[#b14d6c]' : 'text-[#4a3a44] hover:bg-[#fffafc]'
+        active ? 'bg-[#F6DFE6] text-[#8C4460]' : 'text-[#4a3a44] hover:bg-[#F7F6F6]'
       }`}
     >
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-[#c85776]' : 'bg-[#e2c9d4]'}`} />
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-[#A5556E]' : 'bg-[#D9CBD1]'}`} />
       <span className={`min-w-0 flex-1 truncate text-[12px] ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
-      <span className={`shrink-0 text-[11px] tabular-nums ${active ? 'text-[#b14d6c]' : 'text-[#705a66]'}`}>{count}</span>
+      <span className={`shrink-0 text-[11px] tabular-nums ${active ? 'text-[#8C4460]' : 'text-[#74616A]'}`}>{count}</span>
     </button>
   )
 }
 
 function Chip({ tone, children }: { tone: 'rose' | 'violet' | 'amber' | 'plain' | 'muted'; children: React.ReactNode }) {
   const tones: Record<string, string> = {
-    rose: 'border-[#e7c7d4] bg-[#fff1f6] text-[#b14d6c]',
+    rose: 'border-[#e7c7d4] bg-[#F6DFE6] text-[#8C4460]',
     violet: 'border-violet-200 bg-violet-50 text-violet-700',
     amber: 'border-amber-200 bg-amber-50 text-amber-800',
     plain: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    muted: 'border-[#ead8df] bg-[#fffafc] text-[#705a66]',
+    muted: 'border-[#EAD8DF] bg-[#F7F6F6] text-[#74616A]',
   }
   return <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}>{children}</span>
 }

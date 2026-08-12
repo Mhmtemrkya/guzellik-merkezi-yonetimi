@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
+import { PanelPage, PanelStat } from '@/components/dashboard/PanelKit'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
@@ -44,7 +45,7 @@ const STATUS_TONE: Record<CatalogStatusKey, string> = {
   Active: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
   Passive: 'border-slate-300/40 bg-slate-50 text-slate-600',
   Draft: 'border-amber-300/40 bg-amber-50 text-amber-700',
-  Archived: 'border-[#ead8df]/70 bg-[#fff4f8]/50 text-[#352432]/45',
+  Archived: 'border-[#EAD8DF] bg-[#F7F6F6]/50 text-[#74616A]',
   Cancelled: 'border-rose-200 bg-rose-50 text-rose-600',
 }
 
@@ -536,7 +537,7 @@ export default function PackageLibrary({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { setDraft(emptyDraft()); setSavedMsg(''); setActionError('') }}
-              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#c85776] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
+              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
               <PackagePlus className="h-3.5 w-3.5" /> Yeni Paket
             </button>
             <ExcelTransferActions<ServicePackage>
@@ -563,7 +564,7 @@ export default function PackageLibrary({
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#efbfd0] bg-white px-4 py-2 text-[12px] font-semibold text-[#c85776] transition-transform hover:-translate-y-0.5 hover:bg-[#fff4f8]"
+              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
             >
               <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
             </button>
@@ -571,48 +572,42 @@ export default function PackageLibrary({
         }
       />
 
-      <div className="relative space-y-5 p-4 sm:p-6 lg:p-8">
+      <PanelPage>
         <ApiStateNotice loading={loading} error={error} />
         {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
         {savedMsg && <div className="rounded-[12px] border border-emerald-300/30 bg-emerald-50 px-4 py-2.5 text-[12px] text-emerald-700"><CheckCircle2 className="mr-1.5 inline h-3.5 w-3.5" />{savedMsg}</div>}
 
-        {/* STAT CARDS */}
+        {/* KPI KARTLARI — pano dili (renkli bant + beyaz gövde + alan grafiği).
+            SERİ YALNIZ "toplam"da: pkgSeries paket ekleme trendidir; aktif/taslak
+            sayaçlarının altına konsa o rakamların bu eğriyi izlediği sanılırdı. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { label: 'Toplam paket', value: String(packages.length), icon: ShoppingBag, stroke: '#d7839d' },
-            { label: 'Aktif paket', value: String(activeCount), icon: CheckCircle2, stroke: '#3cae8d' },
-            { label: 'Taslak', value: String(draftCount), icon: FileText, stroke: '#e6a14f' },
-          ].map((c) => (
-            <div key={c.label} className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-4 shadow-[0_18px_42px_-34px_rgba(150,78,104,0.42)]">
-              <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#fff1f6] text-[#c85776]"><c.icon className="h-4 w-4" /></span>
-              <div className="mt-3 text-[11px] font-mono uppercase tracking-widest text-[#352432]/45">{c.label}</div>
-              <div className="mt-0.5 flex items-end justify-between gap-2">
-                <div className="font-display text-3xl tabular-nums tracking-tight">{c.value}</div>
-                <div className="w-24 shrink-0"><Sparkline values={pkgSeries} stroke={c.stroke} /></div>
-              </div>
-            </div>
-          ))}
+          <PanelStat index={0} icon={ShoppingBag} tone="rose" label="Toplam paket"
+            value={String(packages.length)} detail={`${filtered.length} kayıt listeleniyor`} series={pkgSeries} />
+          <PanelStat index={1} icon={CheckCircle2} tone="mint" label="Aktif paket"
+            value={String(activeCount)} detail={packages.length > 0 ? `${packages.length - activeCount} pasif` : 'Satışa açık'} />
+          <PanelStat index={2} icon={FileText} tone="violet" label="Taslak"
+            value={String(draftCount)} detail="Yayınlanmayı bekliyor" />
         </div>
 
         {/* MAIN: LIBRARY + DRAFT PANEL */}
         <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
           {/* LIBRARY */}
-          <div className="overflow-hidden rounded-[18px] border border-[#ead8df]/70 bg-white/90">
-            <div className="border-b border-[#ead8df]/70 px-5 py-4">
-              <div className="font-display text-xl tracking-tight">Paket Kütüphanesi <span className="ml-1 rounded-full bg-[#fff1f6] px-2 py-0.5 text-[12px] text-[#b14d6c]">{filtered.length}</span></div>
-              <div className="text-[11px] text-[#352432]/45">Hazır paketleri görüntüleyin, düzenleyin ve yönetin.</div>
+          <div className="overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white">
+            <div className="border-b border-[#EAD8DF] px-5 py-4">
+              <div className="font-display text-xl tracking-tight">Paket Kütüphanesi <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
+              <div className="text-[11px] text-[#74616A]">Hazır paketleri görüntüleyin, düzenleyin ve yönetin.</div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#ead8df] bg-[#fff4f8]/40 p-1">
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
                   {TABS.map((t) => (
                     <button key={t.key} type="button" onClick={() => setTab(t.key)}
-                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#c85776] text-white' : 'text-[#352432]/55 hover:bg-white'}`}>{t.label}</button>
+                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:bg-white'}`}>{t.label}</button>
                   ))}
                 </div>
                 <div className="relative ml-auto">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#352432]/35" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: paket adı…" className="w-40 rounded-[10px] border border-[#ead8df]/70 bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#c85776]" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: paket adı…" className="w-40 rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#A5556E]" />
                 </div>
-                <select value={priceSort} onChange={(e) => setPriceSort(e.target.value)} className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776]">
+                <select value={priceSort} onChange={(e) => setPriceSort(e.target.value)} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E]">
                   <option value="">Fiyat</option><option value="asc">Artan</option><option value="desc">Azalan</option>
                 </select>
               </div>
@@ -628,11 +623,11 @@ export default function PackageLibrary({
               />
             </div>
 
-            <div className="hidden grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] gap-2 border-b border-[#ead8df]/50 bg-[#fffafc] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#352432]/40 lg:grid">
+            <div className="hidden grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] gap-2 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
               <span>Paket</span><span>Dahil Hizmetler</span><span>Seans</span><span>Satış Fiyatı</span><span>Peşinat</span><span>Durum</span><span>Güncelleme</span><span className="text-right">İşlemler</span>
             </div>
 
-            <div className="divide-y divide-[#f1e5ea]">
+            <div className="divide-y divide-[#F1E7EB]">
               {pageRows.map((p) => (
                 <button
                   key={p.id}
@@ -642,51 +637,51 @@ export default function PackageLibrary({
                     if (canBulkDelete && bulk.active) { bulk.toggle(p.id); return }
                     selectPackage(p)
                   }}
-                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#fffafc] lg:grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] lg:items-center ${bulk.isSelected(p.id) ? 'bg-[#fff1f6]' : draft.id === p.id ? 'bg-[#fff1f6]/50' : ''}`}>
+                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.4fr_1.3fr_0.5fr_0.8fr_0.7fr_0.6fr_0.9fr_0.6fr] lg:items-center ${bulk.isSelected(p.id) ? 'bg-[#F6DFE6]' : draft.id === p.id ? 'bg-[#F6DFE6]/60' : ''}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
                     {canBulkDelete && <SelectBox checked={bulk.isSelected(p.id)} onToggle={() => bulk.toggle(p.id)} />}
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={p.iconKey || suggestIcon(p.name || p.category)} className="h-5 w-5" /></span>
-                    <span className="truncate text-[13px] font-medium text-[#352432]">{p.name}</span>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><ServiceIcon iconKey={p.iconKey || suggestIcon(p.name || p.category)} className="h-5 w-5" /></span>
+                    <span className="truncate text-[13px] font-medium text-[#2A2027]">{p.name}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
                     {p.items.slice(0, 2).map((i) => (
-                      <span key={i.serviceDefinitionId} className="rounded-md border border-[#e7c7d4]/70 bg-[#fff1f6]/60 px-1.5 py-0.5 text-[9px] text-[#b14d6c]">{i.serviceName}</span>
+                      <span key={i.serviceDefinitionId} className="rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-1.5 py-0.5 text-[9px] text-[#8C4460]">{i.serviceName}</span>
                     ))}
-                    {p.items.length > 2 && <span className="text-[10px] text-[#352432]/45">+{p.items.length - 2}</span>}
-                    {p.items.length === 0 && <span className="text-[10px] text-[#352432]/30">—</span>}
+                    {p.items.length > 2 && <span className="text-[10px] text-[#74616A]">+{p.items.length - 2}</span>}
+                    {p.items.length === 0 && <span className="text-[10px] text-[#74616A]">—</span>}
                   </div>
-                  <div className="text-[12px] tabular-nums text-[#352432]/70">{p.totalSessions}</div>
+                  <div className="text-[12px] tabular-nums text-[#5A4B53]">{p.totalSessions}</div>
                   <div className="font-display text-[14px] tabular-nums">{formatTL(p.totalPrice)}</div>
-                  <div className="text-[12px] tabular-nums text-[#352432]/60">{formatTL(p.depositAmount)}</div>
+                  <div className="text-[12px] tabular-nums text-[#5A4B53]">{formatTL(p.depositAmount)}</div>
                   <div><span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${STATUS_TONE[p.status]}`}>{STATUS_LABEL[p.status]}</span></div>
-                  <div className="text-[10px] font-mono text-[#352432]/45">{p.updatedAt || '—'}</div>
-                  <div className="flex justify-end"><span className="rounded-md border border-[#ead8df]/70 bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#352432]/70">Detay</span></div>
+                  <div className="text-[10px] font-mono text-[#74616A]">{p.updatedAt || '—'}</div>
+                  <div className="flex justify-end"><span className="rounded-md border border-[#EAD8DF] bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53]">Detay</span></div>
                 </button>
               ))}
               {!pageRows.length && !loading && (
-                <div className="px-5 py-12 text-center text-sm text-[#352432]/45">{q || tab !== 'all' ? 'Eşleşen paket yok.' : 'Henüz paket yok. Aşağıdaki hizmetlerden seçerek ilk paketini oluştur.'}</div>
+                <div className="px-5 py-12 text-center text-sm text-[#74616A]">{q || tab !== 'all' ? 'Eşleşen paket yok.' : 'Henüz paket yok. Aşağıdaki hizmetlerden seçerek ilk paketini oluştur.'}</div>
               )}
             </div>
 
             {filtered.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ead8df]/70 px-5 py-3.5">
-                <div className="text-[11px] text-[#352432]/50">Toplam {filtered.length} paket</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
+                <div className="text-[11px] text-[#2A2027]/50">Toplam {filtered.length} paket</div>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#352432]/35">…</span> : (
-                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#c85776] bg-[#c85776] text-white' : 'border-[#ead8df] bg-white text-[#352432]/65 hover:bg-[#fff4f8]/50'}`}>{p}</button>
+                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#74616A]">…</span> : (
+                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'}`}>{p}</button>
                   ))}
-                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#ead8df] bg-white text-[#352432]/60 hover:bg-[#fff4f8]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
-                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#ead8df] bg-white px-2 py-1.5 text-[11px] text-[#352432]/65 outline-none focus:border-[#c85776]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
+                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
                 </div>
               </div>
             )}
           </div>
 
           {/* DRAFT PANEL */}
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
             <div className="flex items-start justify-between gap-2">
-              <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#c85776]/75">Seçili paket taslağı</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">Seçili paket taslağı</div>
               <div className="flex items-center gap-1.5">
                 {draft.id && (
                   <PackageSaleDialog
@@ -694,24 +689,24 @@ export default function PackageLibrary({
                     presetPackageId={draft.id}
                     onDone={reload}
                     triggerLabel="Bu paketi sat"
-                    triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#c85776]/40 bg-[#fff1f6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#b14d6c] transition-colors hover:bg-[#ffe6ef]"
+                    triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#8C4460]/40 bg-[#F6DFE6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
                   />
                 )}
                 <button type="button" onClick={() => setShowIconPicker((v) => !v)} title="Paket ikonu seç"
-                  className="grid h-7 w-7 place-items-center rounded-md border border-[#ead8df]/70 bg-white text-[#352432]/45 hover:text-[#c85776]"><PencilLine className="h-3.5 w-3.5" /></button>
+                  className="grid h-7 w-7 place-items-center rounded-md border border-[#EAD8DF] bg-white text-[#74616A] hover:text-[#A5556E]"><PencilLine className="h-3.5 w-3.5" /></button>
               </div>
             </div>
 
             <div className="mt-2 flex items-center gap-2.5">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-[#efbfd0]/70 bg-[#fff1f6] text-[#c85776]">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] border border-[#BE7690]/70 bg-[#A5556E] text-white">
                 <ServiceIcon iconKey={draft.iconKey || suggestIcon(draft.name || draft.category)} className="h-5 w-5" />
               </span>
               <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                className="w-full bg-transparent font-display text-2xl tracking-tight text-[#352432] outline-none placeholder:text-[#352432]/30" placeholder="Paket adı" />
+                className="w-full bg-transparent font-display text-2xl tracking-tight text-[#2A2027] outline-none placeholder:text-[#74616A]" placeholder="Paket adı" />
               <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[draft.status]}`}>{STATUS_LABEL[draft.status]}</span>
             </div>
             <input value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-              className="mt-1 w-full bg-transparent text-[12px] text-[#352432]/55 outline-none placeholder:text-[#352432]/30" placeholder="Paket açıklaması (müşteriye gösterilir)…" />
+              className="mt-1 w-full bg-transparent text-[12px] text-[#5A4B53] outline-none placeholder:text-[#74616A]" placeholder="Paket açıklaması (müşteriye gösterilir)…" />
 
             {showIconPicker && (
               <div className="mt-3"><IconPicker value={draft.iconKey || suggestIcon(draft.name || draft.category)} onChange={(k) => { setDraft((d) => ({ ...d, iconKey: k })); setShowIconPicker(false) }} /></div>
@@ -719,7 +714,7 @@ export default function PackageLibrary({
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <select value={draft.category} disabled={busy} onChange={(e) => void changePackageCategory(e.target.value)}
-                className="rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:opacity-60">
+                className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E] disabled:opacity-60">
                 <option value="">— Kategorisiz —</option>
                 {assignableCategories.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
@@ -730,23 +725,23 @@ export default function PackageLibrary({
                 value={draft.subCategory}
                 disabled={busy || packageSubCategoryOptions.length === 0}
                 onChange={(e) => { const v = e.target.value; setDraft((d) => ({ ...d, subCategory: v })); if (draft.id) void saveSubCategory(v) }}
-                className="w-44 rounded-[10px] border border-[#ead8df]/70 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#c85776] disabled:cursor-not-allowed disabled:bg-[#fff4f8] disabled:opacity-70"
+                className="w-44 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E] disabled:cursor-not-allowed disabled:bg-[#F7F6F6] disabled:opacity-70"
               >
                 <option value="">— Alt kategorisiz —</option>
                 {packageSubCategoryOptions.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
               {packageSubCategoryOptions.length === 0 && (
-                <span className="text-[10px] text-[#705a66]">
+                <span className="text-[10px] text-[#74616A]">
                   {draft.category ? 'Bu kategorinin alt kategorisi yok.' : 'Alt kategori için önce kategori seç.'}
                 </span>
               )}
-              <span className="text-[9px] text-[#352432]/40">
+              <span className="text-[9px] text-[#74616A]">
                 {draft.id ? 'Seçim otomatik kaydedilir.' : 'Paket ilk kaydedildiğinde kategori atanır.'}
               </span>
             </div>
 
             {/* Onam formu — paketi SATIN ALAN müşteride uyarı doğurur */}
-            <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-white p-3">
+            <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-white p-3">
               <ConsentPicker
                 value={draft.consentTemplateIds}
                 onChange={(next) => setDraft((d) => ({ ...d, consentTemplateIds: next }))}
@@ -757,23 +752,23 @@ export default function PackageLibrary({
             </div>
 
             {/* Dahil edilen hizmetler */}
-            <div className="mt-4 rounded-[14px] border border-[#ead8df]/65 bg-[#fffafc] p-3">
-              <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">Dahil edilen hizmetler</div>
+            <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
+              <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Dahil edilen hizmetler</div>
               <div className="space-y-1.5">
                 {draft.items.length === 0 && (
-                  <div className="rounded-[10px] border border-dashed border-[#ead8df] bg-white px-3 py-4 text-center text-[11px] text-[#352432]/45">
+                  <div className="rounded-[10px] border border-dashed border-[#EAD8DF] bg-white px-3 py-4 text-center text-[11px] text-[#74616A]">
                     Aşağıdaki hizmet kartlarından "Pakete Ekle" ile hizmet ekleyin.
                   </div>
                 )}
                 {draft.items.map((i) => (
                   <div key={i.serviceDefinitionId} className="flex items-center gap-2 rounded-[12px] border border-[#f0e0e6] bg-white px-2.5 py-2">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#fff1f6] text-[#c85776]"><ServiceIcon iconKey={i.iconKey || suggestIcon(i.name)} className="h-4 w-4" /></span>
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#A5556E] text-white"><ServiceIcon iconKey={i.iconKey || suggestIcon(i.name)} className="h-4 w-4" /></span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12.5px] font-medium text-[#352432]">{i.name}</div>
-                      <div className="text-[10px] text-[#352432]/45">{i.duration} dk</div>
+                      <div className="truncate text-[12.5px] font-medium text-[#2A2027]">{i.name}</div>
+                      <div className="text-[10px] text-[#74616A]">{i.duration} dk</div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1 rounded-[9px] border border-[#ead8df] bg-white">
-                      <button type="button" onClick={() => changeCount(i.serviceDefinitionId, -1)} className="grid h-7 w-7 place-items-center text-[#352432]/55 hover:text-[#c85776]"><Minus className="h-3 w-3" /></button>
+                    <div className="flex shrink-0 items-center gap-1 rounded-[9px] border border-[#EAD8DF] bg-white">
+                      <button type="button" onClick={() => changeCount(i.serviceDefinitionId, -1)} className="grid h-7 w-7 place-items-center text-[#5A4B53] hover:text-[#A5556E]"><Minus className="h-3 w-3" /></button>
                       <input
                         type="number"
                         min={1}
@@ -783,39 +778,39 @@ export default function PackageLibrary({
                         aria-label="Seans sayısı"
                         className="w-10 [appearance:textfield] border-0 bg-transparent text-center text-[12px] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
-                      <button type="button" onClick={() => changeCount(i.serviceDefinitionId, +1)} className="grid h-7 w-7 place-items-center text-[#352432]/55 hover:text-[#c85776]"><Plus className="h-3 w-3" /></button>
+                      <button type="button" onClick={() => changeCount(i.serviceDefinitionId, +1)} className="grid h-7 w-7 place-items-center text-[#5A4B53] hover:text-[#A5556E]"><Plus className="h-3 w-3" /></button>
                     </div>
                     <div className="w-16 shrink-0 text-right font-display text-[13px] tabular-nums">{formatTL(i.unitPrice)}</div>
-                    <button type="button" onClick={() => removeItem(i.serviceDefinitionId)} className="shrink-0 text-[#352432]/30 hover:text-rose-600"><X className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => removeItem(i.serviceDefinitionId)} className="shrink-0 text-[#74616A] hover:text-rose-600"><X className="h-4 w-4" /></button>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Fiyat kutusu */}
-            <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-[#ead8df]/65 bg-[#f1e5ea]">
+            <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-[#EAD8DF]/65 bg-[#f1e5ea]">
               <div className="space-y-1.5 bg-white p-3">
                 <Row k="Ara toplam" v={formatTL(araToplam)} />
                 {indirim > 0 && <Row k="İndirim" v={`-${formatTL(indirim)}`} tone="text-rose-600" />}
                 <div className="flex items-center justify-between border-t border-[#f1e5ea] pt-1.5">
-                  <span className="text-[12px] font-medium text-[#352432]">Satış fiyatı</span>
+                  <span className="text-[12px] font-medium text-[#2A2027]">Satış fiyatı</span>
                   <input type="number" min={0} value={draft.salePrice || ''} onChange={(e) => setDraft((d) => ({ ...d, salePrice: Number(e.target.value), priceTouched: true }))}
-                    className="w-24 rounded-[8px] border border-[#ead8df] bg-white px-2 py-1 text-right font-display text-[15px] tabular-nums outline-none focus:border-[#c85776]" />
+                    className="w-24 rounded-[8px] border border-[#EAD8DF] bg-white px-2 py-1 text-right font-display text-[15px] tabular-nums outline-none focus:border-[#A5556E]" />
                 </div>
               </div>
               <div className="space-y-1.5 bg-white p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-[#352432]/55">Peşinat</span>
+                  <span className="text-[11px] text-[#5A4B53]">Peşinat</span>
                   <input type="number" min={0} value={draft.deposit || ''} onChange={(e) => setDraft((d) => ({ ...d, deposit: Number(e.target.value), depositTouched: true }))}
-                    className="w-20 rounded-[8px] border border-[#ead8df] bg-white px-2 py-0.5 text-right text-[12px] tabular-nums outline-none focus:border-[#c85776]" />
+                    className="w-20 rounded-[8px] border border-[#EAD8DF] bg-white px-2 py-0.5 text-right text-[12px] tabular-nums outline-none focus:border-[#A5556E]" />
                 </div>
                 <Row k="Kalan" v={formatTL(kalan)} />
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-[#352432]/55">Taksit</span>
+                  <span className="text-[11px] text-[#5A4B53]">Taksit</span>
                   <div className="flex items-center gap-1">
                     <input type="number" min={0} max={24} value={draft.installments} onChange={(e) => setDraft((d) => ({ ...d, installments: Math.max(0, Number(e.target.value)) }))}
-                      className="w-12 rounded-[8px] border border-[#ead8df] bg-white px-1.5 py-0.5 text-right text-[12px] tabular-nums outline-none focus:border-[#c85776]" />
-                    <span className="text-[11px] text-[#352432]/55">ay</span>
+                      className="w-12 rounded-[8px] border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-right text-[12px] tabular-nums outline-none focus:border-[#A5556E]" />
+                    <span className="text-[11px] text-[#5A4B53]">ay</span>
                   </div>
                 </div>
               </div>
@@ -826,8 +821,8 @@ export default function PackageLibrary({
               <div className="flex items-center gap-2.5">
                 <Gift className="h-4 w-4 text-amber-600" />
                 <div>
-                  <div className="text-[11px] font-medium text-[#352432]">Sadakat puanı ile hediye</div>
-                  <div className="text-[10px] leading-snug text-[#352432]/45">
+                  <div className="text-[11px] font-medium text-[#2A2027]">Sadakat puanı ile hediye</div>
+                  <div className="text-[10px] leading-snug text-[#74616A]">
                     {draft.loyaltyPointCost > 0
                       ? `Adisyonda ${draft.loyaltyPointCost} puan karşılığı hediye edilebilir.`
                       : '0 = hediye edilemez. Puan girilirse adisyonda hediye seçilebilir olur.'}
@@ -850,13 +845,13 @@ export default function PackageLibrary({
 
             {/* Seans + kâr */}
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="flex items-center gap-2.5 rounded-[12px] border border-[#f0d5e0] bg-[#fff1f6]/60 px-3 py-2.5">
-                <Sparkles className="h-4 w-4 text-[#c85776]" />
-                <div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Toplam seans</div><div className="font-display text-xl tabular-nums">{toplamSeans}</div></div>
+              <div className="flex items-center gap-2.5 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
+                <Sparkles className="h-4 w-4 text-[#A5556E]" />
+                <div><div className="text-[9px] font-mono uppercase text-[#74616A]">Toplam seans</div><div className="font-display text-xl tabular-nums">{toplamSeans}</div></div>
               </div>
-              <div className="flex items-center gap-2.5 rounded-[12px] border border-[#f0d5e0] bg-[#fff1f6]/60 px-3 py-2.5">
-                <TrendingUp className="h-4 w-4 text-[#c85776]" />
-                <div><div className="text-[9px] font-mono uppercase text-[#352432]/40">Tahmini kâr</div><div className="font-display text-xl tabular-nums">%{tahminiKar}</div></div>
+              <div className="flex items-center gap-2.5 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
+                <TrendingUp className="h-4 w-4 text-[#A5556E]" />
+                <div><div className="text-[9px] font-mono uppercase text-[#74616A]">Tahmini kâr</div><div className="font-display text-xl tabular-nums">%{tahminiKar}</div></div>
               </div>
             </div>
 
@@ -885,8 +880,8 @@ export default function PackageLibrary({
                 <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-rose-600">
                   <XCircle className="h-3.5 w-3.5" /> Paket iptal edildi
                 </div>
-                <div className="mt-1 text-[12px] text-[#352432]">{draft.cancellationReason || 'Gerekçe belirtilmemiş.'}</div>
-                <div className="mt-1 text-[10px] text-[#705a66]">Bu, kurumun paketten vazgeçmesidir; müşterilerin satış iptalleriyle ilgisi yoktur.</div>
+                <div className="mt-1 text-[12px] text-[#2A2027]">{draft.cancellationReason || 'Gerekçe belirtilmemiş.'}</div>
+                <div className="mt-1 text-[10px] text-[#74616A]">Bu, kurumun paketten vazgeçmesidir; müşterilerin satış iptalleriyle ilgisi yoktur.</div>
               </div>
             )}
 
@@ -894,7 +889,7 @@ export default function PackageLibrary({
             {cancelOpen && draft.status !== 'Cancelled' && (
               <div className="mt-3 rounded-[12px] border border-rose-200 bg-rose-50/60 p-3">
                 <div className="text-[11px] font-medium text-rose-700">Paketi neden iptal ediyorsun?</div>
-                <div className="mt-0.5 text-[10px] text-[#705a66]">
+                <div className="mt-0.5 text-[10px] text-[#74616A]">
                   Paket silinmez; geçmiş satışlar ve raporlar korunur, yalnızca yeni satış listelerinden düşer.
                 </div>
                 <textarea
@@ -907,7 +902,7 @@ export default function PackageLibrary({
                 />
                 <div className="mt-2 flex items-center justify-end gap-2">
                   <button type="button" onClick={() => { setCancelOpen(false); setCancelReason('') }}
-                    className="rounded-[9px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] text-[#352432]/70 hover:bg-[#fff4f8]/50">
+                    className="rounded-[9px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] text-[#5A4B53] hover:bg-[#F7F6F6]/50">
                     Vazgeç
                   </button>
                   <button type="button" disabled={busy || !cancelReason.trim()} onClick={cancelCatalogPackage}
@@ -921,14 +916,14 @@ export default function PackageLibrary({
             {/* Aksiyonlar */}
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <button type="button" disabled={busy} onClick={() => save('Draft')}
-                className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#ead8df] bg-white px-3 py-2 text-[11px] font-medium text-[#352432]/70 hover:bg-[#fff4f8]/50 disabled:opacity-50">
+                className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-medium text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-50">
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} Taslağı Kaydet
               </button>
               <button type="button" disabled={busy} onClick={() => save(draft.status === 'Active' ? 'Passive' : 'Active')}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[11px] font-medium disabled:opacity-50 ${
                   draft.status === 'Active'
                     ? 'border border-amber-300/60 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                    : 'bg-[#c85776] text-white hover:opacity-90'
+                    : 'bg-[#A5556E] text-white hover:opacity-90'
                 }`}>
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : draft.status === 'Active' ? <PauseCircle className="h-3.5 w-3.5" /> : <UploadCloud className="h-3.5 w-3.5" />}
                 {draft.status === 'Active' ? 'Pasife Al' : 'Yayına Al'}
@@ -960,18 +955,18 @@ export default function PackageLibrary({
             TÜM satışlar (hangi müşteri, ne aldı, kim sattı, iptal edildiyse gerekçesi)
             tek listede görünür. Geçmiş yıllara ait satışlar da buraya düşer. */}
         {catFilter && (
-          <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/90 p-5">
+          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-display text-xl tracking-tight">{catFilter} · Satışlar</div>
-                <div className="text-[11px] text-[#352432]/45">
+                <div className="text-[11px] text-[#74616A]">
                   Bu kategorideki tüm satışlar: hangi müşteri ne almış, kim satmış, iptal edildiyse gerekçesi.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => { setCatFilter(''); setSubFilter('') }}
-                className="rounded-[10px] border border-[#ead8df] bg-white px-3 py-1.5 text-[11px] font-medium text-[#705a66] transition-colors hover:border-[#efbfd0] hover:text-[#c85776]"
+                className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
               >
                 Kategori filtresini kaldır
               </button>
@@ -1005,13 +1000,13 @@ export default function PackageLibrary({
         />
 
         {/* PAKETE EKLENECEK HİZMETLER */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
+        <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="font-display text-lg tracking-tight">Pakete Eklenecek Hizmetler</div>
-              <div className="text-[11px] text-[#352432]/45">Hizmet kartına tıklayarak pakete ekleyin; seans sayısını yukarıdaki listeden ayarlayın.</div>
+              <div className="text-[11px] text-[#74616A]">Hizmet kartına tıklayarak pakete ekleyin; seans sayısını yukarıdaki listeden ayarlayın.</div>
             </div>
-            <span className="shrink-0 rounded-full border border-[#efbfd0]/70 bg-[#fff1f6] px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-[#b14d6c]">
+            <span className="shrink-0 rounded-full border border-[#BE7690]/70 bg-[#F6DFE6] px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-[#8C4460]">
               {draft.items.length} seçili · {pickerPool.length} hizmet
             </span>
           </div>
@@ -1019,16 +1014,16 @@ export default function PackageLibrary({
           {/* Arama + kategori süzgeci */}
           <div className="mt-3 flex flex-col gap-2.5">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#352432]/35" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
               <input
                 value={svcSearch}
                 onChange={(e) => setSvcSearch(e.target.value)}
                 placeholder="Hizmet ara: ad veya kategori…"
-                className="w-full rounded-[12px] border border-[#ead8df]/70 bg-white py-2.5 pl-9 pr-9 text-[13px] outline-none transition-colors focus:border-[#c85776]"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white py-2.5 pl-9 pr-9 text-[13px] outline-none transition-colors focus:border-[#A5556E]"
               />
               {svcSearch && (
                 <button type="button" onClick={() => setSvcSearch('')} aria-label="Aramayı temizle"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#352432]/35 hover:text-[#c85776]"><X className="h-4 w-4" /></button>
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#74616A] hover:text-[#A5556E]"><X className="h-4 w-4" /></button>
               )}
             </div>
             {pickerCategories.length > 0 && (
@@ -1043,11 +1038,11 @@ export default function PackageLibrary({
 
           {/* Grid — tüm hizmetler görünür (yatay kaydırma yok) */}
           {pickerPool.length === 0 ? (
-            <div className="mt-4 rounded-[12px] border border-dashed border-[#ead8df] bg-white py-8 text-center text-sm text-[#352432]/45">
+            <div className="mt-4 rounded-[12px] border border-dashed border-[#EAD8DF] bg-white py-8 text-center text-sm text-[#74616A]">
               Henüz hizmet yok — önce Hizmet Havuzu&apos;ndan hizmet ekleyin.
             </div>
           ) : pickerServices.length === 0 ? (
-            <div className="mt-4 rounded-[12px] border border-dashed border-[#ead8df] bg-white py-8 text-center text-sm text-[#352432]/45">
+            <div className="mt-4 rounded-[12px] border border-dashed border-[#EAD8DF] bg-white py-8 text-center text-sm text-[#74616A]">
               Aramanıza uygun hizmet bulunamadı.
             </div>
           ) : (
@@ -1063,34 +1058,34 @@ export default function PackageLibrary({
                     title={inDraft ? `${s.name} — tekrar tıkla, seansı artır` : `${s.name} — pakete ekle`}
                     className={`group relative flex flex-col rounded-[14px] border p-3 text-left transition-all ${
                       inDraft
-                        ? 'border-[#c85776]/60 bg-[#fff1f6] ring-1 ring-[#c85776]/25'
-                        : 'border-[#ead8df]/70 bg-white hover:border-[#efbfd0] hover:shadow-[0_10px_24px_-18px_rgba(200,87,118,0.6)]'
+                        ? 'border-[#8C4460]/60 bg-[#F6DFE6] ring-1 ring-[#A5556E]/25'
+                        : 'border-[#EAD8DF] bg-white hover:border-[#BE7690] hover:shadow-[0_10px_24px_-18px_rgba(200,87,118,0.6)]'
                     }`}
                   >
                     <div className="flex items-start justify-between">
-                      <span className="grid h-9 w-9 place-items-center rounded-[10px] border border-[#efbfd0]/60 bg-[#fff1f6] text-[#c85776]">
+                      <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[#A5556E] text-white">
                         <ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-4 w-4" />
                       </span>
                       {inDraft ? (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-[#c85776] px-2 py-0.5 text-[10px] font-semibold text-white">
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-[#A5556E] px-2 py-0.5 text-[10px] font-semibold text-white">
                           <CheckCircle2 className="h-3 w-3" />×{item!.sessionCount}
                         </span>
                       ) : (
-                        <span className="grid h-6 w-6 place-items-center rounded-full border border-[#ead8df] text-[#c85776] transition-colors group-hover:border-[#c85776] group-hover:bg-[#c85776] group-hover:text-white">
+                        <span className="grid h-6 w-6 place-items-center rounded-full border border-[#EAD8DF] text-[#A5556E] transition-colors group-hover:border-[#8C4460] group-hover:bg-[#A5556E] group-hover:text-white">
                           <Plus className="h-3.5 w-3.5" />
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 line-clamp-1 text-[12.5px] font-medium text-[#352432]">{s.name}</div>
+                    <div className="mt-2 line-clamp-1 text-[12.5px] font-medium text-[#2A2027]">{s.name}</div>
                     <div className="flex items-center gap-1">
-                      <span className="line-clamp-1 text-[10px] text-[#352432]/45">{s.group || 'Genel'}</span>
+                      <span className="line-clamp-1 text-[10px] text-[#74616A]">{s.group || 'Genel'}</span>
                       {s.status !== 'Active' && (
                         <span className={`shrink-0 rounded border px-1 py-px text-[8px] font-mono uppercase ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status]}</span>
                       )}
                     </div>
                     <div className="mt-1.5 flex items-center justify-between">
-                      <span className="text-[10px] text-[#352432]/50">{s.duration} dk</span>
-                      <span className="font-display text-[13px] tabular-nums text-[#352432]">{formatTL(s.price)}</span>
+                      <span className="text-[10px] text-[#2A2027]/50">{s.duration} dk</span>
+                      <span className="font-display text-[13px] tabular-nums text-[#2A2027]">{formatTL(s.price)}</span>
                     </div>
                   </button>
                 )
@@ -1100,18 +1095,18 @@ export default function PackageLibrary({
         </div>
 
         {/* PAKET ÖZETİ */}
-        <div className="rounded-[18px] border border-[#ead8df]/70 bg-white/86 p-5">
+        <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
           <div className="font-display text-xl tracking-tight">Paket Özeti</div>
-          <div className="text-[11px] text-[#352432]/45">Paket satış performansınızı özet olarak inceleyin.</div>
+          <div className="text-[11px] text-[#74616A]">Paket satış performansınızı özet olarak inceleyin.</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SummaryTile icon={Trophy} tone="text-amber-600 bg-amber-50" label="En çok satan paket" value={summary.top} />
-            <SummaryTile icon={ShoppingBag} tone="text-[#c85776] bg-[#fff1f6]" label="Satılan paket (cari)" value={String(summary.sold)} />
+            <SummaryTile icon={ShoppingBag} tone="text-[#A5556E] bg-[#F6DFE6]" label="Satılan paket (cari)" value={String(summary.sold)} />
             <SummaryTile icon={Tag} tone="text-violet-600 bg-violet-50" label="Aktif kampanya oranı" value={`%${summary.campRate}`} />
           </div>
         </div>
 
         <CampaignPanel tenantId={tenantId} />
-      </div>
+      </PanelPage>
 
       <ImportDialog
         open={importOpen}
@@ -1137,8 +1132,8 @@ export default function PackageLibrary({
 function Row({ k, v, tone }: { k: string; v: string; tone?: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[11px] text-[#352432]/55">{k}</span>
-      <span className={`text-[13px] tabular-nums ${tone || 'text-[#352432]'}`}>{v}</span>
+      <span className="text-[11px] text-[#5A4B53]">{k}</span>
+      <span className={`text-[13px] tabular-nums ${tone || 'text-[#2A2027]'}`}>{v}</span>
     </div>
   )
 }
@@ -1150,8 +1145,8 @@ function CatPill({ active, onClick, children }: { active: boolean; onClick: () =
       onClick={onClick}
       className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
         active
-          ? 'border-[#c85776] bg-[#c85776] text-white'
-          : 'border-[#ead8df]/70 bg-white text-[#352432]/60 hover:border-[#efbfd0] hover:text-[#c85776]'
+          ? 'border-[#8C4460] bg-[#A5556E] text-white'
+          : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:border-[#BE7690] hover:text-[#A5556E]'
       }`}
     >
       {children}
@@ -1161,9 +1156,9 @@ function CatPill({ active, onClick, children }: { active: boolean; onClick: () =
 
 function SummaryTile({ icon: Icon, tone, label, value }: { icon: typeof Wallet; tone: string; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-[#ead8df]/60 bg-white px-4 py-3.5">
+    <div className="flex items-center gap-3 rounded-[14px] border border-[#EAD8DF]/60 bg-white px-4 py-3.5">
       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
-      <div className="min-w-0"><div className="text-[10px] font-mono uppercase tracking-widest text-[#352432]/40">{label}</div><div className="truncate font-display text-lg tracking-tight text-[#352432]">{value}</div></div>
+      <div className="min-w-0"><div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div><div className="truncate font-display text-lg tracking-tight text-[#2A2027]">{value}</div></div>
     </div>
   )
 }
