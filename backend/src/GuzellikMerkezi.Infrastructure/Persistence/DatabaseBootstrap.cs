@@ -951,31 +951,12 @@ public static class DatabaseBootstrap
                 .ToListAsync();
             if (accounts.Count == 0) return;
 
-            // Zaten taşınmış olanlar İKİ ŞEKİLDE bulunabilir:
-            //   1) Deterministik Id (peşinat satırının Id'si = carinin Id'si) — yeni kayıtlar.
-            //   2) "Peşinat" referanslı satır — bu iş deterministik Id'ye geçmeden ÖNCE çalışmış
-            //      kurulumlar. Yalnız (1)'e bakmak o satırları görmez ve peşinatı İKİNCİ kez
-            //      ekleyip geliri şişirir (dev ortamında bir kez yaşandı).
-            // Reference ŞİFRELİ olduğu için karşılaştırma bellekte yapılır.
-            var accountIds = accounts.Select(a => a.Id).ToHashSet();
-            // SİLİNMİŞ TAHSİLAT "KAPSANDI" SAYILMAZ. IgnoreQueryFilters soft-delete süzgecini de
-            // kapatıyor: silinmiş bir peşinat satırı kapsam sayılıyor, cari fiilen peşinatsız
-            // kalıyor ve uygulama EKSİK kasa defteriyle açılıyordu.
-            var covered = (await db.AccountPayments.IgnoreQueryFilters()
-                    .Where(x => !x.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
-                        .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
-                    .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
-                    .ToListAsync())
-                .Where(x => x.Id == x.CustomerAccountId
-                            || string.Equals(x.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
-                .Select(x => x.CustomerAccountId)
-                .Where(accountIds.Contains)
-                .ToHashSet();
+            var paidByAccount = await LoadDepositAccountPaymentTotalsAsync(db);
 
             var added = 0;
             foreach (var account in accounts)
             {
-                if (covered.Contains(account.Id)) continue;
+                if (IsDepositCovered(paidByAccount, account.Id, account.DepositAmount)) continue;
 
                 // Tahsilat DOĞRUDAN eklenir: cari nesnesini izlemeye almak (ve Touch ile UPDATE
                 // üretmek) gereksiz — kolon değişmiyor, yalnız yeni bir satır doğuyor.
@@ -1017,31 +998,68 @@ public static class DatabaseBootstrap
     }
 
     /// <summary>
+    /// PEŞİNATI OLAN CARİLERİN CANLI TAHSİLAT TOPLAMI (kapsam ölçütünün TEK kaynağı).
+    ///
+    /// <para>
+    /// KAPSAM ÖLÇÜTÜ "İŞARET" DEĞİL "PARA"DIR. Eskiden bir peşinat satırı yalnız iki İŞARETTEN
+    /// biriyle tanınıyordu: deterministik Id (<c>payment.Id == account.Id</c>) ya da "Peşinat"
+    /// referansı. ADİSYONDAN doğan satışlar bu işaretlerin İKİSİNİ DE taşımaz — fişin ödeme
+    /// kalemleri normal <c>RegisterPaymentAsync</c> ile, rastgele Id ve <c>ADS-…</c> referansıyla
+    /// yazılır (yöntem kırılımı korunsun diye bilinçli; bkz. AdisyonService 6. adım). Taksitli
+    /// satışta peşinat kolonu da doldurulduğundan (12 Ağu) bu cariler "kapsanmamış" görünüyor ve
+    /// açılıştaki taşıma işi peşinatı İKİNCİ KEZ yazıyordu.
+    /// <b>CANLIDA YAŞANDI:</b> tek bir açılışta üç caride 24.000 TL mükerrer tahsilat üretildi
+    /// (35 kayıt/127.730 TL → 38 kayıt/151.730 TL) ve sürüm geri alınmak zorunda kaldı.
+    /// </para>
+    /// <para>
+    /// Doğru soru "peşinat işaretli bir satır var mı" değil, <b>"bu paranın karşılığı defterde
+    /// zaten duruyor mu"</b>: carinin canlı tahsilat toplamı peşinatı karşılıyorsa para
+    /// defterdedir, ikinci satır yalnızca geliri şişirir. Ölçüt işaretlerden bağımsız olduğu için
+    /// yeni bir yazma yolu eklendiğinde de sessizce bozulmaz.
+    /// </para>
+    /// <para>
+    /// Bu ölçüt eski davranıştan yalnız TEK yönde ayrılır: şüphede <b>eklemez</b>. Peşinatı kadar
+    /// parası zaten görünen bir caride ikinci satır açılmaz — para gerçekten eksikse (hiç tahsilat
+    /// yok ya da toplam peşinatın altında) taşıma eskisi gibi çalışır.
+    /// </para>
+    /// <para>
+    /// SİLİNMİŞ TAHSİLAT SAYILMAZ: <c>IgnoreQueryFilters</c> soft-delete süzgecini de kapatır;
+    /// silinmiş satır kapsam sayılsaydı cari fiilen peşinatsız kalır ve uygulama EKSİK kasa
+    /// defteriyle açılırdı. Süzme sunucuda yapılır — yerel Guid listesiyle <c>.Contains()</c>
+    /// bu sağlayıcıda çevrilemiyor ([[project_mysql_query_gotchas]]).
+    /// </para>
+    /// </summary>
+    private static async Task<Dictionary<Guid, decimal>> LoadDepositAccountPaymentTotalsAsync(GuzellikDbContext db)
+        => (await db.AccountPayments.IgnoreQueryFilters()
+                .Where(x => !x.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
+                    .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
+                .Select(x => new { x.CustomerAccountId, x.Amount })
+                .ToListAsync())
+            .GroupBy(x => x.CustomerAccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+    /// <summary>
+    /// Peşinatın karşılığı defterde duruyor mu? Ana döngü ile doğrulama AYNI yanıtı vermek
+    /// ZORUNDA — ölçüt bu yüzden tek bir yerde durur (iki kopya sessizce ayrışmıştı).
+    /// Kuruş toleransı: <c>decimal</c> toplamı tam eşitlikte takılmasın.
+    /// </summary>
+    private static bool IsDepositCovered(IReadOnlyDictionary<Guid, decimal> paidByAccount, Guid accountId, decimal deposit)
+        => paidByAccount.TryGetValue(accountId, out var paid) && paid >= deposit - 0.005m;
+
+    /// <summary>
     /// Taşınmamış peşinat KALDI MI? Yarış sonrası çağrılır: "diğer örnek hallettiyse" varsayımı
     /// doğrulanır. Eksik varsa istisna atılır — açılış durur.
     /// </summary>
     private static async Task EnsureDepositCoverageAsync(GuzellikDbContext db, ILogger logger)
     {
-        var accountIds = (await db.CustomerAccounts.IgnoreQueryFilters()
+        var accounts = await db.CustomerAccounts.IgnoreQueryFilters()
             .Where(a => !a.IsDeleted && a.DepositAmount > 0m)
-            .Select(a => a.Id)
-            .ToListAsync()).ToHashSet();
-        if (accountIds.Count == 0) return;
+            .Select(a => new { a.Id, a.DepositAmount })
+            .ToListAsync();
+        if (accounts.Count == 0) return;
 
-        // Kapsam ölçütü ana döngüyle AYNI olmalı: deterministik Id ya da "Peşinat" referansı.
-        // Sıradan bir tahsilat satırını "peşinat taşındı" saymak eksikliği gizlerdi.
-        // Silinmiş tahsilat kapsam sayılmaz (bkz. ana döngüdeki aynı not).
-        var covered = (await db.AccountPayments.IgnoreQueryFilters()
-                .Where(x => !x.IsDeleted && db.CustomerAccounts.IgnoreQueryFilters()
-                    .Any(a => a.Id == x.CustomerAccountId && !a.IsDeleted && a.DepositAmount > 0m))
-                .Select(x => new { x.Id, x.CustomerAccountId, x.Reference })
-                .ToListAsync())
-            .Where(x => x.Id == x.CustomerAccountId
-                        || string.Equals(x.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase))
-            .Select(x => x.CustomerAccountId)
-            .ToHashSet();
-
-        var missing = accountIds.Count(id => !covered.Contains(id));
+        var paidByAccount = await LoadDepositAccountPaymentTotalsAsync(db);
+        var missing = accounts.Count(a => !IsDepositCovered(paidByAccount, a.Id, a.DepositAmount));
         if (missing == 0) return;
 
         logger.LogError("{Count} carinin peşinatı hâlâ tahsilat hareketine taşınmamış.", missing);
