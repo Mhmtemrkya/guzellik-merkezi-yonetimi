@@ -55,7 +55,7 @@ const CATALOG: QuickAction[] = [
   { id: 'stok', label: 'Stok & Ürün', icon: Boxes, href: '/panel/stok' },
   { id: 'raporlar', label: 'Raporlar', icon: FileBarChart, href: '/panel/raporlar' },
   { id: 'bildirimler', label: 'Bildirimler', icon: BellRing, href: '/panel/bildirimler' },
-  { id: 'personel', label: 'Personel', icon: UserCog, href: '/panel/ekip', adminOnly: true },
+  { id: 'personel', label: 'Personel', icon: UserCog, href: '/panel/personel', adminOnly: true },
   { id: 'onaylar', label: 'Onaylar', icon: ShieldCheck, href: '/panel/onaylar', adminOnly: true },
 ]
 

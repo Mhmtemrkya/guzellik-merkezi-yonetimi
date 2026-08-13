@@ -99,7 +99,7 @@ export default function DashboardHero({
       sub: `${totalCustomers.toLocaleString('tr-TR')} müşteri`,
       icon: Users,
       tone: 'bg-[#8E7882] text-white shadow-[0_10px_22px_-10px_rgba(142,120,130,0.95)]',
-      href: '/panel/ekip',
+      href: '/panel/personel',
     },
   ]
 

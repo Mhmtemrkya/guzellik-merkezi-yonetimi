@@ -182,15 +182,15 @@ const items: SidebarNavItem[] = [
   {
     group: 'Yönetim',
     label: 'Personel & Roller',
-    href: '/panel/ekip',
+    href: '/panel/personel',
     icon: UserCog,
     // Personel yetkilendirmesi kurum yöneticisi yetkisi
     children: [
-      { label: 'Tüm personel', href: '/panel/ekip?scope=all' },
-      { label: 'Aktif kadro', href: '/panel/ekip?scope=active' },
-      { label: 'Pasif / izinli', href: '/panel/ekip?scope=inactive' },
-      { label: 'Çizelge', href: '/panel/ekip/cizelge' },
-      { label: 'Yetki seti', href: '/panel/ekip?scope=permissions' },
+      { label: 'Tüm personel', href: '/panel/personel?scope=all' },
+      { label: 'Aktif kadro', href: '/panel/personel?scope=active' },
+      { label: 'Pasif / izinli', href: '/panel/personel?scope=inactive' },
+      { label: 'Çizelge', href: '/panel/personel/cizelge' },
+      { label: 'Yetki seti', href: '/panel/personel?scope=permissions' },
     ],
   },
   {
@@ -233,7 +233,7 @@ const items: SidebarNavItem[] = [
 // Personel rolüne kapalı sayfalar (permissionKey yetmediği için patlamasın diye href bazlı gizleniyor)
 const ADMIN_ONLY_HREFS = new Set<string>([
   '/panel/onaylar',
-  '/panel/ekip',
+  '/panel/personel',
   '/panel/loglar',
   '/panel/ayarlar',
 ])

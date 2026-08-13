@@ -440,7 +440,7 @@ export default function AyarlarPage() {
                   {specialties.slice(0, 4).map((d) => <span key={d} className="rounded-[8px] border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-[#5A4B53]">{d}</span>)}
                   {!specialties.length && <span className="text-[11px] text-[#74616A]">—</span>}
                 </div>
-                <Link href="/panel/ekip" className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
+                <Link href="/panel/personel" className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[10px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
                   Tüm Personeli Görüntüle <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>

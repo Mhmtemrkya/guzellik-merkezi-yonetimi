@@ -611,7 +611,7 @@ function PersonelPageInner() {
                   return (
                     <Link
                       key={t.key}
-                      href={`/panel/ekip?scope=${t.key}`}
+                      href={`/panel/personel?scope=${t.key}`}
                       className={`relative inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[11.5px] font-medium transition-colors ${on ? 'text-white' : 'text-[#3E343A] hover:text-[#A5556E]'}`}
                     >
                       {on && (
@@ -1154,7 +1154,7 @@ function PersonelPageInner() {
                           <div className="rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#74616A]"><ShieldCheck className="h-3.5 w-3.5 text-[#A5556E]" /> Yetki dosyası</div>
-                              <Link href="/panel/ekip?scope=permissions" className="text-[11px] font-medium text-[#A5556E] transition-opacity hover:opacity-75">Matriste gör →</Link>
+                              <Link href="/panel/personel?scope=permissions" className="text-[11px] font-medium text-[#A5556E] transition-opacity hover:opacity-75">Matriste gör →</Link>
                             </div>
                             {selectedCells.length === 0 ? (
                               <div className="mt-2 text-[12px] text-[#74616A]">Henüz yetki tanımlı değil — “Rol Düzenle” ile sayfa ve işlem yetkilerini açın.</div>

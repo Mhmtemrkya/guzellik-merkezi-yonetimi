@@ -71,7 +71,7 @@ const searchRoutes: Record<SearchScope, SearchRoute[]> = {
     { label: 'Günlük Kasa', path: '/panel/kasa', keywords: 'kasa ödeme tahsilat günlük' },
     { label: 'Ön Muhasebe', path: '/panel/on-muhasebe', keywords: 'cari taksit ön muhasebe' },
     { label: 'Raporlar', path: '/panel/raporlar', keywords: 'rapor finans personel müşteri' },
-    { label: 'Personel & Roller', path: '/panel/ekip', keywords: 'personel rol yetki ekip' },
+    { label: 'Personel & Roller', path: '/panel/personel', keywords: 'personel rol yetki ekip' },
     { label: 'Bildirimler', path: '/panel/bildirimler', keywords: 'bildirim hatırlatma sms' },
     { label: 'Onay Bekleyenler', path: '/panel/onaylar', keywords: 'onay bekleyen aksiyon' },
     { label: 'Log Kayıtları', path: '/panel/loglar', keywords: 'log audit geçmiş' },

@@ -452,7 +452,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/panel/ekip': {
+  '/panel/personel': {
     title: 'Personel & Roller',
     intro:
       'Ekibinizi yönetir, iki seviyeli yetkiler atar, giriş bilgilerini üretir ve performansı izlersiniz.',
@@ -496,7 +496,7 @@ const guides: Record<string, PageGuide> = {
     ],
   },
 
-  '/panel/ekip/cizelge': {
+  '/panel/personel/cizelge': {
     title: 'Personel Çizelgesi',
     intro:
       'Ekibinizin gün, hafta ve ay bazında doluluğunu tek tabloda görürsünüz; kim ne zaman hangi müşteriyle çalışıyor.',
