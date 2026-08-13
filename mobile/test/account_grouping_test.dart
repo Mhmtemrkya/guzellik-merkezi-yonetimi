@@ -146,19 +146,26 @@ void main() {
       expect(only.first.sources.length, 1);
     });
 
-    test('durum renkleri: ödendi / kısmi / gecikmiş / bekleyen', () {
+    test('durum renkleri: ödendi / gecikmiş / vadesi geçti (tolerans) / kısmi / bekleyen', () {
+      // BEŞ DURUMUN TAMAMI — web `accountGrouping.test.ts` ile AYNI girdi.
+      // Gecikme burada TÜRETİLİR (`account_installments.graceDeadline`): bir taksit, bir
+      // sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz. 08-10'un penceresi 09-10'a
+      // kadar açık olduğu için o satır "grace"; 07-10'unki 08-10'da dolmuştur.
       final g = groupAccountsByCustomer([
         acc(id: 'a1', customerId: 'c1', installments: [
           inst(dueDate: '2026-06-10', amount: 500, paidAmount: 500),
-          inst(dueDate: '2026-07-10', amount: 500, paidAmount: 200, overdue: true),
+          inst(dueDate: '2026-07-10', amount: 500, paidAmount: 200),
+          inst(dueDate: '2026-08-10', amount: 500),
           inst(dueDate: '2026-09-10', amount: 500, paidAmount: 100),
           inst(dueDate: '2026-10-10', amount: 500),
         ]),
       ]);
       final byDate = {for (final r in buildDueDateSchedule(g.first, '2026-08-15')) r.date: r};
       expect(byDate['2026-06-10']!.status, 'paid');
-      // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve vadesi geçti.
+      // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve borç resmen gecikti.
       expect(byDate['2026-07-10']!.status, 'overdue');
+      // Vadesi geçti ama tolerans penceresi sürüyor → "Gecikti" İLAN EDİLMEZ.
+      expect(byDate['2026-08-10']!.status, 'grace');
       expect(byDate['2026-09-10']!.status, 'partial');
       expect(byDate['2026-10-10']!.status, 'upcoming');
     });
@@ -174,11 +181,53 @@ void main() {
           ['2026-11-10', '2027-02-10']);
     });
 
-    test('vadesi geçmiş gün, taksit "overdue" işaretlenmemiş olsa da kırmızıdır', () {
+    test('tolerans süren geçmiş vade "grace"tir — "Gecikti" İLAN EDİLMEZ', () {
+      // KUSUR (bu testin koruduğu): takvim ham `date < today` ile kırmızı "Gecikti" yazıyordu.
+      // Kanonik gecikme kuralı toleranslıdır (`account_installments.graceDeadline`), dolayısıyla
+      // cari kartı "gecikme yok" derken bu tablo aynı borç için "Gecikti" diyordu. Satır hâlâ
+      // geçmiş görünür (amber "Vadesi geçti"), ama resmi söz kanonik bayrağa ait.
+      //
+      // 07-10'un tolerans penceresi bir sonraki vadeye (08-10) kadar açık; bugün 08-01.
       final g = groupAccountsByCustomer([
-        acc(id: 'a1', customerId: 'c1', installments: [inst(dueDate: '2026-07-10', amount: 500)]),
+        acc(id: 'a1', customerId: 'c1', installments: [
+          inst(dueDate: '2026-07-10', amount: 500),
+          inst(dueDate: '2026-08-10', amount: 500),
+        ]),
       ]);
-      expect(buildDueDateSchedule(g.first, '2026-08-15').first.status, 'overdue');
+      expect(buildDueDateSchedule(g.first, '2026-08-01').first.status, 'grace');
+    });
+
+    test('grace, "partial"ın ÜSTÜNDE: kısmi ödenmiş geçmiş gün geçmişte kaldığını korur', () {
+      final g = groupAccountsByCustomer([
+        acc(id: 'a1', customerId: 'c1', installments: [
+          inst(dueDate: '2026-07-10', amount: 500, paidAmount: 200),
+          inst(dueDate: '2026-08-10', amount: 500),
+        ]),
+      ]);
+      expect(buildDueDateSchedule(g.first, '2026-08-01').first.status, 'grace');
+    });
+
+    test('takvimin "gecikmiş" toplamı toleranslı borcu SAYMAZ', () {
+      // Özet çipindeki "Gecikmiş" yalnız kanonik satırları toplar; tolerans penceresi süren
+      // borç ayrı ("Vadesi geçti") yazılır. İkisi tek çipte toplansaydı rakam cari kartındaki
+      // gecikme tutarından büyük çıkardı — aynı ekranda iki resmi rakam.
+      //
+      // 06-10 penceresi 07-10'da doldu (gecikmiş); 07-10'unki 08-10'a kadar açık (tolerans).
+      // NOT: `group.overdueAmount` ile karşılaştırılmaz — o alan `parseInstallments`ı todayIso
+      // VERMEDEN çağırır, yani gerçek sistem gününü kullanır; sabit tarihli bir beklentiye
+      // bağlanırsa test takvim ilerledikçe kendiliğinden kırılır.
+      final g = groupAccountsByCustomer([
+        acc(id: 'a1', customerId: 'c1', installments: [
+          inst(dueDate: '2026-06-10', amount: 500),
+          inst(dueDate: '2026-07-10', amount: 300),
+          inst(dueDate: '2026-08-10', amount: 200),
+        ]),
+      ]);
+      final rows = buildDueDateSchedule(g.first, '2026-08-01');
+      double totalFor(String s) =>
+          rows.where((r) => r.status == s).fold<double>(0, (a, r) => a + r.remaining);
+      expect(totalFor('overdue'), 500); // 300'lük tolerans satırı KARIŞMAZ
+      expect(totalFor('grace'), 300);
     });
 
     test('taksiti olmayan müşteride takvim boştur (peşin satış)', () {

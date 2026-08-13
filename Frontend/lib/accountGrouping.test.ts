@@ -175,13 +175,19 @@ describe('buildDueDateSchedule', () => {
     expect(only[0].sources).toHaveLength(1)
   })
 
-  it('durum renkleri: ödendi / kısmi / gecikmiş / bekleyen', () => {
+  it('durum renkleri: ödendi / gecikmiş / vadesi geçti (tolerans) / kısmi / bekleyen', () => {
+    // BEŞ DURUMUN TAMAMI. `overdue` bayrakları sunucunun tolerans kuralıyla AYNI şekilde
+    // verilir (bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz):
+    // 06-10 → 07-10 geçti ✓gecikmiş · 07-10 → 08-10 geçti ✓gecikmiş · 08-10 → 09-10 HENÜZ
+    // gelmedi ✗ (tolerans sürüyor) · sonrası vadesi gelmemiş. Mobil aynı kuralı kendi türetir
+    // (`account_installments.graceDeadline`) — iki platform bu girdide birebir aynı sonucu verir.
     const [g] = groupAccountsByCustomer([
       acc({
         id: 'a1', customerId: 'c1',
         installments: [
-          inst({ dueDate: '2026-06-10', amount: 500, paidAmount: 500 }),                 // ödendi
-          inst({ dueDate: '2026-07-10', amount: 500, paidAmount: 200, overdue: true }),  // kısmi + gecikmiş
+          inst({ dueDate: '2026-06-10', amount: 500, paidAmount: 500, overdue: true }),  // tamamı ödendi
+          inst({ dueDate: '2026-07-10', amount: 500, paidAmount: 200, overdue: true }),  // kısmi + RESMEN gecikmiş
+          inst({ dueDate: '2026-08-10', amount: 500 }),                                  // geçti ama tolerans sürüyor
           inst({ dueDate: '2026-09-10', amount: 500, paidAmount: 100 }),                 // kısmi (vade gelmedi)
           inst({ dueDate: '2026-10-10', amount: 500 }),                                  // bekleyen
         ],
@@ -189,8 +195,10 @@ describe('buildDueDateSchedule', () => {
     ])
     const byDate = Object.fromEntries(buildDueDateSchedule(g, '2026-08-15').map((r) => [r.date, r]))
     expect(byDate['2026-06-10'].status).toBe('paid')
-    // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve vadesi geçti.
+    // Gecikme, kısmi ödemeye BASKIN: para hâlâ alınmadı ve borç resmen gecikti.
     expect(byDate['2026-07-10'].status).toBe('overdue')
+    // Vadesi geçti ama tolerans penceresi sürüyor → "Gecikti" İLAN EDİLMEZ.
+    expect(byDate['2026-08-10'].status).toBe('grace')
     expect(byDate['2026-09-10'].status).toBe('partial')
     expect(byDate['2026-10-10'].status).toBe('upcoming')
   })
@@ -205,13 +213,56 @@ describe('buildDueDateSchedule', () => {
     expect(buildDueDateSchedule(g, '2026-08-15').map((r) => r.date)).toEqual(['2026-11-10', '2027-02-10'])
   })
 
-  it('vadesi geçmiş gün, taksit "overdue" işaretlenmemiş olsa da kırmızıdır', () => {
-    // Sunucu gecikme bayrağını bir sonraki vadeye göre koyar (aylık tolerans); takvimde ise
-    // kullanıcı "o günün parası geldi mi" diye bakar — geçmiş gün + kalan = kırmızı.
+  it('tolerans süren geçmiş vade "grace"tir — "Gecikti" İLAN EDİLMEZ', () => {
+    // KUSUR (bu testin koruduğu): takvim ham `date < today` ile kırmızı "Gecikti" yazıyordu.
+    // Kanonik gecikme kuralı toleranslıdır (bir taksit, bir sonraki taksitin vade günü gelene
+    // kadar gecikmiş sayılmaz — `apiMappers.normalizeAccount`), dolayısıyla cari kartı
+    // "gecikme yok" derken bu tablo aynı borç için "Gecikti" diyordu. Satır hâlâ geçmiş olarak
+    // görünür (`grace` → amber "Vadesi geçti"), ama resmi söz kanonik bayrağa ait.
+    //
+    // 07-10'un tolerans penceresi bir sonraki vadeye (08-10) kadar açık; bugün 08-01.
     const [g] = groupAccountsByCustomer([
-      acc({ id: 'a1', customerId: 'c1', installments: [inst({ dueDate: '2026-07-10', amount: 500 })] }),
+      acc({
+        id: 'a1', customerId: 'c1',
+        installments: [
+          inst({ dueDate: '2026-07-10', amount: 500 }),
+          inst({ dueDate: '2026-08-10', amount: 500 }),
+        ],
+      }),
     ])
-    expect(buildDueDateSchedule(g, '2026-08-15')[0].status).toBe('overdue')
+    expect(buildDueDateSchedule(g, '2026-08-01')[0].status).toBe('grace')
+  })
+
+  it('grace, "partial"ın ÜSTÜNDE: kısmi ödenmiş geçmiş gün geçmişte kaldığını korur', () => {
+    const [g] = groupAccountsByCustomer([
+      acc({
+        id: 'a1', customerId: 'c1',
+        installments: [
+          inst({ dueDate: '2026-07-10', amount: 500, paidAmount: 200 }),
+          inst({ dueDate: '2026-08-10', amount: 500 }),
+        ],
+      }),
+    ])
+    expect(buildDueDateSchedule(g, '2026-08-01')[0].status).toBe('grace')
+  })
+
+  it('takvimin "gecikmiş" toplamı cari kartıyla AYNI tabandan sayılır', () => {
+    // Aynı ekranda iki resmi rakam olmasın: özet şeridindeki Gecikmiş = grubun overdueAmount'ı.
+    // 06-10 penceresi 07-10'da doldu (gecikmiş); 07-10'unki 08-10'a kadar açık (tolerans).
+    const [g] = groupAccountsByCustomer([
+      acc({
+        id: 'a1', customerId: 'c1',
+        installments: [
+          inst({ dueDate: '2026-06-10', amount: 500, overdue: true }), // resmen gecikmiş
+          inst({ dueDate: '2026-07-10', amount: 300 }),                // tolerans süren geçmiş
+          inst({ dueDate: '2026-08-10', amount: 200 }),
+        ],
+      }),
+    ])
+    const rows = buildDueDateSchedule(g, '2026-08-01')
+    const overdueTotal = rows.filter((r) => r.status === 'overdue').reduce((s, r) => s + r.remaining, 0)
+    expect(overdueTotal).toBe(g.overdueAmount)
+    expect(overdueTotal).toBe(500) // 300'lük tolerans satırı KARIŞMAZ
   })
 
   it('iptal edilmiş taksit takvime girmez', () => {
@@ -294,11 +345,20 @@ describe('devir (düzensiz ödeme) — Ela senaryosu', () => {
     // Devir, tahsilat önerisine özeldir (buildInstallmentRows / dueThisMonth). Takvimde "Kalan"
     // sütunu kaldırıldığı için devri gösterecek yer de yok; ayrıca takvim birden çok satışı
     // birleştirebiliyor, oysa devir HESAP bazlıdır — orada taşımak yanlış rakam üretirdi.
-    const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1', installments: plan([5000]) })])
+    //
+    // Gecikme bayrakları sunucunun tolerans kuralıyla verilir (bugün 15.03): Ocak ve Şubat'ın
+    // pencereleri kapandı → RESMEN gecikmiş; Mart'ınki 10.04'e kadar açık → "Vadesi geçti".
+    const items = plan([5000]).map((i) =>
+      i.dueDate < '2026-03-01' ? { ...i, overdue: true } : i)
+    const [g] = groupAccountsByCustomer([acc({ id: 'a1', customerId: 'c1', installments: items })])
     const rows = buildDueDateSchedule(g, '2026-03-15')
+
     const march = rows.find((r) => r.date.startsWith('2026-03'))!
     expect(march.due).toBe(5000)      // PLAN tutarı; ödenmemiş ocak/şubat buraya BİNMEZ
-    expect(march.status).toBe('overdue')
+    expect(march.status).toBe('grace') // vadesi geçti ama tolerans penceresi sürüyor
+    // Penceresi KAPANMIŞ olan Şubat resmen gecikmiştir — kırmızı orada yazar.
+    expect(rows.find((r) => r.date.startsWith('2026-02'))!.status).toBe('overdue')
+
     // Devir hâlâ tahsilat tarafında yaşıyor:
     expect(buildInstallmentRows(plan([5000]), '2026-03-15')[2].carryIn).toBe(5000)
   })

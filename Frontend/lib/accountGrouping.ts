@@ -63,11 +63,12 @@ export interface DueDateRow {
   /**
    * Satır durumu:
    * - `paid` : tamamı ödendi (yeşil)
-   * - `partial` : kısmen ödendi (amber)
-   * - `overdue` : vadesi geçti, kalan var (kırmızı)
+   * - `overdue` : borç RESMEN gecikti — kanonik `overdue` bayrağı (kırmızı)
+   * - `grace` : vadesi geçti ama tolerans penceresi sürüyor (amber, "Vadesi geçti")
+   * - `partial` : kısmen ödendi, vadesi henüz geçmedi (amber)
    * - `upcoming` : vadesi gelmedi (nötr)
    */
-  status: 'paid' | 'partial' | 'overdue' | 'upcoming'
+  status: 'paid' | 'overdue' | 'grace' | 'partial' | 'upcoming'
 }
 
 export interface CustomerAccountGroup {
@@ -254,17 +255,29 @@ export function buildDueDateSchedule(
     .sort(([x], [y]) => x.localeCompare(y))
     .map(([date, v]) => {
       /*
-       * TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — bu bir tutarsızlık değil, ayrı soru.
+       * "GECİKTİ" SÖZÜ TEK KAYNAKTAN — ama geçmiş vade de görünür kalır (BEŞİNCİ DURUM: `grace`).
        *
-       * Cari kartındaki "GECİKTİ" rozeti borcun RESMEN geciktiğini söyler ve toleransı uygular:
-       * bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz
-       * (bkz. `apiMappers.normalizeAccount`). Bu takvimde ise kullanıcı "O GÜNÜN PARASI GELDİ Mİ"
-       * diye bakar; geçmiş bir vadeyi, tolerans penceresi sürüyor diye nötr boyamak o soruyu
-       * cevapsız bırakırdı. Ham tarih karşılaştırması YALNIZ bu satıra özeldir, testle sabittir.
+       * Bu liste eskiden ham `date < today` ile kırmızı "Gecikti" yazıyordu. Gerekçe şuydu:
+       * kullanıcı burada "O GÜNÜN PARASI GELDİ Mİ" diye bakar, geçmiş vadeyi nötr boyamak o
+       * soruyu cevapsız bırakır. Soru doğruydu, KELİME yanlıştı: kurumun resmi gecikme kuralı
+       * toleranslıdır (bir taksit, bir sonraki taksitin vade günü gelene kadar gecikmiş sayılmaz —
+       * bkz. `apiMappers.normalizeAccount`), dolayısıyla cari kartı "gecikme yok" derken bu tablo
+       * aynı borç için "Gecikti" yazıyordu. Aynı ekranda iki resmi cevap.
+       *
+       * Çözüm iki soruyu AYIRMAK:
+       *  - `overdue` → yalnız kanonik bayrak. "Gecikti" sözü ve kırmızı YALNIZ burada; özet
+       *    şeridindeki "Gecikmiş" toplamı da bunu sayar → cari kartıyla birebir tutar.
+       *  - `grace`   → vadesi geçmiş ama tolerans penceresi sürüyor. Amber + "Vadesi geçti":
+       *    satır hâlâ ödenmemiş-ve-geçmiş olarak görünür, ama resmen gecikmiş İLAN EDİLMEZ.
+       *
+       * SIRA ÖNEMLİ: `grace`, `partial`ın ÜSTÜNDE. Kısmi ödenmiş ve vadesi geçmiş bir gün
+       * "Kısmi" yazsaydı geçmişte kaldığı bilgisi kaybolurdu (eski kodda da gecikme kısmiye
+       * baskındı — o davranış korunuyor, yalnız etiketi toleransa göre ikiye ayrılıyor).
        */
       let status: DueDateRow['status']
       if (v.remaining <= 0.005) status = 'paid'
-      else if (v.anyOverdue || date < today) status = 'overdue'
+      else if (v.anyOverdue) status = 'overdue'
+      else if (date < today) status = 'grace'
       else if (v.paid > 0.005) status = 'partial'
       else status = 'upcoming'
       return {

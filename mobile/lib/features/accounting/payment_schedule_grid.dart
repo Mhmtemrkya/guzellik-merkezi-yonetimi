@@ -69,14 +69,21 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
     _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
   }
 
+  /// Durum → zemin/mürekkep/etiket.
+  ///
+  /// "Gecikti" sözü ve kırmızı YALNIZ `overdue`da: o da toleransı uygulayan kanonik bayrak
+  /// (bkz. `account_installments.graceDeadline`). Vadesi geçmiş ama tolerans penceresi süren
+  /// gün `grace` ile "Vadesi geçti" yazar — görünür kalır, resmen gecikmiş ilan edilmez.
   ({Color bg, Color ink, String label}) _style(String status) {
     switch (status) {
       case 'paid':
         return (bg: const Color(0xFFECFDF5), ink: const Color(0xFF065F46), label: 'Ödendi');
-      case 'partial':
-        return (bg: const Color(0xFFFFFBEB), ink: const Color(0xFF92400E), label: 'Kısmi');
       case 'overdue':
         return (bg: const Color(0xFFFFF1F2), ink: const Color(0xFF9F1239), label: 'Gecikti');
+      case 'grace':
+        return (bg: const Color(0xFFFEF3C7), ink: const Color(0xFF92400E), label: 'Vadesi geçti');
+      case 'partial':
+        return (bg: const Color(0xFFFFFBEB), ink: const Color(0xFF92400E), label: 'Kısmi');
       case 'upcoming':
         return (bg: const Color(0xFFFFFBEB), ink: const Color(0xFF92400E), label: 'Bekliyor');
       default:
@@ -112,6 +119,13 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
     final totalDue = rows.fold<double>(0, (s, r) => s + r.due);
     final totalPaid = rows.fold<double>(0, (s, r) => s + r.paid);
     final totalRemaining = rows.fold<double>(0, (s, r) => s + r.remaining);
+    // "Gecikmiş" YALNIZ kanonik satırları sayar → cari kartındaki gecikme tutarıyla birebir.
+    // Tolerans penceresi süren günler ayrı çipte yazılır (web ile aynı kural).
+    final totalOverdue = rows
+        .where((r) => r.status == 'overdue')
+        .fold<double>(0, (s, r) => s + r.remaining);
+    final totalGrace =
+        rows.where((r) => r.status == 'grace').fold<double>(0, (s, r) => s + r.remaining);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,6 +138,8 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
             _chip('Taksit planı', totalDue, AppColors.ink),
             _chip('Tahsil edilen', totalPaid, const Color(0xFF065F46)),
             _chip('Kalan taksit', totalRemaining, AppColors.primaryDark),
+            if (totalOverdue > 0.005) _chip('Gecikmiş', totalOverdue, const Color(0xFF9F1239)),
+            if (totalGrace > 0.005) _chip('Vadesi geçti', totalGrace, const Color(0xFF92400E)),
           ],
         ),
         const SizedBox(height: 10),
@@ -156,6 +172,7 @@ class _PaymentScheduleGridState extends State<PaymentScheduleGrid> {
           children: [
             _Legend(color: Color(0xFFECFDF5), border: Color(0xFFA7F3D0), text: 'Ödendi'),
             _Legend(color: Color(0xFFFFFBEB), border: Color(0xFFFCD34D), text: 'Bekliyor'),
+            _Legend(color: Color(0xFFFEF3C7), border: Color(0xFFF59E0B), text: 'Vadesi geçti'),
             _Legend(color: Color(0xFFFFF1F2), border: Color(0xFFFDA4AF), text: 'Gecikti'),
           ],
         ),

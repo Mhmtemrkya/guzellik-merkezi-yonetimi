@@ -1243,8 +1243,26 @@ public sealed class AdisyonService : IAdisyonService
                 var totalAccountSessions = await _db.CustomerPackageSessions
                     .CountAsync(s => s.TenantId == tenantId && s.CustomerAccountId == accountId.Value, cancellationToken);
                 var otherSessions = totalAccountSessions > soldSessions.Count; // bu adisyon dışında seans var mı (eski/başka satış)
-                var remainingPayments = account.Payments.Count(p => p.SourceAdisyonId != adisyon.Id);
-                var exclusive = !otherAdisyon && !otherSessions && remainingPayments == 0 && account.DepositAmount == 0m;
+                var remainingPayments = account.Payments.Where(p => p.SourceAdisyonId != adisyon.Id).ToList();
+
+                // PEŞİNAT BU FİŞTEN Mİ GELDİ? — HAYALET BORCUN KÖKÜ.
+                //
+                // Peşinat bir PLAN alanıdır ([[project_muhasebe_butunlugu]]); karşılığı hesabın
+                // üstündeki TAHSİLAT satırlarıdır. Kapı eskiden `DepositAmount == 0m` idi ve
+                // peşinatlı satış bu yüzden HİÇBİR ZAMAN "yalnız bu fişin carisi" sayılmıyordu:
+                // 20.000'lik satış + 10.000 peşinat silinince tahsilat satırları kalkıyor, ama
+                // aşağıdaki `Math.Max(DepositAmount, …)` tabanı toplamı 10.000'de tutuyordu →
+                // kaynağı, tahsilatı ve taksit planı olmayan 10.000 TL borç ekranda kalıyordu.
+                //
+                // Doğru soru "peşinat var mı" değil, "peşinatı BU fiş mi ödedi": sildiğimiz
+                // tahsilatlar peşinatı karşılıyorsa peşinat da bu fişe aittir. Karşılamıyorsa
+                // (ör. doğrudan açılmış cariye sonradan bağlanan fiş) kart korunur; o durumda
+                // `remainingPayments` zaten dolu olur — doğrudan açılan cari peşinatı her zaman
+                // gerçek bir tahsilat satırına dönüştürür (CustomerAccountService.CreateAsync).
+                var removedPaymentTotal = accountPayments.Sum(p => p.Amount);
+                var depositCoveredByThisAdisyon = account.DepositAmount <= removedPaymentTotal + 0.005m;
+                var exclusive = !otherAdisyon && !otherSessions && remainingPayments.Count == 0
+                                && depositCoveredByThisAdisyon;
 
                 if (exclusive)
                 {
@@ -1254,8 +1272,16 @@ public sealed class AdisyonService : IAdisyonService
                 else
                 {
                     // Paylaşılan cari → yalnız bu satışın borcunu düş; taksit planı varsa yeniden kur.
-                    var newTotal = Math.Max(account.DepositAmount, account.TotalAmount - charge);
-                    account.ChangeTotal(newTotal, account.DepositAmount);
+                    //
+                    // PEŞİNAT KALAN TAHSİLATLA SINIRLANIR. Bu fişin tahsilatları silindiği hâlde
+                    // peşinat kolonu olduğu gibi bırakılırsa `AllocatePayments` havuzu
+                    // (Σödeme − DepositAmount − Refunded) EKSİYE düşer: plan, hiç var olmayan bir
+                    // ön ödemeyi finanse edilen tutardan indirmeye devam eder. Peşinat en fazla
+                    // kurumda kalan paradır; toplamı da aşamaz (ChangeTotal atar).
+                    var newTotal = Math.Max(0, account.TotalAmount - charge);
+                    var remainingPaid = Math.Max(0, remainingPayments.Sum(p => p.Amount) - account.RefundedAmount);
+                    var newDeposit = Math.Clamp(Math.Min(account.DepositAmount, remainingPaid), 0m, newTotal);
+                    account.ChangeTotal(newTotal, newDeposit);
                     var activeInstallments = account.Installments.Where(i => i.Status != InstallmentStatus.Cancelled).ToList();
                     if (activeInstallments.Count > 0)
                         account.RebuildInstallments(activeInstallments.Count, activeInstallments.Min(i => i.DueDate));

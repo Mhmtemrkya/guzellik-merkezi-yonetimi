@@ -56,7 +56,8 @@ class DueDateRow {
   /// Katkı veren satışlar, payı büyükten küçüğe.
   final List<DueDateSource> sources;
 
-  /// `paid` ödendi · `partial` kısmi · `overdue` gecikmiş · `upcoming` bekleyen.
+  /// `paid` ödendi · `overdue` RESMEN gecikti (kanonik bayrak) · `grace` vadesi geçti ama
+  /// tolerans sürüyor · `partial` kısmi · `upcoming` bekleyen.
   final String status;
 }
 
@@ -216,14 +217,22 @@ List<DueDateRow> buildDueDateSchedule(
   final keys = byDay.keys.toList()..sort();
   return keys.map((date) {
     final v = byDay[date]!;
-    // TAKVİM, AYLIK TOLERANSI (grace) BİLEREK UYGULAMAZ — tutarsızlık değil, ayrı soru:
-    // rozet "borç resmen gecikti mi" der (tolerans uygulanır), bu takvim ise "o günün parası
-    // geldi mi" der. Ham tarih karşılaştırması yalnız bu satıra özeldir (web ile aynı kural).
+    // "GECİKTİ" SÖZÜ TEK KAYNAKTAN — ama geçmiş vade görünür kalır (BEŞİNCİ DURUM: `grace`).
+    //
+    // Eskiden ham `date < today` ile kırmızı "Gecikti" yazılıyordu; kurumun resmi gecikme kuralı
+    // ise toleranslıdır (`account_installments.graceDeadline`). Sonuç: cari kartı "gecikme yok"
+    // derken bu tablo aynı borç için "Gecikti" yazıyordu. Artık iki soru ayrı:
+    //   `overdue` → yalnız kanonik bayrak ("Gecikti", kırmızı, özet toplamına girer)
+    //   `grace`   → vadesi geçti ama tolerans sürüyor ("Vadesi geçti", amber)
+    // SIRA: `grace`, `partial`ın üstünde — kısmi ödenmiş geçmiş gün "Kısmi" yazsaydı geçmişte
+    // kaldığı bilgisi kaybolurdu. (Web `accountGrouping.ts` ile birebir aynı kural.)
     final String status;
     if (v[2] <= 0.005) {
       status = 'paid';
-    } else if (v[3] == 1 || date.compareTo(today) < 0) {
+    } else if (v[3] == 1) {
       status = 'overdue';
+    } else if (date.compareTo(today) < 0) {
+      status = 'grace';
     } else if (v[1] > 0.005) {
       status = 'partial';
     } else {

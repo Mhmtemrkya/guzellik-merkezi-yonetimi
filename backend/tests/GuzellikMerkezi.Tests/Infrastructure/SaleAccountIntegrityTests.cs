@@ -407,6 +407,143 @@ public sealed class SaleAccountIntegrityTests
     }
 
     /// <summary>
+    /// HAYALET CARİ BORCU — peşinatlı satış silinince kaynaksız bakiye KALMAZ.
+    ///
+    /// <para>
+    /// KUSUR (bu testin koruduğu): silme yolundaki "yalnız bu fişin carisi mi" kapısı
+    /// <c>DepositAmount == 0m</c> arıyordu. Peşinatlı satış bu koşulu hiçbir zaman geçemediği
+    /// için kart kapatılmıyor, paylaşılan cari dalına düşüyordu; oradaki
+    /// <c>Math.Max(DepositAmount, Total − charge)</c> tabanı da toplamı peşinat kadar AYAKTA
+    /// tutuyordu. Sonuç: 20.000 ₺ satış + 10.000 ₺ peşinat silindiğinde tahsilat satırları
+    /// kalkıyor ama müşteride kaynağı, tahsilatı ve taksit planı olmayan 10.000 ₺ borç kalıyordu.
+    /// </para>
+    /// <para>
+    /// Tahsilatlı fiş defter guard'ı yüzünden yalnız <c>force: true</c> ile silinir; peşinat da
+    /// bir tahsilat olduğundan kusurlu koda ANCAK bu bayrakla ulaşılır — force'suz bir kurgu
+    /// 409 alır ve hatayı "zaten düzelmiş" gibi gösterir.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Delete_InstallmentSaleWithDownPayment_ClosesAccount_LeavesNoPhantomDebt()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid adisyonId;
+
+        await using (var db = NewDb(options))
+        {
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, null, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Service, seed.ServiceA, "Cilt Bakımı", 1, 20000m, null, false));
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Payment, null, "Peşinat", 1, 10000m, null, false, "cash"));
+            adisyon.SetInstallmentPlan(12, DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        Guid saleAccountId;
+        await using (var db = NewDb(options))
+        {
+            var approved = await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId);
+            Assert.True(approved.IsSuccess, approved.IsFailure ? approved.Error.Message : null);
+            saleAccountId = (await db.Adisyonlar.SingleAsync(a => a.Id == adisyonId)).CustomerAccountId!.Value;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var deleted = await NewAdisyon(db).DeleteAsync(seed.TenantId, adisyonId, force: true);
+            Assert.True(deleted.IsSuccess, deleted.IsFailure ? deleted.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            // Kart CANLI listeden düştü — hayalet borç ekranda görünmez.
+            // (Silme yumuşaktır: satır durur, `IsDeleted` ile süzülür — bu yüzden varlık
+            //  kontrolü SÜZGEÇLİ sorguyla yapılır, `IgnoreQueryFilters` ile değil.)
+            Assert.Null(await check.CustomerAccounts.FirstOrDefaultAsync(a => a.Id == saleAccountId));
+            Assert.True((await check.CustomerAccounts.IgnoreQueryFilters()
+                .SingleAsync(a => a.Id == saleAccountId)).IsDeleted);
+
+            // Peşinat tahsilatı da canlı defterden düştü.
+            Assert.Empty(await check.AccountPayments.ToListAsync());
+
+            // Müşterinin CANLI açık borcu satış öncesine döndü: yalnız seed kartları (5.000 + 1.000).
+            // Kusurlu kodda burada 10.000 ₺'lik kaynaksız bir kart daha duruyordu.
+            var live = await check.CustomerAccounts.Include(a => a.Payments)
+                .Where(a => a.CustomerId == seed.CustomerId).ToListAsync();
+            Assert.Equal(2, live.Count);
+            Assert.Equal(6000m, live.Sum(a => a.RemainingAmount));
+
+            var existing = live.Single(a => a.Id == seed.OwnAccountId);
+            Assert.Equal(5000m, existing.TotalAmount);
+        }
+    }
+
+    /// <summary>
+    /// KAPI HÂLÂ YÜK TAŞIYOR: peşinatı BAŞKA bir kayıttan gelen paylaşılan cari silinmez.
+    ///
+    /// <para>
+    /// Doğrudan açılan cari peşinatı her zaman gerçek bir tahsilat satırına çevirir; o satır bu
+    /// fişe ait olmadığı için kart korunur. Fişin borcu düşer, peşinat KALAN tahsilatla desteklendiği
+    /// sürece yerinde kalır ve dağıtım havuzu (Σödeme − peşinat − iade) eksiye düşmez.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Delete_AdisyonOnDirectAccountWithDeposit_KeepsAccountAndDepositBacking()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        Guid directAccountId;
+
+        // Doğrudan açılmış taksitli cari: 6.000 toplam · 2.000 peşinat (gerçek tahsilat satırıyla).
+        await using (var db = NewDb(options))
+        {
+            var direct = new CustomerAccount(seed.TenantId, seed.BranchId, seed.CustomerId, null, "Elle açılan cari", 6000m, 2000m);
+            direct.RebuildInstallments(4, DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)));
+            direct.RegisterDepositPayment("cash", DateTime.UtcNow);
+            db.CustomerAccounts.Add(direct);
+            await db.SaveChangesAsync();
+            directAccountId = direct.Id;
+        }
+
+        // Bu cariye BAĞLI, satış kalemi olmayan tahsilat fişi (1.000 ₺).
+        Guid adisyonId;
+        await using (var db = NewDb(options))
+        {
+            var adisyon = new Adisyon(seed.TenantId, seed.BranchId, seed.CustomerId, directAccountId, null);
+            db.Adisyonlar.Add(adisyon);
+            await db.SaveChangesAsync();
+            db.AdisyonItems.Add(adisyon.AddItem(AdisyonItemType.Payment, null, "Tahsilat", 1, 1000m, null, false, "cash"));
+            await db.SaveChangesAsync();
+            adisyonId = adisyon.Id;
+        }
+
+        await using (var db = NewDb(options))
+            Assert.True((await NewAdisyon(db).ApproveAsync(seed.TenantId, adisyonId)).IsSuccess);
+
+        await using (var db = NewDb(options))
+        {
+            var deleted = await NewAdisyon(db).DeleteAsync(seed.TenantId, adisyonId, force: true);
+            Assert.True(deleted.IsSuccess, deleted.IsFailure ? deleted.Error.Message : null);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var account = await check.CustomerAccounts
+                .Include(a => a.Installments).Include(a => a.Payments)
+                .SingleAsync(a => a.Id == directAccountId);
+
+            Assert.Equal(6000m, account.TotalAmount);   // fişin borcu yoktu, toplam değişmez
+            Assert.Equal(2000m, account.DepositAmount); // peşinat kendi tahsilatıyla ayakta
+            Assert.Equal(2000m, account.Payments.Sum(p => p.Amount)); // yalnız fişin 1.000'i silindi
+
+            // DAĞITIM HAVUZU EKSİYE DÜŞMEZ: peşinat, kalan tahsilatın üstüne çıkmadı.
+            Assert.All(account.AllocatePayments().Values, v => Assert.True(v >= 0m));
+        }
+    }
+
+    /// <summary>
     /// SİLME DOĞRU KARTI BULUR: satış kendi kartını açtığı için ters kayıt tahsilatı orada bulur,
     /// kart kapanır; müşterinin eski kartının toplamı ve taksitleri hiç değişmez.
     /// </summary>

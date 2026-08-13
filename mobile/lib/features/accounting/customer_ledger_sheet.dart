@@ -743,13 +743,18 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 22),
               child: Text(
+                // METİN BORÇ MODELİYLE AYNI ŞEYİ SÖYLEMELİ (web ile birebir).
+                // Eskiden "peşinat ve taksitler buraya düşer" yazıyordu; oysa 12 Ağu'daki
+                // değişiklikten sonra belgede TAKSİT SATIRI HİÇ YOK ve peşinat ayrı bir satır
+                // değil (satış tek borç satırıdır, peşinat tahsil edilince "Tahsilat" alacağı
+                // olur). Boş ekranda kullanıcıya var olmayan satırlar vaat ediliyordu.
                 filtered
                     ? 'Seçilen dönemde hareket bulunmuyor.'
                     : widget.pendingSales.isNotEmpty
                         ? 'Cariye işlenmiş hareket yok — yukarıdaki bekleyen satış onaylanınca '
-                            'peşinat ve taksitler buraya düşer.'
-                        : 'Bu müşteride henüz cari hareket yok. Satış yapıldığında peşinat ve '
-                            'taksitler buraya düşer.',
+                            'satış borcu buraya düşer.'
+                        : 'Bu müşteride henüz cari hareket yok. Satış yapıldığında borç, '
+                            'tahsilat aldıkça alacak satırı buraya düşer.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
               ),
@@ -846,11 +851,15 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
               style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: moneyColor)),
         ]),
         const SizedBox(height: 2),
-        Row(children: [
+        // AÇIKLAMA KIRPILMAZ. Etiket eskiden `maxLines: 2` + ellipsis ile kesiliyordu; birleşik
+        // yazım ("Tahsilat (Nakit · Paket adı · Belge: …)") iki satıra sığmayınca belge, ödemenin
+        // hangi işleme ait olduğunu SÖYLEMEYİ bırakıyordu — üstelik bu belge basılıp müşteriye
+        // veriliyor ve PDF tam metni yazdığı için ekran ile çıktı da ayrışıyordu. Satır dikeyde
+        // büyür (liste zaten kaydırmalı); "Bakiye" kolonu sağda hizalı kalsın diye üste yaslanır.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Text(row.label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                softWrap: true,
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,

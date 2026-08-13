@@ -22,11 +22,22 @@ import type { DueDateRow } from '@/lib/accountGrouping'
 
 const MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 
-/** Satır zemini + durum rozeti. Sarı = bekleyen, yeşil = ödendi, kırmızı = gecikmiş. */
-const CELL: Record<DueDateRow['status'], { row: string; badge: string; label: string; mark: string }> = {
+/**
+ * Satır zemini + durum rozeti. Yeşil = ödendi, kırmızı = RESMEN gecikti, amber = bekleyen/geçmiş.
+ *
+ * "Gecikti" sözü ve kırmızı YALNIZ `overdue`da: o da kanonik tolerans kuralını uygulayan
+ * sunucu bayrağıdır (bkz. `buildDueDateSchedule`). Vadesi geçmiş ama tolerans penceresi süren
+ * gün `grace` ile "Vadesi geçti" yazar — görünür kalır, ama cari kartı "gecikme yok" derken
+ * bu tablo aynı borç için "Gecikti" ilan etmez.
+ */
+const CELL: Record<DueDateRow['status'], { row: string; badge: string; label: string; mark: string; title?: string }> = {
   paid: { row: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300', label: 'Ödendi', mark: '✓' },
-  partial: { row: 'bg-amber-50', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Kısmi', mark: '◐' },
   overdue: { row: 'bg-rose-50', badge: 'bg-rose-100 text-rose-800 border-rose-300', label: 'Gecikti', mark: '!' },
+  grace: {
+    row: 'bg-amber-50', badge: 'bg-amber-100 text-amber-900 border-amber-400', label: 'Vadesi geçti', mark: '•',
+    title: 'Vadesi geçti ama tolerans süresi henüz dolmadı — borç resmen gecikmiş sayılmıyor.',
+  },
+  partial: { row: 'bg-amber-50', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Kısmi', mark: '◐' },
   upcoming: { row: 'bg-amber-50/60', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Bekliyor', mark: '·' },
 }
 
@@ -67,11 +78,15 @@ export default function PaymentScheduleGrid({
     box.scrollTop = Math.max(0, target.offsetTop - box.clientHeight / 2 + target.clientHeight / 2)
   }, [rows, focusDate])
 
+  // "Gecikmiş" toplamı YALNIZ kanonik `overdue` satırlarını sayar → cari kartındaki gecikme
+  // tutarıyla birebir tutar. Tolerans penceresi süren (`grace`) günler ayrı sayılır ve ayrı
+  // yazılır; ikisi tek çipte toplansaydı rakam yine karttan büyük çıkardı.
   const totals = useMemo(() => ({
     due: rows.reduce((s, r) => s + r.due, 0),
     paid: rows.reduce((s, r) => s + r.paid, 0),
     remaining: rows.reduce((s, r) => s + r.remaining, 0),
     overdue: rows.filter((r) => r.status === 'overdue').reduce((s, r) => s + r.remaining, 0),
+    grace: rows.filter((r) => r.status === 'grace').reduce((s, r) => s + r.remaining, 0),
   }), [rows])
 
   if (rows.length === 0) {
@@ -93,9 +108,13 @@ export default function PaymentScheduleGrid({
         {totals.overdue > 0.005 && (
           <SummaryChip label="Gecikmiş" value={totals.overdue} tone="text-rose-800 border-rose-200 bg-rose-50" />
         )}
+        {totals.grace > 0.005 && (
+          <SummaryChip label="Vadesi geçti" value={totals.grace} tone="text-amber-900 border-amber-300 bg-amber-50" />
+        )}
         <span className="ml-auto hidden items-center gap-2 text-[10px] text-[#74616A] sm:flex">
           <Legend swatch="bg-emerald-100 border-emerald-300" text="Ödendi" />
           <Legend swatch="bg-amber-100 border-amber-300" text="Bekliyor" />
+          <Legend swatch="bg-amber-100 border-amber-400" text="Vadesi geçti" />
           <Legend swatch="bg-rose-100 border-rose-300" text="Gecikti" />
         </span>
       </div>
@@ -154,7 +173,10 @@ export default function PaymentScheduleGrid({
                   </td>
 
                   <td className="border-b border-[#f0dce5] px-3 py-2 text-center align-top">
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${s.badge}`}>
+                    <span
+                      title={s.title}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${s.badge}`}
+                    >
                       {s.mark && <span>{s.mark}</span>}{s.label}
                     </span>
                   </td>
