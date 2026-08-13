@@ -547,6 +547,8 @@ function MusterilerPageInner() {
       sessionsTotal: values.sessionsTotal,
       sessionsUsed: values.sessionsUsed,
       installmentCount: values.installmentCount,
+      // Peşinat: taksit planı "toplam − peşinat"ı böler; satış tarihiyle tahsilat yazılır.
+      depositAmount: values.depositAmount,
       firstDueDate: values.firstDueDate,
       // Ödeme geçmişi: kaç taksit ödenmiş + yöntem. Backend ödenen ayları KENDİ VADE
       // TARİHLERİYLE tahsilat yazar → geçmiş satış geçmiş cariye de düşer.

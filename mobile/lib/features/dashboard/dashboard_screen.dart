@@ -309,6 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       data: data,
                       platform: user.isPlatform,
                       period: _period,
+                      api: widget.api,
                     ),
                     if (!user.isPlatform) ...[
                       const SizedBox(height: 22),
@@ -473,18 +474,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _MetricGrid extends StatelessWidget {
+class _MetricGrid extends StatefulWidget {
   const _MetricGrid({
     required this.data,
     required this.platform,
     required this.period,
+    required this.api,
   });
   final _DashboardData data;
   final bool platform;
   final PeriodValue period;
+  final ApiClient api;
+
+  @override
+  State<_MetricGrid> createState() => _MetricGridState();
+}
+
+class _MetricGridState extends State<_MetricGrid> {
+  // "Bekleyen Tahsilat" kartının KENDİ dönemi (web ile birebir): varsayılan Tümü = tüm zamanlar.
+  // Pencere satış tarihine uygulanır → "bu ay yaptığım satışların ne kadarı hâlâ borçta".
+  bool _colAll = true;
+  _ReportPeriod _colPeriod = _ReportPeriod.monthly;
+  _CustomRange? _colCustom;
+  Map<String, dynamic>? _colScoped;
+  /// Dönem sorgusu sürüyor mu. Bayrak OLMADAN kart, istek dönene kadar "Bu dönemde satış yok"
+  /// yazıyordu (boş harita → taban 0) — yükleniyor ile gerçekten boş dönem ayırt edilemiyordu.
+  bool _colBusy = false;
+
+  /// Dönem seçiliyken kartın kendi sorgusu, 'Tümü' iken panonun penceresiz raporu kullanılır.
+  bool get _colScopedActive => !_colAll || _colCustom != null;
+  Map<String, dynamic> get _colReport =>
+      _colScopedActive ? (_colScoped ?? const <String, dynamic>{}) : widget.data.report;
+
+  Future<void> _loadCollection() async {
+    if (!_colScopedActive) {
+      setState(() {
+        _colScoped = null;
+        _colBusy = false;
+      });
+      return;
+    }
+    final w = _reportWindow(_colPeriod, _colCustom);
+    setState(() => _colBusy = true);
+    try {
+      final res = await widget.api.get('/api/admin/accounts/report', query: {
+        'months': 6,
+        'fromUtc': w.fromIso,
+        'toUtc': w.toIso,
+      });
+      if (!mounted) return;
+      setState(() => _colScoped = res is Map ? res.cast<String, dynamic>() : null);
+    } catch (_) {
+      // Dönem sorgusu düşerse kart boş kalır; pano çökmez.
+      if (mounted) setState(() => _colScoped = null);
+    } finally {
+      if (mounted) setState(() => _colBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    final platform = widget.platform;
+    final period = widget.period;
     final List<_Metric> cards;
     if (platform) {
       cards = [
@@ -540,11 +592,14 @@ class _MetricGrid extends StatelessWidget {
           newCustomers += (row['count'] as num?)?.toInt() ?? 0;
         }
       }
-      final collected = numberOf(data.report, const ['totalCollected']);
-      final receivable = numberOf(data.report, const ['totalReceivable']);
+      // BEKLEYEN TAHSİLAT — taban SATIŞTIR, taksit planı değil.
+      // `totalCollected`/`totalReceivable` yalnız TAKSİT satırlarını ölçer; taksitsiz (peşin)
+      // satış hiç girmediği için oran şişiyordu. `openReceivable`/`totalPaid` cari kartının
+      // kendi kuralından gelir (web ile birebir aynı hesap).
+      final collected = numberOf(_colReport, const ['totalPaid']);
+      final receivable = numberOf(_colReport, const ['openReceivable']);
       final base = collected + receivable;
-      // Bekleyen tahsilat oranı: toplam alacağın ne kadarı hâlâ borç.
-      final rate = base > 0 ? ((receivable / base) * 100).round() : 0;
+      final rate = base > 0 ? (receivable / base) * 100 : 0.0;
       final other = data.primary.length - completed - waiting;
       cards = [
         _Metric(
@@ -583,11 +638,51 @@ class _MetricGrid extends StatelessWidget {
         ),
         _Metric(
           label: 'Bekleyen Tahsilat',
-          value: '%$rate',
+          // Dönem sorgusu sürerken rakam da alt satır da BEKLER: yalnız biri güncellenirse kart
+          // bir an önceki dönemin parasını gösterir (web ile aynı kural).
+          value: _colBusy ? '…' : (base > 0 ? '%${_percentLabel(rate)}' : '—'),
           icon: Icons.pie_chart_rounded,
           tone: _MetricTone.gold,
-          sub: 'Kalan borç ${_compactMoney(receivable)}',
-          ringPct: rate,
+          sub: _colBusy
+              ? 'Dönem hesaplanıyor…'
+              : base > 0
+                  ? 'Kalan borç ${_compactMoney(receivable)}'
+                  : (_colScopedActive ? 'Bu dönemde satış yok' : 'Henüz satış yok'),
+          ringPct: _colBusy ? 0 : rate.round(),
+          // Kartın kendi dönem çubuğu (Tümü/Gün/Ay/Yıl + özel tarih) — web'deki ile aynı.
+          footer: _ReportPeriodBar(
+            period: _colPeriod,
+            custom: _colCustom,
+            options: const [
+              (_ReportPeriod.daily, 'Gün'),
+              (_ReportPeriod.monthly, 'Ay'),
+              (_ReportPeriod.yearly, 'Yıl'),
+            ],
+            allLabel: 'Tümü',
+            isAll: _colAll && _colCustom == null,
+            onAll: () {
+              setState(() {
+                _colAll = true;
+                _colCustom = null;
+              });
+              _loadCollection();
+            },
+            onPeriod: (p) {
+              setState(() {
+                _colAll = false;
+                _colPeriod = p;
+                _colCustom = null;
+              });
+              _loadCollection();
+            },
+            onCustom: (c) {
+              setState(() {
+                _colCustom = c;
+                if (c == null) _colAll = true;
+              });
+              _loadCollection();
+            },
+          ),
         ),
       ];
     }
@@ -643,6 +738,7 @@ class _Metric {
     this.series,
     this.segments,
     this.ringPct,
+    this.footer,
   });
   final String label;
   final String value;
@@ -652,6 +748,8 @@ class _Metric {
   final List<double>? series;
   final List<(Color, double)>? segments;
   final int? ringPct;
+  /// Kartın altındaki kontrol şeridi (ör. dönem çipleri). Grafik/şerit yerine geçer.
+  final Widget? footer;
 }
 
 /// Web'deki kart anatomisi: tonlu üst bant + beyaz cam ikon → büyük rakam +
@@ -761,7 +859,12 @@ class _MetricCard extends StatelessWidget {
               ),
             ),
           ),
-          if (metric.series != null && metric.series!.isNotEmpty)
+          if (metric.footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: metric.footer!,
+            )
+          else if (metric.series != null && metric.series!.isNotEmpty)
             SizedBox(
               height: 34,
               width: double.infinity,
@@ -1689,6 +1792,21 @@ class _DashboardData {
 
 // ----------------------- Web paritesi: yardımcılar -----------------------
 
+/// Yüzde etiketi (web `percentLabel` ile birebir). Tam sayıya yuvarlamak KÜÇÜK ORANLARDA
+/// yalan söyler: 867 ₺ borç varken oran 0,4 iken "%0" yazmak "borç yok" demektir.
+String _percentLabel(double value) {
+  final safe = value.clamp(0, 100).toDouble();
+  if (safe == 0) return '0';
+  if (safe < 10) {
+    final oneDecimal = (safe * 10).round() / 10;
+    final shown = oneDecimal == 0 ? 0.1 : oneDecimal;
+    return shown == shown.roundToDouble()
+        ? '${shown.round()}'
+        : shown.toStringAsFixed(1).replaceAll('.', ',');
+  }
+  return '${safe.round()}';
+}
+
 String _compactMoney(dynamic value) {
   final amount = value is num ? value : num.tryParse('$value') ?? 0;
   return NumberFormat.compactCurrency(
@@ -2015,6 +2133,9 @@ class _ReportPeriodBar extends StatelessWidget {
     required this.options,
     required this.onPeriod,
     required this.onCustom,
+    this.allLabel,
+    this.isAll = false,
+    this.onAll,
   });
 
   final _ReportPeriod period;
@@ -2022,6 +2143,12 @@ class _ReportPeriodBar extends StatelessWidget {
   final List<(_ReportPeriod, String)> options;
   final ValueChanged<_ReportPeriod> onPeriod;
   final ValueChanged<_CustomRange?> onCustom;
+
+  /// Verilirse çiplerin başına "tüm zamanlar" seçeneği eklenir (pencere uygulanmaz).
+  /// Yalnız Bekleyen Tahsilat kartı kullanır: o kart tarih penceresi olmadan da anlamlıdır.
+  final String? allLabel;
+  final bool isAll;
+  final VoidCallback? onAll;
 
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
@@ -2046,10 +2173,20 @@ class _ReportPeriodBar extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
+          if (allLabel != null) ...[
+            _chip(
+              label: allLabel!,
+              selected: isAll && !active,
+              onTap: () => onAll?.call(),
+            ),
+            const SizedBox(width: 6),
+          ],
           for (final (key, label) in options) ...[
             _chip(
               label: label,
-              selected: period == key && !active,
+              // "Tümü" seçiliyken hiçbir dönem çipi vurgulanmaz — hangisinin geçerli
+              // olduğu ekrandan okunabilmeli.
+              selected: period == key && !active && !isAll,
               onTap: () => onPeriod(key),
             ),
             const SizedBox(width: 6),

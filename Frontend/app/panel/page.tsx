@@ -384,6 +384,20 @@ const PACKAGE_PERIOD_OPTIONS: { key: RangePeriod; label: string }[] = [
   { key: 'yearly', label: 'Yıllık' },
 ]
 
+/**
+ * "Bekleyen Tahsilat" kartının dönemi. 'all' = tüm zamanlar; kartın kuruluş anlamı budur ve
+ * varsayılan odur — dönem seçilince pencere SATIŞ TARİHİNE uygulanır, yani "bu ay yaptığım
+ * satışların ne kadarı hâlâ borçta" sorusuna döner (eski satışların borcu kapsam dışı kalır).
+ */
+type CollectionPeriod = 'all' | RangePeriod
+
+const COLLECTION_PERIOD_OPTIONS: { key: CollectionPeriod; label: string }[] = [
+  { key: 'all', label: 'Tümü' },
+  { key: 'daily', label: 'Gün' },
+  { key: 'monthly', label: 'Ay' },
+  { key: 'yearly', label: 'Yıl' },
+]
+
 interface CategoryOption { name: string; subs: string[] }
 
 /**
@@ -514,15 +528,19 @@ function CategoryFilter({
   )
 }
 
-function PeriodTabs({
+/**
+ * Dönem çipleri. Anahtar tipi GENELDİR: çoğu yerde `RangePeriod`, "Bekleyen Tahsilat" kartında
+ * ise ona ek olarak 'all' (Tümü) taşınır — o kart tarih penceresi olmadan da anlamlıdır.
+ */
+function PeriodTabs<T extends string = RangePeriod>({
   value,
   onChange,
   options,
   dimmed = false,
 }: {
-  value: RangePeriod
-  onChange: (value: RangePeriod) => void
-  options: { key: RangePeriod; label: string }[]
+  value: T
+  onChange: (value: T) => void
+  options: { key: T; label: string }[]
   /** Özel tarih aralığı devredeyken seçili çip vurgusu kalkar — hangisinin geçerli olduğu belli olsun. */
   dimmed?: boolean
 }) {
@@ -853,16 +871,39 @@ function AreaSpark({ values, tone }: { values: number[]; tone: QuickAction['tone
   )
 }
 
-function DonutGauge({ value }: { value: number }) {
+/**
+ * Yüzde etiketi. Tam sayıya yuvarlamak KÜÇÜK ORANLARDA YALAN SÖYLER: 867 ₺ borç varken oran
+ * 0,4 ise "%0" yazmak "borç yok" demektir. 10'un altında ondalık gösterilir (Türkçe virgül).
+ */
+function percentLabel(value: number): string {
+  const safe = Math.max(0, Math.min(100, value))
+  if (safe === 0) return '0'
+  if (safe < 10) {
+    const oneDecimal = Math.round(safe * 10) / 10
+    // 0,04 gibi değerler "0,0" olmasın: görünür en küçük oran 0,1'dir.
+    const shown = oneDecimal === 0 ? 0.1 : oneDecimal
+    return Number.isInteger(shown) ? String(shown) : shown.toFixed(1).replace('.', ',')
+  }
+  return String(Math.round(safe))
+}
+
+/** `label` verilirse AYNEN yazılır (yüzde işareti dahil) — veri yokken "—" gösterilebilsin. */
+function DonutGauge({ value, label }: { value: number; label?: string }) {
   const percent = Math.max(0, Math.min(100, value))
+  const text = label ?? `%${percentLabel(percent)}`
   return (
     <div
       className="grid h-[74px] w-[74px] place-items-center rounded-full"
       style={{ background: `conic-gradient(#1E8C60 ${percent * 3.6}deg, #DFF3EA 0deg)` }}
-      aria-label={`Doluluk oranı ${percent}%`}
+      aria-label={`Doluluk oranı ${text}`}
     >
-      <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-white text-[15px] font-semibold text-[#15694A]">
-        {percent}%
+      {/* Uzun etiket (ör. "%62,5") 52px halkaya sığsın diye punto kısalır. */}
+      <div
+        className={`grid h-[52px] w-[52px] place-items-center rounded-full bg-white font-semibold text-[#15694A] ${
+          text.length > 4 ? 'text-[12px]' : 'text-[15px]'
+        }`}
+      >
+        {text}
       </div>
     </div>
   )
@@ -1587,6 +1628,9 @@ export default function AdminDashboard() {
   const [serviceCustom, setServiceCustom] = useState<CustomRange | null>(null)
   const [serviceCategory, setServiceCategory] = useState('')
   const [serviceSubCategory, setServiceSubCategory] = useState('')
+  // Bekleyen Tahsilat kartı kendi dönemini taşır: varsayılan 'all' (tüm zamanların borcu).
+  const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('all')
+  const [collectionCustom, setCollectionCustom] = useState<CustomRange | null>(null)
   // Satış Detayı > Kategori Kırılımı kendi dönemine sahiptir (KPI'ları ve taksit grafiğini etkilemez).
   const [categoryPeriod, setCategoryPeriod] = useState<RangePeriod>('monthly')
   // Global randevu dönemi (üst seçici): randevu kartı + akış tablosunu sürükler. Diğer kartlar kendi sekmesini korur.
@@ -1695,6 +1739,33 @@ export default function AdminDashboard() {
       .catch(() => ({}) as ApiAccountReport),
     [tenantId, pkgFromIso, pkgToIso, packageCategory, packageSubCategory],
     { initialData: null },
+  )
+
+  // --- Bekleyen Tahsilat kartının kendi penceresi (Tümü / Gün / Ay / Yıl / özel aralık) -------
+  // 'all' + özel aralık yokken hiç istek atılmaz: genel rapor (data.reportResult) zaten
+  // penceresizdir, aynı veriyi ikinci kez çekmek boşuna tur olurdu.
+  const colToday = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate())
+  const colToDate = new Date(colToday)
+  colToDate.setDate(colToDate.getDate() + 1)
+  const colFromDate =
+    collectionPeriod === 'daily'
+      ? colToday
+      : collectionPeriod === 'yearly'
+        ? new Date(colToday.getFullYear(), 0, 1)
+        : new Date(colToday.getFullYear(), colToday.getMonth(), 1)
+  const colCustomWindow = collectionCustom ? customWindowIso(collectionCustom) : null
+  const collectionScoped = colCustomWindow !== null || collectionPeriod !== 'all'
+  const colFromIso = colCustomWindow?.fromIso ?? (collectionPeriod === 'all' ? undefined : colFromDate.toISOString())
+  const colToIso = colCustomWindow?.toIso ?? (collectionPeriod === 'all' ? undefined : colToDate.toISOString())
+  const collectionWindowLabel = colCustomWindow?.label
+    ?? (collectionPeriod === 'all' ? 'Tüm zamanlar' : periodWindow(collectionPeriod, dayStart).label)
+
+  const { data: collectionReportData, loading: collectionLoading } = useApiQuery<ApiAccountReport>(
+    () => adminApi
+      .accountReport<ApiAccountReport>(tenantId, 6, colFromIso, colToIso)
+      .catch(() => ({}) as ApiAccountReport),
+    [tenantId, colFromIso, colToIso],
+    { initialData: null, enabled: collectionScoped },
   )
 
   // Yalnız kategori kırılımı için ayrı pencere (Gün/Hafta/Ay/Yıl) — kendi rapor sorgusu.
@@ -1895,9 +1966,25 @@ export default function AdminDashboard() {
   const packageReport = normalizeAccountReport(packageReportData ?? data?.reportResult)
   const categoryReport = normalizeAccountReport(categoryReportData ?? packageReportData ?? data?.reportResult)
 
-  // Bekleyen tahsilat: toplam alacağın (tahsil + kalan) ne kadarı hâlâ borç olarak bekliyor (gauge kartı).
-  const collectionBase = report.totalCollected + report.totalReceivable
-  const debtRate = collectionBase > 0 ? Math.round((report.totalReceivable / collectionBase) * 100) : 0
+  /*
+   * BEKLEYEN TAHSİLAT (gauge kartı) — "satışlarımın yüzde kaçı hâlâ tahsil edilmedi".
+   *
+   * TABAN SATIŞTIR, TAKSİT PLANI DEĞİL. Kart eskiden `totalReceivable`/`totalCollected` ile
+   * kuruluyordu; ikisi de yalnız TAKSİT satırlarını ölçer. Peşin satış hiç taksit üretmediği
+   * için kurumun peşin cirosu tabandan düşüyor, oran şişiyordu (canlı veride %19 görünen oranın
+   * gerçeği %4,7'ydi). `openReceivable`/`totalPaid` cari kartının kendi kuralından gelir ve Ön
+   * Muhasebe'deki "Toplam açık alacak" / "Toplam tahsilat" ile aynı tabandır.
+   *
+   * Dönem seçiliyse kendi sorgusunun raporu kullanılır; 'all' iken genel rapor zaten penceresiz.
+   */
+  const collectionReport = collectionScoped ? normalizeAccountReport(collectionReportData) : report
+  const collectionBase = collectionReport.openReceivable + collectionReport.totalPaid
+  const debtRate = collectionBase > 0 ? (collectionReport.openReceivable / collectionBase) * 100 : 0
+  /** Ekranda görünen metin: oran yoksa yüzde işareti de yazılmaz. */
+  const debtRateText = collectionBase > 0 ? `%${percentLabel(debtRate)}` : '—'
+  /* Dönem değişince rakam ile ALTINDAKİ tutarlar birlikte beklemeli: yalnız büyük rakamı '…'
+     yapmak, kart bir an "yükleniyor ama borç şu kadar" diye ÖNCEKİ dönemin parasını gösteriyordu. */
+  const collectionPending = collectionScoped && collectionLoading
 
   const passiveCustomers = data?.passiveResult?.items ?? []
   const passiveThresholdDays = data?.passiveResult?.thresholdDays ?? 0
@@ -2019,14 +2106,30 @@ export default function AdminDashboard() {
           <MetricCard
             icon={CreditCard}
             title="Bekleyen Tahsilat"
-            value={`%${debtRate}`}
-            detail={<>Kalan borç {formatTL(Math.round(report.totalReceivable))}</>}
-            subDetail={<>{formatTL(Math.round(report.totalCollected))} tahsil edildi</>}
-            visual={<DonutGauge value={debtRate} />}
-            control={
-              <span className="inline-flex shrink-0 items-center rounded-full border border-[#E4DEE0] bg-[#F7F6F6] px-2 py-[3px] text-[10px] font-semibold text-[#5A4B53]">
-                Cari hesaplar
+            /* Veri yokken "%—" saçmadır: yüzde işareti yalnız gerçek bir oran varken yazılır. */
+            value={collectionPending ? '…' : debtRateText}
+            detail={
+              <span title={`Dönem: ${collectionWindowLabel}`}>
+                {collectionPending
+                  ? 'Dönem hesaplanıyor…'
+                  : collectionBase > 0
+                    ? <>Kalan borç {formatTL(Math.round(collectionReport.openReceivable))}</>
+                    : collectionScoped ? 'Bu dönemde satış yok' : 'Henüz satış yok'}
               </span>
+            }
+            subDetail={!collectionPending && collectionBase > 0 ? <>{formatTL(Math.round(collectionReport.totalPaid))} tahsil edildi</> : undefined}
+            visual={<DonutGauge value={collectionPending ? 0 : debtRate} label={collectionPending ? '…' : debtRateText} />}
+            control={
+              <>
+                {/* Çip seçilince özel aralık düşer: ikisi aynı anda uygulanmaz. */}
+                <PeriodTabs
+                  value={collectionPeriod}
+                  onChange={(p) => { setCollectionPeriod(p); setCollectionCustom(null) }}
+                  options={COLLECTION_PERIOD_OPTIONS}
+                  dimmed={collectionCustom !== null}
+                />
+                <DateRangeFilter value={collectionCustom} onChange={setCollectionCustom} />
+              </>
             }
             tone="gold"
           />

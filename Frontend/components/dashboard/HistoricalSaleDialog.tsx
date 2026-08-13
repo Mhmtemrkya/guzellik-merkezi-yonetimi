@@ -47,6 +47,11 @@ export interface HistoricalSaleValues {
   sessionsTotal: number
   sessionsUsed: number
   installmentCount: number
+  /**
+   * Satış anında PEŞİN alınan tutar (kapora/ön ödeme). Taksit planı "toplam − peşinat"ı böler —
+   * canlı satışla aynı kural. Peşin satışta 0 gider (orada tahsilatın tamamı `paidAmount`'tır).
+   */
+  depositAmount: number
   firstDueDate: string | null
   notes: string | null
   /** Taksitlerin kaçı ödenmiş (vade sırasıyla). Peşin satışta 0 gider. */
@@ -184,6 +189,8 @@ export default function HistoricalSaleDialog({
   /** Peşin satışta tahsil edilen tutar (boş = tamamı ödendi). */
   const [cashPaid, setCashPaid] = useState('')
   const [installments, setInstallments] = useState('3')
+  // Taksitli geçmiş satışta alınan peşinat (kapora). Boş = 0.
+  const [deposit, setDeposit] = useState('')
   const [firstDue, setFirstDue] = useState('')
   /** Vade sırasıyla kaç taksitin ödendiği. */
   const [paidCount, setPaidCount] = useState(0)
@@ -277,11 +284,16 @@ export default function HistoricalSaleDialog({
     return ''
   }, [firstDue, soldAt])
 
+  // Peşinat yalnız taksitli satışta anlamlıdır; peşinde tahsilatın tamamı zaten tek kalemdir.
+  const depositNum = payKind === 'installment' ? Math.min(Math.max(0, Number(deposit) || 0), totalNum) : 0
+  /** Taksitlere BÖLÜNEN tutar = toplam − peşinat (backend `RebuildInstallments` ile aynı). */
+  const financedNum = Math.max(0, totalNum - depositNum)
+
   const plan = useMemo(() => {
-    if (payKind !== 'installment' || instCount <= 0 || totalNum <= 0 || !effectiveFirstDue) return []
-    const amounts = splitInstallments(totalNum, instCount)
+    if (payKind !== 'installment' || instCount <= 0 || financedNum <= 0 || !effectiveFirstDue) return []
+    const amounts = splitInstallments(financedNum, instCount)
     return amounts.map((amount, i) => ({ no: i + 1, amount, ...addMonthsIso(effectiveFirstDue, i) }))
-  }, [payKind, instCount, totalNum, effectiveFirstDue])
+  }, [payKind, instCount, financedNum, effectiveFirstDue])
 
   // Taksit sayısı düşerse ödenen sayısı taşmasın.
   useEffect(() => { setPaidCount((c) => Math.min(c, instCount)) }, [instCount])
@@ -289,7 +301,7 @@ export default function HistoricalSaleDialog({
   const cashPaidNum = cashPaid.trim() === '' ? totalNum : Math.max(0, Number(cashPaid) || 0)
   const paidNum = payKind === 'cash'
     ? Math.min(cashPaidNum, totalNum)
-    : plan.slice(0, paidCount).reduce((s, x) => s + x.amount, 0)
+    : depositNum + plan.slice(0, paidCount).reduce((s, x) => s + x.amount, 0)
   const remaining = Math.max(0, totalNum - paidNum)
   const paidPct = totalNum > 0 ? Math.min(100, Math.round((paidNum / totalNum) * 100)) : 0
 
@@ -365,6 +377,8 @@ export default function HistoricalSaleDialog({
     if (totalNum <= 0) { setError('Tutar sıfırdan büyük olmalı.'); return }
     if (payKind === 'cash' && cashPaidNum > totalNum) { setError('Tahsil edilen tutar, toplam tutardan fazla olamaz.'); return }
     if (payKind === 'installment' && instCount <= 0) { setError('Taksitli satışta taksit sayısı en az 1 olmalı.'); return }
+    if (payKind === 'installment' && depositNum > totalNum) { setError('Peşinat, toplam tutardan fazla olamaz.'); return }
+    if (payKind === 'installment' && depositNum > 0 && financedNum <= 0) { setError('Peşinat tutarın tamamıysa taksit kalmaz — satışı peşin olarak girin.'); return }
     const st = Math.max(0, Number(sessionsTotal) || 0)
     const su = Math.max(0, Number(sessionsUsed) || 0)
     if (su > st) { setError('Kullanılan seans, toplam seanstan fazla olamaz.'); return }
@@ -418,6 +432,7 @@ export default function HistoricalSaleDialog({
             }))
           : undefined,
         installmentCount: payKind === 'installment' ? instCount : 0,
+        depositAmount: Math.round(depositNum * 100) / 100,
         firstDueDate: payKind === 'installment' ? (firstDue || null) : null,
         paidInstallmentCount: payKind === 'installment' ? paidCount : 0,
         paymentMethod: method,
@@ -605,6 +620,25 @@ export default function HistoricalSaleDialog({
                 </div>
               ) : (
                 <div className="mt-3 space-y-3">
+                  {/* PEŞİNAT: satış anında alınan kapora. Taksitler "toplam − peşinat"ı böler
+                      (canlı satışla aynı kural); alan yokken taksitler toplamın tamamını bölüyor
+                      ve peşin alınan para evrakta hiç görünmüyordu. */}
+                  <label className="block">
+                    <span className={LABEL}>Peşinat (₺)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={50}
+                      value={deposit}
+                      onChange={(e) => setDeposit(e.target.value)}
+                      placeholder="0 (peşinat alınmadı)"
+                      className={`${FIELD} tabular-nums`}
+                    />
+                    <span className={`mt-1 block ${HINT}`}>
+                      Satış günü alındıysa yazın; taksitler <b className="font-semibold text-[#3E343A]">kalan {formatTL(Math.round(financedNum))}</b> üzerinden bölünür ve peşinat satış tarihiyle tahsilat olarak işlenir.
+                    </span>
+                  </label>
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className={LABEL}>Taksit sayısı *</span>
@@ -934,6 +968,9 @@ export default function HistoricalSaleDialog({
                 label="Ödeme"
                 value={payKind === 'cash' ? `Peşin · ${methodLabel}` : `${instCount} taksit · ${methodLabel}`}
               />
+              {payKind === 'installment' && depositNum > 0 && (
+                <SummaryRow label="Peşinat" value={formatTL(Math.round(depositNum))} tone="text-[#2c7d63]" />
+              )}
               {payKind === 'installment' && plan.length > 0 && (
                 <>
                   <SummaryRow label="Ödenen ay" value={`${paidCount}/${plan.length}`} tone={paidCount === plan.length ? 'text-[#2c7d63]' : undefined} />

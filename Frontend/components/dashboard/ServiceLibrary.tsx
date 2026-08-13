@@ -162,6 +162,8 @@ export default function ServiceLibrary({
       sessionsTotal: values.sessionsTotal,
       sessionsUsed: values.sessionsUsed,
       installmentCount: values.installmentCount,
+      // Peşinat: taksit planı "toplam − peşinat"ı böler; satış tarihiyle tahsilat yazılır.
+      depositAmount: values.depositAmount,
       firstDueDate: values.firstDueDate,
       // Ödeme geçmişi (peşin / kaçıncı aya kadar ödendi) — geçmiş cariye de tarihleriyle düşsün.
       paidInstallmentCount: values.paidInstallmentCount,

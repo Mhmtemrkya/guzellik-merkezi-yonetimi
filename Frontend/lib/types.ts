@@ -1238,6 +1238,10 @@ export interface ApiAccountReport {
   sessionsRemaining?: number
   totalReceivable?: number
   totalCollected?: number
+  /** Σ kalan borç — SATIŞ bazlı (taksitsiz peşin satış dahil). */
+  openReceivable?: number
+  /** Σ tahsilat — SATIŞ bazlı (peşinat + taksit + genel tahsilat − iade). */
+  totalPaid?: number
   overdueAmount?: number
   collectedThisMonth?: number
   monthlyInstallments?: ApiAccountMonthlyInstallment[]
@@ -1336,8 +1340,14 @@ export interface AccountReport {
   sessionsTotal: number
   sessionsUsed: number
   sessionsRemaining: number
+  /** TAKSİT planındaki kalan — peşin satış ve peşinat BURAYA GİRMEZ (Paket Raporu KPI'ı). */
   totalReceivable: number
+  /** TAKSİT planına dağıtılan tahsilat + peşinat (Paket Raporu KPI'ı). */
   totalCollected: number
+  /** SATIŞ bazlı kalan borç — Ön Muhasebe'deki "Toplam açık alacak" ile aynı taban. */
+  openReceivable: number
+  /** SATIŞ bazlı toplam tahsilat — peşin satışlar dahil. */
+  totalPaid: number
   overdueAmount: number
   collectedThisMonth: number
   monthlyInstallments: AccountMonthlyInstallment[]

@@ -417,6 +417,8 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         if (string.IsNullOrWhiteSpace(request.Name)) return Result<CustomerAccountDto>.Failure(Error.Validation("Paket / hizmet adı zorunludur."));
         if (request.TotalAmount < 0) return Result<CustomerAccountDto>.Failure(Error.Validation("Tutar negatif olamaz."));
         if (request.PaidAmount < 0) return Result<CustomerAccountDto>.Failure(Error.Validation("Tahsil edilen tutar negatif olamaz."));
+        if (request.DepositAmount < 0) return Result<CustomerAccountDto>.Failure(Error.Validation("Peşinat negatif olamaz."));
+        if (request.DepositAmount > request.TotalAmount) return Result<CustomerAccountDto>.Failure(Error.Validation("Peşinat, toplam tutardan büyük olamaz."));
         if (request.SessionsUsed > request.SessionsTotal)
             return Result<CustomerAccountDto>.Failure(Error.Validation("Kullanılan seans, toplam seanstan fazla olamaz."));
 
@@ -512,13 +514,19 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         CustomerAccount account;
         if (request.PaidInstallmentCount is { } paidInstallments)
         {
-            // YENİ AKIŞ — ödeme geçmişi de kaydedilir: peşinat yok, plan TOPLAM tutar üzerinden
-            // kurulur ve ödenmiş her taksit KENDİ VADE TARİHİYLE tahsilat olarak yazılır. Böylece
-            // geçmiş satış, geçmiş cari/tahsilat dökümünde (ay ay) doğru tarihlerle görünür.
-            account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, 0m);
+            // YENİ AKIŞ — ödeme geçmişi de kaydedilir: plan "toplam − peşinat" üzerinden kurulur
+            // (canlı satışla AYNI kural) ve ödenmiş her taksit KENDİ VADE TARİHİYLE tahsilat olarak
+            // yazılır. Böylece geçmiş satış, geçmiş cari/tahsilat dökümünde (ay ay) doğru tarihlerle
+            // görünür. Peşinat verilmezse 0'dır ve akış eskisiyle birebir aynı kalır.
+            var deposit = Math.Clamp(request.DepositAmount, 0m, request.TotalAmount);
+            account = new CustomerAccount(tenantId, branchId, customer.Id, package?.Id, request.Name.Trim(), request.TotalAmount, deposit);
             account.SetNotes(request.Notes);
             account.SetSaleInfo(soldAtUtc, request.SoldByStaffMemberId, isHistorical: true);
             account.SetAppliedBy(request.AppliedByStaffMemberId);
+
+            // Peşinat GERÇEK tahsilat satırıdır (satış tarihiyle) — yalnız kolonda kalırsa kasa/gelir
+            // defteri parayı hiç görmez. Taksitleri KAPATMAZ: plan zaten peşinat düşülerek kuruldu.
+            if (deposit > 0m) account.RegisterDepositPayment(method, soldAtUtc);
 
             if (request.InstallmentCount > 0)
             {
@@ -534,10 +542,11 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                     account.RegisterPayment(inst.Amount, method, "Geçmiş satış", occurred);
                 }
             }
-            else if (paid > 0)
+            else if (paid > deposit)
             {
-                // Peşin: tek tahsilat, satış gününde.
-                account.RegisterPayment(paid, method, "Geçmiş satış (peşin)", soldAtUtc);
+                // Peşin: kalan tahsilat tek kalem, satış gününde. Peşinat ayrı satır olarak
+                // yazıldığı için yalnız ÜSTÜ eklenir — yoksa aynı para iki kez gelir yazılırdı.
+                account.RegisterPayment(paid - deposit, method, "Geçmiş satış (peşin)", soldAtUtc);
             }
         }
         else
@@ -2073,6 +2082,12 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
         decimal totalReceivable = 0m;
         decimal totalCollected = 0m;
         decimal overdueAmount = 0m;
+        // SATIŞ BAZLI toplamlar — yukarıdakilerin TAKSİT bazlı olanlarıyla karıştırılmamalı.
+        // Taksitsiz (peşin) satış hiç taksit satırı üretmez ve peşinat da plana girmez; bu
+        // yüzden "satışlarımın yüzde kaçı hâlâ borçta" sorusu ancak burada doğru cevaplanır.
+        // Kural cari kartının kendi kuralıdır (RemainingAmount/PaidAmount) → Ön Muhasebe ile aynı.
+        decimal openReceivable = 0m;
+        decimal totalPaid = 0m;
         /*
          * Ay → (vade tutarı, o vadeye dağıtılan tahsilat, peşinat, o ay KASAYA GİREN).
          *
@@ -2104,6 +2119,10 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             bucket.TotalAmount += acc.TotalAmount;
             if (!string.IsNullOrWhiteSpace(acc.Name) && !bucket.PackageNames.Contains(acc.Name)) bucket.PackageNames.Add(acc.Name);
 
+            // Satış bazlı toplamlar: carinin KENDİ kuralı (taksit planından bağımsız).
+            openReceivable += acc.RemainingAmount;
+            totalPaid += Math.Max(0m, acc.PaidAmount);
+
             // "Kim sattı" — müşteri kırılımında da satışı yapan personel görünsün.
             var sellerKey = sellers.KeyFor(acc.SoldByStaffMemberId, acc.CreatedBy);
             if (!bucket.Sellers.TryGetValue(sellerKey, out var sellerAcc)) bucket.Sellers[sellerKey] = sellerAcc = new SellerAccumulator();
@@ -2113,6 +2132,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
 
             // Ödenen/kalan, ToDto ile aynı mantık: tahsilatlar vade sırasına dağıtılır.
             var allocation = acc.AllocatePayments();
+            var allocatedHere = 0m;   // bu cariden taksitlere dağıtılan (peşinat tavanı için)
             foreach (var inst in acc.Installments)
             {
                 if (inst.Status == InstallmentStatus.Cancelled) continue;
@@ -2120,6 +2140,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 var remaining = Math.Max(0m, inst.Amount - paid);
                 totalReceivable += remaining;
                 totalCollected += paid;
+                allocatedHere += paid;
                 if (remaining > 0m && inst.DueDate < today) overdueAmount += remaining;
 
                 var key = (inst.DueDate.Year, inst.DueDate.Month);
@@ -2162,19 +2183,37 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             // TAHSİL EDİLEN bir kalemdir; yalnız Collected'a yazmak o ayı "borcu olmadan para
             // gelmiş" gibi gösterirdi. Ay, tahsilatın GERÇEK tarihinden alınır (geçmişe dönük
             // satışta satış tarihi ile ödeme tarihi farklı olabilir).
-            var depositPayment = acc.Payments.FirstOrDefault(p => p.Id == acc.Id);
+            // PEŞİNAT SATIRINI TANIMA: yalnız `p.Id == acc.Id` YETMEZ. Deterministik anahtar
+            // (mükerrer koruması) sonradan geldi; ondan önce çalışmış taşıma işi peşinat
+            // satırını RASTGELE Id ile yazdı. O carilerde peşinat "tahsil edilmiş" toplamına
+            // hiç girmiyordu (dağıtım havuzundan düşülüyor ama geri eklenmiyordu) — kart
+            // peşinatı kadar eksik tahsilat, dolayısıyla şişmiş borç oranı gösteriyordu.
+            // Kural, taşıma işinin kendi kuralıyla AYNI olmalı (bkz. BackfillDepositPaymentsAsync):
+            // Id eşitliği YA DA "Peşinat" referansı. Referans şifrelidir; bellekte karşılaştırılır.
+            var depositPayment = acc.Payments.FirstOrDefault(p => p.Id == acc.Id)
+                ?? acc.Payments.FirstOrDefault(p => string.Equals(p.Reference, CustomerAccount.DepositPaymentReference, StringComparison.OrdinalIgnoreCase));
             if (depositPayment is not null && depositPayment.Amount > 0m)
             {
-                var dKey = (depositPayment.OccurredAtUtc.Year, depositPayment.OccurredAtUtc.Month);
-                var dAgg = monthBuckets.TryGetValue(dKey, out var dCur) ? dCur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
-                monthBuckets[dKey] = (
-                    dAgg.Due + depositPayment.Amount,
-                    dAgg.Collected + depositPayment.Amount,
-                    dAgg.Deposit + depositPayment.Amount,
-                    dAgg.Cash);
+                // TAVAN: "tahsil edildi" hiçbir zaman gerçekten alınan paradan büyük olamaz.
+                // Dağıtım havuzu PLAN kolonunu (DepositAmount) düşer, buradaki toplama ise
+                // SATIRIN tutarını ekler; satış sonradan düzenlenip peşinat kolonu küçültülürse
+                // ikisi ayrışır ve fark kadar olmayan para "tahsil edilmiş" görünürdü.
+                var depositCredit = Math.Min(
+                    depositPayment.Amount,
+                    Math.Max(0m, Math.Max(0m, acc.PaidAmount) - allocatedHere));
+                if (depositCredit > 0m)
+                {
+                    var dKey = (depositPayment.OccurredAtUtc.Year, depositPayment.OccurredAtUtc.Month);
+                    var dAgg = monthBuckets.TryGetValue(dKey, out var dCur) ? dCur : (Due: 0m, Collected: 0m, Deposit: 0m, Cash: 0m);
+                    monthBuckets[dKey] = (
+                        dAgg.Due + depositCredit,
+                        dAgg.Collected + depositCredit,
+                        dAgg.Deposit + depositCredit,
+                        dAgg.Cash);
 
-                totalCollected += depositPayment.Amount;
-                bucket.PaidAmount += depositPayment.Amount;
+                    totalCollected += depositCredit;
+                    bucket.PaidAmount += depositCredit;
+                }
             }
 
             // TAHSİLAT EKSENİ: her ödeme, GERÇEKLEŞTİĞİ aya yazılır (hangi taksiti kapattığına
@@ -2438,7 +2477,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             collectedThisMonth,
             monthly,
             categories,
-            customerBreakdown);
+            customerBreakdown,
+            Math.Round(openReceivable, 2),
+            Math.Round(totalPaid, 2));
 
         return Result<AccountReportDto>.Success(report);
     }

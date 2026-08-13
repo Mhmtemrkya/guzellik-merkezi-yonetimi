@@ -172,4 +172,220 @@ public sealed class DepositInstallmentScenarioTests
         Assert.All(account.Installments, i => Assert.Equal(6000m, i.Amount));
         Assert.Equal(30000m, account.Installments.Sum(i => i.Amount));
     }
+
+    /// <summary>
+    /// KUSUR SINIFI: PEŞİN SATIŞ "BEKLEYEN TAHSİLAT" ORANININ TABANINA GİRMİYORDU.
+    ///
+    /// <para>
+    /// <see cref="AccountReportDto.TotalReceivable"/> ve <see cref="AccountReportDto.TotalCollected"/>
+    /// TAKSİT PLANINI ölçer. Taksitsiz (peşin) satış hiç taksit satırı üretmediği için parası
+    /// dağıtıma girmez: pano kartı oranı yalnız taksitli satışlar üzerinden kuruyor, kurumun
+    /// peşin cirosu tabandan düşüyordu. Sonuç: gerçekte borcun payı küçükken kart büyük yüzde
+    /// gösteriyordu (canlı veride %19'a karşı gerçek %4,7).
+    /// </para>
+    /// <para>
+    /// <see cref="AccountReportDto.OpenReceivable"/> / <see cref="AccountReportDto.TotalPaid"/>
+    /// carinin kendi kuralından gelir ve Ön Muhasebe'deki "Toplam açık alacak" ile aynı tabandır.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Rapor_PesinSatisiTahsilatTabaninaKatar()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+
+        // 1) Taksitli satış: 30.000 · 10.000 peşinat · 5 × 4.000 → 20.000 borç.
+        await CreateSaleAsync(options, seed);
+
+        // 2) PEŞİN satış: 10.000, taksit yok, tamamı ayrı bir tahsilat satırıyla alındı.
+        await using (var db = NewDb(options))
+        {
+            var service = NewService(db);
+            var pesin = await service.CreateAsync(seed.TenantId, new CreateCustomerAccountRequest(
+                seed.BranchId, seed.CustomerId, null, "Cilt Bakımı (peşin)",
+                TotalAmount: 10000m, DepositAmount: 0m, InstallmentCount: 0,
+                FirstDueDate: DateOnly.FromDateTime(DateTime.UtcNow), Notes: null));
+            Assert.True(pesin.IsSuccess, pesin.IsFailure ? pesin.Error.Message : null);
+
+            var paid = await service.RegisterPaymentAsync(seed.TenantId, pesin.Value!.Id,
+                new RegisterAccountPaymentRequest(10000m, "cash", null, DateTime.UtcNow));
+            Assert.True(paid.IsSuccess, paid.IsFailure ? paid.Error.Message : null);
+        }
+
+        await using var verify = NewDb(options);
+        var report = (await NewService(verify).GetReportAsync(seed.TenantId, months: 12)).Value!;
+
+        // TAKSİT ekseni (Paket Raporu KPI'ları) değişmedi: yalnız planı ölçer.
+        Assert.Equal(20000m, report.TotalReceivable);
+        Assert.Equal(10000m, report.TotalCollected);   // sadece taksitli satışın peşinatı
+
+        // SATIŞ ekseni (pano kartı): peşin satışın 10.000'i de tahsilata girer.
+        Assert.Equal(20000m, report.OpenReceivable);
+        Assert.Equal(20000m, report.TotalPaid);
+
+        // Kartın oranı: borç / (borç + tahsilat). Peşin satış tabana girmeseydi %67 çıkardı.
+        var rate = report.OpenReceivable / (report.OpenReceivable + report.TotalPaid) * 100m;
+        Assert.Equal(50m, Math.Round(rate));
+    }
+
+    /// <summary>
+    /// GEÇMİŞ SATIŞTA PEŞİNAT: plan "toplam − peşinat"ı böler ve peşinat SATIŞ TARİHİYLE
+    /// gerçek bir tahsilat satırı olur.
+    ///
+    /// <para>
+    /// Alan eklenmeden önce geçmiş satışta peşinat girilemiyordu: taksitler toplamın tamamını
+    /// bölüyor, satış günü alınan kapora evrakta hiç görünmüyordu. Kural canlı satışla AYNI
+    /// olmalı, yoksa aynı satış "geçmişe girildi" diye farklı bir taksit planı üretirdi.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GecmisSatis_Pesinati_PlandanDuser()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var soldAt = DateTime.UtcNow.AddYears(-1);
+
+        Guid accountId;
+        await using (var db = NewDb(options))
+        {
+            var created = await NewService(db).CreateHistoricalAsync(seed.TenantId, new CreateHistoricalSaleRequest(
+                CustomerId: seed.CustomerId,
+                Name: "Geçmiş Lazer Paketi",
+                SoldAtUtc: soldAt,
+                TotalAmount: 30000m,
+                PaidAmount: 0m,
+                BranchId: seed.BranchId,
+                InstallmentCount: 5,
+                FirstDueDate: DateOnly.FromDateTime(soldAt.AddMonths(1)),
+                PaidInstallmentCount: 2,     // ilk iki taksit ödenmiş
+                PaymentMethod: "cash",
+                DepositAmount: 10000m));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            accountId = created.Value!.Id;
+        }
+
+        await using var verify = NewDb(options);
+        var account = await verify.CustomerAccounts
+            .Include(a => a.Installments).Include(a => a.Payments)
+            .SingleAsync(a => a.Id == accountId);
+
+        // Plan KALANI böler: (30.000 − 10.000) / 5 = 4.000.
+        Assert.Equal(10000m, account.DepositAmount);
+        Assert.Equal(5, account.Installments.Count);
+        Assert.All(account.Installments, i => Assert.Equal(4000m, i.Amount));
+
+        // Peşinat satış tarihiyle tahsilata döner; ödenmiş iki taksit kendi vadesiyle yazılır.
+        var deposit = account.Payments.Single(p => p.Id == account.Id);
+        Assert.Equal(10000m, deposit.Amount);
+        Assert.Equal(soldAt.Date, deposit.OccurredAtUtc.Date);
+        Assert.Equal(18000m, account.PaidAmount);            // 10.000 peşinat + 2 × 4.000
+        Assert.Equal(12000m, account.RemainingAmount);
+
+        // Peşinat taksitleri ÇİFT kapatmaz: dağıtımda yalnız ödenen iki taksit kapanmış olmalı.
+        var allocation = account.AllocatePayments();
+        var closed = account.Installments.Count(i => allocation[i.Id] >= i.Amount);
+        Assert.Equal(2, closed);
+    }
+
+    /// <summary>
+    /// PEŞİNATLI GEÇMİŞ SATIŞ İPTAL → GERİ ALMA turunu SAĞLAM atlatır.
+    ///
+    /// <para>
+    /// Bu değişikliğe kadar yeni akışlı geçmiş satışın <c>DepositAmount</c>'ı HER ZAMAN 0'dı;
+    /// artık dolu olabiliyor. Snapshot şema paritesi bu projede iki kez ısırdı: yedekte taşınmayan
+    /// bir kolon geri almada sessizce sıfırlanır ve plan bu kez TOPLAMI böler (peşinat hatasının
+    /// aynısı, bu sefer arşivden dönerken). Kapı burada.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GecmisSatis_PesinatiIptalGeriAlmadaKorunur()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var soldAt = DateTime.UtcNow.AddYears(-1);
+
+        Guid accountId;
+        await using (var db = NewDb(options))
+        {
+            var created = await NewService(db).CreateHistoricalAsync(seed.TenantId, new CreateHistoricalSaleRequest(
+                CustomerId: seed.CustomerId,
+                Name: "Geçmiş Lazer Paketi",
+                SoldAtUtc: soldAt,
+                TotalAmount: 30000m,
+                PaidAmount: 0m,
+                BranchId: seed.BranchId,
+                InstallmentCount: 5,
+                FirstDueDate: DateOnly.FromDateTime(soldAt.AddMonths(1)),
+                PaidInstallmentCount: 0,
+                PaymentMethod: "cash",
+                DepositAmount: 10000m));
+            Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
+            accountId = created.Value!.Id;
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var cancelled = await NewService(db).CancelSaleAsync(seed.TenantId, accountId, new CancelSaleRequest("Yanlış giriş"));
+            Assert.True(cancelled.IsSuccess, cancelled.IsFailure ? cancelled.Error.Message : null);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var restored = await NewService(db).RestoreSaleAsync(seed.TenantId, accountId);
+            Assert.True(restored.IsSuccess, restored.IsFailure ? restored.Error.Message : null);
+        }
+
+        await using var verify = NewDb(options);
+        var account = await verify.CustomerAccounts
+            .Include(a => a.Installments).Include(a => a.Payments)
+            .SingleAsync(a => a.Id == accountId);
+
+        // Peşinat ve plan tabanı aynen dönmeli — plan 30.000'i DEĞİL 20.000'i bölmeye devam eder.
+        Assert.Equal(10000m, account.DepositAmount);
+        Assert.Equal(20000m, account.Installments.Sum(i => i.Amount));
+        Assert.All(account.Installments, i => Assert.Equal(4000m, i.Amount));
+        Assert.Equal(10000m, account.PaidAmount);       // peşinat tahsilatı da geri geldi
+        Assert.Equal(20000m, account.RemainingAmount);
+    }
+
+    /// <summary>
+    /// PEŞİNAT SATIRI ESKİ (RASTGELE) Id İLE YAZILMIŞ OLSA DA TAHSİLATA GİRER.
+    ///
+    /// <para>
+    /// Deterministik anahtar (peşinat tahsilatının Id'si = carinin Id'si) mükerrer koruması için
+    /// SONRADAN geldi; ondan önce çalışmış taşıma işi satırı rastgele Id ile yazdı. Rapor yalnız
+    /// Id eşitliğine baktığı sürece o carilerde peşinat dağıtım havuzundan düşülüyor ama
+    /// "tahsil edildi" toplamına geri eklenmiyordu — kurum peşinatı kadar eksik tahsilat görüyordu.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Rapor_EskiIdliPesinatiDaTahsilatSayar()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options);
+        var accountId = await CreateSaleAsync(options, seed);
+
+        // Taşıma öncesi hâli taklit et: peşinat satırının Id'sini rastgeleye çevir.
+        await using (var db = NewDb(options))
+        {
+            var account = await db.CustomerAccounts.Include(a => a.Payments).SingleAsync(a => a.Id == accountId);
+            var deposit = Assert.Single(account.Payments);
+            Assert.Equal(accountId, deposit.Id);   // bugünkü kural
+            var occurred = deposit.OccurredAtUtc;
+            db.AccountPayments.Remove(deposit);
+            await db.SaveChangesAsync();
+
+            // Taşımanın eski hâli: rastgele Id + "Peşinat" referansı (tek işaret buydu).
+            db.AccountPayments.Add(new AccountPayment(
+                accountId, 10000m, "cash", CustomerAccount.DepositPaymentReference, occurred));
+            await db.SaveChangesAsync();
+        }
+
+        await using var verify = NewDb(options);
+        var report = (await NewService(verify).GetReportAsync(seed.TenantId, months: 12)).Value!;
+
+        Assert.Equal(10000m, report.TotalCollected);   // peşinat kayıp değil
+        Assert.Equal(10000m, report.TotalPaid);
+        Assert.Equal(20000m, report.OpenReceivable);
+    }
 }

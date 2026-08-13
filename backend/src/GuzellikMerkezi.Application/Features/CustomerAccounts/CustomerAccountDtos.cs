@@ -125,6 +125,16 @@ public sealed record CreateHistoricalSaleRequest(
     /// </summary>
     IReadOnlyList<HistoricalSessionRequest>? Sessions = null,
     /// <summary>
+    /// Satış anında PEŞİN alınan tutar. Taksit planı "toplam − peşinat" üzerinden kurulur
+    /// (canlı satışla aynı kural) ve peşinat, satış tarihiyle gerçek bir tahsilat satırına dönüşür.
+    /// <para>
+    /// <see cref="PaidAmount"/> ile karıştırılmamalı: o, geçmişte tahsil edilmiş TOPLAM tutardır
+    /// (peşin satışta tek kalem). Peşinat, taksitli satışın başındaki kapora/ön ödemedir; alan
+    /// olmadan taksitler toplamın tamamını bölüyor ve evrak gerçeğe uymuyordu.
+    /// </para>
+    /// </summary>
+    decimal DepositAmount = 0m,
+    /// <summary>
     /// Geçmiş seansı, satışın şubesinde ÇALIŞMAYAN bir personele yazmaya açık onay.
     ///
     /// <para>Varsayılan <c>false</c>: personelin şubesi satışın şubesinden farklıysa istek
@@ -390,7 +400,14 @@ public sealed record AccountReportDto(
     decimal CollectedThisMonth, // Bu takvim ayında alınan tahsilat
     IReadOnlyList<AccountMonthlyInstallmentDto> MonthlyInstallments,
     IReadOnlyList<PackageCategoryBreakdownDto> Categories,   // Kategori → hizmet kırılımı
-    IReadOnlyList<PackageCustomerBreakdownDto> Customers);   // Müşteri bazlı taksit/ödeme/seans kırılımı
+    IReadOnlyList<PackageCustomerBreakdownDto> Customers,    // Müşteri bazlı taksit/ödeme/seans kırılımı
+    // --- SATIŞ BAZLI (taksit değil) toplamlar --------------------------------------------
+    // Yukarıdaki TotalReceivable/TotalCollected TAKSİT PLANINI ölçer: taksitsiz (peşin) satış
+    // hiç girmez, peşinat da plana dahil değildir. "Satışlarımın ne kadarı hâlâ tahsil
+    // edilmedi" sorusu bu ikisiyle cevaplanamaz — pano kartı buna bakar, Ön Muhasebe'deki
+    // "Toplam açık alacak" / "Toplam tahsilat" ile aynı tabandan hesaplanır.
+    decimal OpenReceivable,  // Σ kalan borç  (satış tutarı − tahsilat, cari bazında)
+    decimal TotalPaid);      // Σ tahsilat    (peşinat + taksit + genel tahsilat − iade)
 
 /// <summary>
 /// Pano "Hizmet Raporu" kartları. Paket raporundan TAMAMEN AYRIDIR: buradaki kategori HİZMETİN

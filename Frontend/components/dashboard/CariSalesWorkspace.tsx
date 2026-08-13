@@ -143,6 +143,8 @@ export default function CariSalesWorkspace({
       sessionsTotal: values.sessionsTotal,
       sessionsUsed: values.sessionsUsed,
       installmentCount: values.installmentCount,
+      // Peşinat: taksit planı "toplam − peşinat"ı böler; satış tarihiyle tahsilat yazılır.
+      depositAmount: values.depositAmount,
       firstDueDate: values.firstDueDate,
       // Ödenen aylar KENDİ VADE TARİHLERİYLE tahsilat yazılır → geçmiş satış geçmiş cariye düşer.
       paidInstallmentCount: values.paidInstallmentCount,

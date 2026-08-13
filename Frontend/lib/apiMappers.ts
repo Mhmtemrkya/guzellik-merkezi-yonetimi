@@ -510,6 +510,8 @@ export function normalizeAccountReport(report: ApiAccountReport | null | undefin
     sessionsRemaining: Number(report?.sessionsRemaining ?? 0),
     totalReceivable: Number(report?.totalReceivable ?? 0),
     totalCollected: Number(report?.totalCollected ?? 0),
+    openReceivable: Number(report?.openReceivable ?? 0),
+    totalPaid: Number(report?.totalPaid ?? 0),
     overdueAmount: Number(report?.overdueAmount ?? 0),
     collectedThisMonth: Number(report?.collectedThisMonth ?? 0),
     monthlyInstallments: months,

@@ -1384,6 +1384,8 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   final _sessionsTotal = TextEditingController();
   final _sessionsUsed = TextEditingController();
   final _installments = TextEditingController(text: '3');
+  /// Taksitli geçmiş satışta alınan peşinat (kapora). Boş = 0.
+  final _deposit = TextEditingController();
   final _notes = TextEditingController();
   bool _loading = true;
   bool _saving = false;
@@ -1433,7 +1435,7 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
 
   @override
   void dispose() {
-    for (final c in [_name, _total, _paid, _sessionsTotal, _sessionsUsed, _installments, _notes, _sessionInterval]) {
+    for (final c in [_name, _total, _paid, _deposit, _sessionsTotal, _sessionsUsed, _installments, _notes, _sessionInterval]) {
       c.dispose();
     }
     super.dispose();
@@ -1465,6 +1467,14 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
       : (double.tryParse(_paid.text.replaceAll(',', '.')) ?? 0);
 
   int get _instCount => (int.tryParse(_installments.text) ?? 0).clamp(0, 36);
+
+  /// Peşinat yalnız TAKSİTLİ satışta anlamlıdır (peşinde tahsilatın tamamı tek kalemdir).
+  double get _depositNum => _payKind != 'installment'
+      ? 0
+      : (double.tryParse(_deposit.text.replaceAll(',', '.')) ?? 0).clamp(0, _totalNum);
+
+  /// Taksitlere BÖLÜNEN tutar = toplam − peşinat (backend `RebuildInstallments` ile aynı).
+  double get _financedNum => (_totalNum - _depositNum).clamp(0, double.infinity);
 
   int get _sessionsTotalNum => (int.tryParse(_sessionsTotal.text) ?? 0).clamp(0, 999);
   int get _sessionsUsedNum =>
@@ -1534,11 +1544,11 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
   /// Taksit planı: backend `RebuildInstallments` ile aynı bölme (artan kuruş son takside).
   List<({int no, DateTime due, double amount})> get _plan {
     final first = _effectiveFirstDue;
-    if (_payKind != 'installment' || _instCount <= 0 || _totalNum <= 0 || first == null) {
+    if (_payKind != 'installment' || _instCount <= 0 || _financedNum <= 0 || first == null) {
       return const [];
     }
-    final per = (_totalNum / _instCount * 100).round() / 100;
-    final drift = ((_totalNum - per * _instCount) * 100).round() / 100;
+    final per = (_financedNum / _instCount * 100).round() / 100;
+    final drift = ((_financedNum - per * _instCount) * 100).round() / 100;
     return [
       for (var i = 0; i < _instCount; i++)
         (
@@ -1551,7 +1561,7 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
 
   double get _paidNum => _payKind == 'cash'
       ? _cashPaid.clamp(0, _totalNum)
-      : _plan.take(_paidCount).fold<double>(0, (s, x) => s + x.amount);
+      : _depositNum + _plan.take(_paidCount).fold<double>(0, (s, x) => s + x.amount);
 
   double get _remaining => (_totalNum - _paidNum.clamp(0, _totalNum)).clamp(0, double.infinity);
 
@@ -1571,6 +1581,10 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
     }
     if (_payKind == 'installment' && _instCount <= 0) {
       setState(() => _error = 'Taksitli satışta taksit sayısı en az 1 olmalı.');
+      return;
+    }
+    if (_payKind == 'installment' && _depositNum > 0 && _financedNum <= 0) {
+      setState(() => _error = 'Peşinat tutarın tamamıysa taksit kalmaz — satışı peşin olarak girin.');
       return;
     }
     final st = int.tryParse(_sessionsTotal.text) ?? 0;
@@ -1622,6 +1636,8 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
         'sessionsTotal': st,
         'sessionsUsed': su,
         'installmentCount': _payKind == 'installment' ? _instCount : 0,
+        // Peşinat: taksit planı "toplam − peşinat"ı böler; satış tarihiyle tahsilat yazılır.
+        'depositAmount': _depositNum,
         'firstDueDate': _payKind == 'installment' && _firstDue != null
             ? DateFormat('yyyy-MM-dd').format(_firstDue!)
             : null,
@@ -2342,6 +2358,23 @@ class _HistoricalSaleSheetState extends State<HistoricalSaleSheet> {
             const Text('Boş bırakırsanız tamamı ödendi sayılır; tahsilat satış tarihine yazılır.',
                 style: TextStyle(fontSize: 11, color: AppColors.muted)),
           ] else ...[
+            // PEŞİNAT: satış anında alınan kapora. Taksitler "toplam − peşinat"ı böler
+            // (canlı satışla aynı kural); alan yokken peşin alınan para evrakta görünmüyordu.
+            TextField(
+              controller: _deposit,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Peşinat (₺)',
+                hintText: '0 (peşinat alınmadı)',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Satış günü alındıysa yazın; taksitler kalan ${_money(_financedNum)} üzerinden bölünür.',
+              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(

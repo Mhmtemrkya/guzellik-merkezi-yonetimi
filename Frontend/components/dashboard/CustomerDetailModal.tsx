@@ -235,7 +235,9 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 
 function SectionCard({ title, icon: Icon, action, children }: { title: string; icon: typeof User; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-[16px] border border-[#EAD8DF] bg-white p-4 shadow-[0_14px_40px_-36px_rgba(142,63,91,0.5)]">
+    // min-w-0: kart bir ızgara/flex hücresinin çocuğu olduğunda hücrenin daralmasını engellememeli
+    // (varsayılan min-width:auto içerideki en geniş satırı taban genişlik yapar → dar ekranda taşma).
+    <div className="min-w-0 rounded-[16px] border border-[#EAD8DF] bg-white p-4 shadow-[0_14px_40px_-36px_rgba(142,63,91,0.5)]">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#A5556E]">
           <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{title}</span>
@@ -927,7 +929,11 @@ export default function CustomerDetailModal({
                    bırakmasın (satış özeti kartı devasa görünüyordu). */
                 <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-12">
                   {/* SOL: Müşteri bilgileri + hızlı işlemler */}
-                  <div className="space-y-4 xl:col-span-3">
+                  {/* min-w-0 ZORUNLU: ızgara hücresinin varsayılan `min-width:auto` değeri,
+                      içerideki en geniş satırın min-content'i kadar taban genişlik dayatır.
+                      Telefonda (360px) bu, sütunu 385px'e şişirip modalı 71px taşırıyordu —
+                      sağdaki kartlar kırpılıyordu. min-w-0 hücrenin daralmasına izin verir. */}
+                  <div className="min-w-0 space-y-4 xl:col-span-3">
                     <SectionCard title="Müşteri Bilgileri" icon={User} action={editSlot}>
                       <div className="divide-y divide-[#F1E7EB]">
                         <InfoRow label="Ad Soyad" value={customer.name} />
@@ -959,8 +965,8 @@ export default function CustomerDetailModal({
                           onClick={onCreateAppointment}
                           className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                         >
-                          <span className="flex items-center gap-2"><CalendarPlus className="h-4 w-4 text-[#A5556E]" /> Randevu Oluştur</span>
-                          <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
+                          <span className="flex min-w-0 items-center gap-2"><CalendarPlus className="h-4 w-4 shrink-0 text-[#A5556E]" /> <span className="truncate">Randevu Oluştur</span></span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-[#c9b3bd]" />
                         </button>
                         {saleSlot}
                         {/* Tahsilat: yalnızca açık borç varsa. Kalan borç butonda görünür ki
@@ -971,10 +977,10 @@ export default function CustomerDetailModal({
                             onClick={() => setCollectOpen(true)}
                             className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 text-[12.5px] font-semibold text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-100/70"
                           >
-                            <span className="flex items-center gap-2"><Wallet className="h-4 w-4 text-emerald-600" /> Tahsilat Al</span>
-                            <span className="flex items-center gap-1.5">
+                            <span className="flex min-w-0 items-center gap-2"><Wallet className="h-4 w-4 shrink-0 text-emerald-600" /> <span className="truncate">Tahsilat Al</span></span>
+                            <span className="flex shrink-0 items-center gap-1.5">
                               <span className="font-display text-[12px] tabular-nums text-emerald-700">{formatTL(Math.round(totalDebt))}</span>
-                              <ChevronRight className="h-4 w-4 text-emerald-300" />
+                              <ChevronRight className="h-4 w-4 shrink-0 text-emerald-300" />
                             </span>
                           </button>
                         )}
@@ -984,8 +990,8 @@ export default function CustomerDetailModal({
                             onClick={() => setSalesOpen(true)}
                             className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                           >
-                            <span className="flex items-center gap-2"><Package className="h-4 w-4 text-[#A5556E]" /> Satışları Görüntüle</span>
-                            <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
+                            <span className="flex min-w-0 items-center gap-2"><Package className="h-4 w-4 shrink-0 text-[#A5556E]" /> <span className="truncate">Satışları Görüntüle</span></span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-[#c9b3bd]" />
                           </button>
                         )}
                         <button
@@ -993,8 +999,8 @@ export default function CustomerDetailModal({
                           onClick={() => setTab('notes')}
                           className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
                         >
-                          <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-[#A5556E]" /> Not Ekle</span>
-                          <ChevronRight className="h-4 w-4 text-[#c9b3bd]" />
+                          <span className="flex min-w-0 items-center gap-2"><FileText className="h-4 w-4 shrink-0 text-[#A5556E]" /> <span className="truncate">Not Ekle</span></span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-[#c9b3bd]" />
                         </button>
                         <CustomerVipToggle variant="row" customerId={customer.id} tenantId={tenantId} isVip={Boolean(customer.isVip)} onChanged={onReload} />
                         <button
@@ -1002,15 +1008,15 @@ export default function CustomerDetailModal({
                           onClick={onDelete}
                           className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-rose-200 bg-rose-50/70 px-3 py-2.5 text-[12.5px] font-semibold text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100/70"
                         >
-                          <span className="flex items-center gap-2"><Trash2 className="h-4 w-4" /> {isStaff ? 'Silme onayına gönder' : 'Müşteriyi Sil'}</span>
-                          <ChevronRight className="h-4 w-4 text-rose-300" />
+                          <span className="flex min-w-0 items-center gap-2"><Trash2 className="h-4 w-4 shrink-0" /> <span className="truncate">{isStaff ? 'Silme onayına gönder' : 'Müşteriyi Sil'}</span></span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-rose-300" />
                         </button>
                       </div>
                     </SectionCard>
                   </div>
 
                   {/* ORTA: Grafikler */}
-                  <div className="space-y-4 xl:col-span-5">
+                  <div className="min-w-0 space-y-4 xl:col-span-5">
                     <SectionCard title="Harcamaların Zaman İçindeki Dağılımı" icon={TrendingUp}>
                       <MiniLineChart values={spendValues} labels={spendLabels} />
                       <div className={`mt-2 flex items-center justify-between border-t border-[#f4e7ec] pt-2 text-[11.5px] ${MUTED}`}>
@@ -1030,7 +1036,7 @@ export default function CustomerDetailModal({
                   </div>
 
                   {/* SAĞ: Satış özeti + son randevular (tablette yan yana, geniş ekranda alt alta) */}
-                  <div className="grid content-start gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
+                  <div className="grid min-w-0 content-start gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
                     {hasSalesPanel && <SalesSummaryCard summary={salesSummary} onOpen={() => setSalesOpen(true)} />}
 
                     <SectionCard
@@ -1224,16 +1230,18 @@ export default function CustomerDetailModal({
             </div>
 
             {/* FOOTER */}
-            <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[#EAD8DF] bg-white/80 px-4 py-3 sm:px-6">
-              <span className={`hidden items-center gap-1.5 text-[11.5px] sm:flex ${MUTED}`}>
-                <ReceiptText className="h-3.5 w-3.5 text-[#A5556E]" /> {customer.lastService && customer.lastService !== '—' ? `Son işlem: ${customer.lastService}` : 'Danışan kartı'}
+            {/* Telefonda üç düğme tek satıra sığmıyordu (sıkışıp yazılar sarıyordu): dar ekranda
+                düğmeler tam genişlikte alt alta, sm'den itibaren tek sıra. */}
+            <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#EAD8DF] bg-white/80 px-4 py-3 sm:px-6">
+              <span className={`hidden min-w-0 items-center gap-1.5 text-[11.5px] sm:flex ${MUTED}`}>
+                <ReceiptText className="h-3.5 w-3.5 shrink-0 text-[#A5556E]" /> <span className="truncate">{customer.lastService && customer.lastService !== '—' ? `Son işlem: ${customer.lastService}` : 'Danışan kartı'}</span>
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
                 {hasSalesPanel && (
                   <button
                     type="button"
                     onClick={() => setSalesOpen(true)}
-                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12.5px] font-semibold transition-colors hover:border-[#BE7690] hover:text-[#A5556E] ${SEMI}`}
+                    className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12.5px] font-semibold transition-colors hover:border-[#BE7690] hover:text-[#A5556E] ${SEMI}`}
                   >
                     <Package className="h-3.5 w-3.5 text-[#A5556E]" /> Satışlar
                     {salesSummary.count > 0 && <span className="rounded-full bg-[#F6DFE6] px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-[#a34a62]">{salesSummary.count}</span>}
@@ -1242,14 +1250,14 @@ export default function CustomerDetailModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className={`cursor-pointer rounded-[10px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-semibold transition-colors hover:bg-[#F7F6F6] ${SEMI}`}
+                  className={`shrink-0 cursor-pointer whitespace-nowrap rounded-[10px] border border-[#EAD8DF] bg-white px-4 py-2 text-[12.5px] font-semibold transition-colors hover:bg-[#F7F6F6] ${SEMI}`}
                 >
                   Kapat
                 </button>
                 <button
                   type="button"
                   onClick={onCreateAppointment}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#A5556E] px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
                 >
                   <CalendarPlus className="h-3.5 w-3.5" /> Randevu Oluştur
                 </button>
