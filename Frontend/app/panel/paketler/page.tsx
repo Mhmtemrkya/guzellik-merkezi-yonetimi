@@ -58,6 +58,9 @@ function PaketHizmetPageInner() {
       institutionName={selectedInstitution?.name}
       branchLabel={selectedBranch?.name}
       scopeLabel={scopeLabels[scope]}
+      // Kapsam yalnız başlık değil SÜZGEÇ: "Aktif/Pasif hizmetler" bağlantıları
+      // eskiden kırıntı yolunu değiştirip listeyi "Tümü" bırakıyordu.
+      scope={scope}
       canCustomServiceCat={canCustomServiceCat}
     />
   )

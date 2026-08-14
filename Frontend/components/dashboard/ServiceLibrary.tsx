@@ -1,9 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Clock3, FileUp, FolderCog, Layers3, PencilLine, Sparkles, Tag, Wallet, Wand2, X,
+} from 'lucide-react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
-import { PanelPage, PanelStat } from '@/components/dashboard/PanelKit'
+import { PanelEmpty, PanelPage } from '@/components/dashboard/PanelKit'
 import BulkSelectBar, { SelectBox, useBulkSelect } from '@/components/dashboard/BulkSelectBar'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogCategoryManager from '@/components/dashboard/CatalogCategoryManager'
@@ -12,114 +16,129 @@ import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import CatalogSalesPanel from '@/components/dashboard/CatalogSalesPanel'
-import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
+import ServiceDetailModal from '@/components/dashboard/ServiceDetailModal'
 import ServiceFormDialog, { type ConsentTemplateOption, type ServiceFormDialogValues } from '@/components/dashboard/ServiceFormDialog'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
-import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
-import type { IdempotentWriteOptions } from '@/lib/idempotency'
-import { apiItems, formatTL, normalizeAccount, normalizeAppointment, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
-import { motion } from 'framer-motion'
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock, Clock3, FileUp, Layers3, PauseCircle,
-  PencilLine, Search, Sparkles, Star, TrendingUp, Trophy, UploadCloud, UserCheck, Users, Wand2,
-} from 'lucide-react'
-import type { ApiAppointment, ApiConsentTemplate, ApiCustomServiceCategory, ApiCustomerAccount, ApiService, ApiServicePackage, ApiStaff, CatalogStatusKey, Service } from '@/lib/types'
+  CATALOG_STATUS_LABEL, CardMeta, CatalogCardShell, CatalogGrid, CatalogModal, CatalogOverview,
+  CatalogPager, CatalogSearch, CatalogToolbar, CatalogViewToggle, Chip, StatusPill, StatusSegments,
+  catalogFieldCls, catalogGhostBtn, catalogPrimaryBtn, type CatalogView,
+} from '@/components/dashboard/CatalogKit'
+import type { HistoricalSaleValues } from '@/components/dashboard/HistoricalSaleDialog'
+import { useApiQuery } from '@/hooks/useApiQuery'
+import { adminApi, fetchAllPaged } from '@/lib/apiClient'
+import type { IdempotentWriteOptions } from '@/lib/idempotency'
+import { apiItems, formatTL, normalizeCustomServiceCategory, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
+import type {
+  ApiConsentTemplate, ApiCustomServiceCategory, ApiService, ApiServicePackage, ApiStaff,
+  CatalogStatusKey, Service,
+} from '@/lib/types'
 
-type TabKey = 'all' | 'Active' | 'Passive' | 'Draft' | 'Archived'
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'all', label: 'Tümü' }, { key: 'Active', label: 'Aktif' }, { key: 'Passive', label: 'Pasif' },
-  { key: 'Draft', label: 'Taslak' }, { key: 'Archived', label: 'Arşiv' },
-]
-// Cancelled şu an yalnızca paket kataloğunda kullanılıyor; hizmetlerde sekme yok ama
-// rozet eşlemesi eksik kalmasın (aynı CatalogStatus enum'u paylaşılıyor).
-const STATUS_LABEL: Record<CatalogStatusKey, string> = { Active: 'Aktif', Passive: 'Pasif', Draft: 'Taslak', Archived: 'Arşiv', Cancelled: 'İptal' }
-const STATUS_TONE: Record<CatalogStatusKey, string> = {
-  Active: 'border-emerald-300/40 bg-emerald-50 text-emerald-700',
-  Passive: 'border-slate-300/40 bg-slate-50 text-slate-600',
-  Draft: 'border-amber-300/40 bg-amber-50 text-amber-700',
-  Archived: 'border-[#EAD8DF] bg-[#F7F6F6]/50 text-[#74616A]',
-  Cancelled: 'border-rose-200 bg-rose-50 text-rose-600',
+/* ==========================================================================
+ * HİZMET KATALOĞU
+ *
+ * Sayfa 2026 Ağustos'unda sıfırdan kuruldu. Eski hâlin iki sorunu vardı:
+ *
+ * 1. **Kalabalık.** Üç KPI kartı + beş durum sekmesi aynı sayıları söylüyordu;
+ *    tablonun yanında sabit bir detay paneli, altında kategori satışları,
+ *    kategori ayarları ve bir "hizmet özeti" bloğu vardı. Artık: tek genel
+ *    bakış kartı (sayaçlar doğrudan süzgeç), tek araç çubuğu, kart/liste
+ *    ızgarası — ağır olan her şey modale taşındı.
+ *
+ * 2. **Uydurma rakamlar.** "Kâr marjı" fiyatın en yüksek fiyata oranından,
+ *    "hazırlık süresi" süre/6'dan, "müşteri memnuniyeti" iptal oranından
+ *    üretiliyordu. "Toplam rezervasyon", "son 30 gün satış" ve "uygulayan
+ *    uzman" ise yalnızca ilk 500 randevunun sayımıydı — kayıt sayısı bunu
+ *    aşan kurumda yanlış. HEPSİ KALDIRILDI. Bu sayfa artık yalnızca kaydın
+ *    kendi alanlarını gösterir; gerçek satış verisi, sunucuda o kayda göre
+ *    süzülen satış panelinden (modal › Satışlar) gelir.
+ * ========================================================================== */
+
+type StatusFilter = 'all' | CatalogStatusKey
+type SortKey = 'name' | 'price-desc' | 'price-asc' | 'duration-desc' | 'duration-asc'
+
+const SORT_LABEL: Record<SortKey, string> = {
+  name: 'Ada göre (A→Z)',
+  'price-desc': 'Fiyat: yüksekten',
+  'price-asc': 'Fiyat: düşükten',
+  'duration-desc': 'Süre: uzundan',
+  'duration-asc': 'Süre: kısadan',
 }
-
-const AVATAR_COLORS = ['from-[#f3a3bf] to-[#ffd9e6]', 'from-[#9c70bb] to-[#e3cdf2]', 'from-[#5aa9e6] to-[#cfe7fb]', 'from-[#54c1a0] to-[#cdeee2]', 'from-[#e6a14f] to-[#fbe6cb]']
-function avatarColor(s: string): string { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return AVATAR_COLORS[h % AVATAR_COLORS.length] }
-function initials(name: string): string { const p = (name || '').trim().split(/\s+/).filter(Boolean); if (!p.length) return '?'; return (p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0]).toUpperCase() }
-
-function StaffAvatar({ name, photo, className = 'h-7 w-7' }: { name: string; photo?: string; className?: string }) {
-  return photo ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={photo} alt={name} className={`${className} shrink-0 rounded-full border border-[#BE7690]/50 object-cover`} />
-  ) : (
-    <span className={`grid ${className} shrink-0 place-items-center rounded-full bg-gradient-to-br ${avatarColor(name)} text-[9px] font-display text-[#3a1a2a]`}>{initials(name)}</span>
-  )
-}
-
-function bucketWeekly(times: number[], n = 12): number[] {
-  const now = Date.now(); const wk = 7 * 86_400_000; const start = now - n * wk; const b = Array(n).fill(0)
-  for (const t of times) { if (t < start || t > now) continue; b[Math.min(n - 1, Math.floor((t - start) / wk))]++ }
-  return b
-}
-function Sparkline({ values, stroke }: { values: number[]; stroke: string }) {
-  const max = Math.max(1, ...values); const n = values.length
-  const pts = values.map((v, i) => `${(i / Math.max(n - 1, 1)) * 100},${28 - (v / max) * 24}`).join(' ')
-  return (
-    <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-9 w-full overflow-visible">
-      <polyline points={pts} fill="none" stroke={stroke} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={100} cy={28 - ((values[n - 1] ?? 0) / max) * 24} r="1.8" fill={stroke} vectorEffect="non-scaling-stroke" />
-    </svg>
-  )
-}
-
-interface ServiceStats { last30: number; total: number; revenue: number; rating: number; staffIds: string[] }
 
 /** Hizmet + gruplama/geri yazmada kullanılan HAM kategori adı. */
 type LibService = Service & { rawCategory: string }
 
 /** Ekranda gösterilen kategori adı — kategorisi olmayan hizmet "Kategorisiz" grubundadır
  *  (normalizeService'in uydurduğu "Genel Hizmet" adı gösterilmez; ray/sayaçlarla tutarlı). */
-const catLabel = (s: LibService): string => s.rawCategory || 'Kategorisiz'
+const catLabel = (service: LibService): string => service.rawCategory || 'Kategorisiz'
 
 export default function ServiceLibrary({
-  tenantId, branchId, institutionName, branchLabel, scopeLabel, canCustomServiceCat,
+  tenantId, branchId, institutionName, branchLabel, scopeLabel, scope, canCustomServiceCat,
 }: {
-  tenantId?: string; branchId?: string | null; institutionName?: string; branchLabel?: string; scopeLabel?: string; canCustomServiceCat: boolean
+  tenantId?: string
+  branchId?: string | null
+  institutionName?: string
+  branchLabel?: string
+  scopeLabel?: string
+  /** Sidebar alt menüsünden gelen kapsam — "aktif/pasif hizmetler" gerçekten süzer. */
+  scope?: string
+  canCustomServiceCat: boolean
 }) {
-  const [tab, setTab] = useState<TabKey>('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
   const [q, setQ] = useState('')
-  const [importOpen, setImportOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('')
   // Alt kategori süzgeci kategoriye BAĞLIDIR: kategori seçilince alt şeridi açılır, kategori
   // değişince alt seçim düşer.
   const [subFilter, setSubFilter] = useState('')
   const [durFilter, setDurFilter] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Toplu seçim: satır tıklamasıyla seç, alt çubuktan topluca sil.
+  const [sort, setSort] = useState<SortKey>('name')
+  const [view, setView] = useState<CatalogView>('grid')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(24)
+
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const [categorySalesOpen, setCategorySalesOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
+
+  // Toplu seçim: karta tıklamak seçim modunda seçer, alt çubuktan topluca silinir.
   // Silme yetkisi olmayan personelde seçim hiç açılmaz.
   const { can } = usePermission()
   const canBulkDelete = can('Services.Delete')
+  const canManageService = can('Services.Manage')
   const bulk = useBulkSelect()
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-  const [actionError, setActionError] = useState('')
-  const [busy, setBusy] = useState(false)
 
-  const { data, loading, error, reload } = useApiQuery<{ services: ApiService[]; staff: ApiStaff[]; appts: ApiAppointment[]; accounts: ApiCustomerAccount[]; cats: ApiCustomServiceCategory[]; packages: ApiServicePackage[]; consents: ApiConsentTemplate[] }>(
+  const { data, loading, error, reload } = useApiQuery<{
+    services: ApiService[]
+    staff: ApiStaff[]
+    cats: ApiCustomServiceCategory[]
+    packages: ApiServicePackage[]
+    consents: ApiConsentTemplate[]
+  }>(
     async () => {
-      if (!tenantId) return { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [], consents: [] }
-      const [services, staff, appts, accounts, cats, packages, consents] = await Promise.all([
-        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 200 }),
+      if (!tenantId) return { services: [], staff: [], cats: [], packages: [], consents: [] }
+      const [services, staff, cats, packages, consents] = await Promise.all([
+        // TÜM hizmetler (tek sayfa tavanına takılıp katalog eksik görünmesin).
+        fetchAllPaged<ApiService>((p, size) => adminApi.services<ApiService>({ tenantId, page: p, pageSize: size })),
         adminApi.staff<ApiStaff>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
-        adminApi.appointments<ApiAppointment>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
-        adminApi.accounts<ApiCustomerAccount>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
         adminApi.serviceCategories<ApiCustomServiceCategory>(tenantId).catch(() => []),
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 200 }).catch(() => ({ items: [] })),
         adminApi.consentTemplates<ApiConsentTemplate>(tenantId).catch(() => []),
       ])
-      return { services: apiItems(services), staff: apiItems(staff), appts: apiItems(appts), accounts: apiItems(accounts), cats: Array.isArray(cats) ? cats : [], packages: apiItems(packages), consents: Array.isArray(consents) ? consents : [] }
+      return {
+        services,
+        staff: apiItems(staff),
+        cats: Array.isArray(cats) ? cats : [],
+        packages: apiItems(packages),
+        consents: Array.isArray(consents) ? consents : [],
+      }
     },
     [tenantId],
-    { initialData: { services: [], staff: [], appts: [], accounts: [], cats: [], packages: [], consents: [] } },
+    { initialData: { services: [], staff: [], cats: [], packages: [], consents: [] } },
   )
 
   // rawCategory = HAM kategori adı. normalizeService boş kategoriye "Genel Hizmet" uydurur;
@@ -130,19 +149,28 @@ export default function ServiceLibrary({
     [data],
   )
   const staff = useMemo(() => (data?.staff || []).map((s, i) => normalizeStaff(s, i)), [data])
-  const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff])
-  const appts = useMemo(() => (data?.appts || []).map((a, i) => normalizeAppointment(a, {}, i)), [data])
-  const accounts = useMemo(() => (data?.accounts || []).map((a, i) => normalizeAccount(a, i)), [data])
   const customCategories = useMemo(() => (data?.cats || []).map((c, i) => normalizeCustomServiceCategory(c, i)), [data])
   const packages = useMemo(() => (data?.packages || []).map((p, i) => normalizePackage(p, i)), [data])
 
-  // --- Satış paneli (hizmet kartı) ------------------------------------------------
-  // Satışlar panelin kendi içinde, seçili hizmete göre SUNUCUDA süzülerek çekilir
-  // (bkz. CatalogSalesPanel) — burada tüm cari listesi tutulmaz.
+  /* ---- sidebar kapsamı gerçekten süzer -------------------------------- */
+  // Eskiden "Aktif hizmetler" / "Pasif hizmetler" bağlantıları yalnızca kırıntı
+  // yolunu değiştiriyor, liste "Tümü" olarak açılıyordu.
+  useEffect(() => {
+    setStatus(scope === 'active' ? 'Active' : scope === 'inactive' ? 'Passive' : 'all')
+    setPage(1)
+  }, [scope])
+
+  /* ---- satış paneli ---------------------------------------------------- */
   const staffOptions = useMemo(() => staff.map((s) => ({ id: s.id, name: s.name })), [staff])
   // Kategori bilgisi de taşınır: geçmiş satış modalindeki aramalı seçici süzgeç pill'lerini bundan çıkarır.
-  const packageOptions = useMemo(() => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice, cat: p.category, sub: p.subCategory, meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans` })), [packages])
-  const serviceOptions = useMemo(() => services.map((s) => ({ id: s.id, name: s.name, price: s.price, cat: s.group, sub: s.subGroup, meta: formatTL(s.price) })), [services])
+  const packageOptions = useMemo(
+    () => packages.map((p) => ({ id: p.id, name: p.name, price: p.totalPrice, cat: p.category, sub: p.subCategory, meta: `${formatTL(p.totalPrice)} · ${p.totalSessions} seans` })),
+    [packages],
+  )
+  const serviceOptions = useMemo(
+    () => services.map((s) => ({ id: s.id, name: s.name, price: s.price, cat: s.rawCategory, sub: s.subGroup, meta: formatTL(s.price) })),
+    [services],
+  )
 
   const [salesBusy, setSalesBusy] = useState(false)
   const runSaleAction = async (fn: () => Promise<unknown>): Promise<void> => {
@@ -191,30 +219,19 @@ export default function ServiceLibrary({
       amount, method: 'cash', reference: null, occurredAtUtc: opts.occurredAtUtc,
     }, tenantId, opts.idempotencyKey))
 
-  const statsByService = useMemo(() => {
-    const m = new Map<string, ServiceStats>()
-    for (const s of services) m.set(s.id, { last30: 0, total: 0, revenue: 0, rating: 0, staffIds: [] })
-    const staffSet = new Map<string, Set<string>>()
-    let completed = 0; let cancelled = 0
-    const since30 = Date.now() - 30 * 86_400_000
-    for (const a of appts) {
-      if (!a.serviceDefinitionId) continue
-      const e = m.get(a.serviceDefinitionId); if (!e) continue
-      e.total++
-      if (new Date(a.date).getTime() >= since30) e.last30++
-      if (a.status === 'tamamlandi') { e.revenue += Number(a.price || 0); completed++ } else if (a.status === 'iptal') cancelled++
-      if (a.staffMemberId) { const set = staffSet.get(a.serviceDefinitionId) ?? new Set(); set.add(a.staffMemberId); staffSet.set(a.serviceDefinitionId, set) }
-    }
-    const globalRate = completed + cancelled > 0 ? completed / (completed + cancelled) : 1
-    for (const [id, e] of m) { e.staffIds = Array.from(staffSet.get(id) ?? []); e.rating = Math.round((4.2 + globalRate * 0.8) * 10) / 10 }
-    return m
-  }, [services, appts])
+  const salesPanelProps = {
+    tenantId,
+    staffOptions,
+    packageOptions,
+    serviceOptions,
+    busy: salesBusy,
+    onCreateHistorical: handleCreateHistoricalSale,
+    onCancelSale: handleCancelSale,
+    onRestoreSale: handleRestoreSale,
+    onCollectInstallment: handleCollectInstallment,
+  }
 
-  const maxPrice = useMemo(() => Math.max(1, ...services.map((s) => s.price)), [services])
-  const marginOf = (s: Service) => Math.min(60, Math.max(35, Math.round(35 + (s.price / maxPrice) * 25)))
-  const prepOf = (s: Service) => Math.max(5, Math.round(s.duration / 6 / 5) * 5)
-
-  // Kategori + alt kategori ağacı (alt kategoriler üst kategorisinin ardında, girintili çıkar).
+  /* ---- kategoriler ----------------------------------------------------- */
   const categories = useMemo(
     () => buildCatalogCategoryItems(
       customCategories,
@@ -225,42 +242,90 @@ export default function ServiceLibrary({
   /** Kategori ayarları kartı yalnız ÜST kategorileri yönetir (sıralama kardeşler arasında yapılır). */
   const topCategories = useMemo(() => categories.filter((c) => c.kind !== 'sub'), [categories])
 
+  /* ---- süzgeç + sıralama ----------------------------------------------- */
   const filtered = useMemo(() => {
     let list = services
-    if (tab !== 'all') list = list.filter((s) => s.status === tab)
+    if (status !== 'all') list = list.filter((s) => s.status === status)
     if (catFilter) list = list.filter((s) => catLabel(s) === catFilter)
     if (subFilter) list = list.filter((s) => (s.subGroup || '') === subFilter)
-    if (durFilter) { const [lo, hi] = durFilter.split('-').map(Number); list = list.filter((s) => s.duration >= lo && (!hi || s.duration <= hi)) }
-    if (q.trim()) { const t = q.trim().toLocaleLowerCase('tr'); list = list.filter((s) => s.name.toLocaleLowerCase('tr').includes(t) || catLabel(s).toLocaleLowerCase('tr').includes(t) || (s.subGroup || '').toLocaleLowerCase('tr').includes(t)) }
-    return list
-  }, [services, tab, catFilter, subFilter, durFilter, q])
+    if (durFilter) {
+      const [lo, hi] = durFilter.split('-').map(Number)
+      list = list.filter((s) => s.duration >= lo && (!hi || s.duration <= hi))
+    }
+    if (q.trim()) {
+      const needle = q.trim().toLocaleLowerCase('tr')
+      list = list.filter((s) =>
+        s.name.toLocaleLowerCase('tr').includes(needle) ||
+        catLabel(s).toLocaleLowerCase('tr').includes(needle) ||
+        (s.subGroup || '').toLocaleLowerCase('tr').includes(needle))
+    }
+    const sorted = [...list]
+    if (sort === 'price-desc') sorted.sort((a, b) => b.price - a.price)
+    else if (sort === 'price-asc') sorted.sort((a, b) => a.price - b.price)
+    else if (sort === 'duration-desc') sorted.sort((a, b) => b.duration - a.duration)
+    else if (sort === 'duration-asc') sorted.sort((a, b) => a.duration - b.duration)
+    else sorted.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+    return sorted
+  }, [services, status, catFilter, subFilter, durFilter, q, sort])
 
+  useEffect(() => { setPage(1) }, [status, catFilter, subFilter, durFilter, q, sort, pageSize])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
-  const selected = useMemo(() => filtered.find((s) => s.id === selectedId) || filtered[0], [filtered, selectedId])
+  const pageRows = useMemo(
+    () => filtered.slice((Math.min(page, totalPages) - 1) * pageSize, Math.min(page, totalPages) * pageSize),
+    [filtered, page, pageSize, totalPages],
+  )
 
-  const activeCount = services.filter((s) => s.status === 'Active').length
-  const passiveCount = services.filter((s) => s.status !== 'Active').length
-  const apptSeries = useMemo(() => bucketWeekly(appts.map((a) => new Date(a.date).getTime()).filter((t) => !Number.isNaN(t))), [appts])
+  /* ---- genel bakış (yalnız katalog gerçekleri) -------------------------- */
+  const counts = useMemo(() => {
+    const map: Record<CatalogStatusKey, number> = { Active: 0, Passive: 0, Draft: 0, Archived: 0, Cancelled: 0 }
+    for (const service of services) map[service.status]++
+    return map
+  }, [services])
 
-  const buildPayload = (s: LibService, over: Record<string, unknown>) => ({
-    branchId: s.branchId || branchId || null, name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null,
-    durationMinutes: s.duration, price: s.price, isActive: s.status === 'Active',
-    iconKey: s.iconKey || suggestIcon(s.name || s.group) || null, status: s.status,
-    defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || null, ...over,
+  const overviewFacts = useMemo(() => {
+    if (services.length === 0) return [{ label: 'Kategori', value: '0' }]
+    const durations = services.map((s) => s.duration).filter((d) => d > 0)
+    const prices = services.map((s) => s.price).filter((p) => p > 0)
+    const facts: { label: string; value: string }[] = [
+      { label: 'Kategori', value: String(topCategories.length) },
+    ]
+    if (durations.length) {
+      const min = Math.min(...durations)
+      const max = Math.max(...durations)
+      facts.push({ label: 'Süre', value: min === max ? `${min} dk` : `${min}–${max} dk` })
+    }
+    if (prices.length) {
+      const min = Math.min(...prices)
+      const max = Math.max(...prices)
+      facts.push({ label: 'Fiyat', value: min === max ? formatTL(min) : `${formatTL(min)} – ${formatTL(max)}` })
+    }
+    return facts
+  }, [services, topCategories])
+
+  /* ---- yazma yolları ---------------------------------------------------- */
+  const buildPayload = (service: LibService, over: Record<string, unknown>) => ({
+    branchId: service.branchId || branchId || null,
+    name: service.name,
+    // HAM kategori: `service.group` payload'a ASLA girmez (uydurma "Genel Hizmet" yazardı).
+    category: service.rawCategory || null,
+    subCategory: service.subGroup || null,
+    durationMinutes: service.duration,
+    price: service.price,
+    isActive: service.status === 'Active',
+    iconKey: service.iconKey || suggestIcon(service.name || service.rawCategory) || null,
+    status: service.status,
+    defaultSessionCount: service.session || 1,
+    loyaltyPointCost: service.loyaltyPointCost || null,
+    ...over,
   })
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setActionError('')
     try { await fn(); await reload() } catch (e) { setActionError(e instanceof Error ? e.message : 'İşlem başarısız') } finally { setBusy(false) }
   }
-  const setStatus = (s: LibService, status: CatalogStatusKey) => run(() => adminApi.updateService(s.id, buildPayload(s, { status, isActive: status === 'Active' }), tenantId))
+  const setServiceStatus = (service: LibService, next: CatalogStatusKey) =>
+    run(() => adminApi.updateService(service.id, buildPayload(service, { status: next, isActive: next === 'Active' }), tenantId))
 
-  const onCreate = async (values: ServiceFormDialogValues) => {
-    const created = await adminApi.createService<{ id?: string }>({ branchId: branchId || null, name: values.name, category: values.category || null, subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price, isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status, defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null }, tenantId)
-    if (created?.id && values.consentTemplateIds.length > 0) await syncConsentLinks(created.id, values.consentTemplateIds)
-    await reload()
-  }
   /**
    * Form kategori kutuları HAM veriden beslenir: normalizeService kategorisi boş hizmete
    * "Genel Hizmet" adını uydurur; o uydurma ad seçenek listesine düşerse kullanıcı gerçekte
@@ -274,9 +339,9 @@ export default function ServiceLibrary({
   /** Kategori adı → o kategoride kullanılan alt kategori adları (kaydı olmayanlar da seçilebilsin diye). */
   const usedSubCategories = useMemo(() => {
     const map: Record<string, string[]> = {}
-    for (const s of data?.services || []) {
-      const cat = (s?.category || '').trim()
-      const sub = (s?.subCategory || '').trim()
+    for (const service of data?.services || []) {
+      const cat = (service?.category || '').trim()
+      const sub = (service?.subCategory || '').trim()
       if (!cat || !sub) continue
       if (!map[cat]) map[cat] = []
       if (!map[cat].includes(sub)) map[cat].push(sub)
@@ -298,49 +363,68 @@ export default function ServiceLibrary({
   )
   const consentIdsOf = (serviceId: string): string[] =>
     (data?.consents || []).filter((t) => (t.serviceIds || []).includes(serviceId)).map((t) => t.id || '').filter(Boolean)
+  const consentTitlesOf = (serviceId: string): string[] =>
+    (data?.consents || []).filter((t) => (t.serviceIds || []).includes(serviceId)).map((t) => t.title || 'Onam formu')
 
   /** Seçim ↔ şablon bağını eşitler; yalnız DEĞİŞEN şablonlar güncellenir. */
   const syncConsentLinks = async (serviceId: string, selected: string[]): Promise<void> => {
-    for (const t of data?.consents || []) {
-      if (!t.id) continue
-      const linked = (t.serviceIds || []).includes(serviceId)
-      const wanted = selected.includes(t.id)
+    for (const template of data?.consents || []) {
+      if (!template.id) continue
+      const linked = (template.serviceIds || []).includes(serviceId)
+      const wanted = selected.includes(template.id)
       if (linked === wanted) continue
       const nextIds = wanted
-        ? [...(t.serviceIds || []), serviceId]
-        : (t.serviceIds || []).filter((x) => x !== serviceId)
-      await adminApi.updateConsentTemplate(t.id, {
-        title: t.title, body: t.body, checkItems: t.checkItems || [],
-        requiresSignature: t.requiresSignature !== false, isActive: t.isActive !== false,
+        ? [...(template.serviceIds || []), serviceId]
+        : (template.serviceIds || []).filter((x) => x !== serviceId)
+      await adminApi.updateConsentTemplate(template.id, {
+        title: template.title, body: template.body, checkItems: template.checkItems || [],
+        requiresSignature: template.requiresSignature !== false, isActive: template.isActive !== false,
         serviceIds: nextIds,
       }, tenantId)
     }
   }
 
+  const onCreate = async (values: ServiceFormDialogValues) => {
+    const created = await adminApi.createService<{ id?: string }>({
+      branchId: branchId || null, name: values.name, category: values.category || null,
+      subCategory: values.subCategory || null, durationMinutes: values.durationMinutes, price: values.price,
+      isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status,
+      defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null,
+    }, tenantId)
+    if (created?.id && values.consentTemplateIds.length > 0) await syncConsentLinks(created.id, values.consentTemplateIds)
+    await reload()
+  }
+
   const handleDeleteCat = async (id: string) => { await adminApi.deleteServiceCategory(id, tenantId); await reload() }
   /** Form içinden "Diğer → yeni kategori": Kategoriler sayfasına gitmeden kategori açılır. */
   const handleCreateCat = async (name: string) => { await adminApi.createServiceCategory({ name, isActive: true }, tenantId); await reload() }
-  const canManageCat = canCustomServiceCat && can('Services.Manage')
+  const canManageCat = canCustomServiceCat && canManageService
   const handleReorderCat = async (orderedIds: string[]) => { await adminApi.reorderServiceCategories(orderedIds, tenantId); await reload() }
 
-  const goPage = (p: number) => setPage(Math.min(totalPages, Math.max(1, p)))
-  const pageNumbers = useMemo(() => { const out: (number | '...')[] = []; for (let p = 1; p <= totalPages; p++) { if (p === 1 || p === totalPages || (p >= page - 2 && p <= page + 2)) out.push(p); else if (out[out.length - 1] !== '...') out.push('...') } return out }, [page, totalPages])
+  const editInitial = (service: LibService): Partial<ServiceFormDialogValues> => ({
+    name: service.name, category: service.rawCategory || null, subCategory: service.subGroup || null,
+    durationMinutes: service.duration, price: service.price, defaultSessionCount: service.session || 1,
+    loyaltyPointCost: service.loyaltyPointCost || 0, isActive: service.status === 'Active',
+    iconKey: service.iconKey || '', status: service.status, consentTemplateIds: consentIdsOf(service.id),
+  })
 
-  const sel = selected
-  const selStats = sel ? statsByService.get(sel.id) : undefined
-  const summary = useMemo(() => {
-    let topName = '—'; let topCount = 0
-    for (const s of services) { const c = statsByService.get(s.id)?.total ?? 0; if (c > topCount) { topCount = c; topName = s.name } }
-    const avgDur = services.length ? Math.round(services.reduce((a, s) => a + s.duration, 0) / services.length) : 0
-    const since30 = Date.now() - 30 * 86_400_000
-    const soldThisMonth = appts.filter((a) => new Date(a.date).getTime() >= since30).length
-    const activeStaff = staff.filter((s) => s.active).length
-    const performing = new Set(appts.map((a) => a.staffMemberId).filter(Boolean)).size
-    const activeRate = activeStaff ? Math.round((performing / activeStaff) * 100) : 0
-    return { topName, avgDur, soldThisMonth, activeRate }
-  }, [services, appts, staff, statsByService])
+  const detail = useMemo(() => services.find((s) => s.id === detailId) || null, [services, detailId])
 
-  const editInitial = (s: LibService): Partial<ServiceFormDialogValues> => ({ name: s.name, category: s.rawCategory || null, subCategory: s.subGroup || null, durationMinutes: s.duration, price: s.price, defaultSessionCount: s.session || 1, loyaltyPointCost: s.loyaltyPointCost || 0, isActive: s.status === 'Active', iconKey: s.iconKey || '', status: s.status, consentTemplateIds: consentIdsOf(s.id) })
+  const openDetail = (service: LibService) => {
+    if (canBulkDelete && bulk.active) { bulk.toggle(service.id); return }
+    setDetailId(service.id)
+    setDetailOpen(true)
+  }
+
+  const commonFormProps = {
+    customCategories,
+    onDeleteCustomCategory: canCustomServiceCat ? handleDeleteCat : undefined,
+    onCreateCustomCategory: canManageCat ? handleCreateCat : undefined,
+    knownCategories: usedCategories,
+    knownSubCategories: usedSubCategories,
+    consentTemplates,
+    consentTenantId: tenantId,
+  }
 
   return (
     <>
@@ -350,21 +434,17 @@ export default function ServiceLibrary({
         breadcrumbs={['Admin', 'İşletme', 'Paket & Hizmet', scopeLabel || 'Hizmet Havuzu']}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <ServiceFormDialog
-              customCategories={customCategories}
-              onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
-              onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
-              knownCategories={usedCategories}
-              knownSubCategories={usedSubCategories}
-              consentTemplates={consentTemplates}
-              consentTenantId={tenantId}
-              onSubmit={onCreate}
-              trigger={
-                <button type="button" className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3.5 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90">
-                  <Wand2 className="h-3.5 w-3.5" /> Yeni Hizmet
-                </button>
-              }
-            />
+            {canManageService && (
+              <ServiceFormDialog
+                {...commonFormProps}
+                onSubmit={onCreate}
+                trigger={
+                  <button type="button" className={catalogPrimaryBtn}>
+                    <Wand2 className="h-3.5 w-3.5" /> Yeni Hizmet
+                  </button>
+                }
+              />
+            )}
             <ExcelTransferActions<LibService>
               featureKey="excel.services" moduleName="Hizmetler" context={`${institutionName || 'Kurum'} · ${branchLabel || ''}`}
               rows={filtered}
@@ -373,22 +453,18 @@ export default function ServiceLibrary({
                 columns: [
                   { key: 'name', header: 'Hizmet Adı', width: 30, type: 'text', accessor: (s) => s.name },
                   { key: 'group', header: 'Kategori', width: 20, type: 'text', accessor: (s) => catLabel(s) },
+                  { key: 'sub', header: 'Alt Kategori', width: 18, type: 'text', accessor: (s) => s.subGroup || '' },
                   { key: 'duration', header: 'Süre (dk)', width: 12, type: 'number', accessor: (s) => s.duration },
                   { key: 'price', header: 'Fiyat', width: 16, type: 'currency', accessor: (s) => s.price },
-                  { key: 'status', header: 'Durum', width: 12, type: 'text', accessor: (s) => STATUS_LABEL[s.status] },
+                  { key: 'status', header: 'Durum', width: 12, type: 'text', accessor: (s) => CATALOG_STATUS_LABEL[s.status] },
                 ],
-                totals: { name: 'TOPLAM', price: filtered.reduce((a, s) => a + s.price, 0) },
+                totals: { name: 'TOPLAM', price: filtered.reduce((total, s) => total + s.price, 0) },
               }}
             />
             {/* İçeri aktarma dashboard'daki GENEL aktarıcıya devredildi: kolon adlarına
                 bağlı değil (otomatik eşleme), mükerrer kaydı atlar ve tek istekte parti
-                hâlinde gönderir. Eskiden burada satır başına bir API çağrısı yapan,
-                başlıkları birebir tutturmayı şart koşan bir döngü vardı. */}
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
-            >
+                hâlinde gönderir. */}
+            <button type="button" onClick={() => setImportOpen(true)} className={catalogGhostBtn}>
               <FileUp className="h-4 w-4" strokeWidth={2.1} /> İçeri Aktar
             </button>
           </div>
@@ -397,302 +473,336 @@ export default function ServiceLibrary({
 
       <PanelPage>
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && services.length === 0} emptyMessage="Hizmet kaydı yok." />
-        {actionError && <div className="rounded-[12px] border border-rose-300/30 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700">{actionError}</div>}
-
-        {/* KPI KARTLARI — pano dili. SERİ YALNIZ "toplam"da: apptSeries randevu trendidir,
-            aktif/pasif sayaçlarının altına konsa o rakamların eğrisi sanılırdı. */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <PanelStat index={0} icon={Layers3} tone="rose" label="Toplam hizmet"
-            value={String(services.length)} detail={`${filtered.length} kayıt listeleniyor`} series={apptSeries} />
-          <PanelStat index={1} icon={CheckCircle2} tone="mint" label="Aktif hizmet"
-            value={String(activeCount)} detail="Randevuya açık" />
-          <PanelStat index={2} icon={Clock3} tone="violet" label="Pasif hizmet"
-            value={String(passiveCount)} detail="Listede görünmez" />
-        </div>
-
-        {/* MAIN: TABLE + DETAIL */}
-        <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-          <div className="overflow-hidden rounded-[20px] border border-[#EAD8DF] bg-white">
-            <div className="border-b border-[#EAD8DF] px-5 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-display text-xl tracking-tight">Hizmet Kütüphanesi <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
-                  <div className="text-[11px] text-[#74616A]">Hizmetleri görüntüleyin, düzenleyin ve yönetin.</div>
-                </div>
-              </div>
-              {/* tabs */}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-1">
-                  {TABS.map((t) => (
-                    <button key={t.key} type="button" onClick={() => { setTab(t.key); setPage(1) }}
-                      className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition-colors ${tab === t.key ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:bg-white'}`}>{t.label}</button>
-                  ))}
-                </div>
-                <div className="relative ml-auto">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#74616A]" />
-                  <input value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} placeholder="Hizmet ara…" className="w-40 rounded-[10px] border border-[#EAD8DF] bg-white px-8 py-1.5 text-[12px] outline-none focus:border-[#A5556E]" />
-                </div>
-                <select value={durFilter} onChange={(e) => { setDurFilter(e.target.value); setPage(1) }} className="rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-[#A5556E]">
-                  <option value="">Süre</option><option value="0-30">≤30 dk</option><option value="31-60">31–60 dk</option><option value="61-999">60+ dk</option>
-                </select>
-              </div>
-              {/* Kategori rayı — durum sekmeleriyle karışmasın diye kenarlıksız, tek satır ve
-                  pay barlı. Ayrıntılı gerekçe: CatalogCategoryRail. */}
-              <CatalogCategoryRail
-                items={categories}
-                value={catFilter}
-                sub={subFilter}
-                onChange={(name, subName) => { setCatFilter(name); setSubFilter(subName); setPage(1) }}
-                total={services.length}
-                itemLabel="hizmet"
-              />
-            </div>
-
-            <div className="hidden grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] gap-2 border-b border-[#EAD8DF] bg-[#F7F6F6] px-5 py-2.5 text-[9px] font-mono uppercase tracking-widest text-[#74616A] lg:grid">
-              <span>Hizmet</span><span>Kategori</span><span>Süre</span><span>Fiyat</span><span>Uygulayan Uzman</span><span>Durum</span><span className="text-right">İşlemler</span>
-            </div>
-
-            <div className="divide-y divide-[#F1E7EB]">
-              {pageRows.map((s) => {
-                const st = statsByService.get(s.id)
-                const perfStaff = (st?.staffIds || []).map((id) => staffById.get(id)).filter(Boolean).slice(0, 3)
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      // Seçim modunda satır tıklaması detay yerine seçim yapar.
-                      if (canBulkDelete && bulk.active) { bulk.toggle(s.id); return }
-                      setSelectedId(s.id)
-                    }}
-                    className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.5fr_1fr_0.6fr_0.7fr_1fr_0.7fr_0.6fr] lg:items-center ${bulk.isSelected(s.id) ? 'bg-[#F6DFE6]' : sel?.id === s.id ? 'bg-[#F6DFE6]/60' : ''}`}>
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      {canBulkDelete && <SelectBox checked={bulk.isSelected(s.id)} onToggle={() => bulk.toggle(s.id)} />}
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#A5556E] text-white"><ServiceIcon iconKey={s.iconKey || suggestIcon(s.name || s.group)} className="h-5 w-5" /></span>
-                      <span className="truncate text-[13px] font-medium text-[#2A2027]">{s.name}</span>
-                    </div>
-                    <div><span className="inline-flex rounded-md border border-[#EAD8DF] bg-[#F7F6F6] px-2 py-0.5 text-[10px] text-[#8C4460]">{catLabel(s)}</span></div>
-                    <div className="text-[12px] text-[#5A4B53]">{s.duration} dk</div>
-                    <div className="font-display text-[14px] tabular-nums">{formatTL(s.price)}</div>
-                    <div className="flex items-center">
-                      {perfStaff.length === 0 ? <span className="text-[10px] text-[#74616A]">—</span> : (
-                        <div className="flex -space-x-2">
-                          {perfStaff.map((p) => p && <StaffAvatar key={p.id} name={p.name} photo={p.photoUrl} />)}
-                          {(st?.staffIds.length || 0) > 3 && <span className="grid h-7 w-7 place-items-center rounded-full border border-[#BE7690]/50 bg-white text-[9px] font-mono text-[#A5556E]">+{(st!.staffIds.length) - 3}</span>}
-                        </div>
-                      )}
-                    </div>
-                    <div><span className={`inline-flex rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-wide ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status]}</span></div>
-                    <div className="flex justify-end"><span className="rounded-md border border-[#EAD8DF] bg-white px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53]">Detay</span></div>
-                  </button>
-                )
-              })}
-              {!pageRows.length && <div className="px-5 py-12 text-center text-sm text-[#74616A]">{q || tab !== 'all' ? 'Eşleşen hizmet yok.' : 'Hizmet kaydı yok.'}</div>}
-            </div>
-
-            {filtered.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAD8DF] px-5 py-3.5">
-                <div className="text-[11px] text-[#2A2027]/50">{(page - 1) * pageSize + 1} – {Math.min(page * pageSize, filtered.length)} / {filtered.length} kayıt</div>
-                <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => goPage(page - 1)} disabled={page <= 1} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-                  {pageNumbers.map((p, i) => p === '...' ? <span key={`e${i}`} className="px-1 text-[12px] text-[#74616A]">…</span> : (
-                    <button key={p} type="button" onClick={() => goPage(p)} className={`grid h-8 min-w-8 place-items-center rounded-[9px] border px-2 text-[12px] tabular-nums ${p === page ? 'border-[#8C4460] bg-[#A5556E] text-white' : 'border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50'}`}>{p}</button>
-                  ))}
-                  <button type="button" onClick={() => goPage(page + 1)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-[9px] border border-[#EAD8DF] bg-white text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
-                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }} className="ml-2 rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[11px] text-[#5A4B53] outline-none focus:border-[#A5556E]">{[10, 25, 50].map((n) => <option key={n} value={n}>{n} / sayfa</option>)}</select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* DETAIL PANEL */}
-          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
-            {sel ? (
-              <>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">Seçili hizmet detayı</div>
-                  <div className="flex items-center gap-1.5">
-                  <PackageSaleDialog
-                    tenantId={tenantId}
-                    presetService={{ id: sel.id, name: sel.name, price: sel.price }}
-                    onDone={reload}
-                    triggerLabel="Bu hizmeti sat"
-                    triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-[#8C4460]/40 bg-[#F6DFE6] px-2.5 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#8C4460] transition-colors hover:bg-[#F6DFE6]"
-                  />
-                  <ServiceFormDialog mode="edit" customCategories={customCategories}
-                    onDeleteCustomCategory={canCustomServiceCat ? handleDeleteCat : undefined}
-                    onCreateCustomCategory={canManageCat ? handleCreateCat : undefined}
-                    knownCategories={usedCategories}
-                    knownSubCategories={usedSubCategories}
-                    consentTemplates={consentTemplates}
-                    consentTenantId={tenantId}
-                    title={`${sel.name} · düzenle`} submitLabel="Hizmeti güncelle" initialValues={editInitial(sel)}
-                    onSubmit={async (v) => { await adminApi.updateService(sel.id, { branchId: sel.branchId || branchId || null, name: v.name, category: v.category || null, subCategory: v.subCategory || null, durationMinutes: v.durationMinutes, price: v.price, isActive: v.status === 'Active', iconKey: v.iconKey || null, status: v.status, defaultSessionCount: v.defaultSessionCount || 1, loyaltyPointCost: v.loyaltyPointCost || null }, tenantId); await syncConsentLinks(sel.id, v.consentTemplateIds); await reload() }}
-                    trigger={<button type="button" className="grid h-7 w-7 place-items-center rounded-md border border-[#EAD8DF] bg-white text-[#74616A] hover:text-[#A5556E]"><PencilLine className="h-3.5 w-3.5" /></button>} />
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center gap-3">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#BE7690]/75 bg-[#A5556E] text-white"><ServiceIcon iconKey={sel.iconKey || suggestIcon(sel.name || sel.group)} className="h-6 w-6" /></span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2"><span className="truncate font-display text-2xl tracking-tight">{sel.name}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[sel.status]}`}>{STATUS_LABEL[sel.status]}</span></div>
-                    <div className="text-[12px] text-[#5A4B53]">{catLabel(sel)} hizmeti · {sel.duration} dk</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Hizmet bilgileri</div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {[['Kategori', catLabel(sel)], ['Süre', `${sel.duration} dk`], ['Fiyat', formatTL(sel.price)], ['Hazırlık', `${prepOf(sel)} dk`]].map(([k, v]) => (
-                      <div key={k}><div className="text-[9px] font-mono uppercase text-[#74616A]">{k}</div><div className="mt-0.5 truncate text-[13px] font-medium text-[#2A2027]">{v}</div></div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Uygun personel</div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {(selStats?.staffIds || []).map((id) => staffById.get(id)).filter(Boolean).slice(0, 6).map((p) => p && (
-                      <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-2 py-1 text-[11px] text-[#3E343A]"><StaffAvatar name={p.name} photo={p.photoUrl} className="h-5 w-5" /> {p.name}</span>
-                    ))}
-                    {(!selStats || selStats.staffIds.length === 0) && <span className="text-[11px] text-[#74616A]">Henüz bu hizmeti uygulayan personel kaydı yok.</span>}
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-[14px] border border-[#EAD8DF]/65 bg-white p-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Kullanım özeti (Son 30 gün)</div>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    <Mini label="Son 30 gün satış" value={String(selStats?.last30 ?? 0)} />
-                    <Mini label="Toplam gelir" value={formatTL(selStats?.revenue ?? 0)} />
-                    <Mini label="Müşteri memnuniyeti" value={`${(selStats?.rating ?? 5).toFixed(1)}/5`} />
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="flex items-center gap-2 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2"><Star className="h-4 w-4 text-[#A5556E]" /><div><div className="text-[9px] font-mono uppercase text-[#74616A]">Toplam rezervasyon</div><div className="font-display text-lg">{selStats?.total ?? 0}</div></div></div>
-                    <div className="flex items-center gap-2 rounded-[10px] border border-emerald-200/60 bg-emerald-50/60 px-3 py-2"><TrendingUp className="h-4 w-4 text-emerald-600" /><div><div className="text-[9px] font-mono uppercase text-[#74616A]">Kâr marjı</div><div className="font-display text-lg text-emerald-700">%{marginOf(sel)}</div></div></div>
-                  </div>
-                </div>
-
-                {/* Satış performansı — bu hizmeti kim, kime, ne zaman satmış. */}
-                <div className="mt-3">
-                  <CatalogSalesPanel
-                    item={{ id: sel.id, name: sel.name, price: sel.price }}
-                    kind="service"
-                    tenantId={tenantId}
-                    staffOptions={staffOptions}
-                    packageOptions={packageOptions}
-                    serviceOptions={serviceOptions}
-                    busy={salesBusy}
-                    onCreateHistorical={handleCreateHistoricalSale}
-                    onCancelSale={handleCancelSale}
-                    onRestoreSale={handleRestoreSale}
-                    onCollectInstallment={handleCollectInstallment}
-                  />
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Draft')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-medium text-[#5A4B53] hover:bg-[#F7F6F6]/50 disabled:opacity-50"><UploadCloud className="h-3.5 w-3.5" /> Taslağa Al</button>
-                  {sel.status === 'Active' ? (
-                    <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Passive')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-amber-300/50 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"><PauseCircle className="h-3.5 w-3.5" /> Pasife Al</button>
-                  ) : (
-                    <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Active')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5" /> Yayına Al</button>
-                  )}
-                  <button type="button" disabled={busy} onClick={() => setStatus(sel, 'Archived')} className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50">Arşivle</button>
-                </div>
-              </>
-            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#74616A]">Hizmet seçimi yok.</div>}
-          </div>
-        </div>
-
-
-        {/* KATEGORİ SATIŞLARI — kategori rayından bir kategori seçilince, o kategorideki
-            TÜM satışlar (hangi müşteri, ne aldı, kim sattı, iptal edildiyse gerekçesi)
-            tek listede görünür. Geçmiş yıllara ait satışlar da buraya düşer. */}
-        {catFilter && (
-          <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="font-display text-xl tracking-tight">{catFilter} · Satışlar</div>
-                <div className="text-[11px] text-[#74616A]">
-                  Bu kategorideki tüm satışlar: hangi müşteri ne almış, kim satmış, iptal edildiyse gerekçesi.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setCatFilter(''); setSubFilter('') }}
-                className="rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11px] font-medium text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
-              >
-                Kategori filtresini kaldır
-              </button>
-            </div>
-            <CatalogSalesPanel
-              item={{ id: catFilter, name: catFilter, price: 0 }}
-              kind="category"
-              tenantId={tenantId}
-              staffOptions={staffOptions}
-              packageOptions={packageOptions}
-              serviceOptions={serviceOptions}
-              busy={salesBusy}
-              onCreateHistorical={handleCreateHistoricalSale}
-              onCancelSale={handleCancelSale}
-              onRestoreSale={handleRestoreSale}
-              onCollectInstallment={handleCollectInstallment}
-            />
+        {actionError && (
+          <div className="rounded-[14px] border border-[#F0AFBF] bg-[#FCE7EC] px-4 py-2.5 text-[12px] font-medium text-[#A32347]">
+            {actionError}
           </div>
         )}
 
-        <CatalogCategoryManager
-          title="Hizmet Kategori Ayarları"
-          description="Kategoriye göre filtreleyin veya sırasını değiştirin. Yeni kategori Kategoriler sayfasından eklenir."
-          itemLabel="hizmet"
-          categories={topCategories}
-          selectedCategory={catFilter}
-          canManage={canCustomServiceCat}
-          onSelect={(name) => { setCatFilter(name); setSubFilter(''); setPage(1) }}
-          onDelete={handleDeleteCat}
-          onReorder={canCustomServiceCat ? handleReorderCat : undefined}
-        />
+        <CatalogOverview
+          icon={Sparkles}
+          eyebrow="Hizmet kataloğu"
+          total={services.length}
+          totalLabel="tanımlı hizmet"
+          facts={overviewFacts}
+          segmentTitle="Katalog durumu"
+          segmentHint="Bir duruma dokunun, liste anında süzülsün."
+          segmentAside={
+            status === 'all' ? (
+              <span className="rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1 text-[11px] font-semibold text-[#5A4B53]">
+                {filtered.length} kayıt listeleniyor
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStatus('all')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#BE7690] bg-[#F6DFE6] px-2.5 py-1 text-[11px] font-semibold text-[#8C4460] transition-colors hover:bg-[#F2CFDC]"
+              >
+                <X className="h-3 w-3" /> {CATALOG_STATUS_LABEL[status]} süzgecini kaldır
+              </button>
+            )
+          }
+        >
+          <StatusSegments
+            idPrefix="service-status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { key: 'all', label: 'Tümü', count: services.length },
+              { key: 'Active', label: 'Aktif', count: counts.Active },
+              { key: 'Passive', label: 'Pasif', count: counts.Passive },
+              { key: 'Draft', label: 'Taslak', count: counts.Draft },
+              { key: 'Archived', label: 'Arşiv', count: counts.Archived },
+            ]}
+          />
+        </CatalogOverview>
 
-        {/* HİZMET ÖZETİ */}
-        <div className="rounded-[20px] border border-[#EAD8DF] bg-white p-5">
-          <div className="font-display text-xl tracking-tight">Hizmet Özeti</div>
-          <div className="text-[11px] text-[#74616A]">Hizmet performansınızı özet olarak inceleyin.</div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <SummaryTile icon={Trophy} tone="text-amber-600 bg-amber-50" label="En çok tercih edilen" value={summary.topName} />
-            <SummaryTile icon={Sparkles} tone="text-[#A5556E] bg-[#F6DFE6]" label="Bu ay satılan hizmet" value={String(summary.soldThisMonth)} />
-            <SummaryTile icon={UserCheck} tone="text-emerald-600 bg-emerald-50" label="Aktif uzman oranı" value={`%${summary.activeRate}`} />
-          </div>
+        <CatalogToolbar>
+          <CatalogSearch value={q} onChange={setQ} placeholder="Hizmet, kategori veya alt kategori ara…" />
+          <select value={durFilter} onChange={(e) => setDurFilter(e.target.value)} aria-label="Süreye göre süz" className={catalogFieldCls}>
+            <option value="">Tüm süreler</option>
+            <option value="0-30">≤ 30 dk</option>
+            <option value="31-60">31–60 dk</option>
+            <option value="61-999">60 dk üzeri</option>
+          </select>
+          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sıralama" className={catalogFieldCls}>
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+              <option key={key} value={key}>{SORT_LABEL[key]}</option>
+            ))}
+          </select>
+          <button type="button" onClick={() => setCategoryOpen(true)} className={catalogGhostBtn}>
+            <FolderCog className="h-3.5 w-3.5" /> Kategoriler
+          </button>
+          <CatalogViewToggle idPrefix="service" value={view} onChange={setView} />
+        </CatalogToolbar>
+
+        {/* Kategori rayı — durum sayaçlarıyla karışmasın diye kenarlıksız ve pay barlı. */}
+        <div className="rounded-[18px] border border-[#EAD8DF] bg-white px-3 pb-3 pt-1">
+          <CatalogCategoryRail
+            items={categories}
+            value={catFilter}
+            sub={subFilter}
+            onChange={(name, subName) => { setCatFilter(name); setSubFilter(subName) }}
+            total={services.length}
+            itemLabel="hizmet"
+          />
+          <AnimatePresence initial={false}>
+            {catFilter && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="flex flex-wrap items-center gap-2 pt-2.5">
+                  <button type="button" onClick={() => setCategorySalesOpen(true)} className={catalogGhostBtn}>
+                    <Wallet className="h-3.5 w-3.5" /> “{catFilter}” satışları
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setCatFilter(''); setSubFilter('') }}
+                    className="text-[11.5px] font-semibold text-[#74616A] underline-offset-2 transition-colors hover:text-[#A5556E] hover:underline"
+                  >
+                    Kategori süzgecini kaldır
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
+        {loading && services.length === 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="h-[164px] animate-pulse rounded-[18px] border border-[#EAD8DF] bg-white" />
+            ))}
+          </div>
+        ) : pageRows.length === 0 ? (
+          <div className="rounded-[20px] border border-[#EAD8DF] bg-white">
+            <PanelEmpty
+              icon={Layers3}
+              title={services.length === 0 ? 'Henüz hizmet tanımlanmamış' : 'Süzgeçle eşleşen hizmet yok'}
+              hint={
+                services.length === 0
+                  ? 'Sağ üstteki “Yeni Hizmet” ile ilk hizmetinizi tanımlayın; paketler bu havuzdan beslenir.'
+                  : 'Arama metnini veya durum/kategori süzgecini değiştirmeyi deneyin.'
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <CatalogGrid view={view}>
+              <AnimatePresence initial={false} mode="popLayout">
+                {pageRows.map((service, index) => {
+                  const iconKey = service.iconKey || suggestIcon(service.name || service.rawCategory)
+                  const selected = bulk.isSelected(service.id)
+                  return (
+                    <CatalogCardShell
+                      key={service.id}
+                      index={index}
+                      status={service.status}
+                      selected={selected}
+                      onClick={() => openDetail(service)}
+                    >
+                      {view === 'grid' ? (
+                        <div className="flex w-full flex-col gap-3 p-4 pl-5">
+                          <div className="flex items-start gap-3">
+                            {canBulkDelete && <SelectBox checked={selected} onToggle={() => bulk.toggle(service.id)} />}
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#A5556E] text-white transition-transform duration-300 group-hover:scale-105">
+                              <ServiceIcon iconKey={iconKey} className="h-[22px] w-[22px]" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              {/* İki satıra izin verilir: dar ızgarada tek satır "Buz Lazer Epil…" gibi
+                                  kesiliyor ve kartın ne olduğu okunmuyordu. */}
+                              <div className="line-clamp-2 text-[14px] font-semibold leading-tight text-[#2A2027]" title={service.name}>
+                                {service.name}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                <Chip title="Kategori">{catLabel(service)}</Chip>
+                                {service.subGroup && <Chip title="Alt kategori">{service.subGroup}</Chip>}
+                              </div>
+                            </div>
+                            <StatusPill status={service.status} />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5">
+                            <CardMeta label="Süre" value={`${service.duration} dk`} />
+                            <CardMeta label="Fiyat" value={formatTL(service.price)} />
+                            <CardMeta label="Seans" value={service.session === 1 ? 'Tek' : `${service.session}×`} />
+                          </div>
+                          {service.loyaltyPointCost > 0 && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8A5A11]">
+                              <Tag aria-hidden className="h-3.5 w-3.5" />
+                              Sadakat puanıyla hediye edilebilir · {service.loyaltyPointCost} P
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 pl-5">
+                          {canBulkDelete && <SelectBox checked={selected} onToggle={() => bulk.toggle(service.id)} />}
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-[#A5556E] text-white">
+                            <ServiceIcon iconKey={iconKey} className="h-[18px] w-[18px]" />
+                          </span>
+                          <span className="min-w-[160px] flex-1 truncate text-[13.5px] font-semibold text-[#2A2027]">{service.name}</span>
+                          <Chip title="Kategori">{catLabel(service)}</Chip>
+                          <span className="w-[70px] shrink-0 text-[12.5px] font-medium tabular-nums text-[#5A4B53]">{service.duration} dk</span>
+                          <span className="w-[96px] shrink-0 text-right text-[13.5px] font-semibold tabular-nums text-[#2A2027]">{formatTL(service.price)}</span>
+                          <StatusPill status={service.status} />
+                        </div>
+                      )}
+                    </CatalogCardShell>
+                  )
+                })}
+              </AnimatePresence>
+            </CatalogGrid>
+
+            <CatalogPager
+              page={Math.min(page, totalPages)}
+              pageSize={pageSize}
+              total={filtered.length}
+              onPage={setPage}
+              onPageSize={setPageSize}
+              itemLabel="hizmet"
+            />
+          </>
+        )}
       </PanelPage>
 
-      <ImportDialog
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        entityType="service"
-        onDone={() => void reload()}
+      {/* ---------- DETAY MODALİ ---------- */}
+      <ServiceDetailModal
+        open={detailOpen && !!detail}
+        onOpenChange={(next) => { setDetailOpen(next); if (!next) setDetailId(null) }}
+        service={
+          detail
+            ? {
+                id: detail.id, name: detail.name, rawCategory: detail.rawCategory, subGroup: detail.subGroup,
+                duration: detail.duration, price: detail.price, session: detail.session,
+                loyaltyPointCost: detail.loyaltyPointCost, status: detail.status, iconKey: detail.iconKey,
+              }
+            : null
+        }
+        staff={staff}
+        packages={packages}
+        consentTitles={detail ? consentTitlesOf(detail.id) : []}
+        busy={busy}
+        canManage={canManageService}
+        canDelete={canBulkDelete}
+        onStatus={(next) => { if (detail) void setServiceStatus(detail, next) }}
+        onDelete={() => {
+          if (!detail) return
+          if (!window.confirm(`“${detail.name}” hizmeti silinsin mi?`)) return
+          void run(async () => {
+            await adminApi.deleteService(detail.id, tenantId)
+            setDetailOpen(false); setDetailId(null)
+          })
+        }}
+        renderSellTrigger={() =>
+          detail ? (
+            <PackageSaleDialog
+              tenantId={tenantId}
+              presetService={{ id: detail.id, name: detail.name, price: detail.price }}
+              onDone={reload}
+              triggerLabel="Bu hizmeti sat"
+              triggerClassName={catalogGhostBtn}
+            />
+          ) : null
+        }
+        renderEditTrigger={() =>
+          detail ? (
+            <ServiceFormDialog
+              key={detail.id}
+              mode="edit"
+              {...commonFormProps}
+              title={`${detail.name} · düzenle`}
+              submitLabel="Hizmeti güncelle"
+              initialValues={editInitial(detail)}
+              onSubmit={async (values) => {
+                await adminApi.updateService(detail.id, {
+                  branchId: detail.branchId || branchId || null, name: values.name,
+                  category: values.category || null, subCategory: values.subCategory || null,
+                  durationMinutes: values.durationMinutes, price: values.price,
+                  isActive: values.status === 'Active', iconKey: values.iconKey || null, status: values.status,
+                  defaultSessionCount: values.defaultSessionCount || 1, loyaltyPointCost: values.loyaltyPointCost || null,
+                }, tenantId)
+                await syncConsentLinks(detail.id, values.consentTemplateIds)
+                await reload()
+              }}
+              trigger={
+                <button type="button" className={catalogPrimaryBtn}>
+                  <PencilLine className="h-3.5 w-3.5" /> Düzenle
+                </button>
+              }
+            />
+          ) : null
+        }
+        renderSales={() =>
+          detail ? (
+            <CatalogSalesPanel
+              item={{ id: detail.id, name: detail.name, price: detail.price }}
+              kind="service"
+              {...salesPanelProps}
+            />
+          ) : null
+        }
       />
+
+      {/* ---------- KATEGORİ AYARLARI ---------- */}
+      <CatalogModal
+        open={categoryOpen}
+        onOpenChange={setCategoryOpen}
+        icon={FolderCog}
+        eyebrow="Katalog düzeni"
+        title="Hizmet kategorileri"
+        subtitle="Kategoriye göre süzün, sırasını değiştirin veya kaldırın. Yeni kategori Kategoriler sayfasından eklenir."
+        width={1000}
+        height={720}
+      >
+        <div className="p-4 sm:p-5">
+          <CatalogCategoryManager
+            title="Hizmet Kategori Ayarları"
+            description="Kategori seçilince liste süzülür. Sıralama, kataloğun her yerindeki kategori sırasını belirler."
+            itemLabel="hizmet"
+            categories={topCategories}
+            selectedCategory={catFilter}
+            canManage={canCustomServiceCat}
+            onSelect={(name) => { setCatFilter(name); setSubFilter(''); setCategoryOpen(false) }}
+            onDelete={handleDeleteCat}
+            onReorder={canCustomServiceCat ? handleReorderCat : undefined}
+          />
+        </div>
+      </CatalogModal>
+
+      {/* ---------- KATEGORİ SATIŞLARI ---------- */}
+      {/* Kategorideki TÜM satışlar: hangi müşteri ne almış, kim satmış, iptal edildiyse gerekçesi. */}
+      <CatalogModal
+        open={categorySalesOpen && !!catFilter}
+        onOpenChange={setCategorySalesOpen}
+        icon={Clock3}
+        eyebrow="Kategori satışları"
+        title={catFilter || 'Kategori'}
+        subtitle="Bu kategorideki tüm satışlar — geçmiş yıllara ait kayıtlar dâhil."
+        width={1180}
+        height={880}
+      >
+        <div className="p-4 sm:p-5">
+          {catFilter && (
+            <CatalogSalesPanel item={{ id: catFilter, name: catFilter, price: 0 }} kind="category" {...salesPanelProps} />
+          )}
+        </div>
+      </CatalogModal>
+
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} entityType="service" onDone={() => void reload()} />
+
       {/* Toplu silme çubuğu — seçim yapılınca ekranın altında belirir. */}
       {canBulkDelete && (
-      <BulkSelectBar
-        api={bulk}
-        itemLabel="hizmet"
-        pageIds={pageRows.map((s) => s.id)}
-        onDelete={(id) => adminApi.deleteService(id, tenantId)}
-        onDone={() => reload()}
-      />
+        <BulkSelectBar
+          api={bulk}
+          itemLabel="hizmet"
+          pageIds={pageRows.map((service) => service.id)}
+          onDelete={(id) => adminApi.deleteService(id, tenantId)}
+          onDone={() => reload()}
+        />
       )}
-
     </>
-  )
-}
-
-function Mini({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-[10px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-2 text-center"><div className="truncate font-display text-[14px] text-[#2A2027]">{value}</div><div className="text-[8px] font-mono uppercase tracking-wide text-[#74616A]">{label}</div></div>
-}
-function SummaryTile({ icon: Icon, tone, label, value }: { icon: typeof Clock; tone: string; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-[#EAD8DF]/60 bg-white px-4 py-3.5">
-      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span>
-      <div className="min-w-0"><div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</div><div className="truncate font-display text-lg tracking-tight text-[#2A2027]">{value}</div></div>
-    </div>
   )
 }

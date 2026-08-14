@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle2,
@@ -15,11 +14,17 @@ import {
   Scissors,
   Sparkles,
   Trash2,
-  X,
 } from 'lucide-react'
 import type { CatalogStatusKey, CustomServiceCategory } from '@/lib/types'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import ConsentPicker from '@/components/dashboard/ConsentPicker'
+import {
+  CatalogModal,
+  ModalSection,
+  StatusPill,
+  catalogGhostBtn,
+  catalogPrimaryBtn,
+} from '@/components/dashboard/CatalogKit'
 
 const STATUS_OPTIONS: { value: CatalogStatusKey; label: string }[] = [
   { value: 'Active', label: 'Aktif' },
@@ -82,10 +87,12 @@ export interface ServiceFormDialogProps {
   mode?: 'create' | 'edit'
 }
 
+// Modal `document.body`'ye portal'lanır: globals.css'teki okunabilirlik düzeltmesi buraya
+// UYGULANMAZ, bu yüzden mürekkep doğrudan yazılır (opaklıklı ton ve 10px altı punto yok).
 const fieldStyle =
-  'w-full rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[14px] text-[#3E343A] outline-none transition focus:border-[#A5556E] focus:ring-2 focus:ring-[#A5556E]/20 placeholder:text-[#74616A]/50'
-const labelStyle = 'text-[13px] font-medium text-[#241923]'
-const helperStyle = 'text-[12px] text-[#74616A]'
+  'w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] font-medium text-[#2A2027] outline-none transition-colors placeholder:font-normal placeholder:text-[#74616A] focus:border-[#A5556E]'
+const labelStyle = 'text-[12px] font-semibold text-[#2A2027]'
+const helperStyle = 'text-[11.5px] leading-snug text-[#705a66]'
 
 export default function ServiceFormDialog({
   trigger,
@@ -238,211 +245,274 @@ export default function ServiceFormDialog({
   const previewIcon = values.iconKey || suggestIcon(values.name || values.category)
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent
-        className="flex flex-col overflow-hidden rounded-[28px] border border-[#EAD8DF] bg-white p-0 text-[#3E343A] shadow-[0_44px_120px_-60px_rgba(120,71,88,0.72)] sm:!max-w-none [&>button:last-child]:hidden"
-        style={{ width: 'min(96vw, 1152px)', height: 'min(92dvh, 900px)', maxHeight: '92dvh' }}
+    <>
+      {/*
+        Tetikleyici Radix `DialogTrigger` DEĞİL: modal kabuğu (CatalogKit › CatalogModal)
+        paket düzenleyicisiyle ORTAK olsun diye kendi `Dialog`'unu içeride kuruyor.
+        `display: contents` sarmalayıcı, çağıranın verdiği düğmenin yerleşimini bozmaz.
+      */}
+      <span className="contents" onClick={() => setOpen(true)}>
+        {trigger}
+      </span>
+
+      <CatalogModal
+        open={open}
+        onOpenChange={setOpen}
+        icon={Sparkles}
+        eyebrow={mode === 'edit' ? 'Hizmet düzenleme' : 'Yeni hizmet'}
+        title={title}
+        subtitle="Kaydedilen hizmet; randevu, paket ve satış akışında anında kullanılabilir."
+        badge={<StatusPill status={values.status} />}
+        width={1240}
+        height={920}
+        footer={
+          <div className="space-y-2">
+            <AnimatePresence initial={false}>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  className="rounded-[11px] border border-[#F0AFBF] bg-[#FCE7EC] px-3 py-2 text-[12px] font-medium text-[#A32347]"
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] font-medium text-[#5A4B53]">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1">
+                  <Scissors className="h-3 w-3 text-[#A5556E]" /> {values.category || 'Kategorisiz'}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1">
+                  <Clock className="h-3 w-3 text-[#A5556E]" /> {values.durationMinutes} dk
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1">
+                  <Repeat className="h-3 w-3 text-[#A5556E]" /> {values.defaultSessionCount} seans
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setOpen(false)} disabled={busy} className={catalogGhostBtn}>
+                  Vazgeç
+                </button>
+                <motion.button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={busy || saved}
+                  whileTap={{ scale: 0.97 }}
+                  className={catalogPrimaryBtn}
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                  {saved ? 'Kaydedildi' : submitLabel}
+                </motion.button>
+              </div>
+            </div>
+          </div>
+        }
       >
-        {/* HEADER */}
-        <header className="flex shrink-0 items-start justify-between border-b border-[#EAD8DF] bg-white px-6 py-6 sm:px-8">
-          <div className="flex items-center gap-5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#f0aac2] bg-[#f7ecf1] text-[#A5556E]">
-              <Sparkles className="h-5 w-5" strokeWidth={1.7} />
-            </div>
-            <div className="min-w-0">
-              <div className="mb-1 font-mono text-[12px] uppercase tracking-widest text-[#74616A]">
-                HİZMET · {mode === 'edit' ? 'DÜZENLE' : 'YENİ TANIM'}
-              </div>
-              <DialogTitle className="mb-1 font-display text-[28px] leading-tight text-[#241923] sm:text-3xl">{title}</DialogTitle>
-              <DialogDescription className="text-[13px] text-[#74616A]">
-                Hizmet, randevu ve paket akışında anında kullanılabilir.
-              </DialogDescription>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Kapat"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7ecf1] text-[#74616A] transition-colors hover:bg-[#ffd3df]/40 hover:text-[#A5556E]"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </header>
-
-        {/* BODY — iki sütun */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-          {/* SOL — önizleme + ikon seçimi (krem). Sütun bütün olarak kayar: üstte kart + ikonların başı görünür, aşağı kaydırınca tüm ikonlar gelir. */}
-          <div className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-[#EAD8DF] bg-[#f7ecf1] p-6 sm:p-8 md:w-[38%] md:border-b-0 md:border-r">
-            {/* Canlı önizleme kartı */}
-            <div className="relative flex shrink-0 flex-col items-center overflow-hidden rounded-2xl border border-[#EAD8DF]/60 bg-white p-5 text-center shadow-[0_4px_12px_-8px_rgba(200,87,118,0.3)]">
-              <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/40 to-transparent" />
-              <motion.div
-                key={previewIcon}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 20 }}
-                className="relative z-10 mb-5 flex h-20 w-20 items-center justify-center rounded-full text-white shadow-[0_8px_24px_-12px_rgba(184,137,56,0.45)]"
-                style={{ backgroundImage: 'linear-gradient(135deg, #f0aac2 0%, #e9a6bf 50%, #d9a441 100%)' }}
-              >
-                <ServiceIcon iconKey={previewIcon} className="h-10 w-10" strokeWidth={1.7} />
-              </motion.div>
-              <div className="relative z-10 mb-3 rounded-full bg-[#ffd3df]/50 px-3 py-1 font-mono text-[10px] tracking-wider text-[#A5556E]">
-                {values.category || 'Kategori'}
-              </div>
-              <h3 className="relative z-10 mb-4 px-2 font-display text-xl text-[#241923]">{values.name.trim() || 'Hizmet adı'}</h3>
-              <div className="relative z-10 mt-auto flex w-full items-center justify-center gap-4 border-t border-[#EAD8DF] pt-4 text-[13px] font-medium text-[#3E343A]">
-                <span className="flex items-center gap-1.5"><Clock className="h-[18px] w-[18px] text-[#74616A]" /> {values.durationMinutes} dk</span>
-                <span className="h-1 w-1 rounded-full bg-[#efe1e7]" />
-                <span className="flex items-center gap-1.5"><Repeat className="h-[18px] w-[18px] text-[#74616A]" /> {values.defaultSessionCount} seans</span>
-              </div>
-              <div className="relative z-10 mt-4 font-display text-2xl font-semibold text-[#b88938]">
-                ₺{(Number(values.price) || 0).toLocaleString('tr-TR')}
-              </div>
-            </div>
-
-            {/* İkon seçimi — tüm ikonlar satır satır; sütunla birlikte aşağı kayar */}
-            <div className="flex flex-col gap-3">
-              <h4 className="text-[13px] font-medium tracking-wide text-[#241923]">İKON SEÇİMİ</h4>
-              <IconPicker bare maxHeight="max-h-none" value={previewIcon} onChange={(key) => setValues((v) => ({ ...v, iconKey: key }))} />
-            </div>
-          </div>
-
-          {/* SAĞ — form (beyaz) */}
-          <div className="w-full overflow-y-auto bg-white p-6 sm:p-8 md:w-[62%]">
-            <div className="flex max-w-2xl flex-col gap-6">
-              {/* Hizmet adı */}
-              <div className="flex flex-col gap-2">
-                <label className={labelStyle}>Hizmet adı</label>
-                <input
-                  type="text"
-                  placeholder="Örn. Hydrafacial Cilt Bakımı"
-                  value={values.name}
-                  onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
-                  className={`${fieldStyle} font-medium`}
-                />
-              </div>
-
-              {/* Kategori — kurumun GERÇEK kategorileri */}
-              <div className="flex flex-col gap-2">
-                <label className={labelStyle}>Kategori</label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <select
-                      value={creatingCategory ? OTHER_SENTINEL : (values.category || '')}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        if (v === OTHER_SENTINEL) {
-                          setCreatingCategory(true)
-                          setCategoryError('')
-                          return
-                        }
-                        setCreatingCategory(false)
-                        // Kategori değişince alt kategori artık geçerli değil → sıfırlanır.
-                        setValues((cur) => ({ ...cur, category: v || null, subCategory: null }))
-                      }}
-                      className={`${fieldStyle} appearance-none pr-10`}
-                    >
-                      <option value="">— Kategori seçilmedi —</option>
-                      {registeredCategories.length > 0 && (
-                        <optgroup label="Kayıtlı kategoriler">
-                          {registeredCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                        </optgroup>
-                      )}
-                      {derivedCategories.length > 0 && (
-                        <optgroup label="Hizmetlerde kullanılanlar">
-                          {derivedCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                        </optgroup>
-                      )}
-                      {onCreateCustomCategory && <option value={OTHER_SENTINEL}>＋ Diğer — yeni kategori ekle…</option>}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
+        <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[356px_minmax(0,1fr)]">
+          {/* ---------------- SOL: CANLI ÖNİZLEME + İKON ---------------- */}
+          <aside className="space-y-3">
+            <section className="relative overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white p-5 text-center">
+              <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-[#F9A1B9]/30 blur-3xl" />
+              <div className="relative">
+                <motion.div
+                  key={previewIcon}
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 20 }}
+                  className="mx-auto grid h-20 w-20 place-items-center rounded-[24px] bg-[#A5556E] text-white shadow-[0_18px_34px_-20px_rgba(87,39,61,0.9)]"
+                >
+                  <ServiceIcon iconKey={previewIcon} className="h-10 w-10" strokeWidth={1.7} />
+                </motion.div>
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1 text-[11px] font-semibold text-[#8C4460]">
+                  {values.category || 'Kategori seçilmedi'}
+                  {values.subCategory ? ` › ${values.subCategory}` : ''}
+                </div>
+                <h3 className="mt-2 font-display text-[20px] font-bold leading-tight tracking-tight text-[#2A2027]">
+                  {values.name.trim() || 'Hizmet adı'}
+                </h3>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#74616A]">Süre</div>
+                    <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[#2A2027]">{values.durationMinutes} dk</div>
                   </div>
-                  {onDeleteCustomCategory && selectedCategoryRecord && !creatingCategory && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!onDeleteCustomCategory || !selectedCategoryRecord) return
-                        setCategoryError('')
-                        try {
-                          await onDeleteCustomCategory(selectedCategoryRecord.id)
-                          setValues((v) => ({ ...v, category: null, subCategory: null }))
-                        } catch (err: unknown) {
-                          setCategoryError(err instanceof Error ? err.message : 'Silinemedi.')
-                        }
-                      }}
-                      title={`“${selectedCategoryRecord.name}” kategorisini sil`}
-                      className="grid w-12 shrink-0 place-items-center rounded-[14px] border border-[#f3c9d4] bg-[#fff1f4] text-[#cf4d68] transition-colors hover:bg-[#ffe4ea]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  <div className="rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#74616A]">Fiyat</div>
+                    <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[#2A2027]">
+                      ₺{(Number(values.price) || 0).toLocaleString('tr-TR')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <ModalSection title="İkon" hint="Randevu, paket ve satış listelerinde bu ikon görünür.">
+              <IconPicker bare maxHeight="max-h-[260px]" value={previewIcon} onChange={(key) => setValues((v) => ({ ...v, iconKey: key }))} />
+            </ModalSection>
+          </aside>
+
+          {/* ---------------- SAĞ: FORM ---------------- */}
+          <div className="space-y-3">
+            <ModalSection title="Kimlik" hint="Hizmetin adı ve yayın durumu.">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Hizmet adı</label>
+                  <input
+                    type="text"
+                    placeholder="Örn. Hydrafacial Cilt Bakımı"
+                    value={values.name}
+                    onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+                    className={fieldStyle}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Yayın durumu</label>
+                  <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-1">
+                    {STATUS_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setValues((v) => ({ ...v, status: opt.value, isActive: opt.value === 'Active' }))}
+                        className="relative rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
+                      >
+                        {values.status === opt.value && (
+                          <motion.span
+                            aria-hidden
+                            layoutId="service-form-status"
+                            className="absolute inset-0 rounded-full bg-[#A5556E]"
+                            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          />
+                        )}
+                        <span className={`relative ${values.status === opt.value ? 'text-white' : 'text-[#5A4B53] hover:text-[#2A2027]'}`}>
+                          {opt.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className={helperStyle}>Taslak / Pasif / Arşiv hizmetler randevu ve satış listelerinde çıkmaz.</p>
+                </div>
+              </div>
+            </ModalSection>
+
+            <ModalSection title="Sınıflandırma" hint="Raporlarda hizmet gruplaması bu alana göre yapılır.">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Kategori</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={creatingCategory ? OTHER_SENTINEL : (values.category || '')}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          if (v === OTHER_SENTINEL) {
+                            setCreatingCategory(true)
+                            setCategoryError('')
+                            return
+                          }
+                          setCreatingCategory(false)
+                          // Kategori değişince alt kategori artık geçerli değil → sıfırlanır.
+                          setValues((cur) => ({ ...cur, category: v || null, subCategory: null }))
+                        }}
+                        className={`${fieldStyle} appearance-none pr-9`}
+                      >
+                        <option value="">— Kategori seçilmedi —</option>
+                        {registeredCategories.length > 0 && (
+                          <optgroup label="Kayıtlı kategoriler">
+                            {registeredCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                          </optgroup>
+                        )}
+                        {derivedCategories.length > 0 && (
+                          <optgroup label="Hizmetlerde kullanılanlar">
+                            {derivedCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                          </optgroup>
+                        )}
+                        {onCreateCustomCategory && <option value={OTHER_SENTINEL}>＋ Diğer — yeni kategori ekle…</option>}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#74616A]" />
+                    </div>
+                    {onDeleteCustomCategory && selectedCategoryRecord && !creatingCategory && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!onDeleteCustomCategory || !selectedCategoryRecord) return
+                          setCategoryError('')
+                          try {
+                            await onDeleteCustomCategory(selectedCategoryRecord.id)
+                            setValues((v) => ({ ...v, category: null, subCategory: null }))
+                          } catch (err: unknown) {
+                            setCategoryError(err instanceof Error ? err.message : 'Silinemedi.')
+                          }
+                        }}
+                        title={`“${selectedCategoryRecord.name}” kategorisini sil`}
+                        className="grid w-11 shrink-0 place-items-center rounded-[12px] border border-[#F0AFBF] bg-[#FCE7EC] text-[#A32347] transition-colors hover:bg-[#F9D7DF]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* "Diğer" → yeni kategori ekleme kutusu */}
+                  <AnimatePresence initial={false}>
+                    {creatingCategory && onCreateCustomCategory && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-1 rounded-[14px] border border-[#BE7690] bg-[#F6DFE6] p-3">
+                          <div className="flex items-center gap-1.5">
+                            <Plus className="h-4 w-4 text-[#8C4460]" />
+                            <span className="text-[12px] font-semibold text-[#8C4460]">Yeni kategori ekle</span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); void createCategory() }
+                                if (e.key === 'Escape') { setCreatingCategory(false); setNewCategoryName('') }
+                              }}
+                              placeholder="Örn. Medikal Estetik"
+                              className={`min-w-[170px] flex-1 ${fieldStyle}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={createCategory}
+                              disabled={categoryBusy || !newCategoryName.trim()}
+                              className={catalogPrimaryBtn}
+                            >
+                              {categoryBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ekle
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setCreatingCategory(false); setNewCategoryName(''); setCategoryError('') }}
+                              className={catalogGhostBtn}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                          <p className="mt-2 text-[11.5px] leading-snug text-[#4a3a44]">
+                            Eklenen kategori tüm hizmet/paket formlarında ve <span className="font-semibold">Paket &amp; Hizmet › Kategoriler</span> sayfasında görünür.
+                          </p>
+                          {categoryError && <div className="mt-2 text-[12px] font-semibold text-[#A32347]">{categoryError}</div>}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  {!creatingCategory && categoryError && <div className="text-[12px] font-semibold text-[#A32347]">{categoryError}</div>}
                 </div>
 
-                {/* "Diğer" → yeni kategori ekleme kutusu */}
-                <AnimatePresence>
-                  {creatingCategory && onCreateCustomCategory && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-1 rounded-2xl border border-[#BE7690]/80 bg-[#f7ecf1] p-4">
-                        <div className="flex items-center gap-2">
-                          <Plus className="h-4 w-4 text-[#A5556E]" />
-                          <span className={labelStyle}>Yeni kategori ekle</span>
-                        </div>
-                        <div className="mt-2.5 flex flex-wrap gap-2">
-                          <input
-                            autoFocus
-                            type="text"
-                            value={newCategoryName}
-                            onChange={(e) => setNewCategoryName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') { e.preventDefault(); void createCategory() }
-                              if (e.key === 'Escape') { setCreatingCategory(false); setNewCategoryName('') }
-                            }}
-                            placeholder="Örn. Medikal Estetik"
-                            className={`min-w-[180px] flex-1 ${fieldStyle}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={createCategory}
-                            disabled={categoryBusy || !newCategoryName.trim()}
-                            className="inline-flex items-center gap-1.5 rounded-[14px] bg-[#A5556E] px-5 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                          >
-                            {categoryBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ekle
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setCreatingCategory(false); setNewCategoryName(''); setCategoryError('') }}
-                            className="rounded-[14px] border border-[#EAD8DF] bg-white px-4 py-3 text-[13px] font-medium text-[#74616A] transition-colors hover:text-[#241923]"
-                          >
-                            Vazgeç
-                          </button>
-                        </div>
-                        <p className="mt-2 text-[11px] text-[#74616A]">
-                          Eklenen kategori tüm hizmet/paket formlarında ve <span className="font-medium">Paket &amp; Hizmet › Kategoriler</span> sayfasında görünür.
-                        </p>
-                        {categoryError && <div className="mt-2 text-[12px] font-medium text-rose-600">{categoryError}</div>}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {!creatingCategory && categoryError && <div className="text-[12px] font-medium text-rose-600">{categoryError}</div>}
-                <p className={helperStyle}>Raporlarda hizmet gruplaması bu alana göre yapılır.</p>
-
                 {/* Alt kategori — kategori seçilene kadar kapalı, sonra O kategorinin alt kategorileri */}
-                <div className="mt-1 flex flex-col gap-1.5">
-                  <label className={labelStyle}>Alt kategori <span className="font-normal text-[#74616A]">(opsiyonel)</span></label>
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Alt kategori <span className="font-medium text-[#705a66]">(opsiyonel)</span></label>
                   <select
                     value={values.subCategory || ''}
                     onChange={(e) => setValues((v) => ({ ...v, subCategory: e.target.value || null }))}
                     disabled={!values.category || subCategoryOptions.length === 0}
-                    className={`${fieldStyle} disabled:cursor-not-allowed disabled:bg-[#f7ecf1] disabled:opacity-70`}
+                    className={`${fieldStyle} disabled:cursor-not-allowed disabled:bg-[#F7F6F6]`}
                   >
                     <option value="">— Alt kategorisiz —</option>
                     {subCategoryOptions.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -456,78 +526,70 @@ export default function ServiceFormDialog({
                   </p>
                 </div>
               </div>
+            </ModalSection>
 
-              {/* Fiyat & Süre */}
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="flex flex-col gap-2">
+            <ModalSection title="Süre, fiyat ve seans" hint="Randevu takviminde ayrılacak süre ve satıştaki birim fiyat.">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
                   <label className={labelStyle}>Fiyat</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 font-medium text-[#74616A]">₺</span>
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[13px] font-semibold text-[#74616A]">₺</span>
                     <input
                       type="number" min={0} step={0.01}
                       value={values.price}
                       onChange={(e) => setValues((v) => ({ ...v, price: Number(e.target.value) }))}
-                      className={`${fieldStyle} pl-9 font-mono`}
+                      className={`${fieldStyle} pl-7 tabular-nums`}
                     />
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className={labelStyle}>Süre (dk)</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Süre</label>
                   <div className="relative">
                     <input
                       type="number" min={5} step={5}
                       value={values.durationMinutes}
                       onChange={(e) => setValues((v) => ({ ...v, durationMinutes: Number(e.target.value) }))}
-                      className={`${fieldStyle} pr-16 font-mono`}
+                      className={`${fieldStyle} pr-9 tabular-nums`}
                     />
-                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-[13px] text-[#74616A]">dakika</span>
+                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-[12px] font-medium text-[#74616A]">dk</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Varsayılan seans */}
-              <div className="flex flex-col gap-2">
-                <label className={labelStyle}>Varsayılan seans sayısı</label>
-                <input
-                  type="number" min={1} step={1}
-                  value={values.defaultSessionCount}
-                  onChange={(e) => setValues((v) => ({ ...v, defaultSessionCount: Math.max(1, Number(e.target.value) || 1) }))}
-                  className={`${fieldStyle} font-mono md:w-1/2`}
-                />
-                <p className={helperStyle}>Paket satışlarında baz alınacak varsayılan seans miktarı.</p>
-              </div>
-
-              {/* Sadakat puanı (altın kutu) */}
-              <div className="relative overflow-hidden rounded-2xl border border-[#b88938]/30 bg-[#f7ecf1] p-5">
-                <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[#b88938]/5 blur-2xl" />
-                <div className="relative z-10 flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b88938]/10 text-[#b88938]">
-                    <Gift className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="mb-2 block text-[13px] font-medium text-[#241923]">Sadakat puanı ile hediye</label>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="relative w-32">
-                        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 font-mono font-bold text-[#b88938]">P</span>
-                        <input
-                          type="number" min={0} step={1}
-                          value={values.loyaltyPointCost || ''}
-                          onChange={(e) => setValues((v) => ({ ...v, loyaltyPointCost: Math.max(0, Math.round(Number(e.target.value) || 0)) }))}
-                          placeholder="Örn. 500"
-                          className="w-full rounded-[14px] border border-[#b88938]/40 bg-white py-2 pl-8 pr-3 font-mono text-[13px] text-[#3E343A] outline-none transition focus:border-[#b88938] focus:ring-2 focus:ring-[#b88938]/20"
-                        />
-                      </div>
-                      <span className="flex-1 text-[12px] text-[#74616A]">
-                        {values.loyaltyPointCost > 0
-                          ? `Adisyonda ${values.loyaltyPointCost} puan karşılığında hediye edilebilir.`
-                          : 'Bu hizmeti ücretsiz almak için gereken puan (boş bırakılırsa puanla alınamaz).'}
-                      </span>
-                    </div>
-                  </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className={labelStyle}>Varsayılan seans</label>
+                  <input
+                    type="number" min={1} step={1}
+                    value={values.defaultSessionCount}
+                    onChange={(e) => setValues((v) => ({ ...v, defaultSessionCount: Math.max(1, Number(e.target.value) || 1) }))}
+                    className={`${fieldStyle} tabular-nums`}
+                  />
                 </div>
               </div>
+              <p className={`mt-2 ${helperStyle}`}>Varsayılan seans, paket kurarken bu hizmetin ön-dolum değeridir.</p>
+            </ModalSection>
 
-              {/* Onam formları — bu hizmet için zorunlu rıza belgeleri (seç veya yerinde oluştur) */}
+            <ModalSection title="Sadakat puanı ile hediye" hint="0 = puanla alınamaz. Puan girilirse adisyonda hediye olarak seçilebilir.">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Gift aria-hidden className="h-4 w-4 shrink-0 text-[#8A5A11]" />
+                <div className="relative w-[128px]">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[13px] font-bold text-[#8A5A11]">P</span>
+                  <input
+                    type="number" min={0} step={1}
+                    value={values.loyaltyPointCost || ''}
+                    onChange={(e) => setValues((v) => ({ ...v, loyaltyPointCost: Math.max(0, Math.round(Number(e.target.value) || 0)) }))}
+                    placeholder="Örn. 500"
+                    className={`${fieldStyle} pl-7 tabular-nums`}
+                  />
+                </div>
+                <span className="min-w-[180px] flex-1 text-[11.5px] leading-snug text-[#4a3a44]">
+                  {values.loyaltyPointCost > 0
+                    ? `Adisyonda ${values.loyaltyPointCost} puan karşılığında hediye edilebilir.`
+                    : 'Bu hizmeti ücretsiz almak için gereken puan (boş bırakılırsa puanla alınamaz).'}
+                </span>
+              </div>
+            </ModalSection>
+
+            {/* Onam formları — bu hizmet için zorunlu rıza belgeleri (seç veya yerinde oluştur) */}
+            <section className="rounded-[18px] border border-[#EAD8DF] bg-white p-4">
               <ConsentPicker
                 value={values.consentTemplateIds}
                 onChange={(next) => setValues((v) => ({ ...v, consentTemplateIds: next }))}
@@ -535,69 +597,10 @@ export default function ServiceFormDialog({
                 label="Bu hizmet için onam formu istensin mi?"
                 hint="Seçilen formlar, bu hizmetin randevusu “Tamamlandı” yapılırken imzalı mı diye kontrol edilir; eksikse uyarı çıkar."
               />
-
-              {/* Yayın durumu — segmented */}
-              <div className="flex flex-col gap-3">
-                <label className={labelStyle}>Yayın durumu</label>
-                <div className="inline-flex w-fit max-w-full overflow-x-auto rounded-2xl border border-[#EAD8DF] bg-[#f7ecf1] p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {STATUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setValues((v) => ({ ...v, status: opt.value, isActive: opt.value === 'Active' }))}
-                      className={`whitespace-nowrap rounded-xl px-5 py-2 text-[13px] font-medium transition-all ${
-                        values.status === opt.value
-                          ? 'bg-white text-[#A5556E] shadow-sm'
-                          : 'text-[#74616A] hover:text-[#241923]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className={helperStyle}>Taslak / Pasif / Arşiv hizmetler randevu listesinde gösterilmez.</p>
-              </div>
-            </div>
+            </section>
           </div>
         </div>
-
-        {/* FOOTER */}
-        <footer className="shrink-0 border-t border-[#EAD8DF] bg-white px-6 py-5 sm:px-8">
-          {error && (
-            <div className="mb-3 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{error}</div>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <div className="hidden items-center gap-2 font-mono text-[12px] text-[#74616A] sm:flex">
-              <Scissors className="h-4 w-4" />
-              <span>·</span>
-              <span>{values.category || 'Kategori seçilmedi'}</span>
-              <span>·</span>
-              <span>{values.durationMinutes}dk</span>
-            </div>
-            <div className="flex flex-1 items-center justify-end gap-3 sm:flex-none">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                disabled={busy}
-                className="rounded-[14px] px-6 py-2.5 text-[13px] font-medium text-[#74616A] transition-colors hover:bg-[#f7ecf1] hover:text-[#241923] disabled:opacity-50"
-              >
-                Vazgeç
-              </button>
-              <motion.button
-                type="button"
-                onClick={handleSubmit}
-                disabled={busy || saved}
-                whileTap={{ scale: 0.97 }}
-                whileHover={{ y: -1 }}
-                className="inline-flex items-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-6 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_12px_-8px_rgba(200,87,118,0.5)] transition-all hover:shadow-[0_18px_40px_-24px_rgba(200,87,118,0.45)] disabled:opacity-70"
-              >
-                {busy ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : saved ? <CheckCircle2 className="h-[18px] w-[18px]" /> : <Save className="h-[18px] w-[18px]" />}
-                {saved ? 'Kaydedildi' : submitLabel}
-              </motion.button>
-            </div>
-          </div>
-        </footer>
-      </DialogContent>
-    </Dialog>
+      </CatalogModal>
+    </>
   )
 }
