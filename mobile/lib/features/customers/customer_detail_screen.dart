@@ -116,6 +116,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   List<Map<String, dynamic>> _appts = const [];
   /// İptal arşivi — iptal edilen satışlar canlı `_accounts` listesinde bulunmaz.
   List<Map<String, dynamic>> _cancelledSales = const [];
+
+  /// Geri alınmakta olan iptalin cari kimliği (düğme kilidi + spinner).
+  String? _restoringCancelledId;
+
+  /// Genel Bakış sekmesi StatelessWidget olduğu için durumu buradan çevirir.
+  void setRestoringCancelled(String? id) {
+    if (!mounted) return;
+    setState(() => _restoringCancelledId = id);
+  }
   bool _loading = true;
   String? _error;
   // Tembel sekmeleri (adisyon, seans, sağlık) yenilemek için sayaç.
@@ -954,7 +963,7 @@ class _OverviewTab extends StatelessWidget {
             ),
             child: Column(
               children: [
-                for (final x in state._cancelledSales) _cancelledRow(x),
+                for (final x in state._cancelledSales) _cancelledRow(context, x),
               ],
             ),
           ),
@@ -962,8 +971,99 @@ class _OverviewTab extends StatelessWidget {
     );
   }
 
+  /// İPTALİ GERİ AL — Ön Muhasebe'deki (CancelledSalesSheet) akışın aynısı: arşivdeki
+  /// yedekten cari, taksit, tahsilat ve seanslar yeniden kurulur. İADE VARSA KARAR
+  /// YÖNETİCİNİN: müşteriye fiilen ödenmiş para, geri alma yüzünden kendiliğinden "olmamış"
+  /// sayılamaz; yanlış girildiyse gerekçeyle kasa çıkışı da geri alınır.
+  Future<void> _restoreCancelled(
+    BuildContext context,
+    Map<String, dynamic> sale,
+  ) async {
+    final id = '${sale['originalAccountId']}';
+    final refunded = (sale['refundedAmount'] as num?)?.toDouble() ?? 0;
+
+    var voidRefund = false;
+    String? voidReason;
+    if (refunded > 0.005) {
+      final reasonCtrl = TextEditingController();
+      final choice = await showDialog<String>(
+        context: context,
+        // StatefulBuilder: gerekçe yazıldıkça "Hayır" etkinleşmeli.
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            title: const Text('İptali geri al'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bu iptalde müşteriye ${CalendarText.tl(refunded)} iade edilmişti. '
+                    'Para gerçekten ödendi mi?',
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '"Evet" derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: reasonCtrl,
+                    onChanged: (_) => setLocal(() {}),
+                    decoration: const InputDecoration(
+                      hintText: 'Yanlış girildiyse gerekçe yazın',
+                      isDense: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Vazgeç'),
+              ),
+              TextButton(
+                onPressed: reasonCtrl.text.trim().isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, 'void'),
+                child: const Text('Hayır, yanlış girilmiş'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'keep'),
+                child: const Text('Evet, ödendi'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (choice == null) return;
+      voidRefund = choice == 'void';
+      voidReason = voidRefund ? reasonCtrl.text.trim() : null;
+    }
+
+    // Durum EBEVEYN State'inde tutulur: bu widget StatelessWidget'tir, kendi setState'i yok.
+    state.setRestoringCancelled(id);
+    try {
+      await state.widget.api.post(
+        '/api/admin/accounts/$id/restore-sale',
+        {'voidRefund': voidRefund, 'voidReason': voidReason},
+      );
+      await state._reload();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      state.setRestoringCancelled(null);
+    }
+  }
+
   /// Arşivdeki tek iptal satırı — tutar, tahsilat/iade kırılımı ve gerekçe.
-  Widget _cancelledRow(Map<String, dynamic> x) {
+  Widget _cancelledRow(BuildContext context, Map<String, dynamic> x) {
     double n(String k) => (x[k] as num?)?.toDouble() ?? 0;
     String day(Object? iso) {
       final d = parseUtcToLocal(iso);
@@ -1065,6 +1165,25 @@ class _OverviewTab extends StatelessWidget {
               style: const TextStyle(fontSize: 11, color: AppColors.ink),
             ),
           ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: state._restoringCancelledId != null
+                  ? null
+                  : () => _restoreCancelled(context, x),
+              icon: state._restoringCancelledId == '${x['originalAccountId']}'
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.undo_rounded, size: 16),
+              label: const Text(
+                'İptali geri al',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
         ],
       ),
     );

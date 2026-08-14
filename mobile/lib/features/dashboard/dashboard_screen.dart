@@ -2806,45 +2806,109 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
               style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _loading ? null : _openPicker,
-                    icon: Icon(
-                      _selected != null && !_selected!.isPackage
-                          ? Icons.auto_awesome_rounded
-                          : Icons.inventory_2_rounded,
-                      size: 16,
-                    ),
-                    label: Text(
-                      _selected?.name ?? 'Paket / hizmet seç',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primaryDark,
-                      minimumSize: const Size.fromHeight(40),
-                    ),
+            // SEÇİCİ ÖNE ÇIKAR (web ile parite): küçük bir düğme gözden kaçıyordu; bloğun
+            // ana eylemi gibi duran bir şerit — seçili değilken çağrı, seçiliyken durum bildirir.
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _loading ? null : _openPicker,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _selected == null
+                      ? AppColors.primary.withValues(alpha: .05)
+                      : AppColors.primary.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _selected == null
+                        ? AppColors.primary.withValues(alpha: .35)
+                        : AppColors.primary,
+                    width: 1.6,
                   ),
                 ),
-                if (_selected != null) ...[
-                  const SizedBox(width: 6),
-                  IconButton(
-                    tooltip: 'Seçimi kaldır',
-                    onPressed: _loading ? null : () => _applySelection(null),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
-                ],
-                if (_loading) ...[
-                  const SizedBox(width: 8),
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ],
-              ],
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _selected == null
+                            ? AppColors.primary
+                            : AppColors.primaryDark,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Icon(
+                        _selected != null && !_selected!.isPackage
+                            ? Icons.auto_awesome_rounded
+                            : Icons.inventory_2_rounded,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _selected == null
+                                ? 'PAKET / HİZMET SEÇ'
+                                : (_selected!.isPackage
+                                      ? 'SEÇİLİ PAKET'
+                                      : 'SEÇİLİ HİZMET'),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                              color: AppColors.primaryDark,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _selected?.name ?? 'Tüm satışlar gösteriliyor',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          Text(
+                            _selected == null
+                                ? 'Tek bir paket ya da hizmet seçerek listeyi daraltın'
+                                : 'Liste yalnız bu ürünü alan müşterileri gösteriyor',
+                            maxLines: 2,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_loading)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_selected != null)
+                      IconButton(
+                        tooltip: 'Seçimi kaldır',
+                        onPressed: () => _applySelection(null),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                      )
+                    else
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.primaryDark,
+                      ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(

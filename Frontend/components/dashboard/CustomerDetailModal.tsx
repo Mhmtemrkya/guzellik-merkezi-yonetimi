@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Ban, Cake, CalendarPlus, Check, ChevronRight, Clock, Copy, CreditCard, Crown, FileText, Loader2, Mail,
-  Package, Phone, PieChart, ReceiptText, Scissors, Search, Sparkles, Trash2, TrendingUp, User, Wallet, X,
+  Package, Phone, PieChart, ReceiptText, RotateCcw, Scissors, Search, Sparkles, Trash2, TrendingUp, User, Wallet, X,
 } from 'lucide-react'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
@@ -367,6 +367,7 @@ export default function CustomerDetailModal({
   saleSlot,
   salesPanel,
   onCollectPayment,
+  onRestoreCancelledSale,
 }: {
   open: boolean
   onClose: () => void
@@ -405,6 +406,12 @@ export default function CustomerDetailModal({
    * müşterinin AÇIK BORÇLU carisi varsa görünür (tahsil edilecek bir şey yoksa buton anlamsız).
    */
   onCollectPayment?: (payload: CollectionSubmitPayload) => Promise<void>
+  /**
+   * "İptali geri al" — Ön Muhasebe'deki akışın aynısı (adminApi.restoreSale). Verilmezse
+   * iptal listesi salt okunur kalır. `voidRefund` yalnız iade FİİLEN yapılmamışsa true olur ve
+   * gerekçe zorunludur: gerçek bir kasa çıkışı siliniyor demektir.
+   */
+  onRestoreCancelledSale?: (originalAccountId: string, voidRefund: boolean, voidReason?: string) => Promise<void>
 }) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [noteDraft, setNoteDraft] = useState('')
@@ -418,6 +425,11 @@ export default function CustomerDetailModal({
   const [salesOpen, setSalesOpen] = useState(false)
   /** Hızlı işlemlerden açılan "Tahsilat Al" modalı. */
   const [collectOpen, setCollectOpen] = useState(false)
+  /** "İptali geri al" akışı — iadeli iptalde önce "para gerçekten ödendi mi?" sorulur. */
+  const [restoreConfirmId, setRestoreConfirmId] = useState<string | null>(null)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [voidReason, setVoidReason] = useState('')
+  const [restoreError, setRestoreError] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
   // Modal açıldığında / müşteri değiştiğinde sekmeyi ve notu tazele.
@@ -429,9 +441,29 @@ export default function CustomerDetailModal({
       setApptQuery('')
       setApptStatus('all')
       setSalesOpen(false)
+      setRestoreConfirmId(null)
+      setVoidReason('')
+      setRestoreError('')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customer?.id])
+
+  /** Geri alma isteği — hata satır altında yazılır, modal kapanmaz. */
+  const restoreCancelled = useCallback(async (originalAccountId: string, rowId: string, voidRefund: boolean) => {
+    if (!onRestoreCancelledSale) return
+    if (voidRefund && !voidReason.trim()) { setRestoreError('İadeyi geçersiz kılmak için gerekçe yazın.'); return }
+    setRestoringId(rowId)
+    setRestoreError('')
+    try {
+      await onRestoreCancelledSale(originalAccountId, voidRefund, voidRefund ? voidReason.trim() : undefined)
+      setRestoreConfirmId(null)
+      setVoidReason('')
+    } catch (e) {
+      setRestoreError(e instanceof Error ? e.message : 'İptal geri alınamadı.')
+    } finally {
+      setRestoringId(null)
+    }
+  }, [onRestoreCancelledSale, voidReason])
 
   // Sekme değişince gövde başa dönsün: uzun sekmeden kısa sekmeye geçince
   // sayfa ortasında açılıyor ve içerik yokmuş gibi görünüyordu.
@@ -1089,6 +1121,73 @@ export default function CustomerDetailModal({
                                 <div className={`mt-1.5 text-[11px] ${SEMI}`}>
                                   <span className="font-semibold">Gerekçe:</span> {c.cancellationReason}
                                 </div>
+                              )}
+
+                              {/* İPTALİ GERİ AL — Ön Muhasebe'deki akışın aynısı. İade varsa
+                                  önce "para gerçekten ödendi mi?" sorulur: geri alma, müşteriye
+                                  fiilen ödenmiş bir parayı kendiliğinden "olmamış" sayamaz. */}
+                              {onRestoreCancelledSale && (
+                                restoreConfirmId === c.id ? (
+                                  <div className="mt-2 rounded-[11px] border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                                    <p className="text-[11px] font-semibold text-amber-900">
+                                      Bu iptalde müşteriye {formatTL(Math.round(c.refundedAmount))} iade edilmişti. Para gerçekten ödendi mi?
+                                    </p>
+                                    <p className="mt-1 text-[10.5px] text-amber-800">
+                                      &quot;Evet&quot; derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.
+                                    </p>
+                                    <input
+                                      value={voidReason}
+                                      onChange={(e) => setVoidReason(e.target.value)}
+                                      placeholder="Yanlış girildiyse gerekçe yazın (ör. iade fiilen yapılmadı)"
+                                      className="mt-2 w-full rounded-[9px] border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] text-[#2A2027] outline-none focus:border-amber-400 placeholder:text-[#74616A]"
+                                    />
+                                    {restoreError && <p className="mt-1 text-[10.5px] font-semibold text-rose-700">{restoreError}</p>}
+                                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => { setRestoreConfirmId(null); setVoidReason(''); setRestoreError('') }}
+                                        className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#74616A]"
+                                      >
+                                        Vazgeç
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={restoringId === c.id}
+                                        onClick={() => void restoreCancelled(c.originalAccountId, c.id, true)}
+                                        className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] disabled:opacity-60"
+                                      >
+                                        Hayır, yanlış girilmiş — iadeyi de geri al
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={restoringId === c.id}
+                                        onClick={() => void restoreCancelled(c.originalAccountId, c.id, false)}
+                                        className="cursor-pointer rounded-[9px] bg-[#a34a62] px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-60"
+                                      >
+                                        Evet, ödendi — kasa çıkışı kalsın
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 flex items-center justify-end gap-2">
+                                    {restoreError && restoringId === null && (
+                                      <span className="text-[10.5px] font-semibold text-rose-700">{restoreError}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      disabled={restoringId === c.id}
+                                      onClick={() => {
+                                        // İade yoksa soracak bir şey yok; doğrudan geri al.
+                                        setRestoreError('')
+                                        if (c.refundedAmount > 0.005) { setRestoreConfirmId(c.id); setVoidReason(''); return }
+                                        void restoreCancelled(c.originalAccountId, c.id, false)
+                                      }}
+                                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"
+                                    >
+                                      <RotateCcw className={`h-3 w-3 ${restoringId === c.id ? 'animate-spin' : ''}`} /> İptali geri al
+                                    </button>
+                                  </div>
+                                )
                               )}
                             </div>
                           ))}

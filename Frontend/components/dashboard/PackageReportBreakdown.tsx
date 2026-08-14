@@ -55,28 +55,29 @@ export default function PackageReportBreakdown({
 }) {
   return (
     <div className={`rounded-[22px] border border-[#EAD8DF] bg-white p-4 transition-opacity sm:p-5 ${loading ? 'opacity-60' : 'opacity-100'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
-            <Layers className="h-4 w-4" strokeWidth={1.7} />
-          </span>
-          <div>
-            <div className="font-display text-[14px] font-semibold text-[#2A2027]">Satış Detayı</div>
-            <div className="text-[11px] text-[#5A4B53]">
-              Müşteri kırılımı
-              {selectedItem ? <span className="font-semibold text-[#8C4460]"> · {selectedItem.name}</span> : ' · tüm satışlar'}
-            </div>
+      <div className="flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-[11px] bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
+          <Layers className="h-4 w-4" strokeWidth={1.7} />
+        </span>
+        <div>
+          <div className="font-display text-[14px] font-semibold text-[#2A2027]">Satış Detayı</div>
+          <div className="text-[11px] text-[#5A4B53]">
+            Müşteri kırılımı
+            {selectedItem ? <span className="font-semibold text-[#8C4460]"> · {selectedItem.name}</span> : ' · tüm satışlar'}
           </div>
         </div>
-        {onSelectItem && (
-          <ItemFilter
-            packageItems={packageItems}
-            serviceItems={serviceItems}
-            value={selectedItem}
-            onChange={onSelectItem}
-          />
-        )}
       </div>
+
+      {/* SEÇİCİ ÖNE ÇIKAR: başlık satırındaki küçük düğme gözden kaçıyordu. Kendi şeridinde,
+          bloğun ana eylemi gibi durur — seçili değilken çağrı, seçiliyken durum bildirir. */}
+      {onSelectItem && (
+        <ItemFilter
+          packageItems={packageItems}
+          serviceItems={serviceItems}
+          value={selectedItem}
+          onChange={onSelectItem}
+        />
+      )}
 
       {customers.length === 0 ? (
         <div className="mt-4 rounded-[16px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#5A4B53]">
@@ -130,31 +131,57 @@ function ItemFilter({
   const items = kind === 'package' ? packageItems : serviceItems
 
   return (
-    <div ref={wrapRef} className="relative">
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className={`inline-flex max-w-[260px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-            value ? 'border-[#BE7690] bg-[#F6DFE6] text-[#8C4460]' : 'border-[#E4DEE0] bg-[#F7F6F6] text-[#5A4B53] hover:border-[#BE7690]'
-          }`}
-        >
-          {value?.kind === 'service' ? <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} /> : <Boxes className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />}
-          <span className="truncate">{value ? value.name : 'Paket / hizmet seç'}</span>
-          <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
-        </button>
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            title="Seçimi kaldır"
-            aria-label="Seçimi kaldır"
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#E4DEE0] bg-white text-[#8E7882] transition-colors hover:border-[#BE7690] hover:text-[#8C4460]"
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={2} />
-          </button>
-        )}
-      </div>
+    <div ref={wrapRef} className="relative mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`group flex w-full items-center gap-3 rounded-[16px] border-2 px-3.5 py-3 text-left transition-all ${
+          value
+            ? 'border-[#BE7690] bg-[linear-gradient(100deg,#FBEAF0,#F6DFE6)] shadow-[0_16px_34px_-26px_rgba(87,39,61,0.9)]'
+            : 'border-dashed border-[#D9AEBE] bg-[#FFF9FB] hover:border-[#BE7690] hover:bg-[#FBEAF0]'
+        }`}
+      >
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] text-white shadow-[0_12px_24px_-16px_rgba(42,32,39,0.9)] ${value ? 'bg-[#8C4460]' : 'bg-[#A5556E]'}`}>
+          {value?.kind === 'service'
+            ? <Sparkles className="h-5 w-5" strokeWidth={1.8} />
+            : <Boxes className="h-5 w-5" strokeWidth={1.8} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[#A5556E]">
+            {value ? (value.kind === 'service' ? 'Seçili hizmet' : 'Seçili paket') : 'Paket / hizmet seç'}
+          </span>
+          <span className="mt-0.5 block truncate font-display text-[14.5px] font-semibold text-[#2A2027]">
+            {value ? value.name : 'Tüm satışlar gösteriliyor'}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] text-[#5A4B53]">
+            {value
+              ? 'Aşağıdaki liste yalnız bu ürünü alan müşterileri gösteriyor'
+              : 'Tek bir paket ya da hizmet seçerek listeyi daraltın'}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Seçimi kaldır"
+              aria-label="Seçimi kaldır"
+              onClick={(e) => { e.stopPropagation(); onChange(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onChange(null) } }}
+              className="grid h-8 w-8 cursor-pointer place-items-center rounded-full border border-[#E3C6D1] bg-white text-[#8E7882] transition-colors hover:border-[#BE7690] hover:text-[#8C4460]"
+            >
+              <X className="h-4 w-4" strokeWidth={2} />
+            </span>
+          )}
+          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors ${
+            value ? 'bg-white text-[#8C4460]' : 'bg-[#A5556E] text-white group-hover:bg-[#8C4460]'
+          }`}>
+            {value ? 'Değiştir' : 'Seç'}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2.2} />
+          </span>
+        </span>
+      </button>
 
       <AnimatePresence>
         {open && (
@@ -163,7 +190,7 @@ function ItemFilter({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.16 }}
-            className="absolute right-0 z-30 mt-2 w-[min(92vw,360px)] rounded-[16px] border border-[#EAD8DF] bg-white p-3 shadow-[0_30px_70px_-40px_rgba(87,39,61,0.85)]"
+            className="absolute right-0 z-30 mt-2 w-[min(92vw,420px)] rounded-[16px] border border-[#EAD8DF] bg-white p-3 shadow-[0_30px_70px_-40px_rgba(87,39,61,0.85)]"
           >
             <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
               {(

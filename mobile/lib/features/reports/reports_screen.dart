@@ -1028,19 +1028,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        ReportSection(
-          title: 'Randevu Durumu',
-          icon: Icons.event_available_rounded,
-          child: RankBarList(
-            format: (v) => '${v.round()} randevu',
-            emptyText: 'Bu dönemde randevu yok.',
-            items: [
-              for (final s in _rows(d['appointmentStatuses']))
-                RankBarItem(label: _s(s['label']), value: _n(s['count'])),
-            ],
-          ),
-        ),
+        // "Randevu Durumu" kartı KALDIRILDI (web Genel Bakış ile parite).
       ],
     );
   }

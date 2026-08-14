@@ -161,32 +161,16 @@ export default function OverviewTab({
         </ReportCard>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <ReportCard
-          title="Randevu Yoğunluğu"
-          subtitle="Haftanın günü × saat — koyu renk daha yoğun"
-          icon={CalendarClock}
-          onOpen={() => detail.openKey('overview.heatmap', { rangeLabel })}
-        >
-          <HeatGrid cells={data?.heatmap ?? []} />
-        </ReportCard>
-
-        {/* Randevuların durum dağılımı. "Dönem Sağlığı" kartındaki tamamlanma/kâr marjı
-            halkaları KALDIRILDI (oran kartları istenmiyor); durum dökümü tek başına kalır. */}
-        <ReportCard title="Randevu Durumu" subtitle={`${totalAppointments} randevu · ${rangeLabel}`} icon={CalendarClock}>
-          <div className="space-y-2">
-            {(data?.appointmentStatuses ?? []).map((s) => (
-              <div key={s.key} className="flex items-center justify-between gap-2 text-[11.5px]">
-                <span className="text-[#4a3a44]">{s.label}</span>
-                <span className="font-bold text-[#2f2230]">{s.count}</span>
-              </div>
-            ))}
-            {(data?.appointmentStatuses.length ?? 0) === 0 && (
-              <div className="text-[11.5px] text-[#705a66]">Bu dönemde randevu kaydı yok.</div>
-            )}
-          </div>
-        </ReportCard>
-      </section>
+      {/* "Randevu Durumu" kartı KALDIRILDI (önce "Dönem Sağlığı" idi); yoğunluk haritası
+          yanında dar kalıyordu, artık satırın tamamını kullanıyor. */}
+      <ReportCard
+        title="Randevu Yoğunluğu"
+        subtitle={`Haftanın günü × saat — koyu renk daha yoğun · ${totalAppointments} randevu · ${rangeLabel}`}
+        icon={CalendarClock}
+        onOpen={() => detail.openKey('overview.heatmap', { rangeLabel })}
+      >
+        <HeatGrid cells={data?.heatmap ?? []} />
+      </ReportCard>
     </div>
   )
 }

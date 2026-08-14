@@ -1077,6 +1077,24 @@ function MusterilerPageInner() {
               allowOverpayment: payload.allowOverpayment,
             }, tenantId, payload.idempotencyKey))
           }}
+          /* "İptali geri al" — Ön Muhasebe'deki uç ve akışın aynısı: cari, taksit, tahsilat ve
+             seanslar arşiv yedeğinden yeniden kurulur. Düğme personelde de görünür; yazma
+             sayfanın diğer işlemleriyle aynı yoldan (performWrite) geçtiği için personelde
+             doğrudan işlenmez, onay kuyruğuna düşer ve kullanıcı bunu ekranda görür. */
+          onRestoreCancelledSale={async (originalAccountId, voidRefund, voidReason) => {
+            await runSaleAction(async () => {
+              const res = await performWrite({
+                // operationType verilmez: onay kaydının türünü backend kapısı üretir ve
+                // "RestoreSale" diye bir istemci anahtarı yok (bkz. PendingOperationTypeKey).
+                title: `İptali geri al: ${selected?.name || '—'}`,
+                summary: voidRefund ? 'iade de geri alınacak' : '',
+                payload: { accountId: originalAccountId, voidRefund, voidReason: voidReason ?? null },
+                tenantId,
+                directAction: () => adminApi.restoreSale(originalAccountId, tenantId, voidRefund, { voidReason }),
+              })
+              if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('İptali geri alma'))
+            })
+          }}
           salesPanel={selected ? (
             <CustomerSalesPanel
               variant="flush"
