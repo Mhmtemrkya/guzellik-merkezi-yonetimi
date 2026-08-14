@@ -16,14 +16,13 @@ import {
   BarChart3,
   CalendarRange,
   GitCompareArrows,
-  Layers,
   Plus,
   Sparkles,
   Trophy,
   UserCog,
   X,
 } from 'lucide-react'
-import { ComparisonBars, RankBars, TrendChart, paletteAt, type TrendSeries } from '@/components/reports/ReportCharts'
+import { ComparisonBars, RankBars, paletteAt } from '@/components/reports/ReportCharts'
 import { Pill, ReportCard, formatValue, type ReportValueUnit } from '@/components/reports/ReportUi'
 import { useMetricDetail } from '@/components/reports/MetricDetailContext'
 import { formatTL } from '@/lib/apiMappers'
@@ -99,15 +98,6 @@ export default function CompareTab({
     }))
   }, [baseline, periods])
 
-  const trendSeries: TrendSeries[] = periods.map((p, i) => ({
-    key: p.key,
-    label: p.label,
-    color: paletteAt(i),
-    values: p.series.map((s) => s.income),
-    filled: i === 0,
-    dashed: i > 0,
-  }))
-
   return (
     <div className="space-y-4">
       {/* ---------------------------------------------------------- dönem kurucu --- */}
@@ -119,8 +109,8 @@ export default function CompareTab({
           detail.openKey('compare.builder', {
             breakdown: periods.map((p) => ({
               label: p.label + (p.isBaseline ? ' (temel)' : ''),
-              value: formatTL(Math.round(metricValue(p, 'net'))),
-              hint: `${p.dayCount} gün · ${formatTL(Math.round(metricValue(p, 'income')))} gelir`,
+              value: formatTL(Math.round(metricValue(p, 'income'))),
+              hint: `${p.dayCount} gün · ${formatTL(Math.round(metricValue(p, 'sales')))} satış`,
             })),
           })
         }
@@ -338,30 +328,18 @@ export default function CompareTab({
             </div>
           </ReportCard>
 
-          {/* --------------------------------------------------------- grafikler --- */}
-          <ReportCard
-            title="Gelir Eğrileri (üst üste)"
-            subtitle={`Ortak eksen · ${data?.granularity === 'month' ? 'aylık' : data?.granularity === 'week' ? 'haftalık' : 'günlük'} kova`}
-            icon={Layers}
-          >
-            <TrendChart
-              labels={data?.axisLabels ?? []}
-              series={trendSeries}
-              height={300}
-              format={(v) => formatTL(Math.round(v))}
-              emptyText="Seçili dönemlerde tahsilat yok."
-            />
-          </ReportCard>
-
+          {/* --------------------------------------------------------- grafikler ---
+              ZAMAN EĞRİSİ ve NET KÂR sıralaması KALDIRILDI (kurum tercihi): raporlar sayfasında
+              çizgi/alan eğrisi ve net kâr görseli gösterilmiyor. */}
           <section className="grid gap-4 lg:grid-cols-2">
-            <ReportCard title="Net Kâr" subtitle="Dönem bazında" icon={Trophy}>
+            <ReportCard title="Dönem Geliri" subtitle="Tahsilat sıralaması" icon={Trophy}>
               <RankBars
                 items={periods.map((p, i) => ({
                   key: p.key,
                   label: p.label,
-                  value: metricValue(p, 'net'),
-                  color: metricValue(p, 'net') >= 0 ? `linear-gradient(90deg, ${paletteAt(i)}aa, ${paletteAt(i)})` : 'linear-gradient(90deg,#e8a5a1,#b3453f)',
-                  hint: `${formatTL(Math.round(metricValue(p, 'income')))} gelir · ${formatTL(Math.round(metricValue(p, 'expense')))} gider · %${Math.round(metricValue(p, 'margin'))} marj`,
+                  value: metricValue(p, 'income'),
+                  color: `linear-gradient(90deg, ${paletteAt(i)}aa, ${paletteAt(i)})`,
+                  hint: `${formatTL(Math.round(metricValue(p, 'expense')))} gider · ${formatTL(Math.round(metricValue(p, 'sales')))} satış`,
                 }))}
                 format={(v) => formatTL(Math.round(v))}
               />

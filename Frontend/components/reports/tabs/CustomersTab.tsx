@@ -5,7 +5,7 @@
  */
 
 import { CalendarHeart, Crown, HeartCrack, Repeat2, ShieldCheck, UserPlus, Users, Wallet } from 'lucide-react'
-import { DonutChart, RadialGauge, RankBars, TrendChart } from '@/components/reports/ReportCharts'
+import { DonutChart, RadialGauge, RankBars } from '@/components/reports/ReportCharts'
 import { KpiTile, Pill, ReportCard, ReportTable } from '@/components/reports/ReportUi'
 import { kpiOpener, useMetricDetail } from '@/components/reports/MetricDetailContext'
 import { formatTL } from '@/lib/apiMappers'
@@ -21,7 +21,6 @@ export default function CustomersTab({
   rangeLabel: string
 }) {
   const detail = useMetricDetail()
-  const series = data?.series ?? []
   const kvkkRatio = (data?.totalCustomers ?? 0) > 0 ? ((data?.kvkkApproved ?? 0) / (data?.totalCustomers ?? 1)) * 100 : 0
 
   return (
@@ -64,18 +63,7 @@ export default function CustomersTab({
         ))}
       </section>
 
-      <ReportCard title="Müşteri Hareketi" subtitle={`${rangeLabel} · yeni kayıt, randevu ve tahsilat`} icon={Users}>
-        <TrendChart
-          labels={series.map((p) => p.label)}
-          series={[
-            { key: 'spent', label: 'Tahsilat', color: '#2c7d63', values: series.map((p) => p.income) },
-            { key: 'appt', label: 'Randevu', color: '#c85776', values: series.map((p) => p.appointments), filled: false },
-            { key: 'new', label: 'Yeni müşteri', color: '#7b52ba', values: series.map((p) => p.newCustomers), filled: false },
-          ]}
-          height={250}
-          format={(v) => (v >= 1000 ? `${Math.round(v / 1000)}B` : `${Math.round(v)}`)}
-        />
-      </ReportCard>
+      {/* ZAMAN EĞRİSİ KALDIRILDI (kurum tercihi): raporlarda çizgi/alan eğrisi gösterilmiyor. */}
 
       <section className="grid gap-4 lg:grid-cols-4">
         <ReportCard title="Yaş Dağılımı" icon={Users}>

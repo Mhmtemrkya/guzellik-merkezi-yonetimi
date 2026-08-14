@@ -106,6 +106,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _Slot.year(DateTime.now().year - 1),
   ];
 
+  /// Personel sekmesindeki seçim (StaffMember.Id); null = tüm personel.
+  /// Dönem değişse de korunur — kullanıcı aynı kişiyi farklı dönemlerde inceleyebilsin.
+  String? _staffFilter;
+
   late Future<Map<String, dynamic>> _future = _load();
 
   // ------------------------------------------------------------- dönem hesabı ---
@@ -743,9 +747,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _compareView(Map<String, dynamic> d) {
     final periods = _rows(d['periods']);
-    final axis = (d['axisLabels'] as List? ?? const [])
-        .map((e) => '$e')
-        .toList();
     if (periods.isEmpty) {
       return const ReportEmpty(text: 'Karşılaştırma verisi yok.');
     }
@@ -828,47 +829,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        // ZAMAN EĞRİSİ / NET KÂR GÖRSELİ KALDIRILDI (kurum tercihi): raporlar
+        // sayfasında çizgi-alan eğrisi ve net kâr grafiği gösterilmiyor.
         ReportSection(
-          title: 'Gelir Eğrileri (üst üste)',
-          subtitle:
-              'Ortak eksen · ${_s(d['granularity']) == 'month'
-                  ? 'aylık'
-                  : _s(d['granularity']) == 'week'
-                  ? 'haftalık'
-                  : 'günlük'} kova',
-          icon: Icons.stacked_line_chart_rounded,
-          child: ReportTrend(
-            labels: axis,
-            series: [
-              for (var i = 0; i < periods.length; i++)
-                TrendSeries(
-                  label: _s(periods[i]['label']),
-                  color: paletteAt(i),
-                  filled: i == 0,
-                  dashed: i > 0,
-                  values: _rows(
-                    periods[i]['series'],
-                  ).map((s) => _n(s['income'])).toList(),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        ReportSection(
-          title: 'Net Kâr',
-          subtitle: 'Dönem bazında',
+          title: 'Dönem Geliri',
+          subtitle: 'Tahsilat sıralaması',
           icon: Icons.emoji_events_rounded,
           child: RankBarList(
+            format: reportMoney,
             items: [
               for (var i = 0; i < periods.length; i++)
                 RankBarItem(
                   label: _s(periods[i]['label']),
-                  value: metric(periods[i], 'net'),
-                  color: metric(periods[i], 'net') >= 0
-                      ? paletteAt(i)
-                      : AppColors.danger,
+                  value: metric(periods[i], 'income'),
+                  color: paletteAt(i),
                   hint:
-                      '${reportMoney(metric(periods[i], 'income'))} gelir · ${reportMoney(metric(periods[i], 'expense'))} gider · %${metric(periods[i], 'margin').round()} marj',
+                      '${reportMoney(metric(periods[i], 'expense'))} gider · ${reportMoney(metric(periods[i], 'sales'))} satış',
                 ),
             ],
           ),
@@ -943,9 +919,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _overview(Map<String, dynamic> d) {
     final metrics = _rows(d['metrics']);
-    final series = _rows(d['series']);
-    final compareSeries = _rows(d['compareSeries']);
-    final labels = series.map((p) => _s(p['label'])).toList();
     final hasCompare = _compareLabel != null;
 
     String fmt(Map<String, dynamic> m) {
@@ -1017,48 +990,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
         ]),
         const SizedBox(height: 14),
-        ReportSection(
-          title: 'Gelir · Gider · Net Kâr',
-          subtitle: hasCompare
-              ? '$_rangeLabel — kesikli: kıyas dönemi'
-              : _rangeLabel,
-          icon: Icons.show_chart_rounded,
-          child: ReportTrend(
-            labels: labels,
-            series: [
-              TrendSeries(
-                label: 'Gelir',
-                color: AppColors.success,
-                values: series.map((p) => _n(p['income'])).toList(),
-              ),
-              TrendSeries(
-                label: 'Gider',
-                color: AppColors.danger,
-                values: series.map((p) => _n(p['expense'])).toList(),
-              ),
-              TrendSeries(
-                label: 'Net',
-                color: AppColors.primary,
-                filled: false,
-                values: series.map((p) => _n(p['net'])).toList(),
-              ),
-              if (hasCompare && compareSeries.isNotEmpty)
-                TrendSeries(
-                  label: 'Kıyas geliri',
-                  color: const Color(0xFF7B52BA),
-                  dashed: true,
-                  filled: false,
-                  values: [
-                    for (var i = 0; i < labels.length; i++)
-                      i < compareSeries.length
-                          ? _n(compareSeries[i]['income'])
-                          : 0.0,
-                  ],
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
+        // ZAMAN EĞRİSİ KALDIRILDI (kurum tercihi): raporlar sayfasında çizgi/alan
+        // eğrisi ve net kâr görseli gösterilmiyor.
         ReportSection(
           title: 'Ödeme Yöntemi',
           icon: Icons.credit_card_rounded,
@@ -1544,13 +1477,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ========================================================= PERSONEL ======
 
   Widget _staff(Map<String, dynamic> d) {
-    final rows = _rows(d['rows']);
+    final allRows = _rows(d['rows']);
     final hasCompare = _compareLabel != null;
-    final contribution =
-        _n(d['totalServiceRevenue']) + _n(d['totalSalesAmount']);
-    final prevContribution =
-        _n(d['previousTotalServiceRevenue']) +
-        _n(d['previousTotalSalesAmount']);
+
+    /// PERSONEL SEÇİCİSİ: sekmeye girildiğinde önce kimin raporuna bakılacağı seçilir;
+    /// boşken tüm kadro (önceki davranış) gösterilir. Süzme İSTEMCİDE yapılır — sunucu zaten
+    /// personel bazlı satır döndürüyor, ek istek gerekmez ve dönem değişince seçim korunur.
+    final selected = _staffFilter == null
+        ? null
+        : allRows.where((r) => _s(r['staffMemberId']) == _staffFilter).firstOrNull;
+    final rows = selected == null ? allRows : [selected];
+
+    /// Seçim varken KPI'lar kurum toplamını değil seçilen kişinin kendi satırını göstermeli;
+    /// aksi hâlde kartlar tüm kadroyu, alttaki karne tek kişiyi anlatırdı.
+    double sum(String key) => rows.fold<double>(0, (t, r) => t + _n(r[key]));
+    final serviceRevenue =
+        selected == null ? _n(d['totalServiceRevenue']) : sum('serviceRevenue');
+    final prevServiceRevenue = selected == null
+        ? _n(d['previousTotalServiceRevenue'])
+        : sum('previousServiceRevenue');
+    final salesAmount =
+        selected == null ? _n(d['totalSalesAmount']) : sum('salesAmount');
+    final prevSalesAmount = selected == null
+        ? _n(d['previousTotalSalesAmount'])
+        : sum('previousSalesAmount');
+    final commission =
+        selected == null ? _n(d['totalCommission']) : sum('commissionEarned');
+    final appointments =
+        selected == null ? _n(d['totalAppointments']) : sum('appointmentCount');
+    final workedMinutes =
+        selected == null ? _n(d['totalWorkedMinutes']) : sum('workedMinutes');
+    final contribution = serviceRevenue + salesAmount;
+    final prevContribution = prevServiceRevenue + prevSalesAmount;
 
     final sorted = [...rows]
       ..sort(
@@ -1562,6 +1520,55 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.badge_rounded,
+                size: 16,
+                color: AppColors.primaryDark,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    isExpanded: true,
+                    value: _staffFilter,
+                    hint: Text('Tüm personel (${allRows.length})'),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                    ),
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Tüm personel (${allRows.length})'),
+                      ),
+                      for (final r in ([...allRows]..sort(
+                        (a, b) => _s(
+                          a['staffName'],
+                        ).compareTo(_s(b['staffName'])),
+                      )))
+                        DropdownMenuItem<String?>(
+                          value: _s(r['staffMemberId']),
+                          child: Text(_s(r['staffName'])),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() => _staffFilter = v),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         _kpiGrid([
           ReportKpi(
             label: 'Toplam Katkı',
@@ -1579,63 +1586,62 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           ReportKpi(
             label: 'Uygulama Cirosu',
-            value: reportMoney(_n(d['totalServiceRevenue'])),
+            value: reportMoney(serviceRevenue),
             icon: Icons.task_alt_rounded,
             tone: AppColors.success,
-            current: _n(d['totalServiceRevenue']),
-            previous: hasCompare ? _n(d['previousTotalServiceRevenue']) : null,
+            current: serviceRevenue,
+            previous: hasCompare ? prevServiceRevenue : null,
             compareLabel: _compareLabel,
             onTap: _detail(
               'staff.serviceRevenue',
-              valueText: reportMoney(_n(d['totalServiceRevenue'])),
+              valueText: reportMoney(serviceRevenue),
             ),
           ),
           ReportKpi(
             label: 'Satış Cirosu',
-            value: reportMoney(_n(d['totalSalesAmount'])),
+            value: reportMoney(salesAmount),
             icon: Icons.verified_user_rounded,
             tone: const Color(0xFF7B52BA),
-            current: _n(d['totalSalesAmount']),
-            previous: hasCompare ? _n(d['previousTotalSalesAmount']) : null,
+            current: salesAmount,
+            previous: hasCompare ? prevSalesAmount : null,
             compareLabel: _compareLabel,
             onTap: _detail(
               'staff.salesAmount',
-              valueText: reportMoney(_n(d['totalSalesAmount'])),
+              valueText: reportMoney(salesAmount),
             ),
           ),
           ReportKpi(
             label: 'Komisyon',
-            value: reportMoney(_n(d['totalCommission'])),
+            value: reportMoney(commission),
             icon: Icons.savings_rounded,
             tone: AppColors.warning,
             hint: 'dönemde hak edilen',
             onTap: _detail(
               'staff.commission',
-              valueText: reportMoney(_n(d['totalCommission'])),
+              valueText: reportMoney(commission),
             ),
           ),
+          // "Tamamlanan İşlem" kartı KALDIRILDI (Genel Bakış'tan da kalktı). Sayı kaybolmadı:
+          // karnedeki "Randevu" sütunu ve "En Çok İşlem Yapan" grafiği aynı veriyi taşır.
           ReportKpi(
-            label: 'Tamamlanan',
-            value: reportCount(_n(d['totalCompleted'])),
+            label: 'Randevu Sayısı',
+            value: reportCount(appointments),
             icon: Icons.event_available_rounded,
             tone: AppColors.success,
-            hint: '${_i(d['totalAppointments'])} randevudan',
-            current: _n(d['totalCompleted']),
-            previous: hasCompare ? _n(d['previousTotalCompleted']) : null,
-            compareLabel: _compareLabel,
+            hint: 'dönemdeki randevu',
             onTap: _detail(
-              'completed',
-              valueText: reportCount(_n(d['totalCompleted'])),
+              'staff.appointments',
+              valueText: reportCount(appointments),
             ),
           ),
           ReportKpi(
             label: 'Çalışılan Süre',
-            value: reportDuration(_n(d['totalWorkedMinutes'])),
+            value: reportDuration(workedMinutes),
             icon: Icons.schedule_rounded,
             tone: const Color(0xFF4A7FB5),
             onTap: _detail(
               'staff.workedMinutes',
-              valueText: reportDuration(_n(d['totalWorkedMinutes'])),
+              valueText: reportDuration(workedMinutes),
             ),
           ),
         ]),
@@ -1656,24 +1662,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        // İŞLEM SAYISININ PARASAL KARŞILIĞI (web StaffTab ile parite). Karnede işlem sayısı
-        // zaten var; çok iş yapanın çok ciro ürettiği varsayılamayacağı için tutar ayrıca
-        // sıralanır — kısa/ucuz işlemler burada ayrışır.
         ReportSection(
-          title: 'En Çok Üreten',
-          subtitle: 'Uygulama + satış cirosu',
+          title: 'En Çok İşlem Yapan',
+          subtitle: 'Tamamlanan randevu adedi',
+          icon: Icons.task_alt_rounded,
+          child: RankBarList(
+            format: (v) => '${v.round()} işlem',
+            emptyText: 'Bu dönemde tamamlanan randevu yok.',
+            items: [
+              for (final r in ([...rows]..sort(
+                (a, b) =>
+                    _n(b['completedCount']).compareTo(_n(a['completedCount'])),
+              )).take(8))
+                RankBarItem(
+                  label: _s(r['staffName']),
+                  value: _n(r['completedCount']),
+                  hint:
+                      '${_i(r['customerCount'])} müşteri · ${reportDuration(_n(r['workedMinutes']))}',
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // İŞLEMİ YAPAN ≠ SATIŞI YAPAN: üstteki grafik "kim uyguladı", buradaki "kim sattı"
+        // sorusunu yanıtlar; bu yüzden sıralama personelin SATIŞ cirosuna göredir.
+        ReportSection(
+          title: 'En Çok Paket veya Hizmet Satan',
+          subtitle: 'Personelin sattığı paket / hizmet tutarı',
           icon: Icons.account_balance_wallet_rounded,
           child: RankBarList(
             format: reportMoney,
-            emptyText: 'Bu dönemde ciro üretilmemiş.',
+            emptyText: 'Bu dönemde satış yapılmamış.',
             items: [
-              for (final r in sorted.take(8))
+              for (final r in ([...rows]..sort(
+                (a, b) => _n(b['salesAmount']).compareTo(_n(a['salesAmount'])),
+              )).take(8))
                 RankBarItem(
                   label: _s(r['staffName']),
-                  value: _n(r['serviceRevenue']) + _n(r['salesAmount']),
+                  value: _n(r['salesAmount']),
                   hint:
-                      'Uygulama ${reportMoney(_n(r['serviceRevenue']))} · '
-                      'Satış ${reportMoney(_n(r['salesAmount']))}',
+                      '${_i(r['salesCount'])} satış · uygulama ${reportMoney(_n(r['serviceRevenue']))}',
                 ),
             ],
           ),
@@ -1905,26 +1933,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
               valueText: reportMoney(_n(d['totalExpense'])),
             ),
           ),
+          // NET KÂR KARTI KALDIRILDI (kurum tercihi) — yerine dönemde randevusu olan
+          // müşteri sayısı, Genel Bakış'taki "Aktif Müşteri" kartıyla aynı tanım.
           ReportKpi(
-            label: 'Toplam Net Kâr',
-            value: reportMoney(_n(d['totalNet'])),
-            icon: Icons.account_balance_wallet_rounded,
-            tone: AppColors.warning,
-            current: _n(d['totalNet']),
-            previous: hasCompare ? _n(d['previousTotalNet']) : null,
-            compareLabel: _compareLabel,
+            label: 'Aktif Müşteri',
+            value: reportCount(
+              rows.fold<double>(0, (s, r) => s + _n(r['customerCount'])),
+            ),
+            icon: Icons.people_alt_rounded,
+            tone: const Color(0xFF7B52BA),
+            hint: 'dönemde randevusu olan',
             onTap: _detail(
-              'branch.net',
-              valueText: reportMoney(_n(d['totalNet'])),
+              'branch.customers',
+              valueText: reportCount(
+                rows.fold<double>(0, (s, r) => s + _n(r['customerCount'])),
+              ),
             ),
           ),
           ReportKpi(
-            label: 'Açık Alacak',
+            label: 'Toplam Alacak',
             value: reportMoney(
               rows.fold<double>(0, (s, r) => s + _n(r['receivable'])),
             ),
             icon: Icons.hourglass_bottom_rounded,
-            tone: const Color(0xFF7B52BA),
+            tone: AppColors.warning,
             hint: 'tahsil edilmemiş taksit',
             onTap: _detail(
               'branch.receivable',
@@ -1949,23 +1981,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         const SizedBox(height: 12),
         ReportSection(
-          title: 'Net Kâr Sıralaması',
-          subtitle: 'Gelir − gider',
+          title: 'Gelir Sıralaması',
+          subtitle: 'Şubelerin dönem tahsilatı',
           icon: Icons.leaderboard_rounded,
           child: RankBarList(
+            format: reportMoney,
             emptyText: 'Şube kaydı yok.',
             items: [
               for (final r in ([
                 ...rows,
-              ]..sort((a, b) => _n(b['net']).compareTo(_n(a['net'])))))
+              ]..sort((a, b) => _n(b['income']).compareTo(_n(a['income'])))))
                 RankBarItem(
                   label: _s(r['branchName']),
-                  value: _n(r['net']),
-                  color: _n(r['net']) >= 0
-                      ? AppColors.success
-                      : AppColors.danger,
+                  value: _n(r['income']),
                   hint:
-                      '${reportMoney(_n(r['income']))} gelir · ${reportMoney(_n(r['expense']))} gider · %${_n(r['profitMargin']).round()} marj',
+                      '${reportMoney(_n(r['salesAmount']))} satış · ${_i(r['customerCount'])} müşteri',
                 ),
             ],
           ),
@@ -1973,7 +2003,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (hasCompare) ...[
           const SizedBox(height: 12),
           ReportSection(
-            title: 'Net Kâr Karşılaştırması',
+            title: 'Gelir Karşılaştırması',
             subtitle: '$_rangeLabel ↔ $_compareLabel',
             icon: Icons.compare_arrows_rounded,
             child: CompareBars(
@@ -1983,8 +2013,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 for (final r in rows)
                   CompareRow(
                     label: _s(r['branchName']),
-                    current: _n(r['net']),
-                    previous: _n(r['previousNet']),
+                    current: _n(r['income']),
+                    previous: _n(r['previousIncome']),
                   ),
               ],
             ),
@@ -2047,30 +2077,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   style: const TextStyle(fontSize: 12, color: AppColors.danger),
                 ),
               ),
-              ReportColumn(
-                width: 100,
-                alignRight: true,
-                header: 'Net Kâr',
-                cell: (r) => Text(
-                  reportMoney(_n(r['net'])),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: _n(r['net']) >= 0
-                        ? AppColors.success
-                        : AppColors.danger,
-                  ),
-                ),
-              ),
-              ReportColumn(
-                width: 58,
-                alignRight: true,
-                header: 'Marj',
-                cell: (r) => Text(
-                  '%${_n(r['profitMargin']).round()}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.ink),
-                ),
-              ),
+              // NET KÂR ve MARJ sütunları KALDIRILDI (web ile aynı).
               ReportColumn(
                 width: 96,
                 alignRight: true,
@@ -2086,7 +2093,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ReportColumn(
                 width: 100,
                 alignRight: true,
-                header: 'Açık Alacak',
+                header: 'Toplam Alacak',
                 cell: (r) => Text(
                   reportMoney(_n(r['receivable'])),
                   style: const TextStyle(
@@ -2124,7 +2131,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _customers(Map<String, dynamic> d) {
     final hasCompare = _compareLabel != null;
-    final series = _rows(d['series']);
     final total = _n(d['totalCustomers']);
     final kvkkRatio = total > 0 ? (_n(d['kvkkApproved']) / total) * 100 : 0.0;
 
@@ -2227,34 +2233,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ]),
         const SizedBox(height: 14),
-        ReportSection(
-          title: 'Müşteri Hareketi',
-          subtitle: _rangeLabel,
-          icon: Icons.show_chart_rounded,
-          child: ReportTrend(
-            labels: series.map((p) => _s(p['label'])).toList(),
-            series: [
-              TrendSeries(
-                label: 'Tahsilat',
-                color: AppColors.success,
-                values: series.map((p) => _n(p['income'])).toList(),
-              ),
-              TrendSeries(
-                label: 'Randevu',
-                color: AppColors.primary,
-                filled: false,
-                values: series.map((p) => _n(p['appointments'])).toList(),
-              ),
-              TrendSeries(
-                label: 'Yeni müşteri',
-                color: const Color(0xFF7B52BA),
-                filled: false,
-                values: series.map((p) => _n(p['newCustomers'])).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
+        // ZAMAN EĞRİSİ KALDIRILDI (kurum tercihi): raporlar sayfasında çizgi-alan eğrisi
+        // gösterilmiyor. Aşağıdaki oran halkaları eğri değildir, web ile birlikte durur.
         ReportSection(
           title: 'Sadakat & KVKK',
           icon: Icons.verified_rounded,
@@ -2403,7 +2383,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _inventory(Map<String, dynamic> d) {
     final hasCompare = _compareLabel != null;
     final products = _rows(d['products']);
-    final series = _rows(d['series']);
     final soldAmount = _n(d['soldAmount']);
     final margin = soldAmount > 0
         ? (_n(d['soldProfit']) / soldAmount) * 100
@@ -2489,27 +2468,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ]),
         const SizedBox(height: 14),
-        ReportSection(
-          title: 'Ürün Satışı & Alımı',
-          subtitle: _rangeLabel,
-          icon: Icons.show_chart_rounded,
-          child: ReportTrend(
-            labels: series.map((p) => _s(p['label'])).toList(),
-            series: [
-              TrendSeries(
-                label: 'Satış',
-                color: AppColors.success,
-                values: series.map((p) => _n(p['income'])).toList(),
-              ),
-              TrendSeries(
-                label: 'Alım maliyeti',
-                color: AppColors.danger,
-                values: series.map((p) => _n(p['expense'])).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
+        // ZAMAN EĞRİSİ / NET KÂR GÖRSELİ KALDIRILDI (kurum tercihi): raporlar
+        // sayfasında çizgi-alan eğrisi ve net kâr grafiği gösterilmiyor.
         ReportSection(
           title: 'Kategori Payı',
           icon: Icons.category_rounded,

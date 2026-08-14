@@ -6,7 +6,7 @@
  */
 
 import { AlertTriangle, ArrowDownToLine, Boxes, PackageX, ShoppingBag, TrendingUp, Warehouse } from 'lucide-react'
-import { DonutChart, RankBars, TrendChart } from '@/components/reports/ReportCharts'
+import { DonutChart, RankBars } from '@/components/reports/ReportCharts'
 import { KpiTile, Pill, ReportCard, ReportTable } from '@/components/reports/ReportUi'
 import { kpiOpener, useMetricDetail } from '@/components/reports/MetricDetailContext'
 import { formatTL } from '@/lib/apiMappers'
@@ -24,7 +24,6 @@ export default function InventoryTab({
   rangeLabel: string
 }) {
   const detail = useMetricDetail()
-  const series = data?.series ?? []
   const products = data?.products ?? []
   const sold = products.filter((p) => p.soldQuantity > 0)
   const critical = products.filter((p) => p.isCritical)
@@ -81,20 +80,8 @@ export default function InventoryTab({
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <ReportCard title="Ürün Satışı & Alımı" subtitle={rangeLabel} icon={ShoppingBag}>
-          <TrendChart
-            labels={series.map((p) => p.label)}
-            series={[
-              { key: 'sale', label: 'Satış', color: '#2c7d63', values: series.map((p) => p.income) },
-              { key: 'buy', label: 'Alım maliyeti', color: '#b3453f', values: series.map((p) => p.expense) },
-            ]}
-            height={250}
-            format={(v) => formatTL(Math.round(v))}
-            emptyText="Bu dönemde stok hareketi yok."
-          />
-        </ReportCard>
-
+      {/* ZAMAN EĞRİSİ KALDIRILDI (kurum tercihi): raporlarda çizgi/alan eğrisi gösterilmiyor. */}
+      <section className="grid gap-4">
         <ReportCard title="Kategori Payı" subtitle="Satış tutarına göre" icon={Boxes}>
           <DonutChart
             slices={(data?.categories ?? []).filter((c) => c.amount > 0).map((c) => ({ key: c.key, label: c.label, value: c.amount }))}

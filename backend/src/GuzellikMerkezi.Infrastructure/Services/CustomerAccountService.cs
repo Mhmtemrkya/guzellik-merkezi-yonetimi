@@ -1934,7 +1934,7 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             Math.Round(revenue, 2)));
     }
 
-    public async Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, CancellationToken cancellationToken = default)
+    public async Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, Guid? servicePackageId = null, Guid? serviceDefinitionId = null, CancellationToken cancellationToken = default)
     {
         // 'months' artık takvimin EN AZ kaç ay göstereceği (taban). Gerçek pencere, taksitlerin
         // bittiği son aya kadar otomatik uzar (üst sınır 36 ay) — sonda boş ay kuyruğu olmasın diye.
@@ -1990,8 +1990,18 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
             .Include(a => a.Customer)   // müşteri kırılımı için ad (şifreli kolon → bellekte çözülür)
             .ToListAsync(cancellationToken);
 
-        // Kategori seçiliyse satışlar da daralır. Cari→paket bağı doğrudan alandan ya da (adisyon
-        // satışında NULL kaldığı için) seans satırından kurulur — bkz. WithPackageLinkAsync.
+        // TEK PAKET seçildiyse kategori süzgeciyle AYNI mekanizma tek elemanlı kümeyle çalışır.
+        // İkisi birlikte verilirse kesişim uygulanır (seçilen paket o kategoride değilse sonuç boş
+        // kalır — doğrusu budur, "kategoriyi yok say" değil).
+        if (servicePackageId is { } wantedPackageId && wantedPackageId != Guid.Empty)
+        {
+            categoryPackageIds = categoryPackageIds is null
+                ? [wantedPackageId]
+                : categoryPackageIds.Contains(wantedPackageId) ? [wantedPackageId] : [];
+        }
+
+        // Kategori/paket seçiliyse satışlar da daralır. Cari→paket bağı doğrudan alandan ya da
+        // (adisyon satışında NULL kaldığı için) seans satırından kurulur — bkz. WithPackageLinkAsync.
         if (categoryPackageIds is not null)
         {
             var linkRows = await _db.CustomerPackageSessions
@@ -2008,6 +2018,29 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .Where(a => (a.ServicePackageId is { } pid && categoryPackageIds.Contains(pid))
                             || (packagesByAccount.TryGetValue(a.Id, out var pkgs) && pkgs.Overlaps(categoryPackageIds)))
                 .ToList();
+        }
+
+        // TEK HİZMET seçildiyse bağ PAKET alanından kurulamaz: tekil hizmet satışında
+        // CustomerAccount.ServicePackageId boştur, hizmet yalnız seans satırında yazılıdır.
+        // Aynı sorgudan adisyon bağı da alınır (aşağıda paket sayacını da daraltır).
+        HashSet<Guid>? serviceScopedAdisyonIds = null;
+        if (serviceDefinitionId is { } wantedServiceId && wantedServiceId != Guid.Empty)
+        {
+            var serviceLinks = (await _db.CustomerPackageSessions
+                    .AsNoTracking()
+                    .Where(s => s.TenantId == tenantId)
+                    .Select(s => new { s.CustomerAccountId, s.ServiceDefinitionId, s.SourceAdisyonId })
+                    .ToListAsync(cancellationToken))
+                .Where(s => s.ServiceDefinitionId == wantedServiceId)
+                .ToList();
+
+            var serviceAccountIds = serviceLinks.Select(s => s.CustomerAccountId).ToHashSet();
+            serviceScopedAdisyonIds = serviceLinks
+                .Where(s => s.SourceAdisyonId is { } id && id != Guid.Empty)
+                .Select(s => s.SourceAdisyonId!.Value)
+                .ToHashSet();
+
+            accounts = accounts.Where(a => serviceAccountIds.Contains(a.Id)).ToList();
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -2061,6 +2094,9 @@ public sealed partial class CustomerAccountService : ICustomerAccountService
                 .Include(a => a.Items)
                 .ToListAsync(cancellationToken))
             .Where(a => !cancelledSourceAdisyonIds.Contains(a.Id))
+            // HİZMET SÜZGECİ adisyon paketlerini de daraltır: aksi hâlde aynı yanıtta müşteri
+            // kırılımı süzgeçli, "Toplam Paket" sayacı süzgeçsiz olurdu (birbirini tutmayan rapor).
+            .Where(a => serviceScopedAdisyonIds is null || serviceScopedAdisyonIds.Contains(a.Id))
             .ToList();
         var adisyonPackageItems = approvedAdisyonlar
             // Paket satışı kaleminde RefId = satılan paketin kimliği; kategori seçiliyse ona göre süzülür.

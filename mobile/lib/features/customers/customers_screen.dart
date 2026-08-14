@@ -225,6 +225,22 @@ class CustomersScreen extends StatelessWidget {
           type: CrudFieldType.toggle,
           defaultValue: false,
         ),
+        // GEÇMİŞTEN GELEN MÜŞTERİ (web CustomerFormDialog paritesi). Anahtar kapalıyken kayıt
+        // tarihi HİÇ gönderilmez ve sunucu kayıt anını yazar; açıkken girilen gün kullanılır.
+        // Yalnız YENİ kayıtta sorulur: mevcut bir kaydın kayıt tarihi güncellemeyle değişmez.
+        CrudField(
+          key: 'isLegacyCustomer',
+          label: 'Eski müşterim (geçmiş kayıt)',
+          type: CrudFieldType.toggle,
+          defaultValue: false,
+          showOnEdit: false,
+        ),
+        CrudField(
+          key: 'registeredAt',
+          label: 'Kayıt tarihi (boşsa bugün)',
+          type: CrudFieldType.date,
+          showOnEdit: false,
+        ),
         CrudField(key: 'notes', label: 'Notlar', type: CrudFieldType.multiline),
       ],
       formExtra: Builder(
@@ -273,10 +289,25 @@ class CustomersScreen extends StatelessWidget {
       ),
       onCreate: (body) async {
         body['branchId'] = await _resolveBranchId();
+        // "Eski müşterim" işaretli DEĞİLSE kayıt tarihi gönderilmez; yerel gün, günün ORTASI
+        // olarak UTC'ye çevrilir (web ile aynı kural) — saat farkından bir önceki güne düşmesin.
+        final legacy = body.remove('isLegacyCustomer') == true;
+        final registered = body.remove('registeredAt');
+        if (legacy && registered is String && registered.isNotEmpty) {
+          final day = DateTime.tryParse(registered);
+          if (day != null) {
+            body['registeredAtUtc'] = DateTime(day.year, day.month, day.day, 12)
+                .toUtc()
+                .toIso8601String();
+          }
+        }
         return api.post('/api/admin/customers/', body);
       },
       onUpdate: (item, body) async {
         body['branchId'] = await _resolveBranchId(item);
+        // Kayıt tarihi alanları düzenlemede hiç sorulmaz; yanlışlıkla gelirse de gönderilmez.
+        body.remove('isLegacyCustomer');
+        body.remove('registeredAt');
         await api.put('/api/admin/customers/${item['id']}', body);
       },
       onDelete: (item) => api.delete('/api/admin/customers/${item['id']}'),

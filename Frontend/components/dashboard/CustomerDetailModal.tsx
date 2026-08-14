@@ -1039,6 +1039,63 @@ export default function CustomerDetailModal({
                   <div className="grid min-w-0 content-start gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
                     {hasSalesPanel && <SalesSummaryCard summary={salesSummary} onOpen={() => setSalesOpen(true)} />}
 
+                    {/* İPTAL EDİLEN SATIŞLAR. Bu satırlar canlı `accounts` listesinde YOKTUR
+                        (iptalde `cancelled_sales` arşivine taşınır); kartlardaki iptal sayısının
+                        arkasındaki kayıtlar başka hiçbir yerde görünmüyordu. Salt okunur liste:
+                        "iptali geri al" para hareketi doğurduğu için Ön Muhasebe'de kalır. */}
+                    {customerCancelled.length > 0 && (
+                      <SectionCard
+                        title="İptal Edilen Satışlar"
+                        icon={Ban}
+                        action={<span className={`shrink-0 text-[11px] tabular-nums ${MUTED}`}>{customerCancelled.length} kayıt</span>}
+                      >
+                        <div className="space-y-2">
+                          {customerCancelled.map((c) => (
+                            <div key={c.id} className="rounded-[12px] border border-rose-200/70 bg-rose-50/50 px-3 py-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12.5px] font-semibold text-[#2A2027]">{c.name}</div>
+                                  <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${MUTED}`}>
+                                    <span className="tabular-nums">Satış {fmtDateTR(c.soldAtUtc)}</span>
+                                    <span className="tabular-nums">· İptal {fmtDateTR(c.cancelledAtUtc)}</span>
+                                  </div>
+                                </div>
+                                <span className="shrink-0 text-right">
+                                  <span className="block text-[12.5px] font-bold text-[#2A2027] tabular-nums">{formatTL(Math.round(c.totalAmount))}</span>
+                                  <span className="block text-[10px] font-semibold text-rose-700">iptal edildi</span>
+                                </span>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                                <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-800">
+                                  Tahsil {formatTL(Math.round(c.collectedAmount))}
+                                </span>
+                                {c.refundedAmount > 0.005 && (
+                                  <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                                    İade {formatTL(Math.round(c.refundedAmount))}
+                                  </span>
+                                )}
+                                {c.retainedAmount > 0.005 && (
+                                  <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#8C4460]">
+                                    Kurumda kalan {formatTL(Math.round(c.retainedAmount))}
+                                  </span>
+                                )}
+                                {c.soldByStaffName && (
+                                  <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#5A4B53]">
+                                    Satan: {c.soldByStaffName}
+                                  </span>
+                                )}
+                              </div>
+                              {c.cancellationReason && (
+                                <div className={`mt-1.5 text-[11px] ${SEMI}`}>
+                                  <span className="font-semibold">Gerekçe:</span> {c.cancellationReason}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </SectionCard>
+                    )}
+
                     <SectionCard
                       title="Son Randevular"
                       icon={CalendarPlus}

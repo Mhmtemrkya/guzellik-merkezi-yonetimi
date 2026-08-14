@@ -117,10 +117,12 @@ public static class CustomerAccountEndpoints
         // Pano "Paket Raporu": paket satışı, yapılacak seans, ay ay taksit takvimi.
         // fromUtc/toUtc verilirse rapor o dönemde satılan paketlere göre süzülür (günlük/aylık/yıllık).
         // category/subCategory: rapor yalnızca o kategorideki paketlere daralır; dönemle birlikte çalışır.
-        group.MapGet("/report", async (Guid? tenantId, int? months, DateTime? fromUtc, DateTime? toUtc, string? category, string? subCategory, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
+        // servicePackageId/serviceDefinitionId: rapor TEK bir pakete ya da hizmete daralır
+        // ("Satış Detayı > Müşteri Detayı" seçicisi); dönem + kategori ile birlikte uygulanır.
+        group.MapGet("/report", async (Guid? tenantId, int? months, DateTime? fromUtc, DateTime? toUtc, string? category, string? subCategory, Guid? servicePackageId, Guid? serviceDefinitionId, ICurrentUser currentUser, ICustomerAccountService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
-            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetReportAsync(resolvedTenantId, months ?? 6, fromUtc, toUtc, category, subCategory, ct)).ToHttpResult(http);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetReportAsync(resolvedTenantId, months ?? 6, fromUtc, toUtc, category, subCategory, servicePackageId, serviceDefinitionId, ct)).ToHttpResult(http);
         });
 
         // Pano "Hizmet Raporu": paket raporundan AYRI — kategori hizmetin kategorisidir, paket sayılmaz.

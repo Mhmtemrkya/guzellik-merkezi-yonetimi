@@ -940,9 +940,152 @@ class _OverviewTab extends StatelessWidget {
             ),
           ),
         ),
+        // İPTAL EDİLEN SATIŞLAR. Bu satırlar canlı `_accounts` listesinde YOKTUR (iptalde
+        // `cancelled_sales` arşivine taşınır); kartlardaki iptal sayısının arkasındaki kayıtlar
+        // başka hiçbir yerde görünmüyordu. Salt okunur: "iptali geri al" para hareketi
+        // doğurduğu için Ön Muhasebe'de kalır.
+        if (state._cancelledSales.isNotEmpty)
+          _Section(
+            title: 'İptal Edilen Satışlar',
+            icon: Icons.block_rounded,
+            trailing: Text(
+              '${state._cancelledSales.length} kayıt',
+              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+            ),
+            child: Column(
+              children: [
+                for (final x in state._cancelledSales) _cancelledRow(x),
+              ],
+            ),
+          ),
       ],
     );
   }
+
+  /// Arşivdeki tek iptal satırı — tutar, tahsilat/iade kırılımı ve gerekçe.
+  Widget _cancelledRow(Map<String, dynamic> x) {
+    double n(String k) => (x[k] as num?)?.toDouble() ?? 0;
+    String day(Object? iso) {
+      final d = parseUtcToLocal(iso);
+      return d == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(d);
+    }
+
+    final refunded = n('refundedAmount');
+    final retained = n('retainedAmount');
+    final reason = '${x['cancellationReason'] ?? ''}'.trim();
+    final soldBy = '${x['soldByStaffName'] ?? ''}'.trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${x['name'] ?? 'Satış'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      'Satış ${day(x['soldAtUtc'])} · İptal ${day(x['cancelledAtUtc'])}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    CalendarText.tl(n('totalAmount')),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const Text(
+                    'iptal edildi',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _cancelledChip(
+                'Tahsil ${CalendarText.tl(n('collectedAmount'))}',
+                AppColors.success,
+              ),
+              if (refunded > 0.005)
+                _cancelledChip(
+                  'İade ${CalendarText.tl(refunded)}',
+                  AppColors.warning,
+                ),
+              if (retained > 0.005)
+                _cancelledChip(
+                  'Kurumda kalan ${CalendarText.tl(retained)}',
+                  AppColors.primaryDark,
+                ),
+              if (soldBy.isNotEmpty) _cancelledChip('Satan: $soldBy', AppColors.muted),
+            ],
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Gerekçe: $reason',
+              style: const TextStyle(fontSize: 11, color: AppColors.ink),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _cancelledChip(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: color.withValues(alpha: .35)),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      );
 
   // Son 6 ay tahsilat (çizgi).
   Widget _spendChart() {

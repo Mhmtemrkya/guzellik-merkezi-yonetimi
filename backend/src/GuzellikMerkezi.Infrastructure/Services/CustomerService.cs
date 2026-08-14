@@ -727,6 +727,23 @@ FROM (
             new CustomerSpendingStatsDto(window, avgSpent, spenderCount, totalSpent));
     }
 
+    /// <summary>
+    /// "Eski müşterim" akışının kayıt tarihi. Boşsa (ya da bugünün ilerisindeyse) null döner ve
+    /// normal davranış korunur — GELECEK tarih sessizce kabul edilirse yeni müşteri serisi ve
+    /// dönem raporları ileri bir aya kayardı.
+    /// </summary>
+    private static DateTime? NormalizeRegisteredAt(DateTime? value)
+    {
+        if (value is not { } raw) return null;
+        var utc = raw.Kind switch
+        {
+            DateTimeKind.Utc => raw,
+            DateTimeKind.Local => raw.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(raw, DateTimeKind.Utc),
+        };
+        return utc > DateTime.UtcNow ? null : utc;
+    }
+
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
         var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Customers, cancellationToken);
@@ -752,6 +769,18 @@ FROM (
 
         _db.Customers.Add(customer);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // GEÇMİŞ KAYIT TARİHİ. ApplyAuditInfo eklenen her satırın CreatedAtUtc'sini "şimdi" yapar;
+        // yazılıma geçmeden önceki müşteri için bu yanlıştır (müşteri 2023'ten beri gelmesine
+        // rağmen "bu ay eklendi" sayılırdı). İLK SaveChanges'ten SONRA damga düzeltilir: satır
+        // artık Modified olduğu için ApplyAuditInfo yalnız Touch() uygular ve tarih korunur.
+        // (Aynı desen: CustomerAccountService.Cancellation → ApplyOriginalTimestamps.)
+        if (NormalizeRegisteredAt(request.RegisteredAtUtc) is { } registeredAt)
+        {
+            customer.MarkCreated(registeredAt, customer.CreatedBy);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         await _audit.LogAsync(tenantId, customer.BranchId, "Create", "Customer", customer.Id,
             $"Müşteri oluşturuldu: {customer.FullName}",
             new { customer.FullName, customer.Phone, customer.Email }, cancellationToken);

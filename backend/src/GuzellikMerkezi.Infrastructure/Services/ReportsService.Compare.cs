@@ -54,6 +54,8 @@ public sealed partial class ReportsService
 
         var accounts = await LoadAccountsAsync(tenantId, cancellationToken);
         var accountsById = accounts.ToDictionary(a => a.Id);
+        // Dönemden bağımsız: 6 döneme kadar aynı sözlük paylaşılır (bkz. GetSummaryCoreAsync).
+        var paidByAccount = await LoadPaidByAccountAsync(tenantId, cancellationToken);
         var serviceMeta = await LoadServiceMetaAsync(tenantId, cancellationToken);
         var sellers = await LoadSellerLookupAsync(tenantId, cancellationToken);
 
@@ -61,7 +63,7 @@ public sealed partial class ReportsService
         var extras = new List<(List<ReportSliceDto> Services, List<ReportSliceDto> Staff)>(normalized.Count);
         foreach (var p in normalized)
         {
-            cores.Add(await ComputeCoreAsync(tenantId, accounts, accountsById, p.From, p.To, bucket, cancellationToken));
+            cores.Add(await ComputeCoreAsync(tenantId, accounts, accountsById, paidByAccount, p.From, p.To, bucket, cancellationToken));
             extras.Add(await TopPerformersAsync(tenantId, p.From, p.To, serviceMeta, sellers, cancellationToken));
         }
 
@@ -110,44 +112,13 @@ public sealed partial class ReportsService
         return tail.Length == 4 && tail.All(char.IsDigit) ? label[..space] : label;
     }
 
-    /// <summary>Genel Bakış'takiyle aynı metrik seti; "önceki" alanı temel dönemden gelir.</summary>
-    private static List<ReportMetricDto> BuildCompareMetrics(CorePeriod cur, CorePeriod? baseline)
-    {
-        decimal Prev(Func<CorePeriod, decimal> pick) => baseline is null ? 0m : pick(baseline);
-        decimal Ratio(CorePeriod p, Func<CorePeriod, decimal> num, Func<CorePeriod, decimal> den) =>
-            den(p) > 0 ? Round(num(p) / den(p) * 100m) : 0m;
-        decimal Per(CorePeriod p, Func<CorePeriod, decimal> num, Func<CorePeriod, decimal> den) =>
-            den(p) > 0 ? Round(num(p) / den(p)) : 0m;
-
-        return
-        [
-            new("income", "Toplam Gelir", Round(cur.Income), Round(Prev(p => p.Income)), "currency", $"{cur.PaymentCount} tahsilat"),
-            new("expense", "Toplam Gider", Round(cur.Expense), Round(Prev(p => p.Expense)), "currency", $"{cur.ExpenseCount} gider"),
-            new("net", "Net Kâr", Round(cur.Income - cur.Expense), Round(Prev(p => p.Income - p.Expense)), "currency",
-                cur.Income - cur.Expense >= 0 ? "kârda" : "zararda"),
-            new("margin", "Kâr Marjı",
-                Ratio(cur, p => p.Income - p.Expense, p => p.Income),
-                baseline is null ? 0m : Ratio(baseline, p => p.Income - p.Expense, p => p.Income),
-                "percent", "gelire oranla net"),
-            new("sales", "Satış Tutarı", Round(cur.Sales), Round(Prev(p => p.Sales)), "currency", $"{cur.SalesCount} satış"),
-            new("appointments", "Randevu", cur.AppointmentCount, Prev(p => p.AppointmentCount), "count", $"{cur.CompletedCount} tamamlandı"),
-            new("completed", "Tamamlanan İşlem", cur.CompletedCount, Prev(p => p.CompletedCount), "count", "uygulanan seans"),
-            new("occupancy", "Tamamlanma Oranı",
-                Ratio(cur, p => p.CompletedCount, p => p.AppointmentCount),
-                baseline is null ? 0m : Ratio(baseline, p => p.CompletedCount, p => p.AppointmentCount),
-                "percent", "randevuya oranla"),
-            new("activeCustomers", "Aktif Müşteri", cur.ActiveCustomers, Prev(p => p.ActiveCustomers), "count", "dönemde işlem gören"),
-            new("newCustomers", "Yeni Müşteri", cur.NewCustomers, Prev(p => p.NewCustomers), "count", "ilk kez kayıt olan"),
-            new("avgTicket", "Ortalama Sepet",
-                Per(cur, p => p.Income, p => p.PaymentCount),
-                baseline is null ? 0m : Per(baseline, p => p.Income, p => p.PaymentCount),
-                "currency", "tahsilat başına"),
-            new("revenuePerCustomer", "Müşteri Başına Ciro",
-                Per(cur, p => p.Income, p => p.ActiveCustomers),
-                baseline is null ? 0m : Per(baseline, p => p.Income, p => p.ActiveCustomers),
-                "currency", "aktif müşteri başına"),
-        ];
-    }
+    /// <summary>
+    /// Genel Bakış'takiyle AYNI metrik seti; "önceki" alanı temel dönemden gelir.
+    /// Liste tek yerde tanımlıdır (<c>BuildSummaryMetrics</c>) — iki sekmenin kart seti
+    /// birbirinden ayrışamaz.
+    /// </summary>
+    private static List<ReportMetricDto> BuildCompareMetrics(CorePeriod cur, CorePeriod? baseline) =>
+        BuildSummaryMetrics(cur, baseline);
 
     /// <summary>Dönemde en çok uygulanan hizmet ve en çok iş bitiren personel (ilk 8'er).</summary>
     private async Task<(List<ReportSliceDto> Services, List<ReportSliceDto> Staff)> TopPerformersAsync(

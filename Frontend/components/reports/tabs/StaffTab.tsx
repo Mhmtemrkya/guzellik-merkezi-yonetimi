@@ -35,7 +35,18 @@ export default function StaffTab({
 }) {
   const detail = useMetricDetail()
   const [sort, setSort] = useState<SortKey>('total')
-  const rows = data?.rows ?? []
+  /**
+   * PERSONEL SEÇİCİSİ. Sekmeye girildiğinde önce kimin raporuna bakılacağı seçilir; "Tümü"
+   * seçiliyken tüm kadro (bugünkü davranış) gösterilir. Seçim İSTEMCİDE süzer — sunucu zaten
+   * personel bazlı satır döndüğü için ek istek gerekmez ve dönem değişince seçim korunur.
+   */
+  const [staffFilter, setStaffFilter] = useState('')
+  const allRows = data?.rows ?? []
+  const rows = useMemo(
+    () => (staffFilter ? allRows.filter((r) => r.staffMemberId === staffFilter) : allRows),
+    [allRows, staffFilter],
+  )
+  const selectedStaff = staffFilter ? allRows.find((r) => r.staffMemberId === staffFilter) : undefined
 
   const sorted = useMemo(() => {
     const copy = [...rows]
@@ -58,22 +69,81 @@ export default function StaffTab({
     return copy
   }, [rows, sort])
 
-  const totalContribution = (data?.totalServiceRevenue ?? 0) + (data?.totalSalesAmount ?? 0)
-  const previousContribution = (data?.previousTotalServiceRevenue ?? 0) + (data?.previousTotalSalesAmount ?? 0)
+  /**
+   * KPI toplamları. Personel seçiliyken sunucunun kurum toplamı DEĞİL, seçilen kişinin kendi
+   * satırı toplanır — aksi hâlde kartlar tüm kadroyu, alttaki tablo tek kişiyi gösterirdi.
+   */
+  const totals = useMemo(() => {
+    const sum = (pick: (r: StaffReportRow) => number): number => rows.reduce((s, r) => s + pick(r), 0)
+    if (!staffFilter) {
+      return {
+        serviceRevenue: data?.totalServiceRevenue ?? 0,
+        prevServiceRevenue: data?.previousTotalServiceRevenue ?? 0,
+        salesAmount: data?.totalSalesAmount ?? 0,
+        prevSalesAmount: data?.previousTotalSalesAmount ?? 0,
+        commission: data?.totalCommission ?? 0,
+        completed: data?.totalCompleted ?? 0,
+        prevCompleted: data?.previousTotalCompleted ?? 0,
+        appointments: data?.totalAppointments ?? 0,
+        workedMinutes: data?.totalWorkedMinutes ?? 0,
+      }
+    }
+    return {
+      serviceRevenue: sum((r) => r.serviceRevenue),
+      prevServiceRevenue: sum((r) => r.previousServiceRevenue),
+      salesAmount: sum((r) => r.salesAmount),
+      prevSalesAmount: sum((r) => r.previousSalesAmount),
+      commission: sum((r) => r.commissionEarned),
+      completed: sum((r) => r.completedCount),
+      prevCompleted: sum((r) => r.previousCompletedCount),
+      appointments: sum((r) => r.appointmentCount),
+      workedMinutes: sum((r) => r.workedMinutes),
+    }
+  }, [staffFilter, data, rows])
+
+  const totalContribution = totals.serviceRevenue + totals.salesAmount
+  const previousContribution = totals.prevServiceRevenue + totals.prevSalesAmount
 
   const topByContribution = sorted.slice(0, 8)
 
   return (
     <div className="space-y-4">
+      {/* PERSONEL SEÇİCİ — sekmenin en üstünde: önce kim, sonra rakamlar. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[16px] border border-[#efe1e7] bg-[#fffafc] px-3 py-2.5 sm:px-4">
+        <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-[#8e3f5b]">
+          <UserCog className="h-3.5 w-3.5" strokeWidth={1.9} />
+          {selectedStaff
+            ? `${selectedStaff.staffName} · ${rangeLabel}`
+            : `Tüm personel (${allRows.length}) · ${rangeLabel}`}
+        </span>
+        <select
+          value={staffFilter}
+          onChange={(e) => setStaffFilter(e.target.value)}
+          className="rounded-full border border-[#efe1e7] bg-white px-3 py-1.5 text-[11.5px] font-semibold text-[#4a3a44] outline-none"
+        >
+          <option value="">Tüm personel</option>
+          {[...allRows]
+            .sort((a, b) => a.staffName.localeCompare(b.staffName, 'tr'))
+            .map((r) => (
+              <option key={r.staffMemberId} value={r.staffMemberId}>
+                {r.staffName}
+              </option>
+            ))}
+        </select>
+      </div>
+
       <section className="kpi-auto-grid grid gap-3">
         {(
           [
             { key: 'staff.contribution', label: 'Toplam Katkı', value: totalContribution, prev: previousContribution, unit: 'currency', icon: TrendingUp, tone: 'rose', hint: 'uygulama + satış cirosu' },
-            { key: 'staff.serviceRevenue', label: 'Uygulama Cirosu', value: data?.totalServiceRevenue ?? 0, prev: data?.previousTotalServiceRevenue ?? 0, unit: 'currency', icon: Activity, tone: 'mint', hint: 'tamamlanan randevular' },
-            { key: 'staff.salesAmount', label: 'Satış Cirosu', value: data?.totalSalesAmount ?? 0, prev: data?.previousTotalSalesAmount ?? 0, unit: 'currency', icon: UserCheck, tone: 'violet', hint: 'personelin sattığı paket/hizmet' },
-            { key: 'staff.commission', label: 'Komisyon', value: data?.totalCommission ?? 0, prev: undefined, unit: 'currency', icon: Wallet, tone: 'gold', hint: 'dönemde hak edilen prim' },
-            { key: 'staff.serviceRevenue', label: 'Tamamlanan İşlem', value: data?.totalCompleted ?? 0, prev: data?.previousTotalCompleted ?? 0, unit: 'count', icon: Award, tone: 'mint', hint: `${data?.totalAppointments ?? 0} randevudan` },
-            { key: 'staff.workedMinutes', label: 'Çalışılan Süre', value: data?.totalWorkedMinutes ?? 0, prev: undefined, unit: 'duration', icon: Clock, tone: 'slate', hint: 'tamamlanan randevu süreleri' },
+            { key: 'staff.serviceRevenue', label: 'Uygulama Cirosu', value: totals.serviceRevenue, prev: totals.prevServiceRevenue, unit: 'currency', icon: Activity, tone: 'mint', hint: 'tamamlanan randevular' },
+            { key: 'staff.salesAmount', label: 'Satış Cirosu', value: totals.salesAmount, prev: totals.prevSalesAmount, unit: 'currency', icon: UserCheck, tone: 'violet', hint: 'personelin sattığı paket/hizmet' },
+            { key: 'staff.commission', label: 'Komisyon', value: totals.commission, prev: undefined, unit: 'currency', icon: Wallet, tone: 'gold', hint: 'dönemde hak edilen prim' },
+            // "Tamamlanan İşlem" kartı KALDIRILDI (kurum tercihi; aynı kart Genel Bakış'tan da
+            // kalktı). Sayı kaybolmadı: karnedeki "Randevu" sütunu ve "En Çok İşlem Yapan"
+            // grafiği aynı veriyi taşır.
+            { key: 'staff.appointments', label: 'Randevu Sayısı', value: totals.appointments, prev: undefined, unit: 'count', icon: Award, tone: 'mint', hint: 'dönemdeki randevu' },
+            { key: 'staff.workedMinutes', label: 'Çalışılan Süre', value: totals.workedMinutes, prev: undefined, unit: 'duration', icon: Clock, tone: 'slate', hint: 'tamamlanan randevu süreleri' },
           ] as const
         ).map((k, i) => (
           <KpiTile
@@ -123,7 +193,7 @@ export default function StaffTab({
           />
         </ReportCard>
 
-        <ReportCard title="En Çok İş Bitiren" subtitle="Tamamlanan randevu adedi" icon={Activity}>
+        <ReportCard title="En Çok İşlem Yapan" subtitle="Tamamlanan randevu adedi" icon={Activity}>
           <RankBars
             items={[...rows]
               .sort((a, b) => b.completedCount - a.completedCount)
@@ -139,22 +209,22 @@ export default function StaffTab({
           />
         </ReportCard>
 
-        {/* İŞLEM SAYISININ PARASAL KARŞILIĞI — yan yana okunsun diye hemen yanında durur.
-            Çok iş yapan her zaman çok ciro üretmez (ör. kısa/ucuz işlemler); iki grafiği
-            karşılaştırınca bu fark görünür hâle gelir. */}
-        <ReportCard title="En Çok Üreten" subtitle="Uygulama + satış cirosu" icon={Wallet}>
+        {/* İŞLEMİ YAPAN ≠ SATIŞI YAPAN. Soldaki grafik "kim uyguladı", buradaki "kim sattı"
+            sorusunu yanıtlar; bu yüzden sıralama personelin SATIŞ cirosuna (SoldByStaffMemberId)
+            göredir, uyguladığı randevuların cirosu buraya karışmaz. */}
+        <ReportCard title="En Çok Paket veya Hizmet Satan" subtitle="Personelin sattığı paket / hizmet tutarı" icon={Wallet}>
           <RankBars
             items={[...rows]
-              .sort((a, b) => b.serviceRevenue + b.salesAmount - (a.serviceRevenue + a.salesAmount))
+              .sort((a, b) => b.salesAmount - a.salesAmount)
               .slice(0, 8)
               .map((r) => ({
                 key: r.staffMemberId,
                 label: r.staffName,
-                value: r.serviceRevenue + r.salesAmount,
-                hint: `Uygulama ${formatTL(Math.round(r.serviceRevenue))} · Satış ${formatTL(Math.round(r.salesAmount))}`,
+                value: r.salesAmount,
+                hint: `${r.salesCount} satış · uygulama ${formatTL(Math.round(r.serviceRevenue))}`,
               }))}
             format={(v) => formatTL(Math.round(v))}
-            emptyText="Bu dönemde ciro üretilmemiş."
+            emptyText="Bu dönemde satış yapılmamış."
           />
         </ReportCard>
 

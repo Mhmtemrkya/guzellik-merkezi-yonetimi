@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  CalendarClock,
   CheckCircle2,
   ImagePlus,
   Loader2,
@@ -36,6 +37,12 @@ export interface CustomerFormValues {
   kvkkConsent?: boolean
   notes?: string
   photoUrl?: string
+  /**
+   * GEÇMİŞTEN GELEN MÜŞTERİ ("eski müşterim") kutusu işaretlendiğinde girilen KAYIT TARİHİ
+   * (yerel gün, `YYYY-AA-GG`). Boş bırakılırsa kayıt anı kullanılır — normal akış değişmez.
+   * Yalnız YENİ kayıtta gönderilir; mevcut müşterinin kayıt tarihi düzenlemeyle değişmez.
+   */
+  registeredAt?: string
 }
 
 interface CustomerFormDialogProps {
@@ -71,7 +78,13 @@ function initials(name: string): string {
 }
 
 function emptyValues(): CustomerFormValues {
-  return { fullName: '', phone: '', email: '', birthDate: '', gender: 'Female', kvkkConsent: false, notes: '', photoUrl: '' }
+  return { fullName: '', phone: '', email: '', birthDate: '', gender: 'Female', kvkkConsent: false, notes: '', photoUrl: '', registeredAt: '' }
+}
+
+/** Bugünün yerel günü (`YYYY-AA-GG`) — tarih kutusunun üst sınırı ve varsayılanı. */
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function CustomerFormDialog({
@@ -98,6 +111,11 @@ export default function CustomerFormDialog({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [photoBusy, setPhotoBusy] = useState(false)
+  /**
+   * "Eski müşterim" anahtarı. Kapalıyken kayıt tarihi HİÇ gönderilmez (sunucu kayıt anını yazar);
+   * açıldığında tarih kutusu görünür ve bugüne kadar geriye dönük bir gün seçilebilir.
+   */
+  const [legacy, setLegacy] = useState(false)
 
   // Açılışta initial/varsayılan değerlere sıfırla
   useEffect(() => {
@@ -105,6 +123,7 @@ export default function CustomerFormDialog({
       setValues({ ...emptyValues(), ...(initial || {}) })
       setSaved(false)
       setError('')
+      setLegacy(Boolean(initial?.registeredAt))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
@@ -130,10 +149,20 @@ export default function CustomerFormDialog({
   const submit = async (): Promise<void> => {
     if (!values.fullName?.trim()) { setError('Ad soyad zorunludur.'); return }
     if (!values.phone?.trim()) { setError('Telefon zorunludur.'); return }
+    // Gelecek tarih "yeni müşteri" serisini ileri bir aya kaydırırdı; sunucu da reddediyor.
+    if (legacy && values.registeredAt && values.registeredAt > todayIso()) {
+      setError('Kayıt tarihi bugünden ileri olamaz.')
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await onSubmit({ ...values, fullName: formatPersonName(values.fullName) })
+      await onSubmit({
+        ...values,
+        fullName: formatPersonName(values.fullName),
+        // Kutu kapalıysa alan hiç gönderilmez → sunucu kayıt anını yazar (varsayılan davranış).
+        registeredAt: legacy ? (values.registeredAt || '') : '',
+      })
       setSaved(true)
       setTimeout(() => setOpen(false), 1100)
     } catch (e) {
@@ -241,6 +270,62 @@ export default function CustomerFormDialog({
                 </div>
               </div>
               <p className="mt-1.5 text-[10.5px] text-[#9d7386]">Doğum günü kampanyası bu alandan tetiklenir.</p>
+
+              {/* KAYIT TARİHİ — yalnız YENİ kayıtta. Varsayılan bugündür; "eski müşterim"
+                  işaretlenirse geçmiş bir tarih girilebilir (raporlarda o aya düşer). */}
+              {mode === 'create' && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !legacy
+                      setLegacy(next)
+                      // Açılışta boş kutu yerine bugünle başla: kullanıcı yalnız günü geri alır.
+                      if (next && !values.registeredAt) set({ registeredAt: todayIso() })
+                      if (!next) set({ registeredAt: '' })
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3.5 py-3 text-left transition-colors hover:border-[#BE7690]"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#A5556E] text-white"><CalendarClock className="h-4 w-4" /></span>
+                      <span>
+                        <span className="block text-[13px] font-semibold text-[#241923]">Eski müşterim</span>
+                        <span className="block text-[11px] text-[#74616A]">
+                          Daha önceden gelen bir müşteriyse gerçek kayıt tarihini girin.
+                        </span>
+                      </span>
+                    </span>
+                    <span className={`relative h-6 w-11 shrink-0 self-center rounded-full transition-colors ${legacy ? 'bg-gradient-to-r from-[#A5556E] to-[#8C4460]' : 'bg-[#e7d6de]'}`}>
+                      <motion.span animate={{ x: legacy ? 24 : 4 }} transition={{ type: 'spring', stiffness: 360, damping: 24 }} className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm" />
+                    </span>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {legacy && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-2 sm:max-w-[260px]">
+                          <label className={LABEL}>Kayıt tarihi</label>
+                          <input
+                            type="date"
+                            max={todayIso()}
+                            value={values.registeredAt || ''}
+                            onChange={(e) => set({ registeredAt: e.target.value })}
+                            className={INPUT}
+                          />
+                          <p className="mt-1.5 text-[10.5px] text-[#9d7386]">
+                            Boş bırakılırsa bugünün tarihi kullanılır.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </Section>
 
             {/* Yasal & not */}

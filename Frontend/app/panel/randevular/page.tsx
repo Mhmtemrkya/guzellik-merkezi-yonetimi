@@ -1293,6 +1293,8 @@ function RandevularPageInner() {
       birthDate: values.birthDate || null, gender: values.gender || 'Unspecified',
       kvkkConsent: Boolean(values.kvkkConsent), notes: values.notes || null,
       photoUrl: typeof values.photoUrl === 'string' && values.photoUrl ? values.photoUrl : null,
+      // "Eski müşterim" kayıt tarihi (yerel gün → günün ortası UTC); boşsa hiç gönderilmez.
+      ...(values.registeredAt ? { registeredAtUtc: new Date(`${values.registeredAt}T12:00:00`).toISOString() } : {}),
     }
     const res = await performWrite({
       operationType: 'CreateCustomer',

@@ -27,7 +27,18 @@ public sealed record CustomerListQuery(
     string? Search = null,
     CustomerListFilter Filter = CustomerListFilter.All,
     CustomerListSort Sort = CustomerListSort.Recent);
-public sealed record UpsertCustomerRequest(Guid BranchId, string FullName, string Phone, string? Email, DateOnly? BirthDate, Gender Gender, bool KvkkConsent, string? Notes, string? PhotoUrl = null);
+public sealed record UpsertCustomerRequest(
+    Guid BranchId, string FullName, string Phone, string? Email, DateOnly? BirthDate, Gender Gender,
+    bool KvkkConsent, string? Notes, string? PhotoUrl = null,
+    /// <summary>
+    /// GEÇMİŞTEN GELEN MÜŞTERİ: yazılıma geçmeden önce kaydedilmiş bir müşterinin GERÇEK kayıt
+    /// tarihi. Verilmezse kayıt anı kullanılır (normal akış).
+    /// <para>
+    /// Yalnız OLUŞTURMADA dikkate alınır — mevcut bir kaydın kayıt tarihi güncellemeyle
+    /// değişmez. Gelecek tarih kabul edilmez: "yeni müşteri" serisi ileri bir aya düşerdi.
+    /// </para>
+    /// </summary>
+    DateTime? RegisteredAtUtc = null);
 
 public sealed record SetBlacklistRequest(bool Blacklisted, string? Reason);
 

@@ -34,6 +34,8 @@ import type { ApiAppointment, ApiCustomer, ApiCustomerAccount, ApiCustomerSpendi
 interface CustomerFormValues {
   fullName?: string; phone?: string; email?: string; birthDate?: string
   gender?: CustomerGender; kvkkConsent?: boolean; notes?: string; branchId?: string; photoUrl?: string
+  /** "Eski müşterim" akışının kayıt tarihi (yerel gün) — bkz. CustomerFormDialog. */
+  registeredAt?: string
 }
 
 type TabKey = 'all' | 'vip' | 'kvkk' | 'kvkk-pending' | 'debt' | 'recent' | 'blacklist' | 'passive'
@@ -588,6 +590,10 @@ function MusterilerPageInner() {
     email: values.email || null, birthDate: values.birthDate || null, gender: values.gender || 'Unspecified',
     kvkkConsent: Boolean(values.kvkkConsent), notes: values.notes || null,
     photoUrl: typeof values.photoUrl === 'string' ? values.photoUrl : null,
+    // "Eski müşterim": girilen yerel gün, günün ORTASI olarak UTC'ye çevrilir (geçmiş satış
+    // girişiyle aynı kural) — böylece kayıt saat farkından bir önceki güne düşmez.
+    // Alan yalnız yeni kayıtta dolar; güncellemede sunucu zaten yok sayar.
+    ...(values.registeredAt ? { registeredAtUtc: new Date(`${values.registeredAt}T12:00:00`).toISOString() } : {}),
   })
 
   const fullPayloadOf = (c: Enriched, extra: Record<string, unknown>): Record<string, unknown> => ({

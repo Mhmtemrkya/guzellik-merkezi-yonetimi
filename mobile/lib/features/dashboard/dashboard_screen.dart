@@ -592,14 +592,13 @@ class _MetricGridState extends State<_MetricGrid> {
           newCustomers += (row['count'] as num?)?.toInt() ?? 0;
         }
       }
-      // BEKLEYEN TAHSİLAT — taban SATIŞTIR, taksit planı değil.
-      // `totalCollected`/`totalReceivable` yalnız TAKSİT satırlarını ölçer; taksitsiz (peşin)
-      // satış hiç girmediği için oran şişiyordu. `openReceivable`/`totalPaid` cari kartının
-      // kendi kuralından gelir (web ile birebir aynı hesap).
+      // BEKLEYEN TAHSİLAT — kartın rakamı KALAN BORÇ TUTARIDIR, oran değil (web ile aynı).
+      // Taban SATIŞTIR, taksit planı değil: `totalCollected`/`totalReceivable` yalnız TAKSİT
+      // satırlarını ölçer, taksitsiz (peşin) satış hiç girmez. `openReceivable`/`totalPaid`
+      // cari kartının kendi kuralından gelir.
       final collected = numberOf(_colReport, const ['totalPaid']);
       final receivable = numberOf(_colReport, const ['openReceivable']);
       final base = collected + receivable;
-      final rate = base > 0 ? (receivable / base) * 100 : 0.0;
       final other = data.primary.length - completed - waiting;
       cards = [
         _Metric(
@@ -640,15 +639,14 @@ class _MetricGridState extends State<_MetricGrid> {
           label: 'Bekleyen Tahsilat',
           // Dönem sorgusu sürerken rakam da alt satır da BEKLER: yalnız biri güncellenirse kart
           // bir an önceki dönemin parasını gösterir (web ile aynı kural).
-          value: _colBusy ? '…' : (base > 0 ? '%${_percentLabel(rate)}' : '—'),
+          value: _colBusy ? '…' : (base > 0 ? _compactMoney(receivable) : '—'),
           icon: Icons.pie_chart_rounded,
           tone: _MetricTone.gold,
           sub: _colBusy
               ? 'Dönem hesaplanıyor…'
               : base > 0
-                  ? 'Kalan borç ${_compactMoney(receivable)}'
+                  ? '${_compactMoney(collected)} tahsil edildi'
                   : (_colScopedActive ? 'Bu dönemde satış yok' : 'Henüz satış yok'),
-          ringPct: _colBusy ? 0 : rate.round(),
           // Kartın kendi dönem çubuğu (Tümü/Gün/Ay/Yıl + özel tarih) — web'deki ile aynı.
           footer: _ReportPeriodBar(
             period: _colPeriod,
@@ -726,8 +724,11 @@ enum _MetricTone {
   final Color onBand;
 }
 
-/// Pano metrik kartının içeriği. Görsel katman üç türden biri olur:
-/// alan grafiği (series), yığılmış şerit (segments) ya da doluluk halkası (ringPct).
+/// Pano metrik kartının içeriği. Görsel katman iki türden biri olur:
+/// alan grafiği (series) ya da yığılmış şerit (segments).
+///
+/// DOLULUK HALKASI KALDIRILDI: tek kullanıcısı "Bekleyen Tahsilat" kartıydı ve o kart artık
+/// oran değil KALAN BORÇ TUTARI yazıyor (web ile aynı).
 class _Metric {
   const _Metric({
     required this.label,
@@ -737,7 +738,6 @@ class _Metric {
     this.sub,
     this.series,
     this.segments,
-    this.ringPct,
     this.footer,
   });
   final String label;
@@ -747,7 +747,6 @@ class _Metric {
   final String? sub;
   final List<double>? series;
   final List<(Color, double)>? segments;
-  final int? ringPct;
   /// Kartın altındaki kontrol şeridi (ör. dönem çipleri). Grafik/şerit yerine geçer.
   final Widget? footer;
 }
@@ -790,17 +789,6 @@ class _MetricCard extends StatelessWidget {
                   child: Icon(metric.icon, color: tone.onBand, size: 17),
                 ),
                 const Spacer(),
-                if (metric.ringPct != null)
-                  SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CustomPaint(
-                      painter: _RingPainter(
-                        pct: metric.ringPct!.clamp(0, 100) / 100,
-                        color: tone.onBand,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -981,42 +969,8 @@ class _SparkAreaPainter extends CustomPainter {
       old.values != values || old.color != color;
 }
 
-/// Doluluk halkası (bekleyen tahsilat oranı).
-class _RingPainter extends CustomPainter {
-  const _RingPainter({required this.pct, required this.color});
-  final double pct;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final center = rect.center;
-    final radius = size.shortestSide / 2 - 2.5;
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.4
-        ..color = Colors.white.withValues(alpha: .75),
-    );
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -1.5708,
-      6.2832 * pct.clamp(0.0, 1.0),
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.4
-        ..strokeCap = StrokeCap.round
-        ..color = color,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter old) =>
-      old.pct != pct || old.color != color;
-}
+// Doluluk halkası (_RingPainter) KALDIRILDI: tek kullanıcısı "Bekleyen Tahsilat" kartının
+// oran göstergesiydi; kart artık kalan borç TUTARINI yazıyor.
 
 /// Son 6 takvim ayının tahsilat serisi (Gelir kartının alan grafiği).
 List<double> _monthlyIncomeSeries(List<Map<String, dynamic>> entries) {
@@ -1792,20 +1746,6 @@ class _DashboardData {
 
 // ----------------------- Web paritesi: yardımcılar -----------------------
 
-/// Yüzde etiketi (web `percentLabel` ile birebir). Tam sayıya yuvarlamak KÜÇÜK ORANLARDA
-/// yalan söyler: 867 ₺ borç varken oran 0,4 iken "%0" yazmak "borç yok" demektir.
-String _percentLabel(double value) {
-  final safe = value.clamp(0, 100).toDouble();
-  if (safe == 0) return '0';
-  if (safe < 10) {
-    final oneDecimal = (safe * 10).round() / 10;
-    final shown = oneDecimal == 0 ? 0.1 : oneDecimal;
-    return shown == shown.roundToDouble()
-        ? '${shown.round()}'
-        : shown.toStringAsFixed(1).replaceAll('.', ',');
-  }
-  return '${safe.round()}';
-}
 
 String _compactMoney(dynamic value) {
   final amount = value is num ? value : num.tryParse('$value') ?? 0;
@@ -2357,7 +2297,6 @@ class _PackageReportCardState extends State<_PackageReportCard> {
         overdue > 0,
       ),
     ];
-    final categories = apiItems(report['categories']);
     final customers = apiItems(report['customers']);
     return _DashCard(
       icon: Icons.workspaces_rounded,
@@ -2376,17 +2315,19 @@ class _PackageReportCardState extends State<_PackageReportCard> {
         onPeriod: (p) { setState(() { _period = p; _custom = null; }); _load(); },
         onCustom: (c) { setState(() => _custom = c); _load(); },
       ),
-      // Kart tıklanınca kategori/hizmet ve müşteri kırılımı açılır (web 'Satış Detayı').
-      onTap: (categories.isEmpty && customers.isEmpty)
+      // Kart tıklanınca müşteri kırılımı açılır (web 'Satış Detayı'); içindeki paket/hizmet
+      // seçicisi kartın AÇIK DÖNEMİYLE sorgular, o yüzden pencere birlikte taşınır.
+      onTap: customers.isEmpty
           ? null
           : () => showModalBottomSheet<void>(
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (_) => _PackageBreakdownSheet(
-                  categories: categories,
                   customers: customers,
                   api: api,
+                  fromIso: _reportWindow(_period, _custom).fromIso,
+                  toIso: _reportWindow(_period, _custom).toIso,
                 ),
               ),
       child: AdaptiveStatGrid(
@@ -2681,86 +2622,115 @@ class _ServiceReportCardState extends State<_ServiceReportCard> {
   }
 }
 
-/// Paket Raporu detayı (web 'Satış Detayı'): kategori → hizmet kırılımı ve
-/// müşteri bazlı taksit / tahsilat / seans durumu.
+/// Paket Raporu detayı (web 'Satış Detayı'): MÜŞTERİ bazlı taksit / tahsilat / seans durumu.
+///
+/// Kategori kırılımı KALDIRILDI (web ile birebir). Yerine paket/hizmet seçicisi geldi: bir paket
+/// ya da hizmet seçilince liste yalnız onu alan müşterilere daralır ve rakamlar SUNUCUDA o satışa
+/// göre yeniden hesaplanır — istemcide süzmek yanıltıcı olurdu, çünkü müşteri satırındaki
+/// taksit/ödeme/seans toplamları o müşterinin TÜM satışlarını kapsar.
 class _PackageBreakdownSheet extends StatefulWidget {
   const _PackageBreakdownSheet({
-    required this.categories,
     required this.customers,
     required this.api,
+    required this.fromIso,
+    required this.toIso,
   });
-  final List<Map<String, dynamic>> categories;
   final List<Map<String, dynamic>> customers;
   final ApiClient api;
+
+  /// Paket Raporu kartının açık dönemi — seçili paket/hizmet sorgusu da AYNI pencereyi kullanır.
+  final String fromIso;
+  final String toIso;
 
   @override
   State<_PackageBreakdownSheet> createState() => _PackageBreakdownSheetState();
 }
 
-class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
-  int _tab = 0;
-  String _query = '';
+/// Seçicide gösterilen katalog satırı.
+class _CatalogChoice {
+  const _CatalogChoice({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.isPackage,
+  });
+  final String id;
+  final String name;
+  final String category;
+  final bool isPackage;
+}
 
-  /// Yalnız KATEGORİ kırılımına uygulanan dönem (web'deki Gün/Hafta/Ay/Yıl çipleri).
-  /// Kendi rapor sorgusunu açar; panodaki KPI'ları ve taksit grafiğini etkilemez.
-  int _period = 2; // 0=Gün 1=Hafta 2=Ay 3=Yıl
-  late List<Map<String, dynamic>> _categories = widget.categories;
+class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
+  String _query = '';
   bool _loading = false;
 
-  static const _periodLabels = ['Gün', 'Hafta', 'Ay', 'Yıl'];
+  late List<Map<String, dynamic>> _customers = widget.customers;
 
-  /// Seçili dönemin [başlangıç, bitiş) yerel penceresi (web `periodWindow` ile aynı).
-  (DateTime, DateTime) _window() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    switch (_period) {
-      case 0:
-        return (today, tomorrow);
-      case 1:
-        return (today.subtract(const Duration(days: 6)), tomorrow);
-      case 3:
-        return (DateTime(today.year, 1, 1), tomorrow);
-      default:
-        return (DateTime(today.year, today.month, 1), tomorrow);
+  /// Seçili paket/hizmet — null ise tüm satışlar.
+  _CatalogChoice? _selected;
+
+  /// Katalog listeleri seçici İLK AÇILDIĞINDA çekilir; pano açılışına ek istek bindirmez.
+  List<_CatalogChoice>? _catalog;
+  bool _catalogLoading = false;
+
+  Future<void> _ensureCatalog() async {
+    if (_catalog != null || _catalogLoading) return;
+    setState(() => _catalogLoading = true);
+    try {
+      final results = await Future.wait([
+        widget.api
+            .get('/api/admin/packages/', query: {'page': 1, 'pageSize': 300}),
+        widget.api
+            .get('/api/admin/services/', query: {'page': 1, 'pageSize': 300}),
+      ]);
+      final items = <_CatalogChoice>[
+        for (final pkg in apiItems(results[0]))
+          if (valueOf(pkg, const ['id']).isNotEmpty)
+            _CatalogChoice(
+              id: valueOf(pkg, const ['id']),
+              name: valueOf(pkg, const ['name'], fallback: 'Paket'),
+              category: valueOf(pkg, const ['category']),
+              isPackage: true,
+            ),
+        for (final svc in apiItems(results[1]))
+          if (valueOf(svc, const ['id']).isNotEmpty)
+            _CatalogChoice(
+              id: valueOf(svc, const ['id']),
+              name: valueOf(svc, const ['name'], fallback: 'Hizmet'),
+              category: valueOf(svc, const ['category']),
+              isPackage: false,
+            ),
+      ];
+      if (!mounted) return;
+      setState(() => _catalog = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _catalog = const []);
+    } finally {
+      if (mounted) setState(() => _catalogLoading = false);
     }
   }
 
-  String _windowLabel() {
-    final now = DateTime.now();
-    switch (_period) {
-      case 0:
-        return 'Bugün · ${now.day} ${_monthsShort[now.month - 1]}';
-      case 1:
-        final start = now.subtract(const Duration(days: 6));
-        return start.month == now.month
-            ? '${start.day}–${now.day} ${_monthsShort[now.month - 1]}'
-            : '${start.day} ${_monthsShort[start.month - 1]} – ${now.day} ${_monthsShort[now.month - 1]}';
-      case 3:
-        return '${now.year}';
-      default:
-        return DateFormat('MMMM yyyy', 'tr_TR').format(now);
-    }
-  }
-
-  Future<void> _selectPeriod(int period) async {
+  /// Seçim değişince raporu YENİDEN çeker (kart dönemi + seçili ürün).
+  Future<void> _applySelection(_CatalogChoice? choice) async {
     setState(() {
-      _period = period;
+      _selected = choice;
       _loading = true;
     });
-    final (from, to) = _window();
     try {
       final res = await widget.api.get(
         '/api/admin/accounts/report',
         query: {
           'months': 6,
-          'fromUtc': from.toUtc().toIso8601String(),
-          'toUtc': to.toUtc().toIso8601String(),
+          'fromUtc': widget.fromIso,
+          'toUtc': widget.toIso,
+          if (choice != null && choice.isPackage) 'servicePackageId': choice.id,
+          if (choice != null && !choice.isPackage) 'serviceDefinitionId': choice.id,
         },
       );
       if (!mounted) return;
       setState(() {
-        _categories = apiItems(res is Map ? res['categories'] : null);
+        _customers = apiItems(res is Map ? res['customers'] : null);
         _loading = false;
       });
     } catch (_) {
@@ -2769,11 +2739,32 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
     }
   }
 
+  /// Paket / hizmet seçici — aramalı, kategori etiketli liste (web CatalogPicker karşılığı).
+  Future<void> _openPicker() async {
+    await _ensureCatalog();
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<Object?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CatalogChoiceSheet(
+        items: _catalog ?? const [],
+        selectedId: _selected?.id,
+      ),
+    );
+    if (picked == null) return; // vazgeçildi
+    if (picked is String && picked == 'clear') {
+      await _applySelection(null); // "Tümü"
+      return;
+    }
+    if (picked is _CatalogChoice) await _applySelection(picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final customers = _query.trim().isEmpty
-        ? widget.customers
-        : widget.customers.where((c) {
+        ? _customers
+        : _customers.where((c) {
             final q = _query.trim().toLowerCase();
             return valueOf(c, const ['customerName']).toLowerCase().contains(q);
           }).toList();
@@ -2809,61 +2800,63 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
             ),
             const SizedBox(height: 2),
             Text(
-              _tab == 0
-                  ? 'Kategori · hizmet kırılımı · ${_windowLabel()}'
-                  : 'Müşteri bazlı taksit / tahsilat / seans',
+              _selected == null
+                  ? 'Müşteri kırılımı · tüm satışlar'
+                  : 'Müşteri kırılımı · ${_selected!.name}',
               style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
             ),
             const SizedBox(height: 12),
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Kategori')),
-                ButtonSegment(value: 1, label: Text('Müşteri')),
-              ],
-              selected: {_tab},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _tab = s.first),
-            ),
-            // Dönem çipleri yalnız kategori kırılımında görünür (web ile aynı kural).
-            if (_tab == 0) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  for (var i = 0; i < _periodLabels.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _PeriodChip(
-                        label: _periodLabels[i],
-                        selected: _period == i,
-                        onTap: _loading ? null : () => _selectPeriod(i),
-                      ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _openPicker,
+                    icon: Icon(
+                      _selected != null && !_selected!.isPackage
+                          ? Icons.auto_awesome_rounded
+                          : Icons.inventory_2_rounded,
+                      size: 16,
                     ),
-                  if (_loading)
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    label: Text(
+                      _selected?.name ?? 'Paket / hizmet seç',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                ],
-              ),
-            ],
-            if (_tab == 1) ...[
-              const SizedBox(height: 10),
-              TextField(
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded, size: 18),
-                  hintText: 'Müşteri ara',
-                  isDense: true,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primaryDark,
+                      minimumSize: const Size.fromHeight(40),
+                    ),
+                  ),
                 ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Expanded(
-              child: _tab == 0
-                  ? _categoryList(scrollController)
-                  : _customerList(scrollController, customers),
+                if (_selected != null) ...[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Seçimi kaldır',
+                    onPressed: _loading ? null : () => _applySelection(null),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                ],
+                if (_loading) ...[
+                  const SizedBox(width: 8),
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              ],
             ),
+            const SizedBox(height: 10),
+            TextField(
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded, size: 18),
+                hintText: 'Müşteri ara',
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            const SizedBox(height: 10),
+            Expanded(child: _customerList(scrollController, customers)),
           ],
         ),
       ),
@@ -2874,153 +2867,12 @@ class _PackageBreakdownSheetState extends State<_PackageBreakdownSheet> {
   String _sellerSummary(List<Map<String, dynamic>> sellers) {
     final parts = sellers
         .take(2)
-        .map((s) =>
-            '${valueOf(s, const ['staffName'], fallback: 'Belirtilmemiş')} ×${numberOf(s, const ['soldCount']).toInt()}')
+        .map(
+          (s) =>
+              '${valueOf(s, const ['staffName'], fallback: 'Belirtilmemiş')} ×${numberOf(s, const ['soldCount']).toInt()}',
+        )
         .join(' · ');
     return sellers.length > 2 ? '$parts +${sellers.length - 2}' : parts;
-  }
-
-  Widget _categoryList(ScrollController controller) {
-    if (_categories.isEmpty) return const _EmptyDetail();
-    final total = _categories.fold<double>(
-      0,
-      (s, c) => s + numberOf(c, const ['amount']),
-    );
-    return ListView.separated(
-      controller: controller,
-      itemCount: _categories.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final cat = _categories[i];
-        final amount = numberOf(cat, const ['amount']);
-        final services = apiItems(cat['services']);
-        final share = total > 0 ? (amount / total * 100).round() : 0;
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceSoft,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              initiallyExpanded: i == 0,
-              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              title: Text(
-                valueOf(cat, const ['category'], fallback: 'Kategorisiz'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13.5,
-                ),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${services.length} hizmet · ${numberOf(cat, const ['soldCount']).toInt()} satış · '
-                    '${numberOf(cat, const ['sessionsUsed']).toInt()}/${numberOf(cat, const ['sessionsTotal']).toInt()} seans',
-                    style: const TextStyle(color: AppColors.muted, fontSize: 11),
-                  ),
-                  if (apiItems(cat['sellers']).isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _sellerSummary(apiItems(cat['sellers'])),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.primaryDark,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _compactMoney(amount),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
-                  Text(
-                    '%$share pay',
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              children: [
-                // "Kim sattı" — kategorideki satışların personel bazlı payı (web paritesi).
-                if (apiItems(cat['sellers']).isNotEmpty)
-                  _SellerStrip(sellers: apiItems(cat['sellers']), total: amount),
-                ...services.map(
-                  (svc) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                valueOf(svc, const ['serviceName']),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                              Text(
-                                '${numberOf(svc, const ['soldCount']).toInt()} satış · '
-                                '${numberOf(svc, const ['customerCount']).toInt()} müşteri · '
-                                '${numberOf(svc, const ['sessionsRemaining']).toInt()} seans kaldı',
-                                style: const TextStyle(
-                                  color: AppColors.muted,
-                                  fontSize: 10.5,
-                                ),
-                              ),
-                              if (apiItems(svc['sellers']).isNotEmpty)
-                                Text(
-                                  'Satan: ${_sellerSummary(apiItems(svc['sellers']))}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.primaryDark,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _compactMoney(numberOf(svc, const ['amount'])),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _customerList(
@@ -3204,35 +3056,171 @@ class _SellerStrip extends StatelessWidget {
   }
 }
 
-/// Satış Detayı'ndaki dönem çipi (Gün · Hafta · Ay · Yıl).
-class _PeriodChip extends StatelessWidget {
-  const _PeriodChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback? onTap;
+/// PAKET / HİZMET SEÇİCİ (web `CatalogPicker` karşılığı).
+///
+/// Dönüş değeri: seçilen [_CatalogChoice], "Tümü" için `'clear'`, kapatıldıysa `null`.
+class _CatalogChoiceSheet extends StatefulWidget {
+  const _CatalogChoiceSheet({required this.items, this.selectedId});
+
+  final List<_CatalogChoice> items;
+  final String? selectedId;
+
+  @override
+  State<_CatalogChoiceSheet> createState() => _CatalogChoiceSheetState();
+}
+
+class _CatalogChoiceSheetState extends State<_CatalogChoiceSheet> {
+  String _q = '';
+
+  /// 0 = paketler, 1 = hizmetler.
+  int _kind = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seçili kayıt hangi sekmedeyse orayla açıl.
+    final current = widget.items
+        .where((i) => i.id == widget.selectedId)
+        .toList();
+    if (current.isNotEmpty && !current.first.isPackage) _kind = 1;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primary : AppColors.surfaceSoft,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: selected ? Colors.white : AppColors.primaryDark,
+    final q = _q.trim().toLowerCase();
+    final list = widget.items
+        .where((i) => i.isPackage == (_kind == 0))
+        .where((i) => q.isEmpty || i.name.toLowerCase().contains(q))
+        .toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, controller) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            const Text(
+              'Paket / Hizmet Seç',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Paketler')),
+                ButtonSegment(value: 1, label: Text('Hizmetler')),
+              ],
+              selected: {_kind},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) => setState(() => _kind = v.first),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded, size: 18),
+                hintText: 'Ada göre ara',
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _q = v),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).pop('clear'),
+              icon: const Icon(Icons.clear_all_rounded, size: 16),
+              label: const Text('Tümü (seçimi kaldır)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: list.isEmpty
+                  ? const _EmptyDetail()
+                  : ListView.separated(
+                      controller: controller,
+                      itemCount: list.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
+                      itemBuilder: (context, i) {
+                        final item = list[i];
+                        final selected = item.id == widget.selectedId;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.of(context).pop(item),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? AppColors.primary.withValues(alpha: .10)
+                                  : AppColors.surfaceSoft,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: selected
+                                    ? AppColors.primary
+                                    : Colors.transparent,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      if (item.category.isNotEmpty)
+                                        Text(
+                                          item.category,
+                                          style: const TextStyle(
+                                            color: AppColors.muted,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (selected)
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 18,
+                                    color: AppColors.primary,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );

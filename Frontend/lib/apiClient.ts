@@ -1065,8 +1065,23 @@ export const adminApi = {
   /** Pano "Paket Raporu": paket satışı, yapılacak seans, ay ay taksit takvimi (tek sorgu).
    *  fromUtc/toUtc verilirse rapor o dönemde satılan paketlere göre süzülür (günlük/aylık/yıllık). */
   // category/subCategory: rapor o kategorideki paketlere daralır; dönemle birlikte uygulanır.
-  accountReport: <T = unknown>(tenantId?: string, months = 6, fromUtc?: string, toUtc?: string, category?: string, subCategory?: string): Promise<T> =>
-    apiRequest<T>('/api/admin/accounts/report', { query: { tenantId, months, fromUtc, toUtc, category, subCategory } }),
+  // item: rapor TEK bir pakete ya da hizmete daralır (Satış Detayı > Müşteri Detayı seçicisi).
+  accountReport: <T = unknown>(
+    tenantId?: string,
+    months = 6,
+    fromUtc?: string,
+    toUtc?: string,
+    category?: string,
+    subCategory?: string,
+    item?: { kind: 'package' | 'service'; id: string } | null,
+  ): Promise<T> =>
+    apiRequest<T>('/api/admin/accounts/report', {
+      query: {
+        tenantId, months, fromUtc, toUtc, category, subCategory,
+        servicePackageId: item?.kind === 'package' ? item.id : undefined,
+        serviceDefinitionId: item?.kind === 'service' ? item.id : undefined,
+      },
+    }),
   // Hizmet Raporu — paket raporundan AYRI; buradaki kategori HİZMETİN kategorisidir.
   serviceReport: <T = unknown>(tenantId?: string, fromUtc?: string, toUtc?: string, category?: string, subCategory?: string): Promise<T> =>
     apiRequest<T>('/api/admin/accounts/service-report', { query: { tenantId, fromUtc, toUtc, category, subCategory } }),

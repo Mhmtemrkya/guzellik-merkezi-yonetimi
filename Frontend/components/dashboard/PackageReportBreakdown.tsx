@@ -1,45 +1,58 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
   AlertTriangle,
+  Boxes,
   CalendarClock,
   ChevronDown,
   Layers,
   Search,
+  Sparkles,
   UserCheck,
   Users,
   Wallet,
+  X,
 } from 'lucide-react'
+import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
 import { formatTL } from '@/lib/apiMappers'
-import type { PackageCategoryBreakdown, PackageCustomerBreakdown, PackageSeller } from '@/lib/types'
+import type { PackageCustomerBreakdown, PackageSeller } from '@/lib/types'
+
+/** Seçili paket/hizmet — boşsa rapor tüm satışları kapsar. */
+export interface BreakdownItemSelection {
+  kind: 'package' | 'service'
+  id: string
+  name: string
+}
 
 /**
- * Paket Raporu detay bloğu: KPI kartlarının altında iki görünüm sunar.
- *  • Kategori kırılımı → hangi kategoride hangi hizmet kaç satış / kaç seans / ne kadar tutar.
- *  • Müşteri detayı   → müşterinin kaç taksidi var, ne kadar ödemiş, kaç seansı kalmış.
- * Veri backend'de dönem filtresine (günlük/aylık/yıllık) göre hesaplanır.
+ * Paket Raporu detay bloğu: KPI kartlarının altında MÜŞTERİ kırılımını gösterir —
+ * müşterinin kaç taksidi var, ne kadar ödemiş, kaç seansı kalmış, kim satmış.
+ *
+ * PAKET / HİZMET SEÇİCİSİ: bir paket ya da hizmet seçilirse liste yalnız onu satın alan
+ * müşterilere daralır ve rakamlar SUNUCUDA o satışa göre yeniden hesaplanır. Süzmeyi istemcide
+ * yapmak yanıltıcı olurdu: müşteri satırındaki taksit/ödeme/seans toplamları o müşterinin TÜM
+ * satışlarını kapsar, seçilen paketinkini değil.
  */
 export default function PackageReportBreakdown({
-  categories,
   customers,
   loading = false,
-  periodTabs,
-  periodLabel,
+  packageItems = [],
+  serviceItems = [],
+  selectedItem = null,
+  onSelectItem,
 }: {
-  categories: PackageCategoryBreakdown[]
   customers: PackageCustomerBreakdown[]
   loading?: boolean
-  /** Yalnız KATEGORİ kırılımına uygulanan dönem seçici (Gün/Hafta/Ay/Yıl). */
-  periodTabs?: ReactNode
-  periodLabel?: string
+  /** Seçicideki paketler (katalogdan). */
+  packageItems?: PickerItem[]
+  /** Seçicideki hizmetler (katalogdan). */
+  serviceItems?: PickerItem[]
+  selectedItem?: BreakdownItemSelection | null
+  onSelectItem?: (next: BreakdownItemSelection | null) => void
 }) {
-  const [view, setView] = useState<'category' | 'customer'>('category')
-
-  const hasData = categories.length > 0 || customers.length > 0
-
   return (
     <div className={`rounded-[22px] border border-[#EAD8DF] bg-white p-4 transition-opacity sm:p-5 ${loading ? 'opacity-60' : 'opacity-100'}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -50,184 +63,149 @@ export default function PackageReportBreakdown({
           <div>
             <div className="font-display text-[14px] font-semibold text-[#2A2027]">Satış Detayı</div>
             <div className="text-[11px] text-[#5A4B53]">
-              Kategori · hizmet · müşteri kırılımı
-              {view === 'category' && periodLabel ? <span className="font-semibold text-[#8C4460]"> · {periodLabel}</span> : ''}
+              Müşteri kırılımı
+              {selectedItem ? <span className="font-semibold text-[#8C4460]"> · {selectedItem.name}</span> : ' · tüm satışlar'}
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-        {view === 'category' && periodTabs}
-        <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
-          {(
-            [
-              ['category', 'Kategori Kırılımı'],
-              ['customer', 'Müşteri Detayı'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                view === key ? 'bg-[#A5556E] text-white shadow-[0_10px_22px_-14px_rgba(42,32,39,0.8)]' : 'text-[#5A4B53] hover:text-[#8C4460]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          </div>
-        </div>
+        {onSelectItem && (
+          <ItemFilter
+            packageItems={packageItems}
+            serviceItems={serviceItems}
+            value={selectedItem}
+            onChange={onSelectItem}
+          />
+        )}
       </div>
 
-      {!hasData ? (
+      {customers.length === 0 ? (
         <div className="mt-4 rounded-[16px] border border-dashed border-[#DFD9DC] bg-[#F7F6F6] px-4 py-8 text-center text-[12px] text-[#5A4B53]">
-          Seçili dönemde paket satışı bulunmuyor.
+          {selectedItem ? `Seçili dönemde "${selectedItem.name}" satışı bulunmuyor.` : 'Seçili dönemde satış bulunmuyor.'}
         </div>
       ) : (
         <div className="mt-4">
-          <AnimatePresence mode="wait" initial={false}>
-            {view === 'category' ? (
-              <motion.div key="category" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-                <CategoryList categories={categories} />
-              </motion.div>
-            ) : (
-              <motion.div key="customer" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-                <CustomerList customers={customers} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <CustomerList customers={customers} />
         </div>
       )}
     </div>
   )
 }
 
-// ---------------------------------------------------------------- kategori ---
+// -------------------------------------------------------- paket/hizmet seçici ---
 
-function CategoryList({ categories }: { categories: PackageCategoryBreakdown[] }) {
-  const [open, setOpen] = useState<string | null>(categories[0]?.category ?? null)
-  const maxAmount = Math.max(1, ...categories.map((c) => c.amount))
-  const totalAmount = categories.reduce((s, c) => s + c.amount, 0)
+/**
+ * Açılır seçici: paket ↔ hizmet sekmesi + aramalı katalog listesi.
+ * Liste her zaman açık dursaydı blok başlığı bir ekran boyunca uzardı; düğme yalnız seçimi yazar.
+ */
+function ItemFilter({
+  packageItems,
+  serviceItems,
+  value,
+  onChange,
+}: {
+  packageItems: PickerItem[]
+  serviceItems: PickerItem[]
+  value: BreakdownItemSelection | null
+  onChange: (next: BreakdownItemSelection | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [kind, setKind] = useState<'package' | 'service'>(value?.kind ?? 'package')
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  // Dışarı tıklayınca / ESC ile kapansın — panel diğer kartların üstüne biniyor.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const items = kind === 'package' ? packageItems : serviceItems
 
   return (
-    <div className="space-y-2">
-      {categories.map((cat) => {
-        const isOpen = open === cat.category
-        const share = totalAmount > 0 ? Math.round((cat.amount / totalAmount) * 100) : 0
-        return (
-          <div key={cat.category} className="overflow-hidden rounded-[16px] border border-[#E4DEE0] bg-[#F7F6F6]">
-            <button
-              type="button"
-              onClick={() => setOpen(isOpen ? null : cat.category)}
-              className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-[#F6DFE6]"
-            >
-              <ChevronDown className={`h-4 w-4 shrink-0 text-[#A5556E] transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} strokeWidth={2} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-[#2A2027]">{cat.category}</span>
-                <span className="mt-1 block text-[11px] text-[#5A4B53]">
-                  {cat.services.length} hizmet · {cat.soldCount} satış · {cat.customerCount} müşteri · {cat.sessionsUsed}/{cat.sessionsTotal} seans
-                </span>
-                {cat.sellers.length > 0 && (
-                  <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#8C4460]">
-                    <UserCheck className="h-3 w-3" strokeWidth={2} />
-                    {cat.sellers[0].staffName}
-                    {cat.sellers.length > 1 ? ` +${cat.sellers.length - 1} personel` : ''}
-                  </span>
-                )}
-                <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-[#EFEAEC]">
-                  <span
-                    className="block h-full rounded-full bg-[linear-gradient(90deg,#D69CAF,#A5556E)]"
-                    style={{ width: `${Math.max(4, Math.round((cat.amount / maxAmount) * 100))}%` }}
-                  />
-                </span>
-              </span>
-              <span className="shrink-0 text-right">
-                <span className="block font-display text-[14px] font-bold text-[#2A2027]">{formatTL(Math.round(cat.amount))}</span>
-                <span className="mt-0.5 block text-[10px] font-semibold text-[#8C4460]">%{share} pay</span>
-              </span>
-            </button>
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`inline-flex max-w-[260px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+            value ? 'border-[#BE7690] bg-[#F6DFE6] text-[#8C4460]' : 'border-[#E4DEE0] bg-[#F7F6F6] text-[#5A4B53] hover:border-[#BE7690]'
+          }`}
+        >
+          {value?.kind === 'service' ? <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} /> : <Boxes className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />}
+          <span className="truncate">{value ? value.name : 'Paket / hizmet seç'}</span>
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            title="Seçimi kaldır"
+            aria-label="Seçimi kaldır"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#E4DEE0] bg-white text-[#8E7882] transition-colors hover:border-[#BE7690] hover:text-[#8C4460]"
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+        )}
+      </div>
 
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16 }}
+            className="absolute right-0 z-30 mt-2 w-[min(92vw,360px)] rounded-[16px] border border-[#EAD8DF] bg-white p-3 shadow-[0_30px_70px_-40px_rgba(87,39,61,0.85)]"
+          >
+            <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
+              {(
+                [
+                  ['package', 'Paketler'],
+                  ['service', 'Hizmetler'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setKind(key)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                    kind === key ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:text-[#8C4460]'
+                  }`}
                 >
-                  <div className="border-t border-[#EFEAEC] bg-white px-3.5 pb-3 pt-3">
-                    <SellerStrip sellers={cat.sellers} />
+                  {label}
+                </button>
+              ))}
+            </div>
 
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full min-w-[680px] border-collapse text-left">
-                        <thead>
-                          <tr className="text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">
-                            <th className="py-2 pr-3">Hizmet</th>
-                            <th className="py-2 pr-3">Satan personel</th>
-                            <th className="py-2 pr-3 text-right">Satış</th>
-                            <th className="py-2 pr-3 text-right">Müşteri</th>
-                            <th className="py-2 pr-3 text-right">Seans</th>
-                            <th className="py-2 pr-3 text-right">Kalan</th>
-                            <th className="py-2 text-right">Tutar</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#EFEAEC]">
-                          {cat.services.map((svc) => (
-                            <tr key={`${cat.category}-${svc.serviceDefinitionId}-${svc.serviceName}`} className="text-[12px] text-[#3E343A]">
-                              <td className="py-2 pr-3">
-                                <span className="block max-w-[220px] truncate font-medium text-[#2A2027]">{svc.serviceName}</span>
-                              </td>
-                              <td className="py-2 pr-3">
-                                <span className="flex flex-wrap gap-1">
-                                  {svc.sellers.length === 0 ? (
-                                    <span className="text-[11px] text-[#5A4B53]">—</span>
-                                  ) : (
-                                    svc.sellers.slice(0, 3).map((s, i) => (
-                                      <span
-                                        // Yönetici satışlarında staffMemberId null gelir (personel kaydı yok) — sıra ekle.
-                                        key={`${svc.serviceDefinitionId}-${s.staffMemberId ?? 'none'}-${i}`}
-                                        title={`${s.staffName} · ${s.soldCount} satış · ${formatTL(Math.round(s.amount))}`}
-                                        className="inline-flex items-center gap-1 rounded-full border border-[#E3C6D1] bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-semibold text-[#8C4460]"
-                                      >
-                                        <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-[#A5556E] text-[8px] font-bold text-white">
-                                          {initials(s.staffName)}
-                                        </span>
-                                        {s.staffName}
-                                        <span className="text-[#5A4B53]">×{s.soldCount}</span>
-                                      </span>
-                                    ))
-                                  )}
-                                  {svc.sellers.length > 3 && (
-                                    <span className="text-[10px] font-semibold text-[#5A4B53]">+{svc.sellers.length - 3}</span>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 text-right">{svc.soldCount}</td>
-                              <td className="py-2 pr-3 text-right">{svc.customerCount}</td>
-                              <td className="py-2 pr-3 text-right">
-                                {svc.sessionsUsed}/{svc.sessionsTotal}
-                              </td>
-                              <td className="py-2 pr-3 text-right font-semibold text-[#15694A]">{svc.sessionsRemaining}</td>
-                              <td className="py-2 text-right font-semibold text-[#2A2027]">{formatTL(Math.round(svc.amount))}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )
-      })}
+            <CatalogPicker
+              items={items}
+              value={value?.kind === kind ? value.id : ''}
+              clearable
+              emptyText={kind === 'package' ? 'Paket bulunamadı.' : 'Hizmet bulunamadı.'}
+              onChange={(id) => {
+                if (!id) { onChange(null); return }
+                const picked = items.find((i) => i.id === id)
+                onChange({ kind, id, name: picked?.name || (kind === 'package' ? 'Paket' : 'Hizmet') })
+                setOpen(false)
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
 /**
- * "Kim sattı" şeridi — kategorideki satışların personel bazlı payı.
+ * "Kim sattı" şeridi — müşteriye yapılan satışların personel bazlı payı.
  * Satış personeli atanmamış (eski / otomatik onaylanmış) kayıtlar "Belirtilmemiş" altında toplanır.
  */
 function SellerStrip({ sellers }: { sellers: PackageSeller[] }) {
@@ -380,7 +358,7 @@ function CustomerList({ customers }: { customers: PackageCustomerBreakdown[] }) 
                         />
                       </div>
 
-                      {/* Kim sattı — kategori kırılımıyla aynı şerit, müşteri kapsamında. */}
+                      {/* Kim sattı — müşteri kapsamındaki satışların personel payı. */}
                       <SellerStrip sellers={c.sellers} />
 
                       <div className="flex flex-wrap gap-2">

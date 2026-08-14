@@ -6,7 +6,8 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
 import DashboardHero from '@/components/dashboard/DashboardHero'
-import PackageReportBreakdown from '@/components/dashboard/PackageReportBreakdown'
+import PackageReportBreakdown, { type BreakdownItemSelection } from '@/components/dashboard/PackageReportBreakdown'
+import type { PickerItem } from '@/components/dashboard/CatalogPicker'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -871,44 +872,6 @@ function AreaSpark({ values, tone }: { values: number[]; tone: QuickAction['tone
   )
 }
 
-/**
- * Yüzde etiketi. Tam sayıya yuvarlamak KÜÇÜK ORANLARDA YALAN SÖYLER: 867 ₺ borç varken oran
- * 0,4 ise "%0" yazmak "borç yok" demektir. 10'un altında ondalık gösterilir (Türkçe virgül).
- */
-function percentLabel(value: number): string {
-  const safe = Math.max(0, Math.min(100, value))
-  if (safe === 0) return '0'
-  if (safe < 10) {
-    const oneDecimal = Math.round(safe * 10) / 10
-    // 0,04 gibi değerler "0,0" olmasın: görünür en küçük oran 0,1'dir.
-    const shown = oneDecimal === 0 ? 0.1 : oneDecimal
-    return Number.isInteger(shown) ? String(shown) : shown.toFixed(1).replace('.', ',')
-  }
-  return String(Math.round(safe))
-}
-
-/** `label` verilirse AYNEN yazılır (yüzde işareti dahil) — veri yokken "—" gösterilebilsin. */
-function DonutGauge({ value, label }: { value: number; label?: string }) {
-  const percent = Math.max(0, Math.min(100, value))
-  const text = label ?? `%${percentLabel(percent)}`
-  return (
-    <div
-      className="grid h-[74px] w-[74px] place-items-center rounded-full"
-      style={{ background: `conic-gradient(#1E8C60 ${percent * 3.6}deg, #DFF3EA 0deg)` }}
-      aria-label={`Doluluk oranı ${text}`}
-    >
-      {/* Uzun etiket (ör. "%62,5") 52px halkaya sığsın diye punto kısalır. */}
-      <div
-        className={`grid h-[52px] w-[52px] place-items-center rounded-full bg-white font-semibold text-[#15694A] ${
-          text.length > 4 ? 'text-[12px]' : 'text-[15px]'
-        }`}
-      >
-        {text}
-      </div>
-    </div>
-  )
-}
-
 function MetricCard({
   icon: Icon,
   title,
@@ -1631,8 +1594,9 @@ export default function AdminDashboard() {
   // Bekleyen Tahsilat kartı kendi dönemini taşır: varsayılan 'all' (tüm zamanların borcu).
   const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('all')
   const [collectionCustom, setCollectionCustom] = useState<CustomRange | null>(null)
-  // Satış Detayı > Kategori Kırılımı kendi dönemine sahiptir (KPI'ları ve taksit grafiğini etkilemez).
-  const [categoryPeriod, setCategoryPeriod] = useState<RangePeriod>('monthly')
+  // Satış Detayı > Müşteri kırılımında seçilen paket/hizmet ('' = tüm satışlar). Seçim SUNUCUYA
+  // gider: müşteri satırındaki taksit/ödeme/seans toplamları o satışa göre yeniden hesaplanmalı.
+  const [breakdownItem, setBreakdownItem] = useState<BreakdownItemSelection | null>(null)
   // Global randevu dönemi (üst seçici): randevu kartı + akış tablosunu sürükler. Diğer kartlar kendi sekmesini korur.
   const [globalPeriod, setGlobalPeriod] = useState<RangePeriod>('daily')
 
@@ -1768,16 +1732,19 @@ export default function AdminDashboard() {
     { initialData: null, enabled: collectionScoped },
   )
 
-  // Yalnız kategori kırılımı için ayrı pencere (Gün/Hafta/Ay/Yıl) — kendi rapor sorgusu.
-  const catWindow = periodWindow(categoryPeriod, dayStart)
-  const catFromIso = new Date(`${catWindow.startKey}T00:00:00`).toISOString()
-  const catToIso = new Date(`${catWindow.endKey}T00:00:00`).toISOString()
-  const { data: categoryReportData, loading: categoryLoading } = useApiQuery<ApiAccountReport>(
+  // Satış Detayı > Müşteri kırılımı: paket/hizmet seçiliyken AYNI dönem ve kategoriyle ama tek
+  // ürüne daraltılmış ayrı bir rapor çekilir. Seçim yokken ek istek atılmaz — paket raporunun
+  // kendi yanıtındaki müşteri listesi zaten aynı kapsamdadır.
+  const breakdownScoped = breakdownItem !== null
+  const { data: breakdownReportData, loading: breakdownLoading } = useApiQuery<ApiAccountReport>(
     () => adminApi
-      .accountReport<ApiAccountReport>(tenantId, 6, catFromIso, catToIso, packageCategory || undefined, packageSubCategory || undefined)
+      .accountReport<ApiAccountReport>(
+        tenantId, 6, pkgFromIso, pkgToIso, packageCategory || undefined, packageSubCategory || undefined,
+        breakdownItem ? { kind: breakdownItem.kind, id: breakdownItem.id } : null,
+      )
       .catch(() => ({}) as ApiAccountReport),
-    [tenantId, catFromIso, catToIso, packageCategory, packageSubCategory],
-    { initialData: null },
+    [tenantId, pkgFromIso, pkgToIso, packageCategory, packageSubCategory, breakdownItem?.kind, breakdownItem?.id, breakdownScoped],
+    { initialData: null, enabled: breakdownScoped },
   )
 
   // --- Hizmet Raporu: paket raporundan TAMAMEN AYRI (kendi dönemi + kendi kategorisi) ---------
@@ -1835,6 +1802,31 @@ export default function AdminDashboard() {
       .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
       .map(([name, v]) => ({ name, subs: [...v.subs].sort((a, b) => a.localeCompare(b, 'tr')) }))
   }, [data])
+
+  /* Satış Detayı seçicisinin listeleri — pano zaten katalog paketlerini ve hizmetlerini
+     yüklüyor, seçici için AYRI istek atılmaz. */
+  const breakdownPackageItems = useMemo<PickerItem[]>(
+    () => apiItems(data?.packagesResult).map((p) => ({
+      id: p.id ?? '',
+      name: p.name ?? 'Paket',
+      price: Number(p.totalPrice ?? 0),
+      cat: (p.category || '').trim(),
+      sub: (p.subCategory || '').trim(),
+      meta: p.totalSessions ? `${p.totalSessions} seans` : undefined,
+    })).filter((p) => p.id),
+    [data],
+  )
+  const breakdownServiceItems = useMemo<PickerItem[]>(
+    () => apiItems(data?.servicesResult).map((s) => ({
+      id: s.id ?? '',
+      name: s.name ?? 'Hizmet',
+      price: Number(s.price ?? 0),
+      cat: (s.category || '').trim(),
+      sub: (s.subCategory || '').trim(),
+      meta: s.durationMinutes ? `${s.durationMinutes} dk` : undefined,
+    })).filter((s) => s.id),
+    [data],
+  )
 
   const customerStats = data?.customersStats || {}
   // Gün → yeni müşteri sayısı (sunucudan gruplu gelir; liste çekilmez).
@@ -1964,24 +1956,25 @@ export default function AdminDashboard() {
   const reportMonths = report.monthlyInstallments
   // Dönem filtreli paket raporu (KPI kartları); henüz yüklenmediyse genel rapora düş.
   const packageReport = normalizeAccountReport(packageReportData ?? data?.reportResult)
-  const categoryReport = normalizeAccountReport(categoryReportData ?? packageReportData ?? data?.reportResult)
+  // Müşteri kırılımı: paket/hizmet seçiliyse onun raporundan, değilse dönem raporundan.
+  const breakdownReport = breakdownScoped ? normalizeAccountReport(breakdownReportData) : packageReport
 
   /*
-   * BEKLEYEN TAHSİLAT (gauge kartı) — "satışlarımın yüzde kaçı hâlâ tahsil edilmedi".
+   * BEKLEYEN TAHSİLAT — kartın rakamı KALAN BORÇ TUTARIDIR, oran değil.
    *
-   * TABAN SATIŞTIR, TAKSİT PLANI DEĞİL. Kart eskiden `totalReceivable`/`totalCollected` ile
-   * kuruluyordu; ikisi de yalnız TAKSİT satırlarını ölçer. Peşin satış hiç taksit üretmediği
-   * için kurumun peşin cirosu tabandan düşüyor, oran şişiyordu (canlı veride %19 görünen oranın
-   * gerçeği %4,7'ydi). `openReceivable`/`totalPaid` cari kartının kendi kuralından gelir ve Ön
-   * Muhasebe'deki "Toplam açık alacak" / "Toplam tahsilat" ile aynı tabandır.
+   * Kart eskiden "satışlarımın yüzde kaçı tahsil edilmedi" oranını basıyordu; kurumun sorduğu şey
+   * ise "ne kadar param dışarıda" olduğu için oran her seferinde tutara çevriliyordu. Rakam artık
+   * doğrudan `openReceivable`.
+   *
+   * TABAN SATIŞTIR, TAKSİT PLANI DEĞİL: `totalReceivable`/`totalCollected` yalnız TAKSİT
+   * satırlarını ölçer, peşin satış hiç taksit üretmez. `openReceivable`/`totalPaid` cari kartının
+   * kendi kuralından gelir ve Ön Muhasebe'deki "Toplam açık alacak" / "Toplam tahsilat" ile aynı
+   * tabandır.
    *
    * Dönem seçiliyse kendi sorgusunun raporu kullanılır; 'all' iken genel rapor zaten penceresiz.
    */
   const collectionReport = collectionScoped ? normalizeAccountReport(collectionReportData) : report
   const collectionBase = collectionReport.openReceivable + collectionReport.totalPaid
-  const debtRate = collectionBase > 0 ? (collectionReport.openReceivable / collectionBase) * 100 : 0
-  /** Ekranda görünen metin: oran yoksa yüzde işareti de yazılmaz. */
-  const debtRateText = collectionBase > 0 ? `%${percentLabel(debtRate)}` : '—'
   /* Dönem değişince rakam ile ALTINDAKİ tutarlar birlikte beklemeli: yalnız büyük rakamı '…'
      yapmak, kart bir an "yükleniyor ama borç şu kadar" diye ÖNCEKİ dönemin parasını gösteriyordu. */
   const collectionPending = collectionScoped && collectionLoading
@@ -2106,19 +2099,18 @@ export default function AdminDashboard() {
           <MetricCard
             icon={CreditCard}
             title="Bekleyen Tahsilat"
-            /* Veri yokken "%—" saçmadır: yüzde işareti yalnız gerçek bir oran varken yazılır. */
-            value={collectionPending ? '…' : debtRateText}
+            /* Kartın rakamı KALAN BORÇ TUTARI (oran değil) — bkz. yukarıdaki not. */
+            value={collectionPending ? '…' : <AnimatedNumber value={collectionReport.openReceivable} format={(n) => formatTL(Math.round(n))} />}
             detail={
               <span title={`Dönem: ${collectionWindowLabel}`}>
                 {collectionPending
                   ? 'Dönem hesaplanıyor…'
                   : collectionBase > 0
-                    ? <>Kalan borç {formatTL(Math.round(collectionReport.openReceivable))}</>
+                    ? <>Kalan borç · {collectionWindowLabel}</>
                     : collectionScoped ? 'Bu dönemde satış yok' : 'Henüz satış yok'}
               </span>
             }
             subDetail={!collectionPending && collectionBase > 0 ? <>{formatTL(Math.round(collectionReport.totalPaid))} tahsil edildi</> : undefined}
-            visual={<DonutGauge value={collectionPending ? 0 : debtRate} label={collectionPending ? '…' : debtRateText} />}
             control={
               <>
                 {/* Çip seçilince özel aralık düşer: ikisi aynı anda uygulanmaz. */}
@@ -2364,13 +2356,15 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Kategori → hizmet ve müşteri bazlı taksit/ödeme/seans kırılımı (dönem filtresine uyar). */}
+                {/* Müşteri bazlı taksit/ödeme/seans kırılımı (dönem + kategori filtresine uyar).
+                    Paket/hizmet seçilirse liste yalnız onu alan müşterilere daralır. */}
                 <PackageReportBreakdown
-                  categories={categoryReport.categories}
-                  customers={packageReport.customers}
-                  loading={packageLoading || categoryLoading}
-                  periodLabel={catWindow.label}
-                  periodTabs={<PeriodTabs value={categoryPeriod} onChange={setCategoryPeriod} options={FULL_PERIOD_OPTIONS} />}
+                  customers={breakdownReport.customers}
+                  loading={packageLoading || breakdownLoading}
+                  packageItems={breakdownPackageItems}
+                  serviceItems={breakdownServiceItems}
+                  selectedItem={breakdownItem}
+                  onSelectItem={setBreakdownItem}
                 />
               </div>
             </SectionCard>

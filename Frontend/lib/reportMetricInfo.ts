@@ -54,46 +54,26 @@ export const metricInfo: Record<string, MetricInfo> = {
     formula: 'Dönemdeki tüm gider kayıtlarının tutar toplamı.',
     caveat: 'Ürün alımı buraya girer; satılan ürünün maliyeti ayrıca Stok sekmesinde de görünür.',
   },
-  net: {
-    title: 'Net Kâr',
-    summary: 'Dönemin cebe kalan tutarı.',
-    source: 'Gelir ve gider kayıtları birlikte.',
-    formula: 'Toplam Gelir − Toplam Gider',
-    caveat: 'Nakit esaslıdır: tahsil edilmemiş alacak buraya girmez.',
-  },
-  margin: {
-    title: 'Kâr Marjı',
-    summary: 'Her 100 ₺ tahsilatın kaç lirasının kâr olarak kaldığı.',
-    source: 'Gelir ve gider kayıtları.',
-    formula: '(Gelir − Gider) ÷ Gelir × 100',
-    caveat: 'Gelir 0 ise 0 gösterilir. Giderin şubesiz (kurum geneli) olanları da hesaba girer.',
+  openReceivable: {
+    title: 'Toplam Alacak',
+    summary: 'Dönemde yapılan satışlardan hâlâ tahsil edilmemiş tutar.',
+    source: S.sale,
+    formula: 'Dönemde satılan carilerin kalan borçları toplamı (satış tutarı − tahsilat + iade).',
+    caveat:
+      'Taksit planı değil SATIŞ bazlıdır: peşin satışın ödenmeyen kısmı da buraya girer. Dönem süzgeci satışın tarihine bakar; eski bir satışın bugün ödenmemiş bakiyesi bu ayda görünmez.',
   },
   sales: {
-    title: 'Satış Tutarı',
+    title: 'Toplam Satış Tutarı',
     summary: 'Dönemde yapılan paket/hizmet satışlarının toplam bedeli (tahsil edilmiş olsun ya da olmasın).',
     source: S.sale,
     formula: 'Dönemde satılan carilerin toplam tutarı. İptal edilmiş satışlar sayılmaz.',
     caveat: 'Gelirden farklıdır: satış "ne kadar sattım", gelir "ne kadar tahsil ettim" demektir.',
   },
   appointments: {
-    title: 'Randevu',
+    title: 'Randevu Sayısı',
     summary: 'Dönemde takvimde yer alan tüm randevular.',
     source: S.appointment,
     formula: 'Her durumdaki randevu adedi (planlandı, onaylandı, tamamlandı, iptal, gelmedi).',
-  },
-  completed: {
-    title: 'Tamamlanan İşlem',
-    summary: 'Fiilen uygulanan seans/işlem adedi.',
-    source: S.appointment,
-    formula: 'Durumu "Tamamlandı" olan randevu adedi.',
-    caveat: 'Paket seansı düşümü de bu randevular üzerinden yapılır.',
-  },
-  occupancy: {
-    title: 'Tamamlanma Oranı',
-    summary: 'Alınan randevuların ne kadarının gerçekten yapıldığı.',
-    source: S.appointment,
-    formula: 'Tamamlanan randevu ÷ Toplam randevu × 100',
-    caveat: 'Düşükse iptal ve "gelmedi" oranınız yüksek demektir — Personel sekmesinde kırılımı var.',
   },
   activeCustomers: {
     title: 'Aktif Müşteri',
@@ -102,26 +82,15 @@ export const metricInfo: Record<string, MetricInfo> = {
     formula: 'Dönemdeki randevuların benzersiz müşteri sayısı.',
     caveat: 'Toplam müşteri sayısı değildir; sadece o dönemde salona gelenler.',
   },
+
+  // Genel Bakış kart setinde YOK ama Müşteriler sekmesindeki "Yeni Müşteri" kartı hâlâ bu
+  // anahtarla açılır — girdi silinirse kart detayı boş açılırdı.
   newCustomers: {
     title: 'Yeni Müşteri',
     summary: 'Dönemde sisteme ilk kez kaydedilen müşteriler.',
     source: S.customer,
     formula: 'Kayıt tarihi dönem içinde olan müşteri adedi.',
-  },
-  avgTicket: {
-    title: 'Ortalama Sepet',
-    summary: 'Kasaya giren her bir tahsilatın ortalama büyüklüğü.',
-    source: S.payment,
-    formula: 'Toplam Gelir ÷ Tahsilat adedi',
-    caveat:
-      'Müşteri başına değil, İŞLEM başına ortalamadır. Aynı müşteri ay içinde 3 kez ödeme yaptıysa 3 işlem sayılır. Müşteri bazlı ortalama için "Müşteri Başına Ciro" kartına bakın.',
-  },
-  revenuePerCustomer: {
-    title: 'Müşteri Başına Ciro',
-    summary: 'Salona gelen bir müşterinin ortalama ne kadar para bıraktığı.',
-    source: 'Tahsilat kayıtları + randevu kayıtları.',
-    formula: 'Toplam Gelir ÷ Aktif Müşteri sayısı',
-    caveat: 'Paydada dönemde randevusu olan müşteriler var; hiç gelmeyip taksit ödeyen müşteri paydaya girmez.',
+    caveat: '"Eski müşterim" seçilerek geçmiş tarihle eklenen kayıt, girilen KAYIT TARİHİNİN dönemine düşer.',
   },
 
   // Genel Bakış'taki grafik/dağılım kartları
@@ -266,6 +235,13 @@ export const metricInfo: Record<string, MetricInfo> = {
     formula: 'Dönemde tahakkuk eden prim kayıtlarının toplamı.',
     caveat: 'Ödenmiş olması gerekmez; "hak edilen" tutardır.',
   },
+  'staff.appointments': {
+    title: 'Randevu Sayısı',
+    summary: 'Seçili kapsamdaki personelin dönemdeki toplam randevusu.',
+    source: S.appointment,
+    formula: 'Her durumdaki randevu adedi (planlandı, onaylandı, tamamlandı, iptal, gelmedi).',
+    caveat: 'Kaçının uygulandığı karnedeki "Randevu" sütununda (tamamlanan/toplam) yazar.',
+  },
   'staff.workedMinutes': {
     title: 'Çalışılan Süre',
     summary: 'Personelin fiilen işlem yaptığı toplam süre.',
@@ -296,24 +272,19 @@ export const metricInfo: Record<string, MetricInfo> = {
     caveat:
       'Şubesi seçilmemiş kurum geneli giderler "Şube atanmamış" satırında toplanır — para kaybolmaz, ama şube kârı olduğundan yüksek görünebilir.',
   },
-  'branch.net': {
-    title: 'Şube Net Kârı',
-    summary: 'Şubenin dönem sonunda cebe koyduğu tutar.',
-    source: 'Şube geliri ve gideri.',
-    formula: 'Şube Geliri − Şube Gideri',
-  },
   'branch.receivable': {
-    title: 'Açık Alacak',
+    title: 'Toplam Alacak',
     summary: 'Şubenin müşterilerinden tahsil etmeyi beklediği para.',
     source: 'Taksit planları + tahsilatlar.',
     formula: 'Planlanan taksit toplamı − tahsil edilen (iptal taksitler hariç).',
     caveat: 'Dönemden bağımsız ANLIK bakiyedir; dönem filtresi bu kartı etkilemez.',
   },
-  'branch.averageTicket': {
-    title: 'Ortalama Sepet (Şube)',
-    summary: 'Şubede işlem başına ortalama tahsilat.',
-    source: S.payment,
-    formula: 'Şube geliri ÷ şubedeki tahsilat adedi',
+  'branch.customers': {
+    title: 'Aktif Müşteri',
+    summary: 'Şubede dönem içinde en az bir randevusu olan farklı müşteri sayısı.',
+    source: S.appointment,
+    formula: 'Şubedeki randevuların benzersiz müşteri sayısı.',
+    caveat: 'Kayıtlı müşteri sayısı değildir; yalnız o dönemde gelenler sayılır.',
   },
   'branch.scope': {
     title: 'Şube Kapsamı',

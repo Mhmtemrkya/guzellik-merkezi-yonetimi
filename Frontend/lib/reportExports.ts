@@ -82,7 +82,6 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
         { key: 'label', header: 'Dönem', width: 16, type: 'text', accessor: (r) => (r as Row).label as string },
         { key: 'income', header: 'Gelir', width: 16, type: 'currency', accessor: (r) => num((r as Row).income as number) },
         { key: 'expense', header: 'Gider', width: 16, type: 'currency', accessor: (r) => num((r as Row).expense as number) },
-        { key: 'net', header: 'Net', width: 16, type: 'currency', accessor: (r) => num((r as Row).net as number) },
         { key: 'sales', header: 'Satış', width: 16, type: 'currency', accessor: (r) => num((r as Row).sales as number) },
         { key: 'appointments', header: 'Randevu', width: 12, type: 'number', accessor: (r) => (r as Row).appointments as number },
         { key: 'completed', header: 'Tamamlanan', width: 12, type: 'number', accessor: (r) => (r as Row).completedAppointments as number },
@@ -92,7 +91,6 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
         label: 'TOPLAM',
         income: num(ctx.summary.series.reduce((s, p) => s + p.income, 0)),
         expense: num(ctx.summary.series.reduce((s, p) => s + p.expense, 0)),
-        net: num(ctx.summary.series.reduce((s, p) => s + p.net, 0)),
         sales: num(ctx.summary.series.reduce((s, p) => s + p.sales, 0)),
       },
     })
@@ -158,7 +156,6 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
       const row: Row = { bucket: label }
       periods.forEach((p, pi) => {
         row[`i${pi}`] = num(p.series[i]?.income ?? 0)
-        row[`n${pi}`] = num(p.series[i]?.net ?? 0)
       })
       return row
     })
@@ -175,13 +172,6 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
             width: 17,
             type: 'currency' as const,
             accessor: (r: unknown) => (r as Row)[`i${pi}`] as number,
-          },
-          {
-            key: `n${pi}`,
-            header: `${p.label} net`,
-            width: 17,
-            type: 'currency' as const,
-            accessor: (r: unknown) => (r as Row)[`n${pi}`] as number,
           },
         ]),
       ],
@@ -330,9 +320,6 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
         { key: 'prevIncome', header: 'Kıyas Gelir', width: 16, type: 'currency', accessor: (r) => num((r as Row).previousIncome as number) },
         { key: 'expense', header: 'Gider', width: 16, type: 'currency', accessor: (r) => num((r as Row).expense as number) },
         { key: 'prevExpense', header: 'Kıyas Gider', width: 16, type: 'currency', accessor: (r) => num((r as Row).previousExpense as number) },
-        { key: 'net', header: 'Net Kâr', width: 16, type: 'currency', accessor: (r) => num((r as Row).net as number) },
-        { key: 'prevNet', header: 'Kıyas Net', width: 16, type: 'currency', accessor: (r) => num((r as Row).previousNet as number) },
-        { key: 'margin', header: 'Marj (%)', width: 12, type: 'number', accessor: (r) => num((r as Row).profitMargin as number) },
         { key: 'sales', header: 'Satış', width: 16, type: 'currency', accessor: (r) => num((r as Row).salesAmount as number) },
         { key: 'receivable', header: 'Açık Alacak', width: 16, type: 'currency', accessor: (r) => num((r as Row).receivable as number) },
         { key: 'appointments', header: 'Randevu', width: 12, type: 'number', accessor: (r) => (r as Row).appointmentCount as number },
@@ -345,10 +332,8 @@ export function buildExcelSheets(ctx: ExportContext): ExcelSheetSpec<unknown>[] 
         branch: 'TOPLAM',
         income: num(ctx.branches.totalIncome),
         expense: num(ctx.branches.totalExpense),
-        net: num(ctx.branches.totalNet),
         prevIncome: num(ctx.branches.previousTotalIncome),
         prevExpense: num(ctx.branches.previousTotalExpense),
-        prevNet: num(ctx.branches.previousTotalNet),
       },
     })
   }
@@ -499,18 +484,18 @@ export function buildPdfStats(ctx: ExportContext): PdfStatBlock[] {
 
   switch (ctx.tab) {
     case 'compare': {
-      // Kapak kartları: temel dönem ile son dönemin net kârı ve farkı.
+      // Kapak kartları: temel dönem ile son dönemin GELİRİ ve farkı (net kâr gösterilmiyor).
       const periods = ctx.compareReport?.periods ?? []
       const pick = (i: number, key: string): number => periods[i]?.metrics.find((m) => m.key === key)?.value ?? 0
       const last = Math.max(0, periods.length - 1)
-      const baseNet = pick(0, 'net')
-      const lastNet = pick(last, 'net')
-      const diff = baseNet === 0 ? null : ((lastNet - baseNet) / Math.abs(baseNet)) * 100
+      const baseIncome = pick(0, 'income')
+      const lastIncome = pick(last, 'income')
+      const diff = baseIncome === 0 ? null : ((lastIncome - baseIncome) / Math.abs(baseIncome)) * 100
       return [
         { label: 'Dönem sayısı', value: String(periods.length) },
-        { label: `${periods[0]?.label ?? 'Temel'} net`, value: tl(baseNet), hint: `${tl(pick(0, 'income'))} gelir` },
-        { label: `${periods[last]?.label ?? 'Kıyas'} net`, value: tl(lastNet), hint: `${tl(pick(last, 'income'))} gelir` },
-        { label: 'Net fark', value: diff === null ? tl(lastNet - baseNet) : `%${Math.round(diff)}`, hint: 'temele göre' },
+        { label: `${periods[0]?.label ?? 'Temel'} geliri`, value: tl(baseIncome), hint: `${tl(pick(0, 'sales'))} satış` },
+        { label: `${periods[last]?.label ?? 'Kıyas'} geliri`, value: tl(lastIncome), hint: `${tl(pick(last, 'sales'))} satış` },
+        { label: 'Gelir farkı', value: diff === null ? tl(lastIncome - baseIncome) : `%${Math.round(diff)}`, hint: 'temele göre' },
       ]
     }
     case 'packages':
@@ -534,7 +519,7 @@ export function buildPdfStats(ctx: ExportContext): PdfStatBlock[] {
       return [
         { label: 'Toplam Gelir', value: tl(ctx.branches?.totalIncome ?? 0) },
         { label: 'Toplam Gider', value: tl(ctx.branches?.totalExpense ?? 0) },
-        { label: 'Net Kâr', value: tl(ctx.branches?.totalNet ?? 0) },
+        { label: 'Toplam Alacak', value: tl((ctx.branches?.rows ?? []).reduce((s2, r) => s2 + r.receivable, 0)) },
         { label: 'Şube', value: String(ctx.branches?.rows.length ?? 0) },
       ]
     case 'customers':
@@ -560,11 +545,15 @@ export function buildPdfStats(ctx: ExportContext): PdfStatBlock[] {
       ]
     default: {
       const m = (key: string): number => ctx.summary?.metrics.find((x) => x.key === key)?.value ?? 0
+      // Kart seti sunucudan gelen metriklerle AYNI olmalı: net kâr / tamamlanma gibi kaldırılmış
+      // anahtarlar burada okunursa yanıtta bulunmadıkları için sessizce 0 basılırdı.
       return [
         { label: 'Toplam Gelir', value: tl(m('income')) },
         { label: 'Toplam Gider', value: tl(m('expense')) },
-        { label: 'Net Kâr', value: tl(m('net')), hint: `%${Math.round(m('margin'))} marj` },
-        { label: 'Randevu', value: String(m('appointments')), hint: `${m('completed')} tamamlandı` },
+        { label: 'Toplam Alacak', value: tl(m('openReceivable')) },
+        { label: 'Toplam Satış Tutarı', value: tl(m('sales')) },
+        { label: 'Randevu Sayısı', value: String(m('appointments')) },
+        { label: 'Aktif Müşteri', value: String(m('activeCustomers')) },
       ]
     }
   }

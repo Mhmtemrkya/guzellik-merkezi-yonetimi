@@ -61,21 +61,17 @@ const reportMetricInfo = <String, MetricInfo>{
     source: _expense,
     formula: 'Dönemdeki tüm gider kayıtlarının tutar toplamı.',
   ),
-  'net': MetricInfo(
-    title: 'Net Kâr',
-    summary: 'Dönemin cebe kalan tutarı.',
-    source: 'Gelir ve gider kayıtları birlikte.',
-    formula: 'Toplam Gelir − Toplam Gider',
-    caveat: 'Nakit esaslıdır: tahsil edilmemiş alacak buraya girmez.',
-  ),
-  'margin': MetricInfo(
-    title: 'Kâr Marjı',
-    summary: 'Her 100 ₺ tahsilatın kaç lirasının kâr olarak kaldığı.',
-    source: 'Gelir ve gider kayıtları.',
-    formula: '(Gelir − Gider) ÷ Gelir × 100',
+  'openReceivable': MetricInfo(
+    title: 'Toplam Alacak',
+    summary: 'Dönemde yapılan satışlardan hâlâ tahsil edilmemiş tutar.',
+    source: _sale,
+    formula:
+        'Dönemde satılan carilerin kalan borçları toplamı (satış tutarı − tahsilat + iade).',
+    caveat:
+        'Taksit planı değil SATIŞ bazlıdır: peşin satışın ödenmeyen kısmı da buraya girer. Dönem süzgeci satışın tarihine bakar.',
   ),
   'sales': MetricInfo(
-    title: 'Satış Tutarı',
+    title: 'Toplam Satış Tutarı',
     summary:
         'Dönemde yapılan paket/hizmet satışlarının toplam bedeli (tahsil edilmiş olsun ya da olmasın).',
     source: _sale,
@@ -85,24 +81,11 @@ const reportMetricInfo = <String, MetricInfo>{
         'Gelirden farklıdır: satış "ne kadar sattım", gelir "ne kadar tahsil ettim" demektir.',
   ),
   'appointments': MetricInfo(
-    title: 'Randevu',
+    title: 'Randevu Sayısı',
     summary: 'Dönemde takvimde yer alan tüm randevular.',
     source: _appointment,
     formula:
         'Her durumdaki randevu adedi (planlandı, onaylandı, tamamlandı, iptal, gelmedi).',
-  ),
-  'completed': MetricInfo(
-    title: 'Tamamlanan İşlem',
-    summary: 'Fiilen uygulanan seans/işlem adedi.',
-    source: _appointment,
-    formula: 'Durumu "Tamamlandı" olan randevu adedi.',
-    caveat: 'Paket seansı düşümü de bu randevular üzerinden yapılır.',
-  ),
-  'occupancy': MetricInfo(
-    title: 'Tamamlanma Oranı',
-    summary: 'Alınan randevuların ne kadarının gerçekten yapıldığı.',
-    source: _appointment,
-    formula: 'Tamamlanan randevu ÷ Toplam randevu × 100',
   ),
   'activeCustomers': MetricInfo(
     title: 'Aktif Müşteri',
@@ -111,25 +94,15 @@ const reportMetricInfo = <String, MetricInfo>{
     formula: 'Dönemdeki randevuların benzersiz müşteri sayısı.',
     caveat: 'Toplam müşteri sayısı değildir; sadece o dönemde salona gelenler.',
   ),
+  // Genel Bakış kart setinde YOK ama Müşteriler sekmesindeki "Yeni Müşteri" kartı hâlâ bu
+  // anahtarla açılır — girdi silinirse kart detayı boş açılırdı.
   'newCustomers': MetricInfo(
     title: 'Yeni Müşteri',
     summary: 'Dönemde sisteme ilk kez kaydedilen müşteriler.',
     source: _customer,
     formula: 'Kayıt tarihi dönem içinde olan müşteri adedi.',
-  ),
-  'avgTicket': MetricInfo(
-    title: 'Ortalama Sepet',
-    summary: 'Kasaya giren her bir tahsilatın ortalama büyüklüğü.',
-    source: _payment,
-    formula: 'Toplam Gelir ÷ Tahsilat adedi',
     caveat:
-        'Müşteri başına değil, İŞLEM başına ortalamadır. Aynı müşteri ay içinde 3 kez ödeme yaptıysa 3 işlem sayılır.',
-  ),
-  'revenuePerCustomer': MetricInfo(
-    title: 'Müşteri Başına Ciro',
-    summary: 'Salona gelen bir müşterinin ortalama ne kadar para bıraktığı.',
-    source: 'Tahsilat kayıtları + randevu kayıtları.',
-    formula: 'Toplam Gelir ÷ Aktif Müşteri sayısı',
+        '"Eski müşterim" seçilerek geçmiş tarihle eklenen kayıt, girilen KAYIT TARİHİNİN dönemine düşer.',
   ),
   'overview.paymentMethods': MetricInfo(
     title: 'Ödeme Yöntemi Dağılımı',
@@ -268,6 +241,15 @@ const reportMetricInfo = <String, MetricInfo>{
     formula: 'Dönemde tahakkuk eden prim kayıtlarının toplamı.',
     caveat: 'Ödenmiş olması gerekmez; "hak edilen" tutardır.',
   ),
+  'staff.appointments': MetricInfo(
+    title: 'Randevu Sayısı',
+    summary: 'Seçili kapsamdaki personelin dönemdeki toplam randevusu.',
+    source: _appointment,
+    formula:
+        'Her durumdaki randevu adedi (planlandı, onaylandı, tamamlandı, iptal, gelmedi).',
+    caveat:
+        'Kaçının uygulandığı karnedeki "Randevu" sütununda (tamamlanan/toplam) yazar.',
+  ),
   'staff.workedMinutes': MetricInfo(
     title: 'Çalışılan Süre',
     summary: 'Personelin fiilen işlem yaptığı toplam süre.',
@@ -297,14 +279,16 @@ const reportMetricInfo = <String, MetricInfo>{
     caveat:
         'Şubesi seçilmemiş kurum geneli giderler "Şube atanmamış" satırında toplanır — şube kârı olduğundan yüksek görünebilir.',
   ),
-  'branch.net': MetricInfo(
-    title: 'Şube Net Kârı',
-    summary: 'Şubenin dönem sonunda cebe koyduğu tutar.',
-    source: 'Şube geliri ve gideri.',
-    formula: 'Şube Geliri − Şube Gideri',
+  'branch.customers': MetricInfo(
+    title: 'Aktif Müşteri',
+    summary:
+        'Şubede dönem içinde en az bir randevusu olan farklı müşteri sayısı.',
+    source: _appointment,
+    formula: 'Şubedeki randevuların benzersiz müşteri sayısı.',
+    caveat: 'Kayıtlı müşteri sayısı değildir; yalnız o dönemde gelenler sayılır.',
   ),
   'branch.receivable': MetricInfo(
-    title: 'Açık Alacak',
+    title: 'Toplam Alacak',
     summary: 'Şubenin müşterilerinden tahsil etmeyi beklediği para.',
     source: 'Taksit planları + tahsilatlar.',
     formula: 'Planlanan taksit toplamı − tahsil edilen.',

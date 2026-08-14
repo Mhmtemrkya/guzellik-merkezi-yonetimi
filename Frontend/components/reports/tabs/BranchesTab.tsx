@@ -1,8 +1,12 @@
 'use client'
 
 /**
- * Şube karşılaştırması: her şubenin geliri, gideri, NET KÂRI, satışı, açık alacağı,
- * randevusu ve müşterisi yan yana. Karşılaştırma dönemi açıkken önceki dönemle de kıyaslanır.
+ * Şube karşılaştırması: her şubenin geliri, gideri, satışı, açık alacağı, randevusu ve müşterisi
+ * yan yana. Karşılaştırma dönemi açıkken önceki dönemle de kıyaslanır.
+ *
+ * NET KÂR / KÂR MARJI / ORT. SEPET GÖSTERİLMEZ (kurum tercihi): rapor sayfasının hiçbir
+ * sekmesinde net kâr kartı, grafiği ya da sütunu yoktur. Alan backend yanıtında durmaya devam
+ * eder, arayüz bilerek okumaz.
  *
  * Not: Kurum yöneticisi için bu sekme üst menüdeki şube seçiminden bağımsız olarak TÜM şubeleri
  * gösterir — aksi hâlde "karşılaştırma" tek satıra düşerdi. Şube müdürü/ekip yalnız kendi
@@ -10,8 +14,8 @@
  */
 
 import { Building2, CalendarClock, Info, Percent, TrendingDown, TrendingUp, UserPlus, Users, Wallet } from 'lucide-react'
-import { ComparisonBars, DonutChart, RankBars, TrendChart, paletteAt } from '@/components/reports/ReportCharts'
-import { DeltaBadge, KpiTile, Pill, ReportCard, ReportTable } from '@/components/reports/ReportUi'
+import { ComparisonBars, DonutChart, RankBars } from '@/components/reports/ReportCharts'
+import { DeltaBadge, KpiTile, ReportCard, ReportTable } from '@/components/reports/ReportUi'
 import { kpiOpener, useMetricDetail } from '@/components/reports/MetricDetailContext'
 import { formatTL } from '@/lib/apiMappers'
 import type { BranchReport, BranchReportRow } from '@/lib/reportTypes'
@@ -39,21 +43,6 @@ export default function BranchesTab({
         hint: `${r.city} · ${r.staffCount} personel · ${r.completedCount}/${r.appointmentCount} randevu`,
       }))
 
-  // Şubelerin zaman serileri aynı kova anahtarlarını paylaşır; birleşik eksen için hepsini topla.
-  const allKeys = Array.from(new Set(rows.flatMap((r) => r.series.map((p) => p.key)))).sort()
-  const labelByKey = new Map<string, string>()
-  rows.forEach((r) => r.series.forEach((p) => labelByKey.set(p.key, p.label)))
-  const netSeries = rows.slice(0, 6).map((r, i) => {
-    const byKey = new Map(r.series.map((p) => [p.key, p]))
-    return {
-      key: r.branchId,
-      label: r.branchName,
-      color: paletteAt(i),
-      values: allKeys.map((k) => byKey.get(k)?.net ?? 0),
-      filled: false,
-    }
-  })
-
   return (
     <div className="space-y-4">
       {data?.scopedToSingleBranch && (
@@ -71,10 +60,10 @@ export default function BranchesTab({
           [
             { key: 'branch.income', label: 'Toplam Gelir', value: data?.totalIncome ?? 0, prev: data?.previousTotalIncome ?? 0, unit: 'currency', icon: TrendingUp, tone: 'mint', hint: `${rows.length} şube`, pick: (r: BranchReportRow) => r.income },
             { key: 'branch.expense', label: 'Toplam Gider', value: data?.totalExpense ?? 0, prev: data?.previousTotalExpense ?? 0, unit: 'currency', icon: TrendingDown, tone: 'peach', invert: true, hint: 'tüm şubeler', pick: (r: BranchReportRow) => r.expense },
-            { key: 'branch.net', label: 'Toplam Net Kâr', value: data?.totalNet ?? 0, prev: data?.previousTotalNet ?? 0, unit: 'currency', icon: Wallet, tone: 'gold', hint: (data?.totalNet ?? 0) >= 0 ? 'kârda' : 'zararda', pick: (r: BranchReportRow) => r.net },
-            { key: 'sales', label: 'Satış Tutarı', value: rows.reduce((s, r) => s + r.salesAmount, 0), prev: undefined, unit: 'currency', icon: Building2, tone: 'rose', hint: 'dönemde yapılan satış', pick: (r: BranchReportRow) => r.salesAmount },
-            { key: 'branch.receivable', label: 'Açık Alacak', value: rows.reduce((s, r) => s + r.receivable, 0), prev: undefined, unit: 'currency', icon: Percent, tone: 'violet', hint: 'tahsil edilmemiş taksit', pick: (r: BranchReportRow) => r.receivable },
-            { key: 'appointments', label: 'Randevu', value: rows.reduce((s, r) => s + r.appointmentCount, 0), prev: undefined, unit: 'count', icon: CalendarClock, tone: 'slate', hint: `${rows.reduce((s, r) => s + r.completedCount, 0)} tamamlandı`, pick: (r: BranchReportRow) => r.appointmentCount },
+            { key: 'branch.receivable', label: 'Toplam Alacak', value: rows.reduce((s, r) => s + r.receivable, 0), prev: undefined, unit: 'currency', icon: Wallet, tone: 'gold', hint: 'tahsil edilmemiş taksit', pick: (r: BranchReportRow) => r.receivable },
+            { key: 'sales', label: 'Toplam Satış Tutarı', value: rows.reduce((s, r) => s + r.salesAmount, 0), prev: undefined, unit: 'currency', icon: Building2, tone: 'rose', hint: 'dönemde yapılan satış', pick: (r: BranchReportRow) => r.salesAmount },
+            { key: 'appointments', label: 'Randevu Sayısı', value: rows.reduce((s, r) => s + r.appointmentCount, 0), prev: undefined, unit: 'count', icon: CalendarClock, tone: 'slate', hint: 'dönemdeki randevu', pick: (r: BranchReportRow) => r.appointmentCount },
+            { key: 'branch.customers', label: 'Aktif Müşteri', value: rows.reduce((s, r) => s + r.customerCount, 0), prev: undefined, unit: 'count', icon: Users, tone: 'violet', hint: 'dönemde randevusu olan', pick: (r: BranchReportRow) => r.customerCount },
           ] as const
         ).map((k, i) => (
           <KpiTile
@@ -103,17 +92,8 @@ export default function BranchesTab({
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <ReportCard title="Şube Net Kâr Eğrisi" subtitle={rangeLabel} icon={TrendingUp}>
-          <TrendChart
-            labels={allKeys.map((k) => labelByKey.get(k) ?? k)}
-            series={netSeries}
-            height={260}
-            format={(v) => formatTL(Math.round(v))}
-            emptyText="Bu dönemde şube hareketi yok."
-          />
-        </ReportCard>
-
+      {/* NET KÂR EĞRİSİ KALDIRILDI — zaman eğrisi (TrendChart) bu sekmede gösterilmiyor. */}
+      <section className="grid gap-4">
         <ReportCard title="Gelir Payı" subtitle="Şubelerin ciro içindeki ağırlığı" icon={Building2}>
           <DonutChart
             slices={rows.map((r) => ({ key: r.branchId, label: r.branchName, value: r.income }))}
@@ -124,16 +104,15 @@ export default function BranchesTab({
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <ReportCard title="Net Kâr Sıralaması" subtitle="Gelir − gider" icon={Wallet}>
+        <ReportCard title="Gelir Sıralaması" subtitle="Şubelerin dönem tahsilatı" icon={TrendingUp}>
           <RankBars
             items={[...rows]
-              .sort((a, b) => b.net - a.net)
+              .sort((a, b) => b.income - a.income)
               .map((r) => ({
                 key: r.branchId,
                 label: r.branchName,
-                value: r.net,
-                hint: `${formatTL(Math.round(r.income))} gelir · ${formatTL(Math.round(r.expense))} gider · %${Math.round(r.profitMargin)} marj`,
-                color: r.net >= 0 ? 'linear-gradient(90deg,#7fc7ad,#2c7d63)' : 'linear-gradient(90deg,#e8a5a1,#b3453f)',
+                value: r.income,
+                hint: `${formatTL(Math.round(r.salesAmount))} satış · ${r.customerCount} müşteri`,
               }))}
             format={(v) => formatTL(Math.round(v))}
             emptyText="Şube kaydı yok."
@@ -141,25 +120,27 @@ export default function BranchesTab({
         </ReportCard>
 
         <ReportCard
-          title={hasCompare ? `${rangeLabel} ↔ ${compareLabel}` : 'Şube Verimliliği'}
-          subtitle={hasCompare ? 'Net kâr karşılaştırması' : 'Randevu başına ortalama tahsilat'}
+          title={hasCompare ? `${rangeLabel} ↔ ${compareLabel}` : 'Açık Alacak Sıralaması'}
+          subtitle={hasCompare ? 'Gelir karşılaştırması' : 'Tahsil edilmemiş taksit'}
           icon={Percent}
         >
           {hasCompare ? (
             <ComparisonBars
-              rows={rows.map((r) => ({ key: r.branchId, label: r.branchName, current: r.net, previous: r.previousNet }))}
+              rows={rows.map((r) => ({ key: r.branchId, label: r.branchName, current: r.income, previous: r.previousIncome }))}
               currentLabel={rangeLabel}
               previousLabel={compareLabel!}
               format={(v) => formatTL(Math.round(v))}
             />
           ) : (
             <RankBars
-              items={rows.map((r) => ({
-                key: r.branchId,
-                label: r.branchName,
-                value: r.averageTicket,
-                hint: `${r.completedCount} tamamlanan · ${r.customerCount} müşteri · ${r.staffCount} personel`,
-              }))}
+              items={[...rows]
+                .sort((a, b) => b.receivable - a.receivable)
+                .map((r) => ({
+                  key: r.branchId,
+                  label: r.branchName,
+                  value: r.receivable,
+                  hint: `${r.completedCount} tamamlanan · ${r.customerCount} müşteri · ${r.staffCount} personel`,
+                }))}
               format={(v) => formatTL(Math.round(v))}
               emptyText="Şube kaydı yok."
             />
@@ -218,24 +199,6 @@ export default function BranchesTab({
               total: (rows2) => formatTL(Math.round(rows2.reduce((s, r) => s + r.expense, 0))),
             },
             {
-              key: 'net',
-              header: 'Net Kâr',
-              align: 'right',
-              render: (r) => (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`font-bold ${r.net >= 0 ? 'text-[#20705a]' : 'text-[#a83a35]'}`}>{formatTL(Math.round(r.net))}</span>
-                  <DeltaBadge current={r.net} previous={r.previousNet} unit="currency" compareLabel={compareLabel} />
-                </span>
-              ),
-              total: (rows2) => formatTL(Math.round(rows2.reduce((s, r) => s + r.net, 0))),
-            },
-            {
-              key: 'margin',
-              header: 'Marj',
-              align: 'right',
-              render: (r) => <Pill tone={r.profitMargin >= 25 ? 'good' : r.profitMargin >= 0 ? 'warn' : 'bad'}>%{Math.round(r.profitMargin)}</Pill>,
-            },
-            {
               key: 'sales',
               header: 'Satış',
               align: 'right',
@@ -279,12 +242,7 @@ export default function BranchesTab({
               ),
               total: (rows2) => rows2.reduce((s, r) => s + r.customerCount, 0),
             },
-            {
-              key: 'ticket',
-              header: 'Ort. Sepet',
-              align: 'right',
-              render: (r) => formatTL(Math.round(r.averageTicket)),
-            },
+            // "Ort. Sepet" sütunu KALDIRILDI — ortalama sepet kartı/sütunu raporlarda yok.
           ]}
         />
       </ReportCard>

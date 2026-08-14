@@ -1,54 +1,40 @@
 'use client'
 
 import {
-  Activity,
-  BarChart3,
   CalendarClock,
   CreditCard,
   Layers3,
-  PieChart,
   Receipt,
   ShoppingBag,
   TrendingDown,
   TrendingUp,
-  UserPlus,
   Users,
   Wallet,
 } from 'lucide-react'
-import { DonutChart, HeatGrid, RadialGauge, TrendChart, type TrendSeries } from '@/components/reports/ReportCharts'
+import { DonutChart, HeatGrid } from '@/components/reports/ReportCharts'
 import { KpiTile, ReportCard, formatValue, type ReportValueUnit } from '@/components/reports/ReportUi'
 import { kpiOpener, useMetricDetail } from '@/components/reports/MetricDetailContext'
 import { formatTL } from '@/lib/apiMappers'
 import type { ReportSlice, ReportSummary } from '@/lib/reportTypes'
 
+// Kart seti SUNUCUDAN gelir (bkz. ReportsService.BuildSummaryMetrics); buradaki tablolar yalnız
+// ikon/renk eşlemesidir. Tanımsız anahtar varsayılana düşer, kart yine çizilir.
 const metricIcons: Record<string, typeof Wallet> = {
   income: TrendingUp,
   expense: TrendingDown,
-  net: Wallet,
-  margin: PieChart,
+  openReceivable: CreditCard,
   sales: ShoppingBag,
   appointments: CalendarClock,
-  completed: Activity,
-  occupancy: BarChart3,
   activeCustomers: Users,
-  newCustomers: UserPlus,
-  avgTicket: Receipt,
-  revenuePerCustomer: CreditCard,
 }
 
 const metricTones: Record<string, 'rose' | 'mint' | 'gold' | 'violet' | 'peach' | 'slate'> = {
   income: 'mint',
   expense: 'peach',
-  net: 'gold',
-  margin: 'violet',
+  openReceivable: 'gold',
   sales: 'rose',
   appointments: 'slate',
-  completed: 'mint',
-  occupancy: 'violet',
-  activeCustomers: 'rose',
-  newCustomers: 'mint',
-  avgTicket: 'gold',
-  revenuePerCustomer: 'rose',
+  activeCustomers: 'violet',
 }
 
 /** Gideri düşürmek iyidir — delta rozeti bu metriklerde ters renklenir. */
@@ -64,9 +50,6 @@ export default function OverviewTab({
   rangeLabel: string
 }) {
   const detail = useMetricDetail()
-  const series = data?.series ?? []
-  const compareSeries = data?.compareSeries ?? []
-  const labels = series.map((p) => p.label)
 
   /** Dağılım kartlarını modalde kırılım listesi olarak göstermek için. */
   const sliceRows = (slices: ReportSlice[], unit: 'currency' | 'count' = 'currency') => {
@@ -81,41 +64,15 @@ export default function OverviewTab({
     })
   }
 
-  const sparkFor = (pick: (p: (typeof series)[number]) => number): number[] => series.map(pick)
-
-  const trendSeries: TrendSeries[] = [
-    { key: 'income', label: 'Gelir', color: '#2c7d63', values: series.map((p) => p.income) },
-    { key: 'expense', label: 'Gider', color: '#b3453f', values: series.map((p) => p.expense) },
-    { key: 'net', label: 'Net Kâr', color: '#c85776', values: series.map((p) => p.net), filled: false },
-  ]
-  if (compareLabel && compareSeries.length > 0) {
-    // Kıyas serisi farklı uzunlukta olabilir (ör. şubat ↔ mart) — grafiğe hizalamak için kırpılır.
-    const aligned = labels.map((_, i) => compareSeries[i]?.income ?? 0)
-    trendSeries.push({ key: 'compare', label: `${compareLabel} geliri`, color: '#7b52ba', values: aligned, dashed: true, filled: false })
-  }
-
   const metrics = data?.metrics ?? []
-  const completionMetric = metrics.find((m) => m.key === 'occupancy')
-  const marginMetric = metrics.find((m) => m.key === 'margin')
   const totalAppointments = data?.appointmentStatuses.reduce((s, x) => s + x.count, 0) ?? 0
 
   return (
     <div className="space-y-4">
       <section className="kpi-auto-grid grid gap-3">
-        {metrics.map((m, i) => {
-          const spark =
-            m.key === 'income'
-              ? sparkFor((p) => p.income)
-              : m.key === 'expense'
-                ? sparkFor((p) => p.expense)
-                : m.key === 'net'
-                  ? sparkFor((p) => p.net)
-                  : m.key === 'sales'
-                    ? sparkFor((p) => p.sales)
-                    : m.key === 'appointments'
-                      ? sparkFor((p) => p.appointments)
-                      : undefined
-          return (
+        {/* KART İÇİ MİNİ EĞRİ (spark) VERİLMEZ: raporlar sayfasında çizgi/alan eğrisi
+            gösterilmiyor (kurum tercihi) — pano kartlarındaki sparkline'lar yerinde kalır. */}
+        {metrics.map((m, i) => (
             <KpiTile
               key={m.key}
               index={i}
@@ -128,7 +85,6 @@ export default function OverviewTab({
               icon={metricIcons[m.key] ?? Layers3}
               tone={metricTones[m.key] ?? 'rose'}
               invert={invertedMetrics.has(m.key)}
-              spark={spark}
               onOpen={kpiOpener(detail, m.key, {
                 value: m.value,
                 unit: m.unit as ReportValueUnit,
@@ -137,7 +93,6 @@ export default function OverviewTab({
                 rangeLabel,
                 hint: m.hint ?? undefined,
                 invert: invertedMetrics.has(m.key),
-                series: spark,
                 // Gelir kartında yöntem kırılımını, gider kartında kalem kırılımını da göster.
                 breakdown:
                   m.key === 'income'
@@ -147,17 +102,8 @@ export default function OverviewTab({
                       : undefined,
               })}
             />
-          )
-        })}
+        ))}
       </section>
-
-      <ReportCard
-        title="Gelir · Gider · Net Kâr"
-        subtitle={compareLabel ? `${rangeLabel} — kesikli çizgi ${compareLabel}` : rangeLabel}
-        icon={Activity}
-      >
-        <TrendChart labels={labels} series={trendSeries} height={280} format={(v) => formatTL(Math.round(v))} />
-      </ReportCard>
 
       <section className="grid gap-4 lg:grid-cols-3">
         <ReportCard
@@ -225,32 +171,14 @@ export default function OverviewTab({
           <HeatGrid cells={data?.heatmap ?? []} />
         </ReportCard>
 
-        <ReportCard title="Dönem Sağlığı" subtitle="Tamamlanma ve kârlılık oranları" icon={BarChart3}>
-          <div className="flex flex-wrap items-start justify-around gap-4">
-            <RadialGauge
-              value={completionMetric?.value ?? 0}
-              label="Tamamlanma oranı"
-              hint={`${totalAppointments} randevu`}
-              color="#2c7d63"
-            />
-            <RadialGauge
-              value={Math.max(0, marginMetric?.value ?? 0)}
-              label="Kâr marjı"
-              hint={marginMetric && marginMetric.value < 0 ? 'zararda' : 'gelire oranla net'}
-              color={(marginMetric?.value ?? 0) >= 0 ? '#c99a2e' : '#b3453f'}
-            />
-          </div>
-
-          <div className="mt-4 space-y-2 border-t border-[#f2e6eb] pt-3">
+        {/* Randevuların durum dağılımı. "Dönem Sağlığı" kartındaki tamamlanma/kâr marjı
+            halkaları KALDIRILDI (oran kartları istenmiyor); durum dökümü tek başına kalır. */}
+        <ReportCard title="Randevu Durumu" subtitle={`${totalAppointments} randevu · ${rangeLabel}`} icon={CalendarClock}>
+          <div className="space-y-2">
             {(data?.appointmentStatuses ?? []).map((s) => (
               <div key={s.key} className="flex items-center justify-between gap-2 text-[11.5px]">
                 <span className="text-[#4a3a44]">{s.label}</span>
-                <span className="font-bold text-[#2f2230]">
-                  {s.count}
-                  <span className="ml-1.5 font-medium text-[#705a66]">
-                    ({totalAppointments > 0 ? Math.round((s.count / totalAppointments) * 100) : 0}%)
-                  </span>
-                </span>
+                <span className="font-bold text-[#2f2230]">{s.count}</span>
               </div>
             ))}
             {(data?.appointmentStatuses.length ?? 0) === 0 && (

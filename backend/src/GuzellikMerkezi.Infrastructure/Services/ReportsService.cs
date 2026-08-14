@@ -389,37 +389,16 @@ public sealed partial class ReportsService : IReportsService
         var accounts = await LoadAccountsAsync(tenantId, cancellationToken);
         var accountsById = accounts.ToDictionary(a => a.Id);
 
-        var current = await ComputeCoreAsync(tenantId, accounts, accountsById, from, to, granularity, cancellationToken);
+        // Cari başına toplam tahsilat DÖNEMDEN BAĞIMSIZDIR: bir kez yüklenip her döneme verilir
+        // (kıyas dönemi ve karşılaştırma sekmesi aynı sözlüğü tekrar tekrar sorgulamasın).
+        var paidByAccount = await LoadPaidByAccountAsync(tenantId, cancellationToken);
+
+        var current = await ComputeCoreAsync(tenantId, accounts, accountsById, paidByAccount, from, to, granularity, cancellationToken);
         var previous = compareFrom.HasValue && compareTo.HasValue
-            ? await ComputeCoreAsync(tenantId, accounts, accountsById, compareFrom.Value, compareTo.Value, granularity, cancellationToken)
+            ? await ComputeCoreAsync(tenantId, accounts, accountsById, paidByAccount, compareFrom.Value, compareTo.Value, granularity, cancellationToken)
             : null;
 
-        decimal Prev(Func<CorePeriod, decimal> pick) => previous is null ? 0m : pick(previous);
-
-        var metrics = new List<ReportMetricDto>
-        {
-            new("income", "Toplam Gelir", Round(current.Income), Round(Prev(p => p.Income)), "currency", $"{current.PaymentCount} tahsilat"),
-            new("expense", "Toplam Gider", Round(current.Expense), Round(Prev(p => p.Expense)), "currency", $"{current.ExpenseCount} gider"),
-            new("net", "Net Kâr", Round(current.Income - current.Expense), Round(Prev(p => p.Income - p.Expense)), "currency",
-                current.Income - current.Expense >= 0 ? "kârda" : "zararda"),
-            new("margin", "Kâr Marjı", current.Income > 0 ? Round((current.Income - current.Expense) / current.Income * 100m) : 0m,
-                previous is { Income: > 0 } ? Round((previous.Income - previous.Expense) / previous.Income * 100m) : 0m, "percent", "gelire oranla net"),
-            new("sales", "Satış Tutarı", Round(current.Sales), Round(Prev(p => p.Sales)), "currency", $"{current.SalesCount} satış"),
-            new("appointments", "Randevu", current.AppointmentCount, Prev(p => p.AppointmentCount), "count", $"{current.CompletedCount} tamamlandı"),
-            new("completed", "Tamamlanan İşlem", current.CompletedCount, Prev(p => p.CompletedCount), "count", "uygulanan seans"),
-            new("occupancy", "Tamamlanma Oranı",
-                current.AppointmentCount > 0 ? Round((decimal)current.CompletedCount / current.AppointmentCount * 100m) : 0m,
-                previous is { AppointmentCount: > 0 } ? Round((decimal)previous.CompletedCount / previous.AppointmentCount * 100m) : 0m,
-                "percent", "randevuya oranla"),
-            new("activeCustomers", "Aktif Müşteri", current.ActiveCustomers, Prev(p => p.ActiveCustomers), "count", "dönemde işlem gören"),
-            new("newCustomers", "Yeni Müşteri", current.NewCustomers, Prev(p => p.NewCustomers), "count", "ilk kez kayıt olan"),
-            new("avgTicket", "Ortalama Sepet",
-                current.PaymentCount > 0 ? Round(current.Income / current.PaymentCount) : 0m,
-                previous is { PaymentCount: > 0 } ? Round(previous.Income / previous.PaymentCount) : 0m, "currency", "tahsilat başına"),
-            new("revenuePerCustomer", "Müşteri Başına Ciro",
-                current.ActiveCustomers > 0 ? Round(current.Income / current.ActiveCustomers) : 0m,
-                previous is { ActiveCustomers: > 0 } ? Round(previous.Income / previous.ActiveCustomers) : 0m, "currency", "aktif müşteri başına"),
-        };
+        var metrics = BuildSummaryMetrics(current, previous);
 
         return Result<ReportSummaryDto>.Success(new ReportSummaryDto(
             from, to, compareFrom, compareTo, granularity,
@@ -433,12 +412,39 @@ public sealed partial class ReportsService : IReportsService
             current.Heatmap));
     }
 
+    /// <summary>
+    /// RAPOR KARTLARININ TEK TANIMI. Genel Bakış ve Karşılaştırma sekmeleri AYNI listeyi kullanır;
+    /// iki ayrı kopya tutulduğunda biri güncellenip diğeri unutuluyordu (aynı metriğin iki sekmede
+    /// farklı ada/kümeye sahip olması). Kart eklemek/çıkarmak isteyen YALNIZ burayı değiştirir.
+    /// <para>
+    /// Arayüz (web + mobil) bu listeyi olduğu gibi çizer — kart seti sunucudan gelir.
+    /// </para>
+    /// </summary>
+    private static List<ReportMetricDto> BuildSummaryMetrics(CorePeriod current, CorePeriod? previous)
+    {
+        decimal Prev(Func<CorePeriod, decimal> pick) => previous is null ? 0m : pick(previous);
+
+        return
+        [
+            new("income", "Toplam Gelir", Round(current.Income), Round(Prev(p => p.Income)), "currency", $"{current.PaymentCount} tahsilat"),
+            new("expense", "Toplam Gider", Round(current.Expense), Round(Prev(p => p.Expense)), "currency", $"{current.ExpenseCount} gider"),
+            // Dönemde SATILAN satışların hâlâ tahsil edilmemiş kısmı (satış bazlı; taksit planı değil).
+            new("openReceivable", "Toplam Alacak", Round(current.OpenReceivable), Round(Prev(p => p.OpenReceivable)), "currency",
+                current.SalesCount > 0 ? $"{current.SalesCount} satıştan kalan" : "kalan borç"),
+            new("sales", "Toplam Satış Tutarı", Round(current.Sales), Round(Prev(p => p.Sales)), "currency", $"{current.SalesCount} satış"),
+            new("appointments", "Randevu Sayısı", current.AppointmentCount, Prev(p => p.AppointmentCount), "count", "dönemdeki randevu"),
+            new("activeCustomers", "Aktif Müşteri", current.ActiveCustomers, Prev(p => p.ActiveCustomers), "count", "dönemde randevusu olan"),
+        ];
+    }
+
     /// <summary>Bir dönemin çekirdek büyüklükleri — mevcut ve karşılaştırma dönemi için ayrı ayrı çalışır.</summary>
     private sealed record CorePeriod(
         decimal Income,
         decimal Expense,
         decimal Sales,
         int SalesCount,
+        /// <summary>Dönemde satılan carilerin kalan borcu (Σ max(0, tutar − net tahsilat)).</summary>
+        decimal OpenReceivable,
         int PaymentCount,
         int ExpenseCount,
         int AppointmentCount,
@@ -456,6 +462,7 @@ public sealed partial class ReportsService : IReportsService
         Guid tenantId,
         List<AccountRow> accounts,
         Dictionary<Guid, AccountRow> accountsById,
+        IReadOnlyDictionary<Guid, decimal> paidByAccount,
         DateTime from,
         DateTime to,
         string granularity,
@@ -468,6 +475,25 @@ public sealed partial class ReportsService : IReportsService
         var periodSales = accounts
             .Where(a => a.CancelledAtUtc == null && a.SoldAt >= from && a.SoldAt < to)
             .ToList();
+
+        /*
+         * TOPLAM ALACAK — dönemde satılanların hâlâ tahsil edilmemiş kısmı.
+         *
+         * TABAN SATIŞTIR, TAKSİT PLANI DEĞİL: kural carinin kendi kuralıdır
+         * (CustomerAccount.RemainingAmount = max(0, TotalAmount − (tahsilat − iade))), böylece
+         * peşin satış da sayılır ve Ön Muhasebe'deki "Toplam açık alacak" ile aynı tabandır.
+         * PEŞİNAT BURADA DÜŞÜLMEZ: peşinat gerçek bir tahsilat satırıdır ve zaten `paid` içinde
+         * yer alır — ikinci kez çıkarmak alacağı peşinat kadar EKSİK gösterirdi. (Taksit bazlı
+         * hesaplayan BranchReceivablesAsync bunu bilerek düşer; iki hesap karıştırılmamalı.)
+         *
+         * Kart dönem kapsamlıdır: her metrik gibi kıyas dönemiyle karşılaştırılabilsin diye
+         * "tüm zamanların borcu" değil, seçili dönemde satılanların borcu ölçülür.
+         */
+        var openReceivable = periodSales.Sum(a =>
+        {
+            var paid = paidByAccount.TryGetValue(a.Id, out var p) ? p : 0m;
+            return Math.Max(0m, a.TotalAmount - (paid - a.RefundedAmount));
+        });
 
         var newCustomers = await _db.Customers.AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.CreatedAtUtc >= from && c.CreatedAtUtc < to)
@@ -594,6 +620,7 @@ public sealed partial class ReportsService : IReportsService
             expenses.Sum(e => e.Amount),
             periodSales.Sum(s => s.TotalAmount),
             periodSales.Count,
+            openReceivable,
             payments.Count,
             expenses.Count,
             appointments.Count,

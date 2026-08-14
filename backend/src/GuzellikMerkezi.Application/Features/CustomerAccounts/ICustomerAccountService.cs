@@ -76,8 +76,15 @@ public interface ICustomerAccountService
     /// <paramref name="fromUtc"/>/<paramref name="toUtc"/> verilirse rapor, o aralıkta (satış tarihi =
     /// cari/adisyon oluşturma) açılmış paketlere göre süzülür (günlük/aylık/yıllık dönem filtresi).
     /// </summary>
-    /// <summary>Pano Paket Raporu. Dönem (fromUtc/toUtc) ve kategori süzgeçleri BİRLİKTE uygulanır.</summary>
-    Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Pano Paket Raporu. Dönem (fromUtc/toUtc) ve kategori süzgeçleri BİRLİKTE uygulanır.
+    /// <para>
+    /// <paramref name="servicePackageId"/> / <paramref name="serviceDefinitionId"/>: rapor TEK bir
+    /// pakete ya da TEK bir hizmete daraltılır ("Satış Detayı > Müşteri Detayı" seçicisi). Kategori
+    /// süzgeciyle aynı mekanizma, tek elemanlı kümeyle çalışır.
+    /// </para>
+    /// </summary>
+    Task<Result<AccountReportDto>> GetReportAsync(Guid tenantId, int months, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, Guid? servicePackageId = null, Guid? serviceDefinitionId = null, CancellationToken cancellationToken = default);
 
     /// <summary>Pano "Hizmet Raporu" kartları — paket raporundan ayrı, kategori HİZMETİN kategorisidir.</summary>
     Task<Result<ServiceReportDto>> GetServiceReportAsync(Guid tenantId, DateTime? fromUtc = null, DateTime? toUtc = null, string? category = null, string? subCategory = null, CancellationToken cancellationToken = default);
