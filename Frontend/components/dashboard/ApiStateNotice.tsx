@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion'
 import { AlertTriangle, Loader2, ServerOff, type LucideIcon } from 'lucide-react'
-import { API_BASE_URL } from '@/lib/apiClient'
 
 interface ApiStateNoticeProps {
   loading?: boolean
@@ -44,14 +43,19 @@ export default function ApiStateNotice({
     empty: 'bg-[#F6DFE6]/90',
   }
   const title = loading
-    ? 'Backend verisi yükleniyor'
+    ? 'Veri yükleniyor'
     : error
       ? 'Backend bağlantısı / yetkisi gerekli'
       : missingModule
         ? 'Backend modülü bekleniyor'
         : 'Kayıt yok'
+  /*
+   * YÜKLENİRKEN İKİNCİ SATIR YOK. Burada API yolu ("/api/proxy üzerinden gerçek API çağrısı
+   * yapılıyor") yazıyordu: kullanıcıya hiçbir şey söylemeyen, geliştirici günlüğüne ait bir
+   * cümleydi ve her sayfanın tepesinde görünüyordu. Başlık zaten durumu söylüyor.
+   */
   const message = loading
-    ? `${API_BASE_URL} üzerinden gerçek API çağrısı yapılıyor.`
+    ? null
     : error
       ? error
       : missingModule || emptyMessage
@@ -69,7 +73,8 @@ export default function ApiStateNotice({
         transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
         className={`pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full ${orbColor[tone]} blur-3xl`}
       />
-      <div className="relative flex items-start gap-3">
+      {/* Tek satır kalınca hizalama ortaya alınır: `items-start` ile yazı simgenin üstünde kalıyordu. */}
+      <div className={`relative flex gap-3 ${message ? 'items-start' : 'items-center'}`}>
         <motion.span
           animate={loading ? { rotate: 360 } : { opacity: [0.72, 1, 0.72] }}
           transition={
@@ -81,9 +86,9 @@ export default function ApiStateNotice({
         >
           <Icon className="h-4 w-4" strokeWidth={1.7} />
         </motion.span>
-        <div className="min-w-0 pt-0.5">
+        <div className={`min-w-0 ${message ? 'pt-0.5' : ''}`}>
           <div className="text-[11px] font-semibold tracking-tight text-[#A5556E]">{title}</div>
-          <div className="mt-1 text-[12px] leading-5 text-[#6a4f5c]">{message}</div>
+          {message && <div className="mt-1 text-[12px] leading-5 text-[#6a4f5c]">{message}</div>}
         </div>
       </div>
     </motion.div>

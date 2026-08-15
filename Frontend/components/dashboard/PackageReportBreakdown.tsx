@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
+import AnchoredPopover from '@/components/dashboard/AnchoredPopover'
 import { formatTL } from '@/lib/apiMappers'
 import type { PackageCustomerBreakdown, PackageSeller } from '@/lib/types'
 
@@ -113,20 +114,7 @@ function ItemFilter({
   const [kind, setKind] = useState<'package' | 'service'>(value?.kind ?? 'package')
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
-  // Dışarı tıklayınca / ESC ile kapansın — panel diğer kartların üstüne biniyor.
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open])
+  // Dışarı tıklama + ESC artık AnchoredPopover'ın işi (panel <body>'ye portal'lanıyor).
 
   const items = kind === 'package' ? packageItems : serviceItems
 
@@ -183,15 +171,10 @@ function ItemFilter({
         </span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16 }}
-            className="absolute right-0 z-30 mt-2 w-[min(92vw,420px)] rounded-[16px] border border-[#EAD8DF] bg-white p-3 shadow-[0_30px_70px_-40px_rgba(87,39,61,0.85)]"
-          >
+      {/* Panel karta GÖMÜLÜ DEĞİL: pano kart kabuğu `overflow-hidden` taşıdığı için buradaki
+          `absolute` bir menü kartın alt kenarında kırpılıyordu (z-index bunu aşamaz). */}
+      <AnchoredPopover open={open} anchorRef={wrapRef} onClose={() => setOpen(false)} width={420} align="right" gap={8}>
+        <div className="p-3">
             <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
               {(
                 [
@@ -224,9 +207,8 @@ function ItemFilter({
                 setOpen(false)
               }}
             />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </AnchoredPopover>
     </div>
   )
 }

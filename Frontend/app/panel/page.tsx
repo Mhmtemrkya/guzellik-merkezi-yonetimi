@@ -7,8 +7,9 @@ import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import SubscriptionCountdown from '@/components/dashboard/SubscriptionCountdown'
 import DashboardHero from '@/components/dashboard/DashboardHero'
 import PackageReportBreakdown, { type BreakdownItemSelection } from '@/components/dashboard/PackageReportBreakdown'
+import AnchoredPopover from '@/components/dashboard/AnchoredPopover'
 import type { PickerItem } from '@/components/dashboard/CatalogPicker'
-import { AnimatePresence, motion, type Variants } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import Link from 'next/link'
 import {
   Bar,
@@ -426,16 +427,8 @@ function CategoryFilter({
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const onDocClick = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onEsc)
-    return () => { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onEsc) }
-  }, [open])
+  // Dışarı tıklama + ESC artık AnchoredPopover'ın işi: panel <body>'ye portal'landığı için
+  // "kutumun dışına tıklandı mı" ölçütü panelin İÇİNE tıklamayı da dışarı sayardı.
 
   const active = Boolean(value)
   const subs = options.find((o) => o.name === value)?.subs ?? []
@@ -457,16 +450,11 @@ function CategoryFilter({
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[14px] border border-[#E4DEE0] bg-white shadow-[0_24px_50px_-28px_rgba(87,39,61,0.6)]"
-          >
-            <div className="max-h-64 overflow-y-auto p-1.5">
+      {/* Panel karta GÖMÜLÜ DEĞİL: kart kabuğu `overflow-hidden` taşıdığı için buradaki
+          `absolute` bir menü kartın alt kenarında kırpılıyordu (z-index bunu aşamaz). */}
+      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={240} align="right">
+        <div>
+            <div className="p-1.5">
               <button
                 type="button"
                 onClick={() => { onChange(''); onSubChange(''); setOpen(false) }}
@@ -522,9 +510,8 @@ function CategoryFilter({
                 </div>
               </div>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </AnchoredPopover>
     </div>
   )
 }
@@ -587,6 +574,7 @@ function DateRangeFilter({
   const [open, setOpen] = useState(false)
   const [from, setFrom] = useState(value?.from ?? '')
   const [to, setTo] = useState(value?.to ?? '')
+  const boxRef = useRef<HTMLDivElement>(null)
 
   const apply = () => {
     if (!from || !to) return
@@ -606,7 +594,7 @@ function DateRangeFilter({
   }
 
   return (
-    <div className="relative">
+    <div ref={boxRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -620,11 +608,10 @@ function DateRangeFilter({
         {value ? `${trDay(value.from)} – ${trDay(value.to)}` : 'Özel tarih'}
       </button>
 
-      {open && (
-        <>
-          {/* Dışarı tıklayınca kapansın; panel bunun ÜSTÜNDE durur. */}
-          <button type="button" aria-label="Kapat" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1.5 w-[248px] rounded-[14px] border border-[#E4DEE0] bg-white p-3 shadow-[0_20px_50px_-25px_rgba(87,39,61,0.55)]">
+      {/* Panel karta GÖMÜLÜ DEĞİL: metrik ve rapor kartlarının kabuğu `overflow-hidden` taşıyor,
+          içeride açılan `absolute` bir panel kartın kenarında kırpılıyordu (z-index aşamaz). */}
+      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={248} align="right">
+          <div className="p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">Tarih aralığı</div>
             <div className="space-y-2">
               <label className="block">
@@ -669,8 +656,7 @@ function DateRangeFilter({
             </div>
             <p className="mt-2 text-[10px] leading-snug text-[#74616A]">Seçilen iki tarih de dahildir.</p>
           </div>
-        </>
-      )}
+      </AnchoredPopover>
     </div>
   )
 }
@@ -960,10 +946,17 @@ function RevenueChart({
   data,
   granularity = 'gün',
   periodLabel = 'Bu hafta',
+  topStaff = null,
 }: {
   data: WeeklyRevenuePoint[]
   granularity?: string
   periodLabel?: string
+  /**
+   * En çok randevusu olan personel. Bu kutu daha önce "Performans API" yazan bir YER TUTUCUYDU:
+   * ekranda gerçek bir ad varmış gibi duruyordu. Değer artık randevu listesinden sayılır;
+   * ad yoksa kutu bunu açıkça söyler (uydurma yok).
+   */
+  topStaff?: { name: string; count: number; scopeLabel: string } | null
 }) {
   const n = Math.max(data.length, 1)
   const rawMax = Math.max(0, ...data.map((point) => point.value))
@@ -1074,7 +1067,12 @@ function RevenueChart({
 
       <div data-guide="dash-insights" className="mt-3 grid gap-3 sm:grid-cols-3">
         <InsightTile title={`En yoğun ${granularity}`} value={hasData ? peak.label : 'Veri bekleniyor'} sub={formatTL(Math.round(peak.value))} />
-        <InsightTile title="En çok çalışan personel" value="Performans API" sub="Randevu bazlı" medal />
+        <InsightTile
+          title="En çok çalışan personel"
+          value={topStaff ? topStaff.name : 'Kayıt yok'}
+          sub={topStaff ? `${topStaff.count} randevu · ${topStaff.scopeLabel}` : 'Dönemde randevu yok'}
+          medal
+        />
         <InsightTile title="Toplam gelir" value={formatTL(Math.round(total))} sub={periodLabel} pie />
       </div>
     </div>
@@ -1993,6 +1991,33 @@ export default function AdminDashboard() {
   const chartGranularity = chartRange === 'yearly' ? 'ay' : chartRange === 'monthly' ? 'hafta' : 'gün'
   const chartPeriodLabel = chartRange === 'yearly' ? 'Bu yıl' : chartRange === 'monthly' ? 'Bu ay' : 'Bu hafta'
 
+  /*
+   * EN ÇOK ÇALIŞAN PERSONEL — randevu sayısına göre.
+   *
+   * KAPSAM AÇIKÇA YAZILIR: sayım, sayfanın "Randevu Dönemi" seçicisinin getirdiği randevulardan
+   * yapılır (grafiğin kendi Hafta/Ay/Yıl çipinden DEĞİL — o çip tahsilat serisini sürer, randevu
+   * listesini değil). Kutunun alt satırı bu yüzden dönemi adıyla yazar; yoksa hangi aralığın
+   * sayıldığı belirsiz kalırdı.
+   *
+   * İPTALLER SAYILMAZ: iptal edilmiş randevu yapılmış iş değildir.
+   */
+  const topStaff = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const appointment of appointments) {
+      if (appointment.status === 'iptal') continue
+      const name = (appointment.personel || '').trim()
+      if (!name || name === '—') continue
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    let best: { name: string; count: number } | null = null
+    for (const [name, count] of counts) {
+      if (!best || count > best.count || (count === best.count && name.localeCompare(best.name, 'tr') < 0)) {
+        best = { name, count }
+      }
+    }
+    return best ? { ...best, scopeLabel: apptRange.label } : null
+  }, [appointments, apptRange.label])
+
   const performanceRows = useMemo(() => {
     return staff.slice(0, 3).map((person, index) => {
       const rows = appointments.filter((appointment) => appointment.personel === person.name)
@@ -2427,7 +2452,7 @@ export default function AdminDashboard() {
                 title="Gelir Analizi"
                 action={<PeriodTabs value={chartRange} onChange={setChartRange} options={CHART_PERIOD_OPTIONS} />}
               >
-                <div data-guide="dash-gelir"><RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} /></div>
+                <div data-guide="dash-gelir"><RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} topStaff={topStaff} /></div>
               </SectionCard>
 
               <SectionCard
