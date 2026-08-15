@@ -1112,16 +1112,71 @@ function stockTone(product: Product): string {
   return 'text-[#5A4B53]'
 }
 
-// Taksit çubuğu etiketleri için kısa biçim (5375 → "5,4B"); tam değer title'da gösterilir.
+/*
+ * Çubuk etiketleri için kısa biçim (5375 → "5,4B"); tam değer ipucunda gösterilir.
+ *
+ * BİRİM HARFİ SAYIYA BİTİŞİKTİR ("5,4B", "5,4 B" değil). Recharts'ın metin bileşeni etiketi
+ * KAPSAYAN ÖĞENİN GENİŞLİĞİNE sarar; sütun ~38px olduğu için aradaki boşluk "8,7" / "B" diye
+ * iki satıra bölünüyor, uzun sütunda ikinci satır çizim alanının üstünden taşıp kırpılıyordu.
+ * Boşluk olmayınca sarılacak bir yer de kalmaz.
+ */
 function formatTLShort(value: number): string {
   const absolute = Math.abs(value)
-  if (absolute >= 1_000_000) return `${(value / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} Mn`
-  if (absolute >= 1000) return `${(value / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} B`
+  if (absolute >= 1_000_000) return `${(value / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}Mn`
+  if (absolute >= 1000) return `${(value / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}B`
   return Math.round(value).toLocaleString('tr-TR')
 }
 
 function formatChartCurrency(value: number): string {
   return `₺${formatTLShort(value)}`
+}
+
+/**
+ * Aylık Ciro grafiğinde sütunun üstündeki tutar etiketi.
+ *
+ * NEDEN ÖZEL ÇİZİM: recharts'ın hazır etiketi metni sütun genişliğine sarıyor ve konumunu
+ * kırpılmaya karşı korumuyordu. En yüksek ayın rakamı hem ikiye bölünüyor hem de sütunun
+ * tepesine binip okunamıyordu. Burada metin TEK SATIR çizilir, arkasına okunur bir zemin
+ * konur ve etiket çizim alanının üstünden taşmayacak şekilde sınırlanır.
+ */
+function RevenueBarLabel({ x, y, width, value }: { x?: number; y?: number; width?: number; value?: number }) {
+  if (typeof value !== 'number' || value <= 0) return null
+  const barX = Number(x ?? 0)
+  const barY = Number(y ?? 0)
+  const barW = Number(width ?? 0)
+  const text = `₺${formatTLShort(value)}`
+  const centerX = barX + barW / 2
+  // Sütun tepesinin ~11px üstünde; grafiğin üst kenarına yapışmasın diye 15px'te durdurulur
+  // (BarChart'ın üst boşluğu 30px, yani sınıra dayanan etiket bile tam görünür).
+  const centerY = Math.max(15, barY - 11)
+  // Genişlik metne göre: rozet ne rakamı kırpar ne de komşu sütuna taşar.
+  const pillW = text.length * 6 + 12
+  return (
+    <g>
+      <rect
+        x={centerX - pillW / 2}
+        y={centerY - 9}
+        width={pillW}
+        height={18}
+        rx={9}
+        fill="#FFFFFF"
+        stroke="#BFE3D1"
+        strokeWidth={1}
+      />
+      <text
+        x={centerX}
+        y={centerY}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#15694A"
+        fontSize={11}
+        fontWeight={800}
+        style={{ letterSpacing: '-0.01em' }}
+      >
+        {text}
+      </text>
+    </g>
+  )
 }
 
 function ReportKpi({
@@ -1456,7 +1511,8 @@ function MonthlyRevenueChart({ months, period, loadFailed = false }: {
           <div className="relative mt-3 overflow-x-auto rounded-[18px] border border-[#E9E5E6] bg-[#F7F6F6] px-1 pb-1 pt-4 sm:px-3">
             <div className="h-[280px] min-w-[560px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 26, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
+                {/* Üst boşluk 30: en yüksek sütunun etiket rozeti çizim alanına tam sığsın. */}
+                <BarChart data={chartData} margin={{ top: 30, right: 10, left: -10, bottom: 26 }} barCategoryGap="42%">
                   <defs>
                     <linearGradient id="monthlyRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#34B37E" />
@@ -1513,14 +1569,9 @@ function MonthlyRevenueChart({ months, period, loadFailed = false }: {
                     ))}
                     <LabelList
                       // Sütunun üstündeki rakam da sütunla AYNI ölçüden gelmeli.
+                      // Çizimi RevenueBarLabel yapar: tek satır + zeminli rozet + taşma koruması.
                       dataKey="collectedInMonth"
-                      position="top"
-                      fill="#15694A"
-                      fontSize={10}
-                      fontWeight={700}
-                      formatter={(value: ReactNode) =>
-                        typeof value === 'number' && value > 0 ? formatTLShort(value) : ''
-                      }
+                      content={<RevenueBarLabel />}
                     />
                   </Bar>
                 </BarChart>

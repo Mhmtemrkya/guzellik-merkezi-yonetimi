@@ -96,9 +96,17 @@ export default function CatalogPicker({
         />
       </div>
 
-      {/* Üst kategori filtresi */}
+      {/*
+        KATEGORİLER SARAR, YANA KAYMAZ.
+        Önceden tek satırda `overflow-x-auto` idi: kategori sayısı arttıkça son çipler panelin
+        sağından taşıp kelimenin ortasından kırpılıyor ("Lazer Epilasyo…"), altında da bir yatay
+        kaydırma çubuğu beliriyordu — var olan kategorilerin bir kısmı görünmüyordu bile.
+        Sarma ile hepsi görünür. YÜKSEKLİK SINIRI DA YOK: sabit bir tavan (denendi) son satırı
+        ortasından kesip aynı "alta kaçtı" görüntüsünü geri getiriyordu. Şerit kaç satır gerekiyorsa
+        o kadar uzar; kategori sayısı salımlarda zaten sınırlıdır.
+      */}
       {cats.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
           <Tag className="h-3 w-3 shrink-0 text-[#A5556E]/50" />
           <Pill active={!cat} label="Tümü" onClick={() => { setCat(''); setSub('') }} />
           {cats.map((c) => (
@@ -107,9 +115,9 @@ export default function CatalogPicker({
         </div>
       )}
 
-      {/* Alt kategori filtresi (seçili üst kategoriye göre) */}
+      {/* Alt kategori filtresi (seçili üst kategoriye göre) — aynı kural. */}
       {subs.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pl-4">
+        <div className="flex flex-wrap items-center gap-1.5 pb-0.5 pl-4">
           <Layers3 className="h-3 w-3 shrink-0 text-[#A5556E]/40" />
           <Pill active={!sub} label="Tüm alt kategoriler" onClick={() => setSub('')} />
           {subs.map((s) => (
