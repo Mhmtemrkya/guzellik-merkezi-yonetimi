@@ -23,6 +23,7 @@ class CatalogSalesPanel extends StatefulWidget {
     required this.itemName,
     required this.itemPrice,
     this.canManage = true,
+    this.showHistoryButton = true,
     super.key,
   });
 
@@ -33,11 +34,21 @@ class CatalogSalesPanel extends StatefulWidget {
   final double itemPrice;
   final bool canManage;
 
+  /// Panelin KENDİ "Geçmiş satış" bağlantısı çizilsin mi? Katalog kartlarında tetikleyici
+  /// alta (Sil'in yanına) taşındığı için orada `false` verilir; form yine burada yaşar,
+  /// çünkü kaydettikten sonra listeyi tazeleyen kod bu panele ait.
+  ///
+  /// Dışarıdan açmak için `GlobalKey<CatalogSalesPanelState>` ile
+  /// [CatalogSalesPanelState.openHistoricalForm] çağrılır. Bayrak/nonce yerine anahtar:
+  /// bayrak, panel sekme değişiminde yeniden kurulduğunda kendiliğinden tetikleniyor ve
+  /// sıfırlaması `setState`'siz olduğu için İKİNCİ dokunuşta hiç çalışmıyordu.
+  final bool showHistoryButton;
+
   @override
-  State<CatalogSalesPanel> createState() => _CatalogSalesPanelState();
+  State<CatalogSalesPanel> createState() => CatalogSalesPanelState();
 }
 
-class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
+class CatalogSalesPanelState extends State<CatalogSalesPanel> {
   List<Map<String, dynamic>> _accounts = const [];
 
   /// İptal arşivi (cancelled_sales) — canlı satış listesinden ayrı kaynak.
@@ -59,6 +70,9 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
     super.initState();
     _load();
   }
+
+  /// Dışarıdan (katalog kartının alt çubuğundan) çağrılır: geçmiş satış formunu açar.
+  Future<void> openHistoricalForm() => _openHistoricalForm();
 
   Future<void> _load() async {
     try {
@@ -154,7 +168,9 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
               ),
             ],
             const Spacer(),
-            if (widget.canManage)
+            // Tetikleyici DIŞARIDAN yönetiliyorsa burada çizilmez: katalog kartının altına,
+            // Sil düğmesinin yanına taşındı (web'deki alt çubuk düzeninin karşılığı).
+            if (widget.canManage && widget.showHistoryButton)
               TextButton.icon(
                 onPressed: _openHistoricalForm,
                 icon: const Icon(Icons.history_rounded, size: 16),
@@ -359,6 +375,9 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
                 ),
+                const SizedBox(height: 3),
+                _sellerLine(valueOf(c, const ['soldByStaffName'], fallback: '')),
+                const SizedBox(height: 2),
                 Text(
                   valueOf(c, const ['cancellationReason'], fallback: 'gerekçe belirtilmemiş'),
                   maxLines: 1,
@@ -435,10 +454,14 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
                         ],
                       ],
                     ),
+                    // SATAN PERSONEL KENDİ SATIRINDA. Tarih ve seansla aynı silik satıra
+                    // sıkışınca "hangi müşteriye kim satmış" sorusu her satırda farklı yerden
+                    // okunuyordu; artık her satırda aynı hizada ve vurgulu.
+                    const SizedBox(height: 3),
+                    _sellerLine(valueOf(a, const ['soldByStaffName'], fallback: '')),
                     const SizedBox(height: 2),
                     Text(
                       '${soldAt == null ? '—' : DateFormat('d MMM yyyy', 'tr_TR').format(soldAt)}'
-                      ' · ${valueOf(a, const ['soldByStaffName'], fallback: 'Satan belirtilmemiş')}'
                       // "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır.
                       '${sessionsTotal > 0 ? ' · ${sessionsTotal - numberOf(a, const ['sessionsUsed']).toInt()} seans kaldı' : ''}',
                       maxLines: 1,
@@ -468,6 +491,47 @@ class _CatalogSalesPanelState extends State<CatalogSalesPanel> {
           ),
         ),
       ),
+    );
+  }
+
+  /// "Satan personel" satırı — baş harf madalyonu + ad. Boşsa açıkça belirtilir;
+  /// telefonda tablo kurulamaz, hizayı bu ortak satır sağlar.
+  Widget _sellerLine(String name) {
+    final label = name.trim();
+    if (label.isEmpty) {
+      return const Text('Satan belirtilmemiş',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 10.5, color: AppColors.muted));
+    }
+    final parts = label.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final initials = (parts.length == 1
+            ? parts.first.characters.take(2).toString()
+            : '${parts.first.characters.first}${parts.last.characters.first}')
+        .toUpperCase();
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: AppColors.primary,
+            shape: BoxShape.circle,
+          ),
+          child: Text(initials,
+              style: const TextStyle(
+                  fontSize: 7.5, fontWeight: FontWeight.w900, color: Colors.white)),
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+        ),
+      ],
     );
   }
 

@@ -8,6 +8,7 @@ import {
   ClipboardSignature,
   Clock3,
   FileText,
+  History,
   Layers3,
   PauseCircle,
   Sparkles,
@@ -23,6 +24,7 @@ import {
   StatusPill,
   catalogDangerBtn,
   catalogGhostBtn,
+  catalogHistoryBtn,
   catalogPrimaryBtn,
 } from '@/components/dashboard/CatalogKit'
 import { ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
@@ -94,6 +96,7 @@ export default function ServiceDetailModal({
   canDelete,
   onStatus,
   onDelete,
+  onAddHistoricalSale,
   renderEditTrigger,
   renderSellTrigger,
   renderSales,
@@ -111,6 +114,12 @@ export default function ServiceDetailModal({
   canDelete: boolean
   onStatus: (status: CatalogStatusKey) => void
   onDelete: () => void
+  /**
+   * "Geçmiş satış ekle". Diyalog satış panelinin içinde yaşar (kaydettikten sonra listeyi o
+   * tazeliyor), tetikleyici ise burada — bu yüzden düğme önce Satışlar sekmesine geçer,
+   * sonra diyalogu açar. Verilmezse düğme çizilmez.
+   */
+  onAddHistoricalSale?: () => void
   renderEditTrigger: () => ReactNode
   renderSellTrigger: () => ReactNode
   /** Satış paneli yalnız sekmesi açıkken kurulur (kendi isteğini o an atar). */
@@ -193,6 +202,18 @@ export default function ServiceDetailModal({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Geçmiş satış — Sil'in SOLUNDA. Eskiden Satışlar sekmesinin içindeki küçük
+                bağlantıydı; sekmeye girmeden görünmüyordu. */}
+            {onAddHistoricalSale && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { setTab('satis'); onAddHistoricalSale() }}
+                className={catalogHistoryBtn}
+              >
+                <History className="h-3.5 w-3.5" /> Geçmiş satış ekle
+              </button>
+            )}
             {canDelete && (
               <button type="button" disabled={busy} onClick={onDelete} className={catalogDangerBtn}>
                 <Trash2 className="h-3.5 w-3.5" /> Sil

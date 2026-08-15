@@ -98,6 +98,8 @@ export default function ServiceLibrary({
 
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  /** "Geçmiş satış ekle" alt çubuktan tetiklenir, diyalog satış panelinde açılır. */
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [categorySalesOpen, setCategorySalesOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -671,7 +673,7 @@ export default function ServiceLibrary({
       {/* ---------- DETAY MODALİ ---------- */}
       <ServiceDetailModal
         open={detailOpen && !!detail}
-        onOpenChange={(next) => { setDetailOpen(next); if (!next) setDetailId(null) }}
+        onOpenChange={(next) => { setDetailOpen(next); if (!next) { setDetailId(null); setHistoryOpen(false) } }}
         service={
           detail
             ? {
@@ -735,11 +737,14 @@ export default function ServiceLibrary({
             />
           ) : null
         }
+        onAddHistoricalSale={canManageService && detail ? () => setHistoryOpen(true) : undefined}
         renderSales={() =>
           detail ? (
             <CatalogSalesPanel
               item={{ id: detail.id, name: detail.name, price: detail.price }}
               kind="service"
+              historyOpen={historyOpen}
+              onHistoryOpenChange={setHistoryOpen}
               {...salesPanelProps}
             />
           ) : null

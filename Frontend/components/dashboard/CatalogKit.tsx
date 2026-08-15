@@ -692,5 +692,9 @@ export const catalogPrimaryBtn =
 export const catalogGhostBtn =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12px] font-semibold text-[#5A4B53] transition-all hover:-translate-y-0.5 hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-55 disabled:hover:translate-y-0'
 
+/** "Geçmiş satış ekle" — ne birincil ne tehlikeli: kendi menekşe tonu (arşiv işi). */
+export const catalogHistoryBtn =
+  'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[11px] border border-[#e0d3f2] bg-[#faf6ff] px-3.5 py-2 text-[12px] font-semibold text-[#6b4aa0] transition-all hover:-translate-y-0.5 hover:bg-[#f2ebff] disabled:opacity-55 disabled:hover:translate-y-0'
+
 export const catalogDangerBtn =
   'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[11px] border border-[#F0AFBF] bg-[#FCE7EC] px-3.5 py-2 text-[12px] font-semibold text-[#A32347] transition-all hover:-translate-y-0.5 hover:bg-[#F9D7DF] disabled:opacity-55 disabled:hover:translate-y-0'

@@ -59,6 +59,10 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   _Tab _tab = _Tab.overview;
   PeriodValue _period = PeriodValue(kind: PeriodKind.month, anchor: DateTime.now());
   String _adisyonFilter = 'all'; // all/Open/Approved/Cancelled
+  /// Adisyon arama kutusu (müşteri veya kalem adı) — web ön muhasebe paritesi.
+  String _adisyonQuery = '';
+  /// "Nasıl işler?" — üç adımlık akış anlatımı kalıcı şerit değil, istendiğinde açılır.
+  bool _adisyonFlowOpen = false;
   String _accountFilter = 'all'; // all/overdue/upcoming/installment/closed
   String _accountQuery = '';
   late Future<_AccData> _future;
@@ -410,38 +414,298 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   }
 
   // ---- Adisyon ----
+  /// ADİSYON KOKPİTİ — web ön muhasebe sekmesindeki sadeleştirmenin karşılığı.
+  /// Sayaç ve süzgeç TEK nesnedir: durumlar hem sayılır hem tıklanınca listeyi süzer.
+  /// Üstteki tek kart açık fiş sayısını ve paranın nereye gittiğini söyler; üç adımlık
+  /// akış anlatımı kalıcı şerit değil, istendiğinde açılır.
   Widget _adisyonList(_AccData data) {
+    final query = _adisyonQuery.trim().toLowerCase();
+    final counts = <String, int>{'all': data.adisyonlar.length, 'Open': 0, 'Approved': 0, 'Cancelled': 0};
+    var openNet = 0.0;
+    var charge = 0.0;
+    var payment = 0.0;
+    for (final a in data.adisyonlar) {
+      final st = '${a['status']}';
+      counts[st] = (counts[st] ?? 0) + 1;
+      final c = (a['chargeTotal'] as num?)?.toDouble() ?? 0;
+      final p = (a['paymentTotal'] as num?)?.toDouble() ?? 0;
+      if (st == 'Open') openNet += c - p;
+      if (st == 'Approved') {
+        charge += c;
+        payment += p;
+      }
+    }
+
     final filtered = data.adisyonlar.where((a) {
-      if (_adisyonFilter == 'all') return true;
-      return '${a['status']}' == _adisyonFilter;
+      if (_adisyonFilter != 'all' && '${a['status']}' != _adisyonFilter) return false;
+      if (query.isEmpty) return true;
+      final items = (a['items'] as List? ?? const [])
+          .map((i) => i is Map ? '${i['description'] ?? ''}' : '')
+          .join(' ');
+      return '${a['customerName'] ?? ''} $items'.toLowerCase().contains(query);
     }).toList();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
       children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: OutlinedButton.icon(
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              useSafeArea: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => DailyAdisyonSheet(api: widget.api),
+        _adisyonCockpit(counts, openNet, charge, payment),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          _adisyonEmpty()
+        else
+          for (var i = 0; i < filtered.length; i++)
+            // Kartlar sırayla süzülerek girer — liste süzgeç değişince canlı hissedilsin.
+            TweenAnimationBuilder<double>(
+              key: ValueKey('${filtered[i]['id']}-$_adisyonFilter'),
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 260 + (i.clamp(0, 8) * 26)),
+              curve: Curves.easeOutCubic,
+              builder: (_, v, child) => Opacity(
+                opacity: v,
+                child: Transform.translate(offset: Offset(0, (1 - v) * 12), child: child),
+              ),
+              child: _adisyonCard(filtered[i]),
             ),
-            icon: const Icon(Icons.today_rounded, size: 18),
-            label: const Text('Bugünün Kartı'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        _filterChips(
-          {'all': 'Tümü', 'Open': 'Açık', 'Approved': 'Onaylı', 'Cancelled': 'İptal'},
-          _adisyonFilter,
-          (v) => setState(() => _adisyonFilter = v),
-        ),
-        const SizedBox(height: 10),
-        if (filtered.isEmpty) _empty('Adisyon yok.'),
-        for (final a in filtered) _adisyonCard(a),
       ],
+    );
+  }
+
+  Widget _adisyonCockpit(Map<String, int> counts, double openNet, double charge, double payment) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Marka bandı: açık fiş sayısı + paranın üç gerçeği.
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            color: AppColors.primary,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                        'ADİSYON · ${DateFormat('MMMM yyyy', 'tr_TR').format(_rangeStart).toUpperCase()}',
+                        style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                            color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${counts['Open'] ?? 0}',
+                        style: const TextStyle(
+                            fontSize: 38,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
+                    const SizedBox(width: 8),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: Text('açık fiş',
+                          style: TextStyle(fontSize: 12, color: Colors.white)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _cockpitFact('Bekleyen net', openNet),
+                    _cockpitFact('Cariye', charge),
+                    _cockpitFact('Kasaya', payment),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Sayaç ve süzgeç tek şeydir — birine dokunun, liste süzülsün.',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                const SizedBox(height: 9),
+                _filterChips(
+                  {
+                    'all': 'Tümü ${counts['all'] ?? 0}',
+                    'Open': 'Açık ${counts['Open'] ?? 0}',
+                    'Approved': 'Onaylı ${counts['Approved'] ?? 0}',
+                    'Cancelled': 'İptal ${counts['Cancelled'] ?? 0}',
+                  },
+                  _adisyonFilter,
+                  (v) => setState(() => _adisyonFilter = v),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  onChanged: (v) => setState(() => _adisyonQuery = v),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Müşteri veya kalem ara…',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    suffixIcon: _adisyonQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 16),
+                            onPressed: () => setState(() => _adisyonQuery = ''),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => DailyAdisyonSheet(api: widget.api),
+                        ),
+                        icon: const Icon(Icons.today_rounded, size: 17),
+                        label: const Text('Bugünün Kartı', overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() => _adisyonFlowOpen = !_adisyonFlowOpen),
+                        icon: const Icon(Icons.help_outline_rounded, size: 17),
+                        label: const Text('Nasıl işler?', overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                ),
+                // Akış anlatımı: her gün aynı ekrana bakan kullanıcı için gürültü,
+                // yeni kullanıcı için gerekli — isteyen açar.
+                AnimatedCrossFade(
+                  firstChild: const SizedBox(width: double.infinity),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      children: [
+                        for (final step in const [
+                          ('1', 'Adisyon açılır, kalemler toplanır', Color(0xFFB88938)),
+                          ('2', 'Yönetici onaylar', AppColors.success),
+                          ('3', 'Borç cariye, tahsilat kasaya işlenir', AppColors.danger),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 18,
+                                  height: 18,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: step.$3.withValues(alpha: .14),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(step.$1,
+                                      style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w900,
+                                          color: step.$3)),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(step.$2,
+                                      style: const TextStyle(
+                                          fontSize: 11.5, color: AppColors.ink)),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  crossFadeState: _adisyonFlowOpen
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 240),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cockpitFact(String label, double value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .20),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('$label: ${CalendarText.tl(value)}',
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+      );
+
+  Widget _adisyonEmpty() {
+    final filtering = _adisyonQuery.isNotEmpty || _adisyonFilter != 'all';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(Icons.receipt_long_rounded,
+                color: AppColors.primaryDark, size: 24),
+          ),
+          const SizedBox(height: 10),
+          Text(filtering ? 'Süzgeçle eşleşen adisyon yok.' : 'Bu dönemde adisyon yok.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(
+            filtering
+                ? 'Aramayı temizleyin ya da başka bir durum seçin.'
+                : 'Aşağıdaki “Adisyon aç” ile ilk fişi açabilirsiniz.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+          ),
+          if (filtering) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => setState(() {
+                _adisyonQuery = '';
+                _adisyonFilter = 'all';
+              }),
+              child: const Text('Süzgeci temizle'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

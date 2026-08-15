@@ -45,6 +45,7 @@ enum _Tab { all, critical, sale, consumable }
 
 class _StockScreenState extends State<StockScreen> {
   late Future<_StockData> _future;
+
   _Tab _tab = _Tab.all;
   String _query = '';
 
@@ -64,10 +65,11 @@ class _StockScreenState extends State<StockScreen> {
           .get('/api/admin/stock-movements/', query: {'limit': 300})
           .catchError((_) => const <dynamic>[]),
     ]);
-    return _StockData(
+    final loaded = _StockData(
       products: apiItems(results[0]),
       movements: apiItems(results[1]),
     );
+    return loaded;
   }
 
   Future<void> _reload() async {
@@ -865,7 +867,40 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
   late Map<String, dynamic> p = Map.of(widget.product);
   bool _changed = false;
 
+  /// BU ÜRÜNÜN hareketleri — sunucudan `productId` süzgeciyle ayrıca çekilir.
+  /// Sayfanın genel listesi TÜM ürünlerin son 300 hareketini getirir; oradan süzmek,
+  /// hareketleri o pencerenin dışında kalan üründe "hareket kaydı yok" YALANINI yazdırırdı.
+  List<Map<String, dynamic>> _movements = const [];
+  bool _movesLoading = true;
+  bool _movesFailed = false;
+
   double _n(String key) => (p[key] as num?)?.toDouble() ?? 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMovements();
+  }
+
+  Future<void> _loadMovements() async {
+    try {
+      final res = await widget.api.get('/api/admin/stock-movements/',
+          query: {'productId': '${p['id']}', 'limit': 200});
+      if (!mounted) return;
+      setState(() {
+        _movements = apiItems(res);
+        _movesLoading = false;
+        _movesFailed = false;
+      });
+    } catch (_) {
+      // "Okunamadı" ile "yok" AYNI ŞEY DEĞİL — sessiz boş liste gerçek dışı bir cümle yazardı.
+      if (!mounted) return;
+      setState(() {
+        _movesLoading = false;
+        _movesFailed = true;
+      });
+    }
+  }
 
   Future<void> _refresh() async {
     try {
@@ -886,6 +921,7 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
       await widget.api.put('/api/admin/products/${p['id']}', body);
       _changed = true;
       await _refresh();
+      await _loadMovements();
       _toast('Ürün güncellendi.');
     } catch (e) {
       _toast('$e');
@@ -935,6 +971,7 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
       await widget.api.post('/api/admin/products/${p['id']}/movements', body);
       _changed = true;
       await _refresh();
+      await _loadMovements();
       _toast('Stok hareketi eklendi.');
     } catch (e) {
       _toast('$e');
@@ -1058,9 +1095,15 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
                 ],
               ),
               const SizedBox(height: 16),
+              // STOK SEVİYESİ ÇUBUĞU — çizgi asgari stok eşiğidir. Rakamlar tek başına
+              // "kritiğe ne kadar var" sorusunu cevaplamıyordu (web künye modaliyle aynı).
+              _stockLevelBar(statusColor, unit),
+              const SizedBox(height: 10),
               _infoCard('Stok Özeti', [
                 ('Mevcut Stok', '${_trimNum(_n('currentStock'))} $unit', statusColor),
                 ('Min. Stok', '${_trimNum(_n('minStockLevel'))} $unit', null),
+                ('Stok değeri (maliyet)', CalendarText.tl(_n('currentStock') * cost), null),
+                ('Perakende değeri', CalendarText.tl(_n('currentStock') * sale), null),
               ]),
               _infoCard('Fiyat Bilgileri', [
                 ('Maliyet', CalendarText.tl(cost), null),
@@ -1076,6 +1119,7 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
                 ('Lot Numarası', valueOf(p, const ['lotNumber'], fallback: '—'), null),
                 ('Birim', unit, null),
               ]),
+              _movementsCard(),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -1133,6 +1177,179 @@ class _ProductDetailSheetState extends State<_ProductDetailSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Stok doluluk çubuğu. Asgari seviye REFERANS noktasıdır, tavan değil — asgarinin iki katı
+  /// "dolu" sayılır ki kritik eşiği çubuğun ortasında dursun ve göz eşiği bulabilsin.
+  Widget _stockLevelBar(Color tone, String unit) {
+    final stock = _n('currentStock');
+    final min = _n('minStockLevel');
+    final scale = [min * 2, stock, 1.0].reduce((a, b) => a > b ? a : b);
+    final fill = (stock / scale).clamp(0.02, 1.0);
+    final minPos = (min / scale).clamp(0.0, 1.0);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('STOK SEVİYESİ',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .4,
+                      color: AppColors.muted)),
+              Text('${_trimNum(stock)} / asgari ${_trimNum(min)} $unit',
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.ink)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (_, c) => SizedBox(
+              height: 12,
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceSoft,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: fill.toDouble()),
+                    duration: const Duration(milliseconds: 650),
+                    curve: Curves.easeOutCubic,
+                    builder: (_, v, _) => FractionallySizedBox(
+                      widthFactor: v,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: tone,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (min > 0)
+                    Positioned(
+                      left: (c.maxWidth * minPos).clamp(0.0, c.maxWidth - 2),
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      child: Container(color: AppColors.ink.withValues(alpha: .55)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bu ürünün hareket defteri — en yeniden eskiye, ilk 8 kayıt.
+  Widget _movementsCard() {
+    final moves = [..._movements]..sort((a, b) =>
+        '${b['occurredAtUtc'] ?? b['createdAtUtc'] ?? ''}'
+            .compareTo('${a['occurredAtUtc'] ?? a['createdAtUtc'] ?? ''}'));
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSoft.withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('STOK HAREKETLERİ',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .4,
+                      color: AppColors.muted)),
+              Text(_movesLoading || _movesFailed ? '—' : '${moves.length}',
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_movesFailed)
+            const Text(
+                'Hareket listesi okunamadı — bu ürünün geçmişi eksik görünüyor olabilir.',
+                style: TextStyle(
+                    fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.danger))
+          else if (_movesLoading)
+            const Text('Hareketler yükleniyor…',
+                style: TextStyle(fontSize: 11.5, color: AppColors.muted))
+          else if (moves.isEmpty)
+            const Text('Bu ürün için hareket kaydı yok.',
+                style: TextStyle(fontSize: 11.5, color: AppColors.muted))
+          else
+            for (final m in moves.take(8)) _movementLine(m),
+        ],
+      ),
+    );
+  }
+
+  Widget _movementLine(Map<String, dynamic> m) {
+    const labels = {
+      'Inbound': 'Stok Girişi', 'Outbound': 'Stok Çıkışı',
+      'Sale': 'Satış', 'Adjustment': 'Sayım', 'Damage': 'Fire',
+    };
+    final raw = m['type'];
+    final key = raw is num
+        ? (raw.toInt() >= 0 && raw.toInt() < _moveTypeKeys.length
+            ? _moveTypeKeys[raw.toInt()]
+            : 'Outbound')
+        : (_moveTypeKeys.contains('$raw') ? '$raw' : 'Outbound');
+    final inbound = key == 'Inbound' || key == 'Adjustment';
+    final at = parseUtcToLocal(m['occurredAtUtc'] ?? m['createdAtUtc']);
+    final qty = (m['quantity'] as num?)?.toDouble() ?? 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(inbound ? Icons.south_west_rounded : Icons.north_east_rounded,
+              size: 14, color: inbound ? AppColors.success : AppColors.danger),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(labels[key] ?? key,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                Text(
+                  '${at == null ? '—' : DateFormat('d MMM yyyy · HH:mm', 'tr_TR').format(at)}'
+                  '${'${m['staffName'] ?? ''}'.trim().isEmpty ? '' : ' · ${m['staffName']}'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          Text('${inbound ? '+' : '−'}${_trimNum(qty)}',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w900,
+                  color: inbound ? AppColors.success : AppColors.danger)),
+        ],
       ),
     );
   }

@@ -93,6 +93,8 @@ export default function PackageLibrary({
 
   const [editorDraft, setEditorDraft] = useState<PackageDraft>(emptyPackageDraft)
   const [editorOpen, setEditorOpen] = useState(false)
+  /** "Geçmiş satış ekle" alt çubuktan tetiklenir, diyalog satış panelinde açılır. */
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [categorySalesOpen, setCategorySalesOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -844,7 +846,7 @@ export default function PackageLibrary({
       {/* ---------- PAKET DÜZENLEYİCİ ---------- */}
       <PackageEditorModal
         open={editorOpen}
-        onOpenChange={(next) => { setEditorOpen(next); if (!next) { setActionError(''); setNotice('') } }}
+        onOpenChange={(next) => { setEditorOpen(next); if (!next) { setActionError(''); setNotice(''); setHistoryOpen(false) } }}
         initialDraft={editorDraft}
         services={services}
         assignableCategories={assignableCategories}
@@ -870,11 +872,14 @@ export default function PackageLibrary({
             />
           ) : null
         }
+        onAddHistoricalSale={canManageService ? () => setHistoryOpen(true) : undefined}
         renderSales={(draft) =>
           draft.id ? (
             <CatalogSalesPanel
               item={{ id: draft.id, name: draft.name || 'Paket', price: draft.salePrice || 0 }}
               kind="package"
+              historyOpen={historyOpen}
+              onHistoryOpenChange={setHistoryOpen}
               {...salesPanelProps}
             />
           ) : null

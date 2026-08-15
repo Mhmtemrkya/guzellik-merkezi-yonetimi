@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  CheckCircle2, FileText, Gift, ImagePlus, Layers3, Loader2, Minus, PauseCircle, Plus,
+  CheckCircle2, FileText, Gift, History, ImagePlus, Layers3, Loader2, Minus, PauseCircle, Plus,
   RotateCcw, Search, ShoppingBag, Trash2, UploadCloud, Wallet, X, XCircle,
 } from 'lucide-react'
 import ConsentPicker from '@/components/dashboard/ConsentPicker'
 import { IconPicker, ServiceIcon, suggestIcon } from '@/components/dashboard/ServiceIcons'
 import {
   CatalogModal, ModalSection, ModalTabs, StatusPill,
-  catalogDangerBtn, catalogFieldCls, catalogGhostBtn, catalogPrimaryBtn,
+  catalogDangerBtn, catalogFieldCls, catalogGhostBtn, catalogHistoryBtn, catalogPrimaryBtn,
 } from '@/components/dashboard/CatalogKit'
 import { formatTL } from '@/lib/apiMappers'
 import type { CatalogStatusKey, Service } from '@/lib/types'
@@ -105,6 +105,7 @@ export default function PackageEditorModal({
   onCancelPackage,
   onRestorePackage,
   onDelete,
+  onAddHistoricalSale,
   renderSellTrigger,
   renderSales,
 }: {
@@ -126,6 +127,12 @@ export default function PackageEditorModal({
   onCancelPackage: (draft: PackageDraft, reason: string) => Promise<void>
   onRestorePackage: (draft: PackageDraft) => Promise<void>
   onDelete: (draft: PackageDraft) => Promise<void>
+  /**
+   * "Geçmiş satış ekle" — diyalog satış panelinde yaşar (kayıttan sonra listeyi o tazeler),
+   * tetikleyici alt çubukta. Önce Satışlar sekmesine geçilir ki panel kurulmuş olsun.
+   * Yeni (kaydedilmemiş) pakette çizilmez: bağlanacak bir kayıt yok.
+   */
+  onAddHistoricalSale?: () => void
   renderSellTrigger: (draft: PackageDraft) => ReactNode
   renderSales: (draft: PackageDraft) => ReactNode
 }) {
@@ -345,6 +352,17 @@ export default function PackageEditorModal({
                 >
                   {draft.status === 'Cancelled' ? <RotateCcw className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
                   {draft.status === 'Cancelled' ? 'İptali geri al' : 'Paketi iptal et'}
+                </button>
+              )}
+              {/* Geçmiş satış — Sil'in SOLUNDA (hizmet modaliyle aynı yer). */}
+              {onAddHistoricalSale && !isNew && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { setTab('satis'); onAddHistoricalSale() }}
+                  className={catalogHistoryBtn}
+                >
+                  <History className="h-3.5 w-3.5" /> Geçmiş satış ekle
                 </button>
               )}
               {canDelete && !isNew && (

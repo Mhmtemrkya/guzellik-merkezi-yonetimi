@@ -165,7 +165,7 @@ export default function OverviewTab({
           yanında dar kalıyordu, artık satırın tamamını kullanıyor. */}
       <ReportCard
         title="Randevu Yoğunluğu"
-        subtitle={`Haftanın günü × saat — koyu renk daha yoğun · ${totalAppointments} randevu · ${rangeLabel}`}
+        subtitle={`Haftanın günü × saat — kutudaki sayı o saatteki randevu adedi · ${totalAppointments} randevu · ${rangeLabel}`}
         icon={CalendarClock}
         onOpen={() => detail.openKey('overview.heatmap', { rangeLabel })}
       >

@@ -208,6 +208,7 @@ Future<void> openCustomerSalesSheet(
   required Future<void> Function() onChanged,
   bool canManage = true,
   bool archiveUnavailable = false,
+  WidgetBuilder? cancelledBuilder,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -221,6 +222,7 @@ Future<void> openCustomerSalesSheet(
       onChanged: onChanged,
       canManage: canManage,
       archiveUnavailable: archiveUnavailable,
+      cancelledBuilder: cancelledBuilder,
     ),
   );
 }
@@ -235,6 +237,7 @@ class CustomerSalesSheet extends StatefulWidget {
     required this.onChanged,
     this.canManage = true,
     this.archiveUnavailable = false,
+    this.cancelledBuilder,
     super.key,
   });
 
@@ -247,6 +250,11 @@ class CustomerSalesSheet extends StatefulWidget {
 
   /// İptal arşivi okunamadıysa `true` — "İptal" sekmesi "yüklenemedi" der, "yok" DEMEZ.
   final bool archiveUnavailable;
+
+  /// İPTAL EDİLEN SATIŞLAR KARTI — müşteri kartının Genel Bakış sekmesinden buraya taşındı.
+  /// Yeri burası: iptal edilmiş satış da bir satış kaydıdır, canlı listeyle yan yana okunur.
+  /// "İptali geri al" akışı müşteri ekranının state'ine bağlı olduğu için widget dışarıdan gelir.
+  final WidgetBuilder? cancelledBuilder;
 
   @override
   State<CustomerSalesSheet> createState() => _CustomerSalesSheetState();
@@ -446,6 +454,10 @@ class _CustomerSalesSheetState extends State<CustomerSalesSheet> {
                     canManage: widget.canManage,
                     onChanged: _handleChanged,
                   ),
+                  if (widget.cancelledBuilder != null) ...[
+                    const SizedBox(height: 14),
+                    widget.cancelledBuilder!(context),
+                  ],
                 ],
               ),
             ),

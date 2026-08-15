@@ -30,7 +30,10 @@ export interface CustomerModalData {
   photoUrl?: string
   tier: string
   gender?: string
+  /** DOĞUM TARİHİ (kayıt tarihi değil) — adı geçmişten kalmadır, `createdAt` ile karıştırma. */
   joined: string
+  /** Müşterinin sisteme KAYIT tarihi (ISO). Liste ucundan `createdAtUtc` olarak gelir. */
+  createdAt?: string
   notes?: string
   debt: number
   /**
@@ -93,6 +96,22 @@ function daysToBirthday(birth?: string): number | null {
   let next = new Date(today.getFullYear(), d.getMonth(), d.getDate())
   if (next < today) next = new Date(today.getFullYear() + 1, d.getMonth(), d.getDate())
   return Math.round((next.getTime() - today.getTime()) / 86_400_000)
+}
+
+/**
+ * Kayıt tarihinin yanındaki kıdem rozeti: "3. yılı", "7 aydır", "yeni kayıt".
+ * Ham tarih tek başına "bu müşteri bizde ne kadardır var?" sorusunu cevaplamıyordu.
+ */
+function membershipSince(createdAt?: string): string | null {
+  if (!createdAt) return null
+  const d = new Date(createdAt)
+  if (Number.isNaN(d.getTime())) return null
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000)
+  if (days < 0) return null
+  if (days < 30) return 'yeni kayıt'
+  const months = Math.floor(days / 30.44)
+  if (months < 12) return `${months} aydır`
+  return `${Math.floor(days / 365.25) + 1}. yılı`
 }
 
 /** Telefonu tel: bağlantısına uygun hale getirir (boşluk/parantez temizler). */
@@ -653,6 +672,7 @@ export default function CustomerDetailModal({
   const active90 = customer.lastDate ? Date.now() - new Date(customer.lastDate).getTime() <= 90 * 86_400_000 : false
 
   const birthdayIn = daysToBirthday(customer.joined)
+  const membershipLabel = membershipSince(customer.createdAt)
   const hasSalesPanel = Boolean(salesPanel)
 
   // Sekme başlığında sayaç: içeriğe girmeden ne kadar kayıt olduğu görünür.
@@ -757,6 +777,135 @@ export default function CustomerDetailModal({
     { label: 'Son İşlem', value: fmtDateTR(customer.lastDate), sub: customer.lastService && customer.lastService !== '—' ? customer.lastService : undefined, icon: Clock, small: true },
   ]
 
+  /**
+   * İPTAL EDİLEN SATIŞLAR — artık Genel Bakış'ın sağ sütununda değil, SATIŞLAR MODALİNİN
+   * içinde. Yeri orası: iptal edilmiş satış da bir satış kaydıdır, canlı listeyle yan yana
+   * okunması gerekir; müşteri kartının sağ sütununda ise randevu/satış özetinin arasına
+   * girip kartı uzatıyordu.
+   *
+   * Bu satırlar canlı `accounts` listesinde YOKTUR (iptalde `cancelled_sales` arşivine
+   * taşınır); KPI'lardaki iptal sayısının arkasındaki kayıtlar başka hiçbir yerde görünmez.
+   */
+  const cancelledSalesCard = customerCancelled.length > 0 ? (
+    <SectionCard
+      title="İptal Edilen Satışlar"
+      icon={Ban}
+      action={<span className={`shrink-0 text-[11px] tabular-nums ${MUTED}`}>{customerCancelled.length} kayıt</span>}
+    >
+      <div className="space-y-2">
+        {customerCancelled.map((c) => (
+          <div key={c.id} className="rounded-[12px] border border-rose-200/70 bg-rose-50/50 px-3 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[12.5px] font-semibold text-[#2A2027]">{c.name}</div>
+                <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${MUTED}`}>
+                  <span className="tabular-nums">Satış {fmtDateTR(c.soldAtUtc)}</span>
+                  <span className="tabular-nums">· İptal {fmtDateTR(c.cancelledAtUtc)}</span>
+                </div>
+              </div>
+              <span className="shrink-0 text-right">
+                <span className="block text-[12.5px] font-bold text-[#2A2027] tabular-nums">{formatTL(Math.round(c.totalAmount))}</span>
+                <span className="block text-[10px] font-semibold text-rose-700">iptal edildi</span>
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+              <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-800">
+                Tahsil {formatTL(Math.round(c.collectedAmount))}
+              </span>
+              {c.refundedAmount > 0.005 && (
+                <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                  İade {formatTL(Math.round(c.refundedAmount))}
+                </span>
+              )}
+              {c.retainedAmount > 0.005 && (
+                <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#8C4460]">
+                  Kurumda kalan {formatTL(Math.round(c.retainedAmount))}
+                </span>
+              )}
+              {c.soldByStaffName && (
+                <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#5A4B53]">
+                  Satan: {c.soldByStaffName}
+                </span>
+              )}
+            </div>
+            {c.cancellationReason && (
+              <div className={`mt-1.5 text-[11px] ${SEMI}`}>
+                <span className="font-semibold">Gerekçe:</span> {c.cancellationReason}
+              </div>
+            )}
+
+            {/* İPTALİ GERİ AL — Ön Muhasebe'deki akışın aynısı. İade varsa
+                önce "para gerçekten ödendi mi?" sorulur: geri alma, müşteriye
+                fiilen ödenmiş bir parayı kendiliğinden "olmamış" sayamaz. */}
+            {onRestoreCancelledSale && (
+              restoreConfirmId === c.id ? (
+                <div className="mt-2 rounded-[11px] border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-amber-900">
+                    Bu iptalde müşteriye {formatTL(Math.round(c.refundedAmount))} iade edilmişti. Para gerçekten ödendi mi?
+                  </p>
+                  <p className="mt-1 text-[10.5px] text-amber-800">
+                    &quot;Evet&quot; derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.
+                  </p>
+                  <input
+                    value={voidReason}
+                    onChange={(e) => setVoidReason(e.target.value)}
+                    placeholder="Yanlış girildiyse gerekçe yazın (ör. iade fiilen yapılmadı)"
+                    className="mt-2 w-full rounded-[9px] border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] text-[#2A2027] outline-none focus:border-amber-400 placeholder:text-[#74616A]"
+                  />
+                  {restoreError && <p className="mt-1 text-[10.5px] font-semibold text-rose-700">{restoreError}</p>}
+                  <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { setRestoreConfirmId(null); setVoidReason(''); setRestoreError('') }}
+                      className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#74616A]"
+                    >
+                      Vazgeç
+                    </button>
+                    <button
+                      type="button"
+                      disabled={restoringId === c.id}
+                      onClick={() => void restoreCancelled(c.originalAccountId, c.id, true)}
+                      className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] disabled:opacity-60"
+                    >
+                      Hayır, yanlış girilmiş — iadeyi de geri al
+                    </button>
+                    <button
+                      type="button"
+                      disabled={restoringId === c.id}
+                      onClick={() => void restoreCancelled(c.originalAccountId, c.id, false)}
+                      className="cursor-pointer rounded-[9px] bg-[#a34a62] px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-60"
+                    >
+                      Evet, ödendi — kasa çıkışı kalsın
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  {restoreError && restoringId === null && (
+                    <span className="text-[10.5px] font-semibold text-rose-700">{restoreError}</span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={restoringId === c.id}
+                    onClick={() => {
+                      // İade yoksa soracak bir şey yok; doğrudan geri al.
+                      setRestoreError('')
+                      if (c.refundedAmount > 0.005) { setRestoreConfirmId(c.id); setVoidReason(''); return }
+                      void restoreCancelled(c.originalAccountId, c.id, false)
+                    }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"
+                  >
+                    <RotateCcw className={`h-3 w-3 ${restoringId === c.id ? 'animate-spin' : ''}`} /> İptali geri al
+                  </button>
+                </div>
+              )
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  ) : null
+
   return (
     <ModalPortal>
     <AnimatePresence>
@@ -802,9 +951,18 @@ export default function CustomerDetailModal({
                 <X className="h-4 w-4" />
               </button>
 
-              <div className="relative flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between xl:gap-5 xl:pr-12">
+              {/*
+                YAN YANA YERLEŞİM 2XL'DEN İTİBAREN. Daha erken denendiğinde kimlik bloğu eziliyordu:
+                KPI kartlarının alt satırları `truncate` (yani `white-space:nowrap`) olduğu için
+                şeridin MAX-CONTENT genişliği son işlem adı kadar (~1600px) çıkıyor, `shrink-0`
+                ile de bu genişlik dayatılıyordu. Sonuç: ad iki satıra kırılıyor, telefon/e-posta
+                kartların ALTINDA kalıyor ve son kart modalın dışına taşıyordu.
+                Çözüm iki yerde: şerit artık esner (`min-w-0` + `flex-1`, taban genişliği sıfır)
+                ve dar ekranda kendi satırına iner.
+              */}
+              <div className="relative flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-5 2xl:pr-12">
                 {/* Kimlik */}
-                <div className="flex min-w-0 items-center gap-3.5 pr-10 xl:pr-0">
+                <div className="flex min-w-0 items-center gap-3.5 pr-10 2xl:pr-0">
                   <label title="Fotoğraf yükle" className="group relative grid h-14 w-14 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border border-[#BE7690] bg-gradient-to-br from-[#3a1a2a] to-[#A5556E] font-display text-lg text-white sm:h-16 sm:w-16 sm:text-xl">
                     {detailPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -885,25 +1043,25 @@ export default function CustomerDetailModal({
                   </div>
                 </div>
 
-                {/* KPI şeridi — telefonda 2, tablette 3, dizüstünde tek sıra.
-                    Kart sayısı 6'ya çıktığı için xl'de asgari genişlik daraltıldı: kimlik bloğu
-                    (ad + iletişim) sıkışmasın. */}
-                <div className={`grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:w-auto ${hasSalesPanel ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
+                {/* KPI şeridi — telefonda 2, tablette 3, dizüstünden itibaren tek sıra.
+                    `min-w-0` + `2xl:flex-1`: şerit kalan yeri alır, içeriği kadar YER KAPLAMAZ. */}
+                <div className={`grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 2xl:flex-1 ${hasSalesPanel ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
                   {kpis.map((k) => {
                     const Tag = k.onClick ? 'button' : 'div'
                     return (
                       <Tag
                         key={k.label}
                         {...(k.onClick ? { type: 'button' as const, onClick: k.onClick, title: 'Ayrıntıya git' } : {})}
-                        /* Modal genişlediği için asgari genişlik eski değerine döndü: 104px'te
-                           uzun tutarlar (₺123.456) kırpılıyordu. */
-                        className={`min-w-0 rounded-[14px] border border-[#EAD8DF] bg-white/80 px-3 py-2 text-left xl:min-w-[118px] ${
+                        /* Asgari genişlik YOK: şerit artık esnek bir ızgara: `min-w-[118px]`
+                           dayatınca kart kendi kanalını taşırıp komşusunun üstüne biniyordu.
+                           Uzun tutarlar `truncate` ile kırpılır, tamamı `title`'da durur. */
+                        className={`min-w-0 rounded-[14px] border border-[#EAD8DF] bg-white/80 px-3 py-2 text-left ${
                           k.onClick ? 'cursor-pointer transition-colors hover:border-[#BE7690] hover:bg-white' : ''
                         }`}
                       >
-                        <div className={`text-[10px] font-bold uppercase tracking-wider ${MUTED}`}>{k.label}</div>
-                        <div className={`mt-0.5 truncate font-display tracking-tight tabular-nums ${k.small ? 'text-[13.5px]' : 'text-lg'} ${k.tone || 'text-[#2A2027]'}`}>{k.value}</div>
-                        {k.sub && <div className={`truncate text-[10.5px] ${MUTED}`}>{k.sub}</div>}
+                        <div className={`truncate text-[10px] font-bold uppercase tracking-wider ${MUTED}`}>{k.label}</div>
+                        <div title={k.value} className={`mt-0.5 truncate font-display tracking-tight tabular-nums ${k.small ? 'text-[13.5px]' : 'text-lg'} ${k.tone || 'text-[#2A2027]'}`}>{k.value}</div>
+                        {k.sub && <div title={k.sub} className={`truncate text-[10.5px] ${MUTED}`}>{k.sub}</div>}
                       </Tag>
                     )
                   })}
@@ -979,6 +1137,21 @@ export default function CustomerDetailModal({
                               {birthdayIn !== null && birthdayIn <= 30 && (
                                 <span className="rounded-full bg-[#f8f0fc] px-1.5 py-0.5 text-[10.5px] font-bold text-[#6d4187]">
                                   {birthdayIn === 0 ? 'bugün' : `${birthdayIn} gün`}
+                                </span>
+                              )}
+                            </span>
+                          ) : '—'}
+                        />
+                        {/* KAYIT TARİHİ ≠ doğum tarihi. "Bu müşteri bizde ne kadardır var?" sorusu
+                            kartta hiç cevaplanmıyordu; yanına kaçıncı yılı olduğu yazılır. */}
+                        <InfoRow
+                          label="Kayıt Tarihi"
+                          value={customer.createdAt && isDate(customer.createdAt) ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              {fmtDateTR(customer.createdAt)}
+                              {membershipLabel && (
+                                <span className="rounded-full bg-[#F6DFE6] px-1.5 py-0.5 text-[10.5px] font-bold text-[#8C4460]">
+                                  {membershipLabel}
                                 </span>
                               )}
                             </span>
@@ -1070,130 +1243,6 @@ export default function CustomerDetailModal({
                   {/* SAĞ: Satış özeti + son randevular (tablette yan yana, geniş ekranda alt alta) */}
                   <div className="grid min-w-0 content-start gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
                     {hasSalesPanel && <SalesSummaryCard summary={salesSummary} onOpen={() => setSalesOpen(true)} />}
-
-                    {/* İPTAL EDİLEN SATIŞLAR. Bu satırlar canlı `accounts` listesinde YOKTUR
-                        (iptalde `cancelled_sales` arşivine taşınır); kartlardaki iptal sayısının
-                        arkasındaki kayıtlar başka hiçbir yerde görünmüyordu. Salt okunur liste:
-                        "iptali geri al" para hareketi doğurduğu için Ön Muhasebe'de kalır. */}
-                    {customerCancelled.length > 0 && (
-                      <SectionCard
-                        title="İptal Edilen Satışlar"
-                        icon={Ban}
-                        action={<span className={`shrink-0 text-[11px] tabular-nums ${MUTED}`}>{customerCancelled.length} kayıt</span>}
-                      >
-                        <div className="space-y-2">
-                          {customerCancelled.map((c) => (
-                            <div key={c.id} className="rounded-[12px] border border-rose-200/70 bg-rose-50/50 px-3 py-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-[12.5px] font-semibold text-[#2A2027]">{c.name}</div>
-                                  <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${MUTED}`}>
-                                    <span className="tabular-nums">Satış {fmtDateTR(c.soldAtUtc)}</span>
-                                    <span className="tabular-nums">· İptal {fmtDateTR(c.cancelledAtUtc)}</span>
-                                  </div>
-                                </div>
-                                <span className="shrink-0 text-right">
-                                  <span className="block text-[12.5px] font-bold text-[#2A2027] tabular-nums">{formatTL(Math.round(c.totalAmount))}</span>
-                                  <span className="block text-[10px] font-semibold text-rose-700">iptal edildi</span>
-                                </span>
-                              </div>
-                              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-semibold">
-                                <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-800">
-                                  Tahsil {formatTL(Math.round(c.collectedAmount))}
-                                </span>
-                                {c.refundedAmount > 0.005 && (
-                                  <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">
-                                    İade {formatTL(Math.round(c.refundedAmount))}
-                                  </span>
-                                )}
-                                {c.retainedAmount > 0.005 && (
-                                  <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#8C4460]">
-                                    Kurumda kalan {formatTL(Math.round(c.retainedAmount))}
-                                  </span>
-                                )}
-                                {c.soldByStaffName && (
-                                  <span className="rounded-md border border-[#EAD8DF] bg-white px-1.5 py-0.5 text-[#5A4B53]">
-                                    Satan: {c.soldByStaffName}
-                                  </span>
-                                )}
-                              </div>
-                              {c.cancellationReason && (
-                                <div className={`mt-1.5 text-[11px] ${SEMI}`}>
-                                  <span className="font-semibold">Gerekçe:</span> {c.cancellationReason}
-                                </div>
-                              )}
-
-                              {/* İPTALİ GERİ AL — Ön Muhasebe'deki akışın aynısı. İade varsa
-                                  önce "para gerçekten ödendi mi?" sorulur: geri alma, müşteriye
-                                  fiilen ödenmiş bir parayı kendiliğinden "olmamış" sayamaz. */}
-                              {onRestoreCancelledSale && (
-                                restoreConfirmId === c.id ? (
-                                  <div className="mt-2 rounded-[11px] border border-amber-200 bg-amber-50/70 px-3 py-2.5">
-                                    <p className="text-[11px] font-semibold text-amber-900">
-                                      Bu iptalde müşteriye {formatTL(Math.round(c.refundedAmount))} iade edilmişti. Para gerçekten ödendi mi?
-                                    </p>
-                                    <p className="mt-1 text-[10.5px] text-amber-800">
-                                      &quot;Evet&quot; derseniz kasa çıkışı korunur ve bu tutar müşteri borcuna geri yazılır.
-                                    </p>
-                                    <input
-                                      value={voidReason}
-                                      onChange={(e) => setVoidReason(e.target.value)}
-                                      placeholder="Yanlış girildiyse gerekçe yazın (ör. iade fiilen yapılmadı)"
-                                      className="mt-2 w-full rounded-[9px] border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] text-[#2A2027] outline-none focus:border-amber-400 placeholder:text-[#74616A]"
-                                    />
-                                    {restoreError && <p className="mt-1 text-[10.5px] font-semibold text-rose-700">{restoreError}</p>}
-                                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => { setRestoreConfirmId(null); setVoidReason(''); setRestoreError('') }}
-                                        className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#74616A]"
-                                      >
-                                        Vazgeç
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={restoringId === c.id}
-                                        onClick={() => void restoreCancelled(c.originalAccountId, c.id, true)}
-                                        className="cursor-pointer rounded-[9px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] disabled:opacity-60"
-                                      >
-                                        Hayır, yanlış girilmiş — iadeyi de geri al
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={restoringId === c.id}
-                                        onClick={() => void restoreCancelled(c.originalAccountId, c.id, false)}
-                                        className="cursor-pointer rounded-[9px] bg-[#a34a62] px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-60"
-                                      >
-                                        Evet, ödendi — kasa çıkışı kalsın
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="mt-2 flex items-center justify-end gap-2">
-                                    {restoreError && restoringId === null && (
-                                      <span className="text-[10.5px] font-semibold text-rose-700">{restoreError}</span>
-                                    )}
-                                    <button
-                                      type="button"
-                                      disabled={restoringId === c.id}
-                                      onClick={() => {
-                                        // İade yoksa soracak bir şey yok; doğrudan geri al.
-                                        setRestoreError('')
-                                        if (c.refundedAmount > 0.005) { setRestoreConfirmId(c.id); setVoidReason(''); return }
-                                        void restoreCancelled(c.originalAccountId, c.id, false)
-                                      }}
-                                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#a34a62] transition-colors hover:bg-[#fff2f6] disabled:opacity-60"
-                                    >
-                                      <RotateCcw className={`h-3 w-3 ${restoringId === c.id ? 'animate-spin' : ''}`} /> İptali geri al
-                                    </button>
-                                  </div>
-                                )
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </SectionCard>
-                    )}
 
                     <SectionCard
                       title="Son Randevular"
@@ -1428,6 +1477,8 @@ export default function CustomerDetailModal({
               onClose={() => setSalesOpen(false)}
               customerName={customer.name}
               summary={salesSummary}
+              cancelledCount={cancelledSummary.count}
+              cancelledSlot={cancelledSalesCard}
             >
               {salesPanel}
             </CustomerSalesModal>

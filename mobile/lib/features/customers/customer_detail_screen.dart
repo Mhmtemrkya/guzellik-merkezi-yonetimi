@@ -845,6 +845,9 @@ class _OverviewTab extends StatelessWidget {
               _phoneRow(context, state.widget.api, '${c['id']}', valueOf(c, const ['phone'])),
               _emailRow(context, valueOf(c, const ['email'])),
               _birthRow(c['birthDate']),
+              // KAYIT TARİHİ ≠ doğum tarihi. "Bu müşteri bizde ne kadardır var?" sorusu
+              // kartta hiç cevaplanmıyordu (web müşteri modaliyle aynı satır).
+              _registeredRow(c['createdAtUtc']),
               _infoRow('Cinsiyet', _genders['${c['gender']}'] ?? 'Belirtilmemiş'),
               _infoRowWidget(
                 'KVKK',
@@ -946,27 +949,29 @@ class _OverviewTab extends StatelessWidget {
                 ...cancelledToPseudoAccounts(state._cancelledSales, customerId: '${c['id']}'),
               ],
               onChanged: state._reload,
+              // İPTAL EDİLEN SATIŞLAR ARTIK BURADA. Genel Bakış'ta ayrı bir kart olarak
+              // duruyordu; iptal edilmiş satış da bir satış kaydıdır, canlı listeyle yan yana
+              // okunmalı. Bu satırlar canlı `_accounts` listesinde YOKTUR (iptalde
+              // `cancelled_sales` arşivine taşınır), tek görünür oldukları yer burasıdır.
+              cancelledBuilder: state._cancelledSales.isEmpty
+                  ? null
+                  : (sheetCtx) => _Section(
+                        title: 'İptal Edilen Satışlar',
+                        icon: Icons.block_rounded,
+                        trailing: Text(
+                          '${state._cancelledSales.length} kayıt',
+                          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                        ),
+                        child: Column(
+                          children: [
+                            for (final x in state._cancelledSales)
+                              _cancelledRow(sheetCtx, x),
+                          ],
+                        ),
+                      ),
             ),
           ),
         ),
-        // İPTAL EDİLEN SATIŞLAR. Bu satırlar canlı `_accounts` listesinde YOKTUR (iptalde
-        // `cancelled_sales` arşivine taşınır); kartlardaki iptal sayısının arkasındaki kayıtlar
-        // başka hiçbir yerde görünmüyordu. Salt okunur: "iptali geri al" para hareketi
-        // doğurduğu için Ön Muhasebe'de kalır.
-        if (state._cancelledSales.isNotEmpty)
-          _Section(
-            title: 'İptal Edilen Satışlar',
-            icon: Icons.block_rounded,
-            trailing: Text(
-              '${state._cancelledSales.length} kayıt',
-              style: const TextStyle(fontSize: 11, color: AppColors.muted),
-            ),
-            child: Column(
-              children: [
-                for (final x in state._cancelledSales) _cancelledRow(context, x),
-              ],
-            ),
-          ),
       ],
     );
   }
@@ -3057,6 +3062,38 @@ Widget _birthRow(dynamic birthDate) {
         const SizedBox(width: 6),
         _chip(days == 0 ? 'bugün' : '$days gün', const Color(0xFF7C4F96),
             icon: Icons.cake_rounded),
+      ],
+    ),
+  );
+}
+
+/// Kayıt tarihi + kıdem rozeti ("3. yılı" / "7 aydır" / "yeni kayıt").
+/// Ham tarih tek başına "bu müşteri bizde ne kadardır var?" sorusunu cevaplamıyordu.
+Widget _registeredRow(dynamic createdAtUtc) {
+  final d = parseUtcToLocal(createdAtUtc);
+  if (d == null) return _infoRow('Kayıt Tarihi', '—');
+  final days = DateTime.now().difference(d).inDays;
+  final String? badge;
+  if (days < 0) {
+    badge = null;
+  } else if (days < 30) {
+    badge = 'yeni kayıt';
+  } else if (days < 365) {
+    badge = '${(days / 30.44).floor()} aydır';
+  } else {
+    badge = '${(days / 365.25).floor() + 1}. yılı';
+  }
+  if (badge == null) return _infoRow('Kayıt Tarihi', _fmtDate(createdAtUtc));
+  return _infoRowWidget(
+    'Kayıt Tarihi',
+    Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(_fmtDate(createdAtUtc),
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+        const SizedBox(width: 6),
+        _chip(badge, AppColors.primaryDark, icon: Icons.event_available_rounded),
       ],
     ),
   );

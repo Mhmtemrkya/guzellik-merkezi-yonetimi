@@ -2055,19 +2055,6 @@ export default function AdminDashboard() {
           emptyMessage="Backend bağlantısı çalıştı fakat bu tenant için henüz kayıt yok."
         />
 
-        <div data-guide="dash-donem" className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#EAD8DF] bg-white px-4 py-3 shadow-[0_14px_40px_-32px_rgba(87,39,61,0.55)]">
-          <div className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
-              <Calendar className="h-[18px] w-[18px]" strokeWidth={1.7} />
-            </span>
-            <div>
-              <div className="text-[12.5px] font-semibold leading-4 text-[#2A2027]">Randevu Dönemi</div>
-              <div className="text-[11px] text-[#74616A]">{apptRange.label}</div>
-            </div>
-          </div>
-          <PeriodTabs value={globalPeriod} onChange={setGlobalPeriod} options={FULL_PERIOD_OPTIONS} />
-        </div>
-
         <motion.div variants={listContainer} initial="hidden" animate="visible" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             icon={Calendar}
@@ -2132,6 +2119,21 @@ export default function AdminDashboard() {
             taraf kırpılıyordu). min-w-0 track'in daralmasına izin verir. */}
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.68fr)_minmax(320px,0.92fr)]">
           <div className="min-w-0 space-y-5">
+            {/* RANDEVU DÖNEMİ — sürüklediği listenin (Randevu Akışı) hemen üstünde durur.
+                Sayfanın tepesindeyken hangi kartı süzdüğü belli olmuyordu. */}
+            <div data-guide="dash-donem" className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#EAD8DF] bg-white px-4 py-3 shadow-[0_14px_40px_-32px_rgba(87,39,61,0.55)]">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-[#A5556E] text-white shadow-[0_10px_20px_-14px_rgba(42,32,39,0.8)]">
+                  <Calendar className="h-[18px] w-[18px]" strokeWidth={1.7} />
+                </span>
+                <div>
+                  <div className="text-[12.5px] font-semibold leading-4 text-[#2A2027]">Randevu Dönemi</div>
+                  <div className="text-[11px] text-[#74616A]">{apptRange.label}</div>
+                </div>
+              </div>
+              <PeriodTabs value={globalPeriod} onChange={setGlobalPeriod} options={FULL_PERIOD_OPTIONS} />
+            </div>
+
             <SectionCard
               title={globalPeriod === 'daily' ? 'Bugünkü Randevu Akışı' : 'Randevu Akışı'}
               action={

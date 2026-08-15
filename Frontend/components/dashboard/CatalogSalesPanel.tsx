@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
@@ -61,6 +61,8 @@ export default function CatalogSalesPanel({
   serviceOptions,
   canManage = true,
   busy = false,
+  historyOpen: historyOpenProp,
+  onHistoryOpenChange,
   onCreateHistorical,
   onCancelSale,
   onRestoreSale,
@@ -75,6 +77,13 @@ export default function CatalogSalesPanel({
   serviceOptions: HistoricalCatalogOption[]
   canManage?: boolean
   busy?: boolean
+  /**
+   * "Geçmiş satış ekle" DIŞARIDAN yönetilebilir: tetikleyici artık katalog modalinin ALT
+   * ÇUBUĞUNDA (Sil'in solunda) duruyor, diyalogun kendisi ise burada — çünkü kaydettikten sonra
+   * listeyi tazeleyen `reload` bu panele ait. Verilmezse panel kendi iç durumunu kullanır.
+   */
+  historyOpen?: boolean
+  onHistoryOpenChange?: (next: boolean) => void
   onCreateHistorical: (values: HistoricalSaleValues) => Promise<void>
   onCancelSale: (accountId: string, reason: string, refundedAmount: number, refundMethod: string) => Promise<void>
   onRestoreSale: (accountId: string) => Promise<void>
@@ -82,7 +91,9 @@ export default function CatalogSalesPanel({
 }) {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyOpenLocal, setHistoryOpenLocal] = useState(false)
+  const historyOpen = historyOpenProp ?? historyOpenLocal
+  const setHistoryOpen = onHistoryOpenChange ?? setHistoryOpenLocal
   const [limit, setLimit] = useState(VISIBLE_STEP)
 
   // ÖLÇEK: satışlar sunucuda bu katalog kaydına göre süzülür — tüm cari listesi indirilmez.
@@ -175,7 +186,9 @@ export default function CatalogSalesPanel({
               <span className="rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[10px] font-bold text-[#a34a62]">{sorted.length}</span>
             )}
           </div>
-          {canManage && kind !== 'category' && (
+          {/* Tetikleyici KONTROLLÜ kullanımda burada çizilmez: katalog modallerinde alt çubuğa,
+              Sil düğmesinin soluna taşındı. Panelin tek başına kullanıldığı yerlerde kalır. */}
+          {canManage && kind !== 'category' && historyOpenProp === undefined && (
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
@@ -246,43 +259,97 @@ export default function CatalogSalesPanel({
           </div>
         )}
 
-        {/* Satış listesi. "İptal" sekmesi arşivden okunur — o satışların canlı kaydı yoktur. */}
-        <div className="mt-2 space-y-1.5">
+        {/* SATIŞ TABLOSU. Eskiden satır içi sıkıştırılmış kartlardı: "hangi müşteriye hangi
+            personel satmış" sorusu için göz her satırda farklı yerde arıyordu. Artık sabit
+            sütunlar — müşteri ve satan personel aynı hizada okunur.
+            "İptal" sekmesi ARŞİVDEN okunur; o satışların canlı kaydı yoktur, sütunları da
+            farklıdır (iade/gerekçe), bu yüzden kendi tablosu vardır. */}
+        <div className="mt-2 overflow-x-auto">
           {filter === 'Cancelled' ? (
             cancelledSales.length === 0 ? (
-              <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11px] text-[#74616A]">
-                İptal edilmiş satış yok.
-              </div>
+              <EmptyRow>İptal edilmiş satış yok.</EmptyRow>
             ) : (
-              cancelledSales.map((c) => (
-                <div key={c.id} className="rounded-[11px] border border-rose-100 bg-rose-50/40 px-3 py-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] font-semibold text-[#2A2027]">{c.customerName || c.name}</div>
-                      <div className="truncate text-[10.5px] text-[#74616A]">
-                        {c.cancellationReason || 'gerekçe belirtilmemiş'}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-[12.5px] font-bold tabular-nums text-[#2A2027]">{formatTL(c.totalAmount)}</div>
-                      <div className="text-[10px] text-[#74616A]">
-                        tahsil {formatTL(c.collectedAmount)}{c.refundedAmount > 0.005 ? ` · iade ${formatTL(c.refundedAmount)}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
+              <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
+                <thead>
+                  <tr>
+                    <Th>Müşteri</Th>
+                    <Th>Satan personel</Th>
+                    <Th>Satış · İptal</Th>
+                    <Th align="right">Tutar</Th>
+                    <Th align="right">Tahsil / İade</Th>
+                    <Th>Gerekçe</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cancelledSales.map((c, i) => (
+                    <motion.tr
+                      key={c.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1], delay: Math.min(i * 0.024, 0.2) }}
+                      className="bg-rose-50/40"
+                    >
+                      <Td>
+                        <span className="block truncate font-semibold text-[#2A2027]">{c.customerName || c.name}</span>
+                        <span className="block truncate text-[10.5px] text-[#74616A]">{c.name}</span>
+                      </Td>
+                      <Td><SellerCell name={c.soldByStaffName} /></Td>
+                      <Td>
+                        <span className="block tabular-nums text-[#3E343A]">{formatSaleDate(c.soldAtUtc)}</span>
+                        <span className="block tabular-nums text-[10.5px] text-[#b3453f]">{formatSaleDate(c.cancelledAtUtc)}</span>
+                      </Td>
+                      <Td align="right"><span className="font-semibold tabular-nums text-[#2A2027]">{formatTL(Math.round(c.totalAmount))}</span></Td>
+                      <Td align="right">
+                        <span className="block tabular-nums text-[#2c7d63]">{formatTL(Math.round(c.collectedAmount))}</span>
+                        {c.refundedAmount > 0.005 && (
+                          <span className="block tabular-nums text-[10.5px] text-[#8A5A11]">iade {formatTL(Math.round(c.refundedAmount))}</span>
+                        )}
+                      </Td>
+                      <Td>
+                        <span className="block max-w-[220px] truncate text-[#5A4B53]" title={c.cancellationReason || undefined}>
+                          {c.cancellationReason || 'belirtilmemiş'}
+                        </span>
+                      </Td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
             )
           ) : visible.length === 0 ? (
-            <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11px] text-[#74616A]">
+            <EmptyRow>
               {sorted.length === 0
                 ? kind === 'category'
                   ? `"${item.name}" kategorisinde henüz satış yok.`
                   : `Bu ${kind === 'package' ? 'paket' : 'hizmet'} henüz satılmamış. Geçmiş satışları da buradan girebilirsiniz.`
                 : 'Bu durumda satış yok.'}
-            </div>
+            </EmptyRow>
           ) : (
-            visible.map((a) => <CatalogSaleRow key={a.id} account={a} showItemName={kind === 'category'} onClick={() => setDetailId(a.id)} />)
+            <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left">
+              <thead>
+                <tr>
+                  <Th>Müşteri</Th>
+                  {kind === 'category' && <Th>Kayıt</Th>}
+                  <Th>Satan personel</Th>
+                  <Th>Tarih</Th>
+                  <Th>Seans</Th>
+                  <Th align="right">Tutar</Th>
+                  <Th align="right">Kalan</Th>
+                  <Th>Durum</Th>
+                  <Th align="right" srOnly>Aç</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((a, i) => (
+                  <CatalogSaleRow
+                    key={a.id}
+                    index={i}
+                    account={a}
+                    showItemName={kind === 'category'}
+                    onClick={() => setDetailId(a.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 
@@ -355,67 +422,116 @@ function Kpi({ icon: Icon, label, value, sub }: { icon: typeof Package; label: s
   )
 }
 
-function CatalogSaleRow({ account, onClick, showItemName = false }: { account: CustomerAccount; onClick: () => void; showItemName?: boolean }) {
-  const meta = STATUS_META[account.saleStatus]
-  const StatusIcon = meta.icon
+/* ---------------------------------------------------------------- */
+/* Tablo parçaları — başlık şeridi yapışkan değil (panel zaten kısa), */
+/* ama sütun hizası sabittir: göz aynı yerde arar.                    */
+/* ---------------------------------------------------------------- */
 
+function Th({ children, align = 'left', srOnly = false }: { children: ReactNode; align?: 'left' | 'right'; srOnly?: boolean }) {
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      whileHover={{ y: -1 }}
-      className={`group flex w-full items-center gap-2 rounded-[11px] border px-2.5 py-2 text-left transition-colors ${
-        account.saleStatus === 'Cancelled'
-          ? 'border-[#f3dfe4] bg-[#F7F6F6] opacity-80 hover:opacity-100'
-          : 'border-[#f0e0e6] bg-white hover:border-[#e7bccb] hover:bg-[#F7F6F6]'
+    <th
+      scope="col"
+      className={`sticky top-0 z-10 whitespace-nowrap border-b border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#74616A] ${
+        align === 'right' ? 'text-right' : 'text-left'
       }`}
     >
-      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-[8px] border ${meta.pill}`}>
-        <StatusIcon className="h-3 w-3" />
-      </span>
+      {srOnly ? <span className="sr-only">{children}</span> : children}
+    </th>
+  )
+}
 
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-1">
-          <span className="truncate text-[12px] font-semibold text-[#2A2027]">{account.customerName}</span>
+function Td({ children, align = 'left' }: { children: ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <td className={`border-b border-[#f4ebee] px-2.5 py-2 align-middle text-[11.5px] ${align === 'right' ? 'text-right' : 'text-left'}`}>
+      {children}
+    </td>
+  )
+}
+
+function EmptyRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-[11px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-3 py-5 text-center text-[11px] text-[#74616A]">
+      {children}
+    </div>
+  )
+}
+
+/** Satan personel hücresi — baş harf madalyonu + ad; boşsa açıkça "belirtilmemiş". */
+function SellerCell({ name }: { name?: string | null }) {
+  const label = (name || '').trim()
+  if (!label) return <span className="whitespace-nowrap text-[11px] text-[#74616A]">Belirtilmemiş</span>
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[linear-gradient(140deg,#e78ba8,#c05277)] text-[8px] font-bold text-white">
+        {initials(label)}
+      </span>
+      <span className="truncate font-medium text-[#3E343A]">{label}</span>
+    </span>
+  )
+}
+
+function CatalogSaleRow({ account, onClick, showItemName = false, index = 0 }: { account: CustomerAccount; onClick: () => void; showItemName?: boolean; index?: number }) {
+  const meta = STATUS_META[account.saleStatus]
+  const StatusIcon = meta.icon
+  const remainingSessions = Math.max(0, account.sessionsTotal - account.sessionsUsed)
+
+  return (
+    <motion.tr
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.024, 0.2) }}
+      onClick={onClick}
+      tabIndex={0}
+      role="button"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+      className={`group cursor-pointer transition-colors focus:outline-none focus-visible:bg-[#F6DFE6] ${
+        account.saleStatus === 'Cancelled' ? 'bg-[#F7F6F6] hover:bg-[#f3e9ed]' : 'bg-white hover:bg-[#FDF7F9]'
+      }`}
+    >
+      <Td>
+        <span className="flex min-w-0 flex-wrap items-center gap-1">
+          <span className="truncate font-semibold text-[#2A2027]">{account.customerName}</span>
           {account.isHistorical && (
-            <span className="inline-flex items-center gap-0.5 rounded-full border border-[#e0d3f2] bg-[#faf6ff] px-1.5 py-0.5 text-[8px] font-bold text-[#6b4aa0]">
-              <Archive className="h-2 w-2" /> Geçmiş
+            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#e0d3f2] bg-[#faf6ff] px-1.5 py-0.5 text-[10px] font-bold text-[#6b4aa0]">
+              <Archive className="h-2.5 w-2.5" /> Geçmiş
             </span>
           )}
         </span>
-        {showItemName && (
-          <span className="mt-0.5 block truncate text-[10.5px] font-medium text-[#a34a62]">{account.name}</span>
-        )}
-        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9.5px] text-[#74616A]">
-          <span>{formatSaleDate(account.soldAtUtc)}</span>
-          <span className="text-[#c9b3bd]">·</span>
-          <span>{account.soldByStaffName || 'Satan belirtilmemiş'}</span>
-          {account.sessionsTotal > 0 && (
-            <>
-              <span className="text-[#c9b3bd]">·</span>
-              {/* "2/4 seans" hangi sayının kalan olduğunu söylemiyordu — cevap yazılır. */}
-              <span className="font-semibold tabular-nums text-[#3E343A]">
-                {Math.max(0, account.sessionsTotal - account.sessionsUsed)} seans kaldı
-              </span>
-            </>
-          )}
-        </span>
-        {/* İptal gerekçesi listede de görünür — katalogda "hangi paket neden iptal edildi" sorusu. */}
+        {/* İptal gerekçesi katalogda önemli: "hangi paket neden iptal edildi". */}
         {account.saleStatus === 'Cancelled' && (
-          <span className="mt-0.5 block truncate text-[9.5px] italic text-[#b3453f]">
+          <span className="block truncate text-[10.5px] text-[#b3453f]" title={account.cancellationReason || undefined}>
             Gerekçe: {account.cancellationReason || 'belirtilmemiş'}
           </span>
         )}
-      </span>
-
-      <span className="flex shrink-0 flex-col items-end">
-        <span className="font-display text-[12.5px] font-bold text-[#2A2027]">{formatTL(Math.round(account.totalAmount))}</span>
-        <span className={`text-[9px] font-semibold ${account.remainingAmount > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'}`}>
-          {account.remainingAmount > 0.005 ? `${formatTL(Math.round(account.remainingAmount))} kalan` : 'Ödendi'}
+      </Td>
+      {showItemName && (
+        <Td><span className="block max-w-[200px] truncate font-medium text-[#a34a62]" title={account.name}>{account.name}</span></Td>
+      )}
+      <Td><SellerCell name={account.soldByStaffName} /></Td>
+      <Td><span className="whitespace-nowrap tabular-nums text-[#3E343A]">{formatSaleDate(account.soldAtUtc)}</span></Td>
+      <Td>
+        {account.sessionsTotal > 0 ? (
+          // "2/4" hangi sayının kalan olduğunu söylemiyordu — cevap doğrudan yazılır.
+          <span className="whitespace-nowrap font-semibold tabular-nums text-[#3E343A]">{remainingSessions} seans kaldı</span>
+        ) : (
+          <span className="text-[#74616A]">—</span>
+        )}
+      </Td>
+      <Td align="right"><span className="whitespace-nowrap font-display text-[12.5px] font-bold tabular-nums text-[#2A2027]">{formatTL(Math.round(account.totalAmount))}</span></Td>
+      <Td align="right">
+        <span className={`whitespace-nowrap font-semibold tabular-nums ${account.remainingAmount > 0.005 ? 'text-[#cf4d68]' : 'text-[#2c7d63]'}`}>
+          {account.remainingAmount > 0.005 ? formatTL(Math.round(account.remainingAmount)) : 'Ödendi'}
         </span>
-      </span>
-      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#A5556E]" />
-    </motion.button>
+      </Td>
+      <Td>
+        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${meta.pill}`}>
+          <StatusIcon className="h-3 w-3" /> {meta.label}
+        </span>
+      </Td>
+      <Td align="right">
+        <ChevronRight className="inline h-3.5 w-3.5 text-[#c9b3bd] transition-transform group-hover:translate-x-0.5 group-hover:text-[#A5556E]" />
+      </Td>
+    </motion.tr>
   )
 }
 

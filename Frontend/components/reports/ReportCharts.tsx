@@ -579,21 +579,41 @@ export function MiniSpark({ values, color = '#c85776', height = 34 }: { values: 
 
 const trDays = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
+/**
+ * Gün × saat yoğunluk ızgarası.
+ *
+ * Hücrelerin İÇİNDE RAKAM VAR: renk yalnızca "daha yoğun / daha az yoğun" diyordu, "kaç randevu"
+ * ancak fareyle üzerine gelince (ve dokunmatikte hiç) okunabiliyordu. Sıfırlar boş bırakılır —
+ * 90 küsur "0" yazmak ızgarayı gürültüye çeviriyor, dolu saatler kayboluyordu.
+ *
+ * KONTRAST TERS DÖNER: zemin şeffaflığı 0.18 → 1.0 arasında gezindiği için tek bir mürekkep rengi
+ * yetmez; koyu hücrede beyaz, açık hücrede koyu yazılır (asgari punto 10px).
+ */
 export function HeatGrid({ cells }: { cells: { dayOfWeek: number; hour: number; count: number }[] }) {
-  const { map, max, hours } = useMemo(() => {
+  const { map, max, hours, dayTotals, peakKey } = useMemo(() => {
     const m = new Map<string, number>()
+    const totals = Array(7).fill(0) as number[]
     let mx = 0
+    let peak = ''
     let minHour = 23
     let maxHour = 8
     for (const c of cells) {
-      m.set(`${c.dayOfWeek}-${c.hour}`, c.count)
-      if (c.count > mx) mx = c.count
+      const key = `${c.dayOfWeek}-${c.hour}`
+      m.set(key, c.count)
+      if (c.dayOfWeek >= 0 && c.dayOfWeek < 7) totals[c.dayOfWeek] += c.count
+      if (c.count > mx) { mx = c.count; peak = key }
       if (c.hour < minHour) minHour = c.hour
       if (c.hour > maxHour) maxHour = c.hour
     }
     const from = Math.min(minHour, 8)
     const to = Math.max(maxHour, 20)
-    return { map: m, max: mx || 1, hours: Array.from({ length: to - from + 1 }, (_, i) => from + i) }
+    return {
+      map: m,
+      max: mx || 1,
+      hours: Array.from({ length: to - from + 1 }, (_, i) => from + i),
+      dayTotals: totals,
+      peakKey: peak,
+    }
   }, [cells])
 
   if (cells.length === 0) {
@@ -604,35 +624,86 @@ export function HeatGrid({ cells }: { cells: { dayOfWeek: number; hour: number; 
     )
   }
 
+  const maxDayTotal = Math.max(1, ...dayTotals)
+
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[520px]">
-        <div className="flex gap-[3px] pl-9">
+      <div className="min-w-[680px]">
+        {/* Saat başlığı */}
+        <div className="flex gap-[3px] pb-1 pl-10 pr-[58px]">
           {hours.map((h) => (
-            <div key={h} className="flex-1 text-center text-[9px] font-semibold text-[#705a66]">
-              {h % 2 === 0 ? `${h}` : ''}
+            <div key={h} className="flex-1 text-center text-[10px] font-semibold tabular-nums text-[#705a66]">
+              {h}
             </div>
           ))}
         </div>
+
         {trDays.map((day, di) => (
           <div key={day} className="mt-[3px] flex items-center gap-[3px]">
-            <div className="w-9 shrink-0 text-[10px] font-semibold text-[#4a3a44]">{day}</div>
-            {hours.map((h) => {
-              const count = map.get(`${di}-${h}`) ?? 0
+            <div className="w-10 shrink-0 text-[11px] font-semibold text-[#4a3a44]">{day}</div>
+            {hours.map((h, hi) => {
+              const key = `${di}-${h}`
+              const count = map.get(key) ?? 0
               const intensity = count / max
+              // 0.55 üstü zemin koyudur; mürekkep beyaza döner (aksi hâlde yazı kayboluyor).
+              const dark = intensity > 0.55
               return (
-                <div
-                  key={`${di}-${h}`}
+                <motion.div
+                  key={key}
                   title={`${day} ${h}:00 · ${count} randevu`}
-                  className="h-5 flex-1 rounded-[4px] transition-transform hover:scale-110"
+                  initial={{ opacity: 0, scale: 0.72 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{
+                    duration: 0.32,
+                    ease: [0.22, 1, 0.36, 1],
+                    delay: Math.min((di * 3 + hi) * 0.006, 0.34),
+                  }}
+                  whileHover={{ scale: 1.14, zIndex: 2 }}
+                  className={`relative grid h-7 flex-1 place-items-center rounded-[5px] text-[10.5px] font-bold tabular-nums ${
+                    key === peakKey && count > 0 ? 'ring-2 ring-[#7b2c46] ring-offset-1 ring-offset-white' : ''
+                  }`}
                   style={{
                     background: count === 0 ? '#f9eef2' : `rgba(200, 87, 118, ${0.18 + intensity * 0.82})`,
+                    color: dark ? '#ffffff' : '#5a2338',
                   }}
-                />
+                >
+                  {/* Sıfır YAZILMAZ: boş kutu zaten "randevu yok" demektir. */}
+                  {count > 0 ? count : ''}
+                </motion.div>
               )
             })}
+            {/* Gün toplamı — "hangi gün daha dolu" sorusu satırın sonunda cevaplanır. */}
+            <div className="flex w-[55px] shrink-0 items-center gap-1.5 pl-1.5">
+              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f9eef2]">
+                <motion.span
+                  className="block h-full rounded-full bg-[#c85776]"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.round((dayTotals[di] / maxDayTotal) * 100)}%` }}
+                  transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.2 + di * 0.04 }}
+                />
+              </span>
+              <span className="w-5 text-right text-[10.5px] font-semibold tabular-nums text-[#4a3a44]">{dayTotals[di]}</span>
+            </div>
           </div>
         ))}
+
+        {/* Ölçek — rakamlar hücrede, renk yine de "ne kadar yoğun"u anlatıyor. */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#f6e6ec] pt-2.5">
+          {/* TOPLAM BURADA YAZILMAZ: kartın alt başlığı zaten dönemin randevu adedini BAŞKA bir
+              kaynaktan yazıyor. İki rakamı yan yana koymak, kutulara girmeyen bir randevu
+              (saatsiz kayıt, aralık dışı saat) olduğunda kartı kendi kendisiyle çelişik
+              gösterirdi. Burada yalnız ızgaranın kendi ölçeği durur. */}
+          <span className="text-[11px] font-semibold text-[#4a3a44]">
+            En yoğun kutu <span className="tabular-nums text-[#c85776]">{max}</span> randevu
+          </span>
+          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-[#705a66]">
+            az
+            {[0.18, 0.4, 0.6, 0.8, 1].map((a) => (
+              <span key={a} className="h-3 w-5 rounded-[3px]" style={{ background: `rgba(200, 87, 118, ${a})` }} />
+            ))}
+            çok
+          </span>
+        </div>
       </div>
     </div>
   )

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ProductFormDialog from '@/components/dashboard/ProductFormDialog'
+import ProductDetailModal from '@/components/dashboard/ProductDetailModal'
+import { catalogDangerBtn, catalogPrimaryBtn } from '@/components/dashboard/CatalogKit'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import ExcelTransferActions from '@/components/dashboard/ExcelTransferActions'
 import ImportDialog from '@/components/dashboard/ImportDialog'
@@ -14,9 +16,8 @@ import { adminApi } from '@/lib/apiClient'
 import { apiItems, formatTL, normalizeProduct, normalizeStockMovement, productCategoryLabels } from '@/lib/apiMappers'
 import { localDateKey } from '@/lib/datetime'
 import {
-  AlertTriangle, ArrowDownLeft, ArrowUpRight, Banknote, Barcode as BarcodeIcon, Boxes, Cake,
-  ChevronLeft, ChevronRight, FileUp, Hash, ImagePlus, Layers3, Loader2, MapPin, Package, PackagePlus,
-  PencilLine, Repeat, Ruler, Search, Star, Tag, Timer, ToggleRight, Trash2, TrendingUp, Truck, Wallet, X,
+  AlertTriangle, Boxes, ChevronLeft, ChevronRight, FileUp, Layers3, Package, PackagePlus,
+  PencilLine, Repeat, Search, Trash2, TrendingUp
 } from 'lucide-react'
 import type { ApiProduct, ApiStockMovement, Product, ProductCategoryKey, StockMovement } from '@/lib/types'
 
@@ -66,6 +67,10 @@ export default function ProductLibrary({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /** Künye artık sağ sütunda değil, hizmet/paket kartlarıyla aynı dilde bir modalde. */
+  const [detailOpen, setDetailOpen] = useState(false)
+  /** Hareket kaydedilince artar; modaldeki ürün-bazlı hareket listesini tazeler. */
+  const [movementsKey, setMovementsKey] = useState(0)
   // Ürün silme ayrı yetki (Stock.Delete) — yetkisiz personelde buton görünmez.
   const canDeleteProduct = usePermission().can('Stock.Delete')
   const [actionError, setActionError] = useState('')
@@ -114,7 +119,10 @@ export default function ProductLibrary({
   useEffect(() => { setPage(1) }, [tab, catFilter, statusFilter, q, pageSize])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize)
-  const sel = useMemo(() => filtered.find((p) => p.id === selectedId) || filtered[0], [filtered, selectedId])
+  // SEÇİM ARTIK AÇIK BİR EYLEM: eskiden süzgeç değişince `filtered[0]`e kayıyor ve sağ panel
+  // kullanıcının açmadığı bir ürünün künyesini gösteriyordu. Modal yalnız tıklanan kaydı açar.
+  const sel = useMemo(() => products.find((p) => p.id === selectedId) || null, [products, selectedId])
+  const openDetail = (p: Product) => { setSelectedId(p.id); setMoveDialog(null); setActionError(''); setDetailOpen(true) }
 
   // ---- kategori bazlı değer
   const catValues = useMemo(() => {
@@ -172,6 +180,7 @@ export default function ProductLibrary({
       })
       if (res.submittedToApproval) setActionMsg(staffApprovalSuccessMessage('Stok hareketi'))
       setMoveDialog(null)
+      setMovementsKey((k) => k + 1)
       await reload()
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Hareket kaydedilemedi.') } finally { setMoveBusy(false) }
   }
@@ -257,8 +266,9 @@ export default function ProductLibrary({
           ))}
         </div>
 
-        {/* MAIN: TABLE + DETAIL */}
-        <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
+        {/* ANA LİSTE — tam genişlik. Künye sağ sütunda değil, satıra tıklayınca modalde açılır
+            (hizmet ve paket sayfalarındaki desenin aynısı): tablo artık sıkışmıyor. */}
+        <div className="grid gap-4">
           <div className="overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white">
             <div className="border-b border-[#EAD8DF] px-5 py-4">
               <div className="font-display text-xl tracking-tight">Ürün Kütüphanesi <span className="ml-1 rounded-full bg-[#F6DFE6] px-2 py-0.5 text-[12px] text-[#8C4460]">{filtered.length}</span></div>
@@ -288,8 +298,8 @@ export default function ProductLibrary({
 
             <div className="divide-y divide-[#F1E7EB]">
               {pageRows.map((p) => (
-                <button key={p.id} type="button" onClick={() => setSelectedId(p.id)}
-                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] lg:items-center ${sel?.id === p.id ? 'bg-[#F6DFE6]/60' : ''}`}>
+                <button key={p.id} type="button" onClick={() => openDetail(p)}
+                  className={`grid w-full grid-cols-1 gap-2 px-5 py-3 text-left transition-colors hover:bg-[#F7F6F6] lg:grid-cols-[1.6fr_0.9fr_0.65fr_0.6fr_0.6fr_0.7fr_0.6fr_0.85fr_0.5fr] lg:items-center ${sel?.id === p.id && detailOpen ? 'bg-[#F6DFE6]/60' : ''}`}>
                   <div className="flex min-w-0 items-center gap-2.5">
                     {p.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -330,114 +340,6 @@ export default function ProductLibrary({
             )}
           </div>
 
-          {/* DETAIL PANEL */}
-          <div className="rounded-[18px] border border-[#EAD8DF] bg-white p-5">
-            {sel ? (
-              <>
-                <div className="text-[10px] font-mono uppercase tracking-[0.26em] text-[#A5556E]/75">Seçili ürün</div>
-                <div className="mt-3 flex items-start gap-3">
-                  {sel.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={sel.imageUrl} alt={sel.name} className="h-20 w-20 shrink-0 rounded-2xl border border-[#EAD8DF] object-cover" />
-                  ) : (
-                    <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-[#A5556E] text-white"><Package className="h-8 w-8" /></span>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2"><span className="truncate font-display text-2xl tracking-tight">{sel.name}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-mono uppercase ${STATUS_TONE[sel.status]}`}>{STATUS_LABEL[sel.status]}</span></div>
-                    <div className="text-[11px] text-[#5A4B53]">{sel.categoryLabel} · BARKOD {sel.barcode || '—'}</div>
-                  </div>
-                </div>
-
-                <Section title="Stok Özeti">
-                  <Cell k="Mevcut Stok" v={`${sel.currentStock} ${sel.unit}`} tone={stockTone(sel)} />
-                  <Cell k="Min. Stok" v={`${sel.minStockLevel} ${sel.unit}`} />
-                </Section>
-
-                <Section title="Fiyat Bilgileri">
-                  <Cell k="Maliyet" v={formatTL(sel.cost)} />
-                  <Cell k="Satış Fiyatı" v={formatTL(sel.salePrice)} />
-                  <Cell k="Kâr Marjı" v={sel.salePrice > 0 ? `%${String(sel.marginPct).replace('.', ',')}` : '—'} tone="text-emerald-700" />
-                </Section>
-
-                <Section title="Diğer Bilgiler">
-                  <Cell k="Marka" v={sel.brand || '—'} />
-                  <Cell k="Raf / Dolap" v={sel.location || '—'} />
-                  <Cell k="Son Kullanma" v={sel.expiryDate ? sel.expiryDate.split('-').reverse().join('.') : '—'} />
-                  <Cell k="Lot Numarası" v={sel.lotNumber || '—'} />
-                  <Cell k="Birim" v={sel.unit} />
-                </Section>
-
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <ProductFormDialog
-                    mode="edit"
-                    title={`${sel.name} · düzenle`}
-                    submitLabel="Güncelle"
-                    initial={{
-                      imageUrl: sel.imageUrl || '', name: sel.name, barcode: sel.barcode || '',
-                      category: sel.category, unit: sel.unit || 'adet',
-                      brand: sel.brand || '', location: sel.location || '',
-                      lotNumber: sel.lotNumber || '', expiryDate: sel.expiryDate || '',
-                      cost: sel.cost, salePrice: sel.salePrice, minStockLevel: sel.minStockLevel, isActive: sel.isActive,
-                    }}
-                    onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as unknown as FV, sel), tenantId); await reload() }}
-                    trigger={
-                      <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD8DF] bg-white px-3 py-2 text-[11px] font-semibold text-[#74616A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
-                        <PencilLine className="h-3.5 w-3.5" /> Düzenle
-                      </button>
-                    }
-                  />
-                  <button type="button" onClick={() => setMoveDialog({ type: 'Inbound', qty: 1, unitCost: sel.cost, notes: '', date: localDateKey(new Date()) })}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-emerald-300/40 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">
-                    <ArrowDownLeft className="h-3.5 w-3.5" /> Stok Girişi
-                  </button>
-                  <button type="button" onClick={() => setMoveDialog({ type: 'Outbound', qty: 1, unitCost: 0, notes: '', date: localDateKey(new Date()) })}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-sky-300/40 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-700 hover:bg-sky-100">
-                    <ArrowUpRight className="h-3.5 w-3.5" /> Stok Çıkışı
-                  </button>
-                  {canDeleteProduct && (
-                  <ConfirmDialog destructive title={`"${sel.name}" silinsin mi?`} description="Ürün pasifleştirilir. Geçmiş hareketler raporlarda kalır." confirmLabel="Sil"
-                    onConfirm={async () => { await adminApi.deleteProduct(sel.id, tenantId); setSelectedId(null); await reload() }}
-                    trigger={<button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-rose-300/40 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" /> Sil</button>} />
-                  )}
-                </div>
-
-                {moveDialog && (
-                  <div className="mt-3 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-[#2A2027]">{MOVE_LABEL[moveDialog.type]} · {sel.name}</span>
-                      <button type="button" onClick={() => setMoveDialog(null)} className="text-[#74616A] hover:text-rose-600"><X className="h-4 w-4" /></button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="text-[9px] font-mono uppercase text-[#74616A]">Miktar
-                        <input type="number" min={1} value={moveDialog.qty} onChange={(e) => setMoveDialog((m) => m && { ...m, qty: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
-                      </label>
-                      <label className="text-[9px] font-mono uppercase text-[#74616A]">Birim maliyet (₺)
-                        <input type="number" min={0} value={moveDialog.unitCost || ''} onChange={(e) => setMoveDialog((m) => m && { ...m, unitCost: Number(e.target.value) })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
-                      </label>
-                      {/* HAREKET TARİHİ: mal dün/geçen hafta girdiyse stok raporu o güne yazsın.
-                          Varsayılan bugün; ileri tarih kabul edilmez. */}
-                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#74616A]">Hareket tarihi
-                        <input
-                          type="date"
-                          value={moveDialog.date}
-                          max={localDateKey(new Date())}
-                          onChange={(e) => setMoveDialog((m) => m && { ...m, date: e.target.value })}
-                          className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]"
-                        />
-                      </label>
-                      <label className="col-span-2 text-[9px] font-mono uppercase text-[#74616A]">Not
-                        <input value={moveDialog.notes} onChange={(e) => setMoveDialog((m) => m && { ...m, notes: e.target.value })} className="mt-0.5 w-full rounded-[9px] border border-[#EAD8DF] bg-white px-2 py-1.5 text-[13px] text-[#2A2027] outline-none focus:border-[#A5556E]" />
-                      </label>
-                    </div>
-                    <button type="button" disabled={moveBusy} onClick={submitMove}
-                      className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#A5556E] px-3 py-2 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">
-                      {moveBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Repeat className="h-3.5 w-3.5" />} {isStaff ? 'Onaya gönder' : 'Hareketi kaydet'}
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : <div className="grid h-full place-items-center py-16 text-sm text-[#74616A]">Ürün seçimi yok.</div>}
-          </div>
         </div>
 
         {/* ALT BLOKLAR */}
@@ -496,6 +398,66 @@ export default function ProductLibrary({
         </div>
       </div>
 
+      {/* ---------- ÜRÜN DETAY MODALİ ---------- */}
+      <ProductDetailModal
+        open={detailOpen && !!sel}
+        onOpenChange={(next) => { setDetailOpen(next); if (!next) { setSelectedId(null); setMoveDialog(null) } }}
+        product={sel}
+        tenantId={tenantId}
+        movementsKey={movementsKey}
+        canDelete={canDeleteProduct}
+        isStaff={isStaff}
+        error={actionError}
+        moveDraft={moveDialog}
+        moveBusy={moveBusy}
+        onMoveDraftChange={(next) => { setActionError(''); setMoveDialog(next) }}
+        onSubmitMove={() => void submitMove()}
+        today={localDateKey(new Date())}
+        renderEditTrigger={() =>
+          sel ? (
+            <ProductFormDialog
+              key={sel.id}
+              mode="edit"
+              title={`${sel.name} · düzenle`}
+              submitLabel="Güncelle"
+              initial={{
+                imageUrl: sel.imageUrl || '', name: sel.name, barcode: sel.barcode || '',
+                category: sel.category, unit: sel.unit || 'adet',
+                brand: sel.brand || '', location: sel.location || '',
+                lotNumber: sel.lotNumber || '', expiryDate: sel.expiryDate || '',
+                cost: sel.cost, salePrice: sel.salePrice, minStockLevel: sel.minStockLevel, isActive: sel.isActive,
+              }}
+              onSubmit={async (v) => { await adminApi.updateProduct(sel.id, productPayload(v as unknown as FV, sel), tenantId); await reload() }}
+              trigger={
+                <button type="button" className={catalogPrimaryBtn}>
+                  <PencilLine className="h-3.5 w-3.5" /> Düzenle
+                </button>
+              }
+            />
+          ) : null
+        }
+        renderDeleteTrigger={() =>
+          sel ? (
+            <ConfirmDialog
+              destructive
+              title={`"${sel.name}" silinsin mi?`}
+              description="Ürün pasifleştirilir. Geçmiş hareketler raporlarda kalır."
+              confirmLabel="Sil"
+              onConfirm={async () => {
+                await adminApi.deleteProduct(sel.id, tenantId)
+                setDetailOpen(false); setSelectedId(null)
+                await reload()
+              }}
+              trigger={
+                <button type="button" className={catalogDangerBtn}>
+                  <Trash2 className="h-3.5 w-3.5" /> Sil
+                </button>
+              }
+            />
+          ) : null
+        }
+      />
+
       <ImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
@@ -506,17 +468,6 @@ export default function ProductLibrary({
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mt-3 rounded-[14px] border border-[#EAD8DF]/65 bg-[#F7F6F6] p-3">
-      <div className="mb-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{title}</div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">{children}</div>
-    </div>
-  )
-}
-function Cell({ k, v, tone }: { k: string; v: string; tone?: string }) {
-  return <div className="min-w-0"><div className="text-[9px] font-mono uppercase text-[#74616A]">{k}</div><div className={`mt-0.5 truncate text-[12.5px] font-medium ${tone || 'text-[#2A2027]'}`}>{v}</div></div>
-}
 function Tile({ icon: Icon, tone, k, v }: { icon: typeof Boxes; tone: string; k: string; v: string }) {
   return (
     <div className="flex items-center gap-2.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5">

@@ -565,6 +565,21 @@ class _ServiceDetailSheetState extends State<_ServiceDetailSheet> {
   bool _busy = false;
   int _tab = 0;
 
+  /// "Geçmiş satış ekle" alt çubuktan tetiklenir; form Satışlar sekmesindeki panelde açılır
+  /// (kaydettikten sonra listeyi tazeleyen kod orada). Panel sekme değiştikçe kurulup
+  /// yıkıldığı için tetikleme BAYRAKLA değil anahtarla yapılır: bayrak, panelin yeniden
+  /// kurulmasında kendiliğinden ateşleniyor ve ikinci dokunuşta hiç çalışmıyordu.
+  final _salesKey = GlobalKey<CatalogSalesPanelState>();
+
+  /// Satışlar sekmesine geçip formu açar. Panel o kare içinde kurulduğu için çağrı
+  /// build sonrasına ertelenir.
+  void _openHistorical() {
+    setState(() => _tab = 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _salesKey.currentState?.openHistoricalForm();
+    });
+  }
+
   String get _id => '${widget.service['id'] ?? ''}';
   String get _name => '${widget.service['name'] ?? '—'}';
   String get _rawCategory => '${widget.service['category'] ?? ''}'.trim();
@@ -802,11 +817,13 @@ class _ServiceDetailSheetState extends State<_ServiceDetailSheet> {
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                       children: [
                         CatalogSalesPanel(
+                          key: _salesKey,
                           api: widget.api,
                           kind: 'service',
                           itemId: _id,
                           itemName: _name,
                           itemPrice: price.toDouble(),
+                          showHistoryButton: false,
                         ),
                       ],
                     ),
@@ -1035,6 +1052,23 @@ class _ServiceDetailSheetState extends State<_ServiceDetailSheet> {
             const SizedBox(height: 10),
             Row(
               children: [
+                // GEÇMİŞ SATIŞ — Sil'in SOLUNDA. Eskiden yalnız Satışlar sekmesinin içindeki
+                // küçük bağlantıydı; sekmeye girmeden görünmüyordu.
+                if (widget.canManage) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _openHistorical,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 46),
+                        foregroundColor: const Color(0xFF6B4AA0),
+                        side: const BorderSide(color: Color(0xFFCDBCE8)),
+                      ),
+                      icon: const Icon(Icons.history_rounded, size: 18),
+                      label: const Text('Geçmiş satış', overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 if (widget.canDelete)
                   Expanded(
                     child: OutlinedButton.icon(
@@ -1051,7 +1085,8 @@ class _ServiceDetailSheetState extends State<_ServiceDetailSheet> {
                 if (widget.canDelete && widget.canManage) const SizedBox(width: 10),
                 if (widget.canManage)
                   Expanded(
-                    flex: 2,
+                    // Üç düğme aynı satırda: eşit paylaşım, aksi hâlde "Geçmiş satış" etiketi
+                    // dar telefonda kırpılıyordu.
                     child: FilledButton.icon(
                       onPressed: _busy
                           ? null
@@ -1061,7 +1096,7 @@ class _ServiceDetailSheetState extends State<_ServiceDetailSheet> {
                             },
                       style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
                       icon: const Icon(Icons.edit_rounded, size: 18),
-                      label: const Text('Düzenle'),
+                      label: const Text('Düzenle', overflow: TextOverflow.ellipsis),
                     ),
                   ),
               ],

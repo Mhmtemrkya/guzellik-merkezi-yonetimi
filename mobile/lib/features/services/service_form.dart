@@ -35,6 +35,11 @@ class _ServiceFormState extends State<ServiceForm> {
   bool _isActive = true;
   bool _saving = false;
 
+  /// "Geçmiş satış ekle" Sil'in yanındaki düğmeden tetiklenir; form katalog satış panelinde
+  /// açılır (kayıttan sonra listeyi tazeleyen kod orada). Tetikleme bayrakla değil ANAHTARLA:
+  /// bayrağın `setState`'siz sıfırlanması ikinci dokunuşu ölü bırakıyordu.
+  final _salesKey = GlobalKey<CatalogSalesPanelState>();
+
   // Onam formları: hizmete bağlı zorunlu rıza belgeleri. Bağ hizmet DTO'sunda değil,
   // şablon kaydının serviceIds listesinde durur — kaydederken oraya yazılır.
   Set<String> _consentSelected = <String>{};
@@ -276,20 +281,37 @@ class _ServiceFormState extends State<ServiceForm> {
               ),
               if (_isEdit) ...[
                 const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: _delete,
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('Hizmeti sil'),
+                // GEÇMİŞ SATIŞ, SİL'İN SOLUNDA (web katalog modallerindeki alt çubuk düzeni).
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () => _salesKey.currentState?.openHistoricalForm(),
+                        style: TextButton.styleFrom(foregroundColor: const Color(0xFF6B4AA0)),
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text('Geçmiş satış', overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: _delete,
+                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Hizmeti sil', overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
                 ),
                 const Divider(height: 26),
                 // Bu hizmeti kim, kime, ne zaman satmış (web katalog paneli paritesi).
                 CatalogSalesPanel(
+                  key: _salesKey,
                   api: widget.api,
                   kind: 'service',
                   itemId: '${widget.item?['id'] ?? ''}',
                   itemName: _name.text.trim(),
                   itemPrice: double.tryParse(_price.text.replaceAll(',', '.')) ?? 0,
+                  showHistoryButton: false,
                 ),
               ],
             ],

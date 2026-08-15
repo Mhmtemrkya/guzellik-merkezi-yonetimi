@@ -40,6 +40,11 @@ class _PackageFormState extends State<PackageForm> {
   String? _category;
   bool _isActive = true;
   bool _saving = false;
+
+  /// "Geçmiş satış ekle" Sil'in yanındaki düğmeden tetiklenir; form katalog satış panelinde
+  /// açılır (kayıttan sonra listeyi tazeleyen kod orada). Tetikleme bayrakla değil ANAHTARLA:
+  /// bayrağın `setState`'siz sıfırlanması ikinci dokunuşu ölü bırakıyordu.
+  final _salesKey = GlobalKey<CatalogSalesPanelState>();
   /// Paketin katalog durumu (Active/Draft/Passive/Archived/Cancelled). Kaydederken KORUNUR:
   /// aksi halde iptal edilmiş bir paket mobilden düzenlenince sessizce yayına dönerdi.
   String _status = 'Active';
@@ -534,21 +539,41 @@ class _PackageFormState extends State<PackageForm> {
                         _status == 'Cancelled' ? 'İptali geri al' : 'Paketi iptal et',
                       ),
                     ),
-                    TextButton.icon(
-                      onPressed: _delete,
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Paketi sil'),
+                    // GEÇMİŞ SATIŞ, SİL'İN SOLUNDA (web katalog modallerindeki alt çubuk düzeni).
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton.icon(
+                            onPressed: () => _salesKey.currentState?.openHistoricalForm(),
+                            style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF6B4AA0)),
+                            icon: const Icon(Icons.history_rounded),
+                            label: const Text('Geçmiş satış',
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                        Expanded(
+                          child: TextButton.icon(
+                            onPressed: _delete,
+                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            label: const Text('Paketi sil',
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                      ],
                     ),
                     const Divider(height: 26),
                     // Bu paketi kim, kime, ne zaman satmış (web katalog paneli paritesi).
                     CatalogSalesPanel(
+                      key: _salesKey,
                       api: widget.api,
                       kind: 'package',
                       itemId: '${widget.item?['id'] ?? ''}',
                       itemName: _name.text.trim(),
                       itemPrice:
                           double.tryParse(_totalPrice.text.replaceAll(',', '.')) ?? 0,
+                      showHistoryButton: false,
                     ),
                   ],
                 ],

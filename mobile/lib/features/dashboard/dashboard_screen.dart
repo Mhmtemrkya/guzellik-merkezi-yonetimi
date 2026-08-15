@@ -300,10 +300,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 14),
                       _TrialBanner(tenant: data.tenant!),
                     ],
-                    if (!user.isPlatform) ...[
-                      const SizedBox(height: 14),
-                      PeriodSelector(value: _period, onChanged: _onPeriodChanged),
-                    ],
                     const SizedBox(height: 20),
                     _MetricGrid(
                       data: data,
@@ -322,6 +318,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _QuickActions(api: widget.api),
                     ],
                     const SizedBox(height: 20),
+                    // RANDEVU DÖNEMİ — sürüklediği listenin (randevu akışı) hemen üstünde
+                    // durur. Sayfanın tepesindeyken hangi listeyi süzdüğü belli olmuyordu.
+                    if (!user.isPlatform) ...[
+                      PeriodSelector(value: _period, onChanged: _onPeriodChanged),
+                      const SizedBox(height: 14),
+                    ],
                     Text(
                       user.isPlatform ? 'Son kurumlar' : 'Randevular',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(

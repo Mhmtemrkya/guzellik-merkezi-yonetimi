@@ -82,12 +82,22 @@ export default function CustomerSalesModal({
   onClose,
   customerName,
   summary,
+  cancelledCount = 0,
+  cancelledSlot,
   children,
 }: {
   open: boolean
   onClose: () => void
   customerName: string
   summary: CustomerSalesSummary
+  /**
+   * İPTAL ADEDİ ARŞİVDEN. `summary.cancelled` gerçekte hep 0'dır: iptalde cari satırları canlı
+   * tablodan silinip `cancelled_sales`'a taşınır, yani özetin baktığı listede iz kalmaz.
+   * Rozet bu sayıyı okumazsa altındaki iptal listesi "0 iptal" başlığıyla görünürdü.
+   */
+  cancelledCount?: number
+  /** İptal edilen satışlar kartı — müşteri kartının sağ sütunundan buraya taşındı. */
+  cancelledSlot?: ReactNode
   /** Satış listesi paneli (`CustomerSalesPanel`, `variant="flush"`). */
   children: ReactNode
 }) {
@@ -100,6 +110,8 @@ export default function CustomerSalesModal({
   }, [open, onClose])
 
   const paidPct = summary.total > 0 ? Math.min(100, Math.round((summary.paid / summary.total) * 100)) : 0
+  /** Canlı özetin sayacı arşivi görmez; ikisinin büyüğü gerçek iptal adedidir. */
+  const cancelled = Math.max(summary.cancelled, cancelledCount)
 
   return (
     <ModalPortal>
@@ -159,9 +171,9 @@ export default function CustomerSalesModal({
                     <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
                       <CheckCircle2 className="h-3 w-3" /> Biten <span className="tabular-nums">{summary.completed}</span>
                     </span>
-                    {summary.cancelled > 0 && (
+                    {cancelled > 0 && (
                       <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600">
-                        <XCircle className="h-3 w-3" /> İptal <span className="tabular-nums">{summary.cancelled}</span>
+                        <XCircle className="h-3 w-3" /> İptal <span className="tabular-nums">{cancelled}</span>
                       </span>
                     )}
                   </div>
@@ -194,8 +206,11 @@ export default function CustomerSalesModal({
                 )}
               </header>
 
-              {/* BODY */}
-              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] p-3.5 sm:p-5">{children}</div>
+              {/* BODY — canlı satışlar, altında iptal arşivi. */}
+              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbf4f7] p-3.5 sm:p-5">
+                {children}
+                {cancelledSlot && <div className="mt-4">{cancelledSlot}</div>}
+              </div>
             </motion.div>
           </motion.div>
         )}

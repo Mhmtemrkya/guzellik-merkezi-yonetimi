@@ -19,6 +19,9 @@ import AdisyonModal from '@/components/dashboard/AdisyonModal'
 import AdisyonReceiptModal from '@/components/dashboard/AdisyonReceiptModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
+import {
+  CatalogOverview, CatalogSearch, StatusSegments, catalogGhostBtn, catalogPrimaryBtn,
+} from '@/components/dashboard/CatalogKit'
 import ExpenseFormDialog, { type ExpenseFormDialogValues } from '@/components/dashboard/ExpenseFormDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
@@ -34,7 +37,7 @@ import {
 } from '@/lib/apiMappers'
 import {
   Ban, Banknote, Boxes, Briefcase, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
-  CreditCard, History, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
+  CreditCard, HelpCircle, History, Landmark, Megaphone, Package, PieChart, Plus, Printer, Receipt, ReceiptText, Search,
   Trash2, TrendingDown, TrendingUp, Undo2, Users, Wallet, Wrench, Zap,
 } from 'lucide-react'
 import type {
@@ -113,6 +116,8 @@ function OnMuhasebePageInner() {
   const [selectedAdisyonId, setSelectedAdisyonId] = useState<string | null>(null)
   const [adisyonFilter, setAdisyonFilter] = useState<'all' | 'Open' | 'Approved' | 'Cancelled'>('all')
   const [adisyonQuery, setAdisyonQuery] = useState('')
+  /** "Nasıl işler?" — üç adımlık akış anlatımı kalıcı şerit değil, istendiğinde açılır. */
+  const [flowOpen, setFlowOpen] = useState(false)
   // Açık adisyon düzenlenebilir (AdisyonModal), kapanmış olan okunur fiş (AdisyonReceiptModal).
   const [adisyonEditOpen, setAdisyonEditOpen] = useState(false)
   const [adisyonReceiptOpen, setAdisyonReceiptOpen] = useState(false)
@@ -931,171 +936,235 @@ function OnMuhasebePageInner() {
         {/* ================= ADİSYON ================= */}
         {tab === 'adisyon' && canAdisyon && (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-4 py-2.5 text-[11px] text-[#8C4460]">
-                <ReceiptText className="h-4 w-4" /> Açık hesap fişleri. Kalemler önce adisyona düşer; yönetici onaylayınca borç cariye, tahsilat kasaya işlenir.
+            {/* KOKPİT — TEK KART.
+                Eskiden bu bölümde bir bilgi şeridi, "Bugünün Kartı" düğmesi, ay gezgini, DÖRT KPI
+                kartı, üç adımlık akış şeridi ve ayrı bir araç çubuğu (arama + DÖRT durum çipi)
+                alt alta duruyordu: aynı dört durum ekranda iki kez sayılıyor, liste görünene
+                kadar ekranın yarısı doluyordu. Katalog sayfalarındaki kural buraya da uygulandı —
+                SAYAÇ = SÜZGEÇ, ağır anlatım ise istendiğinde açılır. */}
+            <CatalogOverview
+              icon={ReceiptText}
+              eyebrow={`Adisyon · ${monthLabel}`}
+              total={adisyonStats.openCount}
+              totalLabel="açık fiş"
+              facts={[
+                { label: 'Bekleyen net', value: formatTL(adisyonStats.openNet) },
+                { label: 'Cariye', value: formatTL(adisyonStats.charge) },
+                { label: 'Kasaya', value: formatTL(adisyonStats.payment) },
+              ]}
+              segmentTitle="Durum süzgeci"
+              segmentHint="Sayaç ve süzgeç tek şeydir — birine dokunun, liste süzülsün."
+              segmentAside={monthNav}
+            >
+              <StatusSegments
+                idPrefix="on-muhasebe-adisyon"
+                value={adisyonFilter}
+                onChange={setAdisyonFilter}
+                options={[
+                  { key: 'all' as const, label: 'Tümü', count: adisyonCounts.all },
+                  { key: 'Open' as const, label: 'Açık', count: adisyonCounts.Open },
+                  { key: 'Approved' as const, label: 'Onaylı', count: adisyonCounts.Approved },
+                  { key: 'Cancelled' as const, label: 'İptal', count: adisyonCounts.Cancelled },
+                ]}
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <CatalogSearch value={adisyonQuery} onChange={setAdisyonQuery} placeholder="Müşteri veya kalem ara…" />
+                <button
+                  type="button"
+                  onClick={() => setDailyOpen(true)}
+                  className={catalogGhostBtn}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" /> Bugünün Kartı
+                </button>
+                {/* Akış anlatımı KALICI ŞERİT DEĞİL: her gün aynı ekrana bakan kullanıcı için
+                    gürültü, yeni kullanıcı için gerekli — isteyen açar. */}
+                <button
+                  type="button"
+                  onClick={() => setFlowOpen((v) => !v)}
+                  aria-expanded={flowOpen}
+                  className={catalogGhostBtn}
+                >
+                  <HelpCircle className="h-3.5 w-3.5" /> Nasıl işler?
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setDailyOpen(true)}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-[#BE7690] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#A5556E] transition-transform hover:-translate-y-0.5 hover:bg-[#F7F6F6]"
-              >
-                <CalendarDays className="h-4 w-4" /> Bugünün Kartı
-              </button>
-              {monthNav}
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <OverviewCard icon={ReceiptText} label="Açık adisyon" value={String(adisyonStats.openCount)} chip={`↗ ${formatTL(adisyonStats.openNet)} bekleyen net`} bars={monthBars} />
-              <OverviewCard icon={CheckCircle2} label="Onaylanan adisyon" value={String(adisyonStats.approvedCount)} chip="↗ Cariye + kasaya işlendi" chipTone="text-emerald-700 bg-emerald-50" bars={monthBars} />
-              <OverviewCard icon={CreditCard} label="Cariye işlenen borç" value={formatTL(adisyonStats.charge)} bars={monthBars} />
-              <OverviewCard icon={Landmark} label="Kasaya işlenen tahsilat" value={formatTL(adisyonStats.payment)} bars={monthBars} />
-            </div>
-
-            {/* Akış şeridi — üç adım tek satırda */}
-            <div className="flex flex-wrap items-center gap-1.5 rounded-[14px] border border-[#EAD8DF] bg-white/70 px-3 py-2 text-[10.5px]">
-              {[
-                ['1', 'Adisyon açılır, kalemler toplanır', 'bg-amber-50 text-amber-700'],
-                ['2', 'Yönetici onaylar', 'bg-emerald-50 text-emerald-700'],
-                ['3', 'Borç cariye, tahsilat kasaya işlenir', 'bg-rose-50 text-rose-700'],
-              ].map(([n, t, cls], i) => (
-                <span key={n} className="flex items-center gap-1.5">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${cls}`}>
-                    <span className="grid h-4 w-4 place-items-center rounded-full bg-white/70 text-[9px] font-bold">{n}</span>
-                    {t}
-                  </span>
-                  {i < 2 && <ChevronRight className="h-3.5 w-3.5 text-[#c9b3bd]" />}
-                </span>
-              ))}
-            </div>
-
-            {/* ---- Araç çubuğu ---- */}
-            <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[#EAD8DF] bg-white p-3">
-              <div className="flex min-w-[230px] flex-1 items-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-[#74616A]" />
-                <input
-                  value={adisyonQuery}
-                  onChange={(e) => setAdisyonQuery(e.target.value)}
-                  placeholder="Müşteri veya kalem ara…"
-                  className="w-full bg-transparent text-[12.5px] text-[#2A2027] outline-none placeholder:text-[#74616A]"
-                />
-                {adisyonQuery && (
-                  <button type="button" onClick={() => setAdisyonQuery('')} className="shrink-0 text-[10px] font-semibold text-[#8C4460]">Temizle</button>
-                )}
-              </div>
-              <div className="inline-flex flex-wrap items-center gap-1 rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6]/50 p-1">
-                {([
-                  ['all', 'Tümü', adisyonCounts.all],
-                  ['Open', 'Açık', adisyonCounts.Open],
-                  ['Approved', 'Onaylı', adisyonCounts.Approved],
-                  ['Cancelled', 'İptal', adisyonCounts.Cancelled],
-                ] as const).map(([k, l, n]) => (
-                  <button
-                    key={k} type="button" onClick={() => setAdisyonFilter(k)}
-                    className={`rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${adisyonFilter === k ? 'bg-[#A5556E] text-white' : 'text-[#74616A] hover:bg-white'}`}
+              <AnimatePresence initial={false}>
+                {flowOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
                   >
-                    {l} <span className={adisyonFilter === k ? 'opacity-80' : 'text-[#8C4460]'}>{n}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-[14px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[11px]">
+                      {([
+                        ['1', 'Adisyon açılır, kalemler toplanır', 'bg-amber-50 text-amber-800'],
+                        ['2', 'Yönetici onaylar', 'bg-emerald-50 text-emerald-800'],
+                        ['3', 'Borç cariye, tahsilat kasaya işlenir', 'bg-rose-50 text-rose-800'],
+                      ] as const).map(([n, t, cls], i) => (
+                        <motion.span
+                          key={n}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.06 * i, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                          className="flex items-center gap-1.5"
+                        >
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${cls}`}>
+                            <span className="grid h-4 w-4 place-items-center rounded-full bg-white/80 text-[9px] font-bold">{n}</span>
+                            {t}
+                          </span>
+                          {i < 2 && <ChevronRight className="h-3.5 w-3.5 text-[#c9b3bd]" />}
+                        </motion.span>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </CatalogOverview>
 
             {/* ---- Adisyon fişleri ---- */}
-            <div className="grid gap-3 lg:grid-cols-2">
-              {filteredAdisyonlar.map((a) => {
-                const saleCancelled = cancelledSaleByAdisyonId.get(a.id)
-                const net = a.chargeTotal - a.paymentTotal
-                const isOpen = a.status === 'Open'
-                const paidPct = a.chargeTotal > 0 ? Math.min(100, Math.round((a.paymentTotal / a.chargeTotal) * 100)) : 0
-                const initials = (a.customerName || 'Müşteri').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
-                return (
-                  <div
-                    key={a.id}
-                    className={`rounded-[18px] border bg-white p-4 transition-shadow hover:shadow-[0_22px_46px_-34px_rgba(150,78,104,0.5)] ${
-                      isOpen ? 'border-amber-200' : a.status === 'Approved' ? 'border-[#EAD8DF]/80' : 'border-rose-200/70'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <button type="button" onClick={() => openAdisyonDetail(a)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#8C4460]">
-                          {initials || '—'}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[14px] font-semibold text-[#2A2027]">{a.customerName || 'Müşteri'}</span>
-                          <span className="block truncate text-[11px] text-[#74616A]">
-                            {shortDay(a.openedAtUtc)} · {a.items.length} kalem
-                            {a.items.length > 0 ? ` · ${a.items.slice(0, 2).map((i) => i.description).join(', ')}${a.items.length > 2 ? '…' : ''}` : ''}
+            <motion.div layout className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {filteredAdisyonlar.map((a, index) => {
+                  const saleCancelled = cancelledSaleByAdisyonId.get(a.id)
+                  const net = a.chargeTotal - a.paymentTotal
+                  const isOpen = a.status === 'Open'
+                  const paidPct = a.chargeTotal > 0 ? Math.min(100, Math.round((a.paymentTotal / a.chargeTotal) * 100)) : 0
+                  const initials = (a.customerName || 'Müşteri').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toLocaleUpperCase('tr')
+                  const rail = isOpen ? 'bg-[#D9932B]' : a.status === 'Approved' ? 'bg-[#1E8C60]' : 'bg-[#C8365C]'
+                  const pill = isOpen
+                    ? 'border-[#EFC98B] bg-[#FDF3E2] text-[#8A5A11]'
+                    : a.status === 'Approved'
+                      ? 'border-[#8ED6B4] bg-[#DFF3EA] text-[#15694A]'
+                      : 'border-[#F0AFBF] bg-[#FCE7EC] text-[#A32347]'
+                  return (
+                    <motion.article
+                      key={a.id}
+                      layout
+                      initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.96 }}
+                      transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.026, 0.22) }}
+                      whileHover={{ y: -3 }}
+                      className="group relative overflow-hidden rounded-[18px] border border-[#EAD8DF] bg-white shadow-[0_16px_38px_-34px_rgba(87,39,61,0.55)] transition-[border-color,box-shadow] hover:border-[#BE7690] hover:shadow-[0_22px_46px_-30px_rgba(87,39,61,0.6)]"
+                    >
+                      {/* Durum şeridi — rozet okunmadan da fişin durumu ayırt edilsin. */}
+                      <span aria-hidden className={`absolute inset-y-0 left-0 w-[3px] ${rail}`} />
+                      {/* Açık fiş yumuşak nefes alır: gün içinde kapanmayı bekleyen kayıt göze çarpsın. */}
+                      {isOpen && (
+                        <motion.span
+                          aria-hidden
+                          className="pointer-events-none absolute -right-10 -top-14 h-32 w-32 rounded-full bg-[#F9A1B9]/25 blur-2xl"
+                          animate={{ opacity: [0.25, 0.6, 0.25], scale: [1, 1.12, 1] }}
+                          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                      )}
+
+                      <div className="relative p-4 pl-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <button type="button" onClick={() => openAdisyonDetail(a)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#8C4460] transition-transform duration-300 group-hover:scale-105">
+                              {initials || '—'}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-[14px] font-semibold text-[#2A2027]">{a.customerName || 'Müşteri'}</span>
+                              <span className="block truncate text-[11px] text-[#705a66]">
+                                {shortDay(a.openedAtUtc)} · {a.items.length} kalem
+                                {a.items.length > 0 ? ` · ${a.items.slice(0, 2).map((i) => i.description).join(', ')}${a.items.length > 2 ? '…' : ''}` : ''}
+                              </span>
+                            </span>
+                          </button>
+                          <div className="shrink-0 text-right">
+                            <div className="font-display text-[19px] tabular-nums text-[#A5556E]">{formatTL(a.chargeTotal)}</div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#74616A]">borç</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${pill}`}>
+                            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+                            {isOpen ? 'Açık' : a.status === 'Approved' ? 'Onaylandı' : 'İptal'}
                           </span>
-                        </span>
-                      </button>
-                      <div className="shrink-0 text-right">
-                        <div className="font-display text-[19px] tabular-nums text-[#A5556E]">{formatTL(a.chargeTotal)}</div>
-                        <div className="text-[9.5px] font-mono uppercase tracking-wide text-[#74616A]">borç</div>
+                          <span className="text-[11px] text-[#705a66]">
+                            Tahsilat <b className="font-semibold text-[#15694A]">{formatTL(a.paymentTotal)}</b>
+                            {' · '}{net >= 0 ? 'Kalan' : 'Fazla'} <b className="font-semibold text-[#3E343A]">{formatTL(Math.abs(net))}</b>
+                          </span>
+                          {saleCancelled && (
+                            <span className="rounded-full border border-[#F0AFBF] bg-[#FCE7EC] px-2 py-0.5 text-[10px] font-bold text-[#A32347]">Satış iptal</span>
+                          )}
+                        </div>
+
+                        {saleCancelled && (
+                          <div className="mt-1.5 rounded-[10px] bg-[#FCE7EC]/70 px-2.5 py-1.5 text-[10.5px] text-[#A32347]">
+                            Gerekçe: {saleCancelled.reason || 'belirtilmemiş'}{saleCancelled.at ? ` · ${shortDay(saleCancelled.at)}` : ''}
+                          </div>
+                        )}
+
+                        {a.chargeTotal > 0 && (
+                          <div className="mt-2.5 flex items-center gap-2">
+                            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
+                              <motion.span
+                                className="block h-full rounded-full bg-[linear-gradient(90deg,#7fc7ad,#2c7d63)]"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${paidPct}%` }}
+                                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+                              />
+                            </span>
+                            <span className="shrink-0 text-[10.5px] font-semibold text-[#705a66]">%{paidPct} tahsil</span>
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button" onClick={() => openAdisyonDetail(a)}
+                            className={isOpen ? catalogPrimaryBtn : catalogGhostBtn}
+                          >
+                            <ReceiptText className="h-3.5 w-3.5" /> {isOpen ? 'Adisyonu aç' : 'Fişi gör'}
+                          </button>
+                          <button
+                            type="button" onClick={() => showInAccounts(a)}
+                            className="ml-auto inline-flex min-h-9 items-center justify-center gap-1.5 rounded-[11px] border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-[12px] font-semibold text-emerald-800 transition-all hover:-translate-y-0.5 hover:bg-emerald-100"
+                          >
+                            <CreditCard className="h-3.5 w-3.5" /> Cari
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    </motion.article>
+                  )
+                })}
+              </AnimatePresence>
 
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                      <span className={`rounded-md px-2 py-0.5 text-[9.5px] font-bold ${
-                        isOpen ? 'bg-amber-50 text-amber-700' : a.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                      }`}>
-                        ● {isOpen ? 'AÇIK' : a.status === 'Approved' ? 'ONAYLANDI' : 'İPTAL'}
-                      </span>
-                      <span className="text-[10.5px] text-[#74616A]">
-                        Tahsilat <b className="text-emerald-700">{formatTL(a.paymentTotal)}</b>
-                        {' · '}{net >= 0 ? 'Kalan' : 'Fazla'} <b className="text-[#3E343A]">{formatTL(Math.abs(net))}</b>
-                      </span>
-                      {saleCancelled && (
-                        <span className="rounded-md bg-rose-50 px-2 py-0.5 text-[9.5px] font-bold text-rose-600">SATIŞ İPTAL</span>
-                      )}
-                    </div>
-
-                    {saleCancelled && (
-                      <div className="mt-1.5 rounded-[10px] bg-rose-50/70 px-2.5 py-1.5 text-[10.5px] text-rose-700">
-                        Gerekçe: {saleCancelled.reason || 'belirtilmemiş'}{saleCancelled.at ? ` · ${shortDay(saleCancelled.at)}` : ''}
-                      </div>
-                    )}
-
-                    {a.chargeTotal > 0 && (
-                      <div className="mt-2.5 flex items-center gap-2">
-                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
-                          <span className="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{ width: `${paidPct}%` }} />
-                        </span>
-                        <span className="shrink-0 text-[10px] font-semibold text-[#74616A]">%{paidPct} tahsil</span>
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {isOpen ? (
-                        <button
-                          type="button" onClick={() => openAdisyonDetail(a)}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3 text-[11.5px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(168,62,95,0.9)] transition-transform hover:-translate-y-0.5"
-                        >
-                          <ReceiptText className="h-3.5 w-3.5" /> Adisyonu aç
-                        </button>
-                      ) : (
-                        <button
-                          type="button" onClick={() => openAdisyonDetail(a)}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-[#EAD8DF] bg-white px-3 text-[11.5px] font-semibold text-[#3E343A] transition-colors hover:border-[#BE7690]"
-                        >
-                          <ReceiptText className="h-3.5 w-3.5" /> Fişi gör
-                        </button>
-                      )}
-                      <button
-                        type="button" onClick={() => showInAccounts(a)}
-                        className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[11px] border border-emerald-300/50 bg-emerald-50 px-3 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-                      >
-                        <CreditCard className="h-3.5 w-3.5" /> Cari
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
               {filteredAdisyonlar.length === 0 && (
-                <div className="rounded-[18px] border border-dashed border-[#EAD8DF] bg-[#F7F6F6] px-4 py-12 text-center text-[12.5px] text-[#74616A] lg:col-span-2">
-                  {adisyonQuery ? 'Aramaya uyan adisyon yok.' : 'Bu dönemde adisyon yok. Üstten “Yeni Adisyon” ile açabilirsin.'}
-                </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-[18px] border border-dashed border-[#EAD8DF] bg-white px-4 py-14 text-center lg:col-span-2 2xl:col-span-3"
+                >
+                  <span className="mx-auto grid h-12 w-12 place-items-center rounded-[16px] bg-[#F6DFE6] text-[#8C4460]">
+                    <ReceiptText className="h-6 w-6" />
+                  </span>
+                  <p className="mt-3 text-[13px] font-semibold text-[#2A2027]">
+                    {adisyonQuery || adisyonFilter !== 'all' ? 'Süzgeçle eşleşen adisyon yok.' : 'Bu dönemde adisyon yok.'}
+                  </p>
+                  <p className="mt-1 text-[11.5px] text-[#705a66]">
+                    {adisyonQuery || adisyonFilter !== 'all'
+                      ? 'Aramayı temizleyin ya da başka bir durum seçin.'
+                      : 'Üstteki “Yeni Adisyon” ile ilk fişi açabilirsiniz.'}
+                  </p>
+                  {(adisyonQuery || adisyonFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => { setAdisyonQuery(''); setAdisyonFilter('all') }}
+                      className={`mt-3 ${catalogGhostBtn}`}
+                    >
+                      Süzgeci temizle
+                    </button>
+                  )}
+                </motion.div>
               )}
-            </div>
+            </motion.div>
 
             {/* ---- Açık adisyon: düzenlenebilir kart ---- */}
             <AdisyonModal
